@@ -2764,10 +2764,12 @@ impl NativeListEmitter.emit_extend(
             return None;
         }
     }
+    _scope = p._container_hdr_scope();
     src_len_ptr = b.gep(
         src, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ext.src.len.ptr"
     );
     src_len = b.load(src_len_ptr, name="ext.src.len");
+    p._tag_access_md(src_len, "alias.scope", _scope);
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="ext.loop");
@@ -2806,7 +2808,9 @@ impl NativeListEmitter.emit_extend(
     b.branch(loop_bb);
     b.position_at_start(done_bb);
     if _aos_struct is not None and src_helpers is helpers {
-        b.store(ir.Constant(i64, 0), src_len_ptr);
+        p._tag_access_md(
+            b.store(ir.Constant(i64, 0), src_len_ptr), "alias.scope", _scope
+        );
     }
     p._release_owned_args(args, op="extend_arg");
     return ir.Constant(i64, 0);
@@ -2846,6 +2850,7 @@ impl NativeListEmitter.emit_insert(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ins.len.ptr"
     );
     new_len = b.load(len_ptr, name="ins.newlen");
+    p._tag_access_md(new_len, "alias.scope", p._container_hdr_scope());
     last_idx = b.sub(new_len, ir.Constant(i64, 1), name="ins.last");
 
     func = b.basic_block.function;
@@ -2893,6 +2898,8 @@ impl NativeListEmitter.emit_remove(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rem.len.ptr"
     );
     list_len = b.load(len_ptr, name="rem.len");
+    _scope = p._container_hdr_scope();
+    p._tag_access_md(list_len, "alias.scope", _scope);
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     find_bb = func.append_basic_block(name="rem.find");
@@ -2958,7 +2965,10 @@ impl NativeListEmitter.emit_remove(
         _sh_src = b.gep(_sh_da, [si], name="sh_src");
         _sh_val = b.load(_sh_src, name="sh_val");
         _sh_dst = b.gep(_sh_da, [prev], name="sh_dst");
-        b.store(_sh_val, _sh_dst);
+        _sh_st = b.store(_sh_val, _sh_dst);
+        p._tag_access_md(_sh_da, "alias.scope", _scope);
+        p._tag_access_md(_sh_val, "noalias", _scope);
+        p._tag_access_md(_sh_st, "noalias", _scope);
     } else {
         val = b.call(helpers["get"], [target, si], name="rem.val");
         b.call(helpers["set"], [target, prev, val]);
@@ -2977,7 +2987,7 @@ impl NativeListEmitter.emit_remove(
     );
     new_len = b.sub(list_len, ir.Constant(i64, 1), name="rem.newlen");
     final_len = b.select(was_found, new_len, list_len, name="rem.finallen");
-    b.store(final_len, len_ptr);
+    p._tag_access_md(b.store(final_len, len_ptr), "alias.scope", _scope);
     return ir.Constant(i64, 0);
 }
 
@@ -2996,6 +3006,8 @@ impl NativeListEmitter.emit_pop(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="pop.len.ptr"
     );
     cur_len = b.load(len_ptr, name="pop.len");
+    _scope = p._container_hdr_scope();
+    p._tag_access_md(cur_len, "alias.scope", _scope);
     new_len = b.sub(cur_len, ir.Constant(i64, 1), name="pop.newlen");
 
     pop_idx = new_len;
@@ -3034,7 +3046,10 @@ impl NativeListEmitter.emit_pop(
         _src = b.gep(_da, [si], name="pop.src");
         _val = b.load(_src, name="pop.shval");
         _dst = b.gep(_da, [prev], name="pop.dst");
-        b.store(_val, _dst);
+        _sh_st = b.store(_val, _dst);
+        p._tag_access_md(_da, "alias.scope", _scope);
+        p._tag_access_md(_val, "noalias", _scope);
+        p._tag_access_md(_sh_st, "noalias", _scope);
     } else {
         _v = b.call(helpers["get"], [target, si], name="pop.shval");
         b.call(helpers["set"], [target, prev, _v]);
@@ -3043,7 +3058,7 @@ impl NativeListEmitter.emit_pop(
     si.add_incoming(next_si, shift_body);
     b.branch(shift_bb);
     b.position_at_start(done_bb);
-    b.store(new_len, len_ptr);
+    p._tag_access_md(b.store(new_len, len_ptr), "alias.scope", _scope);
     if is_ptr {
         p._mark_owned(popped);
     }
@@ -3070,6 +3085,9 @@ impl NativeListEmitter.emit_clear(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr_data_pp"
         );
         _data_arr_c = b.load(_data_pp_c, name="clr_data");
+        _scope = p._container_hdr_scope();
+        p._tag_access_md(_cur_len_c, "alias.scope", _scope);
+        p._tag_access_md(_data_arr_c, "alias.scope", _scope);
         _func_c = b.basic_block.function;
         _clr_loop_bb = _func_c.append_basic_block("clr_loop");
         _clr_body_bb = _func_c.append_basic_block("clr_body");
@@ -3089,6 +3107,7 @@ impl NativeListEmitter.emit_clear(
         _li2_c = b.load(_clr_i_a, name="clr_li2");
         _ep_c = b.gep(_data_arr_c, [_li2_c], name="clr_ep");
         _ev_c = b.load(_ep_c, name="clr_ev");
+        p._tag_access_md(_ev_c, "noalias", _scope);
         p._emit_elem_release(b, helpers["elem_type"], _ev_c);
         _li3_c = b.load(_clr_i_a, name="clr_li3");
         _ni_c = b.add(_li3_c, ir.Constant(i64, 1), name="clr_ni");
@@ -3098,7 +3117,9 @@ impl NativeListEmitter.emit_clear(
         p.builder.position_at_end(_clr_end_bb);
         b = p.builder;
     }
-    b.store(ir.Constant(i64, 0), len_ptr);
+    p._tag_access_md(
+        b.store(ir.Constant(i64, 0), len_ptr), "alias.scope", p._container_hdr_scope()
+    );
     return ir.Constant(i64, 0);
 }
 
@@ -3121,6 +3142,7 @@ impl NativeListEmitter.emit_index(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="idx.len.ptr"
     );
     list_len = b.load(len_ptr, name="idx.len");
+    p._tag_access_md(list_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="idx.loop");
@@ -3185,6 +3207,7 @@ impl NativeListEmitter.emit_count(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="cnt.len.ptr"
     );
     list_len = b.load(len_ptr, name="cnt.len");
+    p._tag_access_md(list_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="cnt.loop");
@@ -3297,6 +3320,7 @@ impl NativeListEmitter.emit_sort(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sort.len.ptr"
     );
     list_len = b.load(len_ptr, name="sort.len");
+    p._tag_access_md(list_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
 
@@ -3426,6 +3450,9 @@ impl NativeListEmitter._emit_value_sort(
     one = ir.Constant(i64, 1);
     length = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
     data = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]));
+    _scope = p._container_hdr_scope();
+    p._tag_access_md(length, "alias.scope", _scope);
+    p._tag_access_md(data, "alias.scope", _scope);
     assert isinstance(data.type, ir.PointerType) and not data.type.is_opaque;
     elem_type = data.type.pointee;
     itemsize = p._abi_sizeof(elem_type);
@@ -3552,7 +3579,10 @@ impl NativeListEmitter._emit_value_sort(
     b.store(b.mul(width, ir.Constant(i64, 2)), width_slot);
     b.branch(outer);
     b.position_at_start(publish);
-    b.call(memcpy, [b.bitcast(data, i8p), b.bitcast(b.load(source_slot), i8p), nbytes]);
+    _pub_cp = b.call(
+        memcpy, [b.bitcast(data, i8p), b.bitcast(b.load(source_slot), i8p), nbytes]
+    );
+    p._tag_access_md(_pub_cp, "noalias", _scope);
     b.call(free, [raw]);
     b.branch(done);
     b.position_at_start(done);
@@ -3574,6 +3604,7 @@ impl NativeListEmitter.emit_reverse(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rev.len.ptr"
     );
     list_len = b.load(len_ptr, name="rev.len");
+    p._tag_access_md(list_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="rev.loop");
@@ -3618,6 +3649,7 @@ impl NativeListEmitter.emit_copy(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="copy.len.ptr"
     );
     src_len = b.load(len_ptr, name="copy.len");
+    p._tag_access_md(src_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="copy.loop");
@@ -3670,6 +3702,7 @@ impl NativeDictEmitter.emit_get(
 
     b.position_at_start(found_bb);
     val: ir.Value = b.load(value_slot, name="dget.val");
+    p._tag_access_md(val, "noalias", p._container_hdr_scope());
     if wrap_optional {
         _tagged = b.insert_value(
             ir.Constant(result_type, None),
@@ -3739,6 +3772,7 @@ impl NativeDictEmitter.emit_keys(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dkeys.len.ptr"
     );
     dict_len = b.load(len_ptr, name="dkeys.len");
+    p._tag_access_md(dict_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="dkeys.loop");
@@ -3792,6 +3826,7 @@ impl NativeDictEmitter.emit_values(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dvals.len.ptr"
     );
     dict_len = b.load(len_ptr, name="dvals.len");
+    p._tag_access_md(dict_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="dvals.loop");
@@ -3843,6 +3878,7 @@ impl NativeDictEmitter.emit_items(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.len.ptr"
     );
     dict_len = b.load(len_ptr, name="ditems.len");
+    p._tag_access_md(dict_len, "alias.scope", p._container_hdr_scope());
 
     func = b.basic_block.function;
     entry_bb = b.basic_block;
@@ -3966,6 +4002,7 @@ impl NativeDictEmitter.emit_popitem(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dpi.len.ptr"
     );
     dict_len = b.load(len_ptr, name="dpi.len");
+    p._tag_access_md(dict_len, "alias.scope", p._container_hdr_scope());
 
     is_empty = b.icmp_signed("==", dict_len, ir.Constant(i64, 0), name="dpi.empty");
     p._emit_runtime_raise(is_empty, "KeyError", "popitem(): dictionary is empty");
@@ -4089,6 +4126,7 @@ impl NativeDictEmitter.emit_update(
         other, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dupd.len.ptr"
     );
     other_len = b.load(len_ptr, name="dupd.len");
+    p._tag_access_md(other_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="dupd.loop");
@@ -4141,6 +4179,7 @@ impl NativeDictEmitter.emit_copy(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dcopy.len.ptr"
     );
     dict_len = b.load(len_ptr, name="dcopy.len");
+    p._tag_access_md(dict_len, "alias.scope", p._container_hdr_scope());
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="dcopy.loop");
@@ -6285,11 +6324,12 @@ impl NativeBuiltinEmitter.emit_bytearray(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ba.z.data.p"
         );
         data = b.load(data_p, name="ba.z.data");
+        p._tag_access_md(data, "alias.scope", p._container_hdr_scope());
         b.call(fns["memset"], [data, ir.Constant(i32, 0), n], name="");
         len_p = b.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ba.z.len.p"
         );
-        b.store(n, len_p);
+        p._tag_access_md(b.store(n, len_p), "alias.scope", p._container_hdr_scope());
         return buf;
     }
     src = p._bytearray_src_of(a0);
@@ -6331,12 +6371,16 @@ def _aos_size_of(b: ir.IRBuilder, elem_struct: ir.Type, tag: str) -> ir.Value {
     );
 }
 
-def _aos_data_ptr(b: ir.IRBuilder, target: ir.Value, tag: str) -> ir.Value {
+def _aos_data_ptr(
+    p: NaIRGenPass, b: ir.IRBuilder, target: ir.Value, tag: str
+) -> ir.Value {
     i32 = ir.IntType(32);
-    return b.load(
+    _ld = b.load(
         b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{tag}.data.p"),
         name=f"{tag}.data"
     );
+    p._tag_access_md(_ld, "alias.scope", p._container_hdr_scope());
+    return _ld;
 }
 
 def _aos_memmove(
@@ -6383,6 +6427,7 @@ impl NativeListEmitter._emit_aos_pop(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="pop.len.ptr"
     );
     cur_len = b.load(len_ptr, name="pop.len");
+    p._tag_access_md(cur_len, "alias.scope", p._container_hdr_scope());
     new_len = b.sub(cur_len, ir.Constant(i64, 1), name="pop.newlen");
     pop_idx = new_len;
     if args {
@@ -6398,7 +6443,7 @@ impl NativeListEmitter._emit_aos_pop(
     shell8 = b.call(_malloc, [sz], name="pop.shell8");
     elem_ptr = b.call(helpers["get"], [target, pop_idx], name="pop.elem");
     b.call(_memcpy, [shell8, b.bitcast(elem_ptr, i8p, name="pop.elem8"), sz]);
-    data = _aos_data_ptr(b, target, "pop");
+    data = _aos_data_ptr(p, b, target, "pop");
     tail = b.sub(new_len, pop_idx, name="pop.tail");
     _aos_memmove(
         p,
@@ -6410,7 +6455,9 @@ impl NativeListEmitter._emit_aos_pop(
         sz,
         "pop.sh"
     );
-    b.store(new_len, len_ptr);
+    p._tag_access_md(
+        b.store(new_len, len_ptr), "alias.scope", p._container_hdr_scope()
+    );
     popped = b.bitcast(shell8, elem_struct.as_pointer(), name="pop.val");
     p._mark_owned(popped);
     return popped;
@@ -6433,6 +6480,7 @@ impl NativeListEmitter._emit_aos_del_at(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="delat.len.ptr"
     );
     cur_len = b.load(len_ptr, name="delat.len");
+    p._tag_access_md(cur_len, "alias.scope", p._container_hdr_scope());
     new_len = b.sub(cur_len, ir.Constant(i64, 1), name="delat.newlen");
     _fields_fn = helpers.get("drop_fields");
     if _fields_fn is not None {
@@ -6440,7 +6488,7 @@ impl NativeListEmitter._emit_aos_del_at(
         b.call(_fields_fn, [b.bitcast(elem_ptr, i8p, name="delat.elem8")]);
     }
     sz = _aos_size_of(b, elem_struct, "delat");
-    data = _aos_data_ptr(b, target, "delat");
+    data = _aos_data_ptr(p, b, target, "delat");
     tail = b.sub(new_len, del_idx, name="delat.tail");
     _aos_memmove(
         p,
@@ -6452,7 +6500,9 @@ impl NativeListEmitter._emit_aos_del_at(
         sz,
         "delat.sh"
     );
-    b.store(new_len, len_ptr);
+    p._tag_access_md(
+        b.store(new_len, len_ptr), "alias.scope", p._container_hdr_scope()
+    );
     return ir.Constant(i64, 0);
 }
 
@@ -6475,9 +6525,10 @@ impl NativeListEmitter._emit_aos_insert(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ins.len.ptr"
     );
     new_len = b.load(len_ptr, name="ins.newlen");
+    p._tag_access_md(new_len, "alias.scope", p._container_hdr_scope());
     last_idx = b.sub(new_len, ir.Constant(i64, 1), name="ins.last");
     sz = _aos_size_of(b, elem_struct, "ins");
-    data = _aos_data_ptr(b, target, "ins");
+    data = _aos_data_ptr(p, b, target, "ins");
     tail = b.sub(last_idx, insert_idx, name="ins.tail");
     _aos_memmove(
         p,

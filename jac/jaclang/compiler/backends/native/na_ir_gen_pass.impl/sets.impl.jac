@@ -30,8 +30,13 @@ impl NaIRGenPass._emit_set_helpers(
         }
     }
 
+    _hdr = self._container_hdr_scope();
     new_fn = self._emit_container_new_fn(
-        f"__set_new_{elem_type_name}", set_ptr_type, layout, dtor_fn=_rel_fn_decl_s
+        f"__set_new_{elem_type_name}",
+        set_ptr_type,
+        layout,
+        dtor_fn=_rel_fn_decl_s,
+        hdr_scope=_hdr
     );
 
     core = self._emit_hash_core_helpers(
@@ -45,7 +50,9 @@ impl NaIRGenPass._emit_set_helpers(
         layout
     );
 
-    len_fn = self._emit_container_len_fn(f"__set_len_{elem_type_name}", set_ptr_type);
+    len_fn = self._emit_container_len_fn(
+        f"__set_len_{elem_type_name}", set_ptr_type, hdr_scope=_hdr
+    );
 
     if self._nogc_headerless() {
         self._emit_container_drop_fn(_struct_name);

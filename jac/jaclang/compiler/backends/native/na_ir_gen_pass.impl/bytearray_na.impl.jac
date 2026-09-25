@@ -15,6 +15,7 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     memmove_fn = self._get_or_declare_extern("memmove", i8p, [i8p, i8p, i64]);
     memset_fn = self._get_or_declare_extern("memset", i8p, [i8p, i32, i64]);
+    _hdr = self._container_hdr_scope();
 
     res_fnty = ir.FunctionType(ir.VoidType(), [ba_ptr, i64]);
     res_fn = ir.Function(self.llvm_module, res_fnty, name="__bytearray_reserve");
@@ -41,8 +42,19 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
 
     is_zero = b.icmp_signed("==", cap_v, ir.Constant(i64, 0), name="cap.zero");
     floored = b.select(is_zero, ir.Constant(i64, 4), cap_v, name="cap.floor");
-    b.store(floored, cap_p);
-    self._emit_grow_array(b, data_p, i8, len_v, cap_p, floored);
+    _ba_floor_st = b.store(floored, cap_p);
+    _ba_old_data = b.load(data_p, name="old.data");
+    (_ba_new_data, _ba_new_cap) = self._emit_grow_array(
+        b, _ba_old_data, i8, len_v, floored
+    );
+    _ba_cap_st = b.store(_ba_new_cap, cap_p);
+    _ba_data_st = b.store(_ba_new_data, data_p);
+    self._tag_access_md(cap_v, "alias.scope", _hdr);
+    self._tag_access_md(len_v, "alias.scope", _hdr);
+    self._tag_access_md(_ba_floor_st, "alias.scope", _hdr);
+    self._tag_access_md(_ba_old_data, "alias.scope", _hdr);
+    self._tag_access_md(_ba_cap_st, "alias.scope", _hdr);
+    self._tag_access_md(_ba_data_st, "alias.scope", _hdr);
     b.branch(chk_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
@@ -62,6 +74,8 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     e_data_p = b.gep(e_buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.p");
     e_len = b.load(e_len_p, name="len");
     e_old_data = b.load(e_data_p, name="old.data");
+    self._tag_access_md(e_len, "alias.scope", _hdr);
+    self._tag_access_md(e_old_data, "alias.scope", _hdr);
     e_src_i = b.ptrtoint(e_src, i64, name="src.i");
     e_old_i = b.ptrtoint(e_old_data, i64, name="old.i");
     e_old_end = b.add(e_old_i, e_len, name="old.end");
@@ -72,11 +86,12 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     e_need = b.add(e_len, e_n, name="need");
     b.call(res_fn, [e_buf, e_need]);
     e_data = b.load(e_data_p, name="data");
+    self._tag_access_md(e_data, "alias.scope", _hdr);
     e_re = b.gep(e_data, [e_off], name="src.rederived");
     e_src2 = b.select(e_alias, e_re, e_src, name="src.eff");
     e_dst = b.gep(e_data, [e_len], name="dst");
     b.call(memcpy_fn, [e_dst, e_src2, e_n]);
-    b.store(e_need, e_len_p);
+    self._tag_access_md(b.store(e_need, e_len_p), "alias.scope", _hdr);
     b.ret_void();
 
     ss_fnty = ir.FunctionType(ir.VoidType(), [ba_ptr, i64, i64, i8p, i64]);
@@ -97,6 +112,7 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     s_len_p = b.gep(s_buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.p");
     s_data_p = b.gep(s_buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.p");
     s_len = b.load(s_len_p, name="len");
+    self._tag_access_md(s_len, "alias.scope", _hdr);
 
     malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
@@ -129,6 +145,7 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     new_len = b.add(s_len, diff, name="new.len");
     b.call(res_fn, [s_buf, new_len]);
     s_data = b.load(s_data_p, name="data");
+    self._tag_access_md(s_data, "alias.scope", _hdr);
     tail_n = b.sub(s_len, stop_c, name="tail.n");
     tail_src = b.gep(s_data, [stop_c], name="tail.src");
     tail_dst_off = b.add(start_c, s_n, name="tail.dst.off");
@@ -137,7 +154,7 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     ins_dst = b.gep(s_data, [start_c], name="ins.dst");
     b.call(memcpy_fn, [ins_dst, s_src, s_n]);
     b.call(free_fn, [s_tmp]);
-    b.store(new_len, s_len_p);
+    self._tag_access_md(b.store(new_len, s_len_p), "alias.scope", _hdr);
     b.ret_void();
 
     self._bytearray_fns = {
@@ -163,10 +180,12 @@ impl NaIRGenPass._bytearray_src_of(
         l_p = self.builder.gep(
             val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ba.len.p"
         );
-        return (
-            self.builder.load(d_p, name="ba.data"),
-            self.builder.load(l_p, name="ba.len")
-        );
+        _ba_d = self.builder.load(d_p, name="ba.data");
+        _ba_l = self.builder.load(l_p, name="ba.len");
+        _scope = self._container_hdr_scope();
+        self._tag_access_md(_ba_d, "alias.scope", _scope);
+        self._tag_access_md(_ba_l, "alias.scope", _scope);
+        return (_ba_d, _ba_l);
     }
     return None;
 }
@@ -214,6 +233,7 @@ impl NaIRGenPass._dispatch_bytearray_method(
                 v, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ba.ext.len.p"
             );
             length = self.builder.load(length_ptr, name="ba.ext.len");
+            self._tag_access_md(length, "alias.scope", self._container_hdr_scope());
 
             for phase in ("validate", "append") {
                 func = self.builder.function;
@@ -323,6 +343,8 @@ impl NaIRGenPass._emit_struct_pack_into(
     }
     len_p = b.gep(buf_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="pi.len.p");
     buf_len = b.load(len_p, name="pi.len");
+    _scope = self._container_hdr_scope();
+    self._tag_access_md(buf_len, "alias.scope", _scope);
     end_off = b.add(off_val, ir.Constant(i64, total), name="pi.end");
     oob = b.icmp_signed(">", end_off, buf_len, name="pi.oob");
     neg = b.icmp_signed("<", off_val, ir.Constant(i64, 0), name="pi.neg");
@@ -335,13 +357,14 @@ impl NaIRGenPass._emit_struct_pack_into(
         buf_val, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="pi.data.p"
     );
     data = b.load(data_p, name="pi.data");
+    self._tag_access_md(data, "alias.scope", _scope);
     off = 0;
     ai = 0;
     for (kind, sz, signed) in fields {
         if kind == "pad" {
             pos_v = b.add(off_val, ir.Constant(i64, off), name="pi.pad.off");
             ptr = b.gep(data, [pos_v], name="pi.pad");
-            b.store(ir.Constant(i8, 0), ptr);
+            self._tag_access_md(b.store(ir.Constant(i8, 0), ptr), "noalias", _scope);
             off = off + 1;
             continue;
         }
@@ -369,7 +392,7 @@ impl NaIRGenPass._emit_struct_pack_into(
             rel = off + (k if little else (sz - 1 - k));
             pos_v = b.add(off_val, ir.Constant(i64, rel), name="pi.off");
             ptr = b.gep(data, [pos_v], name="pi.ptr");
-            b.store(byte, ptr);
+            self._tag_access_md(b.store(byte, ptr), "noalias", _scope);
         }
         off = off + sz;
     }

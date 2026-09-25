@@ -969,17 +969,19 @@ walker NaIRGenPass {
         b: ir.IRBuilder,
         container_ptr_type: ir.Type,
         layout: dict[str, any],
-        initial_cap: int = 8
+        initial_cap: int = 8,
+        hdr_scope: (ir.MDValue | None) = None
     ) -> tuple[ir.Value, ...];
 
+    def _container_hdr_scope -> (ir.MDValue | None);
+    def _tag_access_md(instr: ir.Value, kind: str, scope: (ir.MDValue | None)) -> None;
     def _emit_grow_array(
         b: ir.IRBuilder,
-        arr_ptr: ir.Value,
+        old_data: ir.Value,
         elem_type: ir.Type,
         cur_len: ir.Value,
-        cap_ptr: ir.Value,
         cur_cap: ir.Value
-    ) -> ir.Value;
+    ) -> tuple[ir.Value, ir.Value];
 
     def _emit_rc_destructor_preamble(
         release_fn: ir.Function, ptr_type: ir.Type
@@ -989,11 +991,12 @@ walker NaIRGenPass {
         fn_name: str,
         container_ptr_type: ir.Type,
         layout: dict[str, any],
-        dtor_fn: (ir.Function | None) = None
+        dtor_fn: (ir.Function | None) = None,
+        hdr_scope: (ir.MDValue | None) = None
     ) -> ir.Function;
 
     def _emit_container_len_fn(
-        fn_name: str, container_ptr_type: ir.Type
+        fn_name: str, container_ptr_type: ir.Type, hdr_scope: (ir.MDValue | None) = None
     ) -> ir.Function;
 
     def _emit_container_release_fn(
@@ -1008,7 +1011,8 @@ walker NaIRGenPass {
         fn_name: str,
         container_ptr_type: ir.Type,
         elem_type: ir.Type,
-        data_field_idx: int
+        data_field_idx: int,
+        hdr_scope: (ir.MDValue | None) = None
     ) -> ir.Function;
 
     def _tuple_box_release_fn(

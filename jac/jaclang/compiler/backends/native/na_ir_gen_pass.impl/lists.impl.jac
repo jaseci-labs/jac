@@ -41,11 +41,14 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         }
     }
 
+    _hdr_scope = self._container_hdr_scope();
+
     new_fn = self._emit_container_new_fn(
         f"__list_new_{elem_type_name}",
         list_ptr_type,
         _list_layout,
-        dtor_fn=_rel_fn_decl
+        dtor_fn=_rel_fn_decl,
+        hdr_scope=_hdr_scope
     );
 
     append_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, elem_type]);
@@ -63,33 +66,53 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     v_arg = append_fn.args[1];
     len_p2 = b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
     cap_p2 = b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
+    data_p2 = b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr");
     cur_len = b.load(len_p2, name="len");
     cur_cap = b.load(cap_p2, name="cap");
+    cur_data = b.load(data_p2, name="old.data");
     need_grow = b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
-    b.cbranch(need_grow, grow_bb, store_bb);
+    _grow_br = b.cbranch(need_grow, grow_bb, store_bb);
+
+    if isinstance(_grow_br, ir.PredictableInstr) {
+        _grow_br.set_weights([1, 2000]);
+    }
 
     b.position_at_end(grow_bb);
-    data_p_g = b.gep(
-        l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr.g"
+    (_new_data, _new_cap) = self._emit_grow_array(
+        b, cur_data, elem_type, cur_len, cur_cap
     );
-    self._emit_grow_array(b, data_p_g, elem_type, cur_len, cap_p2, cur_cap);
+
+    _cap_g_st = b.store(_new_cap, cap_p2);
+    _data_g_st = b.store(_new_data, data_p2);
     b.branch(store_bb);
 
     b.position_at_end(store_bb);
-    data_p_s = b.gep(
-        l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr.s"
-    );
-    cur_data = b.load(data_p_s, name="data");
-    slot = b.gep(cur_data, [cur_len], name="slot");
+    data_phi = b.phi(cur_data.type, name="data");
+    data_phi.add_incoming(cur_data, entry_bb);
+    data_phi.add_incoming(_new_data, grow_bb);
+    slot = b.gep(data_phi, [cur_len], name="slot");
 
     self._emit_elem_retain(b, elem_type, v_arg);
-    b.store(v_arg, slot);
+    _elem_st = b.store(v_arg, slot);
     new_len = b.add(cur_len, ir.Constant(i64, 1), name="new.len");
-    b.store(new_len, len_p2);
+    _len_st = b.store(new_len, len_p2);
+    if _hdr_scope is not None {
+        self._tag_access_md(cur_len, "alias.scope", _hdr_scope);
+        self._tag_access_md(cur_cap, "alias.scope", _hdr_scope);
+        self._tag_access_md(cur_data, "alias.scope", _hdr_scope);
+        self._tag_access_md(_cap_g_st, "alias.scope", _hdr_scope);
+        self._tag_access_md(_data_g_st, "alias.scope", _hdr_scope);
+        self._tag_access_md(_elem_st, "noalias", _hdr_scope);
+        self._tag_access_md(_len_st, "alias.scope", _hdr_scope);
+    }
     b.ret_void();
 
     get_fn = self._emit_array_get_fn(
-        f"__list_get_{elem_type_name}", list_ptr_type, elem_type, 2
+        f"__list_get_{elem_type_name}",
+        list_ptr_type,
+        elem_type,
+        2,
+        hdr_scope=_hdr_scope
     );
 
     set_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, i64, elem_type]);
@@ -111,14 +134,26 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     if self._elem_kind(elem_type) != "raw" and not self._nogc_headerless() {
         self._emit_elem_retain(b, elem_type, set_fn.args[2]);
         _old_v_s = b.load(ep2, name="lset_old_val");
-        b.store(set_fn.args[2], ep2);
+        _set_st = b.store(set_fn.args[2], ep2);
+        if _hdr_scope is not None {
+            self._tag_access_md(_old_v_s, "noalias", _hdr_scope);
+            self._tag_access_md(_set_st, "noalias", _hdr_scope);
+        }
         self._emit_elem_release(b, elem_type, _old_v_s);
     } else {
-        b.store(set_fn.args[2], ep2);
+        _set_st = b.store(set_fn.args[2], ep2);
+        if _hdr_scope is not None {
+            self._tag_access_md(_set_st, "noalias", _hdr_scope);
+        }
+    }
+    if _hdr_scope is not None {
+        self._tag_access_md(d2, "alias.scope", _hdr_scope);
     }
     b.ret_void();
 
-    len_fn = self._emit_container_len_fn(f"__list_len_{elem_type_name}", list_ptr_type);
+    len_fn = self._emit_container_len_fn(
+        f"__list_len_{elem_type_name}", list_ptr_type, hdr_scope=_hdr_scope
+    );
 
     if self._nogc_headerless() {
         self._emit_container_drop_fn(f"List.{elem_type_name}");
@@ -731,6 +766,7 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _free = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     _memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     _z = ir.Constant(i32, 0);
+    _hdr = self._container_hdr_scope();
 
     new_fn = self._define_function(
         f"__list_new_aos_{tname}", ir.FunctionType(_stp, [])
@@ -750,19 +786,22 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _selfp = b.bitcast(
         b.call(_malloc, [_szSelf], name="aos.self8"), _stp, name="aos.self"
     );
-    b.store(
+    _n_len = b.store(
         ir.Constant(i64, 0), b.gep(_selfp, [_z, ir.Constant(i32, 0)], name="aos.len")
     );
-    b.store(
+    _n_cap = b.store(
         ir.Constant(i64, 8), b.gep(_selfp, [_z, ir.Constant(i32, 1)], name="aos.cap")
     );
     _buf0 = b.call(
         _malloc, [b.mul(ir.Constant(i64, 8), _szT, name="aos.b0.sz")], name="aos.b0"
     );
-    b.store(
+    _n_data = b.store(
         b.bitcast(_buf0, _tp, name="aos.b0.t"),
         b.gep(_selfp, [_z, ir.Constant(i32, 2)], name="aos.data")
     );
+    self._tag_access_md(_n_len, "alias.scope", _hdr);
+    self._tag_access_md(_n_cap, "alias.scope", _hdr);
+    self._tag_access_md(_n_data, "alias.scope", _hdr);
     b.ret(_selfp);
 
     push_fn = self._define_function(
@@ -784,27 +823,36 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _a_data_p = b.gep(append_fn.args[0], [_z, ir.Constant(i32, 2)], name="a.data.p");
     _a_len = b.load(_a_len_p, name="a.len");
     _a_cap = b.load(_a_cap_p, name="a.cap");
-    b.cbranch(b.icmp_signed(">=", _a_len, _a_cap, name="a.full"), _a_grow, _a_store);
+    _a_data = b.load(_a_data_p, name="a.old");
+    _a_br = b.cbranch(
+        b.icmp_signed(">=", _a_len, _a_cap, name="a.full"), _a_grow, _a_store
+    );
+
+    if isinstance(_a_br, ir.PredictableInstr) {
+        _a_br.set_weights([1, 2000]);
+    }
     b = ir.IRBuilder(_a_grow);
     _g_ncap = b.mul(_a_cap, ir.Constant(i64, 2), name="a.ncap");
     _g_new = b.call(_malloc, [b.mul(_g_ncap, _a_szT, name="a.nsz")], name="a.nbuf");
-    _g_old = b.load(_a_data_p, name="a.old");
     b.call(
         _memcpy,
         [
             _g_new,
-            b.bitcast(_g_old, i8p, name="a.old8"),
+            b.bitcast(_a_data, i8p, name="a.old8"),
             b.mul(_a_len, _a_szT, name="a.copysz")
         ]
     );
-    b.call(_free, [b.bitcast(_g_old, i8p, name="a.old8f")]);
-    b.store(b.bitcast(_g_new, _tp, name="a.nbuf.t"), _a_data_p);
-    b.store(_g_ncap, _a_cap_p);
+    b.call(_free, [b.bitcast(_a_data, i8p, name="a.old8f")]);
+    _g_new_t = b.bitcast(_g_new, _tp, name="a.nbuf.t");
+    _g_data_st = b.store(_g_new_t, _a_data_p);
+    _g_cap_st = b.store(_g_ncap, _a_cap_p);
     b.branch(_a_store);
     b = ir.IRBuilder(_a_store);
-    _s_data = b.load(_a_data_p, name="a.data");
+    _s_data = b.phi(_a_data.type, name="a.data");
+    _s_data.add_incoming(_a_data, _a_entry);
+    _s_data.add_incoming(_g_new_t, _a_grow);
     _s_dst = b.gep(_s_data, [_a_len], name="a.dst");
-    b.call(
+    _s_cp = b.call(
         _memcpy,
         [
             b.bitcast(_s_dst, i8p, name="a.dst8"),
@@ -812,7 +860,14 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
             _a_szT
         ]
     );
-    b.store(b.add(_a_len, ir.Constant(i64, 1), name="a.len1"), _a_len_p);
+    _s_len = b.store(b.add(_a_len, ir.Constant(i64, 1), name="a.len1"), _a_len_p);
+    self._tag_access_md(_a_len, "alias.scope", _hdr);
+    self._tag_access_md(_a_cap, "alias.scope", _hdr);
+    self._tag_access_md(_a_data, "alias.scope", _hdr);
+    self._tag_access_md(_g_data_st, "alias.scope", _hdr);
+    self._tag_access_md(_g_cap_st, "alias.scope", _hdr);
+    self._tag_access_md(_s_cp, "noalias", _hdr);
+    self._tag_access_md(_s_len, "alias.scope", _hdr);
     b.ret_void();
 
     append_fn = self._define_function(
@@ -832,6 +887,7 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _g_data = b.load(
         b.gep(get_fn.args[0], [_z, ir.Constant(i32, 2)], name="g.data.p"), name="g.data"
     );
+    self._tag_access_md(_g_data, "alias.scope", _hdr);
     b.ret(b.gep(_g_data, [get_fn.args[1]], name="g.elem"));
 
     set_fn = self._define_function(
@@ -847,12 +903,13 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _st_data = b.load(
         b.gep(set_fn.args[0], [_z, ir.Constant(i32, 2)], name="s.data.p"), name="s.data"
     );
+    self._tag_access_md(_st_data, "alias.scope", _hdr);
     _st_slot = b.gep(_st_data, [set_fn.args[1]], name="s.slot");
     _fields_fn = self._emit_struct_drop_fields_fn(tname);
     if _fields_fn is not None {
         b.call(_fields_fn, [b.bitcast(_st_slot, i8p, name="s.slot8")]);
     }
-    b.call(
+    _st_cp = b.call(
         _memcpy,
         [
             b.bitcast(_st_slot, i8p, name="s.slot8b"),
@@ -860,6 +917,7 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
             _st_szT
         ]
     );
+    self._tag_access_md(_st_cp, "noalias", _hdr);
     b.call(_free, [b.bitcast(set_fn.args[2], i8p, name="s.shell8")]);
     b.ret_void();
 
@@ -868,12 +926,11 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     );
     len_fn.linkage = "private";
     b = ir.IRBuilder(len_fn.append_basic_block("entry"));
-    b.ret(
-        b.load(
-            b.gep(len_fn.args[0], [_z, ir.Constant(i32, 0)], name="l.len.p"),
-            name="l.len"
-        )
+    _l_len = b.load(
+        b.gep(len_fn.args[0], [_z, ir.Constant(i32, 0)], name="l.len.p"), name="l.len"
     );
+    self._tag_access_md(_l_len, "alias.scope", _hdr);
+    b.ret(_l_len);
 
     drop_fn = ir.Function(
         self.llvm_module,
@@ -914,6 +971,7 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _d_data = b.load(
         b.gep(_d_selfp, [_z, ir.Constant(i32, 2)], name="d.data.p"), name="d.data"
     );
+    self._tag_access_md(_d_data, "alias.scope", _hdr);
     b.call(_free, [b.bitcast(_d_data, i8p, name="d.data8")]);
     b.call(_free, [drop_fn.args[0]]);
     b.branch(_d_done);

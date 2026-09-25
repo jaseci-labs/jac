@@ -531,14 +531,17 @@ impl NaIRGenPass._emit_container_new_fn(
     fn_name: str,
     container_ptr_type: ir.Type,
     layout: dict[str, any],
-    dtor_fn: object = None
+    dtor_fn: object = None,
+    hdr_scope: object = None
 ) -> ir.Function {
     new_fnty = ir.FunctionType(container_ptr_type, []);
     new_fn = ir.Function(self.llvm_module, new_fnty, name=fn_name);
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    result = self._emit_rc_alloc_container(b, container_ptr_type, layout);
+    result = self._emit_rc_alloc_container(
+        b, container_ptr_type, layout, hdr_scope=hdr_scope
+    );
     container_ptr = result[0];
 
     if self._gc_mode() == "none" {
@@ -655,7 +658,7 @@ impl NaIRGenPass._emit_container_trace_fn(
 }
 
 impl NaIRGenPass._emit_container_len_fn(
-    fn_name: str, container_ptr_type: ir.Type
+    fn_name: str, container_ptr_type: ir.Type, hdr_scope: object = None
 ) -> ir.Function {
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
@@ -668,7 +671,11 @@ impl NaIRGenPass._emit_container_len_fn(
     lp = b.gep(
         len_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
     );
-    b.ret(b.load(lp, name="len"));
+    _len_ld = b.load(lp, name="len");
+    if hdr_scope is not None {
+        self._tag_access_md(_len_ld, "alias.scope", hdr_scope);
+    }
+    b.ret(_len_ld);
     return len_fn;
 }
 
@@ -823,7 +830,11 @@ impl NaIRGenPass._emit_release_header_free(
 }
 
 impl NaIRGenPass._emit_array_get_fn(
-    fn_name: str, container_ptr_type: ir.Type, elem_type: ir.Type, data_field_idx: int
+    fn_name: str,
+    container_ptr_type: ir.Type,
+    elem_type: ir.Type,
+    data_field_idx: int,
+    hdr_scope: object = None
 ) -> ir.Function {
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
@@ -841,7 +852,12 @@ impl NaIRGenPass._emit_array_get_fn(
     );
     d = b.load(dp, name="data");
     ep = b.gep(d, [get_fn.args[1]], name="elem.ptr");
-    b.ret(b.load(ep, name="elem"));
+    _elem_ld = b.load(ep, name="elem");
+    if hdr_scope is not None {
+        self._tag_access_md(d, "alias.scope", hdr_scope);
+        self._tag_access_md(_elem_ld, "noalias", hdr_scope);
+    }
+    b.ret(_elem_ld);
     return get_fn;
 }
 
@@ -937,11 +953,31 @@ impl NaIRGenPass._emit_key_comparison(
     }
 }
 
+impl NaIRGenPass._container_hdr_scope -> (object | None) {
+    if self.llvm_module is None {
+        return None;
+    }
+
+    _mod = self.llvm_module;
+    _domain = _mod.add_metadata(["jac.container.hdr"]);
+    _scope = _mod.add_metadata(["jac.container.hdr.scope", _domain]);
+    return _mod.add_metadata([_scope]);
+}
+
+impl NaIRGenPass._tag_access_md(
+    instr: ir.Value, kind: str, scope: (object | None)
+) -> None {
+    if scope is not None and isinstance(instr, ir.Instruction) {
+        instr.set_metadata(kind, scope);
+    }
+}
+
 impl NaIRGenPass._emit_rc_alloc_container(
     b: ir.IRBuilder,
     container_ptr_type: ir.Type,
     layout: dict[str, any],
-    initial_cap: int = 8
+    initial_cap: int = 8,
+    hdr_scope: object = None
 ) -> tuple[ir.Value, ...] {
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
@@ -961,12 +997,16 @@ impl NaIRGenPass._emit_rc_alloc_container(
     len_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
     );
-    b.store(ir.Constant(i64, 0), len_p);
+    _len_st = b.store(ir.Constant(i64, 0), len_p);
 
     cap_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr"
     );
-    b.store(ir.Constant(i64, initial_cap), cap_p);
+    _cap_st = b.store(ir.Constant(i64, initial_cap), cap_p);
+    if hdr_scope is not None {
+        self._tag_access_md(_len_st, "alias.scope", hdr_scope);
+        self._tag_access_md(_cap_st, "alias.scope", hdr_scope);
+    }
 
     data_ptrs = [];
     for (i, fpair) in enumerate(layout["data_fields"]) {
@@ -984,7 +1024,10 @@ impl NaIRGenPass._emit_rc_alloc_container(
             [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
             name=f"data{i}.ptr"
         );
-        b.store(data, data_p);
+        _data_st = b.store(data, data_p);
+        if hdr_scope is not None {
+            self._tag_access_md(_data_st, "alias.scope", hdr_scope);
+        }
         data_ptrs.append(data);
     }
     if layout["kind"] == "hash" {
@@ -1025,27 +1068,23 @@ impl NaIRGenPass._emit_rc_alloc_container(
 
 impl NaIRGenPass._emit_grow_array(
     b: ir.IRBuilder,
-    arr_ptr: ir.Value,
+    old_data: ir.Value,
     elem_type: ir.Type,
     cur_len: ir.Value,
-    cap_ptr: ir.Value,
     cur_cap: ir.Value
-) -> ir.Value {
+) -> tuple[ir.Value, ir.Value] {
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
     malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
-    b.store(new_cap, cap_ptr);
     elem_null = ir.Constant(elem_type.as_pointer(), None);
     elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
     elem_sz = b.ptrtoint(elem_gep, i64, name="elem.size");
     new_bytes = b.mul(new_cap, elem_sz, name="new.bytes");
     new_data_raw = b.call(malloc_fn, [new_bytes], name="new.data.raw");
     new_data = b.bitcast(new_data_raw, elem_type.as_pointer(), name="new.data");
-    old_data = b.load(arr_ptr, name="old.data");
     old_bytes = b.mul(cur_len, elem_sz, name="old.bytes");
     old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
     new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
@@ -1059,8 +1098,7 @@ impl NaIRGenPass._emit_grow_array(
         }
         b.call(self.rc_safe_free_fn, [old_i8]);
     }
-    b.store(new_data, arr_ptr);
-    return new_data;
+    return (new_data, new_cap);
 }
 
 impl NaIRGenPass._emit_rc_destructor_preamble(
