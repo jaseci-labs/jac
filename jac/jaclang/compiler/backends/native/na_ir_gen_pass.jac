@@ -2630,6 +2630,7 @@ walker NaIRGenPass(CompilerPass) {
     def _loop_rebinds_name(loop: uni.UniNode, name: str) -> bool;
     def _body_assigns_before(
         loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
+    def _target_bound_names(target: uni.UniNode) -> list[uni.Name];
         child: (uni.UniNode | None),
         name: str
     ) -> bool;

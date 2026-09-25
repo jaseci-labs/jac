@@ -231,6 +231,25 @@ test "a value live across a loop back edge keeps the checked unwrap" {
     );
 }
 
+test "a subscript store inside a loop keeps the narrow at the loop head" {
+    (eng, _) = compile_native(FIXTURE);
+    sv = sv_module();
+    vals = congruent(eng, sv, "loop_element_store", [0, 3]);
+    assert vals == [-1, 9] , f"unexpected loop_element_store results: {vals}";
+}
+
+test "a tuple-target rebind inside a loop keeps the checked unwrap" {
+    (eng, _) = compile_native(FIXTURE);
+    ir = compile_native_ir(FIXTURE);
+    sv = sv_module();
+    vals = congruent(eng, sv, "loop_unpack_rebind", [0, 6]);
+    assert vals == [-1, 21] , f"unexpected loop_unpack_rebind results: {vals}";
+    body = func_ir(str(ir.gen.llvm_ir), "loop_unpack_rebind");
+    assert "opt.isnone" in body , (
+        "a use the loop body rebinds through a tuple target must keep its checked unwrap"
+    );
+}
+
 test "`case None` over a narrowed subject folds instead of comparing to null" {
     (eng, _) = compile_native(FIXTURE);
     sv = sv_module();

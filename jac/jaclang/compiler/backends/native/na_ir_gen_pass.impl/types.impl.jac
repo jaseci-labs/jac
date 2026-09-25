@@ -2263,9 +2263,7 @@ impl NaIRGenPass._loop_rebinds_name(loop: uni.UniNode, name: str) -> bool {
     _found = False;
     for _asn in loop.get_all_sub_nodes(uni.Assignment) {
         for _t in (_asn.target or []) {
-            for _tn in (
-                [_t] if isinstance(_t, uni.Name) else _t.get_all_sub_nodes(uni.Name)
-            ) {
+            for _tn in self._target_bound_names(_t) {
                 if _tn.value == name {
                     _found = True;
                     break;
@@ -2300,7 +2298,24 @@ impl NaIRGenPass._body_assigns_before(
     name: str
 ) -> bool {
     if isinstance(loop, uni.InForStmt) {
-        for _tn in loop.target.get_all_sub_nodes(uni.Name) {
+impl NaIRGenPass._target_bound_names(target: uni.UniNode) -> list[uni.Name] {
+    if isinstance(target, uni.Name) {
+        return [target];
+    }
+    if isinstance(target, uni.UnaryExpr) {
+        return self._target_bound_names(target.operand);
+    }
+    if isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        _bound: list[uni.Name] = [];
+        for _item in (target.values or []) {
+            _bound.extend(self._target_bound_names(_item));
+        }
+        return _bound;
+    }
+    return [];
+}
+
+        for _tn in self._target_bound_names(loop.target) {
             if _tn.value == name {
                 return True;
             }
@@ -2325,7 +2340,7 @@ impl NaIRGenPass._body_assigns_before(
             continue;
         }
         for _t in (_stmt.target or []) {
-            if isinstance(_t, uni.Name) and _t.value == name {
+            if any(_tn.value == name for _tn in self._target_bound_names(_t)) {
                 return True;
             }
         }
