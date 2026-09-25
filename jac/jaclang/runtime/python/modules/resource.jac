@@ -120,7 +120,7 @@ def:priv py2rlim(value: ptr[PyObject]) -> tuple[bool, u64] {
     if status < 0 {
         return (False, u64(0));
     }
-    if negative and (number != u64(RLIM_INFINITY) or status > 0) {
+    if negative and (number != u64.wrap(RLIM_INFINITY) or status > 0) {
         object_error("ValueError", "Cannot convert negative int");
         return (False, u64(0));
     }
@@ -156,7 +156,7 @@ def:priv py2rlimit(limits: ptr[PyObject], out: &mut rlimit) -> bool {
 
 # rlim2py(): RLIM_INFINITY is signed (-1 on Linux); other limits are unsigned.
 def:priv rlim2py(value: u64) -> ptr[PyObject] {
-    if value == u64(RLIM_INFINITY) {
+    if value == u64.wrap(RLIM_INFINITY) {
         return PyLong_FromLong(RLIM_INFINITY);
     }
     return PyLong_FromUnsignedLongLong(value);

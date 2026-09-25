@@ -13,9 +13,11 @@ import from jaclang.runtime.python.cpython_api {
     PyEval_SaveThread,
     PyList_Append,
     PyList_New,
+    PyLong_FromLong,
     PyMem_RawFree,
     PyMem_RawRealloc,
     PyObject,
+    PySequence_Contains,
     PyStructSequence_New,
     PyStructSequence_SetItem,
     PyThreadState,
@@ -144,9 +146,27 @@ def pwd_getpwuid_impl(module: ptr[PyObject], uidobj: ptr[PyObject]) -> ptr[PyObj
     return result;
 }
 
+# PyBytes_AsStringAndSize(name, &chars, NULL) rejects an embedded null byte.
+def without_null(encoded: ptr[PyObject]) -> bool {
+    zero = PyLong_FromLong(0);
+    if not zero {
+        return False;
+    }
+    found = PySequence_Contains(encoded, zero);
+    jacpy_release(zero);
+    if found > 0 {
+        object_error("ValueError", "embedded null byte");
+    }
+    return found == 0;
+}
+
 def pwd_getpwnam_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     encoded = PyUnicode_EncodeFSDefault(name);
     if not encoded {
+        return NULL;
+    }
+    if not without_null(encoded) {
+        jacpy_release(encoded);
         return NULL;
     }
     text = PyBytes_AsString(encoded);

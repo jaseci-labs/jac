@@ -1,11 +1,13 @@
 # Standard-library extension modules implemented in native Jac.
 #
-# One module per line: <module> <upstream tests> [linker flags...]
+# One module per line: <module> [<upstream tests> [linker flags...]]
 #   <module>          CPython import name; its PyInit_<module> is a :pub
 #                     definition under jaclang/runtime/python/bindings/ and is
 #                     imported by compiler/backends/py/jacpython/native_api.jac.
 #   <upstream tests>  Comma-separated pinned CPython test modules that
 #                     scripts/run_cpython_compiler_tests.jac runs against it.
+#                     Omitted when every upstream suite for the module needs
+#                     something outside it (_testcapi, compiler features).
 #   linker flags      Extra Setup.local flags for a foreign library.
 #
 # This file is the single list. build.sh writes the Setup.local *static* block
@@ -32,12 +34,12 @@ array           test.test_array
 _pickle         test.test_pickle
 _statistics     test.test_statistics
 _stat           test.test_stat
-_opcode         test.test__opcode,test.test_dis
+_opcode         test.test__opcode
 pwd             test.test_pwd
 grp             test.test_grp
 _types          test.test_types
-_typing         test.test_typing
-_suggestions    test.test_traceback
+_typing
+_suggestions
 _sysconfig      test.test_sysconfig
 _weakref        test.test_weakref
 _tracemalloc    test.test_tracemalloc
