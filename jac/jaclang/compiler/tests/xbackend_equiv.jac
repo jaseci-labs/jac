@@ -179,7 +179,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
     assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
 
     def compile_module(path: Path) -> ClientArtifact {
-        artifact = prog.get_client_artifact(str(path));
+        artifact = prog._get_compiler().get_client_artifact(str(path), prog);
         assert artifact is not None , "\n".join(str(e) for e in prog.errors_had);
         return artifact;
     }
@@ -412,6 +412,8 @@ def unbox_jacval(jv: JacVal) -> object {
         # bool: kept distinct from int (tag 0) so it round-trips as True/False
         # rather than 1/0, matching the Python reference exactly.
         return jv.payload != 0;
+    } elif jv.tag == 9 {
+        return ...;
     }
     return None;
 }

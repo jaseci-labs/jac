@@ -1,36 +1,20 @@
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 
 impl JacAutoLintPass.postinit -> None {
-    import from jaclang.compiler.driver.compilation_context { context_app }
     import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
-    import from jaclang.project.config {
-        JacConfig,
-        get_config_for_path,
-        get_explicit_config
-    }
-    import from pathlib { Path }
-
-    mod_path = self.module.loc.mod_path if self.module?.loc else None;
-    config = (
-        get_config_for_path(Path(mod_path)) if mod_path else get_explicit_config()
-    )
-        or JacConfig();
-    if mod_path {
-        _app = context_app(str(Path(mod_path).resolve()));
-        if _app is not None and not _app.implicit and _app.name in config.apps {
-            config = config.effective_for_app(_app.name);
-        }
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    mod_path = self.module.loc.mod_path if self.module?.loc else "";
+    settings = active_host().lint_settings(mod_path or "");
     _opts = self.prog.options;
     _extra: list[str] = (
         list(_opts.suppress_codes)
             if (_opts is not None and _opts.suppress_codes)
             else []
     );
-    self.ctx.policy = diagnostic_policy_for(config, _extra);
-    if config.check?.lint {
-        self._exclude_patterns = config.check.lint.exclude;
-        self._project_root = str(config.project_root) if config.project_root else "";
+    self.ctx.policy = diagnostic_policy_for(settings.check, _extra);
+    if settings.check.lint_active {
+        self._exclude_patterns = settings.exclude;
+        self._project_root = settings.project_root;
     }
 }
 
@@ -1249,9 +1233,10 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
     if not self.ctx.emit(W3010, node_override=impl_node) {
         return;
     }
-    import copy;
-
-    new_sig = decl_sig.detached_copy();
+    new_sig = self._reparse_signature(decl_sig);
+    if new_sig is None {
+        return;
+    }
     new_sig.set_parent(impl_node);
     old_spec = impl_node.spec;
 
@@ -1285,6 +1270,22 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
     }
     impl_node.set_kids(new_kids);
     impl_node._invalidate_sub_node_tab();
+}
+
+impl JacAutoLintPass._reparse_signature(
+    sig: uni.FuncSignature
+) -> (uni.FuncSignature | None) {
+    import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
+    import from jaclang.compiler.frontend.parser.parser { Parser }
+    loc = sig.loc;
+    text = loc.orig_src.code[loc.pos_start:loc.pos_end];
+    (tokens, _comments, _diags, lex_errors) = tokenize_full(text, loc.mod_path);
+    parser = Parser(tokens=tokens, file_path=loc.mod_path, source_code=text);
+    parsed = parser.parse_func_signature();
+    if lex_errors or parser.error_count or not parser.at_end() {
+        return None;
+    }
+    return parsed;
 }
 
 impl JacAutoLintPass._impl_owner_archetype(
@@ -1362,18 +1363,15 @@ impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetyp
         return self._base_decl_cache;
     }
     self._base_decls_loaded = True;
-    import from jaclang.compiler.driver.bccache { discover_base_file }
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
-    import from jaclang.project.source { read_file_with_encoding }
-    import from jaclang.compiler.driver.program { JacProgram }
-    base_path = discover_base_file(annex_path);
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
+    base_path = active_host().base_file(annex_path);
     if base_path is None {
         return self._base_decl_cache;
     }
     try {
-        source_str = read_file_with_encoding(base_path);
-
-        (base_mod, _had_error) = rd_parse(source_str, base_path, prog=JacProgram());
+        source_str = active_host().read_source(base_path);
+        (base_mod, _had_error) = rd_parse(source_str, base_path);
     } except Exception {
         return self._base_decl_cache;
     }
@@ -1388,40 +1386,18 @@ impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetyp
 impl JacAutoLintPass._signatures_match(
     decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
 ) -> bool {
-    decl_params: Sequence[any] = decl_sig.params or [];
-    impl_params: Sequence[any] = impl_sig.params or [];
-    if (
-        len(decl_params) != len(impl_params)
-        or len(decl_sig.posonly_params) != len(impl_sig.posonly_params)
-        or len(decl_sig.kwonlyargs) != len(impl_sig.kwonlyargs)
-        or (decl_sig.varargs is None) != (impl_sig.varargs is None)
-        or (decl_sig.kwargs is None) != (impl_sig.kwargs is None)
-        or (decl_sig.return_type is None) != (impl_sig.return_type is None)
-    ) {
-        return False;
+    def names(params: Sequence[uni.ParamVar]) -> list[str] {
+        return [param.name.value for param in params];
     }
-    for (i, decl_param) in enumerate(decl_params) {
-        impl_param = impl_params[i];
 
-        if decl_param.name.value != impl_param.name.value {
-            return False;
-        }
-    }
-    for (i, decl_param) in enumerate(decl_sig.posonly_params) {
-        impl_param = impl_sig.posonly_params[i];
-
-        if decl_param.name.value != impl_param.name.value {
-            return False;
-        }
-    }
-    for (i, decl_param) in enumerate(decl_sig.kwonlyargs) {
-        impl_param = impl_sig.kwonlyargs[i];
-
-        if decl_param.name.value != impl_param.name.value {
-            return False;
-        }
-    }
-    return True;
+    return (
+        (decl_sig.varargs is None) == (impl_sig.varargs is None)
+        and (decl_sig.kwargs is None) == (impl_sig.kwargs is None)
+        and (decl_sig.return_type is None) == (impl_sig.return_type is None)
+        and names(decl_sig.params or []) == names(impl_sig.params or [])
+        and names(decl_sig.posonly_params) == names(impl_sig.posonly_params)
+        and names(decl_sig.kwonlyargs) == names(impl_sig.kwonlyargs)
+    );
 }
 
 impl JacAutoLintPass._stmt_body_list(
@@ -1491,7 +1467,10 @@ impl JacAutoLintPass._strip_redundant_semis(nd: uni.Module) -> None {
         }
     }
     removable.sort(
-        key=lambda (item) { (item[1].loc.first_line, item[1].loc.col_start); }
+        key=lambda (item: tuple[uni.UniNode, uni.Semi]) { (
+            item[1].loc.first_line,
+            item[1].loc.col_start
+        ); }
     );
     doomed: dict[int, tuple[uni.UniNode, set[int]]] = {};
     for (container, semi) in removable {
@@ -1502,7 +1481,8 @@ impl JacAutoLintPass._strip_redundant_semis(nd: uni.Module) -> None {
             continue;
         }
         if id(container) not in doomed {
-            doomed[id(container)] = (container, set());
+            fresh_ids: set[int] = set();
+            doomed[id(container)] = (container, fresh_ids);
         }
         doomed[id(container)][1].add(id(semi));
     }
@@ -1539,7 +1519,10 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
     if has_params {
         return;
     }
-    has_parens = bool([sig->:Kid:->[?:uni.Token, name in (Tok.LPAREN, Tok.RPAREN)]]);
+    has_parens = any(
+        isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN)
+        for kid in [sig->:Kid:->]
+    );
     if not has_parens {
         return;
     }
@@ -2291,7 +2274,9 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         (var_name, setter_name, init_value) = match_result;
         type_str = self._infer_type_from_usestate_value(init_value);
         init_repr = (
-            str(getattr(init_value, "value", "...")) if init_value is not None else '""'
+            init_value.value
+                if isinstance(init_value, uni.Token)
+                else ('""' if init_value is None else "...")
         );
         if not self.ctx.emit(
             W3038, node_override=stmt, name=var_name, type_name=type_str, init=init_repr
@@ -2445,7 +2430,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
     }
     consumer = spec.module_name(own_path);
     if consumer is None {
-        head = discover_base_file(own_path);
+        head = active_host().base_file(own_path);
         consumer = spec.module_name(head) if head else None;
     }
     if consumer is None or not spec.is_sealed(consumer) {
@@ -2470,9 +2455,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         from_loc = stmt.from_loc;
         if from_loc is not None {
             provider = spec.import_provider(from_loc);
-            form = WiringSpec.import_form(
-                stmt.is_absorb, stmt.is_typed, stmt.is_comptime, True
-            );
+            form = import_form(stmt.is_absorb, stmt.is_typed, stmt.is_comptime, True);
             for item in stmt.items {
                 if provider is None or not isinstance(item, uni.ModuleItem) {
                     continue;
@@ -2491,9 +2474,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
                 }
             }
         } else {
-            form = WiringSpec.import_form(
-                stmt.is_absorb, stmt.is_typed, stmt.is_comptime, False
-            );
+            form = import_form(stmt.is_absorb, stmt.is_typed, stmt.is_comptime, False);
             for item in stmt.items {
                 if not isinstance(item, uni.ModulePath) {
                     continue;
@@ -2646,13 +2627,7 @@ impl JacAutoLintPass._strip_noise(nd: uni.Module) -> None {
 }
 
 impl JacAutoLintPass._strip_docstrings(start: uni.UniNode) -> None {
-    doc_nodes: list[uni.AstDocNode] = [];
-    self._collect_doc_nodes(start, doc_nodes);
-    for `node in doc_nodes {
-        doc_str = `node.doc;
-        if doc_str is None {
-            continue;
-        }
+    for (`node, doc_str) in self._collect_doc_nodes(start) {
         self.ctx.emit(W3051, node_override=doc_str);
         if self.report_only {
             continue;
@@ -2669,13 +2644,15 @@ impl JacAutoLintPass._strip_docstrings(start: uni.UniNode) -> None {
 }
 
 impl JacAutoLintPass._collect_doc_nodes(
-    `node: uni.UniNode, results: list[uni.AstDocNode]
-) -> None {
-    stack: list[uni.UniNode] = [`node];
+    start: uni.UniNode
+) -> list[tuple[uni.UniNode, uni.String]] {
+    results: list[tuple[uni.UniNode, uni.String]] = [];
+    stack: list[uni.UniNode] = [start];
     while stack {
         current = stack.pop();
-        if isinstance(current, uni.AstDocNode) and current.doc is not None {
-            results.append(current);
+        docs = [current->:DocRole:->];
+        if docs {
+            results.append((current, docs[0]));
         }
         for kid in [current->:Kid:->] {
             if kid is not None {
@@ -2683,6 +2660,7 @@ impl JacAutoLintPass._collect_doc_nodes(
             }
         }
     }
+    return results;
 }
 
 impl JacAutoLintPass._make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name {

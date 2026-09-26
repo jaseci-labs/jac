@@ -249,7 +249,7 @@ impl scaffold_app(
 ) -> list[str] {
     import os;
     import tomllib;
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.textio { read_file_with_encoding }
     import from jaclang.project.apps { APP_TABLE_KEYS, parse_apps, validate_app_name }
     import from jaclang.project.config { _toml_append_section }
     import from jaclang.project.kinds { KIND_SPECS, kind_entry }

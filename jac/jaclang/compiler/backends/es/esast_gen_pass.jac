@@ -3,9 +3,21 @@ import json;
 import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
 import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
 import from jaclang.compiler.types.types { TypeBase, ClassType }
+import from jaclang.compiler.types.ct_value {
+    CtBool,
+    CtDict,
+    CtFloat,
+    CtInt,
+    CtList,
+    CtNone,
+    CtSet,
+    CtStr,
+    CtTuple,
+    CtValue,
+    int_host
+}
 import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
@@ -25,10 +37,10 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     client_ambient_globals,
     free_identifiers
 }
-import from jaclang.project.modresolver {
+import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.compiler.backends.es.js_paths {
     convert_to_js_import_path,
-    relative_js_specifier,
-    resolve_relative_path
+    relative_js_specifier
 }
 import from jaclang.compiler.frontend.diagnostics {
     E2025,
@@ -231,8 +243,7 @@ obj CallArgSlot {
 }
 
 walker EsastGenPass(BaseAstGenPass[es.Statement]) {
-    has prog: JacProgram,
-        _ct_only_names: (set[str] | None) = None,
+    has _ct_only_names: (set[str] | None) = None,
         child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
         module_import_paths: dict[str, str] = {},
@@ -290,8 +301,6 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
             return self._jsx_processor;
         }
     }
-
-    static has HOST_PASS: bool = True;
 
     can prepare with entry;
     can enter_walk with uni.UniNode entry;
@@ -414,8 +423,11 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         default_factory: Callable[([(uni.UniNode | None)], _T)]
     ) -> _T;
 
-    def _ct_es_expr(cv: any, jac_node: uni.UniNode) -> (es.Expression | None);
-    def _ct_es_value(v: any) -> (es.Expression | None);
+    def _ct_es_expr(
+        cv: (CtValue | None), jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
+    def _ct_es_value(v: CtValue) -> (es.Expression | None);
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
@@ -524,7 +536,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _push_loop_label(nd: uni.UniNode) -> None;
     def _finish_loop(
-        nd: (uni.InForStmt | uni.IterForStmt | uni.WhileStmt), loop_stmt: es.Statement
+        nd: uni.IterForStmt | uni.InForStmt | uni.WhileStmt, loop_stmt: es.Statement
     ) -> es.Statement;
 
     def _innermost_breakable(nd: uni.CtrlStmt) -> (uni.UniNode | None);

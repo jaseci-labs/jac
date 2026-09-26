@@ -90,7 +90,7 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
 impl ViteCompiler._compile_wasm_module(
     self: ViteCompiler, module_path: Path
 ) -> dict[str, bytes] {
-    import from jaclang.compiler.driver.pipeline { build_wasm }
+    import from jaclang.compiler.driver.pipeline_runner { build_wasm }
     import from jaclang.client.client_bundle { client_program }
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     try {

@@ -1,5 +1,5 @@
 """Tests for Jac Loader."""
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import io;
 import os;
@@ -10,6 +10,7 @@ import subprocess;
 import marshal;
 import shutil;
 import tempfile;
+import from pathlib { Path }
 import time;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -393,6 +394,55 @@ test "pyi loads build via PyastBuildPass and never compile" {
     }
 }
 
+test "Python star imports load dependency scopes once without checking implementation bodies" {
+    import from unittest.mock { patch }
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as tmpdir {
+        first = os.path.join(tmpdir, "star_first.py");
+        second = os.path.join(tmpdir, "star_second.py");
+        with open(first, "w") as f {
+            f.write("from star_second import *\nclass First: pass\n");
+        }
+        with open(second, "w") as f {
+            f.write("from star_first import *\nclass Second: pass\n");
+        }
+        calls: list[tuple[str, bool]] = [];
+        original: any = JacProgram.compile;
+        def observe(
+            self: JacProgram,
+            file_path: str,
+            use_str: (str | None) = None,
+            no_cgen: bool = False,
+            symtab_ir_only: bool = False,
+            cancel_token: any = None,
+            options: any = None
+        ) -> any {
+            if file_path.startswith(tmpdir) {
+                calls.append((file_path, bool(options and options.symtab_ir_only)));
+            }
+            return original(
+                self,
+                file_path,
+                use_str=use_str,
+                no_cgen=no_cgen,
+                symtab_ir_only=symtab_ir_only,
+                cancel_token=cancel_token,
+                options=options
+            );
+        }
+        prog = JacProgram();
+        with patch.object(JacProgram, "compile", observe) {
+            module = prog.load_dependency_module(first);
+        }
+        assert module.sym_tab.lookup("First") is not None;
+        assert module.sym_tab.lookup("Second") is not None;
+        assert sorted(calls) == sorted([(first, True), (second, True)]) , (
+            len(calls),
+            calls[:6]
+        );
+        assert first in prog.deps.dependents[os.path.realpath(second)];
+    }
+}
+
 test "resolve_import_source_module never compiles pyi stubs" {
     import jaclang.compiler.frontend.unitree as uni;
     import from jaclang.compiler.symbol_utils { resolve_import_source_module }
@@ -484,6 +534,15 @@ NODE_SPECS entry by one field, which a fresh-mtime cache written under the old
 schema would then be decoded against, position by position."""
 test "fresh mtime does not admit a cache written under a different environment" {
     import jaclang.compiler.driver.jir as jir;
+    import from jaclang.compiler.driver.jir { is_module_cache_valid as cache_valid }
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
+    program = JacProgram();
+    def is_module_cache_valid(path: str, cache: Path) -> bool {
+        actual = program_for(path, program);
+        with cache_scope(actual.options) {
+            return cache_valid(path, cache);
+        }
+    }
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
     ) as tmp {
@@ -495,8 +554,8 @@ test "fresh mtime does not admit a cache written under a different environment" 
     os.utime(jac_file, (past, past));
     try {
         compiler = JacCompiler();
-        assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
-        cache_path = artifact_cache_path(jac_file, JacProgram());
+        assert compiler.get_bytecode(jac_file, program) is not None;
+        cache_path = artifact_cache_path(jac_file, program);
         assert cache_path.exists() , "JIR cache was not written";
         assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
             "cache must be newer than source for the mtime fast path to apply"
@@ -551,7 +610,7 @@ test "fresh mtime does not admit a cache written under a different environment" 
         }
     } finally {
         os.unlink(jac_file);
-        cache_path2 = artifact_cache_path(jac_file, JacProgram());
+        cache_path2 = artifact_cache_path(jac_file, program);
         if cache_path2.exists() {
             cache_path2.unlink();
         }
@@ -559,7 +618,7 @@ test "fresh mtime does not admit a cache written under a different environment" 
 }
 
 def _cached_pins(jir_bytes: bytes) -> dict[str, str] {
-    import from jaclang.compiler.placement.placement { summary_from_bytes }
+    import from jaclang.compiler.placement.placement_export { summary_from_bytes }
     pos = jir_bytes.find(SECTIONS_MAGIC, HEADER_SIZE);
     if pos < 0 {
         return {};
@@ -787,7 +846,7 @@ test "check preserves caller GC state" {
     }
 }
 
-test "release compile closure clears ASTs and evaluator but keeps stubs" {
+test "release compile closure clears source trees, stubs and evaluator" {
     with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
         source_path = os.path.join(d, "source.jac");
         stub_path = os.path.join(d, "types.pyi");
@@ -802,12 +861,8 @@ test "release compile closure clears ASTs and evaluator but keeps stubs" {
         prog.release_compile_closure();
         gc.collect();
         assert ast_ref() is None , "released AST is still strongly referenced";
-        # The hub is keyed by the resolved path (JacProgram.hub_key), and
-        # find_module is the accessor that normalizes for you. Typeshed lives
-        # in the stub catalog and never enters the hub; a project .pyi loaded
-        # from source is retained across a release like any stub tree.
         assert prog.find_module(source_path) is None;
-        assert prog.find_module(stub_path) is not None;
+        assert prog.find_module(stub_path) is None;
         assert prog.type_evaluator is None;
     }
 }
@@ -832,26 +887,26 @@ test "release compile closure honors no unit eviction" {
     }
 }
 
-test "release compile closure keeps synthesized type identity stable" {
-    # `jac check`/`jac lint` release each file's compile closure between files,
-    # which drops and recreates the type evaluator. LiteralString is synthesized
-    # (not a real stub class), so re-minting it per evaluator gave it a fresh
-    # identity every file while the stub AST it derives from (str) survives with
-    # the prior instance cached on it -- breaking `Literal[...] <: LiteralString`
-    # and surfacing spurious E1001s on every checked file after the first. The
-    # synthesized type must be memoized on the (stable) str class so it survives
-    # evaluator churn.
+test "release compile closure keeps synthesized types with their catalog until a full release" {
     prog = JacProgram();
     ev1 = prog.get_type_evaluator();
     ls1 = ev1.prefetch.literal_string_class;
-    assert ls1 is not None , "LiteralString was not prefetched";
+    assert ls1 is not None;
     prog.release_compile_closure();
     assert prog.type_evaluator is None;
     ev2 = prog.get_type_evaluator();
     ls2 = ev2.prefetch.literal_string_class;
     assert ls2 is not None;
-    assert ev1 is not ev2 , "evaluator was not recreated";
-    assert ls1.shared is ls2.shared , "LiteralString identity changed across evaluator recreation";
+    assert ev1 is not ev2;
+    assert ls1.shared is ls2.shared , (
+        "the session catalog and its hydrated types serve the next evaluator"
+    );
+    prog.release_compile_closure(retain_stubs=False);
+    ev3 = prog.get_type_evaluator();
+    ls3 = ev3.prefetch.literal_string_class;
+    assert ls3 is not None and ls3.shared is not ls2.shared , (
+        "a full release drops the catalog, so its types are hydrated again"
+    );
 }
 
 test "internal get_bytecode evicts unit AST after compile" {

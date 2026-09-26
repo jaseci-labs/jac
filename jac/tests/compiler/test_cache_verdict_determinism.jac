@@ -23,7 +23,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-import from jaclang.compiler.driver.pipeline {
+import from jaclang.compiler.driver.toolchain {
     _native_env_memo,
     native_pipeline_available
 }
@@ -49,9 +49,7 @@ def brand_errors(space: str) -> list[str] {
     prog.compile(
         file_path=BRAND_PATH,
         use_str=BRAND_SRC,
-        options=CompileOptions(
-            no_cgen=True, force_codespace=space, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace=space)
     );
     return [
         str(alrt)
@@ -66,9 +64,7 @@ def inferred_brand_errors -> list[str] {
     prog.compile(
         file_path=BRAND_PATH,
         use_str=BRAND_SRC,
-        options=CompileOptions(
-            skip_native_engine=True, suppress_codes=["E5092"], force_target_program=True
-        )
+        options=CompileOptions(skip_native_engine=True, suppress_codes=["E5092"])
     );
     return [
         str(alrt)

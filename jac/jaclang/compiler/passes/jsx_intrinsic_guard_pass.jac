@@ -6,7 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Name,
     Token
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.frontend.diagnostics { E1105 }
 
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
@@ -29,18 +29,8 @@ def _suggestion_for(tag: str) -> str {
     return _tag_suggestions.get(tag, _GENERIC_SUGGESTION);
 }
 
-walker JsxIntrinsicGuardPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        _enforced_root: (str | None) = None,
+walker JsxIntrinsicGuardPass(TreePass) {
+    has _enforced_root: (str | None) = None,
         _exempt_paths: dict[str, bool] = {};
 
     can prepare with entry {

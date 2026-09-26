@@ -284,6 +284,7 @@ test "the kit's kernel is adopted although the kit stripped it after its sidecar
 test "application configuration does not change the compiler kernel" {
     import from unittest.mock { patch }
     import from jaclang.project.config { JacConfig }
+    import from jaclang.project.compiler_host { ProjectHost, project_defaults_of }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
         push_native_target,
@@ -298,8 +299,8 @@ test "application configuration does not change the compiler kernel" {
     cfg.native.target = "aarch64-unknown-linux-gnu";
     prev = push_native_target(cfg.native.target);
     try {
-        with patch(
-            "jaclang.compiler.driver.compile_options._project_config", return_value=cfg
+        with patch.object(
+            ProjectHost, "project_defaults", return_value=project_defaults_of(cfg)
         ) {
             assert CompileOptions().codegen_identity() != before;
             opts = kernel_options();

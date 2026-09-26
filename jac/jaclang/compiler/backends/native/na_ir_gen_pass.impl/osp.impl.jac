@@ -397,15 +397,19 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
             ),
             name="oc.rep"
         );
-        self._osp_make_immortal(_rep);
-        self.builder.store(
-            _rep,
-            self.builder.bitcast(
-                self.builder.gep(_wlk_i8, [ir.Constant(i64, 16)], name="oc.repslot.i8"),
-                _rep.type.as_pointer(),
-                name="oc.repslot"
-            )
+        _repslot = self.builder.bitcast(
+            self.builder.gep(_wlk_i8, [ir.Constant(i64, 16)], name="oc.repslot.i8"),
+            _rep.type.as_pointer(),
+            name="oc.repslot"
         );
+        if self._nogc_headerless() {
+            self.builder.store(_rep, _repslot);
+        } else {
+            _old_rep = self.builder.load(_repslot, name="oc.rep.old");
+            self._emit_rc_retain(_rep, op="osp_reports", loc="");
+            self.builder.store(_rep, _repslot);
+            self._emit_rc_release_simple(_old_rep, op="osp_reports", loc="");
+        }
         self.builder.branch(_oc_done);
         self._builder = ir.IRBuilder(_oc_done);
     }
@@ -1225,10 +1229,10 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 
 impl NaIRGenPass._osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value {
     elem = self._list_elem_llvm_of(nd);
-    if isinstance(elem, ir.PointerType) {
-        return self._coerce_type(value, self._lower_list_for_elem(elem));
+    if not isinstance(elem, ir.PointerType) {
+        elem = ir.IntType(8).as_pointer();
     }
-    return value;
+    return self._coerce_type(value, self._lower_list_for_elem(elem));
 }
 
 impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
@@ -1621,6 +1625,7 @@ impl NaIRGenPass._codegen_disengage(nd: uni.DisengageStmt) -> None {
     self.builder.call(osp_disengage_fn, []);
 
     if isinstance(self.builder.function.function_type.return_type, ir.VoidType) {
+        self._emit_region_leaves(len(self.region_open_stack));
         self.builder.ret_void();
     }
 }
@@ -1637,4 +1642,6 @@ impl NaIRGenPass._codegen_report(nd: uni.ReportStmt) -> None {
     }
     _argtys = osp_report_fn.function_type.args;
     self.builder.call(osp_report_fn, [self._coerce_type(_val, _argtys[0])]);
+
+    self._release_owned_args([_val], op="osp_report");
 }

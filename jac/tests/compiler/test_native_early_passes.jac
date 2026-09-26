@@ -3,13 +3,23 @@
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.compiler.frontend.parser.frontend { parse, parse_woven }
-import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
+import from jaclang.compiler.frontend.unitree {
+    ConditionalNode,
+    Module,
+    NameAtom,
+    UniCFGNode,
+    UniNode,
+    UniScopeNode
+}
+import from jaclang.compiler.frontend.relations { CfgFalse, CfgSucc, CfgTrue }
+import from jaclang.compiler.frontend.roles { ImplOf }
 import from jaclang.compiler.native_compiler { ensure_loaded }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
+import from jaclang.compiler.passes.early_passes { EARLY_PASSES }
 
-test "native early symbols wait for construction lowering" {
+test "native early analysis lowers graph construction before binding" {
     kernel = ensure_loaded();
     if kernel is not None {
         prog = JacProgram();
@@ -21,7 +31,7 @@ test "native early symbols wait for construction lowering" {
             early_context="client"
         );
         assert not failed;
-        assert id(mod) not in prog.analysis.early_passes;
+        assert id(mod) in prog.analysis.early_passes;
         run_pass(GraphLoweringPass, mod, prog);
         run_pass(ASTValidationPass, mod, prog);
         run_pass(SymTabBuildPass, mod, prog);
@@ -40,7 +50,6 @@ test "native early symbols wait for construction lowering" {
 test "native validation preserves client code context" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early;
         for (context, expected) in [("client", 0), ("server", 1)] {
             prog = JacProgram();
             (mod, failed) = parse_woven(
@@ -124,25 +133,27 @@ def scope_profile(mod: Module) -> list[any] {
 test "native early passes preserve the store parser's symbol graph" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early , "rebuild the compiler kernel for early analysis";
         native = JacProgram();
         (nat_mod, failed) = parse_woven(
             SOURCE, "early_scopes.jac", native, [], early_context="server"
         );
         assert not failed;
-        assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)].results;
+        pending = native.analysis.early_passes[id(nat_mod)].results;
+        assert sorted(pending) == sorted(p.__name__ for p in EARLY_PASSES);
         before = scope_profile(nat_mod);
-        run_pass(ASTValidationPass, nat_mod, native);
-        run_pass(SymTabBuildPass, nat_mod, native);
+        for early in EARLY_PASSES {
+            run_pass(early, nat_mod, native);
+        }
         assert id(nat_mod) not in native.analysis.early_passes;
-        assert native.analysis.pass_runs["SymTabBuildPass"] == 1;
+        assert all(native.analysis.pass_runs[p.__name__] == 1 for p in EARLY_PASSES);
         assert scope_profile(nat_mod) == before;
 
         store = JacProgram();
         (store_mod, store_failed) = parse(SOURCE, "early_scopes.jac", store);
         assert not store_failed;
-        run_pass(ASTValidationPass, store_mod, store);
-        run_pass(SymTabBuildPass, store_mod, store);
+        for early in EARLY_PASSES {
+            run_pass(early, store_mod, store);
+        }
         assert scope_profile(nat_mod) == scope_profile(store_mod);
         assert not native.errors_had;
         assert not store.errors_had;
@@ -152,7 +163,6 @@ test "native early passes preserve the store parser's symbol graph" {
 test "native validation diagnostics retain inline suppression" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early;
         for (suffix, expected) in [("", 1), (" # jac:ignore[E0052]", 0)] {
             prog = JacProgram();
             source = "def missing(value) -> int { return 1; }" + suffix;
@@ -173,5 +183,187 @@ test "native validation diagnostics retain inline suppression" {
                 assert errors[0].loc.first_line == 1;
             }
         }
+    }
+}
+
+test "application modules run their early passes in the kernel" {
+    import from tempfile { TemporaryDirectory }
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    kernel = ensure_loaded();
+    if kernel is not None {
+        with TemporaryDirectory() as td {
+            path = Path(td) / "app.jac";
+            path.write_text("def double(x: int) -> int { return x * 2; }\n");
+            prog = JacProgram();
+            recorded: list[str] = [];
+            record = prog.analysis.record_early;
+            def spy(module: Module, results: dict[str, any]) {
+                recorded.extend(results.keys());
+                record(module, results);
+            }
+            prog.analysis.record_early = spy;
+            prog.compile(str(path), options=CompileOptions(no_cgen=True));
+            assert not prog.errors_had;
+            assert sorted(recorded) == sorted(p.__name__ for p in EARLY_PASSES);
+            assert not prog.analysis.early_passes;
+        }
+    }
+}
+
+glob FLOW_SOURCE: str = """
+obj Point {
+    has x: int = 0,
+        tags: set[str] = set();
+
+    def shift(step: int) -> int;
+}
+
+impl Point.shift(step: int) -> int {
+    moved = self.x + step;
+    self.x = moved;
+    return moved;
+}
+
+sem Point.x = "horizontal position";
+
+sem Point.x = "Horizontal position.";
+
+def lookup(d: dict[str, set[str]], k: str) -> set[str] {
+    cur = d.get(k);
+    if cur is None {
+        return set();
+    }
+    if len(cur) > 1 and k in cur {
+        cur = {k};
+    }
+    return cur;
+}
+
+def walk(items: list[int]) -> int {
+    total = 0;
+    for item in items {
+        if item > 3 {
+            total += item;
+        } elif item < 0 {
+            continue;
+        } else {
+            total -= 1;
+        }
+    }
+    while total > 100 {
+        total = total // 2;
+    }
+    try {
+        total = 10 // total;
+    } except ZeroDivisionError as err {
+        total = 0;
+    }
+    total = total + 1 if total > 0 else total - 1;
+    match total {
+        case 0:
+            total = 1;
+        case _:
+            total = 2;
+    }
+    return total;
+}
+""";
+
+def _node_key(nd: UniNode) -> tuple[str, int, int, int, int] {
+    return (
+        type(nd).__name__,
+        nd.loc.first_line,
+        nd.loc.col_start,
+        nd.loc.last_line,
+        nd.loc.col_end
+    );
+}
+
+def _keys(nodes: list[UniNode]) -> list[tuple[str, int, int, int, int]] {
+    return [_node_key(n) for n in nodes];
+}
+
+def flow_profile(mod: Module) -> list[any] {
+    out: list[any] = [];
+    for nd in mod.flatten() {
+        if isinstance(nd, UniCFGNode) {
+            short_circuit: list[any] = [];
+            if isinstance(nd, ConditionalNode) {
+                short_circuit = [_keys([nd->:CfgTrue:->]), _keys([nd->:CfgFalse:->])];
+            }
+            out.append(
+                (
+                    "cfg",
+                    _node_key(nd),
+                    sorted(nd.affected_symbols),
+                    _keys([nd->:CfgSucc:->]),
+                    short_circuit,
+                    _keys(nd.bb_in),
+                    _keys(nd.bb_out)
+                )
+            );
+        }
+        impls = [nd->:ImplOf:->];
+        if impls {
+            out.append(("impl", _node_key(nd), _keys(impls)));
+        }
+        if isinstance(nd, NameAtom) {
+            sym = nd.sym;
+            out.append(
+                (
+                    "name",
+                    _node_key(nd),
+                    nd.expr_ctx.name,
+                    sym.sym_name if sym else None,
+                    sym.sym_type.name if sym else None,
+                    len(sym.uses) if sym else 0,
+                    sym.semstr if sym else None
+                )
+            );
+        }
+    }
+    return out;
+}
+
+test "kernel early passes match the store parser's flow, impl, and semantic facts" {
+    kernel = ensure_loaded();
+    if kernel is not None {
+        native = JacProgram();
+        (nat_mod, failed) = parse_woven(
+            FLOW_SOURCE, "early_flow.jac", native, [], early_context="server"
+        );
+        assert not failed;
+        assert kernel.skipped() == 0;
+        for early in EARLY_PASSES {
+            run_pass(early, nat_mod, native);
+        }
+        store = JacProgram();
+        (store_mod, store_failed) = parse(FLOW_SOURCE, "early_flow.jac", store);
+        assert not store_failed;
+        for early in EARLY_PASSES {
+            run_pass(early, store_mod, store);
+        }
+        nat_profile = flow_profile(nat_mod);
+        store_profile = flow_profile(store_mod);
+        assert any(row[0] == "cfg" and row[2] for row in store_profile);
+        assert any(
+            row[0] == "cfg" and row[4] and row[4][0] and row[4][1]
+            for row in store_profile
+        );
+        assert any(row[0] == "impl" for row in store_profile);
+        assert any(row[0] == "name" and row[2] == "STORE" for row in store_profile);
+        assert any(
+            row[0] == "name" and row[6] == "horizontal position"
+            for row in store_profile
+        );
+        assert nat_profile == store_profile;
+        for nd in nat_mod.flatten() {
+            if isinstance(nd, UniCFGNode) {
+                assert isinstance(nd.affected_symbols, set);
+            }
+        }
+        assert not native.errors_had;
+        assert not store.errors_had;
     }
 }

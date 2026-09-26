@@ -1,0 +1,8 @@
+{
+ "commit": "701ac3633e19ab2d4c45094387a831e8328dc1c8",
+ "compiler_digest": "652:ee5c26eb3936035a93e68e1afe489eed43300072e6c7c378b1b29fd927eab56d",
+ "format": 1,
+ "jaclang_tree": "3dc685d5e482fdc1af6209537651c77810a29177",
+ "native_tree": "57e904a48d50646f85536082f95d569a69030570",
+ "typeshed_pin": "bbbf7530a987e59c8458127351cacad2e57f04bf"
+}

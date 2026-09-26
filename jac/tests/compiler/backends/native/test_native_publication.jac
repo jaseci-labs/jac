@@ -132,7 +132,7 @@ test "a bytecode compile preserves native products across compilation contexts" 
         bytecode = program._get_compiler().get_bytecode(str(source), bytecode_program);
         assert bytecode is not None;
         after = cache.read_bytes();
-        import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+        import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
         bytecode_cache = artifact_cache_path(str(source), bytecode_program);
         assert read_section_bytes(bytecode_cache.read_bytes(), SEC_BYTECODE)
             is not None;

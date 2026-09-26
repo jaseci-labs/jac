@@ -3,24 +3,34 @@ import from jaclang.compiler.passes.context { CompileContext }
 import from c { def PyList_New(n: int) -> int;  }
 import from c { def PyList_SetItem(l: int, i: int, v: int) -> int;  }
 import from c { def Py_DecRef(o: int) -> int;  }
+import from c { def PyUnicode_FromString(p: int) -> int;  }
+import from c { def __jac_region_depth -> int;  }
+import from c { def __jac_region_unwind(depth: int) -> None;  }
 
 import from jaclang.compiler.jc_materialize {
     hint_commentdata,
     hint_srcdiag,
-    jc_mz_dispose,
     jc_mz_obj,
     jc_mz_run,
-    jc_mz_shapes3
+    jc_mz_shape_keys
 }
 
 import from jaclang.compiler.frontend.parser.parser { parse_program }
 import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode, Import }
+import from jaclang.compiler.frontend.unitree { Module, Import }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.early_passes { EARLY_PASSES, SymTabBuildPass }
 import from jaclang.compiler.passes.context { Alert }
+import from jaclang.compiler.passes.annex_weave {
+    merge_annex_into,
+    prune_generated_imports
+}
+import from jaclang.compiler.frontend.kernel_analyze {
+    ANALYSIS_CRASHED,
+    AnalysisReport,
+    run_kernel_analysis
+}
 
 obj JcState {
     has p_errs: int = 0,
@@ -29,19 +39,16 @@ obj JcState {
         diags_h: int = 0,
         lexdiags_h: int = 0,
         comments_h: int = 0,
+        analysis_h: int = 0,
         early_context: int = 0,
-        completed: int = 0,
-        validation_errors_h: int = 0,
-        validation_warnings_h: int = 0,
-        symbols_errors_h: int = 0,
-        symbols_warnings_h: int = 0,
-        validation_time: float = 0.0,
-        symbols_time: float = 0.0;
+        pass_times: list[float] = [],
+        pass_names_h: list[int] = [],
+        pass_errors_h: list[int] = [],
+        pass_warnings_h: list[int] = [];
 }
 
 glob _JC: JcState = JcState(),
-     _ANNEX_SRC: list[str] = [],
-     _ANNEX_PATH: list[str] = [];
+     _ANNEXES: list[tuple[str, str, str]] = [];
 
 def:pub jc_probe -> int {
     return 44061;
@@ -58,17 +65,19 @@ def _clear_results {
     _drop_h(_JC.diags_h);
     _drop_h(_JC.lexdiags_h);
     _drop_h(_JC.comments_h);
-    _drop_h(_JC.validation_errors_h);
-    _drop_h(_JC.validation_warnings_h);
-    _drop_h(_JC.symbols_errors_h);
-    _drop_h(_JC.symbols_warnings_h);
-    _JC.validation_errors_h = 0;
-    _JC.validation_warnings_h = 0;
-    _JC.symbols_errors_h = 0;
-    _JC.symbols_warnings_h = 0;
-    _JC.completed = 0;
-    _JC.validation_time = 0.0;
-    _JC.symbols_time = 0.0;
+    for h in _JC.pass_names_h {
+        _drop_h(h);
+    }
+    for h in _JC.pass_errors_h {
+        _drop_h(h);
+    }
+    for h in _JC.pass_warnings_h {
+        _drop_h(h);
+    }
+    _JC.pass_times.clear();
+    _JC.pass_names_h.clear();
+    _JC.pass_errors_h.clear();
+    _JC.pass_warnings_h.clear();
     _JC.mod_h = 0;
     _JC.diags_h = 0;
     _JC.lexdiags_h = 0;
@@ -83,62 +92,42 @@ def:pub jc_set_early(context: int) -> int {
 }
 
 def:pub jc_completed -> int {
-    return _JC.completed;
+    return len(_JC.pass_times);
 }
 
-def:pub jc_pass_time(pass_id: int) -> float {
-    return _JC.validation_time if pass_id == 1 else _JC.symbols_time;
+def:pub jc_pass_time(index: int) -> float {
+    return _JC.pass_times[index];
 }
 
-def:pub jc_take_pass_alerts(pass_id: int, warnings: int) -> int {
-    h = 0;
-    if pass_id == 1 {
-        if warnings != 0 {
-            h = _JC.validation_warnings_h;
-            _JC.validation_warnings_h = 0;
-        } else {
-            h = _JC.validation_errors_h;
-            _JC.validation_errors_h = 0;
-        }
-    } else {
-        if warnings != 0 {
-            h = _JC.symbols_warnings_h;
-            _JC.symbols_warnings_h = 0;
-        } else {
-            h = _JC.symbols_errors_h;
-            _JC.symbols_errors_h = 0;
-        }
-    }
+def:pub jc_take_pass_name(index: int) -> int {
+    h = _JC.pass_names_h[index];
+    _JC.pass_names_h[index] = 0;
     return h;
 }
 
-def _clear_annexes {
-    while _ANNEX_SRC {
-        _ANNEX_SRC.pop();
-    }
-    while _ANNEX_PATH {
-        _ANNEX_PATH.pop();
-    }
+def:pub jc_take_pass_alerts(index: int, warnings: int) -> int {
+    handles = _JC.pass_warnings_h if warnings != 0 else _JC.pass_errors_h;
+    h = handles[index];
+    handles[index] = 0;
+    return h;
 }
 
-def:pub jc_annex(src: str, path: str) -> int {
-    _ANNEX_SRC.append(src);
-    _ANNEX_PATH.append(path);
+def:pub jc_annex(source: str, path: str, consumer: str) -> int {
+    _ANNEXES.append((source, path, consumer));
     return 0;
 }
 
-def _weave(r: Region, main_mod: Module, annex_src: str, annex_path: str) -> int {
-    (a_mod, a_errs, _pd, _cm, _ld, a_lex_errs) = parse_program(annex_src, annex_path);
-    if a_errs > 0 or a_lex_errs > 0 {
-        return 1;
+def _weave(r: Region, mod: Module) -> int {
+    for (source, path, _consumer) in _ANNEXES {
+        (a_mod, a_errs, _pd, _cm, _ld, a_lex_errs) = parse_program(source, path);
+        if a_errs > 0 or a_lex_errs > 0 {
+            return 1;
+        }
+        merge_annex_into(mod, a_mod);
     }
-    stmts = list(a_mod.body);
-    if stmts {
-        main_mod.absorb_annex_body(stmts);
-        for sub in a_mod._in_mod_nodes {
-            if sub is not a_mod {
-                main_mod._in_mod_nodes.append(sub);
-            }
+    for (_source, path, consumer) in _ANNEXES {
+        if consumer {
+            prune_generated_imports(mod, path, consumer);
         }
     }
     return 0;
@@ -151,18 +140,50 @@ def _materialize(
     comments: list[CommentData],
     lex_diags: list[SrcDiag]
 ) -> int {
+    _register_shape_keys();
     out = jc_mz_run(id(mod));
     if out == 0 {
-        jc_mz_dispose();
         return 1;
     }
-    _apply_shapes(mod);
     _JC.mod_h = out;
     _JC.diags_h = _mz_list(p_diags, hint_srcdiag());
     _JC.lexdiags_h = _mz_list(lex_diags, hint_srcdiag());
     _JC.comments_h = _mz_list(comments, hint_commentdata());
-    jc_mz_dispose();
     return 0;
+}
+
+def _has_absorb_import(mod: Module) -> bool {
+    for imp in mod.get_all_sub_nodes(Import) {
+        if imp.is_absorb {
+            return True;
+        }
+    }
+    return False;
+}
+
+def _run_early_passes(mod: Module) -> list[CompileContext] {
+    done: list[CompileContext] = [];
+    if _JC.early_context == 0 or _JC.p_errs != 0 or _JC.lex_errs != 0 {
+        return done;
+    }
+    if _JC.early_context == 2 {
+        mod.set_code_context(CodeContext.CLIENT);
+    } elif _JC.early_context == 3 {
+        mod.set_code_context(CodeContext.NATIVE);
+    }
+    for pass_type in EARLY_PASSES {
+        if pass_type is SymTabBuildPass and _has_absorb_import(mod) {
+            break;
+        }
+        ctx = CompileContext(
+            current_node=mod, from_pass=pass_type, pass_name=pass_type.__name__
+        );
+        started = time.time();
+        mod spawn pass_type(module=mod, ctx=ctx);
+        ctx.time_taken = time.time() - started;
+        done.append(ctx);
+    }
+    return done;
 }
 
 def _finish_unit(
@@ -172,68 +193,18 @@ def _finish_unit(
     comments: list[CommentData],
     lex_diags: list[SrcDiag]
 ) -> int {
-    validation: (ASTValidationPass | None) = None;
-    symbols: (SymTabBuildPass | None) = None;
-
-    if _JC.early_context != 0
-        and _JC.p_errs == 0
-        and _JC.lex_errs == 0
-        and not mod.get_all_sub_nodes(GraphExpr) {
-        if _JC.early_context == 2 {
-            mod.set_code_context(CodeContext.CLIENT);
-        } elif _JC.early_context == 3 {
-            mod.set_code_context(CodeContext.NATIVE);
-        }
-        validation = ASTValidationPass(
-            module=mod,
-            ctx=CompileContext(
-                current_node=mod,
-                from_pass=ASTValidationPass,
-                pass_name="ASTValidationPass"
-            )
-        );
-        started = time.time();
-        mod spawn validation;
-        validation.ctx.time_taken = time.time() - started;
-        _JC.completed = 1;
-        has_absorb = False;
-        for imp in mod.get_all_sub_nodes(Import) {
-            if imp.is_absorb {
-                has_absorb = True;
-                break;
-            }
-        }
-
-        if not has_absorb {
-            symbols = SymTabBuildPass(
-                module=mod,
-                ctx=CompileContext(
-                    current_node=mod,
-                    from_pass=SymTabBuildPass,
-                    pass_name="SymTabBuildPass"
-                )
-            );
-            started = time.time();
-            mod spawn symbols;
-            symbols.ctx.time_taken = time.time() - started;
-            _JC.completed = 3;
-        }
-    }
+    done = _run_early_passes(mod);
     status = _materialize(r, mod, p_diags, comments, lex_diags);
     if status != 0 {
         return status;
     }
-    if validation is not None {
-        _JC.validation_time = validation.ctx.time_taken;
-        _JC.validation_errors_h = _mz_list(validation.ctx.errors_had, _alert_tag());
-        _JC.validation_warnings_h = _mz_list(validation.ctx.warnings_had, _alert_tag());
+    tag = _alert_tag();
+    for ctx in done {
+        _JC.pass_times.append(ctx.time_taken);
+        _JC.pass_names_h.append(PyUnicode_FromString(id(ctx.pass_name)));
+        _JC.pass_errors_h.append(_mz_list(ctx.errors_had, tag));
+        _JC.pass_warnings_h.append(_mz_list(ctx.warnings_had, tag));
     }
-    if symbols is not None {
-        _JC.symbols_time = symbols.ctx.time_taken;
-        _JC.symbols_errors_h = _mz_list(symbols.ctx.errors_had, _alert_tag());
-        _JC.symbols_warnings_h = _mz_list(symbols.ctx.warnings_had, _alert_tag());
-    }
-    jc_mz_dispose();
     return 0;
 }
 
@@ -252,12 +223,7 @@ def _run_in_region(src: str, path: str) -> int {
         _JC.p_errs = p_errs;
         _JC.lex_errs = lex_errs;
         if p_errs == 0 and lex_errs == 0 {
-            i = 0;
-            n = len(_ANNEX_SRC);
-            while i < n and status == 0 {
-                status = _weave(r, mod, _ANNEX_SRC[i], _ANNEX_PATH[i]);
-                i += 1;
-            }
+            status = _weave(r, mod);
         }
         if status == 0 {
             status = _finish_unit(r, mod, p_diags, comments, lex_diags);
@@ -266,10 +232,17 @@ def _run_in_region(src: str, path: str) -> int {
     return status;
 }
 
+def _drop_stale_regions {
+    if __jac_region_depth() != 0 {
+        __jac_region_unwind(0);
+    }
+}
+
 def:pub jc_run(src: str, path: str) -> int {
     _clear_results();
     status = _run_in_region(src, path);
-    _clear_annexes();
+    _drop_stale_regions();
+    _ANNEXES.clear();
     _JC.early_context = 0;
     return status;
 }
@@ -316,47 +289,38 @@ def _mz_list(items: list[any], hint: int) -> int {
     return out;
 }
 
-def _shape_code(s: (str | None)) -> int {
-    if s is None {
-        return 0;
-    }
-    if s == "one" {
-        return 2;
-    }
-    if s == "many" {
-        return 3;
-    }
-    return 1;
+def _register_shape_keys {
+    probe: dict[type, str] = {};
+    probe[BodyRole] = "one";
+    probe[SpecRole] = "one";
+    probe[AccessorsRole] = "one";
+    jc_mz_shape_keys(id(probe));
 }
 
-def _packed_shapes(nd: UniNode) -> int {
-    shapes = nd._role_shapes;
-    if shapes is None {
-        return 0;
+def:pub jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int {
+    _drop_stale_regions();
+    _drop_h(_JC.analysis_h);
+    _JC.analysis_h = 0;
+    status = ANALYSIS_CRASHED;
+    try {
+        outcome = run_kernel_analysis(
+            inputs, path, source if has_source != 0 else None
+        );
+        status = outcome.status;
+        text = outcome.to_json();
+    } except Exception as err {
+        text = AnalysisReport(
+            status=ANALYSIS_CRASHED, message=f"kernel analysis raised: {err}"
+        ).to_json();
     }
-    b = _shape_code(shapes.get(BodyRole));
-    sp = _shape_code(shapes.get(SpecRole));
-    a = _shape_code(shapes.get(AccessorsRole));
-    return b | (sp << 4) | (a << 8);
+    _JC.analysis_h = PyUnicode_FromString(id(text));
+    return status;
 }
 
-def _apply_shapes(mod: Module) {
-    stack: list[UniNode] = [mod];
-    seen: set[int] = set();
-    while stack {
-        cur = stack.pop();
-        if id(cur) in seen {
-            continue;
-        }
-        seen.add(id(cur));
-        sc = _packed_shapes(cur);
-        if sc != 0 {
-            jc_mz_shapes3(id(cur), sc);
-        }
-        for k in cur._children() {
-            stack.append(k);
-        }
-    }
+def:pub jc_take_analysis -> int {
+    h = _JC.analysis_h;
+    _JC.analysis_h = 0;
+    return h;
 }
 
 def:pub jc_rc_debug(v: int) -> int {

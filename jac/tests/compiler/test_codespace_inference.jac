@@ -7,12 +7,14 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob FIXTURE_DIR = os.path.join(
@@ -22,7 +24,10 @@ glob FIXTURE_DIR = os.path.join(
 """Compile a codespace fixture; stamps only (no codegen) unless cgen=True."""
 def compile_fixture(name: str, cgen: bool = False) -> any {
     prog = JacProgram();
-    mod = prog.compile(os.path.join(FIXTURE_DIR, name), no_cgen=not cgen);
+    mod = prog.compile(
+        os.path.join(FIXTURE_DIR, name),
+        options=CompileOptions(no_cgen=not cgen, skip_native_engine=True)
+    );
     assert not prog.errors_had , f"{name}: {[str(e) for e in prog.errors_had]}";
     return mod;
 }
@@ -646,7 +651,7 @@ test "cross-module pulled elements dual-emit for the server side" {
     assert util_js.strip() , "pulled module must produce client JS";
     run_pass(JcirGenPass, util, prog);
     run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = util.gen.py;
+    py_src = generated_python(util.gen);
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );

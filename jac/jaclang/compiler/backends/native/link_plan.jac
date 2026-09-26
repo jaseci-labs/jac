@@ -1,10 +1,12 @@
 import type from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
 import type from jaclang.compiler.frontend.codeinfo { InteropBinding }
 import from jaclang.jac0core.cache_paths { atomic_write }
+import ctypes;
 import hashlib;
 import json;
 import os;
 import sys;
+import time;
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ExecutionEngine,
@@ -35,23 +37,20 @@ import from jaclang.compiler.backends.native.link_glue {
 import from jaclang.compiler.backends.native.na_compile_pass {
     NATIVE_CODE_MODEL,
     NATIVE_RELOC_MODEL,
-    load_jit_clib,
     optimize_unit
 }
 import from jaclang.compiler.backends.native.static_link {
     clib_needed_libs,
     clib_symbol_lib_map,
     collect_floor_archives,
-    load_musl_static
+    load_musl_static,
+    load_outline_atomics
 }
-import from jaclang.compiler.frontend.codeinfo {
-    install_native_static_init,
-    kernel_unit_path
-}
+import from jaclang.compiler.frontend.codeinfo { JAC_ENTRY_SYMBOL, kernel_unit_path }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.jir { sidecar_unit_paths, unit_source_digest }
 
-glob PLAN_DIGEST_FORMAT: int = 2;
+glob PLAN_DIGEST_FORMAT: int = 3;
 
 enum ArtifactKind {
     EXECUTABLE = "executable",
@@ -205,8 +204,9 @@ obj LinkPlan {
         h.update(self.options.codegen_identity().encode());
         import from jaclang.compiler.driver.jir { running_compiler_digest }
         h.update(running_compiler_digest().encode());
+        import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
         for u in self.units {
-            h.update(u.path.encode());
+            h.update(native_unit_identity(u.path).encode());
             h.update(u.modkey.encode());
             h.update(u.digest.encode());
         }
@@ -812,14 +812,35 @@ def optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKin
     }
 }
 
+def _log_phase(
+    log: (Callable[[str], None] | None), phase: str, started: float
+) -> float {
+    now = time.perf_counter();
+    if log is not None {
+        log(f"  Link timing: {phase} {now - started:.2f}s");
+    }
+    return now;
+}
+
 def plan_objects(
-    plan: LinkPlan, spec: GlueSpec, kind: ArtifactKind, tm: TargetMachine
+    plan: LinkPlan,
+    spec: GlueSpec,
+    kind: ArtifactKind,
+    tm: TargetMachine,
+    log: (Callable[[str], None] | None) = None
 ) -> tuple[list[bytes], list[str]] {
+    started = time.perf_counter();
     if plan.mode == NATIVE_LINK_MODE_OBJECTS {
-        return unit_objects(plan, spec, tm);
+        result = unit_objects(plan, spec, tm);
+        _log_phase(log, f"unit_objects ({len(plan.units)} units)", started);
+        return result;
     }
     (merged, exports) = whole_program_module(plan, spec);
+    started = _log_phase(
+        log, f"whole_program_module ({len(plan.units)} units)", started
+    );
     optimize_whole_program(plan, merged, kind, tm);
+    started = _log_phase(log, "optimize_whole_program", started);
     dump_path = plan.options.dump_ir_path or "";
     if dump_path {
         with open(dump_path, "w") as df {
@@ -828,6 +849,7 @@ def plan_objects(
     }
     object_bytes = tm.emit_object(merged);
     assert isinstance(object_bytes, bytes);
+    _log_phase(log, "emit_object", started);
     return ([object_bytes], exports);
 }
 
@@ -879,6 +901,7 @@ def _write_sidecar(
         "compiler_digest": running_compiler_digest(),
         "codegen_identity": plan.options.base_codegen_identity(),
         "triple": plan.triple,
+        "link_mode": plan.mode,
         "python": f"{sys.version_info.major}.{sys.version_info.minor}",
         "unit_sources": {
             native_unit_identity(p): unit_source_digest(p) for p in unit_paths
@@ -1068,6 +1091,29 @@ def link_artifact(
         inputs.archive_members = inputs.archive_members + runtime.archives;
         inputs.crt_objects = runtime.crt_objects;
     }
+    atomics = load_outline_atomics(plan.triple);
+    if atomics is None and archive_members {
+        import from jaclang.compiler.backends.native.linker_common {
+            object_undefined_symbols
+        }
+        missing_atomics = sorted(
+            {
+                symbol for member in archive_members
+                for symbol in object_undefined_symbols(member)
+                if symbol.startswith("__aarch64_")
+            }
+        );
+        if missing_atomics {
+            raise LinkPlanError(
+                "AArch64 compiler runtime archive not found for floor symbols: "
+                    + ", ".join(missing_atomics)
+                    + ". Run `zig build vendor-musl` for the target or set JAC_NATIVE_MUSL_DIR."
+            );
+        }
+    }
+    if atomics is not None {
+        inputs.archive_members = inputs.archive_members + atomics.archives;
+    }
     soname = os.path.basename(output_path);
     action_digest = inputs.digest(plan.plan_digest(), kind.value, soname);
     reused = _reuse_artifact(plan, output_path, action_digest);
@@ -1076,9 +1122,14 @@ def link_artifact(
         return reused;
     }
     plan.prog.native_units().note_link(False);
-    (objects, _) = plan_objects(plan, spec, kind, tm);
+    (objects, _) = plan_objects(plan, spec, kind, tm, log=log);
+    link_started = time.perf_counter();
     inputs.objects = objects;
     inputs.archive_members = archive_members;
+    if atomics is not None {
+        inputs.archive_members = inputs.archive_members
+            + atomics.select(objects + archive_members);
+    }
     if runtime is not None {
         inputs.archive_members = inputs.archive_members
             + runtime.select(objects + inputs.archive_members);
@@ -1133,6 +1184,7 @@ def link_artifact(
     if not ok {
         raise LinkPlanError(f"{platform} link failed: could not parse an object");
     }
+    _log_phase(log, f"{platform} link", link_started);
     digest = plan.plan_digest();
     artifact_sha256 = _sha256_of(output_path);
     (classes, ldigest) = _write_sidecar(
@@ -1230,26 +1282,151 @@ def undefined_functions(mod: ModuleRef) -> list[str] {
     return sorted(names);
 }
 
+def load_jit_library(lib_path: str) -> ctypes.CDLL {
+    import os;
+    import sys;
+    import ctypes.util;
+
+    def is_darwin_abort_stub(cand: str) -> bool {
+        if sys.platform != "darwin" {
+            return False;
+        }
+        cand_base = os.path.basename(cand);
+        if cand_base not in ("libcrypto.dylib", "libssl.dylib") {
+            return False;
+        }
+        if os.path.isabs(cand) {
+            return os.path.dirname(os.path.realpath(cand)) == "/usr/lib";
+        }
+        return True;
+    }
+
+    probe = lib_path;
+    if probe.startswith("$ORIGIN/") {
+        probe = probe[8:];
+    } elif probe.startswith("@loader_path/") {
+        probe = probe[13:];
+    }
+    base = os.path.basename(probe);
+
+    for cand in [lib_path, probe, os.path.join(".", base)] {
+        if cand and os.path.exists(cand) and not is_darwin_abort_stub(cand) {
+            return ctypes.CDLL(os.path.abspath(cand));
+        }
+    }
+
+    if not is_darwin_abort_stub(base) {
+        try {
+            return ctypes.CDLL(base);
+        } except Exception {}
+    }
+
+    stem = base;
+    if stem.startswith("lib") {
+        stem = stem[3:];
+    }
+    for _ext in [".so", ".dylib", ".dll"] {
+        _i = stem.find(_ext);
+        if _i != -1 {
+            stem = stem[:_i];
+        }
+    }
+    found = ctypes.util.find_library(stem) or ctypes.util.find_library(probe);
+    if found and not is_darwin_abort_stub(found) {
+        return ctypes.CDLL(found);
+    }
+    raise LinkPlanError(f"C library not found for JIT: {lib_path}");
+}
+
+def _jit_image_path(plan: LinkPlan) -> (str | None) {
+    """Where the optimized whole-program image for this plan lives. The plan
+    digest covers the units (content and interface), the mode, the triple,
+    the codegen identity and the compiler, which is everything the merged
+    and optimized module depends on. Debug builds, IR dumps and cache
+    bypasses never reuse an image.""";
+    import from jaclang.compiler.driver.jir { cache_mode, get_jir_cache_dir }
+    (rebuild, _) = cache_mode();
+    if rebuild
+        or plan.options.no_ir_cache
+        or plan.options.native_debug
+        or plan.options.dump_ir_path {
+        return None;
+    }
+    h = hashlib.sha256();
+    h.update(b"jit-image-1\x1f");
+    h.update(plan.plan_digest().encode());
+    return os.path.join(str(get_jir_cache_dir()), "jit", h.hexdigest()[:32] + ".bc");
+}
+
 def jit_engine(plan: LinkPlan) -> ExecutionEngine {
     tm = _target_machine(plan, ArtifactKind.JIT);
-    spec = plan.glue_spec(ArtifactKind.JIT, _platform_of(plan.triple), False);
-    (merged, _exports) = whole_program_module(plan, spec);
-    optimize_whole_program(plan, merged, ArtifactKind.JIT, tm);
+    registry = plan.prog.native_units();
+    image = _jit_image_path(plan);
+    merged: (ModuleRef | None) = None;
+    if image is not None and os.path.isfile(image) {
+        try {
+            with open(image, "rb") as f {
+                cached = llvm.parse_bitcode(f.read());
+            }
+            assert isinstance(cached, llvm.ModuleRef);
+            merged = cached;
+            registry._event("jit_image_hit");
+        } except Exception {
+            merged = None;
+        }
+    }
+    if merged is None {
+        spec = plan.glue_spec(ArtifactKind.JIT, _platform_of(plan.triple), False);
+        (merged, _exports) = whole_program_module(plan, spec);
+        optimize_whole_program(plan, merged, ArtifactKind.JIT, tm);
+        registry._event("jit_image_build");
+        if image is not None {
+            try {
+                atomic_write(image, merged.as_bitcode());
+            } except Exception {}
+        }
+    }
+    assert merged is not None;
     if env_na_debug() {
         sys.stderr.write(
             f"[jit] {len(plan.units)} unit(s), inits {plan.init_symbols()}, "
             f"undefined: {undefined_functions(merged)}\n"
         );
     }
-    for lib_path in plan.clib_paths() {
+    libraries: dict[str, ctypes.CDLL] = {};
+    symbols: dict[str, int] = {};
+    symbol_lib = plan.clib_symbol_lib();
+    for symbol in undefined_functions(merged) {
+        lib_path = symbol_lib.get(symbol);
+        if lib_path is None or lib_path in ("libc.so", "libc.dylib", "c.dll") {
+            continue;
+        }
+        if lib_path not in libraries {
+            libraries[lib_path] = load_jit_library(lib_path);
+        }
         try {
-            load_jit_clib(lib_path);
-        } except Exception {}
+            address = ctypes.cast(
+                getattr(libraries[lib_path], symbol), ctypes.c_void_p
+            ).value;
+        } except AttributeError {
+            raise LinkPlanError(f"C symbol '{symbol}' not found in '{lib_path}'");
+        }
+        if address is None {
+            raise LinkPlanError(
+                f"C symbol '{symbol}' has a null address in '{lib_path}'"
+            );
+        }
+        symbols[symbol] = address;
     }
     engine = llvm.create_mcjit_compiler(merged, tm);
     assert isinstance(engine, llvm.ExecutionEngine);
-    install_native_static_init(engine, plan.init_symbols());
+    for (symbol, address) in symbols.items() {
+        engine.add_global_mapping(merged.get_function(symbol), address);
+    }
+    engine.static_init_symbols = list(plan.init_symbols());
+    engine.static_init_chained = {JAC_ENTRY_SYMBOL};
     engine_any: any = engine;
+    engine_any._jac_libraries = libraries;
     engine_any._jac_unit_ifaces = [u.iface for u in plan.units];
     root_u = plan.root_unit();
     try {

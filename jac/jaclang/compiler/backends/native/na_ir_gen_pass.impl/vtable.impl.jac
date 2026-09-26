@@ -663,6 +663,23 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
         and inner.params
         and len(inner.params) == 1 {
         receiver = inner.params[0];
+    } elif self._is_runtime_class_value(inner) {
+        value = self._codegen_expr(inner);
+        if value is None or not isinstance(value.type, ir.PointerType) {
+            return None;
+        }
+        return self.builder.call(
+            self._emit_class_display_fn(),
+            [self._coerce_type(value, ir.IntType(8).as_pointer())],
+            name="clsval.display"
+        );
+    } else {
+        static_class = self._class_expr_bound(inner);
+        if static_class is not None
+            and static_class in self.struct_types
+            and not self._is_enum_arch(static_class) {
+            return self._emit_class_display_const(static_class);
+        }
     }
     if receiver is None {
         return None;
@@ -680,6 +697,31 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
         [self._coerce_type(_cls_id, ir.IntType(8).as_pointer())],
         name="clsname.display"
     );
+}
+
+impl NaIRGenPass._codegen_type_of(receiver: uni.UniNode) -> (ir.Value | None) {
+    scalar = self._scalar_shape(receiver);
+    if scalar is not None {
+        return self._codegen_type_name_str(scalar.name);
+    }
+    return self._codegen_class_id(receiver);
+}
+
+impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
+    while isinstance(expr, uni.AtomUnit) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, uni.AtomTrailer)
+        or not expr.is_attr
+        or not isinstance(expr.target, uni.Expr)
+        or not isinstance(expr.target.type, ModuleType)
+        or not isinstance(expr.type, ClassType) {
+        return None;
+    }
+    if not expr.type.is_instantiable() or expr.type.is_instance() {
+        return None;
+    }
+    return expr.type.shared.class_name;
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {
@@ -707,6 +749,12 @@ impl NaIRGenPass._class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Val
         return self._emit_class_name_const(arch_name);
     }
     i32 = ir.IntType(32);
+    _struct = self.struct_types.get(arch_name);
+    if _struct is not None and obj_val.type != _struct.as_pointer() {
+        obj_val = self.builder.bitcast(
+            obj_val, _struct.as_pointer(), name="clsname.recv"
+        );
+    }
     vtable_ptr_ptr = self.builder.gep(
         obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="clsname.vt.ptr.ptr"
     );
@@ -717,7 +765,9 @@ impl NaIRGenPass._class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Val
     return self.builder.load(name_slot, name="clsname");
 }
 
-impl NaIRGenPass._codegen_class_ref(nd: uni.Name) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_class_ref(
+    nd: uni.Name | uni.AtomTrailer
+) -> (ir.Value | None) {
     _np = nd.parent;
     if isinstance(_np, uni.AtomTrailer) and _np.target is nd {
         return None;
@@ -729,8 +779,10 @@ impl NaIRGenPass._codegen_class_ref(nd: uni.Name) -> (ir.Value | None) {
     if _np?.collection is nd {
         return None;
     }
-    _arch = self._arch_alias_target(nd) or nd.value;
-    if _arch not in self.struct_types or self._is_enum_arch(_arch) {
+    _arch = self._module_class_name(nd)
+        if isinstance(nd, uni.AtomTrailer)
+        else (self._arch_alias_target(nd) or nd.value);
+    if _arch is None or _arch not in self.struct_types or self._is_enum_arch(_arch) {
         return None;
     }
     return self._emit_class_name_const(_arch);

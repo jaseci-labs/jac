@@ -309,27 +309,34 @@ native layout records the emitted name separately from its source-level key.
 
 - **`contextvars.jac`** (#8201, held back by #8220 until #8229 and #8230
   landed) -- `ContextVar[T]` as a single process-wide cell: `ContextVar(name)`
-  and `` ContextVar(name, `default=...) ``, `.name`, `.get()`, `.get(default)`
-  and `.set(value)`. `get` walks CPython's precedence -- the value last `set`,
-  else the default the call passed, else the default the constructor took,
-  else `LookupError(name)`.
-  SCOPE: `None` is the sentinel for *both* "no value" and "no default", where
-  CPython keys the second step on whether the argument was **passed**, so an
-  explicit `get(None)` reads as an omitted argument: on an unset variable it
-  answers the constructor default, or raises, where CPython answers `None`.
-  (A variadic `get(*fallback: T)` would carry the presence bit exactly, but a
-  variadic parameter of the erased type segfaults the native binary, so this
-  waits on that gap.) `None` is likewise the unset marker in the value slot,
-  so `set(None)` on a `ContextVar[X | None]` reads back as unset.
-  There is also one cell per variable rather than one per context, because
-  the native pathway has neither asyncio tasks nor threads to separate them,
-  so `copy_context`, `Context.run`, and the `Token` that `set` returns
-  (with `reset`) are not provided -- `set` answers `None`. A reference type
-  argument (an archetype, `list`, `dict`) lowers; a **scalar** one
-  (`int`, `float`, `bool`, and `str`, which is a by-value descriptor
-  natively) is refused at the construction site with `E5092` naming the
-  instantiation, because a generic archetype is laid out once for every
-  instantiation and its `T` slot is a raw pointer (#8229).
+  and `` ContextVar(name, `default=...) ``, `.name`, `.get()`, `.get(default)`,
+  `.set(value)` and `.reset(token)`. `get` walks CPython's precedence -- the
+  value last `set`, else the default the call passed, else the default the
+  constructor took, else `LookupError(name)`. `set` returns a `Token[T]`
+  (the class is `ContextVarToken`, with `Token` its alias, because a native
+  program identifies classes by bare name and the compiler has its own
+  `Token`) carrying `.var` and `.old_value`, and `reset(token)` restores the value the
+  variable held before that `set`, or unsets it when it held none. As in
+  CPython, a token can be used once (`RuntimeError` on the second `reset`),
+  only by the variable that made it (`ValueError` otherwise), and as a
+  context manager that resets on exit. An omitted default (to the
+  constructor or to `get`) is a private `_NoDefault` marker rather than
+  `None`, so `` ContextVar(name, `default=None) `` and `get(None)` answer
+  `None` exactly as CPython does.
+  Any type argument lowers except a tagged `any` union such as `int | str`:
+  a reference type (an archetype, `list`, `dict`) directly, and a by-value
+  one (`int`, `float`, `bool`, `str`, a tuple, or an option of any of these
+  or of a reference) boxed into the pointer slot the one shared generic
+  layout gives `T`, so `0`, `False` and `""` stay distinct from the null that
+  spells None (#8229). `ContextVar[int | str]` is refused at the construction
+  site with `E5092` naming the instantiation.
+  SCOPE: `Token.old_value` answers `None` where CPython answers
+  `Token.MISSING` for a variable that had no value. There is one cell per
+  variable rather than one per context, because the native pathway has
+  neither asyncio tasks nor threads to separate them, so `copy_context` and
+  `Context.run` are not provided. A numeric value is boxed at the
+  instantiation's type, so an `int` stored into a `ContextVar[float]` reads
+  back as a float where CPython keeps the `int`.
 
 - **`io.jac`** (Mechanism B) -- `BytesIO` (the CPython `io.BytesIO` value
   model: `read`/`read1`/`write`/`seek`/`tell`/`getvalue`/`seek`-relative
@@ -341,9 +348,16 @@ native layout records the emitted name separately from its source-level key.
   than a `BufferedIOBase` subclass -- the native pathway does not yet support
   cross-module vtable dispatch (calling an overridden method through a
   base-typed reference defined in another module aborts at run time), so the
-  bundled readers avoid inheritance across the module boundary. SCOPE: binary
-  streams only (no text `StringIO`, no `BufferedReader`/`BufferedWriter`
-  wrappers).
+  bundled readers avoid inheritance across the module boundary. `FileIO` is
+  CPython's raw binary file for reading: `FileIO(path, mode="r")` over the
+  `_file_native.jac` stdio floor, with `read(size=-1)`, `readall`, `seek` over
+  every `whence`, `tell`, `close`, the context manager, and CPython's `name`,
+  `mode == "rb"` and `closed`; a missing file raises `FileNotFoundError` and a
+  closed one `ValueError`. It is what a ranged read (`seek` then `read(n)`)
+  spells on both pathways, e.g. the stub catalog embedded in the `jac`
+  executable. DIVERGENCE: `FileIO` is read-only (any mode other than `r`/`rb`
+  raises `ValueError`). SCOPE: binary streams only (no text `StringIO`, no
+  `BufferedReader`/`BufferedWriter` wrappers).
 
 - **`compression/zstd.jac`** (Mechanism F) + **`_zstd_native.jac`** (FFI
   floor over the bundled `libzstd`, zstd 1.5.7) -- the CPython 3.14

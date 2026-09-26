@@ -11,11 +11,12 @@ import from c { def freeaddrinfo(res: int) -> None;  }
 import from c { def gai_strerror(errcode: i32) -> str;  }
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
 import from _errno_native { errno_message }
-
-glob _AI_ADDRLEN_OFF: int = 16,
-     _AI_ADDR_OFF: int = 24,
-     _AI_NEXT_OFF: int = 40,
-     _AI_SIZE: int = 48;
+import from _socket_abi {
+    ADDRINFO_ADDRLEN_OFFSET,
+    ADDRINFO_ADDR_OFFSET,
+    ADDRINFO_NEXT_OFFSET,
+    ADDRINFO_SIZE
+}
 
 glob _SOCKADDR_MAX: int = 128;
 
@@ -30,16 +31,22 @@ def:pub resolve_all(host: str, service: str) -> tuple[(list[bytes], int)] {
     head = int.from_bytes(res_slot, "little");
     cur = head;
     while cur != 0 {
-        ai = b"\x00" * _AI_SIZE;
-        memcpy(ai, cur, u64(_AI_SIZE));
-        addrlen = int.from_bytes(ai[_AI_ADDRLEN_OFF:_AI_ADDRLEN_OFF + 4], "little");
-        addr = int.from_bytes(ai[_AI_ADDR_OFF:_AI_ADDR_OFF + 8], "little");
+        ai = b"\x00" * ADDRINFO_SIZE;
+        memcpy(ai, cur, u64(ADDRINFO_SIZE));
+        addrlen = int.from_bytes(
+            ai[ADDRINFO_ADDRLEN_OFFSET:ADDRINFO_ADDRLEN_OFFSET + 4], "little"
+        );
+        addr = int.from_bytes(
+            ai[ADDRINFO_ADDR_OFFSET:ADDRINFO_ADDR_OFFSET + 8], "little"
+        );
         if addr != 0 and addrlen > 0 and addrlen <= _SOCKADDR_MAX {
             sa = b"\x00" * addrlen;
             memcpy(sa, addr, u64(addrlen));
             out.append(sa);
         }
-        cur = int.from_bytes(ai[_AI_NEXT_OFF:_AI_NEXT_OFF + 8], "little");
+        cur = int.from_bytes(
+            ai[ADDRINFO_NEXT_OFFSET:ADDRINFO_NEXT_OFFSET + 8], "little"
+        );
     }
     if head != 0 {
         freeaddrinfo(head);

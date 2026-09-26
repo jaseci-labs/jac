@@ -91,7 +91,7 @@ impl EsastGenPass._es_json_literal(value: any) -> any {
 
 impl EsastGenPass.exit_module with uni.Module exit {
     import from jaclang.compiler.symbol_utils { report_client_bare_import_uses }
-    report_client_bare_import_uses(self, here);
+    report_client_bare_import_uses(self, here, self._unbound_reported);
     server_forwarders = self._bind_client_value_refs(here);
     if (self.scoped_styles is not None and self.scoped_styles.class_map) {
         import os;

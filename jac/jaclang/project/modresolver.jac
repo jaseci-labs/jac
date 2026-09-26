@@ -386,6 +386,7 @@ def resolve_module(
         }
     }
     if target.startswith('.') {
+        import from jaclang.compiler.backends.es.js_paths { convert_to_js_import_path }
         other_target = os.path.join(base_dir, convert_to_js_import_path(target));
     } else {
         other_target = os.path.join(base_dir, target);
@@ -406,7 +407,7 @@ def resolve_module(
         }
         actual_parts = parts[level:];
 
-        if not _in_typeshed_tree(base_path) {
+        if not in_typeshed_tree(base_path) {
             res = resolve_local_module(base_dir, actual_parts);
             if res {
                 return res;
@@ -701,21 +702,6 @@ def has_client_npm_package(spec: str, base_path: str) -> bool {
     return _find_npm_package(spec, base_path) is not None;
 }
 
-def npm_package_root(spec: str) -> str {
-    parts = [
-        p
-        for p in spec.split('/')
-        if p
-    ];
-    if not parts {
-        return spec;
-    }
-    if (spec.startswith('@') and len(parts) >= 2) {
-        return parts[0] + '/' + parts[1];
-    }
-    return parts[0];
-}
-
 def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
     found = _find_npm_package(spec, base_path);
     if found is None {
@@ -915,81 +901,6 @@ def _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None) {
     return None;
 }
 
-def relative_js_specifier(target_path: str, importer_path: str) -> str {
-    target = target_path;
-    if target.endswith('.jac') {
-        target = target[:-4];
-    }
-
-    rel = os.path.relpath(
-        os.path.realpath(target), os.path.dirname(os.path.realpath(importer_path))
-    );
-    rel = rel.replace(os.sep, '/');
-    if not rel.startswith('.') {
-        rel = './' + rel;
-    }
-    return rel + '.js';
-}
-
-def convert_to_js_import_path(path: str) -> str {
-    if not path {
-        return path;
-    }
-    if (path.startswith('./') or path.startswith('../')) {
-        return path;
-    }
-    dot_count = 0;
-    for char in path {
-        if (char == '.') {
-            dot_count += 1;
-        } else {
-            break;
-        }
-    }
-    common_extensions = (
-        '.js',
-        '.mjs',
-        '.cjs',
-        '.css',
-        '.scss',
-        '.sass',
-        '.less',
-        '.wasm',
-        '.json',
-        '.ts',
-        '.tsx'
-    );
-    if (dot_count > 0) {
-        rest_of_path = path[dot_count:];
-        if ('.' in rest_of_path) {
-            last_dot_idx = rest_of_path.rfind('.');
-            before_last_dot = rest_of_path[:last_dot_idx];
-            after_last_dot = rest_of_path[last_dot_idx:];
-            if (after_last_dot in common_extensions) {
-                rest_of_path = before_last_dot.replace('.', '/') + after_last_dot;
-            } else {
-                rest_of_path = rest_of_path.replace('.', '/');
-            }
-        } else {
-            rest_of_path = rest_of_path or '';
-        }
-        if (dot_count == 1) {
-            js_path = ('./' + rest_of_path) if rest_of_path else '.';
-        } else {
-            parent_dirs = '../' * (dot_count - 1);
-            js_path = (parent_dirs[:-1] + ('/' + rest_of_path)) if rest_of_path else '';
-        }
-        if (js_path in ('.', '..')) {
-            return js_path;
-        }
-        if not js_path.endswith(common_extensions) {
-            js_path += '.js';
-        }
-        return js_path;
-    }
-    return path;
-}
-
 def get_typeshed_paths -> list[str] {
     import jaclang;
     base = os.path.join(os.path.dirname(str(jaclang.__file__)), 'vendor', 'typeshed');
@@ -1002,7 +913,7 @@ def get_typeshed_paths -> list[str] {
     return paths;
 }
 
-def _in_typeshed_tree(path: str) -> bool {
+def in_typeshed_tree(path: str) -> bool {
     return "/vendor/typeshed/" in path.replace("\\", "/");
 }
 

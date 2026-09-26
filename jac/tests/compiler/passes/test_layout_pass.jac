@@ -1,13 +1,13 @@
 """Tests for the LayoutPass CType struct contract.
 
 Validates that the layout pass correctly identifies layout-compatible
-and incompatible field types on obj archetypes, and that FieldInfo
+and incompatible field types on obj archetypes, and that FieldLayout
 tracks function pointer fields.
 """
 
 import from jaclang.compiler.passes.layout_pass {
     LAYOUT_COMPATIBLE_PRIMITIVES,
-    FieldInfo,
+    FieldLayout,
     ArchetypeLayout,
     LayoutRegistry,
     LayoutPass,
@@ -78,14 +78,14 @@ test "LAYOUT_COMPATIBLE_PRIMITIVES contains all expected types" {
     assert LAYOUT_COMPATIBLE_PRIMITIVES == expected;
 }
 
-# ── FieldInfo.is_func_ptr ────────────────────────────────────
-test "FieldInfo default is_func_ptr is False" {
-    fi = FieldInfo(name="x", index=0, type_tag="int");
+# ── FieldLayout.is_func_ptr ────────────────────────────────────
+test "FieldLayout default is_func_ptr is False" {
+    fi = FieldLayout(name="x", index=0, type_tag="int");
     assert fi.is_func_ptr == False;
 }
 
-test "FieldInfo is_func_ptr can be set True" {
-    fi = FieldInfo(name="cb", index=0, type_tag="fn", is_func_ptr=True);
+test "FieldLayout is_func_ptr can be set True" {
+    fi = FieldLayout(name="cb", index=0, type_tag="fn", is_func_ptr=True);
     assert fi.is_func_ptr == True;
 }
 
@@ -221,4 +221,39 @@ test "imported Jac field layouts use resolved declarations including aliases" {
             for warning in program.warnings_had
         ) , str(program.warnings_had);
     }
+}
+
+"""The registry's MRO table catches up with a layout whose chain is longer.
+
+A class defined in one module over a base from another keeps its short
+linearization in any registry that saw it before its base's own bases; the
+layout object that crosses modules carries the complete chain. Adopting
+imported bases must bring the MRO table up to that chain, or every
+`isinstance` against an ancestor past the short end refuses to lower.
+"""
+test "adopting imported bases completes a short MRO table entry" {
+    import from jaclang.compiler.passes.layout_pass { adopt_imported_bases }
+    prog = JacProgram();
+    module = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "valid_inheritance.jac"))
+    );
+    reg = LayoutRegistry();
+    reg.layouts["Root"] = ArchetypeLayout(name="Root", arch_type="node", mro=["Root"]);
+    reg.layouts["Scope"] = ArchetypeLayout(
+        name="Scope", arch_type="node", parents=["Root"], mro=["Scope", "Root"]
+    );
+    reg.layouts["CatScope"] = ArchetypeLayout(
+        name="CatScope",
+        arch_type="node",
+        parents=["Scope"],
+        mro=["CatScope", "Scope", "Root"]
+    );
+    reg.mro_order = {
+        "Root": ["Root"],
+        "Scope": ["Scope", "Root"],
+        "CatScope": ["CatScope", "Scope"]
+    };
+    module.gen.layout_registry = reg;
+    adopt_imported_bases(module);
+    assert reg.mro_order["CatScope"] == ["CatScope", "Scope", "Root"] , reg.mro_order;
 }

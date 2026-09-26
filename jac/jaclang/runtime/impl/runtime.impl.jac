@@ -1554,9 +1554,8 @@ impl JacLLM.get_mtir(
     args: dict[((int | str), object)],
     call_params: dict[(str, object)]
 ) -> MTRuntime {
-    import from jaclang.runtime.semantic { fetch_mtir }
     import from jaclang.byllm.mtir { MTIR }
-    return MTIR(caller, args, call_params, fetch_mtir(caller)).runtime;
+    return MTIR(caller, args, call_params, JacLLM.fetch_mtir(caller)).runtime;
 }
 
 impl JacLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
@@ -1579,7 +1578,6 @@ impl JacLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
 impl JacLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
-            import from jaclang.runtime.semantic { fetch_mtir }
             import from jaclang.byllm.mtir { MTIR }
             invoke_args: dict[((int | str), object)] = {};
             for (i, arg) in enumerate(args) {
@@ -1589,7 +1587,7 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
                 invoke_args[key] = value;
             }
             mt_run = MTIR(
-                caller, invoke_args, model.call_params, fetch_mtir(caller)
+                caller, invoke_args, model.call_params, JacLLM.fetch_mtir(caller)
             ).runtime;
             return model.invoke(mt_run=mt_run);
         }
@@ -1682,13 +1680,6 @@ impl JacLLM.default_llm -> LLMModel {
     return instance;
 }
 
-impl JacLLM.add_mtir_to_map(scope: str, mtir: Info) -> None {
-    if (JacRuntime.program is None) {
-        raise AttributeError('JacRuntime.program is not initialized');
-    }
-    JacRuntime.program.mtir_map[scope] = mtir;
-}
-
 impl JacLLM.get_mtir_from_map(scope: str) -> (Info | None) {
     import from jaclang.runtime.prepared { semantic_for_scope }
     prepared = semantic_for_scope(scope);
@@ -1698,10 +1689,59 @@ impl JacLLM.get_mtir_from_map(scope: str) -> (Info | None) {
     if (JacRuntime.program is None) {
         raise AttributeError('JacRuntime.program is not initialized');
     }
-    if (scope not in JacRuntime.program.mtir_map) {
-        raise KeyError(f"MTIR not found for scope {scope}");
+    owner = JacRuntime.program.context_root or JacRuntime.program;
+    programs = [owner, *owner.contexts.values()];
+    internal = JacRuntime.get_compiler().selfhost.peek_program();
+    if internal is not None {
+        programs.append(internal);
     }
-    return JacRuntime.program.mtir_map[scope];
+    for program in programs {
+        found = program.mtir_map.get(scope);
+        if found is not None {
+            return found;
+        }
+    }
+    raise KeyError(f"MTIR not found for scope {scope}");
+}
+
+impl JacLLM.fetch_mtir(func: Callable) -> (Info | None) {
+    import sys;
+    import from pathlib { Path }
+    module_name = None;
+    try {
+        module_name = getattr(func, "__module__");
+    } except AttributeError {
+        module_name = None;
+    }
+
+    if module_name and module_name == "__main__" {
+        main_mod = sys.modules.get("__main__");
+        main_file = main_mod?.__file__ if main_mod else None;
+        if main_file {
+            stem = Path(main_file).stem;
+
+            if stem.endswith(".impl") {
+                stem = stem[:-5];
+            } elif stem.endswith(".cl") {
+                stem = stem[:-3];
+            }
+            module = stem;
+        } else {
+            module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
+        }
+    } elif module_name {
+        module = module_name;
+    } else {
+        module = "__main__";
+    }
+
+    try {
+        qualname = func.__qualname__;
+        current_scope = ".".join([module, qualname]);
+        return JacRuntime.get_mtir_from_map(current_scope);
+    } except (KeyError, AttributeError) {
+        return None;
+    }
 }
 
 impl JacContext.create_j_context(

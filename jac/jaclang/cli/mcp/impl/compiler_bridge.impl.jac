@@ -1,6 +1,6 @@
 import tempfile;
 import from jaclang.compiler.tools.treeprinter { node_to_dict, print_ast_tree }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import os;
 import sys;
 import threading;
@@ -385,7 +385,8 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
             return {"python_code": "", "warnings": errors or ["Conversion failed"]};
         }
 
-        py_code = ir.gen.py or "";
+        import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+        py_code = generated_python(ir.gen);
         return {"python_code": py_code, "warnings": warnings};
     }
     (success, result) = run_with_timeout(

@@ -1,13 +1,12 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
     TargetMachine
 }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.diagnostics { E5020, E5026, W5021, W5022 }
+import from jaclang.compiler.frontend.diagnostics { E5020, E5026 }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.driver.program { JacProgram }
 
 glob NATIVE_RELOC_MODEL: str = "pic",
      NATIVE_CODE_MODEL: str = "small";
@@ -15,6 +14,7 @@ glob NATIVE_RELOC_MODEL: str = "pic",
 def module_bitcode(mod: ModuleRef) -> bytes;
 def emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes;
 def module_functions(mod: ModuleRef) -> list[any];
+def settle_unit_ir(module: uni.Module) -> None;
 def create_unit_target_machine(
     options: CompileOptions, jit: bool = False
 ) -> TargetMachine;
@@ -23,15 +23,7 @@ def optimize_unit(
     mod: ModuleRef, target_machine: TargetMachine, opt_level: int
 ) -> None;
 
-def load_jit_clib(lib_path: str) -> bool;
-
-walker NativeCompilePass {
-    has ctx: CompileContext,
-        module: uni.Module,
-        prog: JacProgram;
-
-    static has HOST_PASS: bool = True;
-
+walker NativeCompilePass(CompilerPass) {
     def postinit -> None;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     def _share_engine(module: uni.Module, engine: any) -> None;

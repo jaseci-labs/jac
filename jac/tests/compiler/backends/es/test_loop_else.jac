@@ -10,6 +10,7 @@ import os;
 import tempfile;
 import re;
 import from jaclang.compiler.backends.es { EsastGenPass }
+import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
@@ -193,8 +194,9 @@ def compile_to_js -> str {
     assert not prog.errors_had , (
         f"Compilation errors: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog);
-    return es_to_js(es_pass.module.gen.es_ast);
+    es_ast = run_pass(EsastGenPass, ir, prog).module.gen.es_ast;
+    assert isinstance(es_ast, es.Program);
+    return es_to_js(es_ast);
 }
 
 test "while else lowers to labeled blocks with labeled breaks" {

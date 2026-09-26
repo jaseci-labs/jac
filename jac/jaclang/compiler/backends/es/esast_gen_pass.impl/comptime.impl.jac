@@ -1,23 +1,29 @@
 impl EsastGenPass._ct_es_expr(
-    cv: any, jac_node: uni.UniNode
+    cv: (CtValue | None), jac_node: uni.UniNode
 ) -> (es.Expression | None) {
-    if cv is None or getattr(cv, "is_deferred", False) {
+    if cv is None or cv.is_deferred {
         return None;
     }
-    built = self._ct_es_value(cv.v);
+    built = self._ct_es_value(cv);
     if built is None {
         return None;
     }
     return self.sync_loc(built, jac_node=jac_node);
 }
 
-impl EsastGenPass._ct_es_value(v: any) -> (es.Expression | None) {
-    if v is None or isinstance(v, (bool, int, float, str)) {
-        return es.Literal(value=v);
+impl EsastGenPass._ct_es_value(v: CtValue) -> (es.Expression | None) {
+    if isinstance(v, CtNone) {
+        return es.Literal(value=None);
     }
-    if isinstance(v, (list, tuple, set, frozenset)) {
+    if isinstance(v, (CtBool, CtFloat, CtStr)) {
+        return es.Literal(value=v.value);
+    }
+    if isinstance(v, CtInt) {
+        return es.Literal(value=int_host(v));
+    }
+    if isinstance(v, (CtList, CtTuple, CtSet)) {
         elements: list[(es.Expression | es.SpreadElement | None)] = [];
-        for item in v {
+        for item in v.items {
             built = self._ct_es_value(item);
             if built is None {
                 return None;
@@ -26,17 +32,17 @@ impl EsastGenPass._ct_es_value(v: any) -> (es.Expression | None) {
         }
         return es.ArrayExpression(elements=elements);
     }
-    if isinstance(v, dict) {
+    if isinstance(v, CtDict) {
         props: list[(es.Property | es.SpreadElement)] = [];
-        for (k, item) in v.items() {
-            if not isinstance(k, str) {
+        for (i, k) in enumerate(v.keys) {
+            if not isinstance(k, CtStr) {
                 return None;
             }
-            built = self._ct_es_value(item);
+            built = self._ct_es_value(v.vals[i]);
             if built is None {
                 return None;
             }
-            props.append(es.Property(key=es.Literal(value=k), value=built));
+            props.append(es.Property(key=es.Literal(value=k.value), value=built));
         }
         return es.ObjectExpression(properties=props);
     }

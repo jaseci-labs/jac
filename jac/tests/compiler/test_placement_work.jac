@@ -113,7 +113,7 @@ test "invalidating a module removes its reference graph and closure release drop
     with patch.dict(os.environ, {"JAC_NO_UNIT_EVICT": ""}) {
         prog.release_compile_closure();
     }
-    assert "work" not in prog.analysis.placement_state;
+    assert prog.analysis.placement_work is None;
 }
 
 test "client placement reaches the end of a long import chain" {

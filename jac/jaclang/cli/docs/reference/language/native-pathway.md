@@ -1083,7 +1083,7 @@ Assert messages in native tests are limited to string literals: `assert cond, "m
 
 The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
 
-The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The identity participates in artifact identity: every native section of a module's JIR (`SEC_NIFACE`, `SEC_NOBJ`, `SEC_NBITCODE`) holds variants stamped with the compiler digest, the codegen identity and the target triple of the compile that produced them, and the native reader uses only the variant under the current build's stamp, so flipping any codegen option rebuilds the unit and a stale product is never linked. The link plan's digest folds the same compiler digest, codegen identity and triple with every unit's key and interface digest, so an artifact records exactly which identity built it.
+The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The identity participates in artifact identity: every native section of a module's JIR (`SEC_NIFACE`, `SEC_NOBJ`, `SEC_NBITCODE`) is stamped with the compiler digest, the codegen identity and the target triple of the compile that produced it, and the native reader treats a section under any other stamp as absent, so flipping any codegen option rebuilds the unit and a stale product is never linked. The link plan's digest folds every unit's stamp, so an artifact records exactly which identity built it.
 
 ### Codegen options (part of the fingerprint)
 
@@ -1106,8 +1106,8 @@ unit's native interface (exports with their link symbols, class layouts,
 initializer, demoted symbols, C library needs, direct native dependencies;
 digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
 relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
-live under the module's content key, each holding variants keyed by a stamp
-of the compiler digest, codegen identity and target triple, so a module the
+are keyed by the module's content key plus a stamp of the compiler digest,
+codegen identity and target triple in their own header, so a module the
 compiler runs as bytecode and the kernel links as a native unit keeps both
 products in one entry. Dependents record each native dependency's interface
 digest in `SEC_NDEPS`; a body edit rebuilds one object, an interface edit
@@ -1130,7 +1130,7 @@ recorded in the [Native Units](../../internals/native-units.md) internals
 page). It resolves roots (an entry
 module, the kernel root `jc_unit`, or every native unit of a sealed
 package), walks the native edges recorded in `SEC_NDEPS` dependencies
-first, analyzes stale units in a native build session and reuses those
+first, analyzes stale units in an owned compiler session and reuses those
 analyzed trees while settling cycles, checks that every unit's recorded
 dependency digests agree with the plan and recompiles affected strongly connected
 components until their interfaces settle, rejecting repeated inconsistent states, orders initializers topologically, synthesizes one
@@ -1158,12 +1158,10 @@ mode flag. The kernel comes from one lookup, `resolve_kernel()`
 `JAC_COMPILER_LIB` as a path (must carry its sidecar) or `off` (the store
 parser), then a sealed image's `native` record (artifact, sha256, layout
 and plan digests; missing or mismatched is a startup error), then the
-kernel beside `native_compiler.jac` when the inputs its sidecar records
-(the compiler digest, codegen identity, target triple, interpreter version
-and a source digest of every unit it was linked from) are the ones the
-sources have now, then the running kit's kernel when that kit was built from
-these sources, otherwise a rebuild through the plan in a child `jac` process
-under a lock with the store parser serving meanwhile,
+kernel beside `native_compiler.jac` when the source key its sidecar records
+(the compiler digest plus the module key of every unit it was linked from)
+equals the one the sources have now, otherwise a rebuild through the plan in
+a child `jac` process under a lock with the store parser serving meanwhile,
 and finally the store parser when there is no native toolchain. `zig build
 -Ddev` needs no kernel step: the first parse derives it, and accepting an
 existing kernel costs one content hash per unit and no plan. A demotion inside a scoped module is routing,

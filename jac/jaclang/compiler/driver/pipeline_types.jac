@@ -67,3 +67,15 @@ enum UtilityProduct {
     DOC = "doc",
     FORMAT = "format"
 }
+
+enum CompilationPhase {
+    PARSE = "parse",
+    IR = "ir",
+    PLACEMENT = "placement",
+    ANALYSIS = "analysis",
+    BOUNDARIES = "boundaries",
+    NATIVE_CHECKS = "native_checks",
+    CLIENT_DEPENDENCIES = "client_dependencies",
+    INTERFACE = "interface",
+    CODEGEN = "codegen"
+}

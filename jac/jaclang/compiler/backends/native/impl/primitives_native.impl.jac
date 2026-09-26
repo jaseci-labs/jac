@@ -1548,6 +1548,7 @@ impl NativeStrEmitter.emit_format(
     null_ptr = ir.Constant(i8p, None);
 
     str_args: list[ir.Value] = [];
+    scratch: list[ir.Value] = [];
     for arg in args {
         if isinstance(arg.type, ir.IntType) and arg.type.width > 1 {
             buf = p._str_alloc(b, ir.Constant(i64, 32), name="fmt.ibuf");
@@ -1556,9 +1557,12 @@ impl NativeStrEmitter.emit_format(
                 snprintf_fn, [buf, ir.Constant(i64, 32), fmt_s, arg], name="fmt.ibuf.n"
             );
             p._str_finish(b, buf, b.sext(ibuf_n32, i64, name="fmt.ibuf.n64"));
+            scratch.append(buf);
             str_args.append(buf);
         } elif isinstance(arg.type, ir.DoubleType) {
-            str_args.append(p._emit_float_repr(arg));
+            float_text = p._emit_float_repr(arg);
+            scratch.append(float_text);
+            str_args.append(float_text);
         } else {
             str_args.append(arg);
         }
@@ -1608,7 +1612,13 @@ impl NativeStrEmitter.emit_format(
         p._str_finish(b, result, cur_len);
         b.branch(merge_bb);
         b.position_at_start(merge_bb);
+        if i > 0 {
+            scratch.append(current);
+        }
         current = result;
+    }
+    for text in scratch {
+        p._emit_rc_release_typed(text, op="fstr_obj_tmp", loc="");
     }
     return current;
 }
@@ -2718,7 +2728,7 @@ impl NativeListEmitter.emit_append(
         return None;
     }
 
-    _boxed_val = p._box_value_tuple(args[0]);
+    _boxed_val = p._box_value_tuple(p._wrap_fn_as_closure_value(args[0]));
     if p._reject_ptr_into_raw_slot(
         None, _boxed_val, helpers["elem_type"], "list append"
     ) {
@@ -2827,12 +2837,13 @@ impl NativeListEmitter.emit_insert(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     insert_idx = args[0];
+    _ins_wrapped = p._wrap_fn_as_closure_value(args[1]);
     if p._reject_ptr_into_raw_slot(
-        None, args[1], helpers["elem_type"], "list insert"
+        None, _ins_wrapped, helpers["elem_type"], "list insert"
     ) {
         return ir.Constant(i64, 0);
     }
-    insert_val = p._coerce_type(args[1], helpers["elem_type"]);
+    insert_val = p._coerce_type(_ins_wrapped, helpers["elem_type"]);
     _aos_struct = p._aos_elem_struct(ctx.type_key);
     if _aos_struct is not None {
         return self._emit_aos_insert(
@@ -2868,6 +2879,10 @@ impl NativeListEmitter.emit_insert(
     b.position_at_start(done_bb);
 
     b.call(helpers["set"], [target, insert_idx, insert_val]);
+
+    if _ins_wrapped is not args[1] {
+        p._release_owned_args([_ins_wrapped], op="list_insert_wrap");
+    }
     return ir.Constant(i64, 0);
 }
 
@@ -4211,7 +4226,20 @@ impl NativeSetEmitter._emit_set_elem_loop(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    n = b.call(helpers["len"], [src_set], name=f"{prefix}.len");
+    src_helpers = helpers;
+    elem_cast: (ir.Type | None) = None;
+    set_type = p.set_types.get(ctx.type_key);
+    if set_type is not None and src_set.type != set_type.as_pointer() {
+        for (list_key, list_helpers) in p.list_helpers.items() {
+            list_type = p.list_types.get(list_key);
+            if list_type is not None and src_set.type == list_type.as_pointer() {
+                src_helpers = list_helpers;
+                elem_cast = helpers["elem_type"];
+                break;
+            }
+        }
+    }
+    n = b.call(src_helpers["len"], [src_set], name=f"{prefix}.len");
     iv = b.alloca(i64, name=f"{prefix}.i");
     b.store(ir.Constant(i64, 0), iv);
     func = b.basic_block.function;
@@ -4225,7 +4253,10 @@ impl NativeSetEmitter._emit_set_elem_loop(
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     idx_b = b.load(iv, name=f"{prefix}.idx.b");
-    ev = b.call(helpers["get"], [src_set, idx_b], name=f"{prefix}.ev");
+    ev: ir.Value = b.call(src_helpers["get"], [src_set, idx_b], name=f"{prefix}.ev");
+    if elem_cast is not None {
+        ev = p._cast_to_list_elem(b, ev, elem_cast, f"{prefix}.key");
+    }
     body_cb(b, ev);
     b.store(b.add(idx_b, ir.Constant(i64, 1), name=f"{prefix}.next"), iv);
     b.branch(loop_bb);
@@ -5432,9 +5463,10 @@ impl NativeBuiltinEmitter.emit_any(
     b.position_at_start(found_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result = b.phi(i64, name="any.result");
-    result.add_incoming(ir.Constant(i64, 0), loop_bb);
-    result.add_incoming(ir.Constant(i64, 1), found_bb);
+    i1 = ir.IntType(1);
+    result = b.phi(i1, name="any.result");
+    result.add_incoming(ir.Constant(i1, 0), loop_bb);
+    result.add_incoming(ir.Constant(i1, 1), found_bb);
     return result;
 }
 
@@ -5484,9 +5516,10 @@ impl NativeBuiltinEmitter.emit_all(
     b.position_at_start(false_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result = b.phi(i64, name="all.result");
-    result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), false_bb);
+    i1 = ir.IntType(1);
+    result = b.phi(i1, name="all.result");
+    result.add_incoming(ir.Constant(i1, 1), loop_bb);
+    result.add_incoming(ir.Constant(i1, 0), false_bb);
     return result;
 }
 
@@ -5770,15 +5803,38 @@ impl NativeBuiltinEmitter.emit_int(
         return b.fptosi(arg_val, i64, name="int.from.float");
     }
 
+    if p._is_jacval_ty(arg_val.type) {
+        return self._int_from_boxed(ctx, arg_val);
+    }
+    base: (ir.Value | None) = None;
+    if len(args) >= 2 and isinstance(args[1].type, ir.IntType) {
+        base = b.trunc(args[1], ir.IntType(32), name="int.base")
+            if args[1].type.width > 32
+            else args[1];
+    }
+    return self._int_from_c_string(ctx, arg_val, base);
+}
+
+impl NativeBuiltinEmitter._int_from_c_string(
+    self: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    text: ir.Value,
+    base: (ir.Value | None) = None
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
     endptr_alloca = b.alloca(i8p, name="endptr");
     result_val = b.call(
-        strtol_fn, [arg_val, endptr_alloca, ir.Constant(i32, 10)], name="strtol.result"
+        strtol_fn,
+        [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
+        name="strtol.result"
     );
     endptr_val = b.load(endptr_alloca, name="endptr.val");
-    no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="int.noparse");
+    no_parse = b.icmp_unsigned("==", endptr_val, text, name="int.noparse");
     p._emit_runtime_raise(no_parse, "ValueError", "invalid literal for int()");
     end_char = b.load(endptr_val, name="end.char");
     has_trail = b.icmp_unsigned(
@@ -5786,6 +5842,57 @@ impl NativeBuiltinEmitter.emit_int(
     );
     p._emit_runtime_raise(has_trail, "ValueError", "invalid literal for int()");
     return result_val;
+}
+
+impl NativeBuiltinEmitter._int_from_boxed(
+    self: NativeBuiltinEmitter, ctx: NativeEmitCtx, boxed: ir.Value
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    tag = b.extract_value(boxed, 0, name="int.box.tag");
+    payload = b.extract_value(boxed, 1, name="int.box.payload");
+    func = b.function;
+    str_bb = func.append_basic_block(name="int.box.str");
+    num_bb = func.append_basic_block(name="int.box.num");
+    done_bb = func.append_basic_block(name="int.box.done");
+    is_str = b.icmp_unsigned("==", tag, ir.Constant(i8, 2), name="int.box.isstr");
+    b.cbranch(is_str, str_bb, num_bb);
+
+    b.position_at_end(str_bb);
+    parsed = self._int_from_c_string(
+        ctx, b.inttoptr(payload, ir.IntType(8).as_pointer(), name="int.box.strp")
+    );
+    str_end = b.block;
+    b.branch(done_bb);
+
+    b.position_at_end(num_bb);
+    is_float = b.icmp_unsigned("==", tag, ir.Constant(i8, 1), name="int.box.isflt");
+    is_int = b.icmp_unsigned("==", tag, ir.Constant(i8, 0), name="int.box.isint");
+    is_bool = b.icmp_unsigned("==", tag, ir.Constant(i8, 7), name="int.box.isbool");
+    numeric = b.or_(
+        is_float, b.or_(is_int, is_bool, name="int.box.intish"), name="int.box.numeric"
+    );
+    p._emit_runtime_raise(
+        b.not_(numeric, name="int.box.bad"),
+        "TypeError",
+        "int() argument must be a string, a bytes-like object or a real number"
+    );
+    truncated = b.fptosi(
+        b.bitcast(payload, ir.DoubleType(), name="int.box.fbits"),
+        i64,
+        name="int.box.ftrunc"
+    );
+    number = b.select(is_float, truncated, payload, name="int.box.number");
+    num_end = b.block;
+    b.branch(done_bb);
+
+    b.position_at_end(done_bb);
+    result = b.phi(i64, name="int.box.result");
+    result.add_incoming(parsed, str_end);
+    result.add_incoming(number, num_end);
+    return result;
 }
 
 impl NativeBuiltinEmitter.emit_float(

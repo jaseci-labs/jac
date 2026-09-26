@@ -29,9 +29,12 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
     raise ValueError(f"[{E5081.code}] {E5081.format_message(framework=framework)}");
 }
 
+def active_framework -> str {
+    import from jaclang.compiler.frontend.host { active_host }
+    defaults = active_host().project_defaults();
+    return defaults.client_framework if defaults is not None else "react";
+}
+
 def resolve_active_backend -> FrameworkBackend {
-    import from jaclang.project.config { get_config }
-    cfg = get_config();
-    fw = cfg.client.framework if (cfg and cfg.client) else "react";
-    return resolve_framework_backend(fw);
+    return resolve_framework_backend(active_framework());
 }

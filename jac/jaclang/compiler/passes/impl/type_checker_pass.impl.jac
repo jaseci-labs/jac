@@ -1,4 +1,8 @@
 impl TypeCheckPass.exit_special_var_ref with SpecialVarRef exit {
+    if here.name_of is not here
+        or (isinstance(here.parent, AtomTrailer) and here.parent.right is here) {
+        return;
+    }
     self.evaluator.get_type_of_expression(here);
 }
 
@@ -629,7 +633,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                         } else {
                             declared = self.evaluator.get_type_of_symbol(target_sym);
                             if declared {
-                                left_type = declared;
+                                left_type = self.evaluator.class_member_store_type(
+                                    target, declared
+                                );
                             }
                         }
                     } elif isinstance(target.right, Name) {
@@ -1428,7 +1434,8 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
     if not nd.in_client_context() {
         return None;
     }
-    for probe in (nd.value, nd.type_tag.tag if nd.type_tag else None) {
+    probes: list[Expr | None] = [nd.value, nd.type_tag.tag if nd.type_tag else None];
+    for probe in probes {
         cur: (UniNode | None) = probe;
         while isinstance(cur, (FuncCall, AtomTrailer)) {
             cur = cur.target;
@@ -1483,12 +1490,19 @@ impl TypeCheckPass.initialize with entry {
     if self.ctx.nested_depth {
         return;
     }
-    self.ctx.resources.callback(setattr, self.evaluator, '_pass', self.evaluator._pass);
-    self.ctx.resources.callback(
-        setattr, self.evaluator, 'ct_quiet', self.evaluator.ct_quiet
-    );
+    self._outer_pass = self.evaluator._pass;
+    self._outer_ct_quiet = self.evaluator.ct_quiet;
+    self._restores_evaluator = True;
     self.evaluator._pass = self.ctx;
     self.evaluator.ct_quiet = False;
+}
+
+impl TypeCheckPass.release -> None {
+    if self._restores_evaluator {
+        self.evaluator._pass = self._outer_pass;
+        self.evaluator.ct_quiet = self._outer_ct_quiet;
+        self._restores_evaluator = False;
+    }
 }
 
 impl TypeCheckPass.prepare with entry {
@@ -1702,11 +1716,11 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
             and cv is not None
             and not cv.is_deferred
             and not self.evaluator.ct_quiet
-            and not hasattr(cv.v, "__iter__") {
+            and not ct_is_iterable(cv) {
             self.ctx.emit(
                 E0108,
                 node_override=here.collection,
-                reason=f"comptime for needs a sequence, got {type(cv.v).__name__}"
+                reason=f"comptime for needs a sequence, got {ct_type_name(cv)}"
             );
         }
     }
@@ -1818,7 +1832,7 @@ impl TypeCheckPass._resolve_comptime_if(nd: IfStmt) -> None {
     if cv is None or cv.is_deferred {
         return;
     }
-    taken = bool(cv.v);
+    taken = ct_truthy(cv);
     nd.ct_taken = taken;
     if taken {
         if nd.else_body is not None {
@@ -1995,14 +2009,14 @@ impl TypeCheckPass.exit_assert_stmt with AssertStmt exit {
     if self.evaluator.ct_site_error(here.condition, "comptime assert condition", cv) {
         return;
     }
-    if cv is None or cv.is_deferred or bool(cv.v) or self.evaluator.ct_quiet {
+    if cv is None or cv.is_deferred or ct_truthy(cv) or self.evaluator.ct_quiet {
         return;
     }
     message = "";
     if here.error_msg is not None {
         mv = self.evaluator.ct_demand(here.error_msg);
         if mv is not None and not mv.is_deferred {
-            message = f": {mv.v}";
+            message = f": {ct_str(mv)}";
         }
     }
     self.ctx.emit(E0109, node_override=here, message=message);
@@ -2185,11 +2199,12 @@ impl TypeCheckPass.exit_impl_def with ImplDef exit {
 }
 
 impl TypeCheckPass.exit_sub_tag with SubTag exit {
-    if isinstance(here.tag, Expr) {
-        self.evaluator.validate_typevar_in_type_expr(here.tag);
+    tag = here.tag;
+    if isinstance(tag, Expr) {
+        self.evaluator.validate_typevar_in_type_expr(tag);
 
-        if here.tag?.type is None {
-            self.evaluator.get_type_of_expression(here.tag);
+        if tag.type is None {
+            self.evaluator.get_type_of_expression(tag);
         }
     }
 }

@@ -30,7 +30,7 @@ import from jaclang.meta_importer { JacSourceCompileError }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.driver.pipeline { get_py_code_gen }
+import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
 
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 

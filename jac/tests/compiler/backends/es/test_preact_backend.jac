@@ -26,22 +26,21 @@ import from jaclang.client.runtime_source {
     client_runtime_cl_basename,
     resolve_client_runtime_cl_path
 }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
      );
 
 """Compile a fixture with the given backend and return emitted JS."""
-def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
+def compile_fixture_with_backend(fixture_name: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture_name), no_cgen=True);
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    es_ir = es_pass.module;
-    return es_to_js(es_ir.gen.es_ast);
+    return es_js_with_backend(ir, prog, backend);
 }
 
 test "react backend reports runtime symbols for reactive lowering" {
@@ -213,9 +212,7 @@ test "preact runtime shim compiles JacForm and emits tanstack react-form" {
     rt = resolve_client_runtime_cl_path("preact");
     prog = JacProgram();
     ir = prog.compile(file_path=rt, no_cgen=True);
-    js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=PreactBackend()).module.gen.es_ast
-    );
+    js = es_js_with_backend(ir, prog, PreactBackend());
     assert "function JacForm(" in js;
     assert "function useJacForm(" in js;
     assert "useForm(" in js , "useJacForm must call @tanstack/react-form's useForm";
@@ -248,9 +245,7 @@ test "preact runtime shim exports form symbols" {
     rt = resolve_client_runtime_cl_path("preact");
     prog = JacProgram();
     ir = prog.compile(file_path=rt, no_cgen=True);
-    js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=PreactBackend()).module.gen.es_ast
-    );
+    js = es_js_with_backend(ir, prog, PreactBackend());
     export_line = "";
     for ln in js.splitlines() {
         if ln.strip().startswith("export {") {

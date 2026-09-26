@@ -698,8 +698,9 @@ bootstrap tier imports it before any `.jac` module can be compiled.
 
 Every compiler digest (one per checkout) names a **generation** directory, so
 several checkouts sharing one binary keep disjoint slots; the live generation
-is held by identity, never by age. The stub catalog (`jir-stubcat`) and the
-per-checkout compiler digests (`jir-digests`) are further buckets under `jir/` with the same 14-day
+is held by identity, never by age. The stub catalog (`jir-stubcat`), the
+native kernel units (`jir-kernel-units`) and the per-checkout compiler digests
+(`jir-digests`) are further buckets under `jir/` with the same 14-day
 last-use policy. Sweeps run opportunistically from each bucket's write path,
 at most once per process and once per day; `jac cache gc` runs them on
 demand.

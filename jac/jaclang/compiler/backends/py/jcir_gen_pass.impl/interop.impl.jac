@@ -20,11 +20,9 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
                 for pt in binding.param_types
             );
             decl = binding.ast_node;
-            is_pub = bool(
-                decl is not None
-                    and decl?.access is not None
-                    and decl.access.tag.name == _NsTok.KW_PUB
-            );
+            is_pub = isinstance(decl, AstAccessNode)
+                and decl.access is not None
+                and decl.access.tag.name == _NsTok.KW_PUB;
             symbol = native_def_symbol(binding.name)
                 if (is_pub or not prefix)
                 else native_symbol_name(prefix, binding.name);

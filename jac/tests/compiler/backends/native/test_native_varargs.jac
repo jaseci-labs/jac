@@ -246,23 +246,17 @@ test "callsite star-unpack: list spread routes through a variadic callee" {
     assert f() == 15 , "vsum(*[4, 5, 6])";
 }
 
-test "double-star unpack at a call site demotes the calling function" {
+test "double-star unpack into fixed parameters stays native" {
     (prog, ir) = compile_na_inline_ir(
         "dstar_fixed",
         "def two(a: int, b: int) -> int { return a * 10 + b; }\n"
         "def use() -> int { d = {'a': 1, 'b': 2}; return two(**d); }\n"
     );
-    assert not prog.errors_had , (
-        f"two(**d) is owned by use(), which must demote to a seam, got: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "two" in layout.functions , (
-        f"clean sibling function was lost: {list(layout.functions)}"
-    );
-    assert "use" not in layout.functions , (
-        "the unpacking caller must be demoted out of the native layout"
+    assert "two" in layout.functions and "use" in layout.functions , (
+        f"a ** spread into fixed parameters binds natively: {list(layout.functions)}"
     );
 }
 

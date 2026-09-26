@@ -29,9 +29,7 @@ def check(source: str, space: str = "server") -> list[tuple[any, ...]] {
     prog.compile(
         file_path=VIRTUAL_PATH,
         use_str=source,
-        options=CompileOptions(
-            no_cgen=True, force_codespace=space, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace=space)
     );
     out: list[tuple[any, ...]] = [];
     for alrt in prog.errors_had {

@@ -1,5 +1,5 @@
 """Tests for Jac Language Server."""
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import contextlib;
 import os;
@@ -281,7 +281,7 @@ test "test_go_to_definition_md_path" {
             (11, 51, "jaclang/compiler/frontend/constant.jac:2:5-2:15"),
             (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/types/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/types/types.jac:59:5-59:13"),
+            (18, 5, "compiler/types/types.jac:61:5-61:13"),
             (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),

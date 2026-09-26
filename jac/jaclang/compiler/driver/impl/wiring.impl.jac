@@ -109,7 +109,7 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
     if any([not p for p in parts]) {
         return None;
     }
-    found = resolve_local_module(self.root_dir, parts);
+    found = active_host().resolve_local_module(self.root_dir, parts);
     if found is None or found[1] not in ("jac", "py") {
         return None;
     }
@@ -120,7 +120,7 @@ impl WiringSpec.is_package_dir(name: str) -> bool {
     if not name {
         return False;
     }
-    return os.path.isdir(os.path.join(self.root_dir, *name.split(".")));
+    return os.path.isdir(os.path.join(self.root_dir, name.replace(".", os.sep)));
 }
 
 impl WiringSpec.project_modules -> list[str] {
@@ -128,26 +128,41 @@ impl WiringSpec.project_modules -> list[str] {
         return self._project_modules;
     }
     found: list[str] = [];
-    for (dirpath, dirnames, filenames) in os.walk(self.root_dir) {
-        dirnames[:] = sorted(
-            [
-                d
-                for d in dirnames
-                if not d.startswith(".") and d not in ("node_modules", "__pycache__")
-            ]
-        );
-        for fname in sorted(filenames) {
-            if not fname.endswith(".jac") {
-                continue;
+    self._scan_modules(self.root_dir, found, set());
+    self._project_modules = found;
+    return found;
+}
+
+impl WiringSpec._scan_modules(
+    directory: str, found: list[str], seen: set[str]
+) -> None {
+    real = os.path.realpath(directory);
+    if real in seen {
+        return;
+    }
+    seen.add(real);
+    try {
+        entries = sorted(os.listdir(directory));
+    } except OSError {
+        return;
+    }
+    subdirs: list[str] = [];
+    for fname in entries {
+        full = os.path.join(directory, fname);
+        if os.path.isdir(full) {
+            if not fname.startswith(".") and fname not in SKIPPED_PROJECT_DIRS {
+                subdirs.append(full);
             }
-            name = self.module_name(os.path.join(dirpath, fname));
+        } elif fname.endswith(".jac") {
+            name = self.module_name(full);
             if name is not None {
                 found.append(name);
             }
         }
     }
-    self._project_modules = found;
-    return found;
+    for sub in subdirs {
+        self._scan_modules(sub, found, seen);
+    }
 }
 
 impl WiringSpec.consumer_wires(consumer: str) -> list[ImportWire] {
@@ -218,23 +233,6 @@ impl WiringSpec.is_sealed(module: str) -> bool {
     return self.is_mentioned(module) or self.is_closed(module);
 }
 
-impl WiringSpec.import_form(
-    is_absorb: bool, is_typed: bool, is_comptime: bool, from_form: bool
-) -> str {
-    words: list[str] = [];
-    if is_comptime {
-        words.append("comptime");
-    }
-    words.append("include" if is_absorb else "import");
-    if is_typed {
-        words.append("type");
-    }
-    if from_form {
-        words.append("from");
-    }
-    return " ".join(words);
-}
-
 impl WiringSpec.pattern_text(pattern: ModulePattern) -> str {
     if pattern.is_any {
         return "any";
@@ -253,9 +251,7 @@ impl WiringSpec._wire_text(wire: ImportWire) -> list[tuple[int, int, str]] {
     first = wire.loc.first_tok;
     line0 = first.line_no - 1;
     col = self._column_of(first.pos_start);
-    head_form = WiringSpec.import_form(
-        wire.is_absorb, wire.is_typed, wire.is_comptime, False
-    );
+    head_form = import_form(wire.is_absorb, wire.is_typed, wire.is_comptime, False);
     if wire.is_module_form {
         alias = wire.provider.alias;
         text = head_form
@@ -349,16 +345,14 @@ impl WiringSpec.wire_bindings(wire: ImportWire) -> list[WireBinding] {
         return [
             WireBinding(
                 provider=provider,
-                form=WiringSpec.import_form(
+                form=import_form(
                     wire.is_absorb, wire.is_typed, wire.is_comptime, False
                 ),
                 alias=alias.value if alias is not None else ""
             )
         ];
     }
-    form = WiringSpec.import_form(
-        wire.is_absorb, wire.is_typed, wire.is_comptime, True
-    );
+    form = import_form(wire.is_absorb, wire.is_typed, wire.is_comptime, True);
     return [
         WireBinding(
             provider=provider,
@@ -435,7 +429,7 @@ impl is_arch_file(path: str) -> bool {
 }
 
 impl arch_file_for(path: str) -> (str | None) {
-    root_dir = find_jac_project_root(path);
+    root_dir = active_host().project_root(path);
     if not root_dir {
         return None;
     }
@@ -444,33 +438,22 @@ impl arch_file_for(path: str) -> (str | None) {
 }
 
 impl _closed_patterns_for(root_dir: str) -> list[str] {
-    import from pathlib { Path }
-    try {
-        import from jaclang.project.config { get_config_for_path }
-        cfg = get_config_for_path(Path(root_dir));
-    } except Exception {
-        return [];
-    }
-    if cfg is None {
-        return [];
-    }
-    return list(cfg.arch.closed);
+    facts = active_host().project_facts(root_dir);
+    return list(facts.arch_closed) if facts is not None else [];
 }
 
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
+    stamp: tuple[float, int] = (-1.0, -1);
     try {
-        st = os.stat(arch_path);
-        stamp = (st.st_mtime, st.st_size);
-    } except OSError {
-        stamp = (-1.0, -1);
-    }
+        stamp = (os.path.getmtime(arch_path), os.path.getsize(arch_path));
+    } except OSError {}
     key = os.path.realpath(root_dir);
     cached = _spec_cache.get(key);
     if cached is not None and cached[0] == stamp {
         return cached[1];
     }
     spec = WiringSpec(
-        root_dir=root_dir, path=arch_path, source=read_file_with_encoding(arch_path)
+        root_dir=root_dir, path=arch_path, source=active_host().read_source(arch_path)
     );
     _spec_cache[key] = (stamp, spec);
     return spec;
@@ -480,7 +463,11 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     if not path {
         return None;
     }
-    root_dir = find_jac_project_root(path);
+    import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
+    if is_package_keyed_path(path) {
+        return None;
+    }
+    root_dir = active_host().project_root(path);
     if not root_dir {
         return None;
     }
@@ -521,96 +508,7 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     return spec;
 }
 
-impl dedupe_generated_imports(mod: Module) -> None {
-    spec = wiring_for_path(mod.loc.mod_path, policy=False);
-    if spec is None {
-        return;
-    }
-    written: set[tuple[str, str, str, str]] = set();
-    generated: list[Import] = [];
-    for stmt in mod.body {
-        if not isinstance(stmt, Import) {
-            continue;
-        }
-        if stmt.loc.mod_path == spec.path {
-            generated.append(stmt);
-            continue;
-        }
-        written |= _import_keys(stmt);
-    }
-    if not generated or not written {
-        return;
-    }
-    consumer = spec.module_name(mod.loc.mod_path) or "";
-    removed: set[int] = set();
-    for stmt in generated {
-        doomed: set[int] = set();
-        for (key, item) in _import_items(stmt) {
-            if key in written or _relative_twin(key, consumer) in written {
-                doomed.add(id(item));
-            }
-        }
-        if doomed and stmt.prune_items(doomed) {
-            removed.add(id(stmt));
-        }
-    }
-    if removed {
-        mod._role_set(
-            BodyRole,
-            [
-                s
-                for s in mod.body
-                if id(s) not in removed
-            ]
-        );
-        mod.set_kids(
-            nodes=[
-                k
-                for k in [mod->:Kid:->]
-                if id(k) not in removed
-            ]
-                or [EmptyToken()]
-        );
-        mod._invalidate_sub_node_tab();
-    }
-}
-
-impl _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]] {
-    from_loc = stmt.from_loc;
-    form = WiringSpec.import_form(
-        stmt.is_absorb, stmt.is_typed, stmt.is_comptime, from_loc is not None
-    );
-    out: list[tuple[tuple[str, str, str, str], UniNode]] = [];
-    for item in stmt.items {
-        alias = item.alias.value if item.alias is not None else "";
-        if isinstance(item, ModuleItem) and from_loc is not None {
-            out.append(((from_loc.dot_path_str, form, item.name.value, alias), item));
-        } elif isinstance(item, ModulePath) {
-            out.append(((item.dot_path_str, form, "", alias), item));
-        }
-    }
-    return out;
-}
-
-impl _import_keys(stmt: Import) -> set[tuple[str, str, str, str]] {
-    return {key for (key, _item) in _import_items(stmt)};
-}
-
-impl _relative_twin(
-    key: tuple[str, str, str, str], consumer: str
-) -> tuple[str, str, str, str] {
-    (provider, form, name, alias) = key;
-    if "." not in consumer {
-        return key;
-    }
-    package = consumer.rsplit(".", 1)[0] + ".";
-    if provider.startswith(package) {
-        return ("." + provider[len(package):], form, name, alias);
-    }
-    return key;
-}
-
-impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
+impl wiring_annex_for(file_path: str) -> (WovenAnnex | None) {
     if is_arch_file(file_path) {
         return None;
     }
@@ -626,7 +524,7 @@ impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
     if not text {
         return None;
     }
-    return (text, spec.path);
+    return WovenAnnex(source=text, path=spec.path, consumer=consumer);
 }
 
 impl wiring_digest_for(file_path: str) -> str {

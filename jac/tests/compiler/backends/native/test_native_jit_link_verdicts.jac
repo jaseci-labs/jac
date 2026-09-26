@@ -11,12 +11,11 @@ reference (and the rest of that relocation batch) to null: the first native
 call segfaulted with no diagnostic. A warm cache hid it, because the
 dependency's cached metadata carries the verdict.
 
-A unit the JIT link compiles anyway now has its verdict taken first, from the
-memoized compile the link then consumes. That memo can outlive a compile
-whose importer fails and falls back to the server codespace; releasing it
-must evict the tree from the context program whose hub holds it, or a later
-JIT import finds that tree with its native products cleared and demotes a
-healthy module.
+The importer now takes each native dependency's verdict from that unit's
+interface before it emits, whichever lane it runs in: the unit is ensured
+(compiled on a miss) in its own session, and the link then consumes the same
+unit. An importer that fails and falls back to the server codespace leaves
+its dependencies' units intact, so their own imports stay native.
 """
 
 import os;
@@ -38,36 +37,17 @@ glob FIXTURES = os.path.join(
 """The JIT lane with nothing cached: the importer gets an engine and must
 learn each linked unit's verdict before it emits."""
 def cold_jit_opts -> CompileOptions {
-    return CompileOptions(
-        force_codespace='native', force_target_program=True, no_ir_cache=True
-    );
+    return CompileOptions(force_codespace='native', no_ir_cache=True);
 }
 
-"""Every `declare` line in the IR that names `symbol` as a callee, bare or
-module-qualified."""
+"""Every `declare` line in the IR that names `symbol` as a callee."""
 def dangling_declares(llvm_ir_text: str, symbol: str) -> list[str] {
     return [
         line.strip()
         for line in llvm_ir_text.splitlines()
         if line.lstrip().startswith("declare")
-            and (
-                f"@{symbol}(" in line
-                or f'@"{symbol}"(' in line
-                or f'.{symbol}"(' in line
-            )
+            and (f"@{symbol}(" in line or f'@"{symbol}"(' in line)
     ];
-}
-
-"""The native interface the program's unit registry holds for `fixture`."""
-def dep_iface(prog: JacProgram, fixture: str) -> any {
-    ent = prog.native_units().ensure(
-        os.path.join(FIXTURES, fixture),
-        compile_on_miss=False,
-        options=cold_jit_opts(),
-        check_deps=False,
-        products=False
-    );
-    return ent.iface if ent is not None else None;
 }
 
 """Compile a fixture on the cold JIT lane; return (program, module, linked IR)."""
@@ -80,6 +60,15 @@ def compile_cold(fixture: str) -> tuple[JacProgram, any, str] {
     assert ir is not None and ir.gen.llvm_ir is not None , f"no native IR for {fixture}";
     assert ir.gen.native_engine is not None , f"no JIT engine for {fixture}";
     return (prog, ir, str(ir.gen.llvm_ir));
+}
+
+"""The functions a linked unit's own compile demoted, from its interface."""
+def unit_demotions(prog: JacProgram, fixture: str) -> list[str] {
+    ent = prog.native_units().entries.get(
+        os.path.realpath(os.path.join(FIXTURES, fixture))
+    );
+    assert ent is not None , f"{fixture} was not compiled as a linked unit";
+    return list(ent.iface.demoted);
 }
 
 """Copy fixtures into a fresh directory and `jac run` the first one there, so
@@ -116,12 +105,9 @@ test "a cold JIT importer demotes a caller of a demoted linked function" {
         "the importer emitted a call to 'pyonly_len' before learning that "
         f"xmod_demote_lib demotes it: {dangling_declares(text, 'pyonly_len')}"
     );
+    lib_demoted = unit_demotions(prog, "xmod_demote_lib.jac");
+    assert "pyonly_len" in lib_demoted , f"the callee lowered after all: {lib_demoted}";
     demoted = native_demoted_ir_symbols(text);
-    lib_iface = dep_iface(prog, "xmod_demote_lib.jac");
-    assert lib_iface is not None , "no native interface for xmod_demote_lib";
-    assert "pyonly_len" in lib_iface.demoted , (
-        f"the callee lowered after all: {lib_iface.demoted}"
-    );
     assert "call_seam" in demoted , (
         f"the caller of the demoted function stayed native: {demoted}"
     );

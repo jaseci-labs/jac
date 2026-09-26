@@ -209,3 +209,11 @@ impl CompileContext.walk_subtree(nd: UniNode, walk: Walker) -> None {
         self.nested_depth -= 1;
     }
 }
+
+impl CompilerPass.prog.getter -> JacProgram {
+    program = self.ctx.program;
+    if program is None {
+        raise RuntimeError(f"{self.ctx.pass_name} needs the program it runs in");
+    }
+    return program;
+}

@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
@@ -9,17 +9,19 @@ import from jaclang.compiler.placement.placement_work { PlacementWork }
 import from jaclang.compiler.placement.placement {
     PLACEMENT_HOLD_EXEMPT_ROOTS,
     get_module_summary,
-    placement_state,
     record_placement_evidence,
     scan_native_blockers,
     summarize_module
 }
+import from jaclang.runtime.portability { supports }
 
-glob _na_scan_memo:
-         dict[
-             tuple[str, bool],
-             tuple[tuple[tuple[str, int, int], ...], str, list[str]]
-         ] = {},
+obj NativeDepScan {
+    has fresh: list[tuple[str, float, int]],
+        reason: str,
+        deps: list[str];
+}
+
+glob _na_scan_memo: dict[str, NativeDepScan] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -30,17 +32,16 @@ def native_scan_memo_clear {
     _na_scan_memo.clear();
 }
 
-def placement_work(prog: any) -> PlacementWork {
-    state = placement_state(prog);
-    work = state.get('work');
-    if not isinstance(work, PlacementWork) {
+def placement_work(prog: JacProgram) -> PlacementWork {
+    work = prog.analysis.placement_work;
+    if work is None {
         work = PlacementWork();
-        state['work'] = work;
+        prog.analysis.placement_work = work;
     }
     return work;
 }
 
-def refresh_placement_module(module: uni.Module, prog: any) {
+def refresh_placement_module(module: uni.Module, prog: JacProgram) {
     placement_work(prog).refresh(module);
 }
 
@@ -48,29 +49,27 @@ def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
-    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
     if module_native_demoted(os.path.realpath(path)) {
         return ("previously-demoted", []);
     }
-    import from jaclang.compiler.driver.bccache { discover_annex_files }
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
     files = [path]
-        + discover_annex_files(path, '.impl.jac')
-        + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple[str, int, int]] = [];
+        + active_host().annex_files(path, '.impl.jac')
+        + active_host().annex_files(path, '.test.jac');
+    fresh: list[tuple[str, float, int]] = [];
     for f in files {
         try {
-            st = os.stat(f);
-            fresh_parts.append((f, st.st_mtime_ns, st.st_size));
+            fresh.append((f, os.path.getmtime(f), os.path.getsize(f)));
         } except OSError {
             return None;
         }
     }
-    fresh_key = tuple(fresh_parts);
-    cached = _na_scan_memo.get((path, hold_exempt, ));
-    if cached is not None and cached[0] == fresh_key {
-        return (cached[1], cached[2]);
+    memo_key = f"{int(hold_exempt)}:{path}";
+    cached = _na_scan_memo.get(memo_key);
+    if cached is not None and cached.fresh == fresh {
+        return (cached.reason, cached.deps);
     }
     sv_reason = '';
     deps: list[str] = [];
@@ -78,7 +77,7 @@ def _native_dep_scan(
         base_dir = os.path.dirname(os.path.abspath(path)) or '.';
         for f in files {
             try {
-                src = read_file_with_encoding(f);
+                src = active_host().read_source(f);
             } except Exception {
                 sv_reason = "unreadable annex";
                 break;
@@ -101,8 +100,25 @@ def _native_dep_scan(
     if sv_reason {
         deps = [];
     }
-    _na_scan_memo[(path, hold_exempt, )] = (fresh_key, sv_reason, deps);
+    _na_scan_memo[memo_key] = NativeDepScan(fresh=fresh, reason=sv_reason, deps=deps);
     return (sv_reason, deps);
+}
+
+glob _CLOSURE_CAP_NOTED: set[str] = set();
+
+def note_native_closure_cap(root_path: str, cap: int) {
+    import from jaclang.compiler.frontend.host { active_host }
+    resolved = os.path.realpath(root_path);
+    if resolved in _CLOSURE_CAP_NOTED {
+        return;
+    }
+    _CLOSURE_CAP_NOTED.add(resolved);
+    active_host().note(
+        f"note: {root_path} preferred native but its import closure "
+        f"exceeded the inference cap ({cap} modules); compiled in the "
+        f"server codespace. Raise [build] native_closure_cap in jac.toml "
+        f"to scan larger closures."
+    );
 }
 
 def _native_deps_ok(
@@ -112,14 +128,13 @@ def _native_deps_ok(
         effective_native_closure_cap,
         native_unit_compile_active
     }
-    import from jaclang.compiler.driver.na_coverage { _note_native_closure_cap }
     import from jaclang.compiler.native_scope { in_native_scope_path }
     cap = effective_native_closure_cap();
-    edges: dict[str, list[str]] = {root_path: list[str](root_deps)};
+    edges: dict[str, list[str]] = {root_path: list(root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
         if len(edges) > cap {
-            _note_native_closure_cap(root_path, cap);
+            note_native_closure_cap(root_path, cap);
             return False;
         }
         dep = queue.pop();
@@ -164,15 +179,17 @@ def native_default_path_ok(path: str) -> bool {
 }
 
 def native_default_verdict(
-    module: uni.Module, prog: any = None, native_unit_compile: bool = False
+    module: uni.Module,
+    prog: (JacProgram | None) = None,
+    native_unit_compile: bool = False
 ) -> tuple[bool, str] {
-    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
 
     if module.app_kind == 'web-app' {
         return (False, "web-app project: native is opt-in");
     }
-    (env_ok, env_reason) = native_pipeline_available();
+    (env_ok, env_reason) = active_host().native_pipeline_available();
     if not env_ok {
         return (False, env_reason);
     }
@@ -220,7 +237,6 @@ def _is_client_top(elem: uni.UniNode) -> bool {
 }
 
 def _py_import_client_portable(elem: uni.Import, app_kind: str = '') -> bool {
-    import from jaclang.runtime.portability { supports }
     kind = app_kind or 'web-app';
     targets: list[str] = [];
     if elem.from_loc is not None {
@@ -328,7 +344,7 @@ def _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None) {
     return _top_element(target, decl);
 }
 
-def _materialize_module(path: str, prog: any) -> (uni.Module | None) {
+def _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None) {
     import from jaclang.compiler.driver.boundary_classify { hub_module_for_path }
     found = hub_module_for_path(path, prog);
     if found is not None {
@@ -344,7 +360,7 @@ def _materialize_module(path: str, prog: any) -> (uni.Module | None) {
     }
 }
 
-def _import_source_module(elem: uni.Import, prog: any) -> (uni.Module | None) {
+def _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | None) {
     if elem.from_loc is None {
         return None;
     }
@@ -357,7 +373,7 @@ def _import_source_module(elem: uni.Import, prog: any) -> (uni.Module | None) {
 }
 
 def _closure_pullable(
-    top: uni.UniNode, module: uni.Module, prog: any, seen: set[int]
+    top: uni.UniNode, module: uni.Module, prog: JacProgram, seen: set[int]
 ) -> bool {
     work = placement_work(prog);
     work.observe(module);
@@ -424,12 +440,11 @@ def _module_externally_pinned(mod_path: str) -> bool {
     return config_module_pin(mod_path) != '';
 }
 
-def _python_backend_forced(prog: any) -> bool {
-    opts = prog?.options;
-    return getattr(opts, "force_codespace", "") == "server";
+def _python_backend_forced(prog: JacProgram) -> bool {
+    return prog.options.force_codespace == "server";
 }
 
-def _seed_from_summary(module: uni.Module, prog: any) -> int {
+def _seed_from_summary(module: uni.Module, prog: JacProgram) -> int {
     import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
     mod_path = module.loc.mod_path or '';
     ps = get_module_summary(module, prog);
@@ -500,7 +515,7 @@ def _seed_from_summary(module: uni.Module, prog: any) -> int {
 
 def solve_module_placement(
     module: uni.Module,
-    prog: any,
+    prog: JacProgram,
     seed_ref_ids: (set[int] | None) = None,
     dual: bool = False,
     pull_dependents: bool = True
@@ -705,7 +720,7 @@ def solve_module_placement(
 }
 
 def _emit_solver_warning(
-    prog: any, diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: any
+    prog: JacProgram, diag: DiagnosticInfo, nd: uni.UniNode, name: str
 ) {
     import from jaclang.compiler.passes.context { Alert }
     for w in prog.warnings_had {
@@ -721,17 +736,17 @@ def _emit_solver_warning(
     try {
         prog.warnings_had.append(
             Alert(
-                msg=diag.format_message(**kwargs),
+                msg=diag.format_message(name=name),
                 loc=nd.loc.span(),
                 from_pass=PlacementApplyPass,
                 code=diag,
-                help_text=diag.format_help(**kwargs)
+                help_text=diag.format_help(name=name)
             )
         );
     } except Exception {}
 }
 
-def _warn_state_forks(target: uni.Module, prog: any) {
+def _warn_state_forks(target: uni.Module, prog: JacProgram) {
     import from jaclang.compiler.frontend.diagnostics { W6006 }
     ps = get_module_summary(target, prog);
     written: set[int] = set();
@@ -757,7 +772,7 @@ def _warn_state_forks(target: uni.Module, prog: any) {
 }
 
 def _pull_into_target(
-    imp: uni.Import, target: uni.Module, module: uni.Module, prog: any
+    imp: uni.Import, target: uni.Module, module: uni.Module, prog: JacProgram
 ) -> int {
     seed_ids: set[int] = set();
     for item in imp.items {
@@ -798,7 +813,9 @@ def _pull_into_target(
     return new_stamps;
 }
 
-def _pull_boundary_import(imp: uni.Import, module: uni.Module, prog: any) -> int {
+def _pull_boundary_import(
+    imp: uni.Import, module: uni.Module, prog: JacProgram
+) -> int {
     work = placement_work(prog);
     work.observe(module);
     if (
@@ -848,33 +865,20 @@ def _pull_boundary_import(imp: uni.Import, module: uni.Module, prog: any) -> int
     return new_stamps;
 }
 
-def solve_program_placement(entry_mod: uni.Module, prog: any) {
+def solve_program_placement(entry_mod: uni.Module, prog: JacProgram) {
     work = placement_work(prog);
     work.track(entry_mod);
-    hub = prog?.mod?.hub;
-    if isinstance(hub, dict) {
-        for module in list(hub.values()) {
-            if isinstance(module, uni.Module) {
-                work.track(module);
-            }
-        }
+    for module in list(prog.mod.hub.values()) {
+        work.track(module);
     }
     work.drain(prog);
 }
 
-def invalidate_importers_es(prog: any, mod_path: str) -> list[uni.Module] {
+def invalidate_importers_es(prog: JacProgram, mod_path: str) -> list[uni.Module] {
     cleared: list[uni.Module] = [];
-    hub = prog?.mod?.hub;
-    if not isinstance(hub, dict) {
-        return cleared;
-    }
     key = os.path.realpath(mod_path);
-    for m in list(hub.values()) {
-        if (
-            not isinstance(m, uni.Module)
-            or m.loc is None
-            or os.path.realpath(m.loc.mod_path) == key
-        ) {
+    for m in list(prog.mod.hub.values()) {
+        if m.loc is None or os.path.realpath(m.loc.mod_path) == key {
             continue;
         }
         for imp in m.get_all_sub_nodes(uni.Import) {
@@ -900,7 +904,7 @@ def invalidate_importers_es(prog: any, mod_path: str) -> list[uni.Module] {
 }
 
 def demote_client_pulled_elements(
-    module: uni.Module, prog: any, err_mark: int, warn_mark: int
+    module: uni.Module, prog: JacProgram, err_mark: int, warn_mark: int
 ) -> bool {
     mod_path = module.loc.mod_path or '';
     demoted: list[str] = [];
@@ -947,26 +951,15 @@ def demote_client_pulled_elements(
     invalidate_client_product(prog, module);
     placement_work(prog).changed(module);
     invalidate_importers_es(prog, mod_path);
-    try {
-        import sys;
-        import from jaclang.cli.console { console }
-        console.print(
-            f"note: {mod_path} was pulled into the client but did not lower; "
-            f"demoted {', '.join(demoted)} back to the server ({first_err})",
-            style="dim",
-            file=sys.stderr
-        );
-    } except Exception {}
+    import from jaclang.compiler.frontend.host { active_host }
+    active_host().note(
+        f"note: {mod_path} was pulled into the client but did not lower; "
+        f"demoted {', '.join(demoted)} back to the server ({first_err})"
+    );
     return True;
 }
 
-walker PlacementApplyPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: uni.Module;
-
-    static has HOST_PASS: bool = True;
-
+walker PlacementApplyPass(CompilerPass) {
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
 }

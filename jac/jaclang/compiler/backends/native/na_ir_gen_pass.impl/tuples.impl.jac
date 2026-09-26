@@ -201,6 +201,82 @@ impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> lis
     ];
 }
 
+impl NaIRGenPass._tuple_slot_owns(
+    nd: uni.Assignment, var_name: str, slot_ty: ir.Type
+) -> bool {
+    if not isinstance(slot_ty, ir.LiteralStructType)
+        or not self._tuple_managed_fields(slot_ty)
+        or self._nogc_headerless()
+        or self._gc_mode() == "none"
+        or var_name in self.param_vars
+        or var_name in self.borrowed_vars
+        or var_name in self.closure_cell_vars
+        or var_name in self.closure_cell_handles
+        or var_name in self.region_handle_vars
+        or (
+            self._gen_ctx is not None
+            and self.builder.function is self._gen_ctx.resume_fn
+        )
+        or len(nd.target) != 1 {
+        return False;
+    }
+    target = nd.target[0];
+    if not isinstance(target, uni.Name) or target.sym is None {
+        return False;
+    }
+    for site in target.sym.defn {
+        binder = site.parent;
+        if not isinstance(binder, uni.Assignment)
+            or binder.aug_op is not None
+            or len(binder.target) != 1
+            or binder.target[0] is not site {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._bind_owned_tuple_slot(
+    var_name: str, slot: ir.Value, value: ir.Value, loc: str = ""
+) -> None {
+    slot_ty = value.type;
+    if not isinstance(slot_ty, ir.LiteralStructType) {
+        return;
+    }
+    owned = value?.na_tuple_owned;
+    for index in self._tuple_managed_fields(slot_ty) {
+        if owned is not None and index < len(owned) and owned[index] {
+            continue;
+        }
+        self._emit_take_ref(
+            self.builder.extract_value(value, index, name=f"{var_name}.tslot.f{index}"),
+            op="assign_tuple",
+            loc=loc
+        );
+    }
+    self._release_tuple_slot(slot, op="overwrite");
+    self.owned_tuple_vars.add(var_name);
+}
+
+impl NaIRGenPass._release_tuple_slot(slot: ir.Value, op: str) -> None {
+    held = self.builder.load(slot, name="tslot.held");
+    held_ty = held.type;
+    if not isinstance(held_ty, ir.LiteralStructType) {
+        return;
+    }
+    for index in self._tuple_managed_fields(held_ty) {
+        self._release_owned_args(
+            [
+                self._mark_owned(
+                    self.builder.extract_value(held, index, name=f"tslot.held.f{index}")
+                )
+            ],
+            op=op
+        );
+    }
+    self.builder.store(ir.Constant(held_ty, None), slot);
+}
+
 impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     if not isinstance(val.type, ir.LiteralStructType) {
         return val;

@@ -63,11 +63,8 @@ impl ClientDiagnostic.abs_file -> str {
 }
 
 impl ClientDiagnostic.render(colors: bool = False) -> str {
-    import from jaclang.project.source {
-        render_diagnostic,
-        span_for_file,
-        read_file_with_encoding
-    }
+    import from jaclang.project.source { render_diagnostic }
+    import from jaclang.project.textio { read_file_with_encoding, span_for_file }
     if self.rendered_cache and not self.base_path {
         return self.rendered_cache;
     }

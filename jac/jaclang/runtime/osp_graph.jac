@@ -75,8 +75,8 @@ obj OspEdgeRow {
 obj OspAdj {
     has rows_out: list[int],
         rows_in: list[int],
-        out: dict[int, list[int]],
-        inn: dict[int, list[int]];
+        out: (dict[int, list[int]] | None) = None,
+        inn: (dict[int, list[int]] | None) = None;
 }
 
 obj OspGraph {
@@ -92,9 +92,29 @@ obj OspGraph {
             found: OspAdj = self.adj[h];
             return found;
         }
-        made = OspAdj(rows_out=[], rows_in=[], out={}, inn={});
+        made = OspAdj(rows_out=[], rows_in=[], out=None, inn=None);
         self.adj[h] = made;
         return made;
+    }
+
+    def light_out(a: OspAdj) -> dict[int, list[int]] {
+        d = a.out;
+        if d is None {
+            made: dict[int, list[int]] = {};
+            a.out = made;
+            return made;
+        }
+        return d;
+    }
+
+    def light_in(a: OspAdj) -> dict[int, list[int]] {
+        d = a.inn;
+        if d is None {
+            made: dict[int, list[int]] = {};
+            a.inn = made;
+            return made;
+        }
+        return d;
     }
 
     def has_light(h: int) -> bool {
@@ -102,16 +122,22 @@ obj OspGraph {
             return False;
         }
         a: OspAdj = self.adj[h];
-        for k in a.out {
-            peers: list[int] = a.out[k];
-            if peers {
-                return True;
+        outs = a.out;
+        if outs is not None {
+            for k in outs {
+                peers: list[int] = outs[k];
+                if peers {
+                    return True;
+                }
             }
         }
-        for k in a.inn {
-            srcs: list[int] = a.inn[k];
-            if srcs {
-                return True;
+        inns = a.inn;
+        if inns is not None {
+            for k in inns {
+                srcs: list[int] = inns[k];
+                if srcs {
+                    return True;
+                }
             }
         }
         return False;
@@ -123,18 +149,20 @@ obj OspGraph {
         }
         sa: OspAdj = self.adj_of(src);
         ta: OspAdj = self.adj_of(tgt);
-        if tag in sa.out {
-            outs: list[int] = sa.out[tag];
+        sd = self.light_out(sa);
+        if tag in sd {
+            outs: list[int] = sd[tag];
             outs.append(tgt);
         } else {
-            sa.out[tag] = [tgt];
+            sd[tag] = [tgt];
         }
         if not one_sided {
-            if tag in ta.inn {
-                inns: list[int] = ta.inn[tag];
+            td = self.light_in(ta);
+            if tag in td {
+                inns: list[int] = td[tag];
                 inns.append(src);
             } else {
-                ta.inn[tag] = [src];
+                td[tag] = [src];
             }
         }
         return tgt;
@@ -145,17 +173,19 @@ obj OspGraph {
             return False;
         }
         sa: OspAdj = self.adj[src];
-        if tag not in sa.out {
+        sd = sa.out;
+        if sd is None or tag not in sd {
             return False;
         }
-        outs: list[int] = sa.out[tag];
+        outs: list[int] = sd[tag];
         if not self._drop_handle(outs, tgt) {
             return False;
         }
         if tgt in self.adj {
             ta: OspAdj = self.adj[tgt];
-            if tag in ta.inn {
-                inns: list[int] = ta.inn[tag];
+            td = ta.inn;
+            if td is not None and tag in td {
+                inns: list[int] = td[tag];
                 self._drop_handle(inns, src);
             }
         }
@@ -168,12 +198,14 @@ obj OspGraph {
             return out;
         }
         a: OspAdj = self.adj[h];
-        d: dict[int, list[int]] = a.out if outgoing else a.inn;
-        for k in d {
-            peers: list[int] = d[k];
-            for p in peers {
-                out.append(k);
-                out.append(p);
+        d = a.out if outgoing else a.inn;
+        if d is not None {
+            for k in d {
+                peers: list[int] = d[k];
+                for p in peers {
+                    out.append(k);
+                    out.append(p);
+                }
             }
         }
         return out;
@@ -185,34 +217,42 @@ obj OspGraph {
         }
         a: OspAdj = self.adj[h];
         n = 0;
-        for k in a.out {
-            peers: list[int] = a.out[k];
-            for p in peers {
-                if p in self.adj {
-                    pa: OspAdj = self.adj[p];
-                    if k in pa.inn {
-                        inns: list[int] = pa.inn[k];
-                        self._drop_handle(inns, h);
+        ad = a.out;
+        if ad is not None {
+            for k in ad {
+                peers: list[int] = ad[k];
+                for p in peers {
+                    if p in self.adj {
+                        pa: OspAdj = self.adj[p];
+                        pd = pa.inn;
+                        if pd is not None and k in pd {
+                            inns: list[int] = pd[k];
+                            self._drop_handle(inns, h);
+                        }
                     }
+                    n += 1;
                 }
-                n += 1;
             }
+            ad.clear();
         }
-        for k in a.inn {
-            srcs: list[int] = a.inn[k];
-            for s in srcs {
-                if s in self.adj {
-                    sa: OspAdj = self.adj[s];
-                    if k in sa.out {
-                        outs: list[int] = sa.out[k];
-                        self._drop_handle(outs, h);
+        ai = a.inn;
+        if ai is not None {
+            for k in ai {
+                srcs: list[int] = ai[k];
+                for s in srcs {
+                    if s in self.adj {
+                        sa: OspAdj = self.adj[s];
+                        sd = sa.out;
+                        if sd is not None and k in sd {
+                            outs: list[int] = sd[k];
+                            self._drop_handle(outs, h);
+                        }
                     }
+                    n += 1;
                 }
-                n += 1;
             }
+            ai.clear();
         }
-        a.out.clear();
-        a.inn.clear();
         return n;
     }
 
@@ -371,10 +411,11 @@ obj OspGraph {
         if edges_only {
             return;
         }
-        if dir == 2 or dir == 3 {
-            for k in a.out {
+        ad = a.out;
+        if (dir == 2 or dir == 3) and ad is not None {
+            for k in ad {
                 if self._tag_matches(k, edge_tag) {
-                    peers: list[int] = a.out[k];
+                    peers: list[int] = ad[k];
                     for p in peers {
                         if p not in seen {
                             seen.add(p);
@@ -384,10 +425,11 @@ obj OspGraph {
                 }
             }
         }
-        if dir == 1 or dir == 3 {
-            for k in a.inn {
+        ai = a.inn;
+        if (dir == 1 or dir == 3) and ai is not None {
+            for k in ai {
                 if self._tag_matches(k, edge_tag) {
-                    srcs: list[int] = a.inn[k];
+                    srcs: list[int] = ai[k];
                     for s in srcs {
                         if s not in seen {
                             seen.add(s);
@@ -675,9 +717,10 @@ obj OspGraph {
             return 0;
         }
         a: OspAdj = self.adj[src];
-        if dir == 2 or dir == 3 {
+        ad = a.out;
+        if (dir == 2 or dir == 3) and ad is not None {
             ktags: list[int] = [];
-            for k in a.out {
+            for k in ad {
                 if self._tag_matches(k, edge_tag) {
                     ktags.append(k);
                 }
@@ -688,9 +731,10 @@ obj OspGraph {
                 }
             }
         }
-        if dir == 1 or dir == 3 {
+        ai = a.inn;
+        if (dir == 1 or dir == 3) and ai is not None {
             ktags2: list[int] = [];
-            for k in a.inn {
+            for k in ai {
                 if self._tag_matches(k, edge_tag) {
                     ktags2.append(k);
                 }
@@ -787,8 +831,10 @@ obj OspGraph {
         stash: list[OspAdj] = [];
         for h in members {
             if h in self.adj {
-                self.light_detach(h);
                 a: OspAdj = self.adj[h];
+                if a.out is not None or a.inn is not None {
+                    self.light_detach(h);
+                }
                 stash.append(a);
                 self.adj.pop(h);
             }
@@ -833,35 +879,42 @@ def _new_graph -> OspGraph {
 
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
 
-def:pub osp_adj_pairs(origin: int, dir: int) -> list[int] {
-    out: list[int] = [];
-    if origin in DEFAULT_GRAPH.adj {
-        a: OspAdj = DEFAULT_GRAPH.adj[origin];
-        if dir == 2 {
-            for rid in a.rows_out {
-                row: OspEdgeRow = DEFAULT_GRAPH.rows[rid];
-                if row.live {
-                    out.append(row.tag);
-                    out.append(row.tgt);
-                }
+def:pub osp_adj_fill(origin: int, dir: int, out: list[int]) -> int {
+    if origin not in DEFAULT_GRAPH.adj {
+        return 0;
+    }
+    start = len(out);
+    a: OspAdj = DEFAULT_GRAPH.adj[origin];
+    if dir == 2 {
+        for rid in a.rows_out {
+            row: OspEdgeRow = DEFAULT_GRAPH.rows[rid];
+            if row.live {
+                out.append(row.tag);
+                out.append(row.tgt);
             }
-            for k in a.out {
-                peers: list[int] = a.out[k];
+        }
+        ad = a.out;
+        if ad is not None {
+            for k in ad {
+                peers: list[int] = ad[k];
                 for t in peers {
                     out.append(k);
                     out.append(t);
                 }
             }
-        } else {
-            for rid in a.rows_in {
-                row: OspEdgeRow = DEFAULT_GRAPH.rows[rid];
-                if row.live {
-                    out.append(row.tag);
-                    out.append(row.src);
-                }
+        }
+    } else {
+        for rid in a.rows_in {
+            row: OspEdgeRow = DEFAULT_GRAPH.rows[rid];
+            if row.live {
+                out.append(row.tag);
+                out.append(row.src);
             }
-            for k in a.inn {
-                srcs: list[int] = a.inn[k];
+        }
+        ai = a.inn;
+        if ai is not None {
+            for k in ai {
+                srcs: list[int] = ai[k];
                 for t in srcs {
                     out.append(k);
                     out.append(t);
@@ -869,6 +922,12 @@ def:pub osp_adj_pairs(origin: int, dir: int) -> list[int] {
             }
         }
     }
+    return (len(out) - start) // 2;
+}
+
+def:pub osp_adj_pairs(origin: int, dir: int) -> list[int] {
+    out: list[int] = [];
+    osp_adj_fill(origin, dir, out);
     return out;
 }
 

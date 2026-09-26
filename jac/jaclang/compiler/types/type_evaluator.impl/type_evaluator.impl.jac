@@ -171,7 +171,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if expected_elem is not None {
                         list_inst.private.type_args = [expected_elem];
                     } else {
-                        flow_elem = self._infer_list_elem_from_mutations(expr);
+                        flow_elem = self._infer_elem_from_mutations(
+                            expr, self.prefetch.list_class
+                        );
                         if flow_elem is not None {
                             list_inst.private.type_args = [flow_elem];
                         }
@@ -773,13 +775,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 overload_scope, def_sym.sym_name
                             );
                             for overload_symbol in all_syms {
-                                if overload_symbol == def_sym {
-                                    continue;
-                                }
                                 overload_type = self.get_type_of_symbol(
                                     overload_symbol
                                 );
-                                if isinstance(overload_type, FunctionType) {
+                                if isinstance(overload_type, FunctionType)
+                                    and overload_type is not sym_type {
                                     overloaded_fns.append(overload_type);
                                 }
                             }
@@ -859,8 +859,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             }
                         }
 
-                        member_ty = self._get_method_with_overloads(
-                            member, lookup_type
+                        member_ty = self._as_unbound_method(
+                            self._get_method_with_overloads(member, lookup_type),
+                            member,
+                            lookup_type
                         );
                         member.symbol.add_use(expr.right);
                         expr.right.type = member_ty;
@@ -1636,16 +1638,27 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case FuncCall():
             result = self.validate_call_args(expr);
-            if not expr.params and expected_type is not None {
+            if not expr.params {
                 constructor = self.get_type_of_expression(expr.target);
                 if isinstance(constructor, ClassType)
                     and constructor.is_instantiable_class()
                     and constructor.is_builtin(["list", "set", "frozenset", "dict"]) {
                     expected = self._get_expected_container_type(
                         expected_type, constructor
-                    );
+                    )
+                        if expected_type is not None
+                        else None;
                     if expected is not None and expected.private.type_args {
                         return expected.clone_as_instance();
+                    }
+                    if constructor.is_builtin(["list", "set"])
+                        and isinstance(result, ClassType) {
+                        flow_elem = self._infer_elem_from_mutations(expr, constructor);
+                        if flow_elem is not None {
+                            inferred = result.clone_as_instance();
+                            inferred.private.type_args = [flow_elem];
+                            return inferred;
+                        }
                     }
                 }
             }
@@ -2624,6 +2637,14 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 return node_.type;
             }
 
+            context_item = node_.parent;
+            if isinstance(context_item, ExprAsItem) and context_item.alias is node_ {
+                context_stmt = context_item.parent;
+                if isinstance(context_stmt, WithStmt) {
+                    return self.get_type_of_with_alias(context_item);
+                }
+            }
+
             if enum_member_type := self._get_enum_member_type_for_decl(node_) {
                 return enum_member_type;
             }
@@ -2767,19 +2788,31 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     }
                     declared_inst = self._convert_to_instance(annotation_type);
 
+                    empty_value = node_.parent.value;
                     if (
                         isinstance(declared_inst, ClassType)
-                        and declared_inst.is_builtin("list")
+                        and declared_inst.is_builtin(["list", "set"])
                         and not declared_inst.private.type_args
-                        and isinstance(node_.parent.value, ListVal)
-                        and not node_.parent.value.values
+                        and isinstance(empty_value, (ListVal, FuncCall))
+                        and (
+                            (
+                                isinstance(empty_value, ListVal)
+                                and not empty_value.values
+                            )
+                            or (
+                                isinstance(empty_value, FuncCall)
+                                and not empty_value.params
+                                and isinstance(empty_value.target, Name)
+                                and empty_value.target.value in ("list", "set")
+                            )
+                        )
                     ) {
                         value_type = self.get_type_of_expression(
-                            node_.parent.value, expected_type=declared_inst
+                            empty_value, expected_type=declared_inst
                         );
                         if (
                             isinstance(value_type, ClassType)
-                            and value_type.is_builtin("list")
+                            and value_type.shared.same_class(declared_inst.shared)
                             and value_type.private.type_args
                         ) {
                             return value_type;
@@ -2945,6 +2978,17 @@ impl TypeEvaluator._assign_callable(
     return self._callable_mismatch(src_func, dest_func, strict) is None;
 }
 
+impl TypeEvaluator._callable_value_params(fn: FunctionType) -> list[Parameter] {
+    if self._carries_unbound_method(fn) {
+        return list(fn.parameters or []);
+    }
+    return [
+        p
+        for p in (fn.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+}
+
 impl TypeEvaluator._callable_mismatch(
     src_func: FunctionType, dest_func: FunctionType, strict: bool = False
 ) -> CallableMismatch | None {
@@ -2965,16 +3009,8 @@ impl TypeEvaluator._callable_mismatch(
         return GradualSourceMismatch();
     }
 
-    src_params = [
-        p
-        for p in (src_func.parameters or [])
-        if not p.is_self and not p.is_cls
-    ];
-    dest_params = [
-        p
-        for p in (dest_func.parameters or [])
-        if not p.is_self and not p.is_cls
-    ];
+    src_params = self._callable_value_params(src_func);
+    dest_params = self._callable_value_params(dest_func);
 
     overlap = min(len(src_params), len(dest_params));
     for i in range(overlap) {
@@ -4406,19 +4442,8 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
     }
 
     resolved_path = str(Path(path).resolve());
-    compiler = self.program._get_compiler();
-    target_program = compiler.selfhost.resolve(resolved_path, self.program);
-    target_hub = target_program.mod.hub;
-
     if resolved_path in self.program.mod.hub {
         mod = self.program.mod.hub[resolved_path];
-        if mod.parent_scope is None and mod is not self.builtins_module {
-            mod.parent_scope = self.builtins_module;
-        }
-        return mod;
-    }
-    if resolved_path in target_hub {
-        mod = target_hub[resolved_path];
         if mod.parent_scope is None and mod is not self.builtins_module {
             mod.parent_scope = self.builtins_module;
         }
@@ -4433,37 +4458,24 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
 }
 
 impl TypeEvaluator.postinit -> None {
-    self.ct_eval = CtEvaluator(evaluator=self);
-    self._BUILTINS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
-    );
-    self._TYPING_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi"
-    );
-    self._TYPES_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi"
-    );
-    self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "jac_builtins.pyi"
-    );
+    import from jaclang.compiler.frontend.host { active_host }
+    self.ct_eval = CtEvaluator(evaluator=self, env=active_host().ct_environment());
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    package = jaclang_pkg_root();
+    stdlib_stubs = os.path.join(package, "vendor", "typeshed", "stdlib");
+    jac_stubs = os.path.join(package, "compiler", "types");
+    self._BUILTINS_STUB_FILE_PATH = os.path.join(stdlib_stubs, "builtins.pyi");
+    self._TYPING_STUB_FILE_PATH = os.path.join(stdlib_stubs, "typing.pyi");
+    self._TYPES_STUB_FILE_PATH = os.path.join(stdlib_stubs, "types.pyi");
+    self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(jac_stubs, "jac_builtins.pyi");
     self._BUILTIN_OVERRIDES_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "builtin_overrides.pyi"
+        jac_stubs, "builtin_overrides.pyi"
     );
-    self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "dom_types.pyi"
-    );
-    self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "na_builtins.pyi"
-    );
-    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "js_globals.pyi"
-    );
-    self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "typing_ambient.pyi"
-    );
-    self._ENUM_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
-    );
+    self._DOM_TYPES_STUB_FILE_PATH = os.path.join(jac_stubs, "dom_types.pyi");
+    self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(jac_stubs, "na_builtins.pyi");
+    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(jac_stubs, "js_globals.pyi");
+    self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(jac_stubs, "typing_ambient.pyi");
+    self._ENUM_STUB_FILE_PATH = os.path.join(stdlib_stubs, "enum.pyi");
 
     self.prefetch = PrefetchedTypes();
     self._flow_pending_symbols = set();
@@ -4706,7 +4718,7 @@ impl TypeEvaluator._node_encloses(outer: UniNode, inner: UniNode) -> bool {
 }
 
 impl TypeEvaluator._get_type_from_flow_node(
-    target: NarrowingTarget, flow_node: UniCFGNode, visited: set
+    target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
 ) -> TypeBase | None {
     import from jaclang.compiler.types.type_evaluator { NarrowingTarget }
     key = target.key;
@@ -5027,7 +5039,10 @@ impl TypeEvaluator._get_type_from_flow_node(
 }
 
 impl TypeEvaluator._if_exit_type(
-    target: NarrowingTarget, stmt: IfStmt, entry_type: TypeBase | None, visited: set
+    target: NarrowingTarget,
+    stmt: IfStmt,
+    entry_type: TypeBase | None,
+    visited: set[int]
 ) -> TypeBase | None {
     import from jaclang.compiler.types.type_evaluator { NarrowingTarget }
     arm_types: list[TypeBase] = [];
@@ -6489,7 +6504,7 @@ impl TypeEvaluator._intern_shared(shared: ClassDetailsShared) -> ClassDetailsSha
     ];
     if fresh_bases and not known_bases {
         found.base_classes = shared.base_classes;
-        found._mro_sig = ();
+        found._mro_sig = [];
         found._provisional = shared._provisional;
     }
     return found;

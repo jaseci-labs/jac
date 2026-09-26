@@ -89,7 +89,6 @@ import from jaclang.compiler.frontend.unitree {
     resolved_decl_of,
     Null,
     OpenStmt,
-    ParamKind as UniParamKind,
     ParamVar,
     RaiseStmt,
     ReturnStmt,
@@ -118,6 +117,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
+    ParamKind,
     TOKEN_MAP,
     BindingKind,
     CodeContext,
@@ -140,7 +140,6 @@ import from jaclang.compiler.types.types {
     ModuleType,
     NeverType,
     OverloadedType,
-    ParamKind,
     Parameter,
     ParameterCategory,
     TypeBase,
@@ -151,7 +150,6 @@ import from jaclang.compiler.types.types {
     UnknownType,
     create_callable_type
 }
-import from jaclang.project.source { read_file_with_encoding }
 
 import type from jaclang.compiler.driver.program { JacProgram }
 
@@ -434,7 +432,6 @@ walker TypeEvaluator {
         _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
         _ts_synth_class_cache: dict[int, (dict[str, ClassType] | None)] = {},
-        _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: Module postinit,
         types_module: Module postinit,
         enum_module: Module postinit,
@@ -444,6 +441,8 @@ walker TypeEvaluator {
         js_globals_module: Module postinit;
 
     def postinit -> None;
+    def release_check_caches -> None;
+    def release_compile_caches -> None;
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True
@@ -566,7 +565,7 @@ walker TypeEvaluator {
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
-    ) -> (tuple[dict[str, any], set[int]] | None);
+    ) -> (tuple[dict[str, CtValue], set[int]] | None);
 
     def _is_class_scoped_type_param(node_: TypeParam) -> bool;
     def _collect_typevars_from_base(
@@ -637,6 +636,7 @@ walker TypeEvaluator {
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> bool;
 
+    def _callable_value_params(fn: FunctionType) -> list[Parameter];
     def _callable_mismatch(
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> CallableMismatch | None;
@@ -789,8 +789,15 @@ walker TypeEvaluator {
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
 
-    def _infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | None;
-    def _list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None;
+    def _infer_elem_from_mutations(
+        expr: Expr, container_class: ClassType
+    ) -> TypeBase | None;
+
+    def _mutation_elem_contrib(
+        ref: NameAtom, container_class: ClassType
+    ) -> TypeBase | None;
+
+    def _iterable_elem_contrib(args: list[Expr]) -> TypeBase | None;
     def _get_special_form_type(name: str, symbol_type: TypeBase) -> TypeBase | None;
     def _create_callable_type(
         type_args_expr: Expr | None, error_node: Expr
@@ -819,6 +826,14 @@ walker TypeEvaluator {
     ) -> MatchArgsToParamsResult;
 
     def _is_unbound_method_call(expr: FuncCall) -> bool;
+    def _carries_unbound_method(t: (TypeBase | None)) -> bool;
+    def _as_unbound_method(
+        t: TypeBase, member: ClassMember, owner: ClassType
+    ) -> TypeBase;
+
+    def class_member_store_type(target: AtomTrailer, declared: TypeBase) -> TypeBase;
+    def _unbound_clone(fn: FunctionType, owner: ClassType) -> FunctionType;
+    def _is_instance_method_member(member: ClassMember) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;
     def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
     def _evaluate_call_args(expr: FuncCall) -> None;
@@ -955,7 +970,7 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_type_from_flow_node(
-        target: NarrowingTarget, flow_node: UniCFGNode, visited: set
+        target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
     ) -> TypeBase | None;
 
     def _node_encloses(outer: UniNode, inner: UniNode) -> bool;
@@ -991,7 +1006,7 @@ walker TypeEvaluator {
         target: NarrowingTarget,
         stmt: IfStmt,
         entry_type: (TypeBase | None),
-        visited: set
+        visited: set[int]
     ) -> (TypeBase | None);
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;

@@ -3,7 +3,7 @@
 import os;
 import from tempfile { TemporaryDirectory }
 import from pathlib { Path }
-import threading;
+import from jaclang.compiler.driver.compile_options { CancelToken }
 import from unittest.mock { patch }
 import jaclang.compiler.driver.pass_driver as pass_driver;
 import from jaclang.testing.test { parametrize }
@@ -45,7 +45,7 @@ def _cancel_row(row: tuple[any, ...]) {
     with TemporaryDirectory() as temp_dir {
         program = JacProgram();
         path = os.path.join(temp_dir, f"pipeline_cancel_{row_id}_9151.jac");
-        token = threading.Event();
+        token = CancelToken();
         original = pass_driver.run_pass;
         def cancel_after_flow(
             pass_cls: type, ir_in: any, prog: JacProgram, **kwargs: any
@@ -144,7 +144,7 @@ test "module compilation blocks on cancelled analysis and resumes to codegen" {
         path = os.path.join(temp_dir, "pipeline_module_cancel_9151.jac");
         source = "def answer() -> int { return 42; }\n";
         Path(path).write_text(source);
-        token = threading.Event();
+        token = CancelToken();
         original = pass_driver.run_pass;
         def cancel_at_typecheck(
             pass_cls: type, ir_in: any, prog: JacProgram, **kwargs: any

@@ -35,6 +35,29 @@ test "a class object exposes members its metaclass declares" {
     assert not errs , f"metaclass member invisible on class object: {errs}";
 }
 
+test "a re-exported function retains every source stub overload" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        (base / "choices.pyi").write_text(
+            "from typing import overload\n"
+                + "@overload\ndef choose(value: int) -> int: ...\n"
+                + "@overload\ndef choose(value: str) -> str: ...\n"
+        );
+        (base / "exports.pyi").write_text("from choices import choose as choose\n");
+        prog = JacProgram();
+        prog.compile(
+            file_path=str(base / "main.jac"),
+            use_str="import exports;\n"
+                + "def text -> str { return exports.choose('value'); }\n"
+                + "def number -> int { return exports.choose(7); }\n",
+            options=CompileOptions(no_cgen=True)
+        );
+        assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    }
+}
+
 test "version-gated alternatives do not merge into an overload set" {
     src = "import from pathlib { Path }\n"
         + "def probe(base: str) -> Path {\n"

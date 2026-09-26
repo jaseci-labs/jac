@@ -17,22 +17,18 @@ import os;
 import sys;
 import tempfile;
 import time;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compiler { JacCompiler }
+import from jaclang.compiler.driver.jir { native_section_payload, SEC_NBITCODE }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
-    SEC_NBITCODE,
     SEC_NOBJ,
-    native_section_payload,
     precompiled_jir_matches_source,
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compilation_context {
-    artifact_cache_path,
-    program_for
-}
+import from jaclang.compiler.driver.compilation_context { program_for }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
@@ -368,7 +364,7 @@ test "a bundle promoted into the module cache carries its comptime deps" {
 
 def _native_compile(path: str) {
     prog = JacProgram();
-    prog.compile(path, options=CompileOptions(force_target_program=True));
+    prog.compile(path);
     assert not prog.errors_had , (
         f"native compile of {path} failed: "
         f"{[a.pretty_print() for a in prog.errors_had]}"
@@ -422,7 +418,7 @@ test "a native-placed fold is not served from stale JIR bitcode" {
         _native_compile(main_mod);
         warm = _native_ir(native);
         assert "beta" in warm , (
-            "the native JIR served a stale fold after its comptime producer changed"
+            "the native JIR served a stale fold after its comptime " "producer changed"
         );
     }
 }

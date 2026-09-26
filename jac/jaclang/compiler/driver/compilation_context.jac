@@ -1,15 +1,13 @@
 import copy;
-import from pathlib { Path }
-import type from jaclang.project.workspace { AppSpec }
+import from jaclang.project.workspace_model { AppSpec }
 import hashlib;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.passes.context { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
@@ -27,9 +25,8 @@ def cache_scope(options: CompileOptions | None = None) -> Iterator[None] {
 
 @contextmanager
 def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
-    import from jaclang.project.workspace { workspace_scope }
-    import from jaclang.compiler.driver.wiring { wiring_scope }
-    with cache_scope(options), workspace_scope(), wiring_scope() {
+    import from jaclang.compiler.frontend.host { active_host }
+    with cache_scope(options), active_host().session() {
         yield ;
     }
 }
@@ -38,57 +35,62 @@ def active_options -> CompileOptions | None {
     return _active_options.get();
 }
 
-obj SourceUnit {
-    has syntax: Module,
-        failed: bool,
-        errors: list[Alert],
-        warnings: list[Alert];
+def owned_module_options(path: str, options: CompileOptions) -> CompileOptions {
+    """A module the running compiler package owns is analyzed the way the
+    package analyzes itself, whoever imports it. The consumer's application,
+    codespace and entry are dropped: its placement default would otherwise
+    be inferred over the runtime, its codespace flags would refuse the
+    module's cached interface, and every consumer would key its own analysis
+    of the same module. The consumer's memory model, target and placement
+    policy stay, since they shape the native products the module can offer
+    it.""";
+    bound = copy.copy(options);
+    bound.package_canonical = True;
+    bound.default_codespace = '';
+    bound.force_codespace = '';
+    bound.target_app = '';
+    bound.app_kind = '';
+    bound.ui = '';
+    bound.project_root = None;
+    bound.entry_point = os.path.realpath(path);
+    if bound.native_required_for(path) {
+        bound.default_codespace = 'native';
+        bound.force_codespace = 'native';
+    }
+    return bound;
 }
 
-obj SourceStore {
-    has units: dict[str, SourceUnit] = {},
-        revisions: dict[str, str] = {},
-        parses: int = 0,
-        hits: int = 0;
-
-    def parse(
-        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
-    ) -> tuple[Module, bool] {
-        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
-        import from jaclang.compiler.driver.program { JacProgram }
-        key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
-        unit = self.units.get(key);
-        if unit is None {
-            diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
-            unit = SourceUnit(
-                syntax,
-                failed,
-                list(diagnostics.errors_had),
-                list(diagnostics.warnings_had)
-            );
-            previous = self.revisions.get(path);
-            if previous is not None {
-                self.units.pop(previous, None);
-            }
-            self.revisions[path] = key;
-            self.units[key] = unit;
-            self.parses += 1;
-        } else {
-            self.hits += 1;
-        }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
-        return (syntax, unit.failed);
+def owner_scope_options(
+    program: JacProgram, options: (CompileOptions | None) = None
+) -> (CompileOptions | None) {
+    """The options a cache scope projects: none for the compiler's own program
+    and for a package module's canonical analysis, which then key their
+    entries the way the package's precompile does, and the program's
+    otherwise.""";
+    chosen = options if options is not None else program.options;
+    if program.internal or chosen.package_canonical {
+        return None;
     }
+    return chosen;
+}
+
+def package_owned(path: str, program: JacProgram, options: CompileOptions) -> bool {
+    return is_package_keyed_path(path)
+        and not (
+            options.native_unit
+            or options.aot_mode
+            or program.options.native_unit
+            or program.options.aot_mode
+        );
 }
 
 def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
-    import from jaclang.project.workspace { workspace_for_path }
+    import from jaclang.compiler.frontend.host { active_host }
+    if package_owned(path, program, options) {
+        return owned_module_options(path, options);
+    }
     bound = copy.copy(options);
     if bound.native_required_for(path) {
         bound.default_codespace = 'native';
@@ -119,11 +121,11 @@ def bind_options(
     bound.entry_point = bound.entry_point
         or program.options.entry_point
         or os.path.realpath(path);
-    workspace = workspace_for_path(path);
+    workspace = active_host().workspace(path);
     if workspace is None {
         return bound;
     }
-    declared = workspace.app_for_path(path);
+    declared = active_host().app_for_path(path);
     if declared is None and not workspace.explicit and not bound.target_app {
         implicit = next(iter(workspace.apps.values()), None);
         if implicit is not None {
@@ -165,11 +167,11 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
     if not context_root.context_key {
         selected = context_root;
     } else {
+        import from jaclang.compiler.frontend.host { active_host }
         selected = JacProgram();
         selected.context_root = context_root;
-        selected._compiler = context_root._get_compiler();
-        selected.source_store = context_root.source_store;
         selected.options = options;
+        active_host().bind_context_program(context_root, selected);
     }
     selected.options = options;
     selected.context_key = identity;
@@ -178,21 +180,19 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
 }
 
 def program_for(path: str, program: JacProgram) -> JacProgram {
-    compiler = program._get_compiler();
-    actual = compiler.selfhost.resolve(path, program);
-    if compiler.selfhost.is_selfhost(actual) {
-        return actual;
+    if program.internal {
+        return program;
     }
-    return context_program(actual, bind_options(path, actual, actual.options));
+    return context_program(program, bind_options(path, program, program.options));
 }
 
 def context_app(path: str) -> AppSpec | None {
-    import from jaclang.project.workspace { workspace_for_path }
-    workspace = workspace_for_path(path);
+    import from jaclang.compiler.frontend.host { active_host }
+    workspace = active_host().workspace(path);
     if workspace is None {
         return None;
     }
-    declared = workspace.app_for_path(path);
+    declared = active_host().app_for_path(path);
     if declared is not None {
         return declared;
     }
@@ -201,15 +201,4 @@ def context_app(path: str) -> AppSpec | None {
         return workspace.apps.get(options.target_app);
     }
     return None;
-}
-
-def artifact_cache_path(path: str, program: JacProgram) -> Path {
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
-    selected = program_for(path, program);
-    owner_options = None
-        if selected._get_compiler().selfhost.is_selfhost(selected)
-        else selected.options;
-    with cache_scope(owner_options) {
-        return get_module_cache_path(path);
-    }
 }

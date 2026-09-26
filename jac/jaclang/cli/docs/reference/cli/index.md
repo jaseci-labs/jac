@@ -1614,7 +1614,7 @@ Every bucket has a **retention policy**:
 | `rt` | fused-binary runtimes, one per payload hash | unused 30 days |
 | `jir-modules` | compiled modules, one generation per compiler digest | unused 14 days (`JAC_CACHE_GENERATION_TTL_DAYS`) |
 | `jir-bootstrap` | bootstrap-tier bytecode | unused 14 days, at most 4000 entries |
-| `jir-stubcat`, `jir-digests` | stub catalogs, per-checkout compiler digests | unused 14 days |
+| `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
 | `toolchains-downloads` | verified toolchain archives | unused 14 days |

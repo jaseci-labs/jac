@@ -635,7 +635,7 @@ impl HotReloader._recompile_client_code(
         program.drop_module_alerts(source_key);
 
         mark = len(program.errors_had);
-        artifact = program.get_client_artifact(source_key);
+        artifact = program._get_compiler().get_client_artifact(source_key, program);
 
         new_errors = program.errors_had[mark:];
         if new_errors {

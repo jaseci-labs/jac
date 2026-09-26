@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Int,
     MultiString,
     String,
+    Token,
     UnaryExpr,
     UniNode
 }
@@ -21,8 +22,8 @@ def fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
         return (True, bool(expr.lit_value));
     }
     if isinstance(expr, String) {
-        v = expr.lit_value;
-        return (isinstance(v, str), v if isinstance(v, str) else None);
+        text = expr.lit_value;
+        return (isinstance(text, str), text if isinstance(text, str) else None);
     }
     if isinstance(expr, MultiString) {
         parts: list[str] = [];
@@ -43,7 +44,7 @@ def fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
         if not ok {
             return (False, None);
         }
-        opv = getattr(expr.op, "value", "");
+        opv = expr.op.value;
         try {
             if opv == "-" and isinstance(v, (int, float)) {
                 return (True, -v);
@@ -71,7 +72,7 @@ def fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
         if not rok {
             return (False, None);
         }
-        opv = getattr(expr.op, "value", "");
+        opv = expr.op.value if isinstance(expr.op, Token) else "";
         _num = isinstance(lv, (int, float)) and isinstance(rv, (int, float));
         _bools = isinstance(lv, bool) or isinstance(rv, bool);
         try {

@@ -14,6 +14,10 @@ re-widens. A redundant `is None` on an already-proven value must compile to a
 tag read rather than a comparison against the bare payload -- for a float
 payload that comparison becomes `fcmp une x, 0.0` and calls a non-zero float
 None. Truthiness of an already-proven container must stay `len > 0`.
+Only a binding target re-widens: `loop_element_store` writes through a
+subscript inside the loop, which mutates the list without rebinding the name,
+so the narrow holds at the loop head; `loop_unpack_rebind` rebinds through a
+tuple target, which does re-widen.
 
 The last three pin holes the checker's proof does not cover, so narrowing has
 to decline: `callee_rebinds_attr` (the callee sets the attribute to None, which
@@ -259,6 +263,35 @@ def back_edge_rewiden(n: int) -> int {
         total = total + v;
         v = pick(n - 5);
         i += 1;
+    }
+    return total;
+}
+
+def loop_element_store(n: int) -> int {
+    ids = make(n);
+    if ids is None {
+        return -1;
+    }
+    for (i, v) in enumerate(ids) {
+        ids[i] = v + 1;
+    }
+    total = 0;
+    for v in ids {
+        total += v;
+    }
+    return total;
+}
+
+def loop_unpack_rebind(n: int) -> int {
+    v = pick(n);
+    if v is None {
+        return -1;
+    }
+    total = 0;
+    i = 0;
+    while i < 2 {
+        total = total + v;
+        (v, i) = (pick(n - 5), i + 1);
     }
     return total;
 }

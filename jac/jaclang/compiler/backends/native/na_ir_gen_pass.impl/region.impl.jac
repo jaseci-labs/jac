@@ -210,7 +210,7 @@ impl NaIRGenPass._register_region_handle_var(
 }
 
 impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
-    import from jaclang.compiler.expr_keys { is_builtin_region_type }
+    import from jaclang.compiler.types.type_utils { is_builtin_region_type }
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.TupleVal) {
         return False;
     }

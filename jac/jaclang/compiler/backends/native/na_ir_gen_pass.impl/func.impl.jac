@@ -168,7 +168,7 @@ impl NaIRGenPass._maybe_declare_ability(
 
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
 
-    self._record_ret_facts(name, sig);
+    self._record_ret_facts(name, sig, imported);
     self.has_native_code = True;
 
     if len(self.ctx.errors_had) > _sig_mark {
@@ -320,7 +320,9 @@ impl NaIRGenPass._elem_keys_of_annotation(
     return keys;
 }
 
-impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
+impl NaIRGenPass._record_ret_facts(
+    name: str, sig: uni.FuncSignature, imported: (NativeFuncLayout | None) = None
+) -> None {
     _rt = sig.return_type;
     if _rt is None {
         return;
@@ -337,7 +339,12 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
             }
         } except Exception {}
     }
-    keys = self._elem_keys_of_annotation(_rt);
+    if imported is not None and imported.ret_enum_type {
+        self.func_ret_type_key.setdefault(name, imported.ret_enum_type);
+    }
+    keys = imported.ret_elem_keys
+        if imported is not None
+        else self._elem_keys_of_annotation(_rt);
     if keys {
         self.func_ret_elem_keys[name] = keys;
     }
@@ -676,7 +683,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
-        setjmp_fn = self.extern_funcs["setjmp"];
+        setjmp_fn = self._exc_setjmp_fn();
         setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
         is_exception = self.builder.icmp_signed(
             "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
@@ -1064,8 +1071,16 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._ability_is_generator(nd: uni.Ability) -> bool {
-    for y in nd.get_all_sub_nodes(typ=uni.YieldExpr) {
-        if y.find_parent_of_type(uni.Ability) is nd {
+    """Whether the ability's own body yields -- inline, or in its impl annex.""";
+    owner: uni.UniNode = nd.body if isinstance(nd.body, uni.ImplDef) else nd;
+    for y in owner.get_all_sub_nodes(typ=uni.YieldExpr) {
+        _cur = y.parent;
+        while _cur is not None
+            and _cur is not owner
+            and not isinstance(_cur, (uni.Ability, uni.ImplDef, uni.LambdaExpr)) {
+            _cur = _cur.parent;
+        }
+        if _cur is owner {
             return True;
         }
     }
@@ -1107,7 +1122,9 @@ impl NaIRGenPass._generator_elem_type(nd: uni.Ability) -> (ir.Type | None) {
     return None;
 }
 
-impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None {
+impl NaIRGenPass._codegen_generator(
+    nd: uni.Ability, func: ir.Function, self_arch: (str | None) = None
+) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
@@ -1148,17 +1165,32 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
             func_name=name
         );
         self._gen_ctx = gc;
+        if self_arch is not None {
+            self._self_arch = self_arch;
+        }
 
         _gen_scan_body = ModuleFacts.unwrap_body(nd);
         if _gen_scan_body is not None {
-            self._scan_closure_escapes(nd, _gen_scan_body);
+            _gen_scan_owner = nd.body if isinstance(nd.body, uni.ImplDef) else nd;
+            self._scan_closure_escapes(_gen_scan_owner, _gen_scan_body);
         }
 
         param_slots: list[tuple[str, int, ir.Type, int]] = [];
         sig = nd.signature;
         sig_params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
+        _names: list[str] = [];
+        if self_arch is not None and not (nd.is_static or nd.is_classmethod) {
+            if sig_params
+                and sig_params[0].name
+                and sig_params[0].name.value == "self" {
+                sig_params = sig_params[1:];
+            }
+            _names.append("self");
+        }
         for (i, p) in enumerate(sig_params) {
-            pname = p.name.value if p.name else f"arg{i}";
+            _names.append(p.name.value if p.name else f"arg{i}");
+        }
+        for (i, pname) in enumerate(_names) {
             ptype = func.args[i].type;
             if pname in self.closure_cell_vars {
                 slot = self._emit_closure_cell(pname, ptype);
@@ -1175,6 +1207,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         dispatch_bb = resume_fn.append_basic_block("dispatch");
         body_bb = resume_fn.append_basic_block("body");
         self.builder.position_at_end(body_bb);
+        self._emit_gen_pending_raise();
 
         body = ModuleFacts.unwrap_body(nd);
         if body is not None {
@@ -1395,6 +1428,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         self.builder.ret_void();
         self.builder.position_at_end(_gi_run);
         self.builder.store(ir.Constant(_i8, 1), _gi_done_gv);
+        self._emit_class_ctor_registrations();
         if self._global_init_nodes {
             for init_tuple in self._global_init_nodes {
                 var_name = init_tuple[0];

@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
@@ -16,17 +16,21 @@ import from jaclang.compiler.frontend.unitree {
     HasVar,
     Import,
     IndexSlice,
+    KWPair,
     Module,
     ModuleItem,
     Name,
     Null,
+    Token,
     TupleVal,
     TypeParam,
     UnaryExpr,
-    UniNode
+    UniNode,
+    UniScopeNode
 }
 
-import type from jaclang.compiler.types.types { TypeBase }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.types.types { ClassType, TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
@@ -40,11 +44,12 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "bytes"
      }
          | set(JAC_TYPE_REGISTRY.sized_scalar_names()),
-     VTABLE_HEADER_SLOTS: int = 1;
+     VTABLE_HEADER_SLOTS: int = 1,
+     EXC_MESSAGE_FIELD: str = "__jac_exc_msg__";
 
 glob LAYOUT_COMPATIBLE_SCALARS: set[str] = LAYOUT_COMPATIBLE_PRIMITIVES | {"type"};
 
-obj FieldInfo {
+obj FieldLayout {
     has name: str,
         index: int,
         type_tag: str,
@@ -71,7 +76,7 @@ obj ArchetypeLayout {
         parent_mods: list[str] = [],
         parents: list[str] = [],
         mro: list[str] = [],
-        fields: list[FieldInfo] = [],
+        fields: list[FieldLayout] = [],
         field_index: dict[str, int] = {},
         methods: list[MethodSlot] = [],
         method_index: dict[str, int] = {},
@@ -129,7 +134,7 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
     return out;
 }
 
-def get_layout_registry(module: Module, prog: any) -> LayoutRegistry {
+def get_layout_registry(module: Module, prog: JacProgram) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
         return reg;
@@ -203,19 +208,26 @@ def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
     return archetype_native_name(arch) if arch is not None else None;
 }
 
-def class_type_native_name(typ: any) -> (str | None) {
+def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     import from jaclang.compiler.types.types { ClassType }
     if not isinstance(typ, ClassType) or typ._shared is None {
         return None;
     }
-    scope = typ.shared.symbol_table;
-    if isinstance(scope, Archetype) and not typ.shared.is_enum_class {
-        return archetype_native_name(scope);
+    shared = typ.shared;
+    scope = shared.symbol_table;
+    if not isinstance(scope, Archetype) or shared.is_enum_class {
+        return shared.class_name;
     }
-    return typ.shared.class_name;
+    memo = shared._native_name;
+    if memo is not None and memo[0] is scope {
+        return memo[1];
+    }
+    name = archetype_native_name(scope);
+    shared._native_name = (scope, name);
+    return name;
 }
 
-def native_type_key(typ: any) -> str {
+def native_type_key(typ: TypeBase) -> str {
     import from jaclang.compiler.types.types {
         ClassType,
         FunctionType,
@@ -370,6 +382,8 @@ def adopt_imported_bases(module: Module) -> list[str] {
         full = extended_mro(reg, lay);
         if len(full) > len(lay.mro or []) {
             lay.mro = full;
+        }
+        if len(full) > len(reg.mro_order.get(name) or []) {
             reg.mro_order[name] = list(full);
         }
     }
@@ -434,7 +448,7 @@ def adopt_imported_bases(module: Module) -> list[str] {
 
 def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]) {
     primary = ancestors[0];
-    fields: list[FieldInfo] = [];
+    fields: list[FieldLayout] = [];
     field_index: dict[str, int] = {};
     parent_field_start: dict[str, int] = {};
     seen: set[str] = set();
@@ -473,7 +487,7 @@ def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout])
         field_index[finfo.name] = next_idx;
         next_idx += 1;
     }
-    lay.fields = sorted(fields, key=lambda (f) { f.index; });
+    lay.fields = sorted(fields, key=lambda (f: FieldLayout) { f.index; });
     lay.field_index = field_index;
     lay.parent_field_start = parent_field_start;
     adopt_ancestor_methods(lay, ancestors);
@@ -482,8 +496,8 @@ def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout])
     }
 }
 
-def clone_field(finfo: FieldInfo, index: int) -> FieldInfo {
-    return FieldInfo(
+def clone_field(finfo: FieldLayout, index: int) -> FieldLayout {
+    return FieldLayout(
         name=finfo.name,
         index=index,
         type_tag=finfo.type_tag,
@@ -530,45 +544,50 @@ def is_erased_base_name(name: str, archetypes: dict[str, Archetype]) -> bool {
     return name in NATIVE_ERASED_BASES and name not in archetypes;
 }
 
-def is_enum_class_type(t: any) -> bool {
-    try {
-        import from jaclang.compiler.types.types { ClassType as _ClassType }
-    } except ImportError {
-        return False;
+def enum_class_of(t: (TypeBase | None)) -> (ClassType | None) {
+    import from jaclang.compiler.types.types { ClassType }
+    if isinstance(t, ClassType) and t._shared is not None and t.shared.is_enum_class {
+        return t;
     }
-    return isinstance(t, _ClassType)
-        and t._shared is not None
-        and t.shared.is_enum_class;
+    return None;
 }
 
-def enum_decl_of(t: any) -> (Enum | Archetype | None) {
-    if not is_enum_class_type(t) {
-        return None;
-    }
-    _scope = t.shared.symbol_table;
-    if isinstance(_scope, Enum) {
-        return _scope;
-    }
-    return _scope if class_form_enum_scalar(t) is not None else None;
+def is_enum_class_type(t: (TypeBase | None)) -> bool {
+    return enum_class_of(t) is not None;
 }
 
-def enum_value_type_of(t: any) -> (any | None) {
-    return t.shared.enum_value_type if is_enum_class_type(t) else None;
+def enum_decl_of(t: (TypeBase | None)) -> (Enum | Archetype | None) {
+    cls = enum_class_of(t);
+    if cls is None {
+        return None;
+    }
+    scope = cls.shared.symbol_table;
+    if isinstance(scope, Enum) {
+        return scope;
+    }
+    if isinstance(scope, Archetype) and class_form_enum_scalar(cls) is not None {
+        return scope;
+    }
+    return None;
 }
 
-def class_form_enum_scalar(t: any) -> (str | None) {
-    if not is_enum_class_type(t) {
+def enum_value_type_of(t: (TypeBase | None)) -> (TypeBase | None) {
+    cls = enum_class_of(t);
+    return cls.shared.enum_value_type if cls is not None else None;
+}
+
+def class_form_enum_scalar(t: (TypeBase | None)) -> (str | None) {
+    import from jaclang.compiler.types.types { ClassType }
+    cls = enum_class_of(t);
+    if cls is None or not isinstance(cls.shared.symbol_table, Archetype) {
         return None;
     }
-    if not isinstance(t.shared.symbol_table, Archetype) {
+    value_type = cls.shared.enum_value_type;
+    if not isinstance(value_type, ClassType) or value_type._shared is None {
         return None;
     }
-    _vt = t.shared.enum_value_type;
-    if _vt is None or not (_vt?.shared) {
-        return None;
-    }
-    _vname = _vt.shared.class_name;
-    return _vname if _vname in ("str", "int") else None;
+    value_name = value_type.shared.class_name;
+    return value_name if value_name in ("str", "int") else None;
 }
 
 def class_form_enum_decls(module: Module) -> list[Archetype] {
@@ -626,7 +645,7 @@ def resolve_enum_member_values(
     _blocked = False;
     for member in raw_members {
         _vnode = member[1];
-        if is_enum_auto(_vnode) {
+        if _vnode is None or is_enum_auto(_vnode) {
             if _blocked {
                 out.append(None);
                 continue;
@@ -647,9 +666,11 @@ def resolve_enum_member_values(
     return out;
 }
 
-def class_form_enum_members(scope: any) -> list[tuple[(str, (UniNode | None))]] {
+def class_form_enum_members(
+    scope: (UniScopeNode | None)
+) -> list[tuple[(str, (UniNode | None))]] {
     out: list[tuple[(str, (UniNode | None))]] = [];
-    if scope is None or not (scope?.names_in_scope) {
+    if scope is None or not scope.names_in_scope {
         return out;
     }
     _placed: list[tuple[(int, int, str)]] = [];
@@ -671,7 +692,7 @@ def class_form_enum_members(scope: any) -> list[tuple[(str, (UniNode | None))]] 
     return out;
 }
 
-def class_form_enum_literal(t: any, member: str) -> (str | int | None) {
+def class_form_enum_literal(t: ClassType, member: str) -> (str | int | None) {
     _members = class_form_enum_members(t.shared.symbol_table);
     _values = resolve_enum_member_values(_members);
     for (_idx, _member) in enumerate(_members) {
@@ -682,21 +703,24 @@ def class_form_enum_literal(t: any, member: str) -> (str | int | None) {
     return None;
 }
 
-def class_form_enum_member(t: any) -> (tuple[(str, (str | int), str)] | None) {
-    try {
-        import from jaclang.compiler.types.types { EnumMemberType as _EnumMemberType }
-    } except ImportError {
+def class_form_enum_member(
+    t: (TypeBase | None)
+) -> (tuple[(str, (str | int), str)] | None) {
+    import from jaclang.compiler.types.types { EnumMemberType }
+    if not isinstance(t, EnumMemberType) {
         return None;
     }
-    if not isinstance(t, _EnumMemberType) or t.enum_class is None {
+    enum_class = t.enum_class;
+    member_info = t.member_info;
+    if enum_class is None or member_info is None {
         return None;
     }
-    _scalar = class_form_enum_scalar(t.enum_class);
-    if _scalar is None or t.member_info is None {
+    _scalar = class_form_enum_scalar(enum_class);
+    if _scalar is None {
         return None;
     }
-    _name = t.member_info.member_name;
-    _lit = class_form_enum_literal(t.enum_class, _name);
+    _name = member_info.member_name;
+    _lit = class_form_enum_literal(enum_class, _name);
     if _scalar == "str" and isinstance(_lit, str) {
         return (_scalar, _lit, _name);
     }
@@ -724,10 +748,8 @@ obj LayoutRegistry {
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 
-walker LayoutPass {
-    has ctx: CompileContext,
-        module: Module,
-        registry: LayoutRegistry postinit,
+walker LayoutPass(CompilerPass) {
+    has registry: LayoutRegistry postinit,
         isinstance_targets: set[str] postinit;
 
     def postinit -> None;

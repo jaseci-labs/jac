@@ -14,30 +14,45 @@ import from jaclang.compiler.frontend.unitree {
     DeleteStmt,
     DisconnectOp,
     EventSignature,
+    Expr,
     FuncCall,
     KWPair,
+    ListVal,
+    MultiString,
     ability_of_symbol,
     ImplDef,
     Name,
     SpecialVarRef,
+    String,
     Symbol,
     Token
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
 
-walker EndpointEffectPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
+def _literal_names(value: (Expr | None)) -> (list[str] | None) {
+    if not isinstance(value, ListVal) {
+        return None;
     }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
+    names: list[str] = [];
+    for item in value.values {
+        text: (str | bytes) = b"";
+        if isinstance(item, String) {
+            text = item.lit_value;
+        } elif isinstance(item, MultiString)
+            and all(isinstance(part, String) for part in item.strings) {
+            text = item.lit_value;
+        }
+        if not isinstance(text, str) or not text {
+            return None;
+        }
+        names.append(text);
     }
+    return names;
+}
 
-    has ctx: CompileContext,
-        module: Module,
-        _is_writer: bool = False,
+walker EndpointEffectPass(TreePass) {
+    has _is_writer: bool = False,
         _unknown: bool = False,
         _declared_reads: set[str] = set(),
         _declared_writes: set[str] = set(),
@@ -170,7 +185,7 @@ walker EndpointEffectPass(TreeWalker) {
                 self._visited.add(id(nd));
                 declared = self._declared_effects(nd);
                 if declared is not None {
-                    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+                    import from jaclang.compiler.frontend.unparse { unparse_node }
                     self._declared_reads.update(declared["reads"]);
                     self._declared_writes.update(declared["writes"]);
                     self._assumptions.add(
@@ -238,7 +253,6 @@ walker EndpointEffectPass(TreeWalker) {
     }
 
     def _declaration_effects(decl: Ability) -> dict[str, list[str]] | None {
-        import ast;
         for decorator in decl.decorators or [] {
             if not isinstance(decorator, FuncCall) {
                 continue;
@@ -250,7 +264,6 @@ walker EndpointEffectPass(TreeWalker) {
                 ) {
                 continue;
             }
-            import from jaclang.compiler.tools.unparse_pass { unparse_node }
             result: dict[str, list[str]] = {"reads": [], "writes": []};
             for pair in decorator.params or [] {
                 if not isinstance(pair, KWPair)
@@ -260,9 +273,8 @@ walker EndpointEffectPass(TreeWalker) {
                         "Effect declarations require reads= and writes= literal lists"
                     );
                 }
-                values = ast.literal_eval(unparse_node(pair.value));
-                if not isinstance(values, list)
-                    or any(not isinstance(v, str) or not v for v in values) {
+                values = _literal_names(pair.value);
+                if values is None {
                     raise ValueError(
                         "Effect dependencies must be literal nonempty strings"
                     );

@@ -173,7 +173,7 @@ test "iter next keyword arg rejected" {
     );
     errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert errs , "expected a type error for next(it=...)";
-    assert any("does not match any parameter" in e for e in errs) , errs;
+    assert any("No matching overload" in e for e in errs) , errs;
 }
 
 # --- #6403 M2: user-defined __iter__/__next__ bridged into the protocol ---

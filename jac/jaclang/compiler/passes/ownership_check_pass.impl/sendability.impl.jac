@@ -305,9 +305,9 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
 }
 
 impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
-    tracked = set(self.owned_decl);
-    tracked.update(self.borrow_meta);
-    tracked.update(self.imm_decl);
+    tracked = set(self.owned_decl.keys());
+    tracked.update(self.borrow_meta.keys());
+    tracked.update(self.imm_decl.keys());
     for nd in self.idx_assignments {
         for tgt in nd.target {
             if isinstance(tgt, Name) and tgt.sym {
@@ -391,11 +391,10 @@ impl OwnershipCheckPass._flow_lend_joined(
     }
     handle_sid = self._name_sym_id(asgn.target[0]);
     container = asgn.parent;
-    _cbody = container?.body;
-    if not isinstance(_cbody, (list, tuple)) or asgn not in _cbody {
+    body: list[UniNode] = [container->:BodyRole:->] if container is not None else [];
+    if asgn not in body {
         return False;
     }
-    body: list[UniNode] = [s for s in _cbody];
     idx = body.index(asgn);
     for st in body[idx + 1:] {
         _wait_found = False;

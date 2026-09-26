@@ -93,7 +93,8 @@ impl OwnershipCheckPass._call_writes(call: FuncCall) -> set[str] {
         );
         return {"*"} if takes_callable or name in ("setattr", "delattr") else set();
     }
-    return {"*"} if callee.writes is None else set(callee.writes);
+    writes = callee.writes;
+    return {"*"} if writes is None else set(writes);
 }
 
 impl OwnershipCheckPass._stamp_managed_borrows -> None {

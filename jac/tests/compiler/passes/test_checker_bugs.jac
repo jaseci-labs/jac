@@ -41,6 +41,10 @@ Bug index:
                       Unknown when the included submodule imported back from its
                       own package (circular self-import); poisoned the vendored
                       llvm ir/binding surface and every native pass (#7163)
+  #UNBOUND-1 - an instance method read through its class and used as a value
+               (`m = Cls.method; m(obj, x)`, a Callable argument) lost its
+               receiver parameter; only a direct `Cls.method(obj, x)` call
+               bound it
   #LOOPHDR-1 - loop-header back-edge detection used find_parent_of_type(<same
                kind>), so a back edge originating inside a nested loop of the
                SAME kind was treated as a loop-entry pred and destroyed the
@@ -1091,7 +1095,6 @@ test "bug_withas_2_alias_typed_before_checker_walks_with" {
             options=CompileOptions(
                 no_cgen=True,
                 native_parity=True,
-                force_target_program=True,
                 iface_ok=True,
                 strict_dependencies=True
             )
@@ -2160,5 +2163,17 @@ test "bug_protoovl1_overloaded_protocol_member_picks_fitting_overload" {
     assert "Cannot assign int to str" in by_line.get(11, "") , (
         "Bug #PROTOOVL-1: round(float) must still type as int. Line 11 "
         f"reported: {by_line.get(11)}"
+    );
+}
+
+# Bug #UNBOUND-1: `Cls.method` read as a value is a function taking the
+# receiver first. The type now carries that (FunctionTypeFlags.UnboundMethod
+# with an explicit self), so a call through a name, a list element or a
+# Callable parameter binds the receiver as a direct `Cls.method(obj, x)` does.
+test "bug_unbound_1_method_through_class_as_value" {
+    program = compile_and_check("checker_unbound_method_value.jac");
+    assert program.errors_had == [] , (
+        "Bug #UNBOUND-1: an unbound method used as a value must take its "
+        f"receiver. Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

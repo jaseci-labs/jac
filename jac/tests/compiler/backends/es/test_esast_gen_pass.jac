@@ -10,6 +10,8 @@ import from jaclang.compiler.backends.es.jac_runtime_js { build_jac_prelude_modu
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+import from tests.compiler.backends.es.codegen_helpers { run_es_pass }
 
 """Signals-style test backend: wraps a reactive read as `name()` so the
 value-read seam (contract §4.1.1) can be audited without a real Solid backend.
@@ -121,7 +123,9 @@ def compile_to_esast(filename: str) -> es.Program {
 }
 
 """Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
-def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program {
+def compile_to_esast_with_backend(
+    filename: str, backend: FrameworkBackend
+) -> es.Program {
     prog = JacProgram();
     ir = prog.compile(file_path=filename, no_cgen=True);
 
@@ -130,7 +134,7 @@ def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program 
         f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
+    es_pass = run_es_pass(ir, prog, backend);
     es_ir = es_pass.module;
 
     assert isinstance(es_ir.gen.es_ast, es.Program);
@@ -1329,10 +1333,10 @@ def compile_fixture_reporting(filename: str) -> JacProgram {
 }
 
 """Run the ES pass with a backend and hand back the program's alerts."""
-def codegen_alerts(filename: str, backend: object) -> list[any] {
+def codegen_alerts(filename: str, backend: FrameworkBackend) -> list[any] {
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path(filename), no_cgen=True);
-    run_pass(EsastGenPass, ir, prog, backend=backend);
+    run_es_pass(ir, prog, backend);
     return list(prog.errors_had);
 }
 

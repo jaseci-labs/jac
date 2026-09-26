@@ -1,5 +1,6 @@
 import os;
 import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.host { NativeVerdict }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 import type from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.driver.jir {
@@ -38,12 +39,6 @@ obj NativeUnitEntry {
         dep_digests: dict[str, str] = {};
 }
 
-obj NativeVerdict {
-    has demoted: bool = False,
-        code: str = "",
-        detail: str = "";
-}
-
 obj NativeUnitRegistry {
     has prog: JacProgram,
         session: (NativeBuildSession | None) = None,
@@ -66,6 +61,18 @@ obj NativeUnitRegistry {
         self.verdicts.clear();
         self.compiled_paths.clear();
         self.failures.clear();
+    }
+
+    def release_products {
+        """Between the compiles of one program the interfaces stay, each
+        checked against its source key on its next use; the products and the
+        per-compile bookkeeping go.""";
+        for ent in self.entries.values() {
+            ent.object_bytes = None;
+            ent.bitcode = None;
+        }
+        self.failures.clear();
+        self.compiled_paths.clear();
     }
 
     def forget(path: str) {
@@ -665,6 +672,10 @@ obj NativeBuildSession {
                 or mod.gen.native_iface is None {
                 return None;
             }
+            import from jaclang.compiler.backends.native.na_compile_pass {
+                settle_unit_ir
+            }
+            settle_unit_ir(mod);
             self.lowered[resolved] = mod;
             ent = self.registry.record_module(mod, opts);
             self.registry._stash_products(resolved, mod.gen);
@@ -723,7 +734,19 @@ obj NativeBuildSession {
         for path in paths {
             mod = self.lowered.get(path);
             if mod is None {
-                continue;
+                known = self.registry.entries.get(path);
+                if known is None or known.bitcode is not None {
+                    continue;
+                }
+                if self.lower(path) is None {
+                    raise RuntimeError(
+                        f"native unit lost its products and could not be lowered: {path}"
+                    );
+                }
+                mod = self.lowered.get(path);
+                if mod is None {
+                    continue;
+                }
             }
             errors_before = len(self.prog.errors_had);
             self.prog.run_schedule(mod, [NativeCompilePass]);
@@ -750,7 +773,7 @@ def verdict_from_jir(data: bytes) -> (NativeVerdict | None) {
     if raw is None {
         return None;
     }
-    import from jaclang.compiler.placement.placement { summary_from_bytes }
+    import from jaclang.compiler.placement.placement_export { summary_from_bytes }
     summary = summary_from_bytes(raw);
     if summary is None or not summary.native_verdict {
         return None;

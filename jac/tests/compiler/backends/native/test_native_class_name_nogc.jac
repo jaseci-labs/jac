@@ -51,9 +51,7 @@ glob FIXTURES = os.path.join(
 """Headerless: `--memory nogc` with nogc enforced, the mode with no rc header."""
 def _headerless_opts -> any {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    return CompileOptions(
-        force_codespace='native', force_target_program=True, memory_profile="nogc"
-    );
+    return CompileOptions(force_codespace='native', memory_profile="nogc");
 }
 
 

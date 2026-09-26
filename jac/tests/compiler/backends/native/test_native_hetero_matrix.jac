@@ -25,12 +25,12 @@ import subprocess;
 import sys;
 import tempfile;
 import from tests.support {
-    jac_command,
     TESTS_DIR,
     native_address,
     native_force_opts,
     native_str_func
 }
+import from tests.support { jac_command }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -45,10 +45,7 @@ def _opts(gc_mode: str | None = None, enforce: bool = False) -> any {
         return native_force_opts();
     }
     return CompileOptions(
-        force_codespace='native',
-        force_target_program=True,
-        na_gc_mode=gc_mode,
-        nogc_enforce_all=enforce
+        force_codespace='native', na_gc_mode=gc_mode, nogc_enforce_all=enforce
     );
 }
 

@@ -38,10 +38,7 @@ glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures" / "link_diamond
 
 def _native_opts -> CompileOptions {
     return CompileOptions(
-        aot_mode=True,
-        default_codespace='native',
-        skip_native_engine=True,
-        force_target_program=True
+        aot_mode=True, default_codespace='native', skip_native_engine=True
     );
 }
 
@@ -53,11 +50,12 @@ def _iface_of(path: str) -> NativeIface {
     return mod.gen.native_iface;
 }
 
-"""Write `text` as `name` under the caller's `scratch` directory. Variants
-of one module must share a path: the unit prefix, and with it every symbol
-and the digest, is keyed on the module's path."""
-def _scratch_copy(name: str, text: str, scratch: str) -> str {
-    p = os.path.join(scratch, name);
+"""Write `text` as `name` under `scratch` (a fresh directory when
+none is given). Variants of one module must share a path: the unit prefix,
+and with it every symbol and the digest, is keyed on the module's path."""
+def _scratch_copy(name: str, text: str, scratch: str = "") -> str {
+    tmp = scratch or tempfile.mkdtemp(prefix="jac-niface-");
+    p = os.path.join(tmp, name);
     with open(p, "w", encoding="utf-8") as f {
         f.write(text);
     }
@@ -125,24 +123,27 @@ test "cached interfaces preserve nested container schemas for materialization" {
 
 test "a body edit keeps the digest; an export change moves it" {
     src = (Path(FIXTURES) / "base.jac").read_text();
-    with tempfile.TemporaryDirectory(prefix="jac-niface-") as scratch {
-        p_a = _scratch_copy("unit.jac", src, scratch);
-        digest_a = _iface_of(p_a).digest();
-        body_edit = src.replace("return v * k;", "return k * v;");
-        assert body_edit != src;
-        p_b = _scratch_copy("unit.jac", body_edit, scratch);
-        assert _iface_of(p_b).digest() == digest_a , "a body edit must not move the digest";
-        private_helper = src
-            + "\ndef:priv helper_only(v: int) -> int {\n    return v;\n}\n";
-        p_c = _scratch_copy("unit.jac", private_helper, scratch);
-        assert _iface_of(p_c).digest() == digest_a , "a private helper must not move the digest";
-        new_export = src + "\ndef another(v: int) -> int {\n    return v;\n}\n";
-        p_d = _scratch_copy("unit.jac", new_export, scratch);
-        assert _iface_of(p_d).digest() != digest_a , "a new export must move the digest";
-        new_field = src.replace("y: int = 0;", "y: int = 0,\n        z: int = 0;");
-        p_e = _scratch_copy("unit.jac", new_field, scratch);
-        assert _iface_of(p_e).digest() != digest_a , "a layout change must move the digest";
-    }
+    scratch = tempfile.mkdtemp(prefix="jac-niface-");
+    p_a = _scratch_copy("unit.jac", src, scratch);
+    digest_a = _iface_of(p_a).digest();
+
+    body_edit = src.replace("return v * k;", "return k * v;");
+    assert body_edit != src;
+    p_b = _scratch_copy("unit.jac", body_edit, scratch);
+    assert _iface_of(p_b).digest() == digest_a , "a body edit must not move the digest";
+
+    private_helper = src
+        + "\ndef:priv helper_only(v: int) -> int {\n    return v;\n}\n";
+    p_c = _scratch_copy("unit.jac", private_helper, scratch);
+    assert _iface_of(p_c).digest() == digest_a , "a private helper must not move the digest";
+
+    new_export = src + "\ndef another(v: int) -> int {\n    return v;\n}\n";
+    p_d = _scratch_copy("unit.jac", new_export, scratch);
+    assert _iface_of(p_d).digest() != digest_a , "a new export must move the digest";
+
+    new_field = src.replace("y: int = 0;", "y: int = 0,\n        z: int = 0;");
+    p_e = _scratch_copy("unit.jac", new_field, scratch);
+    assert _iface_of(p_e).digest() != digest_a , "a layout change must move the digest";
 }
 
 test "the section in the module JIR carries the stamp of its compile" {
@@ -152,7 +153,7 @@ test "the section in the module JIR carries the stamp of its compile" {
     opts = _native_opts();
     mod = prog.compile(file_path=path, options=opts);
     assert mod.gen.native_iface is not None;
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     data = artifact_cache_path(path, prog).read_bytes();
     raw = read_section_bytes(data, SEC_NIFACE);
     assert raw is not None , "the native interface must be in the module JIR";
@@ -185,43 +186,38 @@ test "merged layouts refuse a class two units lay out differently" {
 }
 
 test "default argument changes move the native interface" {
-    with tempfile.TemporaryDirectory(prefix="jac-default-iface-") as scratch {
-        path = _scratch_copy(
-            "base.jac", "def f(x: int = 1) -> int { return x; }", scratch
-        );
-        before = _iface_of(path);
-        Path(path).write_text("def f(x: int = 2) -> int { return x; }");
-        after = _iface_of(path);
-        assert before.exports["f"].param_defaults != after.exports["f"].param_defaults;
-        assert before.digest() != after.digest();
-        restored = NativeIface.from_bytes(after.to_bytes());
-        assert restored is not None;
-        assert restored.exports["f"].param_defaults
-            == after.exports["f"].param_defaults;
-    }
+    scratch = tempfile.mkdtemp(prefix="jac-default-iface-");
+    path = _scratch_copy("base.jac", "def f(x: int = 1) -> int { return x; }", scratch);
+    before = _iface_of(path);
+    Path(path).write_text("def f(x: int = 2) -> int { return x; }");
+    after = _iface_of(path);
+    assert before.exports["f"].param_defaults != after.exports["f"].param_defaults;
+    assert before.digest() != after.digest();
+    restored = NativeIface.from_bytes(after.to_bytes());
+    assert restored is not None;
+    assert restored.exports["f"].param_defaults == after.exports["f"].param_defaults;
 }
 
 test "native source revisions include deletion, preserved timestamps and annex membership" {
     import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-    with tempfile.TemporaryDirectory(prefix="jac-native-revision-") as scratch {
-        path = Path(_scratch_copy("base.jac", "def f -> int { return 1; }", scratch));
-        registry = NativeUnitRegistry(JacProgram());
-        ent = registry.record(str(path), NativeIface());
-        old_stat = path.stat();
-        path.write_text("def f -> int { return 2; }");
-        os.utime(path, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns));
-        assert not registry._entry_fresh(ent);
-        ent = registry.record(str(path), NativeIface());
-        annex = Path(scratch) / "base.impl.jac";
-        annex.write_text("impl f -> int { return 2; }");
-        assert not registry._entry_fresh(ent);
-        ent = registry.record(str(path), NativeIface());
-        annex.unlink();
-        assert not registry._entry_fresh(ent);
-        ent = registry.record(str(path), NativeIface());
-        path.unlink();
-        assert not registry._entry_fresh(ent);
-    }
+    scratch = tempfile.mkdtemp(prefix="jac-native-revision-");
+    path = Path(_scratch_copy("base.jac", "def f -> int { return 1; }", scratch));
+    registry = NativeUnitRegistry(JacProgram());
+    ent = registry.record(str(path), NativeIface());
+    old_stat = path.stat();
+    path.write_text("def f -> int { return 2; }");
+    os.utime(path, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns));
+    assert not registry._entry_fresh(ent);
+    ent = registry.record(str(path), NativeIface());
+    annex = Path(scratch) / "base.impl.jac";
+    annex.write_text("impl f -> int { return 2; }");
+    assert not registry._entry_fresh(ent);
+    ent = registry.record(str(path), NativeIface());
+    annex.unlink();
+    assert not registry._entry_fresh(ent);
+    ent = registry.record(str(path), NativeIface());
+    path.unlink();
+    assert not registry._entry_fresh(ent);
 }
 
 test "native products and relocatable paths coexist in one JIR" {
@@ -269,23 +265,22 @@ test "native products and relocatable paths coexist in one JIR" {
 }
 
 test "a unit's layout keeps a function named like a dependency's foreign symbol" {
-    with tempfile.TemporaryDirectory(prefix="jac-niface-foreign-") as scratch {
-        _scratch_copy(
-            "helper.jac",
-            "import from m { def sqrt(x: f64) -> f64; }\n"
-                + "def:pub m_sqrt(x: float) -> float {\n    return sqrt(f64(x));\n}\n",
-            scratch
-        );
-        lib_path = _scratch_copy(
-            "lib.jac",
-            "import from helper { m_sqrt }\n"
-                + "def sqrt(x: float) -> float {\n    return m_sqrt(x);\n}\n",
-            scratch
-        );
-        iface = _iface_of(lib_path);
-        assert "sqrt" in iface.clib_symbol_lib , sorted(iface.clib_symbol_lib.keys());
-        assert "sqrt" in iface.exports , sorted(iface.exports.keys());
-        assert iface.layout is not None;
-        assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());
-    }
+    scratch = tempfile.mkdtemp(prefix="jac-niface-foreign-");
+    _scratch_copy(
+        "helper.jac",
+        "import from m { def sqrt(x: f64) -> f64; }\n"
+            + "def:pub m_sqrt(x: float) -> float {\n    return sqrt(f64(x));\n}\n",
+        scratch
+    );
+    lib_path = _scratch_copy(
+        "lib.jac",
+        "import from helper { m_sqrt }\n"
+            + "def sqrt(x: float) -> float {\n    return m_sqrt(x);\n}\n",
+        scratch
+    );
+    iface = _iface_of(lib_path);
+    assert "sqrt" in iface.clib_symbol_lib , sorted(iface.clib_symbol_lib.keys());
+    assert "sqrt" in iface.exports , sorted(iface.exports.keys());
+    assert iface.layout is not None;
+    assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());
 }

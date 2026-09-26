@@ -69,12 +69,19 @@ import from jaclang.compiler.frontend.unitree {
     find_python_scope_node_of,
     WireItem
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { ImmutabilityKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
-import from jaclang.compiler.types.ct_value { CT_DEFERRED, CtValue }
+import from jaclang.compiler.types.ct_value {
+    CT_DEFERRED,
+    CtValue,
+    ct_is_iterable,
+    ct_str,
+    ct_truthy,
+    ct_type_name
+}
 import from jaclang.compiler.types.types {
     AnyType,
     ClassType,
@@ -105,7 +112,6 @@ import from jaclang.compiler.types.operations {
     get_pow_result_type
 }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.diagnostics {
     Category,
     DiagnosticInfo,
@@ -158,27 +164,17 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
          "STAR_MUL": "*"
      };
 
-walker TypeCheckPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram,
-        evaluator: TypeEvaluator postinit,
+walker TypeCheckPass(TreePass) {
+    has evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
-        _lambda_depth: int = 0;
+        _lambda_depth: int = 0,
+        _restores_evaluator: bool = False,
+        _outer_pass: (CompileContext | None) = None,
+        _outer_ct_quiet: bool = False;
 
     def postinit -> None;
     can initialize with entry;
-
-    static has HOST_PASS: bool = True;
-
+    override def release -> None;
     can prepare with entry;
     can finish with exit;
     def _stamp_fixed_width -> None;
