@@ -2835,6 +2835,7 @@ walker NaIRGenPass(CompilerPass) {
         key_ret: (TypeBase | None) = None
     ) -> (tuple[(ir.Value, ir.Value)] | None);
 
+    def _is_static_method_func(func: ir.Function) -> bool;
     def _is_jacval_ty(t: ir.Type) -> bool;
     def _is_jacval_boxable(t: ir.Type) -> bool;
     def _sort_key_supported(ty: ir.Type) -> bool;
