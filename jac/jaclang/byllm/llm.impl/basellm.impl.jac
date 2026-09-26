@@ -1155,6 +1155,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 return final_output;
             }
         } else {
+            _raise_if_empty_truncation(resp);
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
                 break;
@@ -1457,6 +1458,19 @@ def _sanitize_tool_calls(message: dict[str, any]) -> set[str] {
 }
 
 
+def _raise_if_empty_truncation(resp: CompletionResult) {
+    if resp.finish_reason == "length"
+        and not resp.tool_calls
+        and not str(resp.output or "").strip() {
+        raise OutputTruncatedError(
+            "The model hit max_tokens before it produced any text or tool call "
+            "(the budget went to reasoning). Raise max_tokens or lower the "
+            "reasoning effort."
+        );
+    }
+}
+
+
 def _truncated_call_ids(message: dict[str, any], finish_reason: str) -> set[str] {
     if finish_reason != "length" {
         return set();
@@ -1527,7 +1541,10 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     _attach_call_cost(usage_data, self.model_name, response);
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     return CompletionResult(
-        output=output_value, tool_calls=tool_calls, usage=usage_data
+        output=output_value,
+        tool_calls=tool_calls,
+        usage=usage_data,
+        finish_reason=finish_reason
     );
 }
 
@@ -1722,7 +1739,12 @@ impl BaseLLM.dispatch_streaming_with_tools(
         else output_content;
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     out.append(
-        CompletionResult(output=output_value, tool_calls=tool_calls, usage=usage_data)
+        CompletionResult(
+            output=output_value,
+            tool_calls=tool_calls,
+            usage=usage_data,
+            finish_reason=finish_reason
+        )
     );
 }
 
@@ -1779,7 +1801,10 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     _attach_call_cost(usage_data, self.model_name, response);
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     return CompletionResult(
-        output=output_value, tool_calls=tool_calls, usage=usage_data
+        output=output_value,
+        tool_calls=tool_calls,
+        usage=usage_data,
+        finish_reason=finish_reason
     );
 }
 
@@ -2433,6 +2458,7 @@ impl BaseLLM._invoke_streaming(
                     break;
                 }
             } else {
+                _raise_if_empty_truncation(resp);
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
                     yield StreamEvent(

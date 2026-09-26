@@ -108,7 +108,8 @@ obj MockError {
 obj CompletionResult {
     has output: object,
         tool_calls: list[ToolCall],
-        usage: dict[str, any] = {};
+        usage: dict[str, any] = {},
+        finish_reason: str = "";
 }
 
 obj StreamEvent {

@@ -21,7 +21,8 @@ import from jaclang.byllm.exceptions {
     RateLimitError,
     ModelNotFoundError,
     ConfigurationError,
-    CompactionNotEffectiveError
+    CompactionNotEffectiveError,
+    OutputTruncatedError
 }
 import from jaclang.byllm.types {
     CompletionResult,
