@@ -143,13 +143,16 @@ test "the stage-0 pin reads self, a commit and a missing file, and refuses malfo
     }
 }
 
-test "the checkout ships a self pin beside its jaclang package" {
+test "the checkout ships a stage-0 pin beside its jaclang package" {
     # The suite may run against a jaclang installed outside the checkout, where
     # no pin sits beside the package and stage 0 is the self build; the pin the
-    # checkout ships is read from the checkout itself.
+    # checkout ships is read from the checkout itself. The shipped pin may be
+    # "self" or a pinned snapshot (the stage0-bump workflow moves it); a
+    # malformed pin raises Stage0PinError, so parsing it is the assertion.
     shipped = os.path.join(JAC_ROOT, "bootstrap", "stage0.json");
     assert os.path.isfile(shipped);
-    assert read_stage0_pin(shipped).is_self();
+    pin = read_stage0_pin(shipped);
+    assert pin.is_self() or pin.commit;
     path = _with_env(
         {STAGE0_PIN_ENV: None, STAGE0_ROOT_ENV: None}, lambda() { stage0_pin_path(); }
     );

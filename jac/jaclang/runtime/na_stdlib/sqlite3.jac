@@ -219,25 +219,125 @@ glob SQLITE_INTEGER: int = 1,
      SQLITE_NULL: int = 5;
 
 
-obj:pub Warning(Exception) {}
+obj:pub Warning(Exception) {
+    has _msg: str = "";
 
-obj:pub Error(Exception) {}
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
 
-obj:pub InterfaceError(Error) {}
+    def __str__ -> str {
+        return self._msg;
+    }
+}
 
-obj:pub DatabaseError(Error) {}
+obj:pub Error(Exception) {
+    has _msg: str = "";
 
-obj:pub InternalError(DatabaseError) {}
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
 
-obj:pub OperationalError(DatabaseError) {}
+    def __str__ -> str {
+        return self._msg;
+    }
+}
 
-obj:pub ProgrammingError(DatabaseError) {}
+obj:pub InterfaceError(Error) {
+    has _msg: str = "";
 
-obj:pub IntegrityError(DatabaseError) {}
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
 
-obj:pub DataError(DatabaseError) {}
+    def __str__ -> str {
+        return self._msg;
+    }
+}
 
-obj:pub NotSupportedError(DatabaseError) {}
+obj:pub DatabaseError(Error) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
+
+obj:pub InternalError(DatabaseError) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
+
+obj:pub OperationalError(DatabaseError) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
+
+obj:pub ProgrammingError(DatabaseError) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
+
+obj:pub IntegrityError(DatabaseError) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
+
+obj:pub DataError(DatabaseError) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
+
+obj:pub NotSupportedError(DatabaseError) {
+    has _msg: str = "";
+
+    def init(msg: str = "") {
+        self._msg = msg;
+    }
+
+    def __str__ -> str {
+        return self._msg;
+    }
+}
 
 
 def _ver_info -> tuple[(int, int, int)] {
