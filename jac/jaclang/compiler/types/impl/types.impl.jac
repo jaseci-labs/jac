@@ -1269,10 +1269,6 @@ impl TypeBase.as_class -> (ClassType | None) {
     return None;
 }
 
-impl TypeBase.__str__ -> str {
-    return "<type>";
-}
-
 impl ClassType.as_class -> (ClassType | None) {
     return self if self._shared is not None else None;
 }

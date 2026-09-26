@@ -29,17 +29,17 @@ import from jaclang.compiler.frontend.relations {
 }
 
 enum TypeCategory(IntEnum) {
-    Unbound = 1,
-    Unknown = 2,
-    Never = 3,
-    Any = 4,
-    Module = 5,
-    TypeVar = 6,
-    Class = 7,
-    Function = 8,
-    Overload = 9,
-    Union = 10,
-    EnumMember = 11
+    Unbound,
+    Unknown,
+    Never,
+    Any,
+    Module,
+    TypeVar,
+    Class,
+    Function,
+    Overload,
+    Union,
+    EnumMember
 }
 
 class TypeFlags(IntEnum) {
@@ -74,7 +74,6 @@ node TypeBase {
     def is_any_instance -> bool;
     def is_any_type -> bool;
     def as_class -> (ClassType | None);
-    def __str__ -> str;
 }
 
 node UnknownType(TypeBase) {

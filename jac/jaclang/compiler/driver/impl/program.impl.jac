@@ -560,7 +560,7 @@ impl JacProgram.parse_source(
             run_codespace_infer = True;
         }
     }
-    hub_key = JacProgram.hub_key(parsed.loc.mod_path);
+    hub_key = self.hub_key(parsed.loc.mod_path);
     if had_error {
         parsed.parse_failed = True;
         self.install_module(hub_key, parsed);

@@ -215,11 +215,7 @@ obj JacTypeRegistry {
         }
         import hashlib;
         digest = hashlib.sha256(name.encode("utf-8")).hexdigest();
-        prefix = 0;
-        for c in digest[:8] {
-            prefix = prefix * 16 + "0123456789abcdef".find(c);
-        }
-        return 0x40000000 + (prefix % 0x3FFFFFFF);
+        return 0x40000000 + (int(digest[:8], 16) % 0x3FFFFFFF);
     }
 
     def exception_descendants(type_name: str) -> list[str] {

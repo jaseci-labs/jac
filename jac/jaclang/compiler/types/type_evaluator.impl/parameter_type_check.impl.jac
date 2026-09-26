@@ -5,12 +5,12 @@ impl TypeEvaluator.validate_arg_types(
     solved_type_vars: (dict[str, TypeBase] | None) = None
 ) -> bool {
     has_errors: bool = False;
-    binding_failures: set[int] = set();
+    binding_failures: set[Expr | KWPair] = set();
 
     bindings: dict[str, TypeBase] = solved_type_vars
         if solved_type_vars is not None
         else {};
-    for (arg, param) in args.arg_params {
+    for (arg, param) in args.arg_params.items() {
         if param is None or param.param_type is None {
             continue;
         }
@@ -21,12 +21,12 @@ impl TypeEvaluator.validate_arg_types(
         if not self.assign_type_to_type_var(
             param.param_type, self.get_type_of_expression(value), bindings
         ) {
-            binding_failures.add(id(arg));
+            binding_failures.add(arg);
             has_errors = True;
         }
     }
 
-    for (arg, param) in args.arg_params {
+    for (arg, param) in args.arg_params.items() {
         if param is None or param.param_type is None {
             continue;
         }
@@ -36,7 +36,7 @@ impl TypeEvaluator.validate_arg_types(
         }
         value = arg.value if isinstance(arg, KWPair) else arg;
         arg_type = self.get_type_of_expression(value, expected_type=expected);
-        if id(arg) in binding_failures {
+        if arg in binding_failures {
             if mismatches is not None {
                 mismatches.append(
                     ArgTypeMismatch(
@@ -791,11 +791,11 @@ impl TypeEvaluator.match_args_to_params(
     checking_overload: bool = False,
     is_unbound_call: bool = False
 ) -> MatchArgsToParamsResult {
-    arg_params: list[tuple[(Expr | KWPair), (Parameter | None)]] = [];
+    arg_params: dict[Expr | KWPair, Parameter | None] = {};
     argument_errors = False;
     if func_type.is_gradual_callable_form() {
         for arg_node in (arg_nodes or []) {
-            arg_params.append((arg_node, None));
+            arg_params[arg_node] = None;
         }
         return MatchArgsToParamsResult(arg_params=arg_params, argument_errors=False);
     }
@@ -840,14 +840,14 @@ impl TypeEvaluator.match_args_to_params(
                         argument_errors = True;
                         continue;
                     }
-                    arg_params.append((value_expr, spread_param));
+                    arg_params[value_expr] = spread_param;
                 }
             } elif isinstance(arg, KWPair) {
                 matching_param = param_tracker.match_named_argument(arg);
-                arg_params.append((arg, matching_param));
+                arg_params[arg] = matching_param;
             } else {
                 matching_param = param_tracker.match_positional_argument(arg);
-                arg_params.append((arg, matching_param));
+                arg_params[arg] = matching_param;
             }
         } except Exception as e {
             if not checking_overload {
