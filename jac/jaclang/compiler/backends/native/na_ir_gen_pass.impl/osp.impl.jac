@@ -1621,6 +1621,7 @@ impl NaIRGenPass._codegen_disengage(nd: uni.DisengageStmt) -> None {
     self.builder.call(osp_disengage_fn, []);
 
     if isinstance(self.builder.function.function_type.return_type, ir.VoidType) {
+        self._emit_region_leaves(len(self.region_open_stack));
         self.builder.ret_void();
     }
 }
