@@ -718,46 +718,62 @@ impl NativeStrEmitter.emit_count(
     }
     p = ctx.pass_ref;
     b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-    sub_len = p._call_str_len(b, args[0], name="cnt.sub.len");
-    null_ptr = ir.Constant(i8p, None);
+    blen = p._call_str_len(b, target, name="cnt.blen");
+    cplen = p._call_utf8_cplen(b, target, blen, name="cnt.cplen");
+    nlen = p._call_str_len(b, args[0], name="cnt.nlen");
+    (start_b, end_b) = p._emit_norm_cp_region(
+        b,
+        target,
+        blen,
+        cplen,
+        [args[1] if len(args) >= 2 else None, args[2] if len(args) >= 3 else None]
+    );
     func = b.basic_block.function;
     empty_bb = func.append_basic_block(name="cnt.empty");
     scan_bb = func.append_basic_block(name="cnt.scan");
-    loop_bb = func.append_basic_block(name="cnt.loop");
+    check_bb = func.append_basic_block(name="cnt.check");
     found_bb = func.append_basic_block(name="cnt.found");
     done_bb = func.append_basic_block(name="cnt.done");
+    zero = ir.Constant(i64, 0);
+    b.cbranch(b.icmp_signed("==", nlen, zero, name="cnt.isempty"), empty_bb, scan_bb);
+    b.position_at_end(empty_bb);
 
-    is_empty = b.icmp_unsigned("==", sub_len, ir.Constant(i64, 0), name="cnt.isempty");
-    b.cbranch(is_empty, empty_bb, scan_bb);
-    b.position_at_start(empty_bb);
-    tgt_len = p._call_str_len(b, target, name="cnt.tgt.len");
-    empty_count = b.add(tgt_len, ir.Constant(i64, 1), name="cnt.empty.n");
+    empty_n = b.add(
+        b.sub(end_b, start_b, name="cnt.empty.w"),
+        ir.Constant(i64, 1),
+        name="cnt.empty.n"
+    );
+    neg_w = b.icmp_signed("<", end_b, start_b, name="cnt.empty.neg");
+    empty_count = b.select(neg_w, zero, empty_n, name="cnt.empty.r");
     b.branch(done_bb);
-    b.position_at_start(scan_bb);
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    cur_ptr = b.phi(i8p, name="cnt.cur");
-    count = b.phi(i64, name="cnt.count");
-    cur_ptr.add_incoming(target, scan_bb);
-    count.add_incoming(ir.Constant(i64, 0), scan_bb);
-    found = b.call(strstr_fn, [cur_ptr, args[0]], name="cnt.found.ptr");
-    is_null = b.icmp_unsigned("==", found, null_ptr, name="cnt.null");
-    b.cbranch(is_null, done_bb, found_bb);
-    b.position_at_start(found_bb);
-    new_count = b.add(count, ir.Constant(i64, 1), name="cnt.inc");
-    found_int = b.ptrtoint(found, i64, name="cnt.fnd.int");
-    next_int = b.add(found_int, sub_len, name="cnt.next.int");
-    next_ptr = b.inttoptr(next_int, i8p, name="cnt.next.ptr");
-    cur_ptr.add_incoming(next_ptr, found_bb);
-    count.add_incoming(new_count, found_bb);
-    b.branch(loop_bb);
-    b.position_at_start(done_bb);
+    b.position_at_end(scan_bb);
+    cur_alloca = b.alloca(i64, name="cnt.cur");
+    count_alloca = b.alloca(i64, name="cnt.n");
+    b.store(start_b, cur_alloca);
+    b.store(zero, count_alloca);
+    b.branch(check_bb);
+    b.position_at_end(check_bb);
+    cur_pos = b.load(cur_alloca, name="cnt.cur.v");
+    pos = p._call_str_find_b(
+        b, target, blen, args[0], nlen, cur_pos, end_b, name="cnt.find"
+    );
+    is_neg = b.icmp_signed("<", pos, zero, name="cnt.miss");
+    count_cur = b.load(count_alloca, name="cnt.total");
+    b.cbranch(is_neg, done_bb, found_bb);
+    b.position_at_end(found_bb);
+    b.store(
+        b.add(
+            b.load(count_alloca, name="cnt.cur.n"), ir.Constant(i64, 1), name="cnt.inc"
+        ),
+        count_alloca
+    );
+    b.store(b.add(pos, nlen, name="cnt.next"), cur_alloca);
+    b.branch(check_bb);
+    b.position_at_end(done_bb);
     result = b.phi(i64, name="cnt.result");
     result.add_incoming(empty_count, empty_bb);
-    result.add_incoming(count, loop_bb);
+    result.add_incoming(count_cur, check_bb);
     return result;
 }
 
@@ -769,29 +785,24 @@ impl NativeStrEmitter.emit_find(
     }
     p = ctx.pass_ref;
     b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-    search_from = target;
-    if len(args) >= 2 {
-        slen = p._call_str_len(b, target, name="find.slen");
-        start = p._coerce_type(args[1], i64);
-        neg = b.icmp_signed("<", start, ir.Constant(i64, 0), name="find.st.neg");
-        wrapped = b.add(start, slen, name="find.st.wrap");
-        start = b.select(neg, wrapped, start, name="find.st.pos");
-        below = b.icmp_signed("<", start, ir.Constant(i64, 0), name="find.st.lo");
-        start = b.select(below, ir.Constant(i64, 0), start, name="find.st.lo.c");
-        above = b.icmp_signed(">", start, slen, name="find.st.hi");
-        start = b.select(above, slen, start, name="find.st.hi.c");
-        search_from = b.gep(target, [start], name="find.from");
-    }
-    found = b.call(strstr_fn, [search_from, args[0]], name="find.ptr");
-    null_ptr = ir.Constant(i8p, None);
-    is_null = b.icmp_unsigned("==", found, null_ptr, name="find.null");
-    target_int = b.ptrtoint(target, i64, name="find.tgt.int");
-    found_int = b.ptrtoint(found, i64, name="find.fnd.int");
-    diff = b.sub(found_int, target_int, name="find.diff");
-    return b.select(is_null, ir.Constant(i64, -1), diff, name="find.result");
+    blen = p._call_str_len(b, target, name="find.blen");
+    cplen = p._call_utf8_cplen(b, target, blen, name="find.cplen");
+    nlen = p._call_str_len(b, args[0], name="find.nlen");
+    (start_b, end_b) = p._emit_norm_cp_region(
+        b,
+        target,
+        blen,
+        cplen,
+        [args[1] if len(args) >= 2 else None, args[2] if len(args) >= 3 else None]
+    );
+    pos = p._call_str_find_b(
+        b, target, blen, args[0], nlen, start_b, end_b, name="find.b"
+    );
+    neg_one = ir.Constant(i64, -1);
+    is_neg = b.icmp_signed("<", pos, ir.Constant(i64, 0), name="find.miss");
+    cp_pos = p._call_utf8_cplen(b, target, pos, name="find.cp");
+    return b.select(is_neg, neg_one, cp_pos, name="find.result");
 }
 
 impl NativeStrEmitter.emit_rfind(
@@ -802,50 +813,24 @@ impl NativeStrEmitter.emit_rfind(
     }
     p = ctx.pass_ref;
     b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-    slen = p._call_str_len(b, target, name="rfind.slen");
-    sub_len = p._call_str_len(b, args[0], name="rfind.sub.len");
-    null_ptr = ir.Constant(i8p, None);
-    target_int = b.ptrtoint(target, i64, name="rfind.tgt.int");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-
-    empty_bb = func.append_basic_block(name="rfind.empty");
-    search_bb = func.append_basic_block(name="rfind.search");
-    loop_bb = func.append_basic_block(name="rfind.loop");
-    found_bb = func.append_basic_block(name="rfind.found");
-    done_bb = func.append_basic_block(name="rfind.done");
-    is_empty = b.icmp_unsigned(
-        "==", sub_len, ir.Constant(i64, 0), name="rfind.isempty"
+    blen = p._call_str_len(b, target, name="rfind.blen");
+    cplen = p._call_utf8_cplen(b, target, blen, name="rfind.cplen");
+    nlen = p._call_str_len(b, args[0], name="rfind.nlen");
+    (start_b, end_b) = p._emit_norm_cp_region(
+        b,
+        target,
+        blen,
+        cplen,
+        [args[1] if len(args) >= 2 else None, args[2] if len(args) >= 3 else None]
     );
-    b.cbranch(is_empty, empty_bb, search_bb);
-    b.position_at_start(empty_bb);
-    b.branch(done_bb);
-    b.position_at_start(search_bb);
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    cur_ptr = b.phi(i8p, name="rfind.cur");
-    last_pos = b.phi(i64, name="rfind.last");
-    cur_ptr.add_incoming(target, search_bb);
-    last_pos.add_incoming(ir.Constant(i64, -1), search_bb);
-    found = b.call(strstr_fn, [cur_ptr, args[0]], name="rfind.found.ptr");
-    is_null = b.icmp_unsigned("==", found, null_ptr, name="rfind.null");
-    b.cbranch(is_null, done_bb, found_bb);
-    b.position_at_start(found_bb);
-    found_int = b.ptrtoint(found, i64, name="rfind.fnd.int");
-    new_pos = b.sub(found_int, target_int, name="rfind.pos");
-    next_int = b.add(found_int, sub_len, name="rfind.next.int");
-    next_ptr = b.inttoptr(next_int, i8p, name="rfind.next.ptr");
-    cur_ptr.add_incoming(next_ptr, found_bb);
-    last_pos.add_incoming(new_pos, found_bb);
-    b.branch(loop_bb);
-    b.position_at_start(done_bb);
-    result = b.phi(i64, name="rfind.result");
-    result.add_incoming(slen, empty_bb);
-    result.add_incoming(last_pos, loop_bb);
-    return result;
+    pos = p._call_str_rfind_b(
+        b, target, blen, args[0], nlen, start_b, end_b, name="rfind.b"
+    );
+    neg_one = ir.Constant(i64, -1);
+    is_neg = b.icmp_signed("<", pos, ir.Constant(i64, 0), name="rfind.miss");
+    cp_pos = p._call_utf8_cplen(b, target, pos, name="rfind.cp");
+    return b.select(is_neg, neg_one, cp_pos, name="rfind.result");
 }
 
 impl NativeStrEmitter.emit_index(
@@ -856,16 +841,23 @@ impl NativeStrEmitter.emit_index(
     }
     p = ctx.pass_ref;
     b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-    found = b.call(strstr_fn, [target, args[0]], name="index.ptr");
-    null_ptr = ir.Constant(i8p, None);
-    is_null = b.icmp_unsigned("==", found, null_ptr, name="index.null");
-    p._emit_runtime_raise(is_null, "ValueError", "substring not found");
-    target_int = b.ptrtoint(target, i64, name="index.tgt.int");
-    found_int = b.ptrtoint(found, i64, name="index.fnd.int");
-    return b.sub(found_int, target_int, name="index.result");
+    blen = p._call_str_len(b, target, name="index.blen");
+    cplen = p._call_utf8_cplen(b, target, blen, name="index.cplen");
+    nlen = p._call_str_len(b, args[0], name="index.nlen");
+    (start_b, end_b) = p._emit_norm_cp_region(
+        b,
+        target,
+        blen,
+        cplen,
+        [args[1] if len(args) >= 2 else None, args[2] if len(args) >= 3 else None]
+    );
+    pos = p._call_str_find_b(
+        b, target, blen, args[0], nlen, start_b, end_b, name="index.b"
+    );
+    is_neg = b.icmp_signed("<", pos, ir.Constant(i64, 0), name="index.miss");
+    p._emit_runtime_raise(is_neg, "ValueError", "substring not found");
+    return p._call_utf8_cplen(b, target, pos, name="index.cp");
 }
 
 impl NativeStrEmitter.emit_rindex(
@@ -930,17 +922,25 @@ impl NativeStrEmitter._emit_affix(
             return None;
         }
     }
-    length = p._call_str_len(b, target, name="affix.length");
+    blen = p._call_str_len(b, target, name="affix.blen");
+    cplen = p._call_utf8_cplen(b, target, blen, name="affix.cplen");
+    (start_b, end_b) = p._emit_norm_cp_region(
+        b,
+        target,
+        blen,
+        cplen,
+        [args[1] if len(args) > 1 else None, args[2] if len(args) > 2 else None]
+    );
     return _emit_affix_match(
         p,
         b,
         target,
-        length,
+        blen,
         [
             (candidate, p._call_str_len(b, candidate, name="affix.size"))
             for candidate in candidates
         ],
-        args[1:],
+        [start_b, end_b],
         suffix
     );
 }
@@ -1642,9 +1642,10 @@ impl NativeStrEmitter.emit_center(
     i64 = ir.IntType(64);
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
-    slen = p._call_str_len(b, target, name="center.len");
+    slen = p._call_str_len(b, target, name="center.blen");
+    cplen = p._call_utf8_cplen(b, target, slen, name="center.cplen");
     width = args[0];
-    needs_pad = b.icmp_unsigned("<", slen, width, name="center.needspad");
+    needs_pad = b.icmp_unsigned("<", cplen, width, name="center.needspad");
     func = b.basic_block.function;
     pad_bb = func.append_basic_block(name="center.pad");
     nopad_bb = func.append_basic_block(name="center.nopad");
@@ -1652,13 +1653,14 @@ impl NativeStrEmitter.emit_center(
     b.cbranch(needs_pad, pad_bb, nopad_bb);
 
     b.position_at_start(pad_bb);
-    total_pad = b.sub(width, slen, name="center.totalpad");
+    total_pad = b.sub(width, cplen, name="center.totalpad");
     half = b.udiv(total_pad, ir.Constant(i64, 2), name="center.half");
     tp_and_w = b.and_(total_pad, width, name="center.tpw");
     adj = b.and_(tp_and_w, ir.Constant(i64, 1), name="center.adj");
     left_pad = b.add(half, adj, name="center.lpad");
     right_pad = b.sub(total_pad, left_pad, name="center.rpad");
-    alloc_pad = b.add(width, ir.Constant(i64, 1), name="center.alloc");
+    res_bytes = b.add(total_pad, slen, name="center.resb");
+    alloc_pad = b.add(res_bytes, ir.Constant(i64, 1), name="center.alloc");
     buf_pad = p._str_alloc(b, alloc_pad, name="center.buf");
 
     b.call(memset_fn, [buf_pad, ir.Constant(ir.IntType(32), 32), left_pad]);
@@ -1669,7 +1671,7 @@ impl NativeStrEmitter.emit_center(
     right_ptr = b.gep(str_ptr, [slen], name="center.rpad.ptr");
     b.call(memset_fn, [right_ptr, ir.Constant(ir.IntType(32), 32), right_pad]);
 
-    p._str_finish(b, buf_pad, width);
+    p._str_finish(b, buf_pad, res_bytes);
     b.branch(done_bb);
 
     b.position_at_start(nopad_bb);
@@ -1698,9 +1700,10 @@ impl NativeStrEmitter.emit_ljust(
     i64 = ir.IntType(64);
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
-    slen = p._call_str_len(b, target, name="ljust.len");
+    slen = p._call_str_len(b, target, name="ljust.blen");
+    cplen = p._call_utf8_cplen(b, target, slen, name="ljust.cplen");
     width = args[0];
-    needs_pad = b.icmp_unsigned("<", slen, width, name="ljust.needspad");
+    needs_pad = b.icmp_unsigned("<", cplen, width, name="ljust.needspad");
     func = b.basic_block.function;
     pad_bb = func.append_basic_block(name="ljust.pad");
     nopad_bb = func.append_basic_block(name="ljust.nopad");
@@ -1708,13 +1711,14 @@ impl NativeStrEmitter.emit_ljust(
     b.cbranch(needs_pad, pad_bb, nopad_bb);
 
     b.position_at_start(pad_bb);
-    alloc_pad = b.add(width, ir.Constant(i64, 1), name="ljust.alloc");
+    pad_len = b.sub(width, cplen, name="ljust.pad.len");
+    res_bytes = b.add(slen, pad_len, name="ljust.resb");
+    alloc_pad = b.add(res_bytes, ir.Constant(i64, 1), name="ljust.alloc");
     buf_pad = p._str_alloc(b, alloc_pad, name="ljust.buf");
     b.call(memcpy_fn, [buf_pad, target, slen]);
     pad_ptr = b.gep(buf_pad, [slen], name="ljust.pad.ptr");
-    pad_len = b.sub(width, slen, name="ljust.pad.len");
     b.call(memset_fn, [pad_ptr, ir.Constant(ir.IntType(32), 32), pad_len]);
-    p._str_finish(b, buf_pad, width);
+    p._str_finish(b, buf_pad, res_bytes);
     b.branch(done_bb);
 
     b.position_at_start(nopad_bb);
@@ -1743,22 +1747,24 @@ impl NativeStrEmitter.emit_rjust(
     i64 = ir.IntType(64);
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
-    slen = p._call_str_len(b, target, name="rjust.len");
+    slen = p._call_str_len(b, target, name="rjust.blen");
+    cplen = p._call_utf8_cplen(b, target, slen, name="rjust.cplen");
     width = args[0];
-    needs_pad = b.icmp_unsigned("<", slen, width, name="rjust.needspad");
+    needs_pad = b.icmp_unsigned("<", cplen, width, name="rjust.needspad");
     func = b.basic_block.function;
     pad_bb = func.append_basic_block(name="rjust.pad");
     nopad_bb = func.append_basic_block(name="rjust.nopad");
     done_bb = func.append_basic_block(name="rjust.done");
     b.cbranch(needs_pad, pad_bb, nopad_bb);
     b.position_at_start(pad_bb);
-    alloc_pad = b.add(width, ir.Constant(i64, 1), name="rjust.alloc");
+    pad_len = b.sub(width, cplen, name="rjust.pad.len");
+    res_bytes = b.add(slen, pad_len, name="rjust.resb");
+    alloc_pad = b.add(res_bytes, ir.Constant(i64, 1), name="rjust.alloc");
     buf_pad = p._str_alloc(b, alloc_pad, name="rjust.buf");
-    pad_len = b.sub(width, slen, name="rjust.pad.len");
     b.call(memset_fn, [buf_pad, ir.Constant(ir.IntType(32), 32), pad_len]);
     str_dst = b.gep(buf_pad, [pad_len], name="rjust.str.dst");
     b.call(memcpy_fn, [str_dst, target, slen]);
-    p._str_finish(b, buf_pad, width);
+    p._str_finish(b, buf_pad, res_bytes);
     b.branch(done_bb);
     b.position_at_start(nopad_bb);
     alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="rjust.alloc.np");
@@ -1786,9 +1792,10 @@ impl NativeStrEmitter.emit_zfill(
     i64 = ir.IntType(64);
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
-    slen = p._call_str_len(b, target, name="zfill.len");
+    slen = p._call_str_len(b, target, name="zfill.blen");
+    cplen = p._call_utf8_cplen(b, target, slen, name="zfill.cplen");
     width = args[0];
-    needs_pad = b.icmp_unsigned("<", slen, width, name="zfill.needspad");
+    needs_pad = b.icmp_unsigned("<", cplen, width, name="zfill.needspad");
     func = b.basic_block.function;
     pad_bb = func.append_basic_block(name="zfill.pad");
     nopad_bb = func.append_basic_block(name="zfill.nopad");
@@ -1796,13 +1803,14 @@ impl NativeStrEmitter.emit_zfill(
     b.cbranch(needs_pad, pad_bb, nopad_bb);
 
     b.position_at_start(pad_bb);
-    alloc_pad = b.add(width, ir.Constant(i64, 1), name="zfill.alloc");
+    pad_len = b.sub(width, cplen, name="zfill.pad.len");
+    res_bytes = b.add(slen, pad_len, name="zfill.resb");
+    alloc_pad = b.add(res_bytes, ir.Constant(i64, 1), name="zfill.alloc");
     buf_pad = p._str_alloc(b, alloc_pad, name="zfill.buf");
     first_ch = b.load(target, name="zfill.first");
     is_plus = b.icmp_unsigned("==", first_ch, ir.Constant(i8, 43), name="zfill.plus");
     is_minus = b.icmp_unsigned("==", first_ch, ir.Constant(i8, 45), name="zfill.minus");
     has_sign = b.or_(is_plus, is_minus, name="zfill.hassign");
-    pad_len = b.sub(width, slen, name="zfill.pad.len");
 
     sign_off = b.select(
         has_sign, ir.Constant(i64, 1), ir.Constant(i64, 0), name="zfill.soff"
@@ -1837,7 +1845,7 @@ impl NativeStrEmitter.emit_zfill(
     b.call(memcpy_fn, [dst_nosign, target, slen]);
     b.branch(merge_bb);
     b.position_at_start(merge_bb);
-    p._str_finish(b, buf_pad, width);
+    p._str_finish(b, buf_pad, res_bytes);
     b.branch(done_bb);
 
     b.position_at_start(nopad_bb);
@@ -1899,13 +1907,12 @@ impl NativeStrEmitter.emit_expandtabs(
     di.add_incoming(zero, entry_bb);
     col.add_incoming(zero, entry_bb);
 
-    cp = b.gep(target, [si], name="et.cp");
-    ch = b.load(cp, name="et.ch");
-    is_end = b.icmp_unsigned("==", ch, ir.Constant(i8, 0), name="et.end");
+    is_end = b.icmp_signed(">=", si, slen, name="et.end");
     b.cbranch(is_end, done_bb, check_tab);
 
     b.position_at_start(check_tab);
-    is_tab = b.icmp_unsigned("==", ch, ir.Constant(i8, 9), name="et.istab");
+    (et_cp, et_w) = p._emit_decode_cp(target, si, slen, b=b);
+    is_tab = b.icmp_unsigned("==", et_cp, ir.Constant(i64, 9), name="et.istab");
     b.cbranch(is_tab, do_tab, check_nl);
 
     b.position_at_start(do_tab);
@@ -1935,28 +1942,35 @@ impl NativeStrEmitter.emit_expandtabs(
 
     b.position_at_start(tab_done);
     new_col_tab = b.add(col, spaces, name="et.col.tab");
-    next_si_tab = b.add(si, one, name="et.si.tab");
+    next_si_tab = b.add(si, et_w, name="et.si.tab");
     b.branch(next_bb);
 
     b.position_at_start(check_nl);
-    is_nl = b.icmp_unsigned("==", ch, ir.Constant(i8, 10), name="et.isnl");
-    is_cr = b.icmp_unsigned("==", ch, ir.Constant(i8, 13), name="et.iscr");
+    is_nl = b.icmp_unsigned("==", et_cp, ir.Constant(i64, 10), name="et.isnl");
+    is_cr = b.icmp_unsigned("==", et_cp, ir.Constant(i64, 13), name="et.iscr");
     is_line_end = b.or_(is_nl, is_cr, name="et.isle");
     b.cbranch(is_line_end, do_nl, do_char);
 
     b.position_at_start(do_nl);
+    le_byte = b.select(is_nl, ir.Constant(i8, 10), ir.Constant(i8, 13), name="et.leb");
     dp_nl = b.gep(buf, [di], name="et.dp.nl");
-    b.store(ch, dp_nl);
+    b.store(le_byte, dp_nl);
     next_di_nl = b.add(di, one, name="et.ndi.nl");
-    next_si_nl = b.add(si, one, name="et.si.nl");
+    next_si_nl = b.add(si, et_w, name="et.si.nl");
     b.branch(next_bb);
 
     b.position_at_start(do_char);
+    src_ch = b.gep(target, [si], name="et.src.ch");
     dp_ch = b.gep(buf, [di], name="et.dp.ch");
-    b.store(ch, dp_ch);
-    next_di_ch = b.add(di, one, name="et.ndi.ch");
+    memcpy_fn = p._get_or_declare_extern(
+        "memcpy",
+        ir.IntType(8).as_pointer(),
+        [ir.IntType(8).as_pointer(), ir.IntType(8).as_pointer(), i64]
+    );
+    b.call(memcpy_fn, [dp_ch, src_ch, et_w], name="et.cp.ch");
+    next_di_ch = b.add(di, et_w, name="et.ndi.ch");
     next_col_ch = b.add(col, one, name="et.col.ch");
-    next_si_ch = b.add(si, one, name="et.si.ch");
+    next_si_ch = b.add(si, et_w, name="et.si.ch");
     b.branch(next_bb);
 
     b.position_at_start(next_bb);

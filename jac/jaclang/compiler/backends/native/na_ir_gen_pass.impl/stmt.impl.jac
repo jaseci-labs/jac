@@ -4381,6 +4381,7 @@ impl NaIRGenPass._codegen_for_indexed(
         _coll_slot_var = self._bind_loop_coll_slot(collection_val);
     }
 
+    _str_width_slot: (ir.Value | None) = None;
     if kind == "range" {
         len_val = collection_val;
         idx_alloca = self._entry_alloca(i64, var_names[0]);
@@ -4408,6 +4409,10 @@ impl NaIRGenPass._codegen_for_indexed(
         idx_alloca = self._entry_alloca(i64, "for.idx");
         self.builder.store(ir.Constant(i64, 0), idx_alloca);
         allocas = [];
+        if kind == "str" {
+            _str_width_slot = self._entry_alloca(i64, "for.cp.width");
+            self.builder.store(ir.Constant(i64, 1), _str_width_slot);
+        }
         _setup_names = [] if unpack_target is not None else var_names;
         for (vi, vname) in enumerate(_setup_names) {
             vtype = var_types[vi];
@@ -4534,10 +4539,11 @@ impl NaIRGenPass._codegen_for_indexed(
             self.builder.store(key_val, allocas[0]);
             self.builder.store(val_val, allocas[1]);
         } elif kind == "str" {
-            char_str = self._codegen_string_index(collection_val, body_idx);
-            if char_str is not None {
-                self.builder.store(char_str, allocas[0]);
-            }
+            (char_str, char_w) = self._codegen_str_char_at(
+                collection_val, body_idx, len_val
+            );
+            self.builder.store(char_str, allocas[0]);
+            self.builder.store(char_w, _str_width_slot);
         } elif kind == "bytes" {
             _by_ptr = self.builder.gep(
                 self._bytes_data_ptr(collection_val), [body_idx], name="for.by.ptr"
@@ -4615,7 +4621,11 @@ impl NaIRGenPass._codegen_for_indexed(
     inc_idx = self.builder.load(idx_alloca, name="for.inc.idx");
     _idx_delta = range_step
         if kind == "range" and range_step is not None
-        else ir.Constant(i64, 1);
+        else (
+            self.builder.load(_str_width_slot, name="for.inc.cpw")
+                if _str_width_slot is not None
+                else ir.Constant(i64, 1)
+        );
     next_idx = self.builder.add(inc_idx, _idx_delta, name="for.next.idx");
     self.builder.store(next_idx, idx_alloca);
     self.builder.branch(cond_bb);

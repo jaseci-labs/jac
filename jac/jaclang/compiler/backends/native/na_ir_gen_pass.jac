@@ -428,6 +428,12 @@ walker NaIRGenPass(CompilerPass) {
         str_wrap_fn: (ir.Function | None) = None,
         str_wrap_raw_fn: (ir.Function | None) = None,
         str_import_fn: (ir.Function | None) = None,
+        utf8_width_fn: (ir.Function | None) = None,
+        utf8_cplen_fn: (ir.Function | None) = None,
+        utf8_cp_to_boff_fn: (ir.Function | None) = None,
+        utf8_cp_at_fn: (ir.Function | None) = None,
+        str_find_b_fn: (ir.Function | None) = None,
+        str_rfind_b_fn: (ir.Function | None) = None,
         str_unwrap_fn: (ir.Function | None) = None,
         str_materialize_fn: (ir.Function | None) = None,
         _str_desc_ty: (ir.IdentifiedStructType | None) = None,
@@ -601,10 +607,83 @@ walker NaIRGenPass(CompilerPass) {
         target_val: ir.Value, index_val: ir.Value, len_val: (ir.Value | None) = None
     ) -> (ir.Value | None);
 
-    def _emit_is_strip_char(ch: ir.Value, charset: (ir.Value | None)) -> ir.Value;
+    def _emit_strip_membership(
+        cp: ir.Value, charset: (ir.Value | None), charset_blen: (ir.Value | None)
+    ) -> ir.Value;
+
     def _codegen_str_strip_chars(
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
+
+    def _emit_utf8_helpers -> None;
+    def _call_utf8_cplen(
+        b: ir.IRBuilder, ptr: ir.Value, blen: ir.Value, name: str = "s.cplen"
+    ) -> ir.Value;
+
+    def _call_utf8_cp_to_boff(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        blen: ir.Value,
+        cp_idx: ir.Value,
+        name: str = "cp.boff"
+    ) -> ir.Value;
+
+    def _call_utf8_cp_at(
+        b: ir.IRBuilder, ptr: ir.Value, blen: ir.Value, name: str = "cp.at"
+    ) -> ir.Value;
+
+    def _call_utf8_width(
+        b: ir.IRBuilder, lead: ir.Value, remaining: ir.Value, name: str = "cp.w"
+    ) -> ir.Value;
+
+    def _call_str_find_b(
+        b: ir.IRBuilder,
+        hay: ir.Value,
+        hlen: ir.Value,
+        needle: ir.Value,
+        nlen: ir.Value,
+        from_b: ir.Value,
+        to_b: ir.Value,
+        name: str = "find.b"
+    ) -> ir.Value;
+
+    def _call_str_rfind_b(
+        b: ir.IRBuilder,
+        hay: ir.Value,
+        hlen: ir.Value,
+        needle: ir.Value,
+        nlen: ir.Value,
+        from_b: ir.Value,
+        to_b: ir.Value,
+        name: str = "rfind.b"
+    ) -> ir.Value;
+
+    def _emit_norm_cp_region(
+        b: ir.IRBuilder,
+        data: ir.Value,
+        blen: ir.Value,
+        cplen: ir.Value,
+        bounds: list[ir.Value | None]
+    ) -> (ir.Value, ir.Value);
+
+    def _emit_decode_cp(
+        data: ir.Value,
+        byte_off: ir.Value,
+        blen: ir.Value,
+        b: (ir.IRBuilder | None) = None
+    ) -> (ir.Value, ir.Value);
+
+    def _emit_one_char_str(cp: ir.Value, b: (ir.IRBuilder | None) = None) -> ir.Value;
+    def _codegen_str_char_at(
+        data: ir.Value,
+        byte_off: ir.Value,
+        blen: ir.Value,
+        b: (ir.IRBuilder | None) = None
+    ) -> (ir.Value, ir.Value);
+
+    def _emit_cp_in_charset(
+        cp: ir.Value, charset: ir.Value, charset_blen: ir.Value
+    ) -> ir.Value;
 
     def _emit_whitespace_width(
         text: ir.Value, cursor: ir.Value, length: ir.Value, reverse: bool

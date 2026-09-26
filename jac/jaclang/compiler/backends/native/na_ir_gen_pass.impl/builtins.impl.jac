@@ -900,35 +900,32 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_string_index(
     target_val: ir.Value, index_val: ir.Value, len_val: (ir.Value | None) = None
 ) -> (ir.Value | None) {
-    i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-
+    b = self.builder;
+    zero = ir.Constant(i64, 0);
+    index_val = self._coerce_type(index_val, i64);
+    blen = (
+        len_val
+            if len_val is not None
+            else self._call_str_len(b, target_val, name="char.blen")
+    );
     if len_val is not None {
-        b = self.builder;
-        zero = ir.Constant(i64, 0);
-        index_val = self._coerce_type(index_val, i64);
+        cplen = self._call_utf8_cplen(b, target_val, blen, name="char.cplen");
         _neg = b.icmp_signed("<", index_val, zero, name="char.neg");
         index_val = b.select(
             _neg,
-            b.add(index_val, len_val, name="char.wrap"),
+            b.add(index_val, cplen, name="char.wrap"),
             index_val,
             name="char.idx.norm"
         );
         _lo = b.icmp_signed("<", index_val, zero, name="char.oob.lo");
-        _hi = b.icmp_signed(">=", index_val, len_val, name="char.oob.hi");
+        _hi = b.icmp_signed(">=", index_val, cplen, name="char.oob.hi");
         _oob = b.or_(_lo, _hi, name="char.oob");
         self._emit_runtime_raise(_oob, "IndexError", "string index out of range");
     }
-    char_ptr = self.builder.gep(target_val, [index_val], name="char.ptr");
-    char_val = self.builder.load(char_ptr, name="char.val");
-    byte_idx = self.builder.zext(char_val, i64, name="char.idx");
-    cache_gv = self._get_char_cache_gv();
-    cached_ptr = self.builder.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="char.cached"
-    );
-    return cached_ptr;
+    boff = self._call_utf8_cp_to_boff(b, target_val, blen, index_val, name="char.boff");
+    (ch, _w) = self._codegen_str_char_at(target_val, boff, blen);
+    return ch;
 }
 
 impl NaIRGenPass._emit_norm_slice_bounds(
@@ -1060,11 +1057,18 @@ impl NaIRGenPass._codegen_string_slice(
         _data = target_val;
         src_len = self._call_str_len(self.builder, target_val, name="ss.len");
     }
-    bounds = self._emit_norm_slice_bounds(slice_node, src_len);
+    _cplen = self._call_utf8_cplen(self.builder, _data, src_len, name="ss.cplen");
+    bounds = self._emit_norm_slice_bounds(slice_node, _cplen);
     if bounds is None {
         return None;
     }
     (start_val, stop_val, step_val, step_pos) = bounds;
+    _bstart = self._call_utf8_cp_to_boff(
+        self.builder, _data, src_len, start_val, name="ss.bstart"
+    );
+    _bstop = self._call_utf8_cp_to_boff(
+        self.builder, _data, src_len, stop_val, name="ss.bstop"
+    );
 
     _sl_ast = slice_node;
     if isinstance(_sl_ast, uni.IndexSlice) and len(_sl_ast.slices) == 1 {
@@ -1078,14 +1082,14 @@ impl NaIRGenPass._codegen_string_slice(
             or (_hl and self._hl_view_base_licensed(base_node))
         );
     if _view_ok {
-        _v_raw = self.builder.sub(stop_val, start_val, name="s.view.raw");
+        _v_raw = self.builder.sub(_bstop, _bstart, name="s.view.raw");
         _v_len = self.builder.select(
             self.builder.icmp_signed("<", _v_raw, zero, name="s.view.neg"),
             zero,
             _v_raw,
             name="s.view.len"
         );
-        _v_data = self.builder.gep(_data, [start_val], name="s.view.data");
+        _v_data = self.builder.gep(_data, [_bstart], name="s.view.data");
         _i32v = ir.IntType(32);
         _zv = ir.Constant(_i32v, 0);
         _v_slot = self._entry_alloca(self._str_desc_type(), "s.view.slot");
@@ -1149,10 +1153,19 @@ impl NaIRGenPass._codegen_string_slice(
     diff_pos = self.builder.icmp_signed(">", diff, zero, name="ss.dpos");
     n_val = self.builder.select(diff_pos, n_raw, zero, name="ss.n");
 
-    alloc_size = self.builder.add(n_val, one, name="ss.alloc");
+    alloc_size = self.builder.add(
+        self.builder.mul(n_val, ir.Constant(i64, 4), name="ss.alloc.cp"),
+        one,
+        name="ss.alloc"
+    );
     self._set_rc_ctx("str_substr", "");
     new_str = self._str_alloc(self.builder, alloc_size, name="ss.new");
     self._clear_rc_ctx();
+    memcpy_fn = self._get_or_declare_extern(
+        "memcpy",
+        ir.IntType(8).as_pointer(),
+        [ir.IntType(8).as_pointer(), ir.IntType(8).as_pointer(), i64]
+    );
 
     i_alloca = self.builder.alloca(i64, name="ss.i");
     k_alloca = self.builder.alloca(i64, name="ss.k");
@@ -1171,17 +1184,29 @@ impl NaIRGenPass._codegen_string_slice(
     self.builder.cbranch(in_range, loop_body, loop_done);
 
     self.builder.position_at_end(loop_body);
-    ch_ptr = self.builder.gep(_data, [cur_i], name="ss.src.ch");
-    ch = self.builder.load(ch_ptr, name="ss.ch");
+    cur_boff = self._call_utf8_cp_to_boff(
+        self.builder, _data, src_len, cur_i, name="ss.cur.boff"
+    );
+    remaining = self.builder.sub(src_len, cur_boff, name="ss.rem");
+    ch_ptr = self.builder.gep(_data, [cur_boff], name="ss.src.ch");
+    lead_v = self.builder.zext(self.builder.load(ch_ptr), i64, name="ss.ch.lead");
+    ch_width = self._call_utf8_width(self.builder, lead_v, remaining, name="ss.ch.w");
+    ch_width = self.builder.select(
+        self.builder.icmp_signed("<", ch_width, one, name="ss.ch.w.z"),
+        one,
+        ch_width,
+        name="ss.ch.w.min"
+    );
     cur_k = self.builder.load(k_alloca, name="ss.curk");
     out_ptr = self.builder.gep(new_str, [cur_k], name="ss.out.ch");
-    self.builder.store(ch, out_ptr);
-    self.builder.store(self.builder.add(cur_k, one, name="ss.nextk"), k_alloca);
+    self.builder.call(memcpy_fn, [out_ptr, ch_ptr, ch_width], name="ss.cp");
+    self.builder.store(self.builder.add(cur_k, ch_width, name="ss.nextk"), k_alloca);
     self.builder.store(self.builder.add(cur_i, step_val, name="ss.nexti"), i_alloca);
     self.builder.branch(loop_check);
 
     self.builder.position_at_end(loop_done);
-    self._str_finish(self.builder, new_str, n_val);
+    final_k = self.builder.load(k_alloca, name="ss.k.final");
+    self._str_finish(self.builder, new_str, final_k);
     self._mark_owned(new_str);
     return new_str;
 }
@@ -1207,29 +1232,25 @@ impl NaIRGenPass._hl_view_base_licensed(base_node: object) -> bool {
     );
 }
 
-impl NaIRGenPass._emit_is_strip_char(
-    ch: ir.Value, charset: (ir.Value | None)
+impl NaIRGenPass._emit_strip_membership(
+    cp: ir.Value, charset: (ir.Value | None), charset_blen: (ir.Value | None)
 ) -> ir.Value {
-    i8 = ir.IntType(8);
-    i32 = ir.IntType(32);
+    i1 = ir.IntType(1);
+    i64 = ir.IntType(64);
     if charset is None {
-        is_space = self.builder.icmp_signed(
-            "==", ch, ir.Constant(i8, 32), name="is.space"
-        );
-        is_tab = self.builder.icmp_signed("==", ch, ir.Constant(i8, 9), name="is.tab");
-        is_nl = self.builder.icmp_signed("==", ch, ir.Constant(i8, 10), name="is.nl");
-        is_cr = self.builder.icmp_signed("==", ch, ir.Constant(i8, 13), name="is.cr");
-        is_ws = self.builder.or_(is_space, is_tab, name="ws1");
-        is_ws = self.builder.or_(is_ws, is_nl, name="ws2");
-        return self.builder.or_(is_ws, is_cr, name="ws3");
+        b = self.builder;
+        is_space = b.icmp_signed("==", cp, ir.Constant(i64, 32), name="is.space");
+        is_tab = b.icmp_signed("==", cp, ir.Constant(i64, 9), name="is.tab");
+        is_nl = b.icmp_signed("==", cp, ir.Constant(i64, 10), name="is.nl");
+        is_cr = b.icmp_signed("==", cp, ir.Constant(i64, 13), name="is.cr");
+        is_ws = b.or_(is_space, is_tab, name="ws1");
+        is_ws = b.or_(is_ws, is_nl, name="ws2");
+        return b.or_(is_ws, is_cr, name="ws3");
     }
-    i8p = i8.as_pointer();
-    strchr_fn = self._get_or_declare_extern("strchr", i8p, [i8p, i32]);
-    ch_i32 = self.builder.zext(ch, i32, name="strip.ch.i32");
-    found = self.builder.call(strchr_fn, [charset, ch_i32], name="strip.find");
-    return self.builder.icmp_unsigned(
-        "!=", found, ir.Constant(i8p, None), name="strip.in"
-    );
+    if charset_blen is None {
+        charset_blen = ir.Constant(i64, 0);
+    }
+    return self._emit_cp_in_charset(cp, charset, charset_blen);
 }
 
 impl NaIRGenPass._codegen_str_strip_chars(
@@ -1239,7 +1260,12 @@ impl NaIRGenPass._codegen_str_strip_chars(
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
     func = self.builder.function;
-    slen = self._call_str_len(self.builder, str_val, name="strip.len");
+    slen = self._call_str_len(self.builder, str_val, name="strip.blen");
+    charset_blen: (ir.Value | None) = (
+        self._call_str_len(self.builder, charset, name="strip.set.blen")
+            if charset is not None
+            else None
+    );
 
     final_start: ir.Value = ir.Constant(i64, 0);
     if do_left {
@@ -1255,14 +1281,13 @@ impl NaIRGenPass._codegen_str_strip_chars(
         in_range = self.builder.icmp_signed("<", start_val, slen, name="start.inrange");
         self.builder.cbranch(in_range, start_body_bb, start_done_bb);
         self.builder.position_at_end(start_body_bb);
-        ch_ptr = self.builder.gep(str_val, [start_val], name="start.ch.ptr");
-        ch = self.builder.load(ch_ptr, name="start.ch");
-        is_strip = self._emit_is_strip_char(ch, charset);
+        (start_cp, start_w) = self._emit_decode_cp(
+            str_val, start_val, slen, b=self.builder
+        );
+        is_strip = self._emit_strip_membership(start_cp, charset, charset_blen);
         self.builder.cbranch(is_strip, start_inc_bb, start_done_bb);
         self.builder.position_at_end(start_inc_bb);
-        next_start = self.builder.add(
-            start_val, ir.Constant(i64, 1), name="next.start"
-        );
+        next_start = self.builder.add(start_val, start_w, name="next.start");
         self.builder.store(next_start, start_alloca);
         self.builder.branch(start_check_bb);
         self.builder.position_at_end(start_done_bb);
@@ -1272,26 +1297,32 @@ impl NaIRGenPass._codegen_str_strip_chars(
     final_end = slen;
     if do_right {
         end_alloca = self.builder.alloca(i64, name="strip.end");
-        self.builder.store(slen, end_alloca);
+        cur_alloca = self.builder.alloca(i64, name="strip.rcur");
+        self.builder.store(final_start, end_alloca);
+        self.builder.store(final_start, cur_alloca);
         end_check_bb = func.append_basic_block(name="strip.end.check");
         end_body_bb = func.append_basic_block(name="strip.end.body");
-        end_dec_bb = func.append_basic_block(name="strip.end.dec");
+        end_keep_bb = func.append_basic_block(name="strip.end.keep");
+        end_adv_bb = func.append_basic_block(name="strip.end.adv");
         end_done_bb = func.append_basic_block(name="strip.end.done");
         self.builder.branch(end_check_bb);
         self.builder.position_at_end(end_check_bb);
-        end_val = self.builder.load(end_alloca, name="end.cur");
-        end_gt_start = self.builder.icmp_signed(
-            ">", end_val, final_start, name="end.gt.start"
-        );
-        self.builder.cbranch(end_gt_start, end_body_bb, end_done_bb);
+        cur_val = self.builder.load(cur_alloca, name="end.cur");
+        in_range2 = self.builder.icmp_signed("<", cur_val, slen, name="end.inrange");
+        self.builder.cbranch(in_range2, end_body_bb, end_done_bb);
         self.builder.position_at_end(end_body_bb);
-        prev_end = self.builder.sub(end_val, ir.Constant(i64, 1), name="prev.end");
-        ech_ptr = self.builder.gep(str_val, [prev_end], name="end.ch.ptr");
-        ech = self.builder.load(ech_ptr, name="end.ch");
-        e_strip = self._emit_is_strip_char(ech, charset);
-        self.builder.cbranch(e_strip, end_dec_bb, end_done_bb);
-        self.builder.position_at_end(end_dec_bb);
-        self.builder.store(prev_end, end_alloca);
+        (end_cp, end_w) = self._emit_decode_cp(str_val, cur_val, slen, b=self.builder);
+        e_strip = self._emit_strip_membership(end_cp, charset, charset_blen);
+        self.builder.cbranch(e_strip, end_adv_bb, end_keep_bb);
+        self.builder.position_at_end(end_keep_bb);
+        self.builder.store(
+            self.builder.add(cur_val, end_w, name="end.keep.next"), end_alloca
+        );
+        self.builder.branch(end_adv_bb);
+        self.builder.position_at_end(end_adv_bb);
+        self.builder.store(
+            self.builder.add(cur_val, end_w, name="end.adv.next"), cur_alloca
+        );
         self.builder.branch(end_check_bb);
         self.builder.position_at_end(end_done_bb);
         final_end = self.builder.load(end_alloca, name="final.end");

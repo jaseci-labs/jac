@@ -1760,10 +1760,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
                     if self._str_desc_ty is not None
                         and arg_val.type == self._str_desc_ty {
-                        _len_result = self.builder.extract_value(
+                        _s_data = self.builder.extract_value(
+                            arg_val,
+                            0 if self._nogc_headerless() else 1,
+                            name="len.sdata"
+                        );
+                        _s_blen = self.builder.extract_value(
                             arg_val,
                             len(list(self._str_desc_ty.elements)) - 1,
-                            name="s.len.o1"
+                            name="len.sblen"
+                        );
+                        _len_result = self._call_utf8_cplen(
+                            self.builder, _s_data, _s_blen, name="len.scplen"
                         );
                     }
 
@@ -1825,8 +1833,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
                     if _len_result is None
                         and arg_val.type == ir.IntType(8).as_pointer() {
-                        _len_result = self._call_str_len(
-                            self.builder, arg_val, name="str.len"
+                        _str_blen = self._call_str_len(
+                            self.builder, arg_val, name="str.blen"
+                        );
+                        _len_result = self._call_utf8_cplen(
+                            self.builder, arg_val, _str_blen, name="str.len"
                         );
                     }
                     if _len_result is not None {
