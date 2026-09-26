@@ -20,6 +20,7 @@ import from jaclang.server.sealed_serve {
     client_dist_for,
     sealed_root_for,
     serve_manifest_for,
+    serve_manifest_stamp,
     unlisted_image_root
 }
 import from .test_helpers { get_jac_command }
@@ -54,6 +55,7 @@ def _sealed_root(tmp: str, manifest: (dict[str, any] | None) = None) -> str {
         f.write(
             json.dumps(
                 {
+                    ** serve_manifest_stamp(),
                     'module_manifests': {
                         'main.jac': {'client': {'exports': [], 'globals': []}}
                     }
@@ -75,6 +77,18 @@ test "a sealed image's own_mod module resolves to the sealed root" {
         assert dist is not None and any(dist.`glob("client.*.js"));
         assert serve_manifest_for(own_mod) is not None;
         assert unlisted_image_root(own_mod) is None;
+        with open(
+            os.path.join(img_root, ".jac", "serve_manifest.json"), "w", encoding="utf-8"
+        ) as f {
+            f.write(json.dumps({'module_manifests': {'main.jac': {}}}));
+        }
+        caught = '';
+        try {
+            serve_manifest_for(own_mod);
+        } except RuntimeError as e {
+            caught = str(e);
+        }
+        assert 'serve manifest format unstamped' in caught , caught;
         extra = os.path.join(img_root, "extra.jac");
         with open(extra, "w", encoding="utf-8") as f {
             f.write("with entry {}\n");

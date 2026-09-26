@@ -260,9 +260,8 @@ def _check(program: any, before: any) {
 def _prepare_sealed(
     `entry: str, program: any, image_root: str, entries: list[str]
 ) -> PreparedApplication {
-    import json;
     import from jaclang.runtime.prepared { PreparedApplication, publish }
-    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL, CLIENT_DIST_REL }
+    import from jaclang.server.sealed_serve { CLIENT_DIST_REL, read_serve_manifest }
     import from jaclang.compiler.driver.jir {
         HEADER_SIZE,
         SECTIONS_MAGIC,
@@ -283,14 +282,7 @@ def _prepare_sealed(
             f'Sealed application has no artifact manifest: {image_root}'
         );
     }
-    serve_manifest = Path(image_root) / SERVE_MANIFEST_REL;
-    if not serve_manifest.is_file() {
-        raise RuntimeError(
-            f'Sealed application has no serving manifest: {serve_manifest}; '
-            'rebuild the bundle so the seal step writes it'
-        );
-    }
-    manifest = json.loads(serve_manifest.read_text());
+    manifest = read_serve_manifest(image_root);
     manifest['root'] = image_root;
     revision = PreparedApplication(
         image_root, `entry, services=tuple(entries[1:]), dev=False
