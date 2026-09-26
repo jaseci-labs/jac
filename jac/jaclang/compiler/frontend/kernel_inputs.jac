@@ -173,6 +173,7 @@ obj ManifestSets {
 obj KernelInputs {
     has version: int = KERNEL_INPUTS_VERSION,
         entry_path: str = "",
+        package_root: str = "",
         module_projection: str = "",
         target_app: str = "",
         request: RequestOptions = RequestOptions(),
@@ -632,6 +633,7 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
     return {
         "version": inputs.version,
         "entry_path": inputs.entry_path,
+        "package_root": inputs.package_root,
         "module_projection": inputs.module_projection,
         "target_app": inputs.target_app,
         "request": request_to_dict(inputs.request),
@@ -755,6 +757,7 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
     inputs = KernelInputs(
         version=version,
         entry_path=str(raw.get("entry_path", "")),
+        package_root=str(raw.get("package_root", "")),
         module_projection=str(raw.get("module_projection", "")),
         target_app=str(raw.get("target_app", "")),
         request=request_from_dict(json_map(raw.get("request"))),

@@ -70,9 +70,7 @@ obj SessionHooks {
         target_program: JacProgram,
         use_str: (str | None),
         options: CompileOptions
-    ) -> uni.Module {
-        raise NotImplementedError("a compile session needs a module runner");
-    }
+    ) -> uni.Module abst;
 }
 
 def select_context(

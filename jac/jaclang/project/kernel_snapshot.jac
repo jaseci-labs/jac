@@ -302,8 +302,10 @@ def snapshot_inputs(
     }
     origin = catalog_origin() if catalog_active else None;
     natives = program._natives;
+    import from jaclang.compiler.frontend.host { package_root }
     inputs = KernelInputs(
         entry_path=path,
+        package_root=package_root(),
         module_projection=options.module_projection(),
         target_app=options.target_app or "",
         request=request_of(options),

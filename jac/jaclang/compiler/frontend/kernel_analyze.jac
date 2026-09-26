@@ -1,8 +1,13 @@
 import json;
 import os;
+import sys;
 import from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.host { active_host, install_host }
+import from jaclang.compiler.frontend.host {
+    active_host,
+    install_host,
+    set_package_root
+}
 import from jaclang.compiler.frontend.kernel_host { KernelHost }
 import from jaclang.compiler.frontend.kernel_inputs {
     KernelInputs,
@@ -278,16 +283,37 @@ def analysis_report(
     return outcome;
 }
 
+def kernel_trace(message: str) {
+    if os.environ.get("JAC_KERNEL_TRACE") {
+        sys.stderr.write(f"[kernel] {message}\n");
+        sys.stderr.flush();
+    }
+}
+
 def run_kernel_analysis(
     inputs_json: str, path: str, source: (str | None)
 ) -> AnalysisReport {
-    inputs = KernelInputs.from_json(inputs_json);
+    kernel_trace("decode inputs");
+    try {
+        inputs = KernelInputs.from_json(inputs_json);
+    } except Exception as err {
+        return AnalysisReport(
+            status=ANALYSIS_CRASHED,
+            message=f"undecodable kernel inputs: {err}",
+            entry_path=path
+        );
+    }
+    if inputs.package_root {
+        set_package_root(inputs.package_root);
+    }
     host = KernelHost(inputs=inputs);
+    host.census.trace = bool(os.environ.get("JAC_KERNEL_TRACE"));
     previous = active_host();
     install_host(host);
     program = JacProgram();
     status = ANALYSIS_OK;
     message = "";
+    kernel_trace(f"analyze {path}");
     try {
         options = inputs.request.to_options();
         host.compile_module(program, path, source, options);
@@ -297,6 +323,7 @@ def run_kernel_analysis(
     } finally {
         install_host(previous);
     }
+    kernel_trace(f"report status {status}");
     outcome = analysis_report(
         program, path, list(host.analyses.values()), status, message
     );

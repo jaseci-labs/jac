@@ -346,9 +346,11 @@ obj HostServices {
     }
 }
 
+obj NeutralHost(HostServices) {}
+
 glob KERNEL_HOST_ENV: str = "JAC_KERNEL_HOST",
      _HOSTS: list[HostServices] = [],
-     _NEUTRAL_HOST: HostServices = HostServices(),
+     _NEUTRAL_HOST: HostServices = NeutralHost(),
      _PACKAGE_ROOT: list[str] = [];
 
 def active_host -> HostServices {

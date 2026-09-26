@@ -1,4 +1,5 @@
 import os;
+import sys;
 import from contextlib { contextmanager }
 import from jaclang.compiler.frontend.host {
     active_host,
@@ -63,7 +64,8 @@ obj HostEvent {
 }
 
 obj HostCensus {
-    has entry_path: str = "",
+    has trace: bool = False,
+        entry_path: str = "",
         sessions: int = 0,
         snapshot_seconds: float = 0.0,
         scanned_modules: int = 0,
@@ -74,6 +76,10 @@ obj HostCensus {
         buffered: dict[str, int] = {};
 
     def count(method: str) {
+        if self.trace {
+            sys.stderr.write(f"[kernel host] {method}\n");
+            sys.stderr.flush();
+        }
         self.calls[method] = self.calls.get(method, 0) + 1;
     }
 
@@ -297,10 +303,11 @@ obj KernelHost(HostServices) {
         self._session = KernelSession(host=self, closure=self.closure);
     }
 
-    def host -> HostServices {
+    def host(method: str = "") -> HostServices {
         if self.fallback is None {
             raise HostOnlyError(
-                "the kernel host has no host to answer a question outside its inputs"
+                f"the kernel host has no host to answer {method or 'a question'} "
+                "outside its inputs"
             );
         }
         return self.fallback;
@@ -371,19 +378,19 @@ obj KernelHost(HostServices) {
         return mod;
     }
 
-    def host_turn -> HostTurn {
-        return HostTurn(host=self.host());
+    def host_turn(method: str = "") -> HostTurn {
+        return HostTurn(host=self.host(method));
     }
 
     def missing(method: str, key: str) -> HostTurn {
         self.census.miss(method, key);
-        return self.host_turn();
+        return self.host_turn(method);
     }
 
     def delegating(method: str) -> HostTurn {
         self.census.count(method);
         self.census.delegate(method);
-        return self.host_turn();
+        return self.host_turn(method);
     }
 
     def buffer(event: HostEvent, method: str) {
@@ -556,7 +563,8 @@ obj KernelHost(HostServices) {
         local = LocalResolution(base=base, parts=list(parts));
         if answer is not None {
             local.found = True;
-            (local.path, local.language) = answer;
+            local.path = answer[0];
+            local.language = answer[1];
         }
         self._locals[key] = local;
         self.inputs.local_imports.append(local);
