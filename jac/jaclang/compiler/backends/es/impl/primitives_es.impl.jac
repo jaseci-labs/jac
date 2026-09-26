@@ -1948,6 +1948,20 @@ impl ESBuiltinEmitter.emit_new(
     return "Reflect.construct(" + cls + ", " + ctor_args + ")";
 }
 
+impl ESBuiltinEmitter.emit___import__(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
+    if not args {
+        return None;
+    }
+    code = "import(" + args[0] + ")";
+    export_name = (ctx.kwargs or {}).get("fromlist", None);
+    if export_name {
+        code += ".then((m) => ({default: m." + export_name + "}))";
+    }
+    return code;
+}
+
 impl ESBuiltinEmitter.emit_unsafe_html(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {

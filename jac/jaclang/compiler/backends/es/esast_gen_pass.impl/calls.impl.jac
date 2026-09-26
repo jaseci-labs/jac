@@ -3,6 +3,144 @@ import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
 import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 
+impl EsastGenPass._literal_import_spec(spec: uni.Expr | uni.KWPair) -> (str | None) {
+    if isinstance(spec, uni.String) {
+        return str(spec.lit_value);
+    }
+    if isinstance(spec, uni.MultiString) {
+        for part in spec.strings {
+            if not isinstance(part, uni.String) {
+                return None;
+            }
+        }
+        return str(spec.lit_value);
+    }
+    return None;
+}
+
+
+impl EsastGenPass._resolve_dynamic_import_spec(
+    raw: str, importer: str
+) -> (str | None) {
+    import os;
+    import from jaclang.project.modresolver { resolve_relative_path }
+
+    candidates: list[str] = [raw];
+    if not raw.endswith(".jac") {
+        candidates.append(raw + ".jac");
+    }
+    for candidate in candidates {
+        try {
+            resolved = resolve_relative_path(candidate, importer, string_spec=True);
+        } except Exception {
+            continue;
+        }
+        if resolved.endswith(".jac") and os.path.isfile(resolved) {
+            return resolved;
+        }
+    }
+    return None;
+}
+
+
+impl EsastGenPass._prepare_dynamic_import(
+    nd: uni.FuncCall
+) -> (tuple[str, (str | None)] | None) {
+    import from jaclang.project.modresolver { relative_js_specifier }
+
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+    positional = [
+        p
+        for p in params
+        if not isinstance(p, uni.KWPair)
+    ];
+    keywords = [
+        p
+        for p in params
+        if isinstance(p, uni.KWPair)
+    ];
+    if not positional {
+        self._reject_dynamic_import(nd, "no module path was given");
+        return None;
+    }
+    if len(positional) > 1 {
+        self._reject_dynamic_import(
+            nd,
+            "only a module path and an optional fromlist are supported here;"
+            " __import__'s other parameters describe Python's module system and"
+            " have no meaning in a browser"
+        );
+        return None;
+    }
+    export_name: (str | None) = None;
+    for kw in keywords {
+        key = kw.key.sym_name if kw.key else "";
+        if key != "fromlist" {
+            self._reject_dynamic_import(
+                nd,
+                "'"
+                    + key
+                    + "' describes Python's module system and has no"
+                    " meaning in a browser"
+            );
+            return None;
+        }
+        export_name = self._single_export_name(kw.value);
+        if export_name is None {
+            self._reject_dynamic_import(
+                nd, "fromlist has to name exactly one export, as a plain string"
+            );
+            return None;
+        }
+    }
+    raw = self._literal_import_spec(positional[0]);
+    if raw is None {
+        self._reject_dynamic_import(
+            nd,
+            "the path is built at runtime, so the bundler cannot tell which"
+            " module to split out, and the import would quietly load nothing"
+        );
+        return None;
+    }
+    importer = self.module.loc.mod_path or nd.loc.mod_path;
+    if not importer {
+        return None;
+    }
+    resolved = self._resolve_dynamic_import_spec(raw, importer);
+    if resolved is None {
+        self._reject_dynamic_import(
+            nd, "'" + raw + "' does not name a Jac module next to this one"
+        );
+        return None;
+    }
+    js_spec = relative_js_specifier(resolved, importer);
+    if self.client_manifest {
+        self.client_manifest.imports[raw] = resolved;
+    }
+    self.module_import_paths[js_spec] = resolved;
+    return (js_spec, export_name);
+}
+
+
+impl EsastGenPass._single_export_name(expr: uni.Expr) -> (str | None) {
+    if not isinstance(expr, uni.ListVal) {
+        return None;
+    }
+    values = list(expr.values);
+    if len(values) != 1 {
+        return None;
+    }
+    return self._literal_import_spec(values[0]);
+}
+
+
+impl EsastGenPass._reject_dynamic_import(nd: uni.FuncCall, details: str) -> None {
+    import from jaclang.compiler.frontend.diagnostics { E5113 }
+
+    self.ctx.emit(E5113, node_override=nd, details=details);
+}
+
+
 impl EsastGenPass._field_constructor_args(
     nd: uni.FuncCall,
     args: list[es.Expression | es.SpreadElement],
@@ -1268,6 +1406,21 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                     if isinstance(_p.key, es.Identifier) {
                         _kwargs[_p.key.name] = _val_str;
                     }
+                }
+            }
+            if _builtin_name == "__import__" {
+                _dyn = self._prepare_dynamic_import(here);
+                if _dyn is None {
+                    here.gen.es_ast = self.sync_loc(
+                        es.RawCode(code="undefined"), jac_node=here
+                    );
+                    return;
+                }
+                (_dyn_spec, _dyn_export) = _dyn;
+                _args_strs = ['"' + _dyn_spec + '"'];
+                _kwargs = {};
+                if _dyn_export is not None {
+                    _kwargs["fromlist"] = _dyn_export;
                 }
             }
             _ctx = ESEmitCtx(
