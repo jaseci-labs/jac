@@ -2925,6 +2925,7 @@ walker NaIRGenPass(CompilerPass) {
     def _spec_name_match(tk: str, names: tuple[str, ...]) -> bool;
     def _opt_sole_member(t: any) -> (TypeBase | None);
     def _spec_union_agreement(t: any, names: tuple[str, ...]) -> (any | None);
+    def _is_object_union_key(t: any, key_llvm: ir.Type) -> bool;
     def _elem_storage_llvm(t: any) -> (ir.Type | None);
     def _aos_elem_of(type_expr: uni.UniNode | None) -> (str | None);
     def _infer_type_name(val: ir.Value) -> (str | None);
