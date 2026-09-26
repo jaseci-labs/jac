@@ -1264,14 +1264,15 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     _na_debug = self._na_debug_on();
     if self._seam_warnings_on()
         and not self.prog.options.native_required_for(self.module.loc.mod_path) {
-        import from jaclang.cli.console { console }
+        import from jaclang.compiler.frontend.host { active_host }
         import from jaclang.compiler.frontend.codeinfo { native_display_text }
         _why = "; ".join(str(e) for e in _own);
-        console.warning(
+        active_host().note(
             native_display_text(
                 f"native seam -- demoting {full_name} to Python-only "
                 f"(un-lowerable): {_why}"
-            )
+            ),
+            style="warning"
         );
     }
     if _na_debug {
@@ -1328,14 +1329,9 @@ impl NaIRGenPass._seam_warnings_on -> bool {
     if self._na_debug_on() or bool(self.prog.options.native_debug) {
         return True;
     }
-    try {
-        import from jaclang.project.config { get_config }
-        _cfg = get_config();
-        if _cfg and _cfg.check {
-            return bool(_cfg.check.warn_native_seams);
-        }
-    } except Exception {}
-    return True;
+    import from jaclang.compiler.frontend.host { active_host }
+    defaults = active_host().project_defaults();
+    return defaults.check.warn_native_seams if defaults is not None else True;
 }
 
 impl NaIRGenPass._opaque_field_if_unlowerable(
@@ -1366,14 +1362,15 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
 
     if self._seam_warnings_on()
         and not self.prog.options.native_required_for(self.module.loc.mod_path) {
-        import from jaclang.cli.console { console }
+        import from jaclang.compiler.frontend.host { active_host }
         import from jaclang.compiler.frontend.codeinfo { native_display_text }
-        console.warning(
+        active_host().note(
             native_display_text(
                 f"native seam -- erasing field {arch_name}.{fname} to an "
                 f"opaque slot (un-lowerable declaration): "
                     + "; ".join(str(e) for e in _own)
-            )
+            ),
+            style="warning"
         );
         import from jaclang.compiler.driver.compile_options { env_na_debug as _er_dbg }
         if _er_dbg() {

@@ -37,10 +37,10 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     client_ambient_globals,
     free_identifiers
 }
-import from jaclang.project.modresolver {
+import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.compiler.backends.es.js_paths {
     convert_to_js_import_path,
-    relative_js_specifier,
-    resolve_relative_path
+    relative_js_specifier
 }
 import from jaclang.compiler.frontend.diagnostics {
     E2025,

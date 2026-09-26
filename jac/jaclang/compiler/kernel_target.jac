@@ -28,7 +28,7 @@ obj KernelTarget {
     }
 
     def to_json -> str {
-        return json.dumps(self.to_dict(), sort_keys=True, indent=1);
+        return json.dumps(self.to_dict(), sort_keys=True);
     }
 
     def module_path(module: str) -> str {
@@ -94,9 +94,10 @@ def kernel_target_from_dict(data: dict[str, object]) -> (KernelTarget | None) {
 }
 
 def read_kernel_target(path: str) -> (KernelTarget | None) {
-    with open(path, "r", encoding="utf-8") as f {
-        data = json.load(f);
+    with open(path, "rb") as f {
+        raw = f.read();
     }
+    data = json.loads(raw.decode("utf-8"));
     if not isinstance(data, dict) {
         return None;
     }
@@ -117,8 +118,8 @@ def with_link_mode(spec: KernelTarget, link_mode: str) -> KernelTarget {
 }
 
 def write_kernel_target(spec: KernelTarget, path: str) {
-    with open(path, "w", encoding="utf-8") as f {
-        f.write(spec.to_json());
+    with open(path, "wb") as f {
+        f.write(spec.to_json().encode("utf-8"));
     }
 }
 

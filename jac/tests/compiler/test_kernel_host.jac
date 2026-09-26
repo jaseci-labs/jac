@@ -12,11 +12,8 @@ import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { KERNEL_HOST_ENV, active_host }
-import from jaclang.compiler.frontend.kernel_host {
-    KernelHost,
-    kernel_census,
-    reset_kernel_census
-}
+import from jaclang.compiler.frontend.kernel_host { KernelHost }
+import from jaclang.project.kernel_snapshot { kernel_census, reset_kernel_census }
 import from jaclang.compiler.frontend.kernel_inputs { ImportResolution, KernelInputs }
 import from jaclang.project.compiler_host { ProjectHost }
 import from jaclang.project.workspace_model { WorkspaceSpec }

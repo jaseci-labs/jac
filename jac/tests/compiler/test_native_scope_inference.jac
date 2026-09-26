@@ -12,7 +12,7 @@ import jaclang.compiler.native_scope as policy;
 test "inferred compiler dependencies respect the active native scope" {
     compiler_root = os.path.dirname(policy.__file__);
     member = os.path.join(compiler_root, "frontend", "unitree.jac");
-    outside = os.path.join(compiler_root, "placement", "placement_solver.jac");
+    outside = os.path.join(compiler_root, "passes", "pyast_load_pass.jac");
     library = os.path.join(compiler_root, "..", "runtime", "osp_graph.jac");
     assert not native_unit_compile_active();
     assert policy.scope_allows_inferred_path(outside);
@@ -27,13 +27,13 @@ test "inferred compiler dependencies respect the active native scope" {
         assert not policy.scope_allows_inferred_path(outside);
         assert not policy.scope_allows_inferred_path(
             os.path.join(
-                compiler_root, "frontend", "..", "placement", "placement_solver.jac"
+                compiler_root, "frontend", "..", "passes", "pyast_load_pass.jac"
             )
         );
         assert policy.scope_allows_inferred_path(library);
         assert policy.scope_allows_inferred_path(checkout_entry);
         assert not policy.scope_allows_inferred_path(
-            os.path.join(checkout_root, "types", "type_evaluator.jac")
+            os.path.join(checkout_root, "passes", "pyast_load_pass.jac")
         );
     } finally {
         reset_native_unit_compile(previous);

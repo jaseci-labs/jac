@@ -3326,7 +3326,7 @@ impl Float.lit_value.getter -> float {
 }
 
 impl Int.lit_value.getter -> int {
-    return int(self.value, 0);
+    return int_literal_value(self.value);
 }
 
 impl String.lit_value.getter -> str | bytes {
@@ -3441,11 +3441,15 @@ impl Source.init(source: str, mod_path: str) -> None {
 
 impl Source.hash.getter -> str {
     if not self._hash {
-        h = 0xCBF29CE484222325;
+        hi = 0xCBF29CE4;
+        lo = 0x84222325;
         for b in self.value.encode() {
-            h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF;
+            lo = lo ^ b;
+            low = lo * 0x1B3;
+            hi = (hi * 0x1B3 + (low >> 32) + ((lo << 8) & 0xFFFFFFFF)) & 0xFFFFFFFF;
+            lo = low & 0xFFFFFFFF;
         }
-        self._hash = f"{h:016x}";
+        self._hash = f"{hi:08x}{lo:08x}";
     }
     return self._hash;
 }
