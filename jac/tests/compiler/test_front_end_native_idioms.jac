@@ -466,7 +466,7 @@ test "scan_native_blockers names the offending node from the table" {
     assert reason == "contains JsxElement" , f"got reason {reason!r}";
 }
 
-test "guardrail: @lru_cache refuses where a dict cache does not" {
+test "guardrail: @lru_cache binds the bundled module where a dict cache does not" {
     import from tests.support { native_force_opts }
     dec = JacProgram();
     dec_ir = dec.compile(
@@ -477,17 +477,14 @@ test "guardrail: @lru_cache refuses where a dict cache does not" {
         options=native_force_opts()
     );
     errs = fmt_errors(dec);
-    assert "decorator 'on twice'" in errs , (
-        f"the capability gate must still name the dynamic decorator: {errs}"
+    assert len(errs) == 0 , (
+        f"`functools` now binds the bundled native module, so the decorator "
+        f"resolves to `_LruDeco` and nothing is module-fatal: {errs}"
     );
-    assert "Python module import 'functools'" in errs , (
-        "the decorator cannot be written without importing it, and a "
-        "module-scope Python import has no owning callable to absorb it as "
-        "a seam, so it refuses the module exactly as a bare "
-        f"`import functools;` does: {errs}"
-    );
-    assert dec_ir.gen.llvm_ir is None , (
-        "a module-fatal violation must withhold the LLVM IR"
+    assert dec_ir.gen.llvm_ir is not None , (
+        "the decorated module compiles; LLVM IR must be emitted (calls of "
+        "the decorated name go through the explicit `.__call__(...)` shape "
+        "prim_functools pins)"
     );
     memo = check_na_inline(
         "dict_memo",

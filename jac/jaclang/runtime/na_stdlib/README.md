@@ -476,6 +476,53 @@ native layout records the emitted name separately from its source-level key.
   link against host libm on native and against the vendored musl bitcode on
   wasm.
 
+- **`functools.jac`** (#8145 epic, Mechanism B over native closures and
+  stored-callable calls) -- `reduce`, `partial`, `cmp_to_key`, `lru_cache`
+  (+ `cache`), and `wraps`, with `WRAPPER_ASSIGNMENTS`/`WRAPPER_UPDATES`.
+  `reduce` is CPython's algorithm (TypeError
+  "reduce() of empty iterable with no initial value" matches type-and-text);
+  `lru_cache` is dict-backed with CPython's maxsize semantics (128 default,
+  `None` = unbounded, `0` = no caching, LRU move-to-end on hit and
+  oldest-insert eviction), plus `cache_info()` (same field names/values as
+  CPython's `CacheInfo`, but a plain object -- no namedtuple unpacking) and
+  `cache_clear()`. Congruent *call shapes only*: the factory/decorate forms
+  `lru_cache(maxsize=N)(fn)`, `cache(fn)` -- spelled with an explicit
+  `.__call__` on na (`lru_cache(maxsize=N).__call__(fn)`, `sq.__call__(x)`)
+  because the native call lowering has no general `__call__` instance
+  dispatch (`obj(args)` is not callable; `obj.__call__(args)` is a normal
+  method call). `lru_cache(fn)` direct decoration is a TypeError on na: a
+  function passed through `any` arrives boxed with no callable tag and
+  `callable()` has no native lowering. The `@dec` spelling demotes for the
+  same bare-function-pointer rule (the lowering raises "a native decorator
+  returned a capturing closure" or worse; decorate by explicit call
+  instead). SCOPE/divergences: functions are single-argument and keys are
+  int/float/bool/str/None (tagged length-prefixed str keys; other arg types
+  raise `TypeError` where CPython reports "unhashable type: '<type>'");
+  keys match CPython 3.14's C `lru_cache`, which compares by equal-type
+  equality -- cross-type numerics never hit (`f(1)` then `f(1.0)` and
+  `f(True)` are separate entries, hits=0, as on CPython 3.14; the classic
+  "1 == 1.0 shares an entry" folding is pre-3.12 behavior), `typed` is
+  accepted but no longer changes key shape (3.14 splits types either way),
+  and `-0.0`/`0.0` normalize to one entry as on CPython; `partial` binds
+  exactly one
+  leading argument and its result takes exactly one argument (native calls
+  are fixed-arity -- CPython's `*args`/`**kwargs` partials fail at compile
+  time, not silently);
+  `reduce` takes a `list` (CPython accepts any iterable); an explicit
+  `initializer=None` is indistinguishable from no initializer, so it raises
+  on an empty list where CPython returns `None`; `cmp_to_key(mycmp)` returns
+  a factory whose key objects expose `.obj` and the six comparison dunders
+  over the stored comparator -- but **sorting with them demotes the whole
+  native program** (E5092: native `sorted`/`list.sort` compare only
+  orderable primitive keys and never dispatch `__lt__` on key objects), so
+  `cmp_to_key` is only directly usable (`.obj`, dunder calls) on na;
+  `wraps` returns a decorator that answers its wrapper unchanged because
+  native function values carry no attribute table -- `__name__`/`__doc__`
+  copying (and `__wrapped__`) is sv-only behavior. `total_ordering`,
+  `partialmethod`, `singledispatch`/`singledispatchmethod`, and
+  `cached_property` are not provided (E5092 by omission): they need class-body
+  or descriptor protocol machinery the native backend does not synthesize.
+
 - **`time.jac`** (Mechanism F surface) + **`_time_common.jac`** (shared
   `clock_gettime` / `clock_settime` FFI and timespec loads) +
   **`_time_native.linux.jac`** / **`_time_native.darwin.jac`** (per-OS clock
