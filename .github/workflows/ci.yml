@@ -121,7 +121,10 @@ jobs:
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # The kit seals the native compiler kernel. A cold kernel build (a new
+    # stage-0 pin or a units-cache miss) lowers the analysis zone in one
+    # process and peaks near 15 GB, which starves a 4-vCPU runner.
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v5
 
