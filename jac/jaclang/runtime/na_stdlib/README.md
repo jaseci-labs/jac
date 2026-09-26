@@ -580,6 +580,68 @@ stack (or, for `splitext`, a tuple return), which is the sort of work
 Mechanism B exists to avoid writing twice. Reaching for one through the flat
 `import os` fails loudly naming the member rather than answering wrong.
 
+- **`tomllib.jac`** (Mechanism B) -- a port of CPython's pure-Python
+  `tomllib` (`Modules/tomllib/parser.py` + `reader.py`; the stdlib `re`
+  dispatch tables are re-expressed as hand scanners since no regex engine
+  exists natively). Single entry point `loads(s: str) -> dict[str, any]` plus
+  the `TOMLDecodeError(msg, doc, pos)` exception, whose `str()` reproduces
+  CPython's exact `"<msg> (at line L, column C)"` / `"(at end of document)"`
+  format. The `_Flags` merged-path bitmasks, `_Data` nest machinery, and the
+  `Cannot overwrite a value` / `Cannot declare (...) twice` / `Cannot mutate
+  immutable namespace` / `Duplicate inline table key` error family are the
+  CPython algorithms verbatim; CRLF is normalized up front like CPython.
+  Datetimes (all four TOML forms, fractional seconds truncated to microseconds)
+  return module-internal `_TDatetime` / `_TDate` / `_TTime` value objects whose
+  `isoformat()` / `str()` render byte-identical to the corresponding
+  `datetime` / `date` / `time` objects (Z normalizes to `+00:00`).
+  Verified against CPython 3.14 by a 180-case battery and a 100,000-case
+  differential fuzz (random token soup, seed-doc mutations, exhaustive-ish
+  datetime space): zero mismatches in values, types, or error strings.
+  SCOPE divergences: integers beyond the i64 range raise `OverflowError`
+  (CPython returns a bignum); `load(fp)` is absent (CPython's takes a binary
+  file object -- read the file and use `loads`); datetimes are module-internal
+  types, not `datetime.*` instances (fields and rendering are congruent;
+  `isinstance(x, datetime.datetime)` checks do not carry over);
+  `MAX_KEY_PARTS` is fixed at 1000 rather than `sys.getrecursionlimit()`;
+  `except ValueError` does not catch `TOMLDecodeError` natively (the known
+  parent-class catch gap) -- catch `TOMLDecodeError` or `Exception`.
+  Pinned sv<->na congruent by `prim_tomllib.jac`.
+
+- **`configparser.jac`** (Mechanism B) -- a port of CPython's
+  `configparser.py` (the `ConfigParser` class; `RawConfigParser` is
+  `ConfigParser(interpolation=False)`). Parsing is the `_read_lines` state
+  machine: `[section]` headers (greedy to the last `]`, inner spaces kept),
+  `=`/`:` first-match delimiters (only the first occurrence splits:
+  `a=b:c` -> `b:c`), leading-whitespace continuation lines joined with the
+  comment-stripped clean parts, full-line `#`/`;` comments, optional inline
+  comment prefixes, `empty_lines_in_values`, strict and non-strict duplicate
+  handling with exact `Duplicate*Error` `[line NN]` messages, and
+  `ParsingError`'s accumulated-bad-lines report. `DEFAULTSECT` semantics are
+  CPython's (defaults visible in every section, `sections()` excludes them,
+  `options()`/`items()` include them, `add_section('DEFAULT')` is a
+  `ValueError`); `BasicInterpolation` implements `%(name)s` resolution
+  (same section then defaults), `%%` literals, the depth budget of exactly
+  10 nested expansions, and the four `Interpolation*Error` messages with
+  CPython's top-level `Raw value:` payload. `get`/`getint`/`getfloat`/
+  `getboolean`, `set`, `items`, `add_section`, `remove_section`,
+  `remove_option`, `defaults`, `read_string`, `read_file(lines: list[str])`,
+  `read_dict`, and `write() -> str` (DEFAULT first, ` = ` separator,
+  `\n\t` multiline continuations, trailing blank line per section) are
+  provided. Verified against CPython 3.14 by a 113-case curated harness plus
+  2,000 randomized fuzz configs x 7 constructor kwarg sets (state snapshot
+  compared verbatim): byte-identical after three `read_dict`/continuation/
+  interpolation-payload fixes, values, ordering, and every `str(e)` included.
+  SCOPE divergences: `get(..., fallback=None)` cannot distinguish a `None`
+  fallback from no fallback (`getint`/`getfloat`/`getboolean` have no
+  fallback); `interpolation` is a bool (CPython 3.14 takes an
+  `Interpolation` instance); no `vars=` overrides; `optionxform` is
+  hardwired to `lower()`; no `SectionProxy` mapping protocol, converters,
+  `allow_no_value`, `UNNAMED_SECTION`, `dict_type`, or `read(filenames)`;
+  `read_file`'s source name is pinned to `'<string>'`-style
+  (`'<???>'`) rather than a file's `.name`; `write()` returns the text
+  instead of writing a file object. Pinned sv<->na congruent by
+  `prim_configparser.jac`.
+
 ## Adding a module
 
 1. Drop `<name>.jac` (or `<pkg>/<name>.jac` for a dotted import) here,

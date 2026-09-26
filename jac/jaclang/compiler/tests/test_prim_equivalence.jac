@@ -529,6 +529,22 @@ glob STR_NA_GAPS: list[any] = [
          ),
          ("csv bundled", "prim_csv.jac", "csv_py", "csv_cl", "csv_na", ["na"]),
          (
+             "configparser bundled",
+             "prim_configparser.jac",
+             "configparser_py",
+             "configparser_cl",
+             "configparser_na",
+             ["na"]
+         ),
+         (
+             "tomllib bundled",
+             "prim_tomllib.jac",
+             "tomllib_py",
+             "tomllib_cl",
+             "tomllib_na",
+             ["na"]
+         ),
+         (
              "pprint bundled",
              "prim_pprint.jac",
              "pprint_py",
