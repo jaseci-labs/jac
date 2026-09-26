@@ -2240,6 +2240,14 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _int_from_c_string(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, text: ir.Value
+    ) -> ir.Value;
+
+    def _int_from_boxed(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, boxed: ir.Value
+    ) -> ir.Value;
+
     def emit_float(
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);
