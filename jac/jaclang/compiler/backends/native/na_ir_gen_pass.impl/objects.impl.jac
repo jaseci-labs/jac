@@ -3353,8 +3353,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         return None;
     }
     obj_val = self._opt_unwrap_attr(obj_val);
+    _static_call = self._is_static_method_func(func);
 
-    if isinstance(obj_val.type, ir.PointerType) {
+    if isinstance(obj_val.type, ir.PointerType) and not _static_call {
         null_ptr = ir.Constant(obj_val.type, None);
         is_null = self.builder.icmp_unsigned(
             "==", obj_val, null_ptr, name="null.method.chk"
@@ -3364,10 +3365,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         );
     }
 
-    args: list[ir.Value] = [obj_val]
-        + self._codegen_bound_args(nd, func, self_offset=1);
+    args: list[ir.Value] = (
+        self._codegen_bound_args(nd, func, self_offset=0)
+            if _static_call
+            else [obj_val] + self._codegen_bound_args(nd, func, self_offset=1)
+    );
 
-    if self._arch_has_vtable(type_name) and not _is_mono_method {
+    if self._arch_has_vtable(type_name) and not _is_mono_method and not _static_call {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
             if isinstance(func.return_value.type, ir.VoidType) {
@@ -3399,6 +3403,15 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     return self._erased_call_result(nd, func, result);
+}
+
+impl NaIRGenPass._is_static_method_func(func: ir.Function) -> bool {
+    for name in self.static_methods {
+        if self.method_funcs.get(name) is func {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._emit_obj_str(val: ir.Value) -> (ir.Value | None) {
