@@ -1,5 +1,6 @@
 import os;
 import json;
+import base64;
 import unittest.mock as mock;
 import from pathlib { Path }
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
@@ -13,8 +14,10 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    create_k8s_secret
+    create_k8s_secret,
+    resolve_signing_secret
 }
+import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
 import from kubernetes.client.exceptions { ApiException }
 import from types { SimpleNamespace }
 import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
@@ -1086,11 +1089,17 @@ test "url_for derives when no override is set" {
 
 obj _FakeSecrets {
     has created: list[str] = [],
+        reads: int = 0,
         version: str = "77";
 
     def create_namespaced_secret(namespace: str, body: any) -> any {
         self.created.append(body["metadata"]["name"]);
         return SimpleNamespace(metadata=SimpleNamespace(resource_version=self.version));
+    }
+
+    def read_namespaced_secret(name: str, namespace: str) -> any {
+        self.reads += 1;
+        raise ApiException(status=404);
     }
 }
 
@@ -1136,7 +1145,9 @@ test "an unusable revision is reported rather than silently skipped" {
 # would leave the suite green while every real redeploy failed on the missing
 # revision.
 obj _FakeSecretsExisting(_FakeSecrets) {
-    has replaced: list[str] = [];
+    has replaced: list[str] = [],
+        live: dict[str, (str | bytes)] = {},
+        read_status: int = 0;
 
     def create_namespaced_secret(namespace: str, body: any) -> any {
         raise ApiException(status=409);
@@ -1146,20 +1157,104 @@ obj _FakeSecretsExisting(_FakeSecrets) {
         self.replaced.append(name);
         return SimpleNamespace(metadata=SimpleNamespace(resource_version=self.version));
     }
+
+    def read_namespaced_secret(name: str, namespace: str) -> any {
+        self.reads += 1;
+        if self.read_status {
+            raise ApiException(status=self.read_status);
+        }
+        return SimpleNamespace(
+            data={
+                k: base64.b64encode(v if isinstance(v, bytes) else v.encode()).decode()
+                for (k, v) in self.live.items()
+            }
+        );
+    }
 }
 
 
-test "a redeploy takes its revision from the replace, not the create" {
-    api = _FakeSecretsExisting(version="88");
+test "a redeploy keeps the signing secret and takes its revision from the replace" {
+    cases = [
+        (
+            "redeploy reuses live",
+            {},
+            {"JAC_SERVE_AUTH_SECRET": "kept"},
+            0,
+            "kept",
+            1,
+            False
+        ),
+        ("configured wins", {"JAC_SERVE_AUTH_SECRET": "mine"}, {}, 0, "mine", 0, False),
+        (
+            "live placeholder is replaced",
+            {},
+            {"JAC_SERVE_AUTH_SECRET": PLACEHOLDER_JWT_SECRET},
+            0,
+            None,
+            1,
+            True
+        ),
+        ("denied read fails the deploy", {}, {}, 403, ApiException, 1, None),
+        (
+            "non UTF-8 live value fails loud",
+            {},
+            {"JAC_SERVE_AUTH_SECRET": b"\xff\xfe"},
+            0,
+            RuntimeError,
+            1,
+            None
+        )
+    ];
+    for (label, configured, live, read_status, expected, reads, minted) in cases {
+        api = _FakeSecretsExisting(version="88", live=live, read_status=read_status);
+        data = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns"),
+            secrets=configured
+        )._build_user_secret_manifest()["stringData"];
 
-    revision = create_k8s_secret(api, "ns", "app-secrets", {"MARKER": "v2"});
+        if isinstance(expected, type) {
+            raised = False;
+            try {
+                resolve_signing_secret(api, "ns", "app-secrets", data);
+                create_k8s_secret(api, "ns", "app-secrets", data);
+            } except expected {
+                raised = True;
+            }
+            assert raised , label;
+            assert api.reads == reads , label;
+            assert api.replaced == [] , (
+                f"{label}: an unreadable live secret must stop the deploy before "
+                "it replaces that secret with a fresh one"
+            );
+            continue;
+        }
+        assert resolve_signing_secret(api, "ns", "app-secrets", data) == minted , label;
+        revision = create_k8s_secret(api, "ns", "app-secrets", data);
 
-    assert revision == "88" , (
-        "the 409 path has to return the replace response's revision, or a "
-        "redeploy stamps nothing and the config never reaches running pods"
+        if expected is None {
+            assert data["JAC_SERVE_AUTH_SECRET"]
+                not in ("", PLACEHOLDER_JWT_SECRET) , label;
+        } else {
+            assert data["JAC_SERVE_AUTH_SECRET"] == expected , label;
+        }
+        assert api.reads == reads , label;
+        assert revision == "88" , (
+            "the 409 path has to return the replace response's revision, or a "
+            "redeploy stamps nothing and the config never reaches running pods"
+        );
+        assert api.replaced == ["app-secrets"];
+        assert api.created == [];
+    }
+
+    rendered = ManifestBuilder(
+        k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+    )._build_user_secret_manifest()["stringData"];
+    assert rendered["JAC_SERVE_AUTH_SECRET"] == PLACEHOLDER_JWT_SECRET , (
+        "a rendered manifest must never carry a random value the apply will not use"
     );
-    assert api.replaced == ["app-secrets"];
-    assert api.created == [];
+    first = _FakeSecrets();
+    assert resolve_signing_secret(first, "ns", "app-secrets", rendered);
+    assert rendered["JAC_SERVE_AUTH_SECRET"] not in ("", PLACEHOLDER_JWT_SECRET) , "a first deploy mints a real secret";
 }
 
 
