@@ -34,9 +34,13 @@ import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 
 glob SCAN_LIMIT: int = 4000,
      PACKAGE_CHAIN_DEPTH: int = 8,
+     INTERFACE_LIMIT: int = 400,
+     _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
+
+class KernelAnalysisError(RuntimeError) {}
 
 obj ClosureScan {
     has learner: KernelHost,
@@ -268,13 +272,17 @@ def manifest_sets -> ManifestSets {
     );
 }
 
-def python_interface(path: str, options: CompileOptions) -> (PythonInterface | None) {
+def python_interface(
+    path: str, options: CompileOptions, scratch: (JacProgram | None) = None
+) -> (PythonInterface | None) {
     import from jaclang.compiler.types.stubcat.writer {
         IncoherentInterface,
         build_module_iface
     }
     resolved = os.path.realpath(path);
-    scratch = JacProgram();
+    if scratch is None {
+        scratch = JacProgram();
+    }
     try {
         mod = scratch.compile(resolved, options=options.for_symbols());
         pkg_dir = os.path.dirname(resolved);
@@ -285,19 +293,150 @@ def python_interface(path: str, options: CompileOptions) -> (PythonInterface | N
     return PythonInterface(path=resolved, pkg_dir=pkg_dir, data=data);
 }
 
+def interface_dependencies(iface: PythonInterface) -> list[str] {
+    import from jaclang.compiler.types.stubcat.format { MOD_EXTERNAL }
+    import from jaclang.compiler.types.stubcat.modiface { open_module_iface }
+    catalog = open_module_iface(iface.data, iface.pkg_dir);
+    if catalog is None {
+        return [];
+    }
+    out: list[str] = [];
+    for (_, rel, flags, scope_id, _) in catalog._mod_recs {
+        if (flags & MOD_EXTERNAL) != 0 or scope_id < 0 {
+            dep = os.path.realpath(catalog.abs_path(rel));
+            if dep != iface.path and dep not in out {
+                out.append(dep);
+            }
+        }
+    }
+    return out;
+}
+
+def interface_wanted(path: str) -> bool {
+    return path.endswith(".py")
+        and os.path.isfile(path)
+        and not is_compiler_source_path(path);
+}
+
+def file_stamp(path: str) -> str {
+    try {
+        st = os.stat(path);
+    } except OSError {
+        return "";
+    }
+    return f"{st.st_mtime_ns}:{st.st_size}";
+}
+
+def interface_cache_file(path: str) -> str {
+    import hashlib;
+    import from jaclang.compiler.driver.jir {
+        get_jir_cache_dir,
+        running_compiler_digest
+    }
+    key = hashlib.sha256(
+        (running_compiler_digest() + "\x1f" + path).encode("utf-8")
+    ).hexdigest();
+    return os.path.join(
+        str(get_jir_cache_dir()), "kernel_ifaces", key[:2], key + ".json"
+    );
+}
+
+def cached_interface(path: str) -> (PythonInterface | None) {
+    import base64;
+    import json;
+    memo = _IFACE_MEMO.get(path);
+    if memo is not None and memo[0] == dependency_stamps(memo[1]) {
+        return memo[2];
+    }
+    try {
+        with open(interface_cache_file(path), "r", encoding="utf-8") as f {
+            record = json.load(f);
+        }
+    } except (OSError, ValueError) {
+        return None;
+    }
+    deps: list[str] = [str(d) for d in record.get("deps", [])];
+    if record.get("stamps") != dependency_stamps(deps) {
+        return None;
+    }
+    iface = PythonInterface(
+        path=path,
+        pkg_dir=str(record.get("pkg_dir", "")),
+        data=base64.b64decode(str(record.get("data", "")))
+    );
+    _IFACE_MEMO[path] = (record["stamps"], deps, iface);
+    return iface;
+}
+
+def dependency_stamps(deps: list[str]) -> list[str] {
+    return [file_stamp(d) for d in deps];
+}
+
+def remember_interface(iface: PythonInterface, deps: list[str]) {
+    import base64;
+    import json;
+    tracked = [iface.path] + deps;
+    stamps = dependency_stamps(tracked);
+    _IFACE_MEMO[iface.path] = (stamps, tracked, iface);
+    target = interface_cache_file(iface.path);
+    try {
+        os.makedirs(os.path.dirname(target), exist_ok=True);
+        scratch_file = target + f".{os.getpid()}.tmp";
+        with open(scratch_file, "w", encoding="utf-8") as f {
+            json.dump(
+                {
+                    "deps": tracked,
+                    "stamps": stamps,
+                    "pkg_dir": iface.pkg_dir,
+                    "data": base64.b64encode(iface.data).decode("ascii")
+                },
+                f
+            );
+        }
+        os.replace(scratch_file, target);
+    } except OSError {}
+}
+
 def python_interfaces(
     paths: list[str], options: CompileOptions
 ) -> list[PythonInterface] {
     out: list[PythonInterface] = [];
-    for path in sorted(paths) {
-        if not path.endswith(".py")
-            or is_compiler_source_path(path)
-            or any(marker in path.replace("\\", "/") for marker in THIRD_PARTY_DIRS) {
+    queue: list[str] = sorted(os.path.realpath(p) for p in paths);
+    queue.reverse();
+    done: set[str] = set();
+    scratch: (JacProgram | None) = None;
+    while queue {
+        path = queue.pop();
+        if len(done) >= INTERFACE_LIMIT {
+            raise KernelAnalysisError(
+                f"the Python modules reached from {paths[0] if paths else path} "
+                f"need more than {INTERFACE_LIMIT} interfaces"
+            );
+        }
+        if path in done or not interface_wanted(path) {
             continue;
         }
-        iface = python_interface(path, options);
-        if iface is not None {
-            out.append(iface);
+        done.add(path);
+        iface = cached_interface(path);
+        deps: list[str] = [];
+        if iface is None {
+            if scratch is None {
+                scratch = JacProgram();
+            }
+            iface = python_interface(path, options, scratch);
+            if iface is None {
+                continue;
+            }
+            deps = interface_dependencies(iface);
+            remember_interface(iface, deps);
+        } else {
+            deps = interface_dependencies(iface);
+        }
+        out.append(iface);
+        for dep in deps {
+            if dep not in done {
+                queue.append(dep);
+            }
         }
     }
     return out;
@@ -391,10 +530,36 @@ def kernel_analysis_inputs(
         if not untyped
     ];
     inputs.python_ifaces = python_interfaces(local, options);
+    served = {iface.path for iface in inputs.python_ifaces};
+    learn_facts(host, inputs, program, options, path, sorted(served - set(local)));
     return inputs;
 }
 
-class KernelAnalysisError(RuntimeError) {}
+def learn_facts(
+    host: HostServices,
+    inputs: KernelInputs,
+    program: JacProgram,
+    options: CompileOptions,
+    entry_path: str,
+    paths: list[str]
+) {
+    if not paths {
+        return;
+    }
+    learner = KernelHost(inputs=inputs, fallback=host);
+    scan = ClosureScan(
+        learner=learner, program=program, options=options, entry_path=entry_path
+    );
+    previous = active_host();
+    install_host(learner);
+    try {
+        for dep in paths {
+            scan.learn_path(dep);
+        }
+    } finally {
+        install_host(previous);
+    }
+}
 
 obj HostReferenceSession(SessionHooks) {
     has compiler: any,

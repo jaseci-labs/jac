@@ -125,6 +125,13 @@ def kernel_check(
             parity=mode == "parity", failure=f"{type(err).__name__}: {err}"
         );
     }
+    if outcome.misses {
+        return KernelCheck(
+            outcome=outcome,
+            parity=mode == "parity",
+            failure=f"the kernel lacked host answers ({outcome.misses[0]})"
+        );
+    }
     entry_module = outcome.module(path);
     if entry_module is None or entry_module.native {
         return KernelCheck(outcome=outcome);

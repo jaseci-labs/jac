@@ -340,3 +340,66 @@ test "a kernel that dies during analysis surfaces as an error, not a dead proces
         assert "signal" in str(err) , str(err);
     }
 }
+
+"""A typed Python package outside the project whose class reaches Mapping
+through a base in another of its modules; the project passes an instance to a
+Mapping parameter."""
+def write_mapping_project(base: Path) -> tuple[str, str] {
+    project = base / 'proj';
+    lib = base / 'extlib' / 'mapkit';
+    project.mkdir();
+    lib.mkdir(parents=True);
+    (project / 'jac.toml').write_text('[project]\nname="mapping-demo"\n');
+    (lib / 'py.typed').write_text('');
+    (lib / '__init__.py').write_text(
+        'from mapkit.api import load\nfrom mapkit.doc import Doc\n'
+    );
+    (lib / 'base.py').write_text(
+        'from collections.abc import Mapping, Iterator\n\n'
+            + 'class BaseTable(Mapping[str, int]):\n'
+            + '    def __getitem__(self, key: str) -> int:\n        return 0\n\n'
+            + '    def __iter__(self) -> Iterator[str]:\n        return iter([])\n\n'
+            + '    def __len__(self) -> int:\n        return 0\n'
+    );
+    (lib / 'doc.py').write_text(
+        'from mapkit.base import BaseTable\n\nclass Doc(BaseTable):\n    pass\n'
+    );
+    (lib / 'api.py').write_text(
+        'from mapkit.doc import Doc\n\ndef load(text: str) -> Doc:\n    return Doc()\n'
+    );
+    (project / 'main.jac').write_text(
+        'import mapkit;\n'
+            + 'def size(data: Mapping[str, int]) -> int {\n'
+            + '    return len(data);\n'
+            + '}\n'
+            + 'with entry { print(size(mapkit.load("x"))); }\n'
+    );
+    return (str(project / 'main.jac'), str(base / 'extlib'));
+}
+
+test "a Python base class in another module of an imported package reaches the kernel" {
+    import sys;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (entry_file, lib_root) = write_mapping_project(base);
+        sys.path.insert(0, lib_root);
+        try {
+            expected = host_view(Path(entry_file).parent, 'main.jac');
+            assert not expected["errors"] , expected["errors"];
+            inputs_json = kernel_json(Path(entry_file).parent, 'main.jac');
+            outcome = run_kernel_analysis(inputs_json, entry_file, None);
+            assert observe(outcome, entry_file, str(Path(entry_file).parent))
+                == expected;
+            kernel = loaded_kernel();
+            if kernel is not None {
+                native = AnalysisReport.from_json(
+                    call_kernel_analyze(kernel, inputs_json, entry_file, None)
+                );
+                assert observe(native, entry_file, str(Path(entry_file).parent))
+                    == expected;
+            }
+        } finally {
+            sys.path.remove(lib_root);
+        }
+    }
+}
