@@ -2926,8 +2926,14 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         } else {
             var_type = value.type;
             _pre_box_val = value;
+            if (not nd.type_tag or not nd.type_tag.tag)
+                and self._local_bindings_disagree(target_expr) {
+                var_type = self.jacval_type;
+                value = self._coerce_container_element(value, var_type);
+            }
             if (
                 (not nd.type_tag or not nd.type_tag.tag)
+                and var_type != self.jacval_type
                 and isinstance(value.type, ir.PointerType)
                 and self._closure_struct_of(value.type) is None
                 and isinstance(nd.value, uni.Expr)
@@ -4808,4 +4814,54 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     self._emit_loop_else(nd, _c_else, _c_end);
     self.loop_stack.pop();
     return True;
+}
+
+impl NaIRGenPass._local_bindings_disagree(target: uni.UniNode) -> bool {
+    if not isinstance(target, uni.Name)
+        or target.sym is None
+        or self.jacval_type is None {
+        return False;
+    }
+    import from jaclang.compiler.types.types { ClassType }
+    sites: list[uni.Assignment] = [];
+    for binding in list(target.sym.defn) + list(target.sym.uses) {
+        site = binding.parent;
+        if isinstance(site, uni.Assignment)
+            and site.aug_op is None
+            and isinstance(site.value, uni.Expr)
+            and any(t is binding for t in site.target) {
+            if site.type_tag and site.type_tag.tag {
+                return False;
+            }
+            sites.append(site);
+        }
+    }
+    if not sites or not isinstance(sites[0].value, uni.Null) {
+        return False;
+    }
+    seen: (ir.Type | None) = None;
+    for site in sites[1:] {
+        bound_expr = site.value;
+        if not isinstance(bound_expr, uni.Expr) {
+            continue;
+        }
+        bound = bound_expr.type;
+        if bound is None
+            or (
+                isinstance(bound, ClassType)
+                and bound.shared.class_name in ("NoneType", "None")
+            ) {
+            continue;
+        }
+        lowered = self._lower_type(bound);
+        if lowered is None {
+            continue;
+        }
+        if seen is None {
+            seen = lowered;
+        } elif lowered != seen {
+            return True;
+        }
+    }
+    return False;
 }
