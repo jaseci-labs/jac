@@ -2130,6 +2130,22 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     return result;
 }
 
+impl NaIRGenPass._is_bare_function_value(val: ir.Value) -> bool {
+    return isinstance(val.type, ir.FunctionType)
+        or (
+            isinstance(val.type, ir.PointerType)
+            and isinstance(val.type.pointee, ir.FunctionType)
+        );
+}
+
+impl NaIRGenPass._closure_like_type(val_type: ir.Type) -> bool {
+    if self._closure_struct_of(val_type) is not None {
+        return True;
+    }
+    payload = self._opt_payload_of(val_type);
+    return payload is not None and self._closure_struct_of(payload) is not None;
+}
+
 impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) {
     cond = self._codegen_expr(nd.condition);
     if cond is None {
@@ -2156,6 +2172,29 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     else_open = not self.builder.block.is_terminated;
 
     if then_val is not None and else_val is not None {
+        if then_val.type != else_val.type {
+            if then_open
+                and self._is_bare_function_value(then_val)
+                and self._closure_like_type(else_val.type) {
+                self.builder.position_at_end(then_end_bb);
+                then_val = self._wrap_fn_as_closure_value(then_val);
+                if then_val.type != else_val.type
+                    and self._opt_payload_of(else_val.type) is not None {
+                    then_val = self._coerce_type(then_val, else_val.type);
+                }
+                then_end_bb = self.builder.block;
+            } elif else_open
+                and self._is_bare_function_value(else_val)
+                and self._closure_like_type(then_val.type) {
+                self.builder.position_at_end(else_end_bb);
+                else_val = self._wrap_fn_as_closure_value(else_val);
+                if else_val.type != then_val.type
+                    and self._opt_payload_of(then_val.type) is not None {
+                    else_val = self._coerce_type(else_val, then_val.type);
+                }
+                else_end_bb = self.builder.block;
+            }
+        }
         if then_val.type != else_val.type
             and self._str_desc_ty is not None
             and (
