@@ -332,7 +332,12 @@ obj StubCatalog {
         self._mod_rel = {};
         self._mod_recs = [];
         self._base_dir = os.path.realpath(self.pkg_dir);
-        self._mapper = self.path_mapper if self.path_mapper is not None else keep_path;
+        mapper = self.path_mapper;
+        if mapper is not None {
+            self._mapper = mapper;
+        } else {
+            self._mapper = keep_path;
+        }
         for i in range(hdr.n_modules) {
             c = self._rec(hdr.off_modtab, i);
             name = self.string(c.u());

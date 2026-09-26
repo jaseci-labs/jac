@@ -6429,5 +6429,5 @@ impl TypeEvaluator._scope_is_current(scope: UniScopeNode) -> bool {
     if mod is None or mod.loc is None or not mod.loc.mod_path {
         return False;
     }
-    return self.program.find_module(self.program.hub_key(mod.loc.mod_path)) is mod;
+    return self.program.find_module(mod.loc.mod_path) is mod;
 }

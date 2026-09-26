@@ -53,7 +53,7 @@ glob _CATALOGS: dict[str, StubCatalog] = {};
 
 class HostOnlyError(RuntimeError) {}
 
-enum HostEventKind { NOTE, COVERAGE, COLLECT }
+enum HostEventKind { NOTE = 1, COVERAGE = 2, COLLECT = 3 }
 
 obj HostEvent {
     has kind: HostEventKind,
