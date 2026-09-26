@@ -31,3 +31,9 @@ def round_runtime_places(value: float, digits: int) -> float {
 def round_int_places -> int {
     return round(7, 2);
 }
+
+def round_places_in_comprehension -> float {
+    values: list[float] = [0.157079, 1.5];
+    listed = [round(value, 3) for value in values];
+    return listed[0] + listed[1];
+}

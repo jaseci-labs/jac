@@ -656,6 +656,14 @@ walker TypeEvaluator {
         src_type: ClassType, proto_type: ClassType, bindings: dict[str, TypeBase]
     ) -> bool;
 
+    def _protocol_member_impl(
+        proto_func: FunctionType, member: ClassMember, src_type: ClassType
+    ) -> (FunctionType | None);
+
+    def _protocol_signature_fits(
+        proto_func: FunctionType, impl_func: FunctionType
+    ) -> bool;
+
     def _get_type_of_symbol(symbol: Symbol) -> TypeBase;
     def _get_type_of_symbol_decl(symbol: Symbol, decl: NameAtom) -> TypeBase;
     def _as_final_form(ty: TypeBase) -> (ClassType | None);
