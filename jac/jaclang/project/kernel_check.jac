@@ -119,7 +119,7 @@ def kernel_check(
         return KernelCheck();
     }
     try {
-        outcome = kernel_analysis(active_host(), program, path, options);
+        outcome = kernel_analysis(active_host(), program, path, options, isolated=True);
     } except Exception as err {
         return KernelCheck(
             parity=mode == "parity", failure=f"{type(err).__name__}: {err}"
@@ -141,8 +141,24 @@ def kernel_check(
     return KernelCheck(outcome=outcome, adopted=True);
 }
 
+def shown(
+    diags: list[AnalysisDiag], keep: (Callable[[Alert], bool] | None)
+) -> list[AnalysisDiag] {
+    if keep is None {
+        return diags;
+    }
+    return [
+        d
+        for d in diags
+        if keep(alert_of(d))
+    ];
+}
+
 def parity_mismatches(
-    check: KernelCheck, errors: list[Alert], warnings: list[Alert]
+    check: KernelCheck,
+    errors: list[Alert],
+    warnings: list[Alert],
+    keep: (Callable[[Alert], bool] | None) = None
 ) -> list[str] {
     if check.failure {
         return [f"kernel analysis failed: {check.failure}"];
@@ -151,26 +167,27 @@ def parity_mismatches(
     if outcome is None {
         return [];
     }
+    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     out: list[str] = [];
     for (label, host_rows, kernel_rows) in (
         (
             "error",
             sorted(alert_row(a) for a in errors),
-            sorted(diag_row(d) for d in outcome.errors)
+            sorted(diag_row(d) for d in shown(outcome.errors, keep))
         ),
         (
             "warning",
             sorted(alert_row(a) for a in warnings),
-            sorted(diag_row(d) for d in outcome.warnings)
+            sorted(diag_row(d) for d in shown(outcome.warnings, keep))
         )
     ) {
         for row in host_rows {
-            if row not in kernel_rows {
+            if row not in kernel_rows and not is_compiler_source_path(row[1]) {
                 out.append(f"{label} only on the host: {row}");
             }
         }
         for row in kernel_rows {
-            if row not in host_rows {
+            if row not in host_rows and not is_compiler_source_path(row[1]) {
                 out.append(f"{label} only in the kernel: {row}");
             }
         }
@@ -179,9 +196,13 @@ def parity_mismatches(
 }
 
 def report_parity(
-    check: KernelCheck, path: str, errors: list[Alert], warnings: list[Alert]
+    check: KernelCheck,
+    path: str,
+    errors: list[Alert],
+    warnings: list[Alert],
+    keep: (Callable[[Alert], bool] | None) = None
 ) -> list[str] {
-    mismatches = parity_mismatches(check, errors, warnings);
+    mismatches = parity_mismatches(check, errors, warnings, keep);
     if mismatches {
         stream = sys.__stderr__ or sys.stderr;
         stream.write(f"kernel analysis parity: {path}\n");

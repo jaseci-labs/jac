@@ -125,6 +125,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     }
     try {
         (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
+        parity_view: any = None;
         if opts.get("parse_only") {
             import from jaclang.compiler.frontend.parser.frontend {
                 parse_diags,
@@ -172,13 +173,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 if not adopted {
                     prog.compile(file_path, options=compile_options);
                     if kernel_view is not None and kernel_view.parity {
-                        import from jaclang.project.kernel_check { report_parity }
-                        report_parity(
-                            kernel_view,
-                            file_path,
-                            prog.errors_had[err_start:],
-                            prog.warnings_had[warn_start:]
-                        );
+                        parity_view = kernel_view;
                     }
                 }
                 if opts.get("named") {
@@ -233,6 +228,24 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                         annex_filter_path is None
                         or issue.loc.mod_path == annex_filter_path
                     )
+            );
+        }
+        if parity_view is not None {
+            import from jaclang.project.kernel_check { report_parity }
+            report_parity(
+                parity_view,
+                file_path,
+                [
+                    e
+                    for e in new_errors
+                    if keep(e)
+                ],
+                [
+                    w
+                    for w in new_warnings
+                    if keep(w)
+                ],
+                keep
             );
         }
         result['errors'] = [

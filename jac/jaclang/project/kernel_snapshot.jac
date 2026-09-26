@@ -33,6 +33,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 
 glob SCAN_LIMIT: int = 4000,
+     PACKAGE_CHAIN_DEPTH: int = 8,
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
@@ -231,6 +232,24 @@ obj ClosureScan {
         if real != path {
             self.learn_path(real);
         }
+        self.learn_package_chain(path);
+    }
+
+    def learn_package_chain(path: str) {
+        folder = os.path.dirname(os.path.abspath(path));
+        for _ in range(PACKAGE_CHAIN_DEPTH) {
+            for name in ("__init__.py", "__init__.jac") {
+                init = os.path.join(folder, name);
+                if init != path and os.path.isfile(init) {
+                    self.learn_path(init);
+                }
+            }
+            parent = os.path.dirname(folder);
+            if parent == folder {
+                return;
+            }
+            folder = parent;
+        }
     }
 }
 
@@ -272,6 +291,7 @@ def python_interfaces(
     out: list[PythonInterface] = [];
     for path in sorted(paths) {
         if not path.endswith(".py")
+            or is_compiler_source_path(path)
             or any(marker in path.replace("\\", "/") for marker in THIRD_PARTY_DIRS) {
             continue;
         }
@@ -480,13 +500,56 @@ def call_kernel_analyze(
     return kernel._take(take()) or "";
 }
 
+def call_kernel_analyze_isolated(
+    kernel: any, inputs_json: str, path: str, source: (str | None)
+) -> str {
+    if not hasattr(os, "fork") {
+        return call_kernel_analyze(kernel, inputs_json, path, source);
+    }
+    (read_fd, write_fd) = os.pipe();
+    pid = os.fork();
+    if pid == 0 {
+        code = 0;
+        try {
+            os.close(read_fd);
+            payload = call_kernel_analyze(kernel, inputs_json, path, source).encode(
+                "utf-8"
+            );
+            sent = 0;
+            while sent < len(payload) {
+                sent += os.write(write_fd, payload[sent:]);
+            }
+            os.close(write_fd);
+        } except BaseException {
+            code = 1;
+        } finally {
+            os._exit(code);
+        }
+    }
+    os.close(write_fd);
+    with os.fdopen(read_fd, "rb") as reader {
+        payload = reader.read();
+    }
+    (_, status) = os.waitpid(pid, 0);
+    if os.WIFSIGNALED(status) {
+        raise KernelAnalysisError(
+            f"the kernel analysis died with signal {os.WTERMSIG(status)}"
+        );
+    }
+    if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0 or not payload {
+        raise KernelAnalysisError("the kernel analysis exited without a report");
+    }
+    return payload.decode("utf-8");
+}
+
 def kernel_analysis(
     host: HostServices,
     program: JacProgram,
     path: str,
     options: CompileOptions,
     source: (str | None) = None,
-    in_process: bool = False
+    in_process: bool = False,
+    isolated: bool = False
 ) -> AnalysisReport {
     inputs_json = kernel_analysis_json(host, program, path, options, source);
     if in_process {
@@ -497,12 +560,12 @@ def kernel_analysis(
         if kernel is None {
             raise KernelAnalysisError("no native compiler kernel is available");
         }
-        outcome = AnalysisReport.from_json(
-            call_kernel_analyze(kernel, inputs_json, path, source)
-        );
+        call = call_kernel_analyze_isolated if isolated else call_kernel_analyze;
+        outcome = AnalysisReport.from_json(call(kernel, inputs_json, path, source));
     }
     if outcome.status == ANALYSIS_CRASHED {
-        raise KernelAnalysisError(outcome.message);
+        detail = f" ({outcome.misses[-1]})" if outcome.misses else "";
+        raise KernelAnalysisError(outcome.message + detail);
     }
     return outcome;
 }

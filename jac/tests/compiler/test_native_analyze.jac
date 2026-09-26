@@ -302,3 +302,41 @@ test "jac check adopts a kernel's diagnostics and they match the host's" {
         }
     }
 }
+
+def crash_now(*args: object) -> int {
+    import signal;
+    os.kill(os.getpid(), signal.SIGSEGV);
+    return 0;
+}
+
+def no_handle(*args: object) -> int {
+    return 0;
+}
+
+"""Stands in for a loaded kernel whose `jc_analyze` dies with SIGSEGV."""
+obj CrashingLib {
+    has jc_analyze: any = crash_now,
+        jac_str_new: any = no_handle,
+        jac_release: any = no_handle,
+        jc_take_analysis: any = no_handle;
+}
+
+obj CrashingKernel {
+    has lib: CrashingLib = CrashingLib();
+}
+
+test "a kernel that dies during analysis surfaces as an error, not a dead process" {
+    import from jaclang.project.kernel_snapshot {
+        KernelAnalysisError,
+        call_kernel_analyze_isolated
+    }
+    if not hasattr(os, "fork") {
+        return;
+    }
+    try {
+        call_kernel_analyze_isolated(CrashingKernel(), "{}", "main.jac", None);
+        assert False , "the crash was not reported";
+    } except KernelAnalysisError as err {
+        assert "signal" in str(err) , str(err);
+    }
+}
