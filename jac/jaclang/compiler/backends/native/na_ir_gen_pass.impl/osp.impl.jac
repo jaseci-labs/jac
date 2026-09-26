@@ -397,15 +397,19 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
             ),
             name="oc.rep"
         );
-        self._osp_make_immortal(_rep);
-        self.builder.store(
-            _rep,
-            self.builder.bitcast(
-                self.builder.gep(_wlk_i8, [ir.Constant(i64, 16)], name="oc.repslot.i8"),
-                _rep.type.as_pointer(),
-                name="oc.repslot"
-            )
+        _repslot = self.builder.bitcast(
+            self.builder.gep(_wlk_i8, [ir.Constant(i64, 16)], name="oc.repslot.i8"),
+            _rep.type.as_pointer(),
+            name="oc.repslot"
         );
+        if self._nogc_headerless() {
+            self.builder.store(_rep, _repslot);
+        } else {
+            _old_rep = self.builder.load(_repslot, name="oc.rep.old");
+            self._emit_rc_retain(_rep, op="osp_reports", loc="");
+            self.builder.store(_rep, _repslot);
+            self._emit_rc_release_simple(_old_rep, op="osp_reports", loc="");
+        }
         self.builder.branch(_oc_done);
         self._builder = ir.IRBuilder(_oc_done);
     }
@@ -1638,4 +1642,6 @@ impl NaIRGenPass._codegen_report(nd: uni.ReportStmt) -> None {
     }
     _argtys = osp_report_fn.function_type.args;
     self.builder.call(osp_report_fn, [self._coerce_type(_val, _argtys[0])]);
+
+    self._release_owned_args([_val], op="osp_report");
 }
