@@ -1985,6 +1985,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _unregistered_class_target(target: uni.UniNode) -> (str | None);
     def _emit_obj_str(val: ir.Value) -> (ir.Value | None);
+    def _emit_subclass_str(val: ir.Value, type_name: str) -> ir.Value;
     def _emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value;
     def _codegen_field_access(
         obj_val: ir.Value,

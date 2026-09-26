@@ -3444,7 +3444,7 @@ impl NaIRGenPass._emit_obj_str(val: ir.Value) -> (ir.Value | None) {
     if func is None and self._exc_message_slot(type_name) is not None {
         live_res = self._emit_exc_message_str(val, type_name);
     } elif func is None {
-        live_res = self._emit_default_obj_repr(val, type_name);
+        live_res = self._emit_subclass_str(val, type_name);
     } else {
         was_owned = self._is_owned(val);
         if was_owned {
@@ -3473,6 +3473,65 @@ impl NaIRGenPass._emit_obj_str(val: ir.Value) -> (ir.Value | None) {
     phi.add_incoming(live_res, live_end);
 
     return self._mark_owned(phi);
+}
+
+impl NaIRGenPass._emit_subclass_str(val: ir.Value, type_name: str) -> ir.Value {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    variants: list[tuple[ir.GlobalVariable, ir.Function]] = [];
+    if self._arch_has_vtable(type_name) {
+        registry = get_layout_registry(self.module, self.prog);
+        for cls in registry.mro_order {
+            if cls == type_name or type_name not in self._mro_of(cls) {
+                continue;
+            }
+            str_fn = self._resolve_method(cls, "__str__");
+            vtable = self._vtable_global_for(cls);
+            if str_fn is not None and vtable is not None {
+                variants.append((vtable, str_fn));
+            }
+        }
+    }
+    if not variants {
+        return self._emit_default_obj_repr(val, type_name);
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    target = val;
+    struct_type = self.struct_types.get(type_name);
+    if struct_type is not None and target.type != struct_type.as_pointer() {
+        target = self._coerce_type(target, struct_type.as_pointer());
+    }
+    vtable_ptr = self.builder.load(
+        self.builder.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]),
+        name="objstr.vt"
+    );
+    fn = self.builder.function;
+    done_bb = fn.append_basic_block(name="objstr.sub.done");
+    incoming: list[tuple[ir.Value, ir.Block]] = [];
+    for (vtable, str_fn) in variants {
+        hit_bb = fn.append_basic_block(name="objstr.sub.hit");
+        next_bb = fn.append_basic_block(name="objstr.sub.next");
+        same = self.builder.icmp_unsigned(
+            "==", vtable_ptr, self.builder.bitcast(vtable, vtable_ptr.type)
+        );
+        self.builder.cbranch(same, hit_bb, next_bb);
+        self.builder.position_at_end(hit_bb);
+        text = self.builder.call(
+            str_fn, [self._coerce_type(val, str_fn.args[0].type)], name="objstr.sub"
+        );
+        incoming.append((self._coerce_type(text, i8p), self.builder.block));
+        self.builder.branch(done_bb);
+        self.builder.position_at_end(next_bb);
+    }
+    fallback = self._coerce_type(self._emit_default_obj_repr(val, type_name), i8p);
+    incoming.append((fallback, self.builder.block));
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    merged = self.builder.phi(i8p, name="objstr.sub.res");
+    for (value, block) in incoming {
+        merged.add_incoming(value, block);
+    }
+    return merged;
 }
 
 impl NaIRGenPass._emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value {
