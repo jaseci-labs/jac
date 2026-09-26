@@ -752,6 +752,32 @@ impl NaIRGenPass._elem_storage_llvm(t: any) -> (ir.Type | None) {
     return _first;
 }
 
+impl NaIRGenPass._is_object_union_key(t: any, key_llvm: ir.Type) -> bool {
+    if key_llvm != ir.IntType(8).as_pointer() {
+        return False;
+    }
+    import from jaclang.compiler.types.types { ClassType, UnionType }
+    if not isinstance(t, UnionType) or not t.types {
+        return False;
+    }
+    for member in t.types {
+        if not isinstance(member, ClassType) or member._shared is None {
+            return False;
+        }
+        if member.shared.class_name in ("NoneType", "None") {
+            continue;
+        }
+        lowered = self._lower_type(member);
+        if not isinstance(lowered, ir.PointerType)
+            or not isinstance(lowered.pointee, ir.IdentifiedStructType)
+            or lowered.pointee.name
+                not in {st.name for st in self.struct_types.values()} {
+            return False;
+        }
+    }
+    return True;
+}
+
 impl NaIRGenPass._static_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
     if not isinstance(expr, uni.Expr) {
         return None;
@@ -934,6 +960,9 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         }
 
         (k_spec, k_size) = self._hash_key_spec(k_llvm);
+        if type_args and self._is_object_union_key(type_args[0], k_llvm) {
+            k_spec = "oref";
+        }
         v_spec = self._dict_val_spec(v_llvm);
         self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
         return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
@@ -955,6 +984,9 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
             elem_llvm = ir.IntType(8).as_pointer();
         }
         (spec, esize) = self._hash_key_spec(elem_llvm);
+        if type_args and self._is_object_union_key(type_args[0], elem_llvm) {
+            spec = "oref";
+        }
         self._emit_set_helpers(spec, elem_llvm, esize);
         return self.set_types[spec].as_pointer();
     }
