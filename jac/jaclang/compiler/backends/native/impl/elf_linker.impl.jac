@@ -1885,6 +1885,7 @@ impl ElfLinker.build_shared_object -> bytes {
     cur_offset = _align(cur_offset, 8);
 
     data_abs_relocs: list[tuple[ElfRela, tuple[str, int]]] = [];
+    data_abs_imports: list[ElfRela] = [];
     for rela in self.relocations {
         if rela.rtype == arch.abs64_rtype and rela.target_sec in data_sections {
             tgt = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
@@ -1893,10 +1894,13 @@ impl ElfLinker.build_shared_object -> bytes {
             }
             if tgt is not None {
                 data_abs_relocs.append((rela, tgt));
+            } elif rela.sym_name in dynsym_index {
+                data_abs_imports.append(rela);
             }
         }
     }
     n_rela_dyn = len(data_abs_relocs)
+        + len(data_abs_imports)
         + len(local_got_syms)
         + len(inits)
         + len(extern_data_syms);
@@ -2384,6 +2388,15 @@ impl ElfLinker.build_shared_object -> bytes {
         tva = _resolve_seg_vaddr(tgt[0], tgt[1], text_vaddr, rodata_vaddr, data_vaddr);
         rela_dyn_data.extend(
             struct.pack("<QQq", slot_vaddr, arch.relative_rtype, tva + rela.addend)
+        );
+    }
+    for rela in data_abs_imports {
+        _isec = data_sections[rela.target_sec];
+        r_info = (dynsym_index[rela.sym_name] << 32) | arch.abs64_rtype;
+        rela_dyn_data.extend(
+            struct.pack(
+                "<QQq", data_vaddr + _isec[0] + rela.offset, r_info, rela.addend
+            )
         );
     }
 
