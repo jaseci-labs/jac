@@ -4,6 +4,8 @@ import from c { def PyList_New(n: int) -> int;  }
 import from c { def PyList_SetItem(l: int, i: int, v: int) -> int;  }
 import from c { def Py_DecRef(o: int) -> int;  }
 import from c { def PyUnicode_FromString(p: int) -> int;  }
+import from c { def __jac_region_depth -> int;  }
+import from c { def __jac_region_unwind(depth: int) -> None;  }
 
 import from jaclang.compiler.jc_materialize {
     hint_commentdata,
@@ -24,6 +26,11 @@ import from jaclang.compiler.passes.annex_weave {
     merge_annex_into,
     prune_generated_imports
 }
+import from jaclang.compiler.frontend.kernel_analyze {
+    ANALYSIS_CRASHED,
+    AnalysisReport,
+    run_kernel_analysis
+}
 
 obj JcState {
     has p_errs: int = 0,
@@ -32,6 +39,7 @@ obj JcState {
         diags_h: int = 0,
         lexdiags_h: int = 0,
         comments_h: int = 0,
+        analysis_h: int = 0,
         early_context: int = 0,
         pass_times: list[float] = [],
         pass_names_h: list[int] = [],
@@ -224,9 +232,16 @@ def _run_in_region(src: str, path: str) -> int {
     return status;
 }
 
+def _drop_stale_regions {
+    if __jac_region_depth() != 0 {
+        __jac_region_unwind(0);
+    }
+}
+
 def:pub jc_run(src: str, path: str) -> int {
     _clear_results();
     status = _run_in_region(src, path);
+    _drop_stale_regions();
     _ANNEXES.clear();
     _JC.early_context = 0;
     return status;
@@ -280,6 +295,32 @@ def _register_shape_keys {
     probe[SpecRole] = "one";
     probe[AccessorsRole] = "one";
     jc_mz_shape_keys(id(probe));
+}
+
+def:pub jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int {
+    _drop_stale_regions();
+    _drop_h(_JC.analysis_h);
+    _JC.analysis_h = 0;
+    status = ANALYSIS_CRASHED;
+    try {
+        outcome = run_kernel_analysis(
+            inputs, path, source if has_source != 0 else None
+        );
+        status = outcome.status;
+        text = outcome.to_json();
+    } except Exception as err {
+        text = AnalysisReport(
+            status=ANALYSIS_CRASHED, message=f"kernel analysis raised: {err}"
+        ).to_json();
+    }
+    _JC.analysis_h = PyUnicode_FromString(id(text));
+    return status;
+}
+
+def:pub jc_take_analysis -> int {
+    h = _JC.analysis_h;
+    _JC.analysis_h = 0;
+    return h;
 }
 
 def:pub jc_rc_debug(v: int) -> int {
