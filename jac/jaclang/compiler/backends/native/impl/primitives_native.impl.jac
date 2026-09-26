@@ -5806,11 +5806,20 @@ impl NativeBuiltinEmitter.emit_int(
     if p._is_jacval_ty(arg_val.type) {
         return self._int_from_boxed(ctx, arg_val);
     }
-    return self._int_from_c_string(ctx, arg_val);
+    base: (ir.Value | None) = None;
+    if len(args) >= 2 and isinstance(args[1].type, ir.IntType) {
+        base = b.trunc(args[1], ir.IntType(32), name="int.base")
+            if args[1].type.width > 32
+            else args[1];
+    }
+    return self._int_from_c_string(ctx, arg_val, base);
 }
 
 impl NativeBuiltinEmitter._int_from_c_string(
-    self: NativeBuiltinEmitter, ctx: NativeEmitCtx, text: ir.Value
+    self: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    text: ir.Value,
+    base: (ir.Value | None) = None
 ) -> ir.Value {
     p = ctx.pass_ref;
     b = get_builder(p);
@@ -5820,7 +5829,9 @@ impl NativeBuiltinEmitter._int_from_c_string(
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
     endptr_alloca = b.alloca(i8p, name="endptr");
     result_val = b.call(
-        strtol_fn, [text, endptr_alloca, ir.Constant(i32, 10)], name="strtol.result"
+        strtol_fn,
+        [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
+        name="strtol.result"
     );
     endptr_val = b.load(endptr_alloca, name="endptr.val");
     no_parse = b.icmp_unsigned("==", endptr_val, text, name="int.noparse");

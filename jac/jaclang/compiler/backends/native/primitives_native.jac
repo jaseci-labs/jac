@@ -2241,7 +2241,10 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
     ) -> (ir.Value | None);
 
     def _int_from_c_string(
-        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, text: ir.Value
+        self: NativeBuiltinEmitter,
+        ctx: NativeEmitCtx,
+        text: ir.Value,
+        base: (ir.Value | None) = None
     ) -> ir.Value;
 
     def _int_from_boxed(
