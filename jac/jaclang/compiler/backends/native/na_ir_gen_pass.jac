@@ -951,6 +951,8 @@ walker NaIRGenPass(CompilerPass) {
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
+    def _is_bare_function_value(val: ir.Value) -> bool;
+    def _closure_like_type(val_type: ir.Type) -> bool;
     def _callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None);
     def _closure_cell_struct(slot_type: ir.Type) -> str;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
@@ -1983,6 +1985,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _unregistered_class_target(target: uni.UniNode) -> (str | None);
     def _emit_obj_str(val: ir.Value) -> (ir.Value | None);
+    def _emit_subclass_str(val: ir.Value, type_name: str) -> ir.Value;
     def _emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value;
     def _codegen_field_access(
         obj_val: ir.Value,
@@ -2835,6 +2838,7 @@ walker NaIRGenPass(CompilerPass) {
         key_ret: (TypeBase | None) = None
     ) -> (tuple[(ir.Value, ir.Value)] | None);
 
+    def _is_static_method_func(func: ir.Function) -> bool;
     def _is_jacval_ty(t: ir.Type) -> bool;
     def _is_jacval_boxable(t: ir.Type) -> bool;
     def _sort_key_supported(ty: ir.Type) -> bool;
@@ -2921,6 +2925,7 @@ walker NaIRGenPass(CompilerPass) {
     def _spec_name_match(tk: str, names: tuple[str, ...]) -> bool;
     def _opt_sole_member(t: any) -> (TypeBase | None);
     def _spec_union_agreement(t: any, names: tuple[str, ...]) -> (any | None);
+    def _is_object_union_key(t: any, key_llvm: ir.Type) -> bool;
     def _elem_storage_llvm(t: any) -> (ir.Type | None);
     def _aos_elem_of(type_expr: uni.UniNode | None) -> (str | None);
     def _infer_type_name(val: ir.Value) -> (str | None);
