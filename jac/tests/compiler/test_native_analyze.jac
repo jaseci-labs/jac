@@ -246,3 +246,59 @@ test "repeated native jc_analyze calls do not grow memory without bound" {
         );
     }
 }
+
+def check_options -> CompileOptions {
+    return CompileOptions(
+        no_cgen=True, native_parity=True, iface_ok=True, strict_dependencies=True
+    );
+}
+
+def rendered(alerts: list[any]) -> list[str] {
+    return sorted(a.pretty_print() for a in alerts);
+}
+
+test "a diagnostic record rebuilds the host's alert exactly" {
+    import json;
+    import from jaclang.compiler.frontend.kernel_analyze { diag_from_dict, diag_of }
+    import from jaclang.project.kernel_check { alert_of }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        program = JacProgram();
+        program.compile(str(base / 'main.jac'), options=check_options());
+        alerts = list(program.errors_had) + list(program.warnings_had);
+        assert len(alerts) >= 3;
+        for alert in alerts {
+            record = diag_from_dict(json.loads(json.dumps(diag_of(alert).to_dict())));
+            rebuilt = alert_of(record);
+            assert str(rebuilt) == str(alert);
+            assert rebuilt.pretty_print() == alert.pretty_print();
+            assert rebuilt.code is alert.code;
+            assert rebuilt.from_pass is alert.from_pass;
+        }
+    }
+}
+
+test "jac check adopts a kernel's diagnostics and they match the host's" {
+    kernel = loaded_kernel();
+    if kernel is None {
+        return;
+    }
+    import from jaclang.project.kernel_check { kernel_check }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        for entry_name in ('main.jac', 'clean.jac') {
+            entry_file = str(base / entry_name);
+            host_program = JacProgram();
+            host_program.compile(entry_file, options=check_options());
+            kernel_program = JacProgram();
+            view = kernel_check(kernel_program, entry_file, check_options());
+            assert view.adopted , view.failure or entry_name;
+            assert rendered(kernel_program.errors_had)
+                == rendered(host_program.errors_had) , entry_name;
+            assert rendered(kernel_program.warnings_had)
+                == rendered(host_program.warnings_had) , entry_name;
+        }
+    }
+}
