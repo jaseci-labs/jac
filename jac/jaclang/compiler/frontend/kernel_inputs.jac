@@ -219,7 +219,7 @@ obj KernelInputs {
     }
 
     static def from_json(text: str) -> KernelInputs {
-        return inputs_from_dict(json.loads(text));
+        return inputs_from_dict(json_map(json.loads(text)));
     }
 }
 
@@ -304,7 +304,7 @@ def request_from_dict(raw: dict[str, any]) -> RequestOptions {
         no_cgen=bool(raw.get("no_cgen", False)),
         native_parity=bool(raw.get("native_parity", False)),
         native_required=bool(raw.get("native_required", False)),
-        native_require=[str(x) for x in raw.get("native_require", [])],
+        native_require=json_str_list(raw.get("native_require")),
         iface_ok=bool(raw.get("iface_ok", False)),
         need_full_ast=bool(raw.get("need_full_ast", False)),
         no_ir_cache=bool(raw.get("no_ir_cache", False)),
@@ -314,10 +314,10 @@ def request_from_dict(raw: dict[str, any]) -> RequestOptions {
         force_codespace=str(raw.get("force_codespace", "")),
         memory_profile=str(raw.get("memory_profile", "managed")),
         nogc_enforce_all=bool(raw.get("nogc_enforce_all", False)),
-        memory_enforce=[str(x) for x in raw.get("memory_enforce", [])],
-        memory_exempt=[str(x) for x in raw.get("memory_exempt", [])],
+        memory_enforce=json_str_list(raw.get("memory_enforce")),
+        memory_exempt=json_str_list(raw.get("memory_exempt")),
         native_target=str(raw.get("native_target", "")),
-        suppress_codes=[str(x) for x in raw.get("suppress_codes", [])],
+        suppress_codes=json_str_list(raw.get("suppress_codes")),
         default_codespace=str(raw.get("default_codespace", "")),
         app_kind=str(raw.get("app_kind", "")),
         target_app=str(raw.get("target_app", "")),
@@ -344,11 +344,11 @@ def check_to_dict(check: CheckSettings) -> dict[str, any] {
 
 def check_from_dict(raw: dict[str, any]) -> CheckSettings {
     return CheckSettings(
-        suppress=[str(x) for x in raw.get("suppress", [])],
-        suppress_categories=[str(x) for x in raw.get("suppress_categories", [])],
+        suppress=json_str_list(raw.get("suppress")),
+        suppress_categories=json_str_list(raw.get("suppress_categories")),
         lint_active=bool(raw.get("lint_active", False)),
-        lint_select=[str(x) for x in raw.get("lint_select", [])],
-        lint_ignore=[str(x) for x in raw.get("lint_ignore", [])],
+        lint_select=json_str_list(raw.get("lint_select")),
+        lint_ignore=json_str_list(raw.get("lint_ignore")),
         enforce_access=bool(raw.get("enforce_access", False)),
         untyped_external_error=bool(raw.get("untyped_external_error", False)),
         warn_native_seams=bool(raw.get("warn_native_seams", True))
@@ -375,18 +375,18 @@ def defaults_to_dict(defaults: ProjectDefaults) -> dict[str, any] {
 
 def defaults_from_dict(raw: dict[str, any]) -> ProjectDefaults {
     return ProjectDefaults(
-        default_codespace=str(raw["default_codespace"]),
-        native_closure_cap=int(raw["native_closure_cap"]),
-        native_require=[str(x) for x in raw["native_require"]],
-        native_target=str(raw["native_target"]),
-        native_debug=bool(raw["native_debug"]),
-        native_opt=int(raw["native_opt"]),
-        native_threads=int(raw["native_threads"]),
-        native_link_mode=str(raw["native_link_mode"]),
-        memory_profile=str(raw["memory_profile"]),
-        memory_enforce=[str(x) for x in raw["memory_enforce"]],
-        memory_exempt=[str(x) for x in raw["memory_exempt"]],
-        check=check_from_dict(raw["check"]),
+        default_codespace=str(raw.get("default_codespace", "")),
+        native_closure_cap=json_int(raw.get("native_closure_cap")),
+        native_require=json_str_list(raw.get("native_require")),
+        native_target=str(raw.get("native_target", "")),
+        native_debug=bool(raw.get("native_debug", False)),
+        native_opt=json_int(raw.get("native_opt")),
+        native_threads=json_int(raw.get("native_threads")),
+        native_link_mode=str(raw.get("native_link_mode", "")),
+        memory_profile=str(raw.get("memory_profile", "")),
+        memory_enforce=json_str_list(raw.get("memory_enforce")),
+        memory_exempt=json_str_list(raw.get("memory_exempt")),
+        check=check_from_dict(json_map(raw.get("check"))),
         client_framework=str(raw.get("client_framework", "react"))
     );
 }
@@ -402,9 +402,9 @@ def facts_to_dict(facts: ProjectFacts) -> dict[str, any] {
 
 def facts_from_dict(raw: dict[str, any]) -> ProjectFacts {
     return ProjectFacts(
-        project_root=str(raw["project_root"]),
-        check=check_from_dict(raw["check"]),
-        arch_closed=[str(x) for x in raw.get("arch_closed", [])],
+        project_root=str(raw.get("project_root", "")),
+        check=check_from_dict(json_map(raw.get("check"))),
+        arch_closed=json_str_list(raw.get("arch_closed")),
         client_framework=str(raw.get("client_framework", "react"))
     );
 }
@@ -419,8 +419,8 @@ def lint_to_dict(lint: LintSettings) -> dict[str, any] {
 
 def lint_from_dict(raw: dict[str, any]) -> LintSettings {
     return LintSettings(
-        check=check_from_dict(raw["check"]),
-        exclude=[str(x) for x in raw.get("exclude", [])],
+        check=check_from_dict(json_map(raw.get("check"))),
+        exclude=json_str_list(raw.get("exclude")),
         project_root=str(raw.get("project_root", ""))
     );
 }
@@ -445,14 +445,14 @@ def app_to_dict(app: AppSpec) -> dict[str, any] {
 
 def app_from_dict(raw: dict[str, any]) -> AppSpec {
     return AppSpec(
-        name=str(raw["name"]),
+        name=str(raw.get("name", "")),
         kind=str(raw.get("kind", "")),
         `entry=str(raw.get("entry", "")),
         ui=str(raw.get("ui", "")),
         platform=str(raw.get("platform", "")),
         route=str(raw.get("route", "")),
-        pins={str(k): str(v) for (k, v) in dict(raw.get("pins", {})).items()},
-        npm_names={str(x) for x in raw.get("npm_names", [])},
+        pins=json_str_map(raw.get("pins")),
+        npm_names=set(json_str_list(raw.get("npm_names"))),
         has_server=bool(raw.get("has_server", False)),
         codespace=str(raw.get("codespace", "")),
         implicit=bool(raw.get("implicit", False)),
@@ -476,19 +476,19 @@ def workspace_to_dict(ws: WorkspaceSpec) -> dict[str, any] {
 
 def workspace_from_dict(raw: dict[str, any]) -> WorkspaceSpec {
     apps: dict[str, AppSpec] = {};
-    for entry_raw in raw.get("apps", []) {
+    for entry_raw in json_maps(raw.get("apps")) {
         app = app_from_dict(entry_raw);
         apps[app.name] = app;
     }
     return WorkspaceSpec(
-        project_root=str(raw["project_root"]),
-        toml_path=str(raw["toml_path"]),
+        project_root=str(raw.get("project_root", "")),
+        toml_path=str(raw.get("toml_path", "")),
         apps=apps,
         default_app=str(raw.get("default_app", "")),
         explicit=bool(raw.get("explicit", False)),
         digest=str(raw.get("digest", "")),
-        base_pins={str(k): str(v) for (k, v) in dict(raw.get("base_pins", {})).items()},
-        base_npm_names={str(x) for x in raw.get("base_npm_names", [])}
+        base_pins=json_str_map(raw.get("base_pins")),
+        base_npm_names=set(json_str_list(raw.get("base_npm_names")))
     );
 }
 
@@ -499,10 +499,7 @@ def verdict_to_dict(verdict: (NativeVerdict | None)) -> (dict[str, any] | None) 
     return {"demoted": verdict.demoted, "code": verdict.code, "detail": verdict.detail};
 }
 
-def verdict_from_dict(raw: (dict[str, any] | None)) -> (NativeVerdict | None) {
-    if raw is None {
-        return None;
-    }
+def verdict_from_dict(raw: dict[str, any]) -> NativeVerdict {
     return NativeVerdict(
         demoted=bool(raw.get("demoted", False)),
         code=str(raw.get("code", "")),
@@ -525,20 +522,23 @@ def layout_to_dict(layout: LayoutTables) -> dict[str, any] {
 }
 
 def layout_from_dict(raw: dict[str, any]) -> LayoutTables {
-    folders = dict(raw.get("annex_folders", {}));
+    folders = json_str_map(raw.get("annex_folders"));
+    order = json_str_list(raw.get("annex_order"))
+        if "annex_order" in raw
+        else list(folders.keys());
     ordered: dict[str, str] = {};
-    for suffix in raw.get("annex_order", list(folders.keys())) {
-        ordered[str(suffix)] = str(folders[suffix]);
+    for suffix in order {
+        ordered[suffix] = folders.get(suffix, "");
     }
     return LayoutTables(
         jac_suffix=str(raw.get("jac_suffix", ".jac")),
         annex_folders=ordered,
-        module_suffixes=[str(x) for x in raw.get("module_suffixes", [])],
-        init_files=[str(x) for x in raw.get("init_files", [])],
-        stem_rekey_suffixes=[str(x) for x in raw.get("stem_rekey_suffixes", [])],
-        foreign_suffixes=[str(x) for x in raw.get("foreign_suffixes", [])],
-        retired_native=[str(x) for x in raw.get("retired_native", [])],
-        retired_client=[str(x) for x in raw.get("retired_client", [])]
+        module_suffixes=json_str_list(raw.get("module_suffixes")),
+        init_files=json_str_list(raw.get("init_files")),
+        stem_rekey_suffixes=json_str_list(raw.get("stem_rekey_suffixes")),
+        foreign_suffixes=json_str_list(raw.get("foreign_suffixes")),
+        retired_native=json_str_list(raw.get("retired_native")),
+        retired_client=json_str_list(raw.get("retired_client"))
     );
 }
 
@@ -553,18 +553,78 @@ def manifest_to_dict(manifest: ManifestSets) -> dict[str, any] {
 
 def manifest_from_dict(raw: dict[str, any]) -> ManifestSets {
     return ManifestSets(
-        seed_paths=[str(x) for x in raw.get("seed_paths", [])],
-        native_only_files=[str(x) for x in raw.get("native_only_files", [])],
-        native_only_dirs=[str(x) for x in raw.get("native_only_dirs", [])],
-        native_lowered=[str(x) for x in raw.get("native_lowered", [])]
+        seed_paths=json_str_list(raw.get("seed_paths")),
+        native_only_files=json_str_list(raw.get("native_only_files")),
+        native_only_dirs=json_str_list(raw.get("native_only_dirs")),
+        native_lowered=json_str_list(raw.get("native_lowered"))
     );
 }
 
-def optional_list(raw: any) -> (list[str] | None) {
+def optional_list(raw: object) -> (list[str] | None) {
     if raw is None {
         return None;
     }
-    return [str(x) for x in raw];
+    return json_str_list(raw);
+}
+
+def json_str_list(value: object) -> list[str] {
+    out: list[str] = [];
+    if isinstance(value, list) {
+        for item in value {
+            out.append(str(item));
+        }
+    }
+    return out;
+}
+
+def json_str_map(value: object) -> dict[str, str] {
+    out: dict[str, str] = {};
+    if isinstance(value, dict) {
+        for (key, item) in value.items() {
+            out[str(key)] = str(item);
+        }
+    }
+    return out;
+}
+
+def json_bool_map(value: object) -> dict[str, bool] {
+    out: dict[str, bool] = {};
+    if isinstance(value, dict) {
+        for (key, item) in value.items() {
+            out[str(key)] = bool(item);
+        }
+    }
+    return out;
+}
+
+def json_map(value: object) -> dict[str, any] {
+    out: dict[str, any] = {};
+    if isinstance(value, dict) {
+        for (key, item) in value.items() {
+            out[str(key)] = item;
+        }
+    }
+    return out;
+}
+
+def json_maps(value: object) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    if isinstance(value, list) {
+        for item in value {
+            out.append(json_map(item));
+        }
+    }
+    return out;
+}
+
+def json_int(value: object, fallback: int = 0) -> int {
+    if isinstance(value, bool) {
+        return 1 if value else 0;
+    }
+    if isinstance(value, int) {
+        return value;
+    }
+    return fallback;
 }
 
 def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
@@ -675,33 +735,36 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
     };
 }
 
+def json_opt_str(value: object) -> (str | None) {
+    if value is None {
+        return None;
+    }
+    return str(value);
+}
+
 def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
-    version = int(raw.get("version", 0));
+    version = json_int(raw.get("version"), 0);
     if version != KERNEL_INPUTS_VERSION {
         raise ValueError(
             f"kernel inputs version {version} does not match {KERNEL_INPUTS_VERSION}"
         );
     }
     defaults_raw = raw.get("project_defaults");
-    platform_raw = dict(raw.get("host_platform", {}));
-    env_raw = dict(raw.get("ct_environment", {}));
-    return KernelInputs(
+    platform_raw = json_map(raw.get("host_platform"));
+    env_raw = json_map(raw.get("ct_environment"));
+    inputs = KernelInputs(
         version=version,
         entry_path=str(raw.get("entry_path", "")),
         module_projection=str(raw.get("module_projection", "")),
         target_app=str(raw.get("target_app", "")),
-        request=request_from_dict(dict(raw.get("request", {}))),
-        project_defaults=defaults_from_dict(defaults_raw)
+        request=request_from_dict(json_map(raw.get("request"))),
+        project_defaults=defaults_from_dict(json_map(defaults_raw))
             if defaults_raw is not None
             else None,
-        check_settings={
-            str(app): check_from_dict(check)
-            for (app, check) in dict(raw.get("check_settings", {})).items()
-        },
         host_platform=HostPlatform(
             machine=str(platform_raw.get("machine", "")),
-            python_major=int(platform_raw.get("python_major", 0)),
-            python_minor=int(platform_raw.get("python_minor", 0))
+            python_major=json_int(platform_raw.get("python_major")),
+            python_minor=json_int(platform_raw.get("python_minor"))
         ),
         ct_environment=CtEnvironment(
             os=str(env_raw.get("os", "linux")), arch=str(env_raw.get("arch", ""))
@@ -714,88 +777,92 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         stub_catalog_active=bool(raw.get("stub_catalog_active", False)),
         stub_catalog_dir=str(raw.get("stub_catalog_dir", "")),
         stub_catalog_file=str(raw.get("stub_catalog_file", "")),
-        stub_catalog_offset=int(raw.get("stub_catalog_offset", 0)),
-        stub_catalog_length=int(raw.get("stub_catalog_length", 0)),
-        typeshed_roots=[str(x) for x in raw.get("typeshed_roots", [])],
-        search_paths=[str(x) for x in raw.get("search_paths", [])],
+        stub_catalog_offset=json_int(raw.get("stub_catalog_offset"), 0),
+        stub_catalog_length=json_int(raw.get("stub_catalog_length"), 0),
+        typeshed_roots=json_str_list(raw.get("typeshed_roots")),
+        search_paths=json_str_list(raw.get("search_paths")),
         native_session_active=bool(raw.get("native_session_active", False)),
-        scanned_modules=int(raw.get("scanned_modules", 0)),
-        manifest=manifest_from_dict(dict(raw.get("manifest", {}))),
-        layout=layout_from_dict(dict(raw.get("layout", {}))),
-        project_facts={
-            str(owner_root): facts_from_dict(facts)
-            for (owner_root, facts) in dict(raw.get("project_facts", {})).items()
-        },
-        workspaces={
-            str(owner_root): workspace_from_dict(ws)
-            for (owner_root, ws) in dict(raw.get("workspaces", {})).items()
-        },
-        facts_of={str(k): str(v) for (k, v) in dict(raw.get("facts_of", {})).items()},
-        workspace_of={
-            str(k): str(v) for (k, v) in dict(raw.get("workspace_of", {})).items()
-        },
-        app_of={str(k): str(v) for (k, v) in dict(raw.get("app_of", {})).items()},
-        project_root_of={
-            str(k): str(v) for (k, v) in dict(raw.get("project_root_of", {})).items()
-        },
-        lint_of={
-            str(path): lint_from_dict(lint)
-            for (path, lint) in dict(raw.get("lint_of", {})).items()
-        },
-        verdicts={
-            str(path): verdict_from_dict(verdict)
-            for (path, verdict) in dict(raw.get("verdicts", {})).items()
-        },
-        untyped={str(k): bool(v) for (k, v) in dict(raw.get("untyped", {})).items()},
-        siblings={str(k): str(v) for (k, v) in dict(raw.get("siblings", {})).items()},
-        path_aliases={
-            str(k): bool(v) for (k, v) in dict(raw.get("path_aliases", {})).items()
-        },
-        virtual_modules={
-            str(k): str(v) for (k, v) in dict(raw.get("virtual_modules", {})).items()
-        },
-        imports=[
+        scanned_modules=json_int(raw.get("scanned_modules"), 0),
+        manifest=manifest_from_dict(json_map(raw.get("manifest"))),
+        layout=layout_from_dict(json_map(raw.get("layout"))),
+        facts_of=json_str_map(raw.get("facts_of")),
+        workspace_of=json_str_map(raw.get("workspace_of")),
+        app_of=json_str_map(raw.get("app_of")),
+        project_root_of=json_str_map(raw.get("project_root_of")),
+        untyped=json_bool_map(raw.get("untyped")),
+        siblings=json_str_map(raw.get("siblings")),
+        path_aliases=json_bool_map(raw.get("path_aliases")),
+        virtual_modules=json_str_map(raw.get("virtual_modules"))
+    );
+    for (app, check) in json_map(raw.get("check_settings")).items() {
+        inputs.check_settings[app] = check_from_dict(json_map(check));
+    }
+    for (owner_root, facts) in json_map(raw.get("project_facts")).items() {
+        inputs.project_facts[owner_root] = facts_from_dict(json_map(facts));
+    }
+    for (owner_root, ws) in json_map(raw.get("workspaces")).items() {
+        inputs.workspaces[owner_root] = workspace_from_dict(json_map(ws));
+    }
+    for (path, lint) in json_map(raw.get("lint_of")).items() {
+        inputs.lint_of[path] = lint_from_dict(json_map(lint));
+    }
+    for (path, verdict) in json_map(raw.get("verdicts")).items() {
+        inputs.verdicts[path] = verdict_from_dict(json_map(verdict))
+            if verdict is not None
+            else None;
+    }
+    for r in json_maps(raw.get("imports")) {
+        inputs.imports.append(
             ImportResolution(
-                target=str(r["target"]),
-                base_path=str(r["base_path"]),
+                target=str(r.get("target", "")),
+                base_path=str(r.get("base_path", "")),
                 string_spec=bool(r.get("string_spec", False)),
                 path=str(r.get("path", "")),
                 language=str(r.get("language", ""))
-            ) for r in raw.get("imports", [])
-        ],
-        local_imports=[
+            )
+        );
+    }
+    for r in json_maps(raw.get("local_imports")) {
+        inputs.local_imports.append(
             LocalResolution(
-                base=str(r["base"]),
-                parts=[str(x) for x in r.get("parts", [])],
+                base=str(r.get("base", "")),
+                parts=json_str_list(r.get("parts")),
                 found=bool(r.get("found", False)),
                 path=str(r.get("path", "")),
                 language=str(r.get("language", ""))
-            ) for r in raw.get("local_imports", [])
-        ],
-        npm=[
+            )
+        );
+    }
+    for r in json_maps(raw.get("npm")) {
+        inputs.npm.append(
             NpmAnswer(
-                spec=str(r["spec"]),
-                base_path=str(r["base_path"]),
+                spec=str(r.get("spec", "")),
+                base_path=str(r.get("base_path", "")),
                 installed=bool(r.get("installed", False)),
-                package_entry=r.get("entry"),
-                declarations=r.get("declarations"),
+                package_entry=json_opt_str(r.get("entry")),
+                declarations=json_opt_str(r.get("declarations")),
                 entry_known=bool(r.get("entry_known", False)),
                 declarations_known=bool(r.get("declarations_known", False))
-            ) for r in raw.get("npm", [])
-        ],
-        declared=[
+            )
+        );
+    }
+    for r in json_maps(raw.get("declared")) {
+        inputs.declared.append(
             DeclaredDependencies(
-                module_path=str(r["module_path"]),
+                module_path=str(r.get("module_path", "")),
                 fallback_app=str(r.get("fallback_app", "")),
                 names=optional_list(r.get("names"))
-            ) for r in raw.get("declared", [])
-        ],
-        python_ifaces=[
+            )
+        );
+    }
+    for r in json_maps(raw.get("python_ifaces")) {
+        inputs.python_ifaces.append(
             PythonInterface(
-                path=str(r["path"]),
+                path=str(r.get("path", "")),
                 pkg_dir=str(r.get("pkg_dir", "")),
                 data=base64.b64decode(str(r.get("data", "")).encode("ascii"))
-            ) for r in raw.get("python_ifaces", [])
-        ]
-    );
+            )
+        );
+    }
+    return inputs;
 }

@@ -237,6 +237,10 @@ obj HostServices {
         return None;
     }
 
+    def native_session_active(program: JacProgram) -> bool {
+        return False;
+    }
+
     def native_verdict(
         path: str, program: (JacProgram | None) = None
     ) -> (NativeVerdict | None) {
@@ -286,6 +290,15 @@ obj HostServices {
 
     def build_module(
         program: JacProgram, file_path: str, use_str: (str | None)
+    ) -> Module {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def run_module_pipeline(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
     ) -> Module {
         raise RuntimeError("no compiler host is installed");
     }

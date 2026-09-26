@@ -137,6 +137,14 @@ obj ProjectHost(HostServices) {
         program: JacProgram, file_path: str, use_str: (str | None)
     ) -> Module;
 
+    def run_module_pipeline(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> Module;
+
+    def native_session_active(program: JacProgram) -> bool;
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);

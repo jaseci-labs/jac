@@ -14,7 +14,7 @@ import from jaclang.compiler.frontend.kernel_inputs {
     request_of
 }
 import from jaclang.compiler.frontend.kernel_host { HostCensus, KernelHost }
-import from jaclang.compiler.driver.kernel_analyze {
+import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_CRASHED,
     ANALYSIS_OK,
     AnalysisReport,

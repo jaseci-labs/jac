@@ -535,6 +535,17 @@ impl ProjectHost.build_module(
     return self.compiler_for(program).build(file_path, program, use_str);
 }
 
+impl ProjectHost.run_module_pipeline(
+    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
+) -> Module {
+    return self.compiler_for(program).run_module(file_path, program, use_str, options);
+}
+
+impl ProjectHost.native_session_active(program: JacProgram) -> bool {
+    natives = program._natives;
+    return natives is not None and natives.session is not None;
+}
+
 impl ProjectHost.internal_program(program: JacProgram) -> (JacProgram | None) {
     return self.compiler_for(program).selfhost.peek_program();
 }

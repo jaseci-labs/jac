@@ -184,10 +184,12 @@ obj KernelSession(SessionHooks) {
             host.analyses[os.path.realpath(file_path)] = task;
             return task.module;
         }
-        compiler = host.compiler_for(target_program);
-        host.census.count("run_module");
-        host.census.delegate("run_module");
-        return compiler.run_module(file_path, target_program, use_str, options);
+        with host.delegating("run_module") as fallback {
+            answer = fallback.run_module_pipeline(
+                target_program, file_path, use_str, options
+            );
+        }
+        return answer;
     }
 }
 
@@ -538,22 +540,27 @@ obj KernelHost(HostServices) {
         self.census.count("resolve_local_module");
         key = local_key(base, parts);
         found = self._locals.get(key);
-        if found is not None {
-            return (found.path, found.language) if found.found else None;
+        if found is None {
+            found = self.learn_local_module(base, parts, key);
         }
+        if not found.found {
+            return None;
+        }
+        return (found.path, found.language);
+    }
+
+    def learn_local_module(base: str, parts: list[str], key: str) -> LocalResolution {
         with self.missing("resolve_local_module", key) as host {
             answer = host.resolve_local_module(base, parts);
         }
-        local = LocalResolution(
-            base=base,
-            parts=list(parts),
-            found=answer is not None,
-            path=answer[0] if answer is not None else "",
-            language=answer[1] if answer is not None else ""
-        );
+        local = LocalResolution(base=base, parts=list(parts));
+        if answer is not None {
+            local.found = True;
+            (local.path, local.language) = answer;
+        }
         self._locals[key] = local;
         self.inputs.local_imports.append(local);
-        return answer;
+        return local;
     }
 
     def jac_virtual_module_path(target: str) -> (str | None) {
@@ -726,9 +733,15 @@ obj KernelHost(HostServices) {
     }
 
     def read_source(path: str) -> str {
-        import from jaclang.project.textio { read_file_with_encoding }
         self.census.count("read_source");
-        return read_file_with_encoding(path);
+        text = read_utf8_source(path);
+        if text is not None {
+            return text;
+        }
+        with self.missing("read_source", path) as host {
+            answer = host.read_source(path);
+        }
+        return answer;
     }
 
     def annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
@@ -824,6 +837,16 @@ obj KernelHost(HostServices) {
             "native_session_declares", pair_key(source, element)
         ) as host {
             answer = host.native_session_declares(program, source, element);
+        }
+        return answer;
+    }
+
+    def native_session_active(program: JacProgram) -> bool {
+        if self.kernel_only("native_session_active") {
+            return False;
+        }
+        with self.delegating("native_session_active") as host {
+            answer = host.native_session_active(program);
         }
         return answer;
     }
@@ -1046,6 +1069,24 @@ obj KernelHost(HostServices) {
         self.inputs.target_triple_known = True;
         return answer;
     }
+}
+
+def read_utf8_source(path: str) -> (str | None) {
+    with open(path, "rb") as f {
+        data = f.read();
+    }
+    if data.startswith(b"\xef\xbb\xbf") {
+        data = data[3:];
+    }
+    try {
+        text = data.decode("utf-8");
+    } except UnicodeDecodeError {
+        return None;
+    }
+    if "\r" in text {
+        text = text.replace("\r\n", "\n").replace("\r", "\n");
+    }
+    return text;
 }
 
 def replay_event(target: HostServices, event: HostEvent) {

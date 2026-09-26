@@ -13,6 +13,7 @@ import from jaclang.compiler.placement.placement {
     scan_native_blockers,
     summarize_module
 }
+import from jaclang.runtime.portability { supports }
 
 obj NativeDepScan {
     has fresh: list[tuple[str, float, int]],
@@ -236,7 +237,6 @@ def _is_client_top(elem: uni.UniNode) -> bool {
 }
 
 def _py_import_client_portable(elem: uni.Import, app_kind: str = '') -> bool {
-    import from jaclang.runtime.portability { supports }
     kind = app_kind or 'web-app';
     targets: list[str] = [];
     if elem.from_loc is not None {

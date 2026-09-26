@@ -12,7 +12,7 @@ import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.kernel_analyze {
+import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_BLOCKED,
     ANALYSIS_OK,
     AnalysisDiag,
