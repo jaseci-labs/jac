@@ -4635,7 +4635,7 @@ impl TypeEvaluator._node_encloses(outer: UniNode, inner: UniNode) -> bool {
 }
 
 impl TypeEvaluator._get_type_from_flow_node(
-    target: NarrowingTarget, flow_node: UniCFGNode, visited: set
+    target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
 ) -> TypeBase | None {
     import from jaclang.compiler.types.type_evaluator { NarrowingTarget }
     key = target.key;
@@ -4956,7 +4956,10 @@ impl TypeEvaluator._get_type_from_flow_node(
 }
 
 impl TypeEvaluator._if_exit_type(
-    target: NarrowingTarget, stmt: IfStmt, entry_type: TypeBase | None, visited: set
+    target: NarrowingTarget,
+    stmt: IfStmt,
+    entry_type: TypeBase | None,
+    visited: set[int]
 ) -> TypeBase | None {
     import from jaclang.compiler.types.type_evaluator { NarrowingTarget }
     arm_types: list[TypeBase] = [];

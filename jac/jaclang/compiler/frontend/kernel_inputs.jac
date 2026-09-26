@@ -13,7 +13,8 @@ import from jaclang.compiler.frontend.source_layout { LayoutTables }
 import from jaclang.compiler.types.ct_value { CtEnvironment }
 import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 
-glob KERNEL_INPUTS_VERSION: int = 2;
+glob KERNEL_INPUTS_VERSION: int = 2,
+     KEY_SEP: str = "\x1f";
 
 obj RequestOptions {
     has symtab_ir_only: bool = False,
@@ -225,15 +226,16 @@ obj KernelInputs {
 }
 
 def resolution_key(target: str, base_path: str, string_spec: bool) -> str {
-    return f"{int(string_spec)}\x00{target}\x00{base_path}";
+    flag = "1" if string_spec else "0";
+    return flag + KEY_SEP + target + KEY_SEP + base_path;
 }
 
 def local_key(base: str, parts: list[str]) -> str {
-    return base + "\x00" + "/".join(parts);
+    return base + KEY_SEP + "/".join(parts);
 }
 
 def pair_key(first: str, second: str) -> str {
-    return f"{first}\x00{second}";
+    return first + KEY_SEP + second;
 }
 
 def request_of(options: CompileOptions) -> RequestOptions {

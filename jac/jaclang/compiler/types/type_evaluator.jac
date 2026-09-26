@@ -962,7 +962,7 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_type_from_flow_node(
-        target: NarrowingTarget, flow_node: UniCFGNode, visited: set
+        target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
     ) -> TypeBase | None;
 
     def _node_encloses(outer: UniNode, inner: UniNode) -> bool;
@@ -998,7 +998,7 @@ walker TypeEvaluator {
         target: NarrowingTarget,
         stmt: IfStmt,
         entry_type: (TypeBase | None),
-        visited: set
+        visited: set[int]
     ) -> (TypeBase | None);
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;

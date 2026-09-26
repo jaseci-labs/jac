@@ -18,6 +18,7 @@ import from jaclang.compiler.frontend.kernel_inputs {
     ImportResolution,
     KernelInputs,
     LocalResolution,
+    KEY_SEP,
     NpmAnswer,
     PythonInterface,
     local_key,
@@ -85,7 +86,7 @@ obj HostCensus {
 
     def miss(method: str, key: str) {
         self.misses[method] = self.misses.get(method, 0) + 1;
-        self.miss_keys.append(f"{method}: {key.replace(chr(0), ' | ')}");
+        self.miss_keys.append(method + ": " + key.replace(KEY_SEP, " | "));
     }
 
     def delegate(method: str) {

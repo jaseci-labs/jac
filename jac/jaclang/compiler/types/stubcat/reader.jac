@@ -381,10 +381,16 @@ obj StubCatalog {
     }
 
     def ambient_typing_names -> dict[str, set[str]] {
-        raw: dict[str, list[str]] = json.loads(self.string(self.hdr.ambient_sid));
+        raw: dict[str, any] = json.loads(self.string(self.hdr.ambient_sid));
         out: dict[str, set[str]] = {};
         for (mod_name, names) in raw.items() {
-            out[mod_name] = set(names);
+            members: set[str] = set();
+            if isinstance(names, list) {
+                for name in names {
+                    members.add(str(name));
+                }
+            }
+            out[mod_name] = members;
         }
         return out;
     }
