@@ -435,7 +435,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
     visit_ann_assign,
 }
 
-
 def emit_name_store(g: cfg_builder, name: str, tloc: cloc) {
     name = codegen_mangle(g, name);
     # Cell/free scope FIRST (see emit_name_load in compiler_emit): a
@@ -507,7 +506,6 @@ def emit_name_delete(g: cfg_builder, name: str, tloc: cloc) {
     g.emit_op(OP_DELETE_NAME, idx, tloc);
 }
 
-
 # Non-constant slice STORE (value already on the stack, container just pushed).
 # 2-element: STORE_SLICE (fused). 3-element: BUILD_SLICE 3 + STORE_SUBSCR.
 def emit_slice_store(g: cfg_builder, sl: Slice, lc: cloc) {
@@ -538,13 +536,11 @@ def emit_slice_delete(g: cfg_builder, sl: Slice, lc: cloc) {
     g.emit_op(OP_DELETE_SUBSCR, 0, lc);
 }
 
-
 def emit_compare_cleanup(g: cfg_builder, cleanup: basicblock, lc: cloc) {
     g.use(cleanup);
     g.emit_op(OP_SWAP, 2, lc);
     g.emit_op(OP_POP_TOP, 0, lc);
 }
-
 
 # Build a unverified_cfg for an eval-mode expression. Emits RESUME (module/eval
 # scope: lineno 0), the expression, then RETURN_VALUE carrying the expression's
@@ -675,7 +671,6 @@ def visit_store_target_tos(g: cfg_builder, t: expr) -> stmt_cont {
     return stmt_cont(loc=expr_loc(t));
 }
 
-
 # With the sequence value on TOS, emit UNPACK_SEQUENCE (no star) or UNPACK_EX
 # (starred), then store each element target left-to-right. Nested Tuple/List
 # targets recurse; a Starred target stores the captured list into its .value.
@@ -703,7 +698,6 @@ def emit_unpack_stores(g: cfg_builder, elts: list[expr], tloc: cloc) -> cloc {
     }
     return last_loc;
 }
-
 
 def visit_store_seq_literal(
     g: cfg_builder, telts: list[expr], velts: list[expr], tloc: cloc, vloc: cloc
@@ -793,7 +787,6 @@ def visit_delete_target(g: cfg_builder, t: expr) -> stmt_cont {
     return stmt_cont(loc=expr_loc(t));
 }
 
-
 # Module-level epilogue (LOAD_CONST None; RETURN_VALUE).
 def emit_module_return(g: cfg_builder, lc: cloc) {
     if g.cur.instrs {
@@ -821,7 +814,6 @@ def emit_unit_loop_exit_epilogue(g: cfg_builder, lc: cloc, with_end_for: bool) {
     }
     emit_module_return(g, lc);
 }
-
 
 # Lower assert (test + optional message).
 def visit_assert_stmt(g: cfg_builder, a: Assert) -> stmt_cont {
@@ -958,7 +950,6 @@ def emit_tail_and_finish(
     emit_module_return(g, tail_cont.loc);
     return stmt_cont(loc=end_loc, next_si=len(tail), terminated=True);
 }
-
 
 # Lower one statement into the builder's current block.
 def finish_expression(g: cfg_builder, lc: cloc) {
@@ -1340,7 +1331,6 @@ def visit_return_stmt(
     }
     finish_control_unwind(g, unwind_end);
 }
-
 
 # Build a unverified_cfg for an exec-mode module body. Emits RESUME (module scope:
 # lineno 0), each statement, then the implicit LOAD_CONST None; RETURN_VALUE

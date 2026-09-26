@@ -60,6 +60,14 @@ compiled.verify()
 machine = llvm.Target.from_triple(triple).create_target_machine(
     opt=2, reloc="pic", codemodel="small",
 )
+# Units are optimized one at a time; the merged module is where bindings,
+# algorithms and object-API calls from different units can inline. The object
+# reaches the CPython link as machine code, so ThinLTO cannot do this later.
+builder = llvm.create_pass_builder(
+    machine, llvm.create_pipeline_tuning_options(speed_level=2),
+)
+builder.getModulePassManager().run(compiled, builder)
+compiled.verify()
 object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")

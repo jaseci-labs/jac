@@ -159,7 +159,6 @@ def ensure_import_prefix_consts(g: cfg_builder) {
     }
 }
 
-
 # LOAD_SMALL_INT level, LOAD_CONST fromlist, IMPORT_NAME modname (CPython import).
 def emit_import_name_call(
     g: cfg_builder, modname: str, level: int, fromlist: PyObj | None, iloc: cloc
@@ -176,7 +175,6 @@ def emit_import_name_call(
     midx = g.u.add_name(modname);
     g.emit_op(OP_IMPORT_NAME, midx, iloc);
 }
-
 
 def visit_import(g: cfg_builder, imp: Import) -> stmt_cont {
     iloc = nloc(imp.lineno, imp.end_lineno, imp.col_offset, imp.end_col_offset);
@@ -202,7 +200,6 @@ def visit_import(g: cfg_builder, imp: Import) -> stmt_cont {
     }
     return stmt_cont(loc=iloc);
 }
-
 
 def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
     iloc = nloc(imp.lineno, imp.end_lineno, imp.col_offset, imp.end_col_offset);
@@ -242,7 +239,6 @@ def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
     return stmt_cont(loc=iloc);
 }
 
-
 # Explicit global definitions have module-level identities, even inside a
 # function or class. Use the same mangled binding as load/store lowering.
 def definition_qualname(g: cfg_builder, name: str) -> str {
@@ -256,7 +252,6 @@ def definition_qualname(g: cfg_builder, name: str) -> str {
     return nested_code_qualname(g.sym_top.kind, g.u.qualname, name);
 }
 
-
 def sym_class_qualname(
     cd: ClassDef, sym_cls: sym_block, enclosing_private: str | None
 ) -> str {
@@ -265,7 +260,6 @@ def sym_class_qualname(
     }
     return cd.name;
 }
-
 
 # The body function and class name are already on the stack. Reuse ordinary
 # call lowering, including ordered *bases and **keywords merging.
@@ -332,7 +326,6 @@ def class_body_has_typealias(cd: ClassDef) -> bool {
     return False;
 }
 
-
 # Class body boilerplate through __firstlineno__ (CPython compile_class).
 def class_body_has_function(cd: ClassDef) -> bool {
     bi = 0;
@@ -346,7 +339,6 @@ def class_body_has_function(cd: ClassDef) -> bool {
     return False;
 }
 
-
 # Class-body prologue locations (CPython 3.14): MAKE_CELL carries NO_LOCATION;
 # RESUME points at the class statement line (def-line form, like nested scopes).
 # Use the class node's span. A supplied AST can have body statements from an
@@ -354,7 +346,6 @@ def class_body_has_function(cd: ClassDef) -> bool {
 def class_def_loc(cd: ClassDef) -> cloc {
     return nloc(cd.lineno, cd.end_lineno, cd.col_offset, cd.end_col_offset);
 }
-
 
 def emit_class_body_prologue(g: cfg_builder, class_qname: str, body_firstlineno: int) {
     # CPython 3.14 locations: MAKE_CELL carries NO_LOCATION; RESUME and the
@@ -396,7 +387,6 @@ def emit_class_body_prologue(g: cfg_builder, class_qname: str, body_firstlineno:
     }
 }
 
-
 # __static_attributes__, optional __classdictcell__, and implicit RETURN_VALUE None.
 def emit_class_body_epilogue(g: cfg_builder, last: cloc) {
     tup = PyTuple(t="tuple", items=[]);
@@ -424,7 +414,6 @@ def emit_class_body_epilogue(g: cfg_builder, last: cloc) {
     }
     g.emit_op(OP_RETURN_VALUE, 0, last);
 }
-
 
 # Lower `class name: ...` at module/class scope into nested PyCode + LOAD_BUILD_CLASS.
 def visit_class_def(g: cfg_builder, cd: ClassDef) -> stmt_cont {
@@ -627,7 +616,6 @@ def compile_class_cfg(
     u.flush_late_consts();
     return u;
 }
-
 
 # Lower `def name(...): ...` at module/class scope into nested PyCode + MAKE_FUNCTION.
 def visit_function_def(
@@ -955,7 +943,6 @@ def compile_fn_cfg(
     return u;
 }
 
-
 # Build unverified_cfg for a `def` body (nested code object before assembly).
 def compile_function_cfg(
     fd: FunctionDef, filename: str, sym_fn: sym_block, private: str | None = None
@@ -964,7 +951,6 @@ def compile_function_cfg(
         fd.name, fd.args, fd.body, fd.lineno, filename, sym_fn, private
     );
 }
-
 
 # ---------------- PEP 695 `type X = v` / `type X[T, ...] = v` ----------------
 #
@@ -981,7 +967,6 @@ def typealias_target_name(ta: TypeAlias) -> str | None {
     }
     return None;
 }
-
 
 # The lazy value scope: argcount 1 (.format), format guard, then the alias
 # value expression. Generic aliases additionally take the type params as
@@ -1057,7 +1042,6 @@ def type_expression_cfg(
     return u;
 }
 
-
 # The hidden <generic parameters of X> scope: builds one TypeVar per param
 # into cells, then assembles (name, (typevar, ...), closure-wrapped value fn).
 def typealias_genparams_cfg(
@@ -1117,7 +1101,6 @@ def typealias_genparams_cfg(
     u.flush_late_consts();
     return u;
 }
-
 
 def emit_type_parameters(
     g: cfg_builder, tps: list[type_param], qualname: str, in_class: bool, tloc: cloc

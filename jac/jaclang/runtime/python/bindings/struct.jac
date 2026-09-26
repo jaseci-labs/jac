@@ -1,4 +1,30 @@
 """Struct bindings with owned format plans and exported-buffer iterators."""
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyDict_Clear,
+    PyDict_New,
+    PyLong_FromLongLong,
+    PyObject,
+    PyTuple_GetSlice,
+    PyTuple_Size,
+    PyUnicode_AsEncodedString,
+    Py_NewRef,
+    Py_TYPE,
+    jacpy_buffer_new,
+    jacpy_bytes_address,
+    jacpy_bytes_decode,
+    jacpy_bytes_from_memory,
+    jacpy_error_pending,
+    jacpy_is_bytes,
+    jacpy_is_unicode,
+    jacpy_none,
+    jacpy_number_ssize,
+    jacpy_offset,
+    jacpy_release,
+    jacpy_set_exception,
+    jacpy_tuple_item
+}
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -16,7 +42,6 @@ import from jaclang.runtime.python.bindings.type {
     TypeFlags,
     PropertyCallbacks,
     PropertyDefinition,
-    jacpy_binding_typeof,
     jacpy_binding_owner,
     jacpy_binding_allocate
 }
@@ -37,23 +62,6 @@ import from jaclang.runtime.python.bindings.arguments {
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_retain,
-    jacpy_is_unicode,
-    jacpy_is_bytes,
-    jacpy_unicode_encode,
-    jacpy_bytes_decode,
-    jacpy_bytes_from_memory,
-    jacpy_bytes_address,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_tuple_slice,
-    jacpy_dict_new,
-    jacpy_dict_clear,
-    jacpy_error_pending,
-    jacpy_int,
-    jacpy_none,
-    jacpy_set_exception,
     object_error,
     type_name,
     text_object,
@@ -77,11 +85,7 @@ import from jaclang.runtime.python.modules.struct {
     jacpy_struct_cached,
     jacpy_struct_memory
 }
-import from c {
-    def jacpy_binding_basicsize(instance: u64) -> i64;  def jacpy_number_ssize(
-        value: u64, overflow: str
-    ) -> i64;
-}
+import from c { def jacpy_binding_basicsize(instance: ptr[PyObject]) -> i64;  }
 
 obj StructState(ReferenceState) {
     has plan: struct_plan;
@@ -90,21 +94,21 @@ obj StructState(ReferenceState) {
 obj UnpackState(NativeState) {
     has cursor: (unpack_cursor | None) = None,
         buffer: (BufferArgument | None) = None,
-        owner: u64 = 0;
+        owner: ptr[PyObject] = NULL;
 
     def clear {
         previous_owner = self.owner;
         previous_buffer = self.buffer;
         self.cursor = None;
         self.buffer = None;
-        self.owner = 0;
+        self.owner = NULL;
         if previous_buffer is not None {
             previous_buffer.close();
         }
         jacpy_release(previous_owner);
     }
 
-    def traverse_refs(visitor: u64, context: u64) -> i32 {
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         status = jacpy_binding_visit(self.owner, visitor, context);
         if status != 0 {
             return status;
@@ -121,7 +125,7 @@ obj UnpackState(NativeState) {
     }
 }
 
-def:priv state_for(instance: u64) -> (StructState | None) {
+def:priv state_for(instance: ptr[PyObject]) -> (StructState | None) {
     if jacpy_binding_native_present(instance, struct_type.handle) != 0 {
         state = jacpy_binding_native_get(instance, struct_type.handle);
         if isinstance(state, StructState) and state.references[0] != 0 {
@@ -132,55 +136,59 @@ def:priv state_for(instance: u64) -> (StructState | None) {
     return None;
 }
 
-def:priv module_for(instance: u64) -> u64 {
-    return jacpy_binding_owner(jacpy_binding_typeof(instance), definition.handle);
+def:priv module_for(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_binding_owner(Py_TYPE(instance), definition.handle);
 }
 
-def:priv struct_error(module: u64, message: str) {
+def:priv struct_error(module: ptr[PyObject], message: str) {
     jacpy_set_exception(
         jacpy_binding_state_get(module, 0), message, i64(len(message.encode("utf-8")))
     );
 }
 
-def:priv create(type: u64, args: u64, kwargs: u64) -> u64 {
+def:priv create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return jacpy_binding_allocate(type);
 }
 
 glob:priv init_signature = CallSignature("Struct", ["format"], 1, 1);
 
-def:priv initialize_bound(args: BoundArguments) -> u64 {
+def:priv initialize_bound(args: BoundArguments) -> ptr[PyObject] {
     source = args.values[0];
-    format: u64 = 0;
+    format: ptr[PyObject] = NULL;
     if jacpy_is_unicode(source) != 0 {
-        format = jacpy_unicode_encode(source, "ascii", "strict");
+        format = PyUnicode_AsEncodedString(source, "ascii", "strict");
     } elif jacpy_is_bytes(source) != 0 {
-        format = jacpy_retain(source);
+        format = Py_NewRef(source);
     } else {
         object_error(
             "TypeError",
             f"Struct() argument 1 must be a str or bytes object, not {type_name(source)[:200]}"
         );
-        return 0;
+        return NULL;
     }
     if format == 0 {
-        return 0;
+        return NULL;
     }
     state = StructState(references=[format], plan=struct_plan());
     module = module_for(args.context);
     if module == 0 {
-        return 0;
+        return NULL;
     }
     if jacpy_struct_compile(state.plan, format, jacpy_binding_state_get(module, 0))
         < 0 {
-        return 0;
+        return NULL;
     }
     if jacpy_binding_native_set(args.context, struct_type.handle, state) < 0 {
-        return 0;
+        return NULL;
     }
     return jacpy_none();
 }
 
-def:priv initialize(instance: u64, args: u64, kwargs: u64) -> i32 {
+def:priv initialize(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32 {
     result = invoke(init_signature, args, kwargs, initialize_bound, instance);
     if result == 0 {
         return i32(-1);
@@ -189,45 +197,45 @@ def:priv initialize(instance: u64, args: u64, kwargs: u64) -> i32 {
     return i32(0);
 }
 
-def:priv format_property(instance: u64, context: u64) -> u64 {
+def:priv format_property(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
     return jacpy_bytes_decode(state.references[0], "utf-8", "strict");
 }
 
-def:priv size_property(instance: u64, context: u64) -> u64 {
+def:priv size_property(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     if jacpy_binding_native_present(instance, struct_type.handle) != 0 {
         state = jacpy_binding_native_get(instance, struct_type.handle);
         if isinstance(state, StructState) and state.references[0] != 0 {
-            return jacpy_int(jacpy_struct_size(state.plan));
+            return PyLong_FromLongLong(jacpy_struct_size(state.plan));
         }
     }
-    return jacpy_int(-1);
+    return PyLong_FromLongLong(-1);
 }
 
-def:priv representation(instance: u64) -> u64 {
+def:priv representation(instance: ptr[PyObject]) -> ptr[PyObject] {
     format = format_property(instance, 0);
     if format == 0 {
-        return 0;
+        return NULL;
     }
     try {
         name = type_name(instance).split(".")[-1];
         return text_object(f"{name}({repr_value(format)})");
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(format);
     }
 }
 
-def:priv memory_size(instance: u64, unused: u64) -> u64 {
+def:priv memory_size(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
-    return jacpy_int(
+    return PyLong_FromLongLong(
         jacpy_binding_basicsize(instance)
             + jacpy_struct_memory(state.plan)
             + jac_heap_size(u64(id(state)))
@@ -235,25 +243,25 @@ def:priv memory_size(instance: u64, unused: u64) -> u64 {
     );
 }
 
-def:priv pack(instance: u64, args: u64) -> u64 {
+def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
     plan = state.plan;
     module = module_for(instance);
     if module == 0 {
-        return 0;
+        return NULL;
     }
-    count = jacpy_tuple_size(args);
+    count = PyTuple_Size(args);
     expected = jacpy_struct_items(plan);
     if count != expected {
         struct_error(
             module, f"pack expected {expected} items for packing (got {count})"
         );
-        return 0;
+        return NULL;
     }
-    result = jacpy_bytes_from_memory(0, jacpy_struct_size(plan));
+    result = jacpy_buffer_new(jacpy_struct_size(plan));
     if result != 0
         and jacpy_struct_pack(
             plan,
@@ -264,22 +272,22 @@ def:priv pack(instance: u64, args: u64) -> u64 {
         )
             < 0 {
         jacpy_release(result);
-        return 0;
+        return NULL;
     }
     return result;
 }
 
-def:priv pack_into(instance: u64, args: u64) -> u64 {
+def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
     plan = state.plan;
     module = module_for(instance);
     if module == 0 {
-        return 0;
+        return NULL;
     }
-    count = jacpy_tuple_size(args);
+    count = PyTuple_Size(args);
     expected = jacpy_struct_items(plan);
     if count < 2 {
         struct_error(
@@ -288,34 +296,35 @@ def:priv pack_into(instance: u64, args: u64) -> u64 {
                 if count != 0
                 else "pack_into expected buffer argument"
         );
-        return 0;
+        return NULL;
     }
     if count - 2 != expected {
         struct_error(
             module, f"pack_into expected {expected} items for packing (got {count - 2})"
         );
-        return 0;
+        return NULL;
     }
     buffer = BufferArgument();
     source = jacpy_tuple_item(args, 0);
     acquired = buffer.acquire_writable(source);
     jacpy_release(source);
     if not acquired {
-        return 0;
+        return NULL;
     }
     offset_object = jacpy_tuple_item(args, 1);
     offset = jacpy_number_ssize(offset_object, "IndexError");
     jacpy_release(offset_object);
     if jacpy_error_pending() != 0 {
-        return 0;
+        return NULL;
     }
     error = jacpy_binding_state_get(module, 0);
     offset = jacpy_struct_offset(plan, buffer.size(), offset, 1, error);
     if offset < 0 {
-        return 0;
+        return NULL;
     }
-    if jacpy_struct_pack(plan, args, 2, buffer.address() + u64(offset), error) < 0 {
-        return 0;
+    if jacpy_struct_pack(plan, args, 2, jacpy_offset(buffer.address(), offset), error)
+        < 0 {
+        return NULL;
     }
     return jacpy_none();
 }
@@ -324,72 +333,76 @@ glob:priv unpack_signature = CallSignature("unpack", ["buffer"], 1, 1, 1),
      unpack_from_signature = CallSignature("unpack_from", ["buffer", "offset"], 1, 2),
      iter_unpack_signature = CallSignature("iter_unpack", ["buffer"], 1, 1, 1);
 
-def:priv unpack_bound(args: BoundArguments) -> u64 {
+def:priv unpack_bound(args: BoundArguments) -> ptr[PyObject] {
     state = state_for(args.context);
     if state is None {
-        return 0;
+        return NULL;
     }
     plan = state.plan;
     module = module_for(args.context);
     if module == 0 {
-        return 0;
+        return NULL;
     }
     buffer = BufferArgument();
     if not buffer.acquire(args.values[0]) {
-        return 0;
+        return NULL;
     }
     size = jacpy_struct_size(plan);
     if buffer.size() != size {
         struct_error(module, f"unpack requires a buffer of {size} bytes");
-        return 0;
+        return NULL;
     }
     return jacpy_struct_unpack(plan, buffer.address());
 }
 
-def:priv unpack(instance: u64, args: u64, kwargs: u64) -> u64 {
+def:priv unpack(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     if state_for(instance) is None {
-        return 0;
+        return NULL;
     }
     return invoke(unpack_signature, args, kwargs, unpack_bound, instance);
 }
 
-def:priv unpack_from_bound(args: BoundArguments) -> u64 {
+def:priv unpack_from_bound(args: BoundArguments) -> ptr[PyObject] {
     state = state_for(args.context);
     if state is None {
-        return 0;
+        return NULL;
     }
     plan = state.plan;
     module = module_for(args.context);
     if module == 0 {
-        return 0;
+        return NULL;
     }
     buffer = BufferArgument();
     if not buffer.acquire(args.values[0]) {
-        return 0;
+        return NULL;
     }
     offset = jacpy_number_ssize(args.values[1], "IndexError")
         if args.values[1] != 0
         else i64(0);
     if jacpy_error_pending() != 0 {
-        return 0;
+        return NULL;
     }
     offset = jacpy_struct_offset(
         plan, buffer.size(), offset, 0, jacpy_binding_state_get(module, 0)
     );
     if offset < 0 {
-        return 0;
+        return NULL;
     }
-    return jacpy_struct_unpack(plan, buffer.address() + u64(offset));
+    return jacpy_struct_unpack(plan, jacpy_offset(buffer.address(), offset));
 }
 
-def:priv unpack_from(instance: u64, args: u64, kwargs: u64) -> u64 {
+def:priv unpack_from(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     if state_for(instance) is None {
-        return 0;
+        return NULL;
     }
     return invoke(unpack_from_signature, args, kwargs, unpack_from_bound, instance);
 }
 
-def:priv iterator_state(instance: u64) -> (UnpackState | None) {
+def:priv iterator_state(instance: ptr[PyObject]) -> (UnpackState | None) {
     if jacpy_binding_native_present(instance, iterator_type.handle) != 0 {
         state = jacpy_binding_native_get(instance, iterator_type.handle);
         if isinstance(state, UnpackState) {
@@ -399,65 +412,67 @@ def:priv iterator_state(instance: u64) -> (UnpackState | None) {
     return None;
 }
 
-def:priv iterator_next(instance: u64) -> u64 {
+def:priv iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = iterator_state(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
     cursor = state.cursor;
     if cursor is None {
-        return 0;
+        return NULL;
     }
     if jacpy_struct_remaining(cursor) == 0 {
         state.clear();
-        return 0;
+        return NULL;
     }
     return jacpy_struct_next(cursor);
 }
 
-def:priv iterator_self(instance: u64) -> u64 {
-    return jacpy_retain(instance);
+def:priv iterator_self(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return Py_NewRef(instance);
 }
 
-def:priv iterator_hint(instance: u64, unused: u64) -> u64 {
+def:priv iterator_hint(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     state = iterator_state(instance);
     if state is not None {
         cursor = state.cursor;
         if cursor is not None {
-            return jacpy_int(jacpy_struct_remaining(cursor));
+            return PyLong_FromLongLong(jacpy_struct_remaining(cursor));
         }
     }
-    return jacpy_int(0);
+    return PyLong_FromLongLong(0);
 }
 
-def:priv iter_unpack_bound(args: BoundArguments) -> u64 {
+def:priv iter_unpack_bound(args: BoundArguments) -> ptr[PyObject] {
     state = state_for(args.context);
     if state is None {
-        return 0;
+        return NULL;
     }
     plan = state.plan;
     module = module_for(args.context);
     if module == 0 {
-        return 0;
+        return NULL;
     }
     size = jacpy_struct_size(plan);
     if size == 0 {
         struct_error(module, "cannot iteratively unpack with a struct of length 0");
-        return 0;
+        return NULL;
     }
     iterator = jacpy_binding_allocate(jacpy_binding_state_get(module, 2));
     if iterator == 0 {
-        return 0;
+        return NULL;
     }
     buffer = BufferArgument();
     iterator_data = UnpackState(buffer=buffer);
     if jacpy_binding_native_set(iterator, iterator_type.handle, iterator_data) < 0 {
         jacpy_release(iterator);
-        return 0;
+        return NULL;
     }
     if not buffer.acquire(args.values[0]) {
         jacpy_release(iterator);
-        return 0;
+        return NULL;
     }
     if buffer.size() % size != 0 {
         struct_error(
@@ -465,41 +480,47 @@ def:priv iter_unpack_bound(args: BoundArguments) -> u64 {
             f"iterative unpacking requires a buffer of a multiple of {size} bytes"
         );
         jacpy_release(iterator);
-        return 0;
+        return NULL;
     }
-    iterator_data.owner = jacpy_retain(args.context);
+    iterator_data.owner = Py_NewRef(args.context);
     iterator_data.cursor = jacpy_struct_cursor(plan, buffer.address(), buffer.size());
     return iterator;
 }
 
-def:priv iter_unpack(instance: u64, args: u64, kwargs: u64) -> u64 {
+def:priv iter_unpack(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     if state_for(instance) is None {
-        return 0;
+        return NULL;
     }
     return invoke(iter_unpack_signature, args, kwargs, iter_unpack_bound, instance);
 }
 
-def:priv deallocate(instance: u64) {
+def:priv deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, struct_type.handle);
 }
 
-def:priv clear(instance: u64) -> i32 {
+def:priv clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, struct_type.handle);
 }
 
-def:priv traverse(instance: u64, visitor: u64, context: u64) -> i32 {
+def:priv traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
     return traverse_payload(instance, struct_type.handle, visitor, context);
 }
 
-def:priv iterator_deallocate(instance: u64) {
+def:priv iterator_deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, iterator_type.handle);
 }
 
-def:priv iterator_clear(instance: u64) -> i32 {
+def:priv iterator_clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, iterator_type.handle);
 }
 
-def:priv iterator_traverse(instance: u64, visitor: u64, context: u64) -> i32 {
+def:priv iterator_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
     return traverse_payload(instance, iterator_type.handle, visitor, context);
 }
 
@@ -584,10 +605,12 @@ glob:priv struct_type = TypeDefinition(
          )
      );
 
-def:priv module_call(module: u64, args: u64, kwargs: u64, operation: int) -> u64 {
-    if jacpy_tuple_size(args) == 0 {
+def:priv module_call(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject], operation: int
+) -> ptr[PyObject] {
+    if PyTuple_Size(args) == 0 {
         object_error("TypeError", "missing format argument");
-        return 0;
+        return NULL;
     }
     format = jacpy_tuple_item(args, 0);
     instance = jacpy_struct_cached(
@@ -595,21 +618,21 @@ def:priv module_call(module: u64, args: u64, kwargs: u64, operation: int) -> u64
     );
     jacpy_release(format);
     if instance == 0 {
-        return 0;
+        return NULL;
     }
-    rest = jacpy_tuple_slice(args, 1, jacpy_tuple_size(args));
-    result: u64 = 0;
+    rest = PyTuple_GetSlice(args, 1, PyTuple_Size(args));
+    result: ptr[PyObject] = NULL;
     if rest != 0 {
         if operation == 0 {
             result = pack(instance, rest);
         } elif operation == 1 {
             result = pack_into(instance, rest);
         } elif operation == 2 {
-            result = unpack(instance, rest, 0);
+            result = unpack(instance, rest, NULL);
         } elif operation == 3 {
             result = unpack_from(instance, rest, kwargs);
         } else {
-            result = iter_unpack(instance, rest, 0);
+            result = iter_unpack(instance, rest, NULL);
         }
         jacpy_release(rest);
     }
@@ -617,44 +640,52 @@ def:priv module_call(module: u64, args: u64, kwargs: u64, operation: int) -> u64
     return result;
 }
 
-def:priv module_pack(module: u64, args: u64) -> u64 {
-    return module_call(module, args, 0, 0);
+def:priv module_pack(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return module_call(module, args, NULL, 0);
 }
 
-def:priv module_pack_into(module: u64, args: u64) -> u64 {
-    return module_call(module, args, 0, 1);
+def:priv module_pack_into(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return module_call(module, args, NULL, 1);
 }
 
-def:priv module_unpack(module: u64, args: u64) -> u64 {
-    return module_call(module, args, 0, 2);
+def:priv module_unpack(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return module_call(module, args, NULL, 2);
 }
 
-def:priv module_unpack_from(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv module_unpack_from(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return module_call(module, args, kwargs, 3);
 }
 
-def:priv module_iter_unpack(module: u64, args: u64) -> u64 {
-    return module_call(module, args, 0, 4);
+def:priv module_iter_unpack(
+    module: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
+    return module_call(module, args, NULL, 4);
 }
 
-def:priv module_calcsize(module: u64, format: u64) -> u64 {
+def:priv module_calcsize(
+    module: ptr[PyObject], format: ptr[PyObject]
+) -> ptr[PyObject] {
     instance = jacpy_struct_cached(
         jacpy_binding_state_get(module, 3), jacpy_binding_state_get(module, 1), format
     );
     if instance == 0 {
-        return 0;
+        return NULL;
     }
     result = size_property(instance, 0);
     jacpy_release(instance);
     return result;
 }
 
-def:priv module_clearcache(module: u64, unused: u64) -> u64 {
-    jacpy_dict_clear(jacpy_binding_state_get(module, 3));
+def:priv module_clearcache(
+    module: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
+    PyDict_Clear(jacpy_binding_state_get(module, 3));
     return jacpy_none();
 }
 
-def:priv execute(module: u64) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_state_owned(
         module, 0, "error", jacpy_binding_exception("struct.error", "", "")
     ) {
@@ -669,7 +700,7 @@ def:priv execute(module: u64) -> i32 {
     }
     jacpy_binding_state_set(module, 2, iterator);
     jacpy_release(iterator);
-    cache = jacpy_dict_new();
+    cache = PyDict_New();
     if cache == 0 {
         return i32(-1);
     }
@@ -728,6 +759,6 @@ glob:priv definition = ModuleDefinition(
          4
      );
 
-def:pub PyInit__struct -> u64 {
+def:pub PyInit__struct -> ptr[PyObject] {
     return definition.initialize();
 }

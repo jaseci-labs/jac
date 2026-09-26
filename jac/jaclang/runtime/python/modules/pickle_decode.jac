@@ -4,6 +4,66 @@ The stack, marks, memo policy and opcode dispatch execute in Jac. CPython
 supplies retained values and the object protocol at callback boundaries.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyBool_FromLong,
+    PyDict_Items,
+    PyDict_New,
+    PyDict_SetItem,
+    PyFloat_FromDouble,
+    PyFloat_FromString,
+    PyImport_ImportModuleAttrString,
+    PyIter_Next,
+    PyList_Append,
+    PyList_GetItemRef,
+    PyLong_AsLongLong,
+    PyLong_FromLongLong,
+    PyMemoryView_FromObject,
+    PyNumber_Long,
+    PyObject,
+    PyObject_Call,
+    PyObject_CallOneArg,
+    PyObject_GetAttrString,
+    PyObject_IsTrue,
+    PyObject_SetAttr,
+    PyObject_SetItem,
+    PyTuple_New,
+    PyTuple_Size,
+    Py_NewRef,
+    jacpy_bytearray_new,
+    jacpy_bytes_address,
+    jacpy_bytes_decode,
+    jacpy_bytes_from_memory,
+    jacpy_bytes_length,
+    jacpy_bytes_unescape,
+    jacpy_dict_get,
+    jacpy_dict_size,
+    jacpy_error_is,
+    jacpy_error_pending,
+    jacpy_float_unpack,
+    jacpy_is_dict,
+    jacpy_is_exact_unicode,
+    jacpy_is_list,
+    jacpy_is_none,
+    jacpy_is_tuple,
+    jacpy_is_type,
+    jacpy_is_unicode,
+    jacpy_list_new,
+    jacpy_list_size,
+    jacpy_long_from_signed_bytes,
+    jacpy_memory_byte,
+    jacpy_memory_copy,
+    jacpy_none,
+    jacpy_offset,
+    jacpy_optional_attr,
+    jacpy_release,
+    jacpy_set_new,
+    jacpy_tuple_item,
+    jacpy_tuple_set_owned,
+    jacpy_type_new,
+    jacpy_unicode_intern
+}
 import from jaclang.runtime.python.modules.pickle_opcodes { opcode }
 import from jaclang.runtime.python.modules.pickle_stream {
     pickle_reader,
@@ -12,76 +72,22 @@ import from jaclang.runtime.python.modules.pickle_stream {
 }
 import from jaclang.runtime.python.modules.binary_scalars { integer_from_bits }
 import from jaclang.runtime.python.capi {
-    jacpy_error_is,
     text_value,
-    jacpy_dict_items,
-    jacpy_is_exact_unicode,
-    jacpy_unicode_intern,
     required,
     checked,
     boundary_failure,
-    object_tuple,
-    jacpy_retain,
-    jacpy_release,
-    jacpy_none,
-    jacpy_boolean,
-    jacpy_int,
-    jacpy_dict_new,
-    jacpy_dict_size,
-    jacpy_dict_set,
-    jacpy_dict_get,
-    jacpy_list_new,
-    jacpy_list_append,
-    jacpy_list_size,
-    jacpy_list_item,
-    jacpy_tuple_new,
-    jacpy_tuple_set_owned,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_is_tuple,
-    jacpy_is_list,
-    jacpy_is_dict,
-    jacpy_is_unicode,
-    jacpy_is_none,
-    jacpy_bytes_address,
-    jacpy_bytes_length,
-    jacpy_bytes_from_memory,
-    jacpy_memory_byte,
-    jacpy_bytearray_new,
-    jacpy_memory_copy,
-    jacpy_number_long,
-    jacpy_long_from_signed_bytes,
-    jacpy_bytes_decode,
-    jacpy_integer_value,
-    jacpy_float_unpack,
-    jacpy_float,
-    jacpy_iter_next,
-    jacpy_error_pending,
-    jacpy_call,
-    jacpy_call_one,
-    jacpy_getattr_string,
-    jacpy_optional_attr,
-    jacpy_type_new,
-    jacpy_setattr,
-    jacpy_setitem,
-    jacpy_import_attr,
-    jacpy_set_new,
-    jacpy_memoryview,
-    jacpy_is_type,
-    jacpy_truth,
-    jacpy_float_from_text,
-    jacpy_bytes_unescape
+    object_tuple
 }
 
 obj unpickle_state {
     has stream: pickle_reader = pickle_reader(),
-        stack: list[u64] = [],
+        stack: list[ptr[PyObject]] = [],
         marks: list[int] = [],
-        memo: u64 = 0,
-        find_class: u64 = 0,
-        persistent_load: u64 = 0,
-        buffers: u64 = 0,
-        error: u64 = 0,
+        memo: ptr[PyObject] = NULL,
+        find_class: ptr[PyObject] = NULL,
+        persistent_load: ptr[PyObject] = NULL,
+        buffers: ptr[PyObject] = NULL,
+        error: ptr[PyObject] = NULL,
         encoding: str = "ASCII",
         errors: str = "strict",
         protocol: int = 0;
@@ -101,11 +107,11 @@ obj unpickle_state {
         persistent = self.persistent_load;
         buffers = self.buffers;
         error = self.error;
-        self.memo = 0;
-        self.find_class = 0;
-        self.persistent_load = 0;
-        self.buffers = 0;
-        self.error = 0;
+        self.memo = NULL;
+        self.find_class = NULL;
+        self.persistent_load = NULL;
+        self.buffers = NULL;
+        self.error = NULL;
         jacpy_release(memo);
         jacpy_release(find);
         jacpy_release(persistent);
@@ -127,17 +133,17 @@ obj unpickle_state {
         }
     }
 
-    def top -> u64 {
+    def top -> ptr[PyObject] {
         self.require_items(1);
         return self.stack[-1];
     }
 
-    def pop -> u64 {
+    def pop -> ptr[PyObject] {
         self.require_items(1);
         return self.stack.pop();
     }
 
-    def push(value: u64) {
+    def push(value: ptr[PyObject]) {
         self.stack.append(required(value));
     }
 
@@ -148,9 +154,9 @@ obj unpickle_state {
         return len(self.stack) - self.marks.pop();
     }
 
-    def tuple(count: int) -> u64 {
+    def tuple(count: int) -> ptr[PyObject] {
         self.require_items(count);
-        value = required(jacpy_tuple_new(i64(count)));
+        value = required(PyTuple_New(i64(count)));
         for i in range(count) {
             jacpy_tuple_set_owned(value, i64(count - 1 - i), self.stack.pop());
         }
@@ -162,17 +168,17 @@ obj unpickle_state {
             builtin_stream_error("ValueError", "negative PUT argument");
         }
         value = self.top();
-        key = required(jacpy_int(index));
+        key = required(PyLong_FromLongLong(index));
         try {
-            checked(jacpy_dict_set(self.memo, key, value));
+            checked(PyDict_SetItem(self.memo, key, value));
         } finally {
             jacpy_release(key);
         }
     }
 
     def recall(index: i64) {
-        key = required(jacpy_int(index));
-        value: u64 = 0;
+        key = required(PyLong_FromLongLong(index));
+        value: ptr[PyObject] = NULL;
         try {
             value = jacpy_dict_get(self.memo, key);
         } finally {
@@ -187,7 +193,7 @@ obj unpickle_state {
         self.push(value);
     }
 
-    def line_without_newline -> u64 {
+    def line_without_newline -> ptr[PyObject] {
         raw = self.stream.line();
         try {
             return required(
@@ -202,10 +208,10 @@ obj unpickle_state {
 
     def line_integer -> i64 {
         raw = self.line_without_newline();
-        number: u64 = 0;
+        number: ptr[PyObject] = NULL;
         try {
-            number = required(jacpy_number_long(raw));
-            value = jacpy_integer_value(number);
+            number = required(PyNumber_Long(raw));
+            value = PyLong_AsLongLong(number);
             if jacpy_error_pending() != 0 {
                 raise boundary_failure();
             }
@@ -216,7 +222,7 @@ obj unpickle_state {
         }
     }
 
-    def decode_text(raw: u64, encoding: str, errors: str) -> u64 {
+    def decode_text(raw: ptr[PyObject], encoding: str, errors: str) -> ptr[PyObject] {
         try {
             return required(jacpy_bytes_decode(raw, encoding, errors));
         } finally {
@@ -224,19 +230,19 @@ obj unpickle_state {
         }
     }
 
-    def find(module: u64, name: u64) -> u64 {
+    def find(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
         arguments = object_tuple([module, name]);
         try {
-            return required(jacpy_call(self.find_class, arguments, 0));
+            return required(PyObject_Call(self.find_class, arguments, NULL));
         } finally {
             jacpy_release(arguments);
         }
     }
 
-    def global_value -> u64 {
+    def global_value -> ptr[PyObject] {
         raw = self.line_without_newline();
-        module: u64 = 0;
-        name: u64 = 0;
+        module: ptr[PyObject] = NULL;
+        name: ptr[PyObject] = NULL;
         try {
             if jacpy_bytes_length(raw) == 0 {
                 self.fail("pickle data was truncated");
@@ -262,7 +268,7 @@ obj unpickle_state {
                 for i in range(count) {
                     item = required(jacpy_tuple_item(items, i64(i)));
                     try {
-                        checked(jacpy_list_append(target, item));
+                        checked(PyList_Append(target, item));
                     } finally {
                         jacpy_release(item);
                     }
@@ -274,17 +280,19 @@ obj unpickle_state {
                 }
                 if extend != 0 {
                     try {
-                        jacpy_release(required(jacpy_call_one(extend, items)));
+                        jacpy_release(required(PyObject_CallOneArg(extend, items)));
                     } finally {
                         jacpy_release(extend);
                     }
                 } else {
-                    append = required(jacpy_getattr_string(target, "append"));
+                    append = required(PyObject_GetAttrString(target, "append"));
                     try {
                         for i in range(count) {
                             item = required(jacpy_tuple_item(items, i64(i)));
                             try {
-                                jacpy_release(required(jacpy_call_one(append, item)));
+                                jacpy_release(
+                                    required(PyObject_CallOneArg(append, item))
+                                );
                             } finally {
                                 jacpy_release(item);
                             }
@@ -308,10 +316,10 @@ obj unpickle_state {
             target = self.top();
             for i in range(0, count, 2) {
                 key = required(jacpy_tuple_item(items, i64(i)));
-                value: u64 = 0;
+                value: ptr[PyObject] = NULL;
                 try {
                     value = required(jacpy_tuple_item(items, i64(i + 1)));
-                    checked(jacpy_setitem(target, key, value));
+                    checked(PyObject_SetItem(target, key, value));
                 } finally {
                     jacpy_release(key);
                     jacpy_release(value);
@@ -322,25 +330,27 @@ obj unpickle_state {
         }
     }
 
-    def restore_mapping(target: u64, mapping: u64, attributes: bool) {
-        items = required(jacpy_dict_items(mapping));
+    def restore_mapping(
+        target: ptr[PyObject], mapping: ptr[PyObject], attributes: bool
+    ) {
+        items = required(PyDict_Items(mapping));
         try {
             for i in range(int(jacpy_list_size(items))) {
-                pair = required(jacpy_list_item(items, i64(i)));
-                name: u64 = 0;
-                value: u64 = 0;
+                pair = required(PyList_GetItemRef(items, i64(i)));
+                name: ptr[PyObject] = NULL;
+                value: ptr[PyObject] = NULL;
                 try {
                     name = required(jacpy_tuple_item(pair, 0));
                     value = required(jacpy_tuple_item(pair, 1));
                     if attributes {
-                        checked(jacpy_setattr(target, name, value));
+                        checked(PyObject_SetAttr(target, name, value));
                     } else {
                         if jacpy_is_exact_unicode(name) != 0 {
                             interned = required(jacpy_unicode_intern(name));
                             jacpy_release(name);
                             name = interned;
                         }
-                        checked(jacpy_setitem(target, name, value));
+                        checked(PyObject_SetItem(target, name, value));
                     }
                 } finally {
                     jacpy_release(pair);
@@ -363,18 +373,18 @@ obj unpickle_state {
             }
             if method != 0 {
                 try {
-                    jacpy_release(required(jacpy_call_one(method, state)));
+                    jacpy_release(required(PyObject_CallOneArg(method, state)));
                 } finally {
                     jacpy_release(method);
                 }
                 return;
             }
-            dictionary = jacpy_retain(state);
-            slots: u64 = 0;
+            dictionary = Py_NewRef(state);
+            slots: ptr[PyObject] = NULL;
             try {
-                if jacpy_is_tuple(state) != 0 and jacpy_tuple_size(state) == 2 {
+                if jacpy_is_tuple(state) != 0 and PyTuple_Size(state) == 2 {
                     jacpy_release(dictionary);
-                    dictionary = 0;
+                    dictionary = NULL;
                     dictionary = required(jacpy_tuple_item(state, 0));
                     slots = required(jacpy_tuple_item(state, 1));
                 }
@@ -382,7 +392,7 @@ obj unpickle_state {
                     if jacpy_is_dict(dictionary) == 0 {
                         self.fail("state is not a dictionary");
                     }
-                    destination = required(jacpy_getattr_string(target, "__dict__"));
+                    destination = required(PyObject_GetAttrString(target, "__dict__"));
                     try {
                         self.restore_mapping(destination, dictionary, False);
                     } finally {
@@ -408,12 +418,14 @@ obj unpickle_state {
         if code <= 0 or code > 2147483647 {
             self.fail("EXT specifies code <= 0");
         }
-        key = required(jacpy_int(code));
-        cache: u64 = 0;
-        registry: u64 = 0;
-        registered: u64 = 0;
+        key = required(PyLong_FromLongLong(code));
+        cache: ptr[PyObject] = NULL;
+        registry: ptr[PyObject] = NULL;
+        registered: ptr[PyObject] = NULL;
         try {
-            cache = required(jacpy_import_attr("copyreg", "_extension_cache"));
+            cache = required(
+                PyImport_ImportModuleAttrString("copyreg", "_extension_cache")
+            );
             value = jacpy_dict_get(cache, key);
             if value != 0 {
                 self.push(value);
@@ -422,7 +434,9 @@ obj unpickle_state {
             if jacpy_error_pending() != 0 {
                 raise boundary_failure();
             }
-            registry = required(jacpy_import_attr("copyreg", "_inverted_registry"));
+            registry = required(
+                PyImport_ImportModuleAttrString("copyreg", "_inverted_registry")
+            );
             registered = jacpy_dict_get(registry, key);
             if registered == 0 {
                 if jacpy_error_pending() != 0 {
@@ -432,17 +446,17 @@ obj unpickle_state {
                     "ValueError", "unregistered extension code " + str(code)
                 );
             }
-            if jacpy_is_tuple(registered) == 0 or jacpy_tuple_size(registered) != 2 {
+            if jacpy_is_tuple(registered) == 0 or PyTuple_Size(registered) != 2 {
                 builtin_stream_error("ValueError", "invalid extension registry entry");
             }
             module = required(jacpy_tuple_item(registered, 0));
-            name: u64 = 0;
-            result: u64 = 0;
+            name: ptr[PyObject] = NULL;
+            result: ptr[PyObject] = NULL;
             try {
                 name = required(jacpy_tuple_item(registered, 1));
                 result = self.find(module, name);
-                checked(jacpy_dict_set(cache, key, result));
-                self.push(jacpy_retain(result));
+                checked(PyDict_SetItem(cache, key, result));
+                self.push(Py_NewRef(result));
             } finally {
                 jacpy_release(module);
                 jacpy_release(name);
@@ -456,21 +470,21 @@ obj unpickle_state {
         }
     }
 
-    def instantiate(cls: u64, args: u64) -> u64 {
-        if jacpy_tuple_size(args) == 0 and jacpy_is_type(cls) != 0 {
+    def instantiate(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+        if PyTuple_Size(args) == 0 and jacpy_is_type(cls) != 0 {
             initializer = jacpy_optional_attr(cls, "__getinitargs__");
             if jacpy_error_pending() != 0 {
                 raise boundary_failure();
             }
             if initializer == 0 {
-                return required(jacpy_type_new(cls, args, 0));
+                return required(jacpy_type_new(cls, args, NULL));
             }
             jacpy_release(initializer);
         }
-        return required(jacpy_call(cls, args, 0));
+        return required(PyObject_Call(cls, args, NULL));
     }
 
-    def load -> u64 {
+    def load -> ptr[PyObject] {
         self.reset_stack();
         self.protocol = 0;
         while True {
@@ -501,16 +515,16 @@ obj unpickle_state {
                     jacpy_release(self.stack.pop());
                 }
             } elif op == opcode.DUP.value {
-                self.push(jacpy_retain(self.top()));
+                self.push(Py_NewRef(self.top()));
             } elif op == opcode.NONE.value {
                 self.push(jacpy_none());
             } elif op == opcode.NEWTRUE.value or op == opcode.NEWFALSE.value {
-                self.push(jacpy_boolean(1 if op == opcode.NEWTRUE.value else 0));
+                self.push(PyBool_FromLong(1 if op == opcode.NEWTRUE.value else 0));
             } elif op == opcode.BININT.value {
                 self.push(integer_from_bits(self.stream.integer(4), 4, True));
             } elif op == opcode.BININT1.value or op == opcode.BININT2.value {
                 self.push(
-                    jacpy_int(
+                    PyLong_FromLongLong(
                         i64(self.stream.integer(1 if op == opcode.BININT1.value else 2))
                     )
                 );
@@ -523,18 +537,18 @@ obj unpickle_state {
                         and size == 2
                         and jacpy_memory_byte(address, 0) == 48
                         and jacpy_memory_byte(address, 1) in [48, 49] {
-                        self.push(jacpy_boolean(jacpy_memory_byte(address, 1) - 48));
+                        self.push(PyBool_FromLong(jacpy_memory_byte(address, 1) - 48));
                     } elif op == opcode.LONG.value
                         and size > 0
                         and jacpy_memory_byte(address, size - 1) == 76 {
                         trimmed = required(jacpy_bytes_from_memory(address, size - 1));
                         try {
-                            self.push(jacpy_number_long(trimmed));
+                            self.push(PyNumber_Long(trimmed));
                         } finally {
                             jacpy_release(trimmed);
                         }
                     } else {
-                        self.push(jacpy_number_long(raw));
+                        self.push(PyNumber_Long(raw));
                     }
                 } finally {
                     jacpy_release(raw);
@@ -553,7 +567,7 @@ obj unpickle_state {
             } elif op == opcode.FLOAT.value {
                 raw = self.line_without_newline();
                 try {
-                    self.push(jacpy_float_from_text(raw));
+                    self.push(PyFloat_FromString(raw));
                 } finally {
                     jacpy_release(raw);
                 }
@@ -561,7 +575,9 @@ obj unpickle_state {
                 raw = self.stream.exact(8);
                 try {
                     self.push(
-                        jacpy_float(jacpy_float_unpack(jacpy_bytes_address(raw), 8, 0))
+                        PyFloat_FromDouble(
+                            jacpy_float_unpack(jacpy_bytes_address(raw), 8, 0)
+                        )
                     );
                 } finally {
                     jacpy_release(raw);
@@ -639,9 +655,9 @@ obj unpickle_state {
             } elif op == opcode.EMPTY_LIST.value {
                 self.push(jacpy_list_new());
             } elif op == opcode.EMPTY_DICT.value {
-                self.push(jacpy_dict_new());
+                self.push(PyDict_New());
             } elif op == opcode.EMPTY_TUPLE.value {
-                self.push(jacpy_tuple_new(0));
+                self.push(PyTuple_New(0));
             } elif op == opcode.TUPLE.value {
                 self.push(self.tuple(self.mark_count()));
             } elif op
@@ -655,9 +671,7 @@ obj unpickle_state {
                         self.fail("odd number of items for DICT");
                     }
                     self.push(
-                        jacpy_list_new()
-                            if op == opcode.LIST.value
-                            else jacpy_dict_new()
+                        jacpy_list_new() if op == opcode.LIST.value else PyDict_New()
                     );
                     for i in range(count) {
                         self.push(jacpy_tuple_item(items, i64(i)));
@@ -696,7 +710,7 @@ obj unpickle_state {
                 self.push(self.global_value());
             } elif op == opcode.STACK_GLOBAL.value {
                 name = self.pop();
-                module: u64 = 0;
+                module: ptr[PyObject] = NULL;
                 try {
                     module = self.pop();
                     if jacpy_is_unicode(name) == 0 or jacpy_is_unicode(module) == 0 {
@@ -709,9 +723,9 @@ obj unpickle_state {
                 }
             } elif op
                 in [opcode.REDUCE.value, opcode.NEWOBJ.value, opcode.NEWOBJ_EX.value] {
-                kwargs: u64 = 0;
-                args: u64 = 0;
-                callable: u64 = 0;
+                kwargs: ptr[PyObject] = NULL;
+                args: ptr[PyObject] = NULL;
+                callable: ptr[PyObject] = NULL;
                 try {
                     if op == opcode.NEWOBJ_EX.value {
                         kwargs = self.pop();
@@ -724,7 +738,7 @@ obj unpickle_state {
                                 "TypeError", "REDUCE argument must be a tuple"
                             );
                         }
-                        self.push(jacpy_call(callable, args, 0));
+                        self.push(PyObject_Call(callable, args, NULL));
                     } else {
                         self.push(jacpy_type_new(callable, args, kwargs));
                     }
@@ -736,7 +750,7 @@ obj unpickle_state {
             } elif op == opcode.BUILD.value {
                 self.build();
             } elif op == opcode.PERSID.value or op == opcode.BINPERSID.value {
-                pid: u64 = 0;
+                pid: ptr[PyObject] = NULL;
                 try {
                     pid = self.pop()
                         if op == opcode.BINPERSID.value
@@ -753,7 +767,7 @@ obj unpickle_state {
                     if self.persistent_load == 0 {
                         self.fail("unsupported persistent id encountered");
                     }
-                    self.push(jacpy_call_one(self.persistent_load, pid));
+                    self.push(PyObject_CallOneArg(self.persistent_load, pid));
                 } finally {
                     jacpy_release(pid);
                 }
@@ -768,8 +782,10 @@ obj unpickle_state {
                             != jacpy_memory_byte(address, 0) {
                         self.fail("the STRING opcode argument must be quoted");
                     }
-                    inner = required(jacpy_bytes_from_memory(address + 1, size - 2));
-                    decoded: u64 = 0;
+                    inner = required(
+                        jacpy_bytes_from_memory(jacpy_offset(address, 1), size - 2)
+                    );
+                    decoded: ptr[PyObject] = NULL;
                     try {
                         decoded = required(jacpy_bytes_unescape(inner));
                     } finally {
@@ -784,7 +800,7 @@ obj unpickle_state {
                     jacpy_release(raw);
                 }
             } elif op == opcode.EMPTY_SET.value {
-                self.push(jacpy_set_new(0, 0));
+                self.push(jacpy_set_new(NULL, 0));
             } elif op == opcode.FROZENSET.value {
                 items = self.tuple(self.mark_count());
                 try {
@@ -795,13 +811,13 @@ obj unpickle_state {
             } elif op == opcode.ADDITEMS.value {
                 count = self.mark_count();
                 items = self.tuple(count);
-                add: u64 = 0;
+                add: ptr[PyObject] = NULL;
                 try {
-                    add = required(jacpy_getattr_string(self.top(), "add"));
+                    add = required(PyObject_GetAttrString(self.top(), "add"));
                     for i in range(count) {
                         item = required(jacpy_tuple_item(items, i64(i)));
                         try {
-                            jacpy_release(required(jacpy_call_one(add, item)));
+                            jacpy_release(required(PyObject_CallOneArg(add, item)));
                         } finally {
                             jacpy_release(item);
                         }
@@ -828,7 +844,7 @@ obj unpickle_state {
                         "pickle stream refers to out-of-band data but no *buffers* argument was given"
                     );
                 }
-                value = jacpy_iter_next(self.buffers);
+                value = PyIter_Next(self.buffers);
                 if value == 0 {
                     if jacpy_error_pending() != 0 {
                         raise boundary_failure();
@@ -837,18 +853,18 @@ obj unpickle_state {
                 }
                 self.push(value);
             } elif op == opcode.READONLY_BUFFER.value {
-                view = required(jacpy_memoryview(self.top()));
-                readonly: u64 = 0;
-                method: u64 = 0;
-                args: u64 = 0;
+                view = required(PyMemoryView_FromObject(self.top()));
+                readonly: ptr[PyObject] = NULL;
+                method: ptr[PyObject] = NULL;
+                args: ptr[PyObject] = NULL;
                 try {
-                    readonly = required(jacpy_getattr_string(view, "readonly"));
-                    truth = jacpy_truth(readonly);
+                    readonly = required(PyObject_GetAttrString(view, "readonly"));
+                    truth = PyObject_IsTrue(readonly);
                     checked(truth);
                     if truth == 0 {
-                        method = required(jacpy_getattr_string(view, "toreadonly"));
+                        method = required(PyObject_GetAttrString(view, "toreadonly"));
                         args = object_tuple([]);
-                        result = required(jacpy_call(method, args, 0));
+                        result = required(PyObject_Call(method, args, NULL));
                         jacpy_release(self.pop());
                         self.push(result);
                     }
@@ -860,8 +876,8 @@ obj unpickle_state {
                 }
             } elif op == opcode.INST.value or op == opcode.OBJ.value {
                 count = self.mark_count();
-                cls: u64 = 0;
-                args: u64 = 0;
+                cls: ptr[PyObject] = NULL;
+                args: ptr[PyObject] = NULL;
                 try {
                     if op == opcode.INST.value {
                         cls = self.global_value();
@@ -882,6 +898,6 @@ obj unpickle_state {
                 self.fail("invalid load key, " + str(op));
             }
         }
-        return 0;
+        return NULL;
     }
 }

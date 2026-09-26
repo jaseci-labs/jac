@@ -1,3 +1,4 @@
+import from jaclang.runtime.python.cpython_api { NULL }
 import from jaclang.runtime.python.compiler_integer { PyBigInt, integer_negate }
 
 # Expression-side lowering: visit_expr, expression/comprehension/lambda
@@ -3562,7 +3563,6 @@ def visit_inline_comprehension(
         g.u.classdict_names = parent_classdict_names;
     }
 }
-
 
 def visit_list_comp(g: cfg_builder, lc: ListComp) {
     visit_inline_comprehension(

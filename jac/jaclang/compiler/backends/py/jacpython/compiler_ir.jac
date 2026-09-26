@@ -35,7 +35,6 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 import from jaclang.compiler.frontend.python.compiler_symtable { sym_block }
 import from jaclang.compiler.frontend.python.ast_nodes { stmt }
 
-
 # A source location. lineno/end_lineno are 1-based; col_offset/end_col_offset are
 # 0-based. Matches CPython's `location` struct (Python/compile.c).
 obj cloc {
@@ -170,7 +169,6 @@ obj await_footer_job {
         # own [ct..cj) -> generator row at placement time.
         emit_ct_row: bool = False;
 }
-
 
 # An open try body while its statements are visited: an `await` (or
 # `yield from`) inside queues its CLEANUP_THROW footer for this frame's

@@ -1,4 +1,18 @@
 """SimpleQueue type and Python signatures over shared native FIFO state."""
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyBool_FromLong,
+    PyLong_FromLongLong,
+    PyObject,
+    PyObject_IsTrue,
+    PyType_GetSlot,
+    Py_GenericAlias,
+    Py_TYPE,
+    jacpy_lock_new,
+    jacpy_none,
+    jacpy_release
+}
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -14,8 +28,6 @@ import from jaclang.runtime.python.bindings.type {
     TypeFlags,
     TypeSlot,
     jacpy_binding_allocate,
-    jacpy_binding_typeof,
-    jacpy_binding_slot,
     jacpy_binding_base,
     jacpy_binding_owner
 }
@@ -39,18 +51,8 @@ import from jaclang.runtime.python.modules.queue {
     jacpy_queue_get,
     jacpy_queue_size
 }
-import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_none,
-    jacpy_boolean,
-    jacpy_int,
-    jacpy_truth,
-    jacpy_lock_new,
-    object_error
-}
-import from c { def jacpy_binding_generic_alias(type: u64, argument: u64) -> u64;  }
-
-def:priv state_of(instance: u64) -> (queue_state | None) {
+import from jaclang.runtime.python.capi { object_error }
+def:priv state_of(instance: ptr[PyObject]) -> (queue_state | None) {
     if jacpy_binding_native_present(instance, queue_type.handle) != 0 {
         state = jacpy_binding_native_get(instance, queue_type.handle);
         if isinstance(state, queue_state) {
@@ -62,47 +64,51 @@ def:priv state_of(instance: u64) -> (queue_state | None) {
 }
 
 glob:priv init_signature = CallSignature("SimpleQueue", [], 0, 0);
-def:priv create(type: u64, args: u64, kwargs: u64) -> u64 {
+def:priv create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     base = jacpy_binding_base(type, queue_type.handle);
     if base == 0 {
-        return 0;
+        return NULL;
     }
     reject_arguments = type == base
-        or jacpy_binding_slot(type, i64(TypeSlot.INIT.value))
-            == jacpy_binding_slot(base, i64(TypeSlot.INIT.value));
+        or PyType_GetSlot(type, i32(TypeSlot.INIT.value))
+            == PyType_GetSlot(base, i32(TypeSlot.INIT.value));
     jacpy_release(base);
     if reject_arguments {
         bound = BoundArguments([]);
         if not init_signature.bind(bound, args, kwargs) {
-            return 0;
+            return NULL;
         }
     }
     instance = jacpy_binding_allocate(type);
     if instance == 0 {
-        return 0;
+        return NULL;
     }
     lock = jacpy_lock_new();
     if lock == 0 {
         jacpy_release(instance);
-        return 0;
+        return NULL;
     }
     if jacpy_binding_native_set(instance, queue_type.handle, jacpy_queue_new(lock))
         < 0 {
         jacpy_release(instance);
-        return 0;
+        return NULL;
     }
     return instance;
 }
 
-def:priv deallocate(instance: u64) {
+def:priv deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, queue_type.handle);
 }
 
-def:priv clear(instance: u64) -> i32 {
+def:priv clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, queue_type.handle);
 }
 
-def:priv traverse(instance: u64, visitor: u64, context: u64) -> i32 {
+def:priv traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
     return traverse_payload(instance, queue_type.handle, visitor, context);
 }
 
@@ -110,46 +116,52 @@ glob:priv put_signature = CallSignature("put", ["item", "block", "timeout"], 1, 
      put_nowait_signature = CallSignature("put_nowait", ["item"], 1, 1),
      get_signature = CallSignature("get", ["block", "timeout"], 0, 2);
 
-def:priv put_bound(args: BoundArguments) -> u64 {
+def:priv put_bound(args: BoundArguments) -> ptr[PyObject] {
     if len(args.values) > 1
         and args.values[1] != 0
-        and jacpy_truth(args.values[1]) < 0 {
-        return 0;
+        and PyObject_IsTrue(args.values[1]) < 0 {
+        return NULL;
     }
     state = state_of(args.context);
     if state is None {
-        return 0;
+        return NULL;
     }
     jacpy_queue_put(state, args.values[0]);
     return jacpy_none();
 }
 
-def:priv put_call(instance: u64, args: u64, kwargs: u64) -> u64 {
+def:priv put_call(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke(put_signature, args, kwargs, put_bound, instance);
 }
 
-def:priv put_nowait_call(instance: u64, args: u64, kwargs: u64) -> u64 {
+def:priv put_nowait_call(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke(put_nowait_signature, args, kwargs, put_bound, instance);
 }
 
-def:priv get_item(instance: u64, block: i64, timeout: u64) -> u64 {
+def:priv get_item(
+    instance: ptr[PyObject], block: i64, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
     state = state_of(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
-    module = jacpy_binding_owner(jacpy_binding_typeof(instance), definition.handle);
+    module = jacpy_binding_owner(Py_TYPE(instance), definition.handle);
     if module == 0 {
-        return 0;
+        return NULL;
     }
     return jacpy_queue_get(state, jacpy_binding_state_get(module, 1), block, timeout);
 }
 
-def:priv get_bound(args: BoundArguments) -> u64 {
+def:priv get_bound(args: BoundArguments) -> ptr[PyObject] {
     block: i64 = 1;
     if args.values[0] != 0 {
-        block = jacpy_truth(args.values[0]);
+        block = PyObject_IsTrue(args.values[0]);
         if block < 0 {
-            return 0;
+            return NULL;
         }
     }
     if args.values[1] == 0 {
@@ -158,31 +170,35 @@ def:priv get_bound(args: BoundArguments) -> u64 {
     return get_item(args.context, block, args.values[1]);
 }
 
-def:priv get_call(instance: u64, args: u64, kwargs: u64) -> u64 {
+def:priv get_call(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke(get_signature, args, kwargs, get_bound, instance);
 }
 
-def:priv get_nowait_call(instance: u64, unused: u64) -> u64 {
+def:priv get_nowait_call(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     timeout = jacpy_none();
     result = get_item(instance, 0, timeout);
     jacpy_release(timeout);
     return result;
 }
 
-def:priv empty_call(instance: u64, unused: u64) -> u64 {
+def:priv empty_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     state = state_of(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
-    return jacpy_boolean(i64(jacpy_queue_size(state) == 0));
+    return PyBool_FromLong(i64(jacpy_queue_size(state) == 0));
 }
 
-def:priv size_call(instance: u64, unused: u64) -> u64 {
+def:priv size_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     state = state_of(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
-    return jacpy_int(jacpy_queue_size(state));
+    return PyLong_FromLongLong(jacpy_queue_size(state));
 }
 
 glob:priv queue_type = TypeDefinition(
@@ -224,7 +240,7 @@ glob:priv queue_type = TypeDefinition(
              ),
              MethodDefinition(
                  "__class_getitem__",
-                 MethodCallbacks(positional=jacpy_binding_generic_alias),
+                 MethodCallbacks(positional=Py_GenericAlias),
                  "Create a generic queue alias.",
                  flags=24
              )
@@ -238,7 +254,7 @@ glob:priv queue_type = TypeDefinition(
          TypeHooks(create=create, dealloc=deallocate, traverse=traverse, clear=clear)
      );
 
-def:priv execute(module: u64) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_state_owned(
         module,
         1,
@@ -258,6 +274,6 @@ glob:priv definition = ModuleDefinition(
          "_queue", "Native Jac FIFO queue.", [], ModuleHooks(execute=execute), 2
      );
 
-def:pub PyInit__queue -> u64 {
+def:pub PyInit__queue -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -1,4 +1,19 @@
 """Typed conversion and schema checks for Python AST input."""
+
+import from jaclang.runtime.python.cpython_api {
+    PyLong_AsLongLong,
+    PyObject,
+    jacpy_ast_kind,
+    jacpy_error_pending,
+    jacpy_field,
+    jacpy_is_list,
+    jacpy_optional_field,
+    jacpy_release,
+    jacpy_sequence_item,
+    jacpy_sequence_size,
+    jacpy_utf8,
+    jacpy_value_kind
+}
 import from jaclang.compiler.frontend.python.ast_nodes {
     ast_field,
     ast_kind,
@@ -133,26 +148,12 @@ import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.runtime.python.native_services { take_buffer }
 import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.constant_input { read_constant }
-import from c {
-    def jacpy_field(handle: u64, field: i64) -> u64;  def jacpy_optional_field(
-        handle: u64, field: i64
-    ) -> u64;  def jacpy_ast_kind(handle: u64) -> i64;  def jacpy_value_kind(
-        handle: u64
-    ) -> i64;  def jacpy_is_list(handle: u64) -> i64;  def jacpy_sequence_size(
-        handle: u64
-    ) -> i64;  def jacpy_sequence_item(handle: u64, index: i64) -> u64;  def jacpy_integer_value(
-        handle: u64
-    ) -> i64;  def jacpy_error_pending -> i64;  def jacpy_utf8(handle: u64) -> u64;  def jacpy_release(
-        handle: u64
-    );
-}
-
-def read_PyObj(handle: u64, depth: int) -> PyObj {
+def read_PyObj(handle: ptr[PyObject], depth: int) -> PyObj {
     return read_constant(handle);
 }
 
 def field_PyObj(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> PyObj {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -167,7 +168,7 @@ def field_PyObj(
     }
 }
 
-def read_alias(handle: u64, depth: int) -> alias {
+def read_alias(handle: ptr[PyObject], depth: int) -> alias {
     result = read_node(handle, depth);
     if not isinstance(result, alias) {
         raise TypeError("AST field requires alias");
@@ -176,7 +177,7 @@ def read_alias(handle: u64, depth: int) -> alias {
 }
 
 def field_alias(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> alias {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -191,7 +192,7 @@ def field_alias(
     }
 }
 
-def read_arg(handle: u64, depth: int) -> arg {
+def read_arg(handle: ptr[PyObject], depth: int) -> arg {
     result = read_node(handle, depth);
     if not isinstance(result, arg) {
         raise TypeError("AST field requires arg");
@@ -200,7 +201,7 @@ def read_arg(handle: u64, depth: int) -> arg {
 }
 
 def field_arg(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> arg {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -215,7 +216,7 @@ def field_arg(
     }
 }
 
-def read_arg_optional(handle: u64, depth: int) -> arg | None {
+def read_arg_optional(handle: ptr[PyObject], depth: int) -> arg | None {
     if jacpy_value_kind(handle) == 0 {
         return None;
     }
@@ -223,7 +224,7 @@ def read_arg_optional(handle: u64, depth: int) -> arg | None {
 }
 
 def field_arg_optional(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> arg | None {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -238,7 +239,7 @@ def field_arg_optional(
     }
 }
 
-def read_arguments(handle: u64, depth: int) -> arguments {
+def read_arguments(handle: ptr[PyObject], depth: int) -> arguments {
     result = read_node(handle, depth);
     if not isinstance(result, arguments) {
         raise TypeError("AST field requires arguments");
@@ -247,7 +248,7 @@ def read_arguments(handle: u64, depth: int) -> arguments {
 }
 
 def field_arguments(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> arguments {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -262,7 +263,7 @@ def field_arguments(
     }
 }
 
-def read_boolop(handle: u64, depth: int) -> boolop {
+def read_boolop(handle: ptr[PyObject], depth: int) -> boolop {
     result = read_node(handle, depth);
     if not isinstance(result, boolop) {
         raise TypeError("AST field requires boolop");
@@ -271,7 +272,7 @@ def read_boolop(handle: u64, depth: int) -> boolop {
 }
 
 def field_boolop(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> boolop {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -286,7 +287,7 @@ def field_boolop(
     }
 }
 
-def read_cmpop(handle: u64, depth: int) -> cmpop {
+def read_cmpop(handle: ptr[PyObject], depth: int) -> cmpop {
     result = read_node(handle, depth);
     if not isinstance(result, cmpop) {
         raise TypeError("AST field requires cmpop");
@@ -295,7 +296,7 @@ def read_cmpop(handle: u64, depth: int) -> cmpop {
 }
 
 def field_cmpop(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> cmpop {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -310,7 +311,7 @@ def field_cmpop(
     }
 }
 
-def read_comprehension(handle: u64, depth: int) -> comprehension {
+def read_comprehension(handle: ptr[PyObject], depth: int) -> comprehension {
     result = read_node(handle, depth);
     if not isinstance(result, comprehension) {
         raise TypeError("AST field requires comprehension");
@@ -319,7 +320,7 @@ def read_comprehension(handle: u64, depth: int) -> comprehension {
 }
 
 def field_comprehension(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> comprehension {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -334,7 +335,7 @@ def field_comprehension(
     }
 }
 
-def read_excepthandler(handle: u64, depth: int) -> excepthandler {
+def read_excepthandler(handle: ptr[PyObject], depth: int) -> excepthandler {
     result = read_node(handle, depth);
     if not isinstance(result, excepthandler) {
         raise TypeError("AST field requires excepthandler");
@@ -343,7 +344,7 @@ def read_excepthandler(handle: u64, depth: int) -> excepthandler {
 }
 
 def field_excepthandler(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> excepthandler {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -358,7 +359,7 @@ def field_excepthandler(
     }
 }
 
-def read_expr(handle: u64, depth: int) -> expr {
+def read_expr(handle: ptr[PyObject], depth: int) -> expr {
     result = read_node(handle, depth);
     if not isinstance(result, expr) {
         raise TypeError("AST field requires expr");
@@ -367,7 +368,7 @@ def read_expr(handle: u64, depth: int) -> expr {
 }
 
 def field_expr(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> expr {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -382,7 +383,7 @@ def field_expr(
     }
 }
 
-def read_expr_optional(handle: u64, depth: int) -> expr | None {
+def read_expr_optional(handle: ptr[PyObject], depth: int) -> expr | None {
     if jacpy_value_kind(handle) == 0 {
         return None;
     }
@@ -390,7 +391,7 @@ def read_expr_optional(handle: u64, depth: int) -> expr | None {
 }
 
 def field_expr_optional(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> expr | None {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -405,7 +406,7 @@ def field_expr_optional(
     }
 }
 
-def read_expr_context(handle: u64, depth: int) -> expr_context {
+def read_expr_context(handle: ptr[PyObject], depth: int) -> expr_context {
     result = read_node(handle, depth);
     if not isinstance(result, expr_context) {
         raise TypeError("AST field requires expr_context");
@@ -414,7 +415,7 @@ def read_expr_context(handle: u64, depth: int) -> expr_context {
 }
 
 def field_expr_context(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> expr_context {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -429,12 +430,12 @@ def field_expr_context(
     }
 }
 
-def read_int(handle: u64, depth: int) -> int {
+def read_int(handle: ptr[PyObject], depth: int) -> int {
     kind = jacpy_value_kind(handle);
     if kind != 2 and kind != 3 {
         raise ValueError("invalid integer value");
     }
-    result = int(jacpy_integer_value(handle));
+    result = int(PyLong_AsLongLong(handle));
     if jacpy_error_pending() != 0 {
         raise boundary_failure();
     }
@@ -445,7 +446,7 @@ def read_int(handle: u64, depth: int) -> int {
 }
 
 def field_int(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> int {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -460,7 +461,7 @@ def field_int(
     }
 }
 
-def read_int_optional(handle: u64, depth: int) -> int | None {
+def read_int_optional(handle: ptr[PyObject], depth: int) -> int | None {
     if jacpy_value_kind(handle) == 0 {
         return None;
     }
@@ -468,7 +469,7 @@ def read_int_optional(handle: u64, depth: int) -> int | None {
 }
 
 def field_int_optional(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> int | None {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -483,7 +484,7 @@ def field_int_optional(
     }
 }
 
-def read_keyword(handle: u64, depth: int) -> keyword {
+def read_keyword(handle: ptr[PyObject], depth: int) -> keyword {
     result = read_node(handle, depth);
     if not isinstance(result, keyword) {
         raise TypeError("AST field requires keyword");
@@ -492,7 +493,7 @@ def read_keyword(handle: u64, depth: int) -> keyword {
 }
 
 def field_keyword(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> keyword {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -507,7 +508,7 @@ def field_keyword(
     }
 }
 
-def read_list_alias(handle: u64, depth: int) -> list[alias] {
+def read_list_alias(handle: ptr[PyObject], depth: int) -> list[alias] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -527,7 +528,7 @@ def read_list_alias(handle: u64, depth: int) -> list[alias] {
 }
 
 def field_list_alias(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[alias] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -542,7 +543,7 @@ def field_list_alias(
     }
 }
 
-def read_list_arg(handle: u64, depth: int) -> list[arg] {
+def read_list_arg(handle: ptr[PyObject], depth: int) -> list[arg] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -562,7 +563,7 @@ def read_list_arg(handle: u64, depth: int) -> list[arg] {
 }
 
 def field_list_arg(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[arg] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -577,7 +578,7 @@ def field_list_arg(
     }
 }
 
-def read_list_cmpop(handle: u64, depth: int) -> list[cmpop] {
+def read_list_cmpop(handle: ptr[PyObject], depth: int) -> list[cmpop] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -597,7 +598,7 @@ def read_list_cmpop(handle: u64, depth: int) -> list[cmpop] {
 }
 
 def field_list_cmpop(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[cmpop] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -612,7 +613,7 @@ def field_list_cmpop(
     }
 }
 
-def read_list_comprehension(handle: u64, depth: int) -> list[comprehension] {
+def read_list_comprehension(handle: ptr[PyObject], depth: int) -> list[comprehension] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -632,7 +633,7 @@ def read_list_comprehension(handle: u64, depth: int) -> list[comprehension] {
 }
 
 def field_list_comprehension(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[comprehension] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -647,7 +648,7 @@ def field_list_comprehension(
     }
 }
 
-def read_list_excepthandler(handle: u64, depth: int) -> list[excepthandler] {
+def read_list_excepthandler(handle: ptr[PyObject], depth: int) -> list[excepthandler] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -667,7 +668,7 @@ def read_list_excepthandler(handle: u64, depth: int) -> list[excepthandler] {
 }
 
 def field_list_excepthandler(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[excepthandler] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -682,7 +683,7 @@ def field_list_excepthandler(
     }
 }
 
-def read_list_expr_optional(handle: u64, depth: int) -> list[expr | None] {
+def read_list_expr_optional(handle: ptr[PyObject], depth: int) -> list[expr | None] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -702,7 +703,7 @@ def read_list_expr_optional(handle: u64, depth: int) -> list[expr | None] {
 }
 
 def field_list_expr_optional(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[expr | None] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -717,7 +718,7 @@ def field_list_expr_optional(
     }
 }
 
-def read_list_expr(handle: u64, depth: int) -> list[expr] {
+def read_list_expr(handle: ptr[PyObject], depth: int) -> list[expr] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -737,7 +738,7 @@ def read_list_expr(handle: u64, depth: int) -> list[expr] {
 }
 
 def field_list_expr(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[expr] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -752,7 +753,7 @@ def field_list_expr(
     }
 }
 
-def read_list_keyword(handle: u64, depth: int) -> list[keyword] {
+def read_list_keyword(handle: ptr[PyObject], depth: int) -> list[keyword] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -772,7 +773,7 @@ def read_list_keyword(handle: u64, depth: int) -> list[keyword] {
 }
 
 def field_list_keyword(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[keyword] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -787,7 +788,7 @@ def field_list_keyword(
     }
 }
 
-def read_list_match_case(handle: u64, depth: int) -> list[match_case] {
+def read_list_match_case(handle: ptr[PyObject], depth: int) -> list[match_case] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -807,7 +808,7 @@ def read_list_match_case(handle: u64, depth: int) -> list[match_case] {
 }
 
 def field_list_match_case(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[match_case] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -822,7 +823,7 @@ def field_list_match_case(
     }
 }
 
-def read_list_pattern(handle: u64, depth: int) -> list[pattern] {
+def read_list_pattern(handle: ptr[PyObject], depth: int) -> list[pattern] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -842,7 +843,7 @@ def read_list_pattern(handle: u64, depth: int) -> list[pattern] {
 }
 
 def field_list_pattern(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[pattern] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -857,7 +858,7 @@ def field_list_pattern(
     }
 }
 
-def read_list_stmt(handle: u64, depth: int) -> list[stmt] {
+def read_list_stmt(handle: ptr[PyObject], depth: int) -> list[stmt] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -877,7 +878,7 @@ def read_list_stmt(handle: u64, depth: int) -> list[stmt] {
 }
 
 def field_list_stmt(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[stmt] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -892,7 +893,7 @@ def field_list_stmt(
     }
 }
 
-def read_list_str(handle: u64, depth: int) -> list[str] {
+def read_list_str(handle: ptr[PyObject], depth: int) -> list[str] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -912,7 +913,7 @@ def read_list_str(handle: u64, depth: int) -> list[str] {
 }
 
 def field_list_str(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[str] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -927,7 +928,7 @@ def field_list_str(
     }
 }
 
-def read_list_type_ignore(handle: u64, depth: int) -> list[type_ignore] {
+def read_list_type_ignore(handle: ptr[PyObject], depth: int) -> list[type_ignore] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -947,7 +948,7 @@ def read_list_type_ignore(handle: u64, depth: int) -> list[type_ignore] {
 }
 
 def field_list_type_ignore(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[type_ignore] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -962,7 +963,7 @@ def field_list_type_ignore(
     }
 }
 
-def read_list_type_param(handle: u64, depth: int) -> list[type_param] {
+def read_list_type_param(handle: ptr[PyObject], depth: int) -> list[type_param] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -982,7 +983,7 @@ def read_list_type_param(handle: u64, depth: int) -> list[type_param] {
 }
 
 def field_list_type_param(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[type_param] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -997,7 +998,7 @@ def field_list_type_param(
     }
 }
 
-def read_list_withitem(handle: u64, depth: int) -> list[withitem] {
+def read_list_withitem(handle: ptr[PyObject], depth: int) -> list[withitem] {
     if jacpy_is_list(handle) == 0 {
         raise TypeError("AST field must be a list");
     }
@@ -1017,7 +1018,7 @@ def read_list_withitem(handle: u64, depth: int) -> list[withitem] {
 }
 
 def field_list_withitem(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> list[withitem] {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1032,7 +1033,7 @@ def field_list_withitem(
     }
 }
 
-def read_match_case(handle: u64, depth: int) -> match_case {
+def read_match_case(handle: ptr[PyObject], depth: int) -> match_case {
     result = read_node(handle, depth);
     if not isinstance(result, match_case) {
         raise TypeError("AST field requires match_case");
@@ -1041,7 +1042,7 @@ def read_match_case(handle: u64, depth: int) -> match_case {
 }
 
 def field_match_case(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> match_case {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1056,7 +1057,7 @@ def field_match_case(
     }
 }
 
-def read_operator(handle: u64, depth: int) -> operator {
+def read_operator(handle: ptr[PyObject], depth: int) -> operator {
     result = read_node(handle, depth);
     if not isinstance(result, operator) {
         raise TypeError("AST field requires operator");
@@ -1065,7 +1066,7 @@ def read_operator(handle: u64, depth: int) -> operator {
 }
 
 def field_operator(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> operator {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1080,7 +1081,7 @@ def field_operator(
     }
 }
 
-def read_pattern(handle: u64, depth: int) -> pattern {
+def read_pattern(handle: ptr[PyObject], depth: int) -> pattern {
     result = read_node(handle, depth);
     if not isinstance(result, pattern) {
         raise TypeError("AST field requires pattern");
@@ -1089,7 +1090,7 @@ def read_pattern(handle: u64, depth: int) -> pattern {
 }
 
 def field_pattern(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> pattern {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1104,7 +1105,7 @@ def field_pattern(
     }
 }
 
-def read_pattern_optional(handle: u64, depth: int) -> pattern | None {
+def read_pattern_optional(handle: ptr[PyObject], depth: int) -> pattern | None {
     if jacpy_value_kind(handle) == 0 {
         return None;
     }
@@ -1112,7 +1113,7 @@ def read_pattern_optional(handle: u64, depth: int) -> pattern | None {
 }
 
 def field_pattern_optional(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> pattern | None {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1127,7 +1128,7 @@ def field_pattern_optional(
     }
 }
 
-def read_stmt(handle: u64, depth: int) -> stmt {
+def read_stmt(handle: ptr[PyObject], depth: int) -> stmt {
     result = read_node(handle, depth);
     if not isinstance(result, stmt) {
         raise TypeError("AST field requires stmt");
@@ -1136,7 +1137,7 @@ def read_stmt(handle: u64, depth: int) -> stmt {
 }
 
 def field_stmt(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> stmt {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1151,7 +1152,7 @@ def field_stmt(
     }
 }
 
-def read_str(handle: u64, depth: int) -> str {
+def read_str(handle: ptr[PyObject], depth: int) -> str {
     if jacpy_value_kind(handle) != 6 {
         raise TypeError("identifier must be of type str");
     }
@@ -1159,7 +1160,7 @@ def read_str(handle: u64, depth: int) -> str {
 }
 
 def field_str(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> str {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1174,7 +1175,7 @@ def field_str(
     }
 }
 
-def read_str_optional(handle: u64, depth: int) -> str | None {
+def read_str_optional(handle: ptr[PyObject], depth: int) -> str | None {
     if jacpy_value_kind(handle) == 0 {
         return None;
     }
@@ -1182,7 +1183,7 @@ def read_str_optional(handle: u64, depth: int) -> str | None {
 }
 
 def field_str_optional(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> str | None {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1197,7 +1198,7 @@ def field_str_optional(
     }
 }
 
-def read_type_ignore(handle: u64, depth: int) -> type_ignore {
+def read_type_ignore(handle: ptr[PyObject], depth: int) -> type_ignore {
     result = read_node(handle, depth);
     if not isinstance(result, type_ignore) {
         raise TypeError("AST field requires type_ignore");
@@ -1206,7 +1207,7 @@ def read_type_ignore(handle: u64, depth: int) -> type_ignore {
 }
 
 def field_type_ignore(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> type_ignore {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1221,7 +1222,7 @@ def field_type_ignore(
     }
 }
 
-def read_type_param(handle: u64, depth: int) -> type_param {
+def read_type_param(handle: ptr[PyObject], depth: int) -> type_param {
     result = read_node(handle, depth);
     if not isinstance(result, type_param) {
         raise TypeError("AST field requires type_param");
@@ -1230,7 +1231,7 @@ def read_type_param(handle: u64, depth: int) -> type_param {
 }
 
 def field_type_param(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> type_param {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1245,7 +1246,7 @@ def field_type_param(
     }
 }
 
-def read_unaryop(handle: u64, depth: int) -> unaryop {
+def read_unaryop(handle: ptr[PyObject], depth: int) -> unaryop {
     result = read_node(handle, depth);
     if not isinstance(result, unaryop) {
         raise TypeError("AST field requires unaryop");
@@ -1254,7 +1255,7 @@ def read_unaryop(handle: u64, depth: int) -> unaryop {
 }
 
 def field_unaryop(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> unaryop {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1269,7 +1270,7 @@ def field_unaryop(
     }
 }
 
-def read_withitem(handle: u64, depth: int) -> withitem {
+def read_withitem(handle: ptr[PyObject], depth: int) -> withitem {
     result = read_node(handle, depth);
     if not isinstance(result, withitem) {
         raise TypeError("AST field requires withitem");
@@ -1278,7 +1279,7 @@ def read_withitem(handle: u64, depth: int) -> withitem {
 }
 
 def field_withitem(
-    handle: u64, field: ast_field, depth: int, optional: bool = False
+    handle: ptr[PyObject], field: ast_field, depth: int, optional: bool = False
 ) -> withitem {
     value = jacpy_optional_field(handle, i64(field.value))
         if optional
@@ -1293,29 +1294,29 @@ def field_withitem(
     }
 }
 
-def read_node_Module(handle: u64, depth: int) -> Module {
+def read_node_Module(handle: ptr[PyObject], depth: int) -> Module {
     return Module(
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
         type_ignores=field_list_type_ignore(handle, ast_field.TYPE_IGNORES, depth + 1)
     );
 }
 
-def read_node_Interactive(handle: u64, depth: int) -> Interactive {
+def read_node_Interactive(handle: ptr[PyObject], depth: int) -> Interactive {
     return Interactive(body=field_list_stmt(handle, ast_field.BODY, depth + 1));
 }
 
-def read_node_Expression(handle: u64, depth: int) -> Expression {
+def read_node_Expression(handle: ptr[PyObject], depth: int) -> Expression {
     return Expression(body=field_expr(handle, ast_field.BODY, depth + 1));
 }
 
-def read_node_FunctionType(handle: u64, depth: int) -> FunctionType {
+def read_node_FunctionType(handle: ptr[PyObject], depth: int) -> FunctionType {
     return FunctionType(
         argtypes=field_list_expr(handle, ast_field.ARGTYPES, depth + 1),
         returns=field_expr(handle, ast_field.RETURNS, depth + 1)
     );
 }
 
-def read_node_FunctionDef(handle: u64, depth: int) -> FunctionDef {
+def read_node_FunctionDef(handle: ptr[PyObject], depth: int) -> FunctionDef {
     return FunctionDef(
         name=field_str(handle, ast_field.NAME, depth + 1),
         args=field_arguments(handle, ast_field.ARGS, depth + 1),
@@ -1333,7 +1334,7 @@ def read_node_FunctionDef(handle: u64, depth: int) -> FunctionDef {
     );
 }
 
-def read_node_AsyncFunctionDef(handle: u64, depth: int) -> AsyncFunctionDef {
+def read_node_AsyncFunctionDef(handle: ptr[PyObject], depth: int) -> AsyncFunctionDef {
     return AsyncFunctionDef(
         name=field_str(handle, ast_field.NAME, depth + 1),
         args=field_arguments(handle, ast_field.ARGS, depth + 1),
@@ -1351,7 +1352,7 @@ def read_node_AsyncFunctionDef(handle: u64, depth: int) -> AsyncFunctionDef {
     );
 }
 
-def read_node_ClassDef(handle: u64, depth: int) -> ClassDef {
+def read_node_ClassDef(handle: ptr[PyObject], depth: int) -> ClassDef {
     return ClassDef(
         name=field_str(handle, ast_field.NAME, depth + 1),
         bases=field_list_expr(handle, ast_field.BASES, depth + 1),
@@ -1368,7 +1369,7 @@ def read_node_ClassDef(handle: u64, depth: int) -> ClassDef {
     );
 }
 
-def read_node_Return(handle: u64, depth: int) -> Return {
+def read_node_Return(handle: ptr[PyObject], depth: int) -> Return {
     return Return(
         value=field_expr_optional(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1380,7 +1381,7 @@ def read_node_Return(handle: u64, depth: int) -> Return {
     );
 }
 
-def read_node_Delete(handle: u64, depth: int) -> Delete {
+def read_node_Delete(handle: ptr[PyObject], depth: int) -> Delete {
     return Delete(
         targets=field_list_expr(handle, ast_field.TARGETS, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1392,7 +1393,7 @@ def read_node_Delete(handle: u64, depth: int) -> Delete {
     );
 }
 
-def read_node_Assign(handle: u64, depth: int) -> Assign {
+def read_node_Assign(handle: ptr[PyObject], depth: int) -> Assign {
     return Assign(
         targets=field_list_expr(handle, ast_field.TARGETS, depth + 1),
         value=field_expr(handle, ast_field.VALUE, depth + 1),
@@ -1406,7 +1407,7 @@ def read_node_Assign(handle: u64, depth: int) -> Assign {
     );
 }
 
-def read_node_TypeAlias(handle: u64, depth: int) -> TypeAlias {
+def read_node_TypeAlias(handle: ptr[PyObject], depth: int) -> TypeAlias {
     return TypeAlias(
         name=field_expr(handle, ast_field.NAME, depth + 1),
         type_params=field_list_type_param(handle, ast_field.TYPE_PARAMS, depth + 1),
@@ -1420,7 +1421,7 @@ def read_node_TypeAlias(handle: u64, depth: int) -> TypeAlias {
     );
 }
 
-def read_node_AugAssign(handle: u64, depth: int) -> AugAssign {
+def read_node_AugAssign(handle: ptr[PyObject], depth: int) -> AugAssign {
     return AugAssign(
         target=field_expr(handle, ast_field.TARGET, depth + 1),
         op=field_operator(handle, ast_field.OP, depth + 1),
@@ -1434,7 +1435,7 @@ def read_node_AugAssign(handle: u64, depth: int) -> AugAssign {
     );
 }
 
-def read_node_AnnAssign(handle: u64, depth: int) -> AnnAssign {
+def read_node_AnnAssign(handle: ptr[PyObject], depth: int) -> AnnAssign {
     return AnnAssign(
         target=field_expr(handle, ast_field.TARGET, depth + 1),
         annotation=field_expr(handle, ast_field.ANNOTATION, depth + 1),
@@ -1449,7 +1450,7 @@ def read_node_AnnAssign(handle: u64, depth: int) -> AnnAssign {
     );
 }
 
-def read_node_For(handle: u64, depth: int) -> For {
+def read_node_For(handle: ptr[PyObject], depth: int) -> For {
     return For(
         target=field_expr(handle, ast_field.TARGET, depth + 1),
         iter=field_expr(handle, ast_field.ITER, depth + 1),
@@ -1465,7 +1466,7 @@ def read_node_For(handle: u64, depth: int) -> For {
     );
 }
 
-def read_node_AsyncFor(handle: u64, depth: int) -> AsyncFor {
+def read_node_AsyncFor(handle: ptr[PyObject], depth: int) -> AsyncFor {
     return AsyncFor(
         target=field_expr(handle, ast_field.TARGET, depth + 1),
         iter=field_expr(handle, ast_field.ITER, depth + 1),
@@ -1481,7 +1482,7 @@ def read_node_AsyncFor(handle: u64, depth: int) -> AsyncFor {
     );
 }
 
-def read_node_While(handle: u64, depth: int) -> While {
+def read_node_While(handle: ptr[PyObject], depth: int) -> While {
     return While(
         `test=field_expr(handle, ast_field.TEST, depth + 1),
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
@@ -1495,7 +1496,7 @@ def read_node_While(handle: u64, depth: int) -> While {
     );
 }
 
-def read_node_If(handle: u64, depth: int) -> If {
+def read_node_If(handle: ptr[PyObject], depth: int) -> If {
     return If(
         `test=field_expr(handle, ast_field.TEST, depth + 1),
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
@@ -1509,7 +1510,7 @@ def read_node_If(handle: u64, depth: int) -> If {
     );
 }
 
-def read_node_With(handle: u64, depth: int) -> With {
+def read_node_With(handle: ptr[PyObject], depth: int) -> With {
     return With(
         items=field_list_withitem(handle, ast_field.ITEMS, depth + 1),
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
@@ -1523,7 +1524,7 @@ def read_node_With(handle: u64, depth: int) -> With {
     );
 }
 
-def read_node_AsyncWith(handle: u64, depth: int) -> AsyncWith {
+def read_node_AsyncWith(handle: ptr[PyObject], depth: int) -> AsyncWith {
     return AsyncWith(
         items=field_list_withitem(handle, ast_field.ITEMS, depth + 1),
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
@@ -1537,7 +1538,7 @@ def read_node_AsyncWith(handle: u64, depth: int) -> AsyncWith {
     );
 }
 
-def read_node_Match(handle: u64, depth: int) -> Match {
+def read_node_Match(handle: ptr[PyObject], depth: int) -> Match {
     return Match(
         subject=field_expr(handle, ast_field.SUBJECT, depth + 1),
         cases=field_list_match_case(handle, ast_field.CASES, depth + 1),
@@ -1550,7 +1551,7 @@ def read_node_Match(handle: u64, depth: int) -> Match {
     );
 }
 
-def read_node_Raise(handle: u64, depth: int) -> Raise {
+def read_node_Raise(handle: ptr[PyObject], depth: int) -> Raise {
     return Raise(
         exc=field_expr_optional(handle, ast_field.EXC, depth + 1),
         cause=field_expr_optional(handle, ast_field.CAUSE, depth + 1),
@@ -1563,7 +1564,7 @@ def read_node_Raise(handle: u64, depth: int) -> Raise {
     );
 }
 
-def read_node_Try(handle: u64, depth: int) -> Try {
+def read_node_Try(handle: ptr[PyObject], depth: int) -> Try {
     return Try(
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
         handlers=field_list_excepthandler(handle, ast_field.HANDLERS, depth + 1),
@@ -1578,7 +1579,7 @@ def read_node_Try(handle: u64, depth: int) -> Try {
     );
 }
 
-def read_node_TryStar(handle: u64, depth: int) -> TryStar {
+def read_node_TryStar(handle: ptr[PyObject], depth: int) -> TryStar {
     return TryStar(
         body=field_list_stmt(handle, ast_field.BODY, depth + 1),
         handlers=field_list_excepthandler(handle, ast_field.HANDLERS, depth + 1),
@@ -1593,7 +1594,7 @@ def read_node_TryStar(handle: u64, depth: int) -> TryStar {
     );
 }
 
-def read_node_Assert(handle: u64, depth: int) -> Assert {
+def read_node_Assert(handle: ptr[PyObject], depth: int) -> Assert {
     return Assert(
         `test=field_expr(handle, ast_field.TEST, depth + 1),
         msg=field_expr_optional(handle, ast_field.MSG, depth + 1),
@@ -1606,7 +1607,7 @@ def read_node_Assert(handle: u64, depth: int) -> Assert {
     );
 }
 
-def read_node_Import(handle: u64, depth: int) -> Import {
+def read_node_Import(handle: ptr[PyObject], depth: int) -> Import {
     return Import(
         names=field_list_alias(handle, ast_field.NAMES, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1618,7 +1619,7 @@ def read_node_Import(handle: u64, depth: int) -> Import {
     );
 }
 
-def read_node_ImportFrom(handle: u64, depth: int) -> ImportFrom {
+def read_node_ImportFrom(handle: ptr[PyObject], depth: int) -> ImportFrom {
     return ImportFrom(
         module=field_str_optional(handle, ast_field.MODULE, depth + 1),
         names=field_list_alias(handle, ast_field.NAMES, depth + 1),
@@ -1632,7 +1633,7 @@ def read_node_ImportFrom(handle: u64, depth: int) -> ImportFrom {
     );
 }
 
-def read_node_Global(handle: u64, depth: int) -> Global {
+def read_node_Global(handle: ptr[PyObject], depth: int) -> Global {
     return Global(
         names=field_list_str(handle, ast_field.NAMES, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1644,7 +1645,7 @@ def read_node_Global(handle: u64, depth: int) -> Global {
     );
 }
 
-def read_node_Nonlocal(handle: u64, depth: int) -> Nonlocal {
+def read_node_Nonlocal(handle: ptr[PyObject], depth: int) -> Nonlocal {
     return Nonlocal(
         names=field_list_str(handle, ast_field.NAMES, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1656,7 +1657,7 @@ def read_node_Nonlocal(handle: u64, depth: int) -> Nonlocal {
     );
 }
 
-def read_node_Expr(handle: u64, depth: int) -> Expr {
+def read_node_Expr(handle: ptr[PyObject], depth: int) -> Expr {
     return Expr(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1668,7 +1669,7 @@ def read_node_Expr(handle: u64, depth: int) -> Expr {
     );
 }
 
-def read_node_Pass(handle: u64, depth: int) -> Pass {
+def read_node_Pass(handle: ptr[PyObject], depth: int) -> Pass {
     return Pass(
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
         col_offset=field_int(handle, ast_field.COL_OFFSET, depth + 1),
@@ -1679,7 +1680,7 @@ def read_node_Pass(handle: u64, depth: int) -> Pass {
     );
 }
 
-def read_node_Break(handle: u64, depth: int) -> Break {
+def read_node_Break(handle: ptr[PyObject], depth: int) -> Break {
     return Break(
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
         col_offset=field_int(handle, ast_field.COL_OFFSET, depth + 1),
@@ -1690,7 +1691,7 @@ def read_node_Break(handle: u64, depth: int) -> Break {
     );
 }
 
-def read_node_Continue(handle: u64, depth: int) -> Continue {
+def read_node_Continue(handle: ptr[PyObject], depth: int) -> Continue {
     return Continue(
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
         col_offset=field_int(handle, ast_field.COL_OFFSET, depth + 1),
@@ -1701,7 +1702,7 @@ def read_node_Continue(handle: u64, depth: int) -> Continue {
     );
 }
 
-def read_node_BoolOp(handle: u64, depth: int) -> BoolOp {
+def read_node_BoolOp(handle: ptr[PyObject], depth: int) -> BoolOp {
     return BoolOp(
         op=field_boolop(handle, ast_field.OP, depth + 1),
         values=field_list_expr(handle, ast_field.VALUES, depth + 1),
@@ -1714,7 +1715,7 @@ def read_node_BoolOp(handle: u64, depth: int) -> BoolOp {
     );
 }
 
-def read_node_NamedExpr(handle: u64, depth: int) -> NamedExpr {
+def read_node_NamedExpr(handle: ptr[PyObject], depth: int) -> NamedExpr {
     return NamedExpr(
         target=field_expr(handle, ast_field.TARGET, depth + 1),
         value=field_expr(handle, ast_field.VALUE, depth + 1),
@@ -1727,7 +1728,7 @@ def read_node_NamedExpr(handle: u64, depth: int) -> NamedExpr {
     );
 }
 
-def read_node_BinOp(handle: u64, depth: int) -> BinOp {
+def read_node_BinOp(handle: ptr[PyObject], depth: int) -> BinOp {
     return BinOp(
         left=field_expr(handle, ast_field.LEFT, depth + 1),
         op=field_operator(handle, ast_field.OP, depth + 1),
@@ -1741,7 +1742,7 @@ def read_node_BinOp(handle: u64, depth: int) -> BinOp {
     );
 }
 
-def read_node_UnaryOp(handle: u64, depth: int) -> UnaryOp {
+def read_node_UnaryOp(handle: ptr[PyObject], depth: int) -> UnaryOp {
     return UnaryOp(
         op=field_unaryop(handle, ast_field.OP, depth + 1),
         operand=field_expr(handle, ast_field.OPERAND, depth + 1),
@@ -1754,7 +1755,7 @@ def read_node_UnaryOp(handle: u64, depth: int) -> UnaryOp {
     );
 }
 
-def read_node_Lambda(handle: u64, depth: int) -> Lambda {
+def read_node_Lambda(handle: ptr[PyObject], depth: int) -> Lambda {
     return Lambda(
         args=field_arguments(handle, ast_field.ARGS, depth + 1),
         body=field_expr(handle, ast_field.BODY, depth + 1),
@@ -1767,7 +1768,7 @@ def read_node_Lambda(handle: u64, depth: int) -> Lambda {
     );
 }
 
-def read_node_IfExp(handle: u64, depth: int) -> IfExp {
+def read_node_IfExp(handle: ptr[PyObject], depth: int) -> IfExp {
     return IfExp(
         `test=field_expr(handle, ast_field.TEST, depth + 1),
         body=field_expr(handle, ast_field.BODY, depth + 1),
@@ -1781,7 +1782,7 @@ def read_node_IfExp(handle: u64, depth: int) -> IfExp {
     );
 }
 
-def read_node_Dict(handle: u64, depth: int) -> Dict {
+def read_node_Dict(handle: ptr[PyObject], depth: int) -> Dict {
     return Dict(
         keys=field_list_expr_optional(handle, ast_field.KEYS, depth + 1),
         values=field_list_expr(handle, ast_field.VALUES, depth + 1),
@@ -1794,7 +1795,7 @@ def read_node_Dict(handle: u64, depth: int) -> Dict {
     );
 }
 
-def read_node_Set(handle: u64, depth: int) -> Set {
+def read_node_Set(handle: ptr[PyObject], depth: int) -> Set {
     return Set(
         elts=field_list_expr(handle, ast_field.ELTS, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1806,7 +1807,7 @@ def read_node_Set(handle: u64, depth: int) -> Set {
     );
 }
 
-def read_node_ListComp(handle: u64, depth: int) -> ListComp {
+def read_node_ListComp(handle: ptr[PyObject], depth: int) -> ListComp {
     return ListComp(
         elt=field_expr(handle, ast_field.ELT, depth + 1),
         generators=field_list_comprehension(handle, ast_field.GENERATORS, depth + 1),
@@ -1819,7 +1820,7 @@ def read_node_ListComp(handle: u64, depth: int) -> ListComp {
     );
 }
 
-def read_node_SetComp(handle: u64, depth: int) -> SetComp {
+def read_node_SetComp(handle: ptr[PyObject], depth: int) -> SetComp {
     return SetComp(
         elt=field_expr(handle, ast_field.ELT, depth + 1),
         generators=field_list_comprehension(handle, ast_field.GENERATORS, depth + 1),
@@ -1832,7 +1833,7 @@ def read_node_SetComp(handle: u64, depth: int) -> SetComp {
     );
 }
 
-def read_node_DictComp(handle: u64, depth: int) -> DictComp {
+def read_node_DictComp(handle: ptr[PyObject], depth: int) -> DictComp {
     return DictComp(
         key=field_expr(handle, ast_field.KEY, depth + 1),
         value=field_expr(handle, ast_field.VALUE, depth + 1),
@@ -1846,7 +1847,7 @@ def read_node_DictComp(handle: u64, depth: int) -> DictComp {
     );
 }
 
-def read_node_GeneratorExp(handle: u64, depth: int) -> GeneratorExp {
+def read_node_GeneratorExp(handle: ptr[PyObject], depth: int) -> GeneratorExp {
     return GeneratorExp(
         elt=field_expr(handle, ast_field.ELT, depth + 1),
         generators=field_list_comprehension(handle, ast_field.GENERATORS, depth + 1),
@@ -1859,7 +1860,7 @@ def read_node_GeneratorExp(handle: u64, depth: int) -> GeneratorExp {
     );
 }
 
-def read_node_Await(handle: u64, depth: int) -> Await {
+def read_node_Await(handle: ptr[PyObject], depth: int) -> Await {
     return Await(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1871,7 +1872,7 @@ def read_node_Await(handle: u64, depth: int) -> Await {
     );
 }
 
-def read_node_Yield(handle: u64, depth: int) -> Yield {
+def read_node_Yield(handle: ptr[PyObject], depth: int) -> Yield {
     return Yield(
         value=field_expr_optional(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1883,7 +1884,7 @@ def read_node_Yield(handle: u64, depth: int) -> Yield {
     );
 }
 
-def read_node_YieldFrom(handle: u64, depth: int) -> YieldFrom {
+def read_node_YieldFrom(handle: ptr[PyObject], depth: int) -> YieldFrom {
     return YieldFrom(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1895,7 +1896,7 @@ def read_node_YieldFrom(handle: u64, depth: int) -> YieldFrom {
     );
 }
 
-def read_node_Compare(handle: u64, depth: int) -> Compare {
+def read_node_Compare(handle: ptr[PyObject], depth: int) -> Compare {
     return Compare(
         left=field_expr(handle, ast_field.LEFT, depth + 1),
         ops=field_list_cmpop(handle, ast_field.OPS, depth + 1),
@@ -1909,7 +1910,7 @@ def read_node_Compare(handle: u64, depth: int) -> Compare {
     );
 }
 
-def read_node_Call(handle: u64, depth: int) -> Call {
+def read_node_Call(handle: ptr[PyObject], depth: int) -> Call {
     return Call(
         func=field_expr(handle, ast_field.FUNC, depth + 1),
         args=field_list_expr(handle, ast_field.ARGS, depth + 1),
@@ -1923,7 +1924,7 @@ def read_node_Call(handle: u64, depth: int) -> Call {
     );
 }
 
-def read_node_FormattedValue(handle: u64, depth: int) -> FormattedValue {
+def read_node_FormattedValue(handle: ptr[PyObject], depth: int) -> FormattedValue {
     return FormattedValue(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         conversion=field_int(handle, ast_field.CONVERSION, depth + 1),
@@ -1937,7 +1938,7 @@ def read_node_FormattedValue(handle: u64, depth: int) -> FormattedValue {
     );
 }
 
-def read_node_Interpolation(handle: u64, depth: int) -> Interpolation {
+def read_node_Interpolation(handle: ptr[PyObject], depth: int) -> Interpolation {
     return Interpolation(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         str=field_PyObj(handle, ast_field.STR, depth + 1),
@@ -1952,7 +1953,7 @@ def read_node_Interpolation(handle: u64, depth: int) -> Interpolation {
     );
 }
 
-def read_node_JoinedStr(handle: u64, depth: int) -> JoinedStr {
+def read_node_JoinedStr(handle: ptr[PyObject], depth: int) -> JoinedStr {
     return JoinedStr(
         values=field_list_expr(handle, ast_field.VALUES, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1964,7 +1965,7 @@ def read_node_JoinedStr(handle: u64, depth: int) -> JoinedStr {
     );
 }
 
-def read_node_TemplateStr(handle: u64, depth: int) -> TemplateStr {
+def read_node_TemplateStr(handle: ptr[PyObject], depth: int) -> TemplateStr {
     return TemplateStr(
         values=field_list_expr(handle, ast_field.VALUES, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -1976,7 +1977,7 @@ def read_node_TemplateStr(handle: u64, depth: int) -> TemplateStr {
     );
 }
 
-def read_node_Constant(handle: u64, depth: int) -> Constant {
+def read_node_Constant(handle: ptr[PyObject], depth: int) -> Constant {
     return Constant(
         value=field_PyObj(handle, ast_field.VALUE, depth + 1),
         kind=field_str_optional(handle, ast_field.KIND, depth + 1),
@@ -1989,7 +1990,7 @@ def read_node_Constant(handle: u64, depth: int) -> Constant {
     );
 }
 
-def read_node_Attribute(handle: u64, depth: int) -> Attribute {
+def read_node_Attribute(handle: ptr[PyObject], depth: int) -> Attribute {
     return Attribute(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         attr=field_str(handle, ast_field.ATTR, depth + 1),
@@ -2003,7 +2004,7 @@ def read_node_Attribute(handle: u64, depth: int) -> Attribute {
     );
 }
 
-def read_node_Subscript(handle: u64, depth: int) -> Subscript {
+def read_node_Subscript(handle: ptr[PyObject], depth: int) -> Subscript {
     return Subscript(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         slice=field_expr(handle, ast_field.SLICE, depth + 1),
@@ -2017,7 +2018,7 @@ def read_node_Subscript(handle: u64, depth: int) -> Subscript {
     );
 }
 
-def read_node_Starred(handle: u64, depth: int) -> Starred {
+def read_node_Starred(handle: ptr[PyObject], depth: int) -> Starred {
     return Starred(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         ctx=field_expr_context(handle, ast_field.CTX, depth + 1),
@@ -2030,7 +2031,7 @@ def read_node_Starred(handle: u64, depth: int) -> Starred {
     );
 }
 
-def read_node_Name(handle: u64, depth: int) -> Name {
+def read_node_Name(handle: ptr[PyObject], depth: int) -> Name {
     return Name(
         id=field_str(handle, ast_field.ID, depth + 1),
         ctx=field_expr_context(handle, ast_field.CTX, depth + 1),
@@ -2043,7 +2044,7 @@ def read_node_Name(handle: u64, depth: int) -> Name {
     );
 }
 
-def read_node_List(handle: u64, depth: int) -> List {
+def read_node_List(handle: ptr[PyObject], depth: int) -> List {
     return List(
         elts=field_list_expr(handle, ast_field.ELTS, depth + 1),
         ctx=field_expr_context(handle, ast_field.CTX, depth + 1),
@@ -2056,7 +2057,7 @@ def read_node_List(handle: u64, depth: int) -> List {
     );
 }
 
-def read_node_Tuple(handle: u64, depth: int) -> Tuple {
+def read_node_Tuple(handle: ptr[PyObject], depth: int) -> Tuple {
     return Tuple(
         elts=field_list_expr(handle, ast_field.ELTS, depth + 1),
         ctx=field_expr_context(handle, ast_field.CTX, depth + 1),
@@ -2069,7 +2070,7 @@ def read_node_Tuple(handle: u64, depth: int) -> Tuple {
     );
 }
 
-def read_node_Slice(handle: u64, depth: int) -> Slice {
+def read_node_Slice(handle: ptr[PyObject], depth: int) -> Slice {
     return Slice(
         lower=field_expr_optional(handle, ast_field.LOWER, depth + 1),
         upper=field_expr_optional(handle, ast_field.UPPER, depth + 1),
@@ -2083,135 +2084,135 @@ def read_node_Slice(handle: u64, depth: int) -> Slice {
     );
 }
 
-def read_node_Load(handle: u64, depth: int) -> Load {
+def read_node_Load(handle: ptr[PyObject], depth: int) -> Load {
     return Load();
 }
 
-def read_node_Store(handle: u64, depth: int) -> Store {
+def read_node_Store(handle: ptr[PyObject], depth: int) -> Store {
     return Store();
 }
 
-def read_node_Del(handle: u64, depth: int) -> Del {
+def read_node_Del(handle: ptr[PyObject], depth: int) -> Del {
     return Del();
 }
 
-def read_node_And(handle: u64, depth: int) -> And {
+def read_node_And(handle: ptr[PyObject], depth: int) -> And {
     return And();
 }
 
-def read_node_Or(handle: u64, depth: int) -> Or {
+def read_node_Or(handle: ptr[PyObject], depth: int) -> Or {
     return Or();
 }
 
-def read_node_Add(handle: u64, depth: int) -> Add {
+def read_node_Add(handle: ptr[PyObject], depth: int) -> Add {
     return Add();
 }
 
-def read_node_Sub(handle: u64, depth: int) -> Sub {
+def read_node_Sub(handle: ptr[PyObject], depth: int) -> Sub {
     return Sub();
 }
 
-def read_node_Mult(handle: u64, depth: int) -> Mult {
+def read_node_Mult(handle: ptr[PyObject], depth: int) -> Mult {
     return Mult();
 }
 
-def read_node_MatMult(handle: u64, depth: int) -> MatMult {
+def read_node_MatMult(handle: ptr[PyObject], depth: int) -> MatMult {
     return MatMult();
 }
 
-def read_node_Div(handle: u64, depth: int) -> Div {
+def read_node_Div(handle: ptr[PyObject], depth: int) -> Div {
     return Div();
 }
 
-def read_node_Mod(handle: u64, depth: int) -> Mod {
+def read_node_Mod(handle: ptr[PyObject], depth: int) -> Mod {
     return Mod();
 }
 
-def read_node_Pow(handle: u64, depth: int) -> Pow {
+def read_node_Pow(handle: ptr[PyObject], depth: int) -> Pow {
     return Pow();
 }
 
-def read_node_LShift(handle: u64, depth: int) -> LShift {
+def read_node_LShift(handle: ptr[PyObject], depth: int) -> LShift {
     return LShift();
 }
 
-def read_node_RShift(handle: u64, depth: int) -> RShift {
+def read_node_RShift(handle: ptr[PyObject], depth: int) -> RShift {
     return RShift();
 }
 
-def read_node_BitOr(handle: u64, depth: int) -> BitOr {
+def read_node_BitOr(handle: ptr[PyObject], depth: int) -> BitOr {
     return BitOr();
 }
 
-def read_node_BitXor(handle: u64, depth: int) -> BitXor {
+def read_node_BitXor(handle: ptr[PyObject], depth: int) -> BitXor {
     return BitXor();
 }
 
-def read_node_BitAnd(handle: u64, depth: int) -> BitAnd {
+def read_node_BitAnd(handle: ptr[PyObject], depth: int) -> BitAnd {
     return BitAnd();
 }
 
-def read_node_FloorDiv(handle: u64, depth: int) -> FloorDiv {
+def read_node_FloorDiv(handle: ptr[PyObject], depth: int) -> FloorDiv {
     return FloorDiv();
 }
 
-def read_node_Invert(handle: u64, depth: int) -> Invert {
+def read_node_Invert(handle: ptr[PyObject], depth: int) -> Invert {
     return Invert();
 }
 
-def read_node_Not(handle: u64, depth: int) -> Not {
+def read_node_Not(handle: ptr[PyObject], depth: int) -> Not {
     return Not();
 }
 
-def read_node_UAdd(handle: u64, depth: int) -> UAdd {
+def read_node_UAdd(handle: ptr[PyObject], depth: int) -> UAdd {
     return UAdd();
 }
 
-def read_node_USub(handle: u64, depth: int) -> USub {
+def read_node_USub(handle: ptr[PyObject], depth: int) -> USub {
     return USub();
 }
 
-def read_node_Eq(handle: u64, depth: int) -> Eq {
+def read_node_Eq(handle: ptr[PyObject], depth: int) -> Eq {
     return Eq();
 }
 
-def read_node_NotEq(handle: u64, depth: int) -> NotEq {
+def read_node_NotEq(handle: ptr[PyObject], depth: int) -> NotEq {
     return NotEq();
 }
 
-def read_node_Lt(handle: u64, depth: int) -> Lt {
+def read_node_Lt(handle: ptr[PyObject], depth: int) -> Lt {
     return Lt();
 }
 
-def read_node_LtE(handle: u64, depth: int) -> LtE {
+def read_node_LtE(handle: ptr[PyObject], depth: int) -> LtE {
     return LtE();
 }
 
-def read_node_Gt(handle: u64, depth: int) -> Gt {
+def read_node_Gt(handle: ptr[PyObject], depth: int) -> Gt {
     return Gt();
 }
 
-def read_node_GtE(handle: u64, depth: int) -> GtE {
+def read_node_GtE(handle: ptr[PyObject], depth: int) -> GtE {
     return GtE();
 }
 
-def read_node_Is(handle: u64, depth: int) -> Is {
+def read_node_Is(handle: ptr[PyObject], depth: int) -> Is {
     return Is();
 }
 
-def read_node_IsNot(handle: u64, depth: int) -> IsNot {
+def read_node_IsNot(handle: ptr[PyObject], depth: int) -> IsNot {
     return IsNot();
 }
 
-def read_node_In(handle: u64, depth: int) -> In {
+def read_node_In(handle: ptr[PyObject], depth: int) -> In {
     return In();
 }
 
-def read_node_NotIn(handle: u64, depth: int) -> NotIn {
+def read_node_NotIn(handle: ptr[PyObject], depth: int) -> NotIn {
     return NotIn();
 }
 
-def read_node_comprehension(handle: u64, depth: int) -> comprehension {
+def read_node_comprehension(handle: ptr[PyObject], depth: int) -> comprehension {
     return comprehension(
         target=field_expr(handle, ast_field.TARGET, depth + 1),
         iter=field_expr(handle, ast_field.ITER, depth + 1),
@@ -2220,7 +2221,7 @@ def read_node_comprehension(handle: u64, depth: int) -> comprehension {
     );
 }
 
-def read_node_ExceptHandler(handle: u64, depth: int) -> ExceptHandler {
+def read_node_ExceptHandler(handle: ptr[PyObject], depth: int) -> ExceptHandler {
     return ExceptHandler(
         type=field_expr_optional(handle, ast_field.TYPE, depth + 1),
         name=field_str_optional(handle, ast_field.NAME, depth + 1),
@@ -2234,7 +2235,7 @@ def read_node_ExceptHandler(handle: u64, depth: int) -> ExceptHandler {
     );
 }
 
-def read_node_arguments(handle: u64, depth: int) -> arguments {
+def read_node_arguments(handle: ptr[PyObject], depth: int) -> arguments {
     return arguments(
         posonlyargs=field_list_arg(handle, ast_field.POSONLYARGS, depth + 1),
         args=field_list_arg(handle, ast_field.ARGS, depth + 1),
@@ -2246,7 +2247,7 @@ def read_node_arguments(handle: u64, depth: int) -> arguments {
     );
 }
 
-def read_node_arg(handle: u64, depth: int) -> arg {
+def read_node_arg(handle: ptr[PyObject], depth: int) -> arg {
     return arg(
         arg=field_str(handle, ast_field.ARG, depth + 1),
         annotation=field_expr_optional(handle, ast_field.ANNOTATION, depth + 1),
@@ -2260,7 +2261,7 @@ def read_node_arg(handle: u64, depth: int) -> arg {
     );
 }
 
-def read_node_keyword(handle: u64, depth: int) -> keyword {
+def read_node_keyword(handle: ptr[PyObject], depth: int) -> keyword {
     return keyword(
         arg=field_str_optional(handle, ast_field.ARG, depth + 1),
         value=field_expr(handle, ast_field.VALUE, depth + 1),
@@ -2273,7 +2274,7 @@ def read_node_keyword(handle: u64, depth: int) -> keyword {
     );
 }
 
-def read_node_alias(handle: u64, depth: int) -> alias {
+def read_node_alias(handle: ptr[PyObject], depth: int) -> alias {
     return alias(
         name=field_str(handle, ast_field.NAME, depth + 1),
         asname=field_str_optional(handle, ast_field.ASNAME, depth + 1),
@@ -2286,14 +2287,14 @@ def read_node_alias(handle: u64, depth: int) -> alias {
     );
 }
 
-def read_node_withitem(handle: u64, depth: int) -> withitem {
+def read_node_withitem(handle: ptr[PyObject], depth: int) -> withitem {
     return withitem(
         context_expr=field_expr(handle, ast_field.CONTEXT_EXPR, depth + 1),
         optional_vars=field_expr_optional(handle, ast_field.OPTIONAL_VARS, depth + 1)
     );
 }
 
-def read_node_match_case(handle: u64, depth: int) -> match_case {
+def read_node_match_case(handle: ptr[PyObject], depth: int) -> match_case {
     return match_case(
         pattern=field_pattern(handle, ast_field.PATTERN, depth + 1),
         guard=field_expr_optional(handle, ast_field.GUARD, depth + 1),
@@ -2301,7 +2302,7 @@ def read_node_match_case(handle: u64, depth: int) -> match_case {
     );
 }
 
-def read_node_MatchValue(handle: u64, depth: int) -> MatchValue {
+def read_node_MatchValue(handle: ptr[PyObject], depth: int) -> MatchValue {
     return MatchValue(
         value=field_expr(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -2313,7 +2314,7 @@ def read_node_MatchValue(handle: u64, depth: int) -> MatchValue {
     );
 }
 
-def read_node_MatchSingleton(handle: u64, depth: int) -> MatchSingleton {
+def read_node_MatchSingleton(handle: ptr[PyObject], depth: int) -> MatchSingleton {
     return MatchSingleton(
         value=field_PyObj(handle, ast_field.VALUE, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -2325,7 +2326,7 @@ def read_node_MatchSingleton(handle: u64, depth: int) -> MatchSingleton {
     );
 }
 
-def read_node_MatchSequence(handle: u64, depth: int) -> MatchSequence {
+def read_node_MatchSequence(handle: ptr[PyObject], depth: int) -> MatchSequence {
     return MatchSequence(
         patterns=field_list_pattern(handle, ast_field.PATTERNS, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -2337,7 +2338,7 @@ def read_node_MatchSequence(handle: u64, depth: int) -> MatchSequence {
     );
 }
 
-def read_node_MatchMapping(handle: u64, depth: int) -> MatchMapping {
+def read_node_MatchMapping(handle: ptr[PyObject], depth: int) -> MatchMapping {
     return MatchMapping(
         keys=field_list_expr(handle, ast_field.KEYS, depth + 1),
         patterns=field_list_pattern(handle, ast_field.PATTERNS, depth + 1),
@@ -2351,7 +2352,7 @@ def read_node_MatchMapping(handle: u64, depth: int) -> MatchMapping {
     );
 }
 
-def read_node_MatchClass(handle: u64, depth: int) -> MatchClass {
+def read_node_MatchClass(handle: ptr[PyObject], depth: int) -> MatchClass {
     return MatchClass(
         cls=field_expr(handle, ast_field.CLS, depth + 1),
         patterns=field_list_pattern(handle, ast_field.PATTERNS, depth + 1),
@@ -2366,7 +2367,7 @@ def read_node_MatchClass(handle: u64, depth: int) -> MatchClass {
     );
 }
 
-def read_node_MatchStar(handle: u64, depth: int) -> MatchStar {
+def read_node_MatchStar(handle: ptr[PyObject], depth: int) -> MatchStar {
     return MatchStar(
         name=field_str_optional(handle, ast_field.NAME, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -2378,7 +2379,7 @@ def read_node_MatchStar(handle: u64, depth: int) -> MatchStar {
     );
 }
 
-def read_node_MatchAs(handle: u64, depth: int) -> MatchAs {
+def read_node_MatchAs(handle: ptr[PyObject], depth: int) -> MatchAs {
     return MatchAs(
         pattern=field_pattern_optional(handle, ast_field.PATTERN, depth + 1),
         name=field_str_optional(handle, ast_field.NAME, depth + 1),
@@ -2391,7 +2392,7 @@ def read_node_MatchAs(handle: u64, depth: int) -> MatchAs {
     );
 }
 
-def read_node_MatchOr(handle: u64, depth: int) -> MatchOr {
+def read_node_MatchOr(handle: ptr[PyObject], depth: int) -> MatchOr {
     return MatchOr(
         patterns=field_list_pattern(handle, ast_field.PATTERNS, depth + 1),
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
@@ -2403,14 +2404,14 @@ def read_node_MatchOr(handle: u64, depth: int) -> MatchOr {
     );
 }
 
-def read_node_TypeIgnore(handle: u64, depth: int) -> TypeIgnore {
+def read_node_TypeIgnore(handle: ptr[PyObject], depth: int) -> TypeIgnore {
     return TypeIgnore(
         lineno=field_int(handle, ast_field.LINENO, depth + 1),
         tag=field_str(handle, ast_field.TAG, depth + 1)
     );
 }
 
-def read_node_TypeVar(handle: u64, depth: int) -> TypeVar {
+def read_node_TypeVar(handle: ptr[PyObject], depth: int) -> TypeVar {
     return TypeVar(
         name=field_str(handle, ast_field.NAME, depth + 1),
         bound=field_expr_optional(handle, ast_field.BOUND, depth + 1),
@@ -2424,7 +2425,7 @@ def read_node_TypeVar(handle: u64, depth: int) -> TypeVar {
     );
 }
 
-def read_node_ParamSpec(handle: u64, depth: int) -> ParamSpec {
+def read_node_ParamSpec(handle: ptr[PyObject], depth: int) -> ParamSpec {
     return ParamSpec(
         name=field_str(handle, ast_field.NAME, depth + 1),
         default_value=field_expr_optional(handle, ast_field.DEFAULT_VALUE, depth + 1),
@@ -2437,7 +2438,7 @@ def read_node_ParamSpec(handle: u64, depth: int) -> ParamSpec {
     );
 }
 
-def read_node_TypeVarTuple(handle: u64, depth: int) -> TypeVarTuple {
+def read_node_TypeVarTuple(handle: ptr[PyObject], depth: int) -> TypeVarTuple {
     return TypeVarTuple(
         name=field_str(handle, ast_field.NAME, depth + 1),
         default_value=field_expr_optional(handle, ast_field.DEFAULT_VALUE, depth + 1),
@@ -2450,7 +2451,7 @@ def read_node_TypeVarTuple(handle: u64, depth: int) -> TypeVarTuple {
     );
 }
 
-def read_node(handle: u64, depth: int = 0) -> ast_node {
+def read_node(handle: ptr[PyObject], depth: int = 0) -> ast_node {
     if depth > 1000 {
         raise RecursionError("maximum recursion depth exceeded during AST conversion");
     }

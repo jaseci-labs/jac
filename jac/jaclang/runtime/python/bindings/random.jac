@@ -1,4 +1,20 @@
 """Python Random type, signatures, and native Mersenne Twister state lifetime."""
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyFloat_FromDouble,
+    PyLong_AsUnsignedLongLong,
+    PyNumber_Index,
+    PyObject,
+    PyType_GetSlot,
+    Py_TYPE,
+    jacpy_dict_size,
+    jacpy_error_pending,
+    jacpy_is_none,
+    jacpy_long_sign,
+    jacpy_none,
+    jacpy_release
+}
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -13,8 +29,6 @@ import from jaclang.runtime.python.bindings.type {
     TypeSlot,
     jacpy_binding_allocate,
     jacpy_binding_free,
-    jacpy_binding_typeof,
-    jacpy_binding_slot,
     jacpy_binding_base
 }
 import from jaclang.runtime.python.bindings.payload {
@@ -37,20 +51,9 @@ import from jaclang.runtime.python.modules.random {
     jacpy_random_setstate,
     jacpy_random_bits
 }
-import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_none,
-    jacpy_float,
-    jacpy_is_none,
-    jacpy_dict_size,
-    jacpy_long_u64,
-    jacpy_long_sign,
-    jacpy_index,
-    jacpy_error_pending,
-    object_error
-}
+import from jaclang.runtime.python.capi { object_error }
 
-def:priv state_of(instance: u64) -> (mt19937 | None) {
+def:priv state_of(instance: ptr[PyObject]) -> (mt19937 | None) {
     if jacpy_binding_native_present(instance, random_type.handle) != 0 {
         state = jacpy_binding_native_get(instance, random_type.handle);
         if isinstance(state, mt19937) {
@@ -61,19 +64,21 @@ def:priv state_of(instance: u64) -> (mt19937 | None) {
     return None;
 }
 
-def:priv create(type: u64, args: u64, kwargs: u64) -> u64 {
+def:priv create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
     if instance == 0 {
-        return 0;
+        return NULL;
     }
     if jacpy_binding_native_set(instance, random_type.handle, jacpy_random_new()) < 0 {
         jacpy_release(instance);
-        return 0;
+        return NULL;
     }
     return instance;
 }
 
-def:priv deallocate(instance: u64) {
+def:priv deallocate(instance: ptr[PyObject]) {
     jacpy_binding_native_clear(instance, random_type.handle);
     jacpy_binding_free(instance);
 }
@@ -81,22 +86,24 @@ def:priv deallocate(instance: u64) {
 glob:priv init_signature = CallSignature("Random", ["seed"], 0, 1, 1),
      seed_signature = CallSignature("seed", ["n"], 0, 1, 1);
 
-def:priv initialize(instance: u64, args: u64, kwargs: u64) -> i32 {
-    type = jacpy_binding_typeof(instance);
+def:priv initialize(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32 {
+    type = Py_TYPE(instance);
     base = jacpy_binding_base(type, random_type.handle);
     if base == 0 {
         return i32(-1);
     }
     reject_keywords = type == base
-        or jacpy_binding_slot(type, i64(TypeSlot.NEW.value))
-            == jacpy_binding_slot(base, i64(TypeSlot.NEW.value));
+        or PyType_GetSlot(type, i32(TypeSlot.NEW.value))
+            == PyType_GetSlot(base, i32(TypeSlot.NEW.value));
     jacpy_release(base);
     if reject_keywords and kwargs != 0 and jacpy_dict_size(kwargs) != 0 {
         object_error("TypeError", "Random() takes no keyword arguments");
         return i32(-1);
     }
-    bound = BoundArguments([u64(0)]);
-    if not init_signature.bind(bound, args, 0) {
+    bound = BoundArguments([NULL]);
+    if not init_signature.bind(bound, args, NULL) {
         return i32(-1);
     }
     state = state_of(instance);
@@ -106,72 +113,72 @@ def:priv initialize(instance: u64, args: u64, kwargs: u64) -> i32 {
     seed = bound.values[0];
     return i32(
         jacpy_random_seed(
-            state, u64(0) if seed == 0 or jacpy_is_none(seed) != 0 else seed
+            state, NULL if seed == 0 or jacpy_is_none(seed) != 0 else seed
         )
     );
 }
 
-def:priv seed_bound(args: BoundArguments) -> u64 {
+def:priv seed_bound(args: BoundArguments) -> ptr[PyObject] {
     state = state_of(args.context);
     if state is None {
-        return 0;
+        return NULL;
     }
     seed = args.values[0];
-    if jacpy_random_seed(
-        state, u64(0) if seed == 0 or jacpy_is_none(seed) != 0 else seed
-    )
+    if jacpy_random_seed(state, NULL if seed == 0 or jacpy_is_none(seed) != 0 else seed)
         < 0 {
-        return 0;
+        return NULL;
     }
     return jacpy_none();
 }
 
-def:priv seed_call(instance: u64, args: u64) -> u64 {
-    return invoke(seed_signature, args, 0, seed_bound, instance);
+def:priv seed_call(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(seed_signature, args, NULL, seed_bound, instance);
 }
 
-def:priv random_call(instance: u64, unused: u64) -> u64 {
+def:priv random_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     state = state_of(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
-    return jacpy_float(jacpy_random_float(state));
+    return PyFloat_FromDouble(jacpy_random_float(state));
 }
 
-def:priv getstate_call(instance: u64, unused: u64) -> u64 {
+def:priv getstate_call(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     state = state_of(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
     return jacpy_random_getstate(state);
 }
 
-def:priv setstate_call(instance: u64, value: u64) -> u64 {
+def:priv setstate_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     state = state_of(instance);
     if state is None or jacpy_random_setstate(state, value) < 0 {
-        return 0;
+        return NULL;
     }
     return jacpy_none();
 }
 
-def:priv bits_call(instance: u64, value: u64) -> u64 {
-    index = jacpy_index(value);
+def:priv bits_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    index = PyNumber_Index(value);
     if index == 0 {
-        return 0;
+        return NULL;
     }
     if jacpy_long_sign(index) < 0 {
         jacpy_release(index);
         object_error("ValueError", "number of bits must be non-negative");
-        return 0;
+        return NULL;
     }
-    bits = jacpy_long_u64(index);
+    bits = PyLong_AsUnsignedLongLong(index);
     jacpy_release(index);
     if jacpy_error_pending() != 0 {
-        return 0;
+        return NULL;
     }
     state = state_of(instance);
     if state is None {
-        return 0;
+        return NULL;
     }
     return jacpy_random_bits(state, bits);
 }
@@ -215,7 +222,7 @@ glob:priv random_type = TypeDefinition(
          TypeHooks(create=create, initialize=initialize, dealloc=deallocate)
      );
 
-def:priv execute(module: u64) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0)
         if add_state_owned(module, 0, "Random", random_type.create(module))
         else i32(-1);
@@ -229,6 +236,6 @@ glob:priv definition = ModuleDefinition(
          1
      );
 
-def:pub PyInit__random -> u64 {
+def:pub PyInit__random -> ptr[PyObject] {
     return definition.initialize();
 }

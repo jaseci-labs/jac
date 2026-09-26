@@ -376,7 +376,6 @@ def visit_while(
     return stmt_cont(loc=wloc);
 }
 
-
 def visit_for(
     g: cfg_builder, f: For, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
@@ -410,7 +409,6 @@ def visit_for(
     g.use(end);
     return stmt_cont(loc=floc);
 }
-
 
 def visit_async_for(
     g: cfg_builder, af: AsyncFor, ann_ctx: ann_scope_plan | None = None

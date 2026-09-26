@@ -353,7 +353,6 @@ def emit_await_send_loop_inline_footer(
     return (als, cleanup_throw_blk, end_send_blk);
 }
 
-
 def emit_anext_send_except_regions(
     g: cfg_builder,
     als: anext_send_loop,
@@ -414,7 +413,6 @@ def emit_anext_send_except_regions(
     }
 }
 
-
 # Clear an except-as binding (STORE None + DELETE) before handler exit.
 def emit_except_as_cleanup(g: cfg_builder, bind_name: str, cloc: cloc) {
     none_idx = g.u.add_const(py_none());
@@ -422,7 +420,6 @@ def emit_except_as_cleanup(g: cfg_builder, bind_name: str, cloc: cloc) {
     emit_name_store(g, bind_name, cloc);
     emit_name_delete(g, bind_name, cloc);
 }
-
 
 # Emit comprehension cleanup handlers after the module RETURN_VALUE (dead code on
 # the normal path; reached only via the exception table).
@@ -465,7 +462,6 @@ def emit_deferred_comp_handlers(g: cfg_builder) {
     }
 }
 
-
 # Lower raise (exc/cause forms; bare re-raise in handler context).
 def visit_raise_stmt(g: cfg_builder, r: Raise) -> stmt_cont {
     rloc = nloc(r.lineno, r.end_lineno, r.col_offset, r.end_col_offset);
@@ -496,7 +492,6 @@ def visit_raise_stmt(g: cfg_builder, r: Raise) -> stmt_cont {
     g.emit_op(OP_RAISE_VARARGS, 0, rloc);
     return stmt_cont(loc=rloc, terminated=True);
 }
-
 
 def ordered_unwind_spans(
     spans: list[tuple[int, int]], pos: dict[int, int]
@@ -666,7 +661,6 @@ def visit_try_finally(
     return stmt_cont(loc=tloc);
 }
 
-
 def emit_finally_inline_block(
     g: cfg_builder,
     finalbody: list[stmt],
@@ -783,7 +777,6 @@ def merge_except_spans(
     }
     return out;
 }
-
 
 def visit_try(
     g: cfg_builder,
@@ -1013,7 +1006,6 @@ def trystar_stmt_loc(t: TryStar) -> cloc {
     }
     return best;
 }
-
 
 # Lower try/except* (ExceptionGroup handlers). Dispatch + guards; the byte
 # layout lives in visit_try_star_except. CPython: codegen_try_star.
