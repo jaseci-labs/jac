@@ -1370,6 +1370,9 @@ walker NaIRGenPass(CompilerPass) {
 
     def _get_exception_state_type -> ir.Type;
     def _declare_exception_runtime -> None;
+    def _exc_jmp_symbols -> tuple[str, str];
+    def _exc_setjmp_fn -> ir.Function;
+    def _exc_longjmp_fn -> ir.Function;
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;
     def _emit_exc_raise_helper -> None;

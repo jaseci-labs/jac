@@ -683,7 +683,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
-        setjmp_fn = self.extern_funcs["setjmp"];
+        setjmp_fn = self._exc_setjmp_fn();
         setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
         is_exception = self.builder.icmp_signed(
             "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
