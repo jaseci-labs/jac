@@ -310,6 +310,16 @@ def snapshot_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
+    return snapshot_scan(host, program, path, options, source).learner.inputs;
+}
+
+def snapshot_scan(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
+) -> ClosureScan {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
     import from jaclang.compiler.types.stubcat.locate { catalog_origin }
@@ -367,7 +377,7 @@ def snapshot_inputs(
         install_host(previous);
     }
     inputs.scanned_modules = len(scan.seen);
-    return inputs;
+    return scan;
 }
 
 def kernel_analysis_inputs(
@@ -377,7 +387,8 @@ def kernel_analysis_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
-    inputs = snapshot_inputs(host, program, path, options, source);
+    scan = snapshot_scan(host, program, path, options, source);
+    inputs = scan.learner.inputs;
     for ws in list(inputs.workspaces.values()) {
         for name in ws.apps {
             if name not in inputs.check_settings {
@@ -388,7 +399,7 @@ def kernel_analysis_inputs(
     local = [
         p
         for (p, untyped) in inputs.untyped.items()
-        if not untyped
+        if not untyped and scan.in_scope(p)
     ];
     inputs.python_ifaces = python_interfaces(local, options);
     return inputs;
