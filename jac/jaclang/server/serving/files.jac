@@ -1,9 +1,11 @@
+import hashlib;
 import mimetypes;
 import os;
 import from email.utils { formatdate, parsedate_to_datetime }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 
-glob DEFAULT_CACHE_CONTROL: str = 'public, max-age=3600';
+glob DEFAULT_CACHE_CONTROL: str = 'public, max-age=3600',
+     _DIGESTS: dict[str, tuple[tuple[int, int, int], str]] = {};
 
 
 def guess_media_type(name: str) -> str {
@@ -24,8 +26,21 @@ def guess_media_type(name: str) -> str {
 }
 
 
-def _etag(stat: any) -> str {
-    return f'W/"{int(stat.st_mtime)}-{stat.st_size}"';
+def _etag(path: str, stat: os.stat_result) -> str {
+    key = (stat.st_ino, stat.st_size, stat.st_mtime_ns);
+    cached = _DIGESTS.get(path);
+    if cached is not None and cached[0] == key {
+        return cached[1];
+    }
+    digest = hashlib.blake2b(digest_size=16);
+    with open(path, 'rb') as fh {
+        while chunk := fh.read(1024 * 1024) {
+            digest.update(chunk);
+        }
+    }
+    etag = f'W/"{digest.hexdigest()}"';
+    _DIGESTS[path] = (key, etag);
+    return etag;
 }
 
 
@@ -36,7 +51,7 @@ def _not_modified(request: Request, etag: str, mtime: float) -> bool {
         return '*' in tags or etag in tags;
     }
     ims = request.headers.get('If-Modified-Since');
-    if ims is not None {
+    if ims is not None and mtime > 0 {
         try {
             since = parsedate_to_datetime(ims).timestamp();
         } except (TypeError, ValueError) {
@@ -89,19 +104,20 @@ def file_response(
 ) -> Response {
     try {
         stat = os.stat(path);
+        etag = _etag(path, stat);
     } except OSError {
         return JSONResponse(
             content={'error': 'Static file not found'}, status_code=404
         );
     }
-    etag = _etag(stat);
-    last_modified = formatdate(stat.st_mtime, usegmt=True);
     headers: dict[str, str] = {
         'Cache-Control': cache_control,
         'ETag': etag,
-        'Last-Modified': last_modified,
         'Accept-Ranges': 'bytes'
     };
+    if stat.st_mtime > 0 {
+        headers['Last-Modified'] = formatdate(stat.st_mtime, usegmt=True);
+    }
     for (k, v) in (extra_headers or {}).items() {
         headers[k] = v;
     }
