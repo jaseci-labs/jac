@@ -407,3 +407,185 @@ def _floor_ca_bundle -> (str | None) {
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     return _resolve_ca_bundle(pkg_root);
 }
+
+
+"""Compile a module once and build the link plan a sealed pair links from:
+the standalone executable and the host-driven entry library share one native
+compilation."""
+def _sealed_native_plan(
+    filename: str
+) -> (tuple[object, LinkPlan, any] | None) {
+    import from jaclang.jac0core.ext_registry { is_jac, is_retired_native_marker }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+
+    if not is_jac(filename) {
+        console.error("Input must be a .jac file.");
+        return None;
+    }
+    if not os.path.exists(filename) {
+        console.error(f"File not found: {filename}");
+        return None;
+    }
+    if is_retired_native_marker(filename) {
+        console.error(
+            f"{filename}: the .na.jac marker was retired in 0.35 -- rename the "
+            "file to .jac; 'jac build --native' compiles plain .jac natively."
+        );
+        return None;
+    }
+    prog = JacProgram();
+    options = CompileOptions(
+        aot_mode=True,
+        default_codespace="native",
+        skip_native_engine=True
+    );
+    prog.options = options;
+    try {
+        ir_module = prog.compile(
+            file_path=os.path.abspath(filename), options=options
+        );
+        plan = build_link_plan(prog, [os.path.abspath(filename)], options);
+    } except Exception as e {
+        console.error(f"Jac compilation failed: {e}");
+        import traceback;
+        traceback.print_exc();
+        return None;
+    }
+    if prog.errors_had {
+        for _err in prog.errors_had {
+            console.print(_err.pretty_print());
+        }
+        return None;
+    }
+    return (prog, plan, ir_module);
+}
+
+
+def _entry_lib_link(plan: LinkPlan, output: str) -> int {
+    import from jaclang.compiler.backends.native.link_plan {
+        ArtifactKind,
+        LinkPlanError,
+        link_artifact
+    }
+    try {
+        link_artifact(plan, output, ArtifactKind.ENTRY_LIB, log=console.print);
+    } except LinkPlanError as e {
+        console.error(str(e));
+        return 1;
+    } except Exception as e {
+        console.error(f"Entry-library link failed: {e}");
+        import traceback;
+        traceback.print_exc();
+        return 1;
+    }
+    return 0;
+}
+
+
+def _build_native_entry_lib(filename: str, output: str) -> int {
+    built = _sealed_native_plan(filename);
+    if built is None {
+        return 1;
+    }
+    (prog, plan, ir_module) = built;
+    manifest = ir_module.gen.interop_manifest if ir_module else None;
+    plan.callback_bindings = list(manifest.native_imports) if manifest else [];
+    return _entry_lib_link(plan, output);
+}
+
+
+def _callback_source_path(binding: any, proj_dir: str) -> str {
+    nd = binding.ast_node;
+    if nd is not None {
+        import from jaclang.compiler.frontend.unitree { Module }
+        mod = nd.find_parent_of_type(Module);
+        if mod is not None and mod.loc.mod_path {
+            return os.path.relpath(mod.loc.mod_path, proj_dir);
+        }
+    }
+    return binding.source_module or "";
+}
+
+
+impl native_build_sealed_pair(filename: str, exe_output: str, lib_output: str) -> int {
+    import json;
+    import from jaclang.server.sealed_serve { interop_record_path }
+
+    built = _sealed_native_plan(filename);
+    if built is None {
+        return 1;
+    }
+    (prog, plan, ir_module) = built;
+    manifest = ir_module.gen.interop_manifest if ir_module else None;
+    bindings = list(manifest.native_imports) if manifest else [];
+    plan.callback_bindings = bindings;
+    _interop_record = interop_record_path(lib_output);
+    _proj_dir = os.path.dirname(os.path.abspath(filename));
+    if manifest and manifest.native_imports {
+        console.warning(
+            "App calls from native code into Python (native_imports): "
+            "dropping the standalone executable (it cannot be "
+            "self-contained) and sealing the host-driven native library only."
+        );
+        lib_rc = _entry_lib_link(plan, lib_output);
+        if lib_rc != 0 {
+            console.error(
+                "Host-driven native library compilation failed; seal aborted."
+            );
+            return lib_rc;
+        }
+        _interop_record.parent.mkdir(parents=True, exist_ok=True);
+        _interop_record.write_text(
+            json.dumps(
+                {
+                    "interop": True,
+                    "unresolved": [b.name for b in bindings],
+                    "callbacks": [
+                        {
+                            "name": b.name,
+                            "ret_type": b.ret_type,
+                            "param_types": list(b.param_types),
+                            "source_module": _callback_source_path(b, _proj_dir)
+                        } for b in bindings
+                    ]
+                },
+                sort_keys=True
+            )
+                + "\n",
+            encoding="utf-8"
+        );
+    } else {
+        import from jaclang.compiler.backends.native.link_plan {
+            ArtifactKind,
+            LinkPlanError,
+            link_artifact
+        }
+        if _interop_record.exists() {
+            _interop_record.unlink();
+        }
+        try {
+            link_artifact(
+                plan, exe_output, ArtifactKind.EXECUTABLE, log=console.print
+            );
+        } except LinkPlanError as e {
+            console.error(str(e));
+            console.error("Native compilation failed; seal aborted.");
+            return 1;
+        } except Exception as e {
+            console.error(f"Native link failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+        lib_rc = _entry_lib_link(plan, lib_output);
+        if lib_rc != 0 {
+            console.warning(
+                "In-process native library compilation failed; the sealed bundle "
+                "will run via the standalone binary only."
+            );
+        }
+    }
+    return 0;
+}

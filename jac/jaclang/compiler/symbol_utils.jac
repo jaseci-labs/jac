@@ -697,3 +697,21 @@ def return_type_is_jsx(rt: (Expr | None)) -> bool {
     }
     return isinstance(rt, Name) and rt.value in ("JsxElement", "JsxPage", "JsxLayout");
 }
+
+def import_target_pinned_server(nd: Import) -> bool {
+    if nd.from_loc is None {
+        return False;
+    }
+    try {
+        target = nd.from_loc.resolve_relative_path();
+        if isinstance(target, str) and target.endswith('.jac') {
+            import from jaclang.compiler.placement.placement_facts {
+                pinned_module_space
+            }
+            return pinned_module_space(target) == 'server';
+        }
+    } except Exception {
+        return False;
+    }
+    return False;
+}

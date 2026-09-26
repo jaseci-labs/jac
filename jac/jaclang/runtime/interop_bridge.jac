@@ -23,8 +23,10 @@ obj NativeLibrary {
         functions: dict[str, Callable] = {};
 
     def handle -> ctypes.CDLL {
+        import os;
         if self.library is None {
-            self.library = ctypes.CDLL(self.path);
+            mode = getattr(os, "RTLD_NOW", 0);
+            self.library = ctypes.CDLL(self.path, mode=mode);
         }
         return self.library;
     }
@@ -59,22 +61,83 @@ obj NativeLibrary {
     }
 }
 
+def _sized_ctypes_tables -> tuple[dict[(str, type)], dict[(str, str)]] {
+    import from jaclang.runtime.scalars { numeric_shapes }
+    types: dict[(str, type)] = {};
+    names: dict[(str, str)] = {};
+    for shape in numeric_shapes() {
+        if not shape.sized {
+            continue;
+        }
+        if shape.is_float {
+            ct = ctypes.c_float if shape.width == 32 else ctypes.c_double;
+        } else {
+            sign = 'int' if shape.signed else 'uint';
+            ct = getattr(ctypes, f'c_{sign}{shape.width}');
+        }
+        types[shape.name] = ct;
+        names[shape.name] = f'ctypes.{ct.__name__}';
+    }
+    return (types, names);
+}
+
 glob logger = logging.getLogger(__name__),
+     _sized_tables = _sized_ctypes_tables(),
      JAC_TO_CTYPES: dict[(str, type)] = {
          'int': ctypes.c_int64,
          'float': ctypes.c_double,
          'bool': ctypes.c_bool,
          'str': ctypes.c_char_p
-     },
+     }
+         | _sized_tables[0],
      JAC_TO_CTYPES_STR: dict[(str, str)] = {
          'int': 'ctypes.c_int64',
          'float': 'ctypes.c_double',
          'bool': 'ctypes.c_bool',
          'str': 'ctypes.c_char_p'
-     },
+     }
+         | _sized_tables[1],
      _pyb_shadows: dict[(int, object)] = {},
      _pyb_class_memo: dict[(tuple[any, ...], type)] = {},
      _pyb_module_memo: dict[(str, object)] = {};
+
+def resolve_sv_callbacks(
+    callbacks: Iterable[dict], img_root: str
+) -> dict[(str, Callable)] {
+    import os;
+    functions: dict[(str, Callable)] = {};
+    for cb in callbacks {
+        name = cb.get("name") or "";
+        src = cb.get("source_module") or "";
+        if not (name and src) {
+            logger.warning(
+                f"na->sv callback {name!r} has no recorded source module; "
+                "calls into it return 0"
+            );
+            continue;
+        }
+        mod_path = src if os.path.isabs(src) else os.path.join(img_root, src);
+        if (not os.path.exists(mod_path) and "." in src and not src.endswith(".jac")) {
+            alt = os.path.join(img_root, src.replace(".", os.sep) + ".jac");
+            if os.path.exists(alt) {
+                mod_path = alt;
+            }
+        }
+        try {
+            mod = _pyb_import_module(mod_path);
+            fn = getattr(mod, name, None);
+        } except Exception as e {
+            logger.warning(f"failed to load '{src}' for callback '{name}': {e}");
+            continue;
+        }
+        if fn is None {
+            logger.warning(f"'{name}' not found in {src}; calls into it return 0");
+            continue;
+        }
+        functions[name] = fn;
+    }
+    return functions;
+}
 
 def _pyb_import_module(mod_path: str) -> object {
     import os;
@@ -189,7 +252,11 @@ def register_py_callbacks(
     register_symbol: Callable[[str, int], None]
 ) {
     for binding in bindings {
-        ret_ct = JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64);
+        ret_ct = (
+            None
+                if binding.ret_type == 'None'
+                else JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64)
+        );
         arg_cts = [JAC_TO_CTYPES.get(pt, ctypes.c_int64) for pt in binding.param_types];
         cb_type = ctypes.CFUNCTYPE(ret_ct, *arg_cts);
         def _make_callback(

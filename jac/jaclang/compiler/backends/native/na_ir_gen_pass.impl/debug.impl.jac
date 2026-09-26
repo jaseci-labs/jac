@@ -1,4 +1,3 @@
-import from jaclang.cli.console { console }
 import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import os;
 import sys;
@@ -109,7 +108,7 @@ impl NaIRGenPass.finish with exit {
             with open(auto_ir_path, "w") as f {
                 f.write(ir_str);
             }
-            console.print(f"[native debug] IR saved to: {auto_ir_path}");
+            sys.stderr.write(f"[native debug] IR saved to: {auto_ir_path}\n");
         }
     }
 }

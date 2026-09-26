@@ -621,10 +621,9 @@ def _resolve_template(use: str, registry: TemplateRegistry) -> ProjectTemplate |
                     tmpl = load_template_from_json(use_path);
                     console.print(f"Using template '{tmpl.name}' from {use_path}");
                     return tmpl;
-                } else {
-                    console.error(f"Error: File must be a .jacpack file: {use}");
-                    return None;
                 }
+                console.error(f"Error: File must be a .jacpack file: {use}");
+                return None;
             } elif use_path.is_dir() {
                 tmpl = load_template_from_directory(use_path);
                 console.print(f"Using template '{tmpl.name}' from {use_path}");
@@ -1115,10 +1114,9 @@ impl install(
     if install_success and not plugin_failed {
         console.success("All dependencies installed");
         return 0;
-    } else {
-        console.error("Some dependencies failed to install");
-        return 1;
     }
+    console.error("Some dependencies failed to install");
+    return 1;
 }
 
 def _bootstrap_project_deps(project_path: Path) -> bool {
@@ -1193,7 +1191,9 @@ def _major_minor(version: str) -> str {
     return version;
 }
 
-impl update(packages: list[str] = [], dev: bool = False, verbose: bool = False) -> int {
+impl update(
+    packages: (list[str] | None) = None, dev: bool = False, verbose: bool = False
+) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
     import from jaclang.project.providers { InstallContext, get_python_provider }

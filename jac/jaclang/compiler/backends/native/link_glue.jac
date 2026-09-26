@@ -25,7 +25,8 @@ obj GlueSpec {
         data_layout: str = "",
         clib_paths: list[str] = [],
         needs_atexit_shim: bool = False,
-        needs_region_hook: bool = True;
+        needs_region_hook: bool = True,
+        entry_lib: bool = False;
 }
 
 def _decl_void_fn(name: str) -> str {
@@ -262,6 +263,30 @@ def platform_entry_ir(spec: GlueSpec) -> str {
     return entry_elf_ir();
 }
 
+def entry_lib_protocol_ir(spec: GlueSpec) -> str {
+    """Host-driven entry-library protocol: the argv globals a dlopen host
+    writes before `__jac_shared_init`, plus a `jac_entry` export that chains
+    to the root unit's entry (or stands empty when the app has none).""";
+    root_unit = spec.units[spec.root_index] if spec.root_index >= 0 else None;
+    decl = (
+        _decl_void_fn(root_unit.entry_symbol)
+        if root_unit is not None and root_unit.entry_symbol
+        else ""
+    );
+    call = (
+        f'  call void @"{root_unit.entry_symbol}"()\n'
+        if root_unit is not None and root_unit.entry_symbol
+        else ""
+    );
+    return (
+        argv_globals_ir()
+        + decl
+        + "define void @jac_entry() {\nentry:\n"
+        + call
+        + "  ret void\n}\n\n"
+    );
+}
+
 def link_glue_ir(spec: GlueSpec) -> tuple[str, list[str]] {
     parts: list[str] = [];
     if spec.data_layout {
@@ -276,6 +301,10 @@ def link_glue_ir(spec: GlueSpec) -> tuple[str, list[str]] {
         parts.append(rc_ir);
     }
     parts.append(platform_entry_ir(spec));
+    if spec.entry_lib {
+        parts.append(entry_lib_protocol_ir(spec));
+        exports.extend(["jac_entry", "__jac_argc", "__jac_argv"]);
+    }
     if spec.needs_region_hook {
         parts.append(region_hook_ir());
     }

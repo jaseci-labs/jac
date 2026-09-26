@@ -79,6 +79,18 @@ def private_root -> tuple[Path, dict[str, str]] {
     return (base, cache_env(base));
 }
 
+"""Stub out the project bucket, which env overrides cannot reach.
+
+The project cache lives at <project>/.jac/cache, resolved from the cwd's
+jac.toml -- under CI that is the checkout itself. Without the stub,
+purge/gc/status would reclaim whatever real entries sit in .jac/cache,
+flaking byte-exact assertions and deleting the workspace's module cache
+mid-run.
+"""
+def no_project -> any {
+    return patch("jaclang.cache.registry.project_bucket", return_value=None);
+}
+
 def entry_dir(base: Path, name: str, age: float, marker: str = "") -> Path {
     d = base / name;
     d.mkdir(parents=True, exist_ok=True);
@@ -124,7 +136,7 @@ test "JAC_CACHE_HOME wins over XDG_CACHE_HOME, which wins over the platform defa
 
 test "every pre-bootstrap path derives from the one root" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         assert get_jir_cache_dir() == base / "jir";
         assert bucket("jir-modules").path() == base / "jir" / "modules";
         assert bucket("apps").path() == base / "apps";
@@ -140,7 +152,7 @@ test "only disposable buckets are tagged and an old Jac root tag is retired" {
     (base, env) = private_root();
     (base / CACHEDIR_TAG).write_text(CACHEDIR_TAG_TEXT);
     pg = entry_dir(base, "pg/main", 0.0);
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         assert ensure_root() == base;
         assert not (base / CACHEDIR_TAG).exists();
         rt = bucket("rt").ensure();
@@ -160,7 +172,7 @@ test "the registry names every bucket the tree writes, each with a policy" {
     assert not missing , f"buckets missing from the registry: {sorted(missing)}";
     assert len(names) == len(BUCKETS) , "bucket names must be unique";
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         for b in BUCKETS {
             assert str(b.path()).startswith(str(base)) , f"{b.name} does not live under the shared root";
             assert b.policy.describe() , f"{b.name} has no policy description";
@@ -363,7 +375,7 @@ test "maybe_sweep_dir is throttled by the sentinel and by the process" {
 
 test "gc runs every managed policy under the root, reports bytes, and dry-run removes nothing" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         rt = bucket("rt").path();
         expired = entry_dir(rt, "0123456789abcdef", 60.0 * DAY, ".used");
         fresh = entry_dir(rt, "fedcba9876543210", 1.0 * DAY, ".used");
@@ -392,7 +404,7 @@ test "gc runs every managed policy under the root, reports bytes, and dry-run re
 
 test "status lists every registered bucket with its path, size and policy" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         entry_dir(bucket("rt").path(), "0123456789abcdef", 0.0, ".used");
         entry_dir(bucket("pg").path(), "main", 0.0);
         rows = status();
@@ -413,7 +425,7 @@ test "status lists every registered bucket with its path, size and policy" {
 
 test "purge removes managed buckets and refuses external ones" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         rt = entry_dir(bucket("rt").path(), "0123456789abcdef", 0.0, ".used");
         pg = entry_dir(bucket("pg").path(), "main", 0.0);
         models = entry_dir(bucket("models").path(), "gemma", 0.0);
@@ -437,7 +449,7 @@ test "purge removes managed buckets and refuses external ones" {
 
 test "inspection and purge include staging while unknown JIR content remains visible" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         install = entry_dir(
             base, "toolchains/installed/demo/v1/.install-abandoned", 120.0 * DAY
         );
@@ -456,14 +468,14 @@ test "inspection and purge include staging while unknown JIR content remains vis
             # Account for the fixture buckets only, including the unmanaged JIR.
             dry = purge(["toolchains-installed", "rt", "jir-digests"], dry_run=True);
         }
-        assert dry.reclaimed_bytes == 2048;
+        assert dry.reclaimed_bytes == 2048 , f"dry purge reclaimed {dry.reclaimed_bytes} (removed {dry.removed})";
         assert install.exists() and runtime.exists();
         with patch(
             "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
         ) {
             result = purge(["toolchains-installed", "rt", "jir-digests"]);
         }
-        assert result.reclaimed_bytes == 2048;
+        assert result.reclaimed_bytes == 2048 , f"purge reclaimed {result.reclaimed_bytes} (removed {result.removed})";
         assert not install.exists() and not runtime.exists();
         assert unknown.exists();
     }
@@ -471,7 +483,7 @@ test "inspection and purge include staging while unknown JIR content remains vis
 
 test "nested staging uses the orphan TTL and never follows symlinks" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         parent = bucket("toolchains-installed").path();
         old = entry_dir(parent, "demo/v1/.install-old", TMP_TTL_SECONDS + 60.0);
         fresh = entry_dir(parent, "demo/v1/.install-fresh", 60.0);
@@ -510,7 +522,7 @@ test "retired toolchains honor custom roots and never remove an active bucket ro
         env["JAC_TOOLCHAIN_DIR"] = custom;
         old = entry_dir(Path(custom), "llvm-cbe", 0.0);
         default_old = entry_dir(base, "toolchains/cocoapods", 0.0);
-        with patch.dict(os.environ, env) {
+        with patch.dict(os.environ, env), no_project() {
             extra = dict(unmanaged());
             assert str(old) in extra;
             gc(dry_run=True);
@@ -519,7 +531,7 @@ test "retired toolchains honor custom roots and never remove an active bucket ro
             assert not old.exists() and not default_old.exists();
         }
         env["JAC_TOOLCHAIN_DIR"] = str(base / "toolchains/llvm-cbe");
-        with patch.dict(os.environ, env) {
+        with patch.dict(os.environ, env), no_project() {
             active = entry_dir(
                 bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
             );
@@ -570,7 +582,7 @@ test "temporary ownership keeps inaccessible writers and reclaims exited writers
 
 test "legacy writers keep staging through purge and GC until their locks are released" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         for (name, rel) in [
             ("toolchains-downloads", "archive.part"),
             ("toolchains-installed", "demo/v1/.install-active"),
@@ -609,7 +621,7 @@ test "legacy writers keep staging through purge and GC until their locks are rel
 
 test "unknown temporary ownership is preserved even beyond the orphan TTL" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         for (name, rel) in [
             ("rt", "artifact.tmp.unknown"),
             ("toolchains-downloads", "archive.part"),
@@ -626,7 +638,7 @@ test "unknown temporary ownership is preserved even beyond the orphan TTL" {
 
 test "temporary claims hold sibling locks and release them after a partial acquisition" {
     (base, env) = private_root();
-    with patch.dict(os.environ, env) {
+    with patch.dict(os.environ, env), no_project() {
         b = bucket("toolchains-installed");
         item = entry_dir(b.path(), "demo/v1/.install-old", 120.0 * DAY);
         first = item.parent / "a.lock";

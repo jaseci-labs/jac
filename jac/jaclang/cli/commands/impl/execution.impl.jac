@@ -4,6 +4,7 @@ import os;
 import sys;
 import types;
 import from pathlib { Path }
+import from ctypes { CDLL }
 import from jaclang.cli.console { console, use_line_buffered_output }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.server.assembly {
@@ -185,6 +186,40 @@ def _default_codespace_is_native -> bool {
         if cfg is not None
         else PlacementConfig().default_codespace;
     return effective == 'native';
+}
+
+obj NativeArgv {
+    has argc: int,
+        refs: list[any],
+        vector: any;
+
+    def init(argv: list[str]) {
+        import ctypes;
+
+        self.argc = len(argv);
+        self.refs = [ctypes.c_char_p(arg.encode("utf-8")) for arg in argv];
+        self.vector = (ctypes.c_char_p * self.argc)(*self.refs);
+    }
+}
+
+def _set_native_argv_in_dll(lib: CDLL, argv: list[str]) -> bool {
+    import ctypes;
+
+    native_argv = NativeArgv(argv);
+    try {
+        ctypes.c_int32.in_dll(lib, "__jac_argc").value = native_argv.argc;
+        ctypes.c_void_p.in_dll(lib, "__jac_argv").value = ctypes.cast(
+            native_argv.vector, ctypes.c_void_p
+        ).value;
+    } except ValueError as e {
+        console.warning(
+            f"native library missing __jac_argc/__jac_argv globals ({e}); "
+            "running entry with argc=0"
+        );
+        return False;
+    }
+    setattr(lib, "_jac_argv_refs", (native_argv.refs, native_argv.vector));
+    return True;
 }
 
 def _populate_native_argv(
@@ -566,9 +601,31 @@ impl run_jab_image(
     }
     if kind in ["cli", "cli-native", "native-binary"] {
         if kind != "cli" {
-            native_bin = _jab_native_bin(img_root, entry_rel);
-            if native_bin {
-                os.execv(native_bin, [native_bin] + [str(a) for a in args]);
+            _interop = (meta.get("native") or {}).get("interop", False);
+            host_argv = [entry_abs] + [str(a) for a in args];
+            if _interop {
+                rc = _jab_run_entry_lib(img_root, entry_rel, host_argv, interop=True);
+                if rc is not None {
+                    return rc;
+                }
+            } else {
+                native_bin = _jab_native_bin(img_root, entry_rel);
+                if native_bin {
+                    try {
+                        os.execv(native_bin, [native_bin] + [str(a) for a in args]);
+                    } except OSError as e {
+                        console.warning(
+                            f"sealed native binary failed to exec ({e}); "
+                            "trying the entry library instead"
+                        );
+                    }
+                }
+                rc = _jab_run_entry_lib(
+                    img_root, entry_rel, host_argv, interop=False
+                );
+                if rc is not None {
+                    return rc;
+                }
             }
         }
         return run(target=entry_abs, args=args);
@@ -580,8 +637,9 @@ impl run_jab_image(
     return 1;
 }
 
-def _jab_native_bin(img_root: Path, entry_rel: str) -> (str | None) {
-    import from jaclang.jac0core.ext_registry { base_stem }
+def _jab_native_artifact(
+    img_root: Path, filename: str, need_exec: bool = False
+) -> (str | None) {
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
     try {
         import jaclang.compiler.backends.native.llvm.binding as llvm;
@@ -589,12 +647,154 @@ def _jab_native_bin(img_root: Path, entry_rel: str) -> (str | None) {
     } except Exception {
         return None;
     }
-    stem = base_stem(os.path.basename(entry_rel));
-    cand = os.path.join(str(img_root), NATIVE_DIR_REL, triple, stem);
-    if os.path.isfile(cand) and os.access(cand, os.X_OK) {
-        return cand;
+    cand = os.path.join(str(img_root), NATIVE_DIR_REL, triple, filename);
+    if not os.path.isfile(cand) {
+        return None;
     }
-    return None;
+    if need_exec and not os.access(cand, os.X_OK) {
+        return None;
+    }
+    return cand;
+}
+
+def _jab_native_bin(img_root: Path, entry_rel: str) -> (str | None) {
+    import from jaclang.jac0core.ext_registry { base_stem }
+    stem = base_stem(os.path.basename(entry_rel));
+    return _jab_native_artifact(img_root, stem, need_exec=True);
+}
+
+def _jab_native_lib(img_root: Path, entry_rel: str) -> (str | None) {
+    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.server.sealed_serve { native_lib_name }
+    stem = base_stem(os.path.basename(entry_rel));
+    return _jab_native_artifact(img_root, native_lib_name(stem));
+}
+
+
+class NativeEntryStartedError(Exception) {}
+
+
+def _jab_interop_callbacks(lib_path: str) -> list[dict[str, any]] {
+    import json;
+    import from jaclang.server.sealed_serve { interop_record_path }
+    record = interop_record_path(lib_path);
+    if not record.is_file() {
+        return [];
+    }
+    try {
+        data = json.loads(record.read_text(encoding="utf-8"));
+    } except Exception as e {
+        console.warning(f"unreadable interop record ({record}): {e}");
+        return [];
+    }
+    callbacks = data.get("callbacks") or [];
+    return [
+        cb
+        for cb in callbacks
+        if isinstance(cb, dict) and cb.get("name")
+    ];
+}
+
+
+def _run_native_lib(
+    lib_path: str,
+    argv: list[str],
+    callbacks: (list[dict[str, any]] | None) = None,
+    img_root: (Path | None) = None
+) -> (int | None) {
+    callbacks = callbacks or [];
+    import ctypes;
+    import from jaclang.runtime.interop_bridge {
+        NativeCallback,
+        NativeLibrary,
+        resolve_sv_callbacks
+    }
+    bindings = [
+        NativeCallback(
+            name=cb["name"],
+            ret_type=cb.get("ret_type", "int"),
+            param_types=list(cb.get("param_types", []))
+        ) for cb in callbacks
+    ];
+    lib = NativeLibrary(
+        path=lib_path,
+        bindings=bindings,
+        functions=resolve_sv_callbacks(callbacks, str(img_root or Path()))
+    );
+    try {
+        handle = lib.handle();
+    } except OSError as e {
+        console.error(f"native library load failed ({lib_path}): {e}");
+        return None;
+    }
+    for _binding in bindings {
+        if getattr(handle, "__jac_bind_" + _binding.name, None) is None {
+            console.error(
+                f"native library is missing dispatch slot "
+                f"'__jac_bind_{_binding.name}' ({lib_path}): the interop "
+                "record does not match this library; refusing the "
+                "in-process load"
+            );
+            return None;
+        }
+    }
+    try {
+        entry_fn = handle.jac_entry;
+        entry_fn.restype = None;
+        entry_fn.argtypes = [];
+    } except AttributeError as e {
+        console.error(f"native library missing required export: {e}");
+        return None;
+    }
+    if not _set_native_argv_in_dll(handle, argv) {
+        console.warning("proceeding into __jac_shared_init with argv unset (argc=0)");
+    }
+    try {
+        lib.initialize();
+    } except Exception as e {
+        console.error(f"native codespace init failed ({lib_path}): {e}");
+        return None;
+    }
+    try {
+        entry_fn();
+    } except Exception as e {
+        raise NativeEntryStartedError(
+            f"native entry failed after __jac_shared_init ({lib_path}): {e}"
+        );
+    }
+    return 0;
+}
+
+
+def _jab_run_entry_lib(
+    img_root: Path, entry_rel: str, host_argv: list[str], interop: bool
+) -> (int | None) {
+    native_lib = _jab_native_lib(img_root, entry_rel);
+    if not native_lib {
+        if interop {
+            console.warning(
+                "interop jab carries no native entry library; "
+                "falling back to the JIT interpreter."
+            );
+        }
+        return None;
+    }
+    callbacks = _jab_interop_callbacks(native_lib) if interop else [];
+    try {
+        rc = _run_native_lib(
+            native_lib, host_argv, callbacks=callbacks, img_root=img_root
+        );
+    } except NativeEntryStartedError as e {
+        console.error(str(e));
+        return 1;
+    }
+    if rc is None and interop {
+        console.warning(
+            "in-process native entry library failed to load; "
+            "falling back to the JIT interpreter."
+        );
+    }
+    return rc;
 }
 
 
