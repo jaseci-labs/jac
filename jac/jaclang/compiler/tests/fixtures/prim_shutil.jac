@@ -29,6 +29,19 @@ def shutil_py -> dict[any, any] {
     g.close();
     sh_path = which("sh");
     ghost = which("definitely_not_a_command_xyz_123");
+    locked = os.path.join(base, "locked");
+    os.makedirs(locked);
+    h = open(os.path.join(locked, "pinned.txt"), "w");
+    h.write("pinned");
+    h.close();
+    os.system("chmod 555 " + locked);
+    locked_err = "";
+    try {
+        rmtree(locked);
+    } except Exception as e {
+        locked_err = f"{e}";
+    }
+    os.system("chmod 755 " + locked);
     out = {
         "copied_exists": 1 if os.path.exists(os.path.join(base, "sub", "a.txt")) else 0,
         "copy_ret_base": os.path.basename(copied),
@@ -40,6 +53,7 @@ def shutil_py -> dict[any, any] {
         "sh_found": 1 if sh_path is not None else 0,
         "sh_base": os.path.basename(sh_path) if sh_path is not None else "",
         "ghost_none": 1 if ghost is None else 0,
+        "locked_has_reason": 1 if "Permission denied" in locked_err else 0,
 
     };
     rmtree(base);
@@ -70,6 +84,19 @@ def shutil_na -> dict[str, any] {
     g.close();
     sh_path = which("sh");
     ghost = which("definitely_not_a_command_xyz_123");
+    locked = os.path.join(base, "locked");
+    os.makedirs(locked);
+    h = open(os.path.join(locked, "pinned.txt"), "w");
+    h.write("pinned");
+    h.close();
+    os.system("chmod 555 " + locked);
+    locked_err = "";
+    try {
+        rmtree(locked);
+    } except Exception as e {
+        locked_err = f"{e}";
+    }
+    os.system("chmod 755 " + locked);
     out: dict[str, any] = {
         "copied_exists": 1 if os.path.exists(os.path.join(base, "sub", "a.txt")) else 0,
         "copy_ret_base": os.path.basename(copied),
@@ -81,6 +108,7 @@ def shutil_na -> dict[str, any] {
         "sh_found": 1 if sh_path is not None else 0,
         "sh_base": os.path.basename(sh_path) if sh_path is not None else "",
         "ghost_none": 1 if ghost is None else 0,
+        "locked_has_reason": 1 if "Permission denied" in locked_err else 0,
 
     };
     rmtree(base);
