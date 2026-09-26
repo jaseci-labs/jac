@@ -3326,7 +3326,7 @@ impl Float.lit_value.getter -> float {
 }
 
 impl Int.lit_value.getter -> int {
-    return int(self.value, 0);
+    return int_literal_value(self.value);
 }
 
 impl String.lit_value.getter -> str | bytes {

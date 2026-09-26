@@ -956,6 +956,9 @@ obj KernelHost(HostServices) {
             }
         }
         if program.internal or package_owned(file_path, program, options) {
+            if self.in_kernel() {
+                self.census.miss("compile_module", file_path);
+            }
             with self.delegating("compile_module") as host {
                 answer = host.compile_module(program, file_path, use_str, options);
             }

@@ -65,6 +65,8 @@ def primitive_type_name_of(ty: (TypeBase | None)) -> (str | None);
 
 def expr_primitive_name(expr_node: UniNode) -> str;
 
+def expr_type_primitive_name(expr_node: Expr) -> str;
+
 obj ParamAssignmentTracker {
     has params: list[Parameter],
         curr_param_idx: int = 0,
