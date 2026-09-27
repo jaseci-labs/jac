@@ -147,3 +147,55 @@ test "only a kernel target's units share module cache files across trees" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "a unit's compile-time inputs stay fresh when its tree is staged elsewhere" {
+    import from jaclang.compiler.driver.jir {
+        CT_PKG_PREFIX,
+        absolutize_ct_deps_section,
+        ct_dep_text_fresh,
+        ct_deps_section
+    }
+    tmp = tempfile.mkdtemp(prefix="jac_kernel_ctdeps_");
+    prev = active_kernel_target();
+    rel = os.path.join("compiler", "folded.jac");
+    try {
+        roots: list[str] = [];
+        for name in ("a", "b") {
+            pkg = os.path.join(tmp, name, "jaclang");
+            os.makedirs(os.path.join(pkg, "compiler"));
+            with open(os.path.join(pkg, rel), "w") as f {
+                f.write("glob LIMIT: int = 4;\n");
+            }
+            roots.append(pkg);
+        }
+        outside = os.path.join(tmp, "outside.jac");
+        with open(outside, "w") as f {
+            f.write("glob X: int = 1;\n");
+        }
+        # Built under the first staging, the row names its dependency by its
+        # place in the package; a file outside the package keeps its path.
+        set_kernel_target(running_kernel_target(roots[0]));
+        text = ct_deps_section([os.path.join(roots[0], rel), outside]).decode("utf-8");
+        assert CT_PKG_PREFIX + "compiler/folded.jac\t" in text;
+        assert outside + "\t" in text;
+        assert ct_dep_text_fresh(text);
+        # Absolutizing (as the native cache does before writing) keeps the
+        # package-relative form rather than pinning the first staging's path.
+        again = absolutize_ct_deps_section(text.encode("utf-8"), "").decode("utf-8");
+        assert again == text;
+
+        # The next build stages the same sources elsewhere, on a runner where
+        # the first staging no longer exists: still fresh.
+        shutil.rmtree(os.path.dirname(roots[0]));
+        set_kernel_target(running_kernel_target(roots[1]));
+        assert ct_dep_text_fresh(text);
+        # An edit to the dependency in the new staging is still seen.
+        with open(os.path.join(roots[1], rel), "w") as f {
+            f.write("glob LIMIT: int = 5;\n");
+        }
+        assert not ct_dep_text_fresh(text);
+    } finally {
+        set_kernel_target(prev);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

@@ -58,6 +58,87 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+def _record_paths(raw: (bytes | None)) -> set[str] {
+    if not raw {
+        return set();
+    }
+    return {
+        line.split("\t")[0]
+        for line in raw.decode("utf-8").split("\n")
+        if line.strip()
+    };
+}
+
+test "skipping analysis changes no precompiled product, only analysis dependency records" {
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        SEC_CTDEPS,
+        SEC_DEPS,
+        read_sections
+    }
+    with TemporaryDirectory() as directory {
+        sections: dict[bool, dict[int, bytes]] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            (package / "model.jac").write_text("obj Box { has value: int; }\n");
+            source = package / "api.jac";
+            source.write_text(
+                "import from .model { Box }\n"
+                    + "def make() -> Box { return Box(42); }\n"
+            );
+            data = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+            assert data is not None;
+            start = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+            assert start >= 0;
+            sections[skipped] = read_sections(data, start + len(SECTIONS_MAGIC));
+        }
+        records = {SEC_CTDEPS, SEC_DEPS};
+        for key in set(sections[False]) | set(sections[True]) {
+            if key not in records {
+                assert sections[False].get(key) == sections[True].get(key) , (
+                    f"the analysis schedule changed precompiled section {key}"
+                );
+            }
+        }
+        for key in records {
+            analyzed = _record_paths(sections[False].get(key));
+            skipped_paths = _record_paths(sections[True].get(key));
+            assert skipped_paths <= analyzed , (
+                f"skipping analysis recorded dependencies {skipped_paths - analyzed} "
+                + f"in section {key} that analysis did not"
+            );
+        }
+    }
+}
+
+test "a unit that skips analysis is not gated by analysis diagnostics" {
+    with TemporaryDirectory() as directory {
+        results: dict[bool, (bytes | None)] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            source = package / "api.jac";
+            source.write_text("def answer() -> int { return 'forty-two'; }\n");
+            results[skipped] = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+        }
+        assert results[False] is None , "the analyzed unit ignored its type error";
+        assert results[True] is not None , "the unanalyzed unit was blocked";
+    }
+}
+
+test "only the running toolchain package precompiles without analysis" {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    import from jaclang.dist.precompile_bytecode { is_toolchain_package }
+    assert is_toolchain_package(jaclang_pkg_root());
+    with TemporaryDirectory() as directory {
+        assert not is_toolchain_package(str(_package(Path(directory))));
+    }
+}
+
 test "an installed precompiled interface resolves paths without rebuilding its source" {
     import from jaclang.jac0core { sealed }
     import from jaclang.compiler.driver.program { JacProgram }

@@ -427,10 +427,9 @@ impl NaIRGenPass._tuple_seq_coerce(
     """Materialize a tuple value into the sequence a variadic tuple lowers to.
 
     Fires when the target is exactly the sequence type the value's own element
-    flavor would build, or the boxed `jacval` sequence an `Any`-element variadic
-    tuple lowers to (each element is boxed on the way in). Any other flavor
-    pair is refused, so the conversion never reinterprets one element flavor
-    as another.
+    flavor would build, or when it is the boxed `jacval` sequence an erased
+    `tuple[Any, ...]` lowers to, which holds any element flavor by boxing each
+    one. It never reinterprets one unboxed element flavor as another.
     """;
     if not isinstance(target_type, ir.PointerType) {
         return None;
@@ -450,15 +449,15 @@ impl NaIRGenPass._tuple_seq_coerce(
     if flavor is None {
         return None;
     }
-    boxed: (ir.Type | None) = None;
-    if flavor[0] != spec {
-        if spec != "jacval" {
-            return None;
-        }
-        boxed = self.jacval_type;
+    if flavor[0] == spec {
+        seq = self._tuple_iter_seq(None, val);
+        return seq[0] if seq is not None else None;
     }
-    seq = self._tuple_iter_seq(None, val, element_type=boxed);
-    return seq[0] if seq is not None else None;
+    if spec != "jacval" {
+        return None;
+    }
+    boxed = self._tuple_iter_seq(None, val, element_type=self.jacval_type);
+    return boxed[0] if boxed is not None else None;
 }
 
 impl NaIRGenPass._tuple_struct_of_value(
