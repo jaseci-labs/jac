@@ -728,3 +728,22 @@ test "a snapshot is digested under its own compiler_inputs.txt, not this tree's"
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "with a stage-0 kernel the compile pass lowers only the native units programs link" {
+    import from jaclang.dist.precompile_bytecode { _compiler_kernel_units }
+    import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
+    import from jaclang.compiler.frontend.codeinfo { kernel_unit_paths }
+    left = _compiler_kernel_units();
+    # The compiler's analysis zone and its roots are the stage-0 kernel's.
+    assert os.path.realpath(kernel_root_path()) in left;
+    for p in native_scope_paths() {
+        if os.path.realpath(p)
+            not in {os.path.realpath(k) for k in kernel_unit_paths()} {
+            assert os.path.realpath(p) in left , p;
+        }
+    }
+    # The kernels user programs link (OSP, region, format) stay in the pass.
+    for p in kernel_unit_paths() {
+        assert os.path.realpath(p) not in left , p;
+    }
+}

@@ -1125,6 +1125,27 @@ def native_roots(pkg_name: str, units: list[str]) -> list[str] {
     return list(units);
 }
 
+def _stage0_builds_kernel -> bool {
+    import from jaclang.compiler.backends.native.stage0_pin {
+        Stage0PinError,
+        read_stage0_pin
+    }
+    try {
+        return not read_stage0_pin().is_self();
+    } except (Stage0PinError, OSError) {
+        return False;
+    }
+}
+
+def _compiler_kernel_units -> set[str] {
+    import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
+    import from jaclang.compiler.frontend.codeinfo { kernel_unit_paths }
+    linked = {os.path.realpath(p) for p in kernel_unit_paths()};
+    scope = {os.path.realpath(p) for p in native_scope_paths()};
+    scope.add(os.path.realpath(kernel_root_path()));
+    return scope - linked;
+}
+
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -1641,6 +1662,21 @@ def run_precompile(
                 jac_files.append(unit);
             }
         }
+        if pkg_name == "jaclang" and _stage0_builds_kernel() {
+            kernel_only = _compiler_kernel_units();
+            dropped = {
+                u
+                for u in native_units_set
+                if os.path.realpath(u) in kernel_only
+            };
+            native_units_set = native_units_set - dropped;
+            if dropped {
+                console.print(
+                    f"  Compiler kernel: {len(dropped)} unit(s) left to the stage-0 "
+                    "kernel build; lowering the units programs link"
+                );
+            }
+        }
     }
 
     if not jac_files and not exclude_seed {
@@ -1792,7 +1828,11 @@ def run_precompile(
     }
 
     if use_pool and native_units_set {
-        prebuild_native_units(native_roots(pkg_name, sorted(native_units_set)));
+        prebuild_native_units(
+            sorted(native_units_set)
+                if pkg_name == "jaclang" and _stage0_builds_kernel()
+                else native_roots(pkg_name, sorted(native_units_set))
+        );
     }
 
     pool = WorkPool(
