@@ -2839,9 +2839,8 @@ impl NativeListEmitter.emit_insert(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     insert_idx = args[0];
-    insert_arg = p._variadic_elem_coerce(
-        p._wrap_fn_as_closure_value(args[1]), ctx.receiver_node
-    );
+    _ins_wrapped = p._wrap_fn_as_closure_value(args[1]);
+    insert_arg = p._variadic_elem_coerce(_ins_wrapped, ctx.receiver_node);
     if p._reject_ptr_into_raw_slot(
         None, insert_arg, helpers["elem_type"], "list insert"
     ) {
