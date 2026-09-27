@@ -4,8 +4,13 @@ def:pub loads(s: str) -> any {
 }
 
 
-def:pub dumps(value: any) -> str {
-    return _dump_value(value);
+def:pub load(fp: File) -> any {
+    return loads(fp.read());
+}
+
+
+def:pub dumps(value: any, sort_keys: bool = False) -> str {
+    return _dump_value(value, sort_keys);
 }
 
 
@@ -267,7 +272,7 @@ def _dump_str(s: str) -> str {
 }
 
 
-def _dump_value(value: any) -> str {
+def _dump_value(value: any, sort_keys: bool) -> str {
     if isinstance(value, bool) {
         flag: int = value;
         if flag != 0 {
@@ -296,7 +301,7 @@ def _dump_value(value: any) -> str {
             if i > 0 {
                 out += ", ";
             }
-            out += _dump_value(arr[i]);
+            out += _dump_value(arr[i], sort_keys);
             i += 1;
         }
         out += "]";
@@ -306,12 +311,13 @@ def _dump_value(value: any) -> str {
         d: dict[str, any] = value;
         out: str = "{";
         first: int = 1;
-        for k in d {
+        keys: list[str] = sorted(d.keys()) if sort_keys else list(d.keys());
+        for k in keys {
             if first == 0 {
                 out += ", ";
             }
             first = 0;
-            out += _dump_str(k) + ": " + _dump_value(d[k]);
+            out += _dump_str(k) + ": " + _dump_value(d[k], sort_keys);
         }
         out += "}";
         return out;

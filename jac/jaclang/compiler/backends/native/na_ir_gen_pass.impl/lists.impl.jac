@@ -388,6 +388,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if first_val is None {
             return None;
         }
+        first_val = self._wrap_fn_as_closure_value(first_val);
         first_val = self._box_value_tuple(
             first_val,
             loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
@@ -548,6 +549,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                 val, self._pending_list_elem_struct.pointee
             );
         }
+        val = self._wrap_fn_as_closure_value(val);
         val = self._box_value_tuple(val, loc=_linit_loc);
         if _clos_elem is not None
             and _decl_elem is not None
@@ -661,7 +663,7 @@ impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
     _normed = self._str_norm(value);
-    value = _normed;
+    value = self._wrap_fn_as_closure_value(_normed);
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
         return;

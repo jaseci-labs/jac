@@ -159,7 +159,7 @@ glob FORBIDDEN: dict[str, str] = {
              "stamped Expr.ct_value"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             5,
+             4,
              "imported_module_name reads the stamped ModuleType and import "
              "declaration to preserve aliased module identity. "
              "resolved_callee consumes the resolved call declaration for "
@@ -169,13 +169,10 @@ glob FORBIDDEN: dict[str, str] = {
              "central classification instead of re-implementing name "
              "resolution. The former classify_call fallback is deleted "
              "(#7418): call_kind is stamped authoritatively by the required "
-             "inference schedule. Plus erased_identity_call_arg (#8223) "
-             "and the is_erased_field_marker pair (#8201), declaration-"
-             "surface reads on the same terms: whether `cast` or `ObjectField` "
-             "here is the erasable `typing.cast` / `jaclang.runtime.object_model.ObjectField` is "
-             "answered by the module's own import list and by the call's "
-             "own position in a `has` declaration, facts that are "
-             "themselves the declaration and live on no analysis product. "
+             "inference schedule. The erased-import predicates "
+             "(erased_identity_call_arg, contextmanager_ability) are pure "
+             "declaration-surface reads of the module's own import list, so "
+             "they live in the leaf erased_imports.jac rather than here. "
              "The is_builtin_region_name read (#7491) is gone from here and "
              "from stmt.impl.jac, whose entry left this table entirely: the "
              "predicate is pure unitree syntax that was marooned in "
@@ -183,6 +180,13 @@ glob FORBIDDEN: dict[str, str] = {
              "sealing wave 3 hoisted it to the leaf expr_keys.jac. The "
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"
+         ),
+         ("native/na_ir_gen_pass.impl/copy.impl.jac", "symbol_utils"): (
+             1,
+             "imported_module_name reads the stamped ModuleType and the "
+             "import declaration so `copy.copy` is recognised through an "
+             "aliased `import copy as cp`, the same declaration-surface read "
+             "calls.impl.jac is sanctioned for"
          ),
          ("native/na_ir_gen_pass.impl/expr.impl.jac", "symbol_utils"): (
              1,

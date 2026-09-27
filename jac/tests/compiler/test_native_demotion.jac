@@ -21,10 +21,12 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 import from jaclang.compiler.driver.na_coverage {
-    _drop_demoted_native_bindings,
     na_coverage_begin,
     na_coverage_end,
-    na_coverage_record,
+    na_coverage_record
+}
+import from jaclang.compiler.driver.session_compile {
+    drop_demoted_native_bindings,
     na_demotion_note
 }
 import from jaclang.compiler.driver.boundary_classify {
@@ -38,7 +40,8 @@ import from jaclang.compiler.driver.jir {
     write_module_cache
 }
 import from jaclang.compiler.driver.nativecache { read_native_verdict }
-import from jaclang.compiler.placement.placement { PlacementSummary, summary_to_bytes }
+import from jaclang.compiler.placement.placement { PlacementSummary }
+import from jaclang.compiler.placement.placement_export { summary_to_bytes }
 import from jaclang.compiler.placement.placement_pins {
     effective_module_pin,
     effective_pin_for,
@@ -143,6 +146,9 @@ test "a demoted module loses the pin everywhere it is consulted" {
         assert effective_pin_for(models_path, '', prog) == '' , "a demoted module is server ground; the pin must not win";
         assert effective_module_pin(models_path, prog) == '';
         assert plain_native_import_target(imp, prog) is None;
+        # The verdict is in this program's memory only until the module's
+        # summary is persisted, so a reader without the program still sees
+        # the configured pin.
         assert read_native_verdict(models_path) is None , "nothing persisted yet";
         assert effective_module_pin(models_path) == 'native';
         assert import_declares_native_target(imp);
@@ -160,6 +166,7 @@ test "a demotion verdict persists across programs through the JIR and dies with 
         with open(path, "w", encoding="utf-8") as f {
             f.write("with entry { x = 1; }\n");
         }
+        # Source mtime in the past so a cache written now is strictly newer.
         past = time.time() - 2;
         os.utime(path, (past, past));
         prog = JacProgram();
@@ -168,12 +175,14 @@ test "a demotion verdict persists across programs through the JIR and dies with 
         prog.native_units().record_verdict(path, "E5092", "error[E5092]: nope");
         assert module_native_demoted(path, prog) , "the recording program answers from memory";
         assert native_demotion_code(path, prog) == "E5092";
+        # A fresh program has no note and nothing is on disk yet.
         fresh = JacProgram();
         assert read_native_verdict(path) is None , (
             "a verdict must not be readable before the placement summary is persisted"
         );
         assert not module_native_demoted(path, fresh);
         assert not module_native_demoted(path);
+        # Persist the summary the way the driver does, then every reader sees it.
         assert persist_verdict(path, "E5092", "error[E5092]: nope") , "module cache write failed";
         cache_path = get_module_cache_path(path);
         assert is_module_cache_valid(path, cache_path) , "the entry must be valid for the current content";
@@ -185,6 +194,8 @@ test "a demotion verdict persists across programs through the JIR and dies with 
         assert native_demotion_code(path) == "E5092";
         assert module_native_demoted(path, fresh) , "a fresh program reads the JIR too";
         assert fresh.native_units().demoted_code(path) == "E5092";
+        # An edit changes MODKEY: the entry is no longer valid and the verdict
+        # goes with it, so the module is retried natively.
         with open(path, "w", encoding="utf-8") as f {
             f.write("with entry { x = 12; }\n");
         }
@@ -221,7 +232,7 @@ test "importer invalidation clears ES output and NATIVE bindings" {
     assert app.gen.js == "" , "stale ES output must be cleared";
     assert app.gen.es_ast is None;
     for m in cleared {
-        _drop_demoted_native_bindings(m, models_path);
+        drop_demoted_native_bindings(m, models_path);
     }
     assert "double" not in manifest.bindings , "the NATIVE binding naming the demoted module must be dropped";
     assert "unrelated" in manifest.bindings , "bindings in other contexts must survive";
@@ -232,6 +243,8 @@ test "the demotion fallback re-lowers importers away from the na seam" {
     prog = JacProgram();
     app_path = os.path.realpath(os.path.join(E2E_FIXTURE_DIR, "app.jac"));
     models_path = os.path.realpath(os.path.join(E2E_FIXTURE_DIR, "models.jac"));
+    # A verdict persisted by an earlier run would cancel the pin before the
+    # test starts; begin from a clean module cache.
     forget_verdict(None, models_path);
     try {
         app = prog.compile(app_path);
@@ -268,9 +281,7 @@ test "a docstring-only module is never decided native" {
         fh.write('"""pkg."""\n');
     }
     prog = JacProgram();
-    mod = prog.compile(
-        path, options=CompileOptions(no_cgen=True, force_target_program=True)
-    );
+    mod = prog.compile(path, options=CompileOptions(no_cgen=True));
     (ok, why) = native_default_verdict(mod);
     assert not ok , "an empty module passed the native verdict";
     assert "empty module" in why , why;

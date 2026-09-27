@@ -207,6 +207,19 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     return b.insert_value(boxed, payload, 1, name="jacval");
 }
 
+impl NaIRGenPass._ellipsis_jacval -> (ir.Value | None) {
+    if not self?.jacval_type {
+        return None;
+    }
+    return ir.Constant(
+        self.jacval_type,
+        [
+            ir.Constant(ir.IntType(8), JACVAL_ELLIPSIS_TAG),
+            ir.Constant(ir.IntType(64), 0)
+        ]
+    );
+}
+
 impl NaIRGenPass._jacval_pointer_tag(pointer_type: ir.Type) -> int {
     for (families, tag) in (
         (self.list_types, 3),
@@ -246,11 +259,403 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         return b.fptrunc(_d, target_type, name="jv.unbox.f32");
     }
     if isinstance(target_type, ir.PointerType) {
+        _viewed = self._unbox_any_container(jv, target_type);
+        if _viewed is not None {
+            return _viewed;
+        }
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
 
     self.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
     return ir.Constant(target_type, None);
+}
+
+impl NaIRGenPass._any_view_target(target_type: ir.Type) -> (tuple[str, str] | None) {
+    """The container-of-`any` family a pointer unbox target names, if any.
+
+    `("list", "")` for `list[any]`, `("dict", K)` for a `dict[K, any]` whose
+    keys hash as spec `K`. Those are the targets whose element slots hold
+    boxed values, so a typed container arriving through `any` cannot be
+    reinterpreted as one: its slots hold raw payloads.
+    """;
+    if not self?.jacval_type or not isinstance(target_type, ir.PointerType) {
+        return None;
+    }
+    _lt = self.list_types.get("jacval");
+    if _lt is not None and target_type == _lt.as_pointer() {
+        return ("list", "");
+    }
+    for (_dk, _dt) in self.dict_types.items() {
+        if _dk.endswith(":jacval") and target_type == _dt.as_pointer() {
+            return ("dict", _dk[:-len(":jacval")]);
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._unbox_any_container(
+    jv: ir.Value, target_type: ir.Type
+) -> (ir.Value | None) {
+    """Unbox an `any` into a container of `any`, converting a typed one.
+
+    The box records only the heap kind, so a `dict[str, int]` passed as
+    `any` and narrowed to `dict[str, any]` would otherwise be read with its
+    `i64` slots taken for boxed values. `_any_view_fn` reads the allocation
+    header's type tag instead: a container already of the target family is
+    returned as is, a typed one is copied into a fresh container of the
+    target family with every element boxed, and one it cannot convert is a
+    `TypeError`. The copy is parked in a hidden local of the current
+    function, released when that local is overwritten or at scope exit, so
+    the result stays a borrow like every other unbox. A headerless build has
+    no tag to read and refuses the site.
+    """;
+    if self._any_view_target(target_type) is None {
+        return None;
+    }
+    if self._nogc_headerless() {
+        self.emit(
+            E5092,
+            kind="expression",
+            name=f"`any` unbox to {target_type}",
+            help_text="A container reaching a container of `any` through `any` is converted by reading its allocation header's type tag, and a headerless build has none. Annotate the value with its concrete container type instead."
+        );
+        return None;
+    }
+    _fn = self._any_view_fn(target_type);
+    if _fn is None {
+        return None;
+    }
+    b = self.builder;
+    _res = b.call(_fn, [jv], name="jv.view");
+    _payload = b.extract_value(jv, 1, name="jv.view.payload");
+    if not self._binding_function_active() {
+        return _res;
+    }
+    _null = ir.Constant(target_type, None);
+    _failed = b.and_(
+        b.icmp_unsigned("==", _res, _null, name="jv.view.null"),
+        b.icmp_unsigned(
+            "!=", _payload, ir.Constant(ir.IntType(64), 0), name="jv.view.some"
+        ),
+        name="jv.view.failed"
+    );
+    self._emit_runtime_raise(
+        _failed,
+        "TypeError",
+        "container elements cannot be viewed as any: unsupported element or key type"
+    );
+    b = self.builder;
+    _raw = b.inttoptr(_payload, target_type, name="jv.view.raw");
+    _fresh = b.icmp_unsigned("!=", _res, _raw, name="jv.view.fresh");
+    _name = f"any.view.{self._loop_coll_seq}";
+    self._loop_coll_seq += 1;
+    _slot = self._entry_alloca(target_type, _name);
+    self.local_vars[_name] = _slot;
+    self._emit_rc_release_typed(
+        self.builder.load(_slot, name=f"{_name}.old"), op="any_view"
+    );
+    self.builder.store(
+        self.builder.select(_fresh, _res, _null, name=f"{_name}.keep"), _slot
+    );
+    return _res;
+}
+
+impl NaIRGenPass._binding_function_active -> bool {
+    """Do the current bindings belong to the function being emitted into?
+
+    False while a helper body is built on a swapped builder: a hidden local
+    registered then would be an alloca of the helper that the enclosing
+    function's scope exit loads.
+    """;
+    if self._builder is None {
+        return False;
+    }
+    _fn = self.builder.function;
+    for _slot in self.local_vars.values() {
+        _blk = _slot?.parent;
+        if isinstance(_blk, ir.Block) {
+            return _blk.parent is _fn;
+        }
+    }
+    return False;
+}
+
+impl NaIRGenPass._heap_ref_jacval_tag_fn -> ir.Function {
+    """`__jac_heap_ref_jvtag(p)`: the `any` tag a bare heap reference boxes to.
+
+    A container whose slots are plain pointers (`list[str]`,
+    `list[list[int]]`, `dict[str, Item]`) has erased which heap kind each
+    slot holds, so boxing one of its elements reads the kind back out of the
+    allocation header's type tag, the stamp `isinstance` reads. Null is
+    None; a string without an allocated header is `str`.
+    """;
+    _name = "__jac_heap_ref_jvtag";
+    _cached = self.extern_funcs.get(_name);
+    if _cached is not None {
+        return _cached;
+    }
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = i8.as_pointer();
+    fn = ir.Function(self.llvm_module, ir.FunctionType(i8, [i8p]), name=_name);
+    fn.linkage = "private";
+    fn.args[0].name = "p";
+    self.extern_funcs[_name] = fn;
+    _p = fn.args[0];
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    _none_bb = fn.append_basic_block("none");
+    _hdr_bb = fn.append_basic_block("hdr");
+    _tag_bb = fn.append_basic_block("tag");
+    _str_bb = fn.append_basic_block("str");
+    _obj_bb = fn.append_basic_block("obj");
+    b.cbranch(b.icmp_unsigned("==", _p, ir.Constant(i8p, None)), _none_bb, _hdr_bb);
+    ir.IRBuilder(_none_bb).ret(ir.Constant(i8, 8));
+    ir.IRBuilder(_str_bb).ret(ir.Constant(i8, 2));
+    ir.IRBuilder(_obj_bb).ret(ir.Constant(i8, 6));
+    bh = ir.IRBuilder(_hdr_bb);
+    bh.cbranch(self._emit_magic_check(bh, _p, name_prefix="hrt.mc"), _tag_bb, _str_bb);
+    bt = ir.IRBuilder(_tag_bb);
+    _tag = bt.load(
+        bt.bitcast(
+            bt.gep(_p, [ir.Constant(i64, HDR_TAG_OFF)], name="hrt.tag.slot"),
+            i8p.as_pointer()
+        ),
+        name="hrt.tag"
+    );
+    _cmp_bb = fn.append_basic_block("cmp");
+    bt.cbranch(bt.icmp_unsigned("==", _tag, ir.Constant(i8p, None)), _str_bb, _cmp_bb);
+    bc = ir.IRBuilder(_cmp_bb);
+    strncmp = self._get_or_declare_extern("strncmp", i32, [i8p, i8p, i64]);
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    for (_text, _exact, _jt) in (
+        ("list_", False, 3),
+        ("dict_", False, 4),
+        ("set_", False, 5),
+        ("str", True, 2),
+        ("bytes", True, 2)
+    ) {
+        _lit = bc.gep(
+            self._get_snprintf_fmt(_text),
+            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+            name="hrt.lit"
+        );
+        _res = bc.call(strcmp, [_tag, _lit], name="hrt.cmp")
+            if _exact
+            else bc.call(
+                strncmp, [_tag, _lit, ir.Constant(i64, len(_text))], name="hrt.cmp"
+            );
+        _hit_bb = fn.append_basic_block(f"hit.{_jt}");
+        _next_bb = fn.append_basic_block("next");
+        bc.cbranch(bc.icmp_signed("==", _res, ir.Constant(i32, 0)), _hit_bb, _next_bb);
+        ir.IRBuilder(_hit_bb).ret(ir.Constant(i8, _jt));
+        bc = ir.IRBuilder(_next_bb);
+    }
+    bc.branch(_obj_bb);
+    return fn;
+}
+
+impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
+    """`__jac_any_view_<family>(jv)`: a boxed container as the target family.
+
+    Returns the payload unchanged when it is not a live container the header
+    can speak for (None, a scalar, no tag) or already is the target family;
+    a fresh, owned copy with each element boxed when its tag names a typed
+    family of the same kind (and, for a dict, the same key spec), or when it
+    is an empty container of the kind whatever its family; null when it
+    names anything else. Element slots of a pointer family box through
+    `__jac_heap_ref_jvtag`, since the slot type no longer says which heap
+    kind it holds.
+    """;
+    _tgt = self._any_view_target(target_type);
+    if _tgt is None {
+        return None;
+    }
+    (kind, key_spec) = _tgt;
+    _tgt_tag = "list_jacval" if kind == "list" else f"dict_{key_spec}_jacval";
+    _name = f"__jac_any_view_{_tgt_tag}";
+    _cached = self.extern_funcs.get(_name);
+    if _cached is not None {
+        return _cached;
+    }
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = i8.as_pointer();
+    _scalars: list[tuple[str, ir.Type]] = [
+        ("i64", i64),
+        ("f64", ir.DoubleType()),
+        ("ptr", i8p)
+    ];
+    _sources: list[tuple[str, bool, str, dict[str, any], ir.Type]] = [];
+    if kind == "list" {
+        self._emit_list_helpers("jacval", self.jacval_type);
+        _dst_h = self.list_helpers["jacval"];
+        for (_spec, _et) in _scalars {
+            self._emit_list_helpers(_spec, _et);
+            _sources.append(
+                (
+                    f"list_{_spec}",
+                    True,
+                    _spec,
+                    self.list_helpers[_spec],
+                    self.list_types[_spec].as_pointer()
+                )
+            );
+        }
+    } else {
+        _dst_h = self.dict_helpers[f"{key_spec}:jacval"];
+        _key_type = _dst_h["key_type"];
+        _key_size = self._hash_key_spec(_key_type)[1];
+        for (_spec, _vt) in _scalars + [("i1", ir.IntType(1))] {
+            self._emit_dict_helpers(key_spec, _spec, _key_type, _vt, _key_size);
+            _sources.append(
+                (
+                    f"dict_{key_spec}_{_spec}",
+                    _spec != "ptr",
+                    _spec,
+                    self.dict_helpers[f"{key_spec}:{_spec}"],
+                    self.dict_types[f"{key_spec}:{_spec}"].as_pointer()
+                )
+            );
+        }
+    }
+    _tag_fn = self._heap_ref_jacval_tag_fn();
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    strncmp = self._get_or_declare_extern("strncmp", i32, [i8p, i8p, i64]);
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(target_type, [self.jacval_type]), name=_name
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "jv";
+    self.extern_funcs[_name] = fn;
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    _jtag = b.extract_value(fn.args[0], 0, name="view.jtag");
+    _payload = b.extract_value(fn.args[0], 1, name="view.payload");
+    _raw = b.inttoptr(_payload, i8p, name="view.raw");
+    _as_is = b.inttoptr(_payload, target_type, name="view.as_is");
+    _heap = b.or_(
+        b.icmp_unsigned("==", _jtag, ir.Constant(i8, 3)),
+        b.or_(
+            b.icmp_unsigned("==", _jtag, ir.Constant(i8, 4)),
+            b.icmp_unsigned("==", _jtag, ir.Constant(i8, 5))
+        ),
+        name="view.heap"
+    );
+    _as_is_bb = fn.append_basic_block("as_is");
+    _hdr_bb = fn.append_basic_block("hdr");
+    b.cbranch(
+        b.and_(
+            _heap,
+            b.icmp_unsigned("!=", _payload, ir.Constant(i64, 0)),
+            name="view.inspect"
+        ),
+        _hdr_bb,
+        _as_is_bb
+    );
+    ir.IRBuilder(_as_is_bb).ret(_as_is);
+    bh = ir.IRBuilder(_hdr_bb);
+    _tag_bb = fn.append_basic_block("tag");
+    bh.cbranch(
+        self._emit_magic_check(bh, _raw, name_prefix="view.mc"), _tag_bb, _as_is_bb
+    );
+    bt = ir.IRBuilder(_tag_bb);
+    _tag = bt.load(
+        bt.bitcast(
+            bt.gep(_raw, [ir.Constant(i64, HDR_TAG_OFF)], name="view.tag.slot"),
+            i8p.as_pointer()
+        ),
+        name="view.tag"
+    );
+    _cmp_bb = fn.append_basic_block("cmp");
+    bt.cbranch(
+        bt.icmp_unsigned("==", _tag, ir.Constant(i8p, None)), _as_is_bb, _cmp_bb
+    );
+    bc = ir.IRBuilder(_cmp_bb);
+
+    def _tag_is(bl: ir.IRBuilder, text: str, exact: bool) -> ir.Value {
+        _lit = bl.gep(
+            self._get_snprintf_fmt(text),
+            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+            name="view.lit"
+        );
+        _r = bl.call(strcmp, [_tag, _lit], name="view.cmp")
+            if exact
+            else bl.call(
+                strncmp, [_tag, _lit, ir.Constant(i64, len(text))], name="view.cmp"
+            );
+        return bl.icmp_signed("==", _r, ir.Constant(i32, 0));
+    }
+    _next_bb = fn.append_basic_block("next");
+    bc.cbranch(_tag_is(bc, _tgt_tag, True), _as_is_bb, _next_bb);
+    bc = ir.IRBuilder(_next_bb);
+    _empty_bb = fn.append_basic_block("empty");
+    _next_bb = fn.append_basic_block("next");
+    bc.cbranch(
+        bc.and_(
+            _tag_is(bc, f"{kind}_", False),
+            bc.icmp_signed(
+                "==",
+                bc.load(bc.bitcast(_raw, i64.as_pointer()), name="view.len0"),
+                ir.Constant(i64, 0)
+            ),
+            name="view.empty"
+        ),
+        _empty_bb,
+        _next_bb
+    );
+    be = ir.IRBuilder(_empty_bb);
+    be.ret(be.call(_dst_h["new"], [], name="view.fresh"));
+    bc = ir.IRBuilder(_next_bb);
+    _saved = self._builder;
+    for (_text, _exact, _spec, _src_h, _src_ty) in _sources {
+        _conv_bb = fn.append_basic_block(f"from.{_spec}");
+        _next_bb = fn.append_basic_block("next");
+        bc.cbranch(_tag_is(bc, _text, _exact), _conv_bb, _next_bb);
+        bc = ir.IRBuilder(_next_bb);
+        bv = ir.IRBuilder(_conv_bb);
+        _src = bv.bitcast(_raw, _src_ty, name="view.src");
+        _out = bv.call(_dst_h["new"], [], name="view.out");
+        _n = bv.call(_src_h["len"], [_src], name="view.len");
+        _loop_bb = fn.append_basic_block(f"loop.{_spec}");
+        _body_bb = fn.append_basic_block(f"body.{_spec}");
+        _done_bb = fn.append_basic_block(f"done.{_spec}");
+        _pre_bb = bv.block;
+        bv.branch(_loop_bb);
+        bl = ir.IRBuilder(_loop_bb);
+        _i = bl.phi(i64, name="view.i");
+        _i.add_incoming(ir.Constant(i64, 0), _pre_bb);
+        bl.cbranch(bl.icmp_signed("<", _i, _n, name="view.more"), _body_bb, _done_bb);
+        bb = ir.IRBuilder(_body_bb);
+        _elem = bb.call(
+            _src_h["get_val" if kind == "dict" else "get"], [_src, _i], name="view.elem"
+        );
+        self._builder = bb;
+        _boxed = self._box_to_jacval(_elem);
+        bb = self._builder;
+        if _spec == "ptr" {
+            _boxed = bb.insert_value(
+                _boxed,
+                bb.call(_tag_fn, [_elem], name="view.etag"),
+                0,
+                name="view.boxed"
+            );
+        }
+        if kind == "dict" {
+            bb.call(
+                _dst_h["set"],
+                [_out, bb.call(_src_h["get_key"], [_src, _i], name="view.key"), _boxed]
+            );
+        } else {
+            bb.call(_dst_h["append"], [_out, _boxed]);
+        }
+        _i.add_incoming(bb.add(_i, ir.Constant(i64, 1), name="view.i1"), bb.block);
+        bb.branch(_loop_bb);
+        ir.IRBuilder(_done_bb).ret(_out);
+    }
+    self._builder = _saved;
+    bc.ret(ir.Constant(target_type, None));
+    return fn;
 }
 
 impl NaIRGenPass._dict_key_reconcile(

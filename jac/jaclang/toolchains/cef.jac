@@ -2,7 +2,8 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.toolchains.store { Artifact, install, InstallLock }
+import from jaclang.jac0core.cache_paths { FileLock }
+import from jaclang.toolchains.store { Artifact, install }
 import from jaclang.toolchains.host { host_platform }
 
 def cef_artifact(sums: Path) -> Artifact {
@@ -40,7 +41,7 @@ def ensure_cef(directory: Path, headers_only: bool = False) -> Path {
     artifact = cef_artifact(directory / "cef_sums.lock");
     top = artifact.url.rsplit("/", 1)[1].removesuffix(".tar.bz2");
     installed = install(artifact, top + "/Release/libcef.so") / top;
-    with InstallLock(directory / ".cef.lock") {
+    with FileLock(directory / ".cef.lock") {
         stamp = directory / ".cef-digest";
         healthy = (directory / "cef_dist" / "libcef.so").is_file()
             and (

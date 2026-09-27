@@ -8,7 +8,7 @@ instead of impressions.
 Three measurements, three shapes:
 
 `warm-compile phase timings` is a REPORT, not a gate. It drives a fixed corpus
-of real repo modules through the four schedules `_compile_once` runs for a
+of real repo modules through the four schedules `JacCompiler.run_module` runs for a
 Python-lane module, one at a time so each is attributable, and prints the
 table. It asserts only what a broken measurement looks like -- a compile error,
 or a phase that took no time at all -- because a wall-clock gate on a developer
@@ -521,7 +521,9 @@ glob PRECOMPILE_GATE: str = os.path.join(
      ),
      # Context, absorbed-import and boundary/native fact work is now counted
      # as explicit passes: 140 runs that previously lived inside the driver.
-     GATE_COLD_MAX_RUNS: int = 760,
+     # Each of the seven client units also runs the head schedule on the client
+     # runtime it imports, 7 runs (recorded 767 with the wiring pass).
+     GATE_COLD_MAX_RUNS: int = 780,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
 def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], float] {
@@ -530,7 +532,7 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.dist.precompile_bytecode { precompile_context }
     import from jaclang.compiler.frontend.codeinfo {

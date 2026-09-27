@@ -19,6 +19,7 @@ Two properties are pinned:
   silently iterating nothing.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_address, native_force_opts }
@@ -75,7 +76,7 @@ def sv_funcs -> dict[str, any] {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors: {errors}";
     ns: dict[str, any] = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(generated_python(ir.gen), path, "exec"), ns);
     return ns;
 }
 
