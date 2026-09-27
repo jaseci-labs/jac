@@ -2,7 +2,7 @@ import dis;
 import os;
 import types;
 import from pathlib { Path }
-import from jaclang.project.modresolver { resolve_local_module }
+import from jaclang.compiler.frontend.host { active_host }
 
 def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
     sources: set[str] = `set();
@@ -45,7 +45,7 @@ def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
                 target = search_root.joinpath(*name.split('.'))
                     if name
                     else search_root;
-                resolved = resolve_local_module(
+                resolved = active_host().resolve_local_module(
                     str(search_root), name.split('.') if name else []
                 );
                 if resolved and resolved[1] in ('jac', 'py') {
@@ -55,7 +55,9 @@ def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
                 }
                 if target.is_dir() and isinstance(names, tuple) {
                     for member in names {
-                        child = resolve_local_module(str(target), [member]);
+                        child = active_host().resolve_local_module(
+                            str(target), [member]
+                        );
                         if child and child[1] in ('jac', 'py') {
                             sources.add(os.path.realpath(child[0]));
                         }
@@ -78,7 +80,7 @@ def package_sources(source: str, project_root: str) -> set[str] {
     result: set[str] = set();
     parent = Path(source).parent;
     while parent.is_relative_to(project_root) {
-        initializer = resolve_local_module(str(parent), []);
+        initializer = active_host().resolve_local_module(str(parent), []);
         if initializer and initializer[1] in ('jac', 'py') {
             result.add(os.path.realpath(initializer[0]));
         }

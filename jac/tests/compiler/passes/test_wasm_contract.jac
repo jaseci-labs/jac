@@ -37,8 +37,8 @@ def host_errors(
                 import from jaclang.compiler.frontend.unitree { FuncCall, Name }
                 import from jaclang.compiler.passes.wasm_contract { check_host_call }
                 import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+                import from jaclang.compiler.types.stubcat.writer { build_module_iface }
                 import from jaclang.compiler.types.stubcat.modiface {
-                    build_module_iface,
                     open_module_iface,
                     iface_module
                 }
@@ -48,7 +48,7 @@ def host_errors(
                 package = jaclang_pkg_dir();
                 payload = build_module_iface(module, evaluator, package);
                 catalog = open_module_iface(
-                    payload, package, resolver=program.iface_registry().resolve_module
+                    payload, package, resolver=program.iface_registry()
                 );
                 assert catalog is not None;
                 cached = iface_module(catalog);

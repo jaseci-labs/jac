@@ -102,7 +102,7 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
         str(source_path), program
     );
     prev_error_count = len(diagnostic_program.errors_had);
-    artifact = program.get_client_artifact(str(source_path));
+    artifact = program._get_compiler().get_client_artifact(str(source_path), program);
     if artifact is None {
         formatted = '\n'.join(
             str(err) for err in diagnostic_program.errors_had[prev_error_count:]

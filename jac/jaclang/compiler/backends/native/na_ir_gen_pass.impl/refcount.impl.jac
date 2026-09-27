@@ -2492,6 +2492,14 @@ impl NaIRGenPass._emit_scope_cleanup(
         if var_name in self.closure_cell_handles {
             continue;
         }
+        if var_name in self.owned_tuple_vars {
+            if var_name == skip_var {
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            } else {
+                self._release_tuple_slot(alloca, op="scope_exit");
+            }
+            continue;
+        }
 
         if self.jacval_type is not None
             and isinstance(alloca.type, ir.PointerType)
@@ -2586,6 +2594,10 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
         }
         alloca = self.local_vars.get(var_name);
         if alloca is None {
+            continue;
+        }
+        if var_name in self.owned_tuple_vars {
+            self._release_tuple_slot(alloca, op="iter_end");
             continue;
         }
         if self.jacval_type is not None

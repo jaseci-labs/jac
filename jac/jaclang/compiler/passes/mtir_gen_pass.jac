@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -39,9 +39,10 @@ import from jaclang.runtime.semantic {
     FunctionInfo,
     MethodInfo,
     ParamInfo,
+    TypeForm,
     mk_dict,
+    mk_form,
     mk_list,
-    mk_tuple,
     type_to_str
 }
 
@@ -61,10 +62,8 @@ glob PRIMITIVE_TYPES: list[str] = [
      ]
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
-walker MTIRGenPass {
-    has ctx: CompileContext,
-        module: Module,
-        _class_info_cache: dict[int, ClassInfo] = {};
+walker MTIRGenPass(CompilerPass) {
+    has _class_info_cache: dict[int, ClassInfo] = {};
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
@@ -72,7 +71,7 @@ walker MTIRGenPass {
     def _doc_text(doc: String | None) -> str | None;
     def _parse_type_expr(
         type_expr: Expr | None, scope: UniScopeNode
-    ) -> ClassInfo | EnumInfo | str | tuple[object, ...] | None;
+    ) -> ClassInfo | EnumInfo | TypeForm | str | None;
 
     def _extract_type_symbol(
         type_expr: Expr | None, scope: UniScopeNode

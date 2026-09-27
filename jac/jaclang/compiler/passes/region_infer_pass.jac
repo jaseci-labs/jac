@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -16,10 +16,8 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 
-walker RegionInferPass {
-    has ctx: CompileContext,
-        module: Module,
-        _use_index: (dict[int, list[NameAtom]] | None) = None;
+walker RegionInferPass(CompilerPass) {
+    has _use_index: (dict[int, list[NameAtom]] | None) = None;
 
     can run_walk with Module entry;
     def _run_impl(ir_in: Module) -> Module;

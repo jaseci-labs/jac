@@ -141,6 +141,7 @@ impl SymTabBuildPass._import_absorbed_symbol(
     binding = scope.def_insert(declaration, single_decl='import absorb', imported=True);
     if binding is not None {
         binding.provider = symbol.provider;
+        binding.imported_from = symbol;
     }
 }
 

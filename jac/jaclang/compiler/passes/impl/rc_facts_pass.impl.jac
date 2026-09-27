@@ -173,7 +173,7 @@ impl RcFactsPass._borrow_arg_callee_ok(bx: UnaryExpr) -> bool {
 }
 
 impl RcFactsPass._asn_makes_region_handle(nd: Assignment) -> bool {
-    import from jaclang.compiler.expr_keys { expr_is_builtin_region }
+    import from jaclang.compiler.types.type_utils { expr_is_builtin_region }
     import from jaclang.compiler.frontend.constant { OwnershipKind }
     if isinstance(nd.value, FuncCall) and expr_is_builtin_region(nd.value) {
         return True;

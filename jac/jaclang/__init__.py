@@ -6,12 +6,33 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 
+def _install_compiler_host(package_dir: Path) -> None:
+    # The compiler reaches the toolchain package and the project (jac.toml,
+    # workspaces, module resolution) only through what is registered here. A
+    # runtime-only export ships neither the compiler nor the project layer.
+    try:
+        host = import_module("jaclang.compiler.frontend.host")
+    except ModuleNotFoundError as exc:
+        if not (exc.name or "").startswith("jaclang.compiler"):
+            raise
+        return
+    host.set_package_root(str(package_dir.absolute()))
+    try:
+        project_host = import_module("jaclang.project.compiler_host")
+    except ModuleNotFoundError as exc:
+        if exc.name != "jaclang.project.compiler_host":
+            raise
+        return
+    host.install_host(project_host.ProjectHost())
+
+
 def _install_importer() -> None:
     package_dir = Path(__file__).parent
     if (package_dir / "runtime.json").is_file():
         from jaclang.runtime.source_app import load_runtime
 
         load_runtime(package_dir)
+        _install_compiler_host(package_dir)
         return
 
     # Source loading is an optional build service. Exported packages install
@@ -19,6 +40,7 @@ def _install_importer() -> None:
     importer = import_module("jaclang.meta_importer").JacMetaImporter
     if not any(isinstance(f, importer) for f in sys.meta_path):
         sys.meta_path.insert(0, importer())
+    _install_compiler_host(package_dir)
 
     # The binary already adds the project environment through sitecustomize;
     # ordinary Python library imports need the same idempotent setup.
