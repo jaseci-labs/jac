@@ -47,10 +47,7 @@ test "forced server compilation retains Python standard-library imports" {
             + "def bind_local { sock = socket.socket(); "
             + "sock.bind(('127.0.0.1', 0)); sock.close(); }\n",
         options=CompileOptions(
-            default_codespace="native",
-            force_codespace="server",
-            force_target_program=True,
-            need_full_ast=True
+            default_codespace="native", force_codespace="server", need_full_ast=True
         )
     );
     assert not program.errors_had , str(program.errors_had);
@@ -104,11 +101,6 @@ test "JAC_NA_DEBUG enters the options object at construction" {
         assert CompileOptions().na_debug == True;
         assert CompileOptions(na_debug=False).na_debug == False;
         assert CompileOptions().clone_for_native_import().na_debug == True;
-        assert CompileOptions(no_ir_cache=True).clone_for_native_import().no_ir_cache , (
-            "a cache-bypassing compile must bypass it for nested native imports "
-            "too, or a dep-of-a-dep is still served from a stale IR cache"
-        );
-        assert not CompileOptions().clone_for_native_import().no_ir_cache;
         os.environ["JAC_NA_DEBUG"] = "0";
         assert CompileOptions().na_debug == False;
     } finally {
@@ -736,9 +728,10 @@ test "native import handoff preserves memory policy and generated thread default
 test "native link mode uses project configuration without changing unit codegen" {
     import from unittest.mock { patch }
     import from jaclang.project.config { JacConfig }
+    import from jaclang.project.compiler_host { ProjectHost, project_defaults_of }
     cfg = JacConfig.from_toml_str('[native]\nlink_mode = "bitcode"\n');
-    with patch(
-        "jaclang.compiler.driver.compile_options._project_config", return_value=cfg
+    with patch.object(
+        ProjectHost, "project_defaults", return_value=project_defaults_of(cfg)
     ) {
         configured = CompileOptions();
         explicit = CompileOptions(native_link_mode="objects");

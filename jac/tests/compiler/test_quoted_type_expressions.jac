@@ -10,7 +10,7 @@ def _scope(program: JacProgram) -> Module {
     module = program.compile(
         file_path="quoted_types.jac",
         use_str="import typing; obj Item { has value: int = 0; }",
-        options=CompileOptions(no_cgen=True, force_target_program=True)
+        options=CompileOptions(no_cgen=True)
     );
     assert isinstance(module, Module);
     assert not program.errors_had , str(program.errors_had);
@@ -76,7 +76,7 @@ test "type aliases resolve all adjacent literal fragments" {
     module = program.compile(
         file_path="quoted_aliases.jac",
         use_str="obj Item { has value: int = 0; } type Items = \"list[\" \"Item]\"; type One = \"It\" \"em\";",
-        options=CompileOptions(no_cgen=True, force_target_program=True)
+        options=CompileOptions(no_cgen=True)
     );
     assert isinstance(module, Module);
     assert not program.errors_had , str(program.errors_had);
@@ -107,7 +107,7 @@ test "speculative type lookup preserves existing and subsequent diagnostics" {
     module = program.compile(
         file_path="quoted_error.jac",
         use_str="obj Item { has value: int = 0; } type Items = \"list[Item]\"; def wrong -> int { return \"bad\"; }",
-        options=CompileOptions(no_cgen=True, force_target_program=True)
+        options=CompileOptions(no_cgen=True)
     );
     assert isinstance(module, Module);
     assert any("Cannot return" in str(error) for error in program.errors_had);

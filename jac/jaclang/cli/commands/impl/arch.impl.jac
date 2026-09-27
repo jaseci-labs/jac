@@ -3,17 +3,15 @@ import os;
 import from enum { StrEnum }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
-import from jaclang.project.source {
-    normalize_exclude_patterns,
-    path_matches_exclude,
-    read_file_with_encoding
-}
+import from jaclang.project.source { normalize_exclude_patterns, path_matches_exclude }
+import from jaclang.project.textio { read_file_with_encoding }
 import from jaclang.compiler.driver.wiring {
     ARCH_FILE_NAME,
     WiringSpec,
     wiring_for_path
 }
 import from jaclang.compiler.driver.bccache { discover_annex_files }
+import from jaclang.compiler.passes.annex_weave { import_form }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree {
     ImplImport,
@@ -146,7 +144,7 @@ def _collect_rows(
                     if provider is None {
                         continue;
                     }
-                    form = WiringSpec.import_form(
+                    form = import_form(
                         imp.is_absorb, imp.is_typed, imp.is_comptime, True
                     );
                     bucket = payloads.setdefault((provider, form), []);
@@ -165,9 +163,7 @@ def _collect_rows(
                     }
                     continue;
                 }
-                form = WiringSpec.import_form(
-                    imp.is_absorb, imp.is_typed, imp.is_comptime, False
-                );
+                form = import_form(imp.is_absorb, imp.is_typed, imp.is_comptime, False);
                 for item in imp.items {
                     if not isinstance(item, ModulePath) {
                         continue;
@@ -627,7 +623,7 @@ def _render_json(spec: WiringSpec) -> str {
         {
             "provider": wire.provider_path,
             "consumers": list(wire.consumer_paths),
-            "form": WiringSpec.import_form(
+            "form": import_form(
                 wire.is_absorb, wire.is_typed, wire.is_comptime, not wire.is_module_form
             ),
             "names": (
