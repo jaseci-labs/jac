@@ -77,6 +77,10 @@ obj HostServices {
         yield ;
     }
 
+    def in_kernel -> bool {
+        return False;
+    }
+
     def project_defaults -> (ProjectDefaults | None) {
         return None;
     }

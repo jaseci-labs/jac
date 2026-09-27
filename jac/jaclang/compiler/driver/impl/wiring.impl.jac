@@ -607,6 +607,12 @@ impl wiring_for_path(path: str) -> (WiringSpec | None) {
     if not path {
         return None;
     }
+    if active_host().in_kernel() {
+        import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
+        if is_package_keyed_path(path) {
+            return None;
+        }
+    }
     arch = arch_file_for(path);
     if arch is None {
         return None;

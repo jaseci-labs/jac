@@ -31,7 +31,7 @@ import from jaclang.compiler.passes.annex_weave {
     import_keys,
     relative_twin
 }
-import from jaclang.project.source { drop_git_ignored }
+import from jaclang.project.textio { drop_git_ignored }
 
 glob ARCH_FILE_NAME: str = "arch.jac",
      SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__");

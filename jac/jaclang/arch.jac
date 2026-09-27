@@ -7774,6 +7774,7 @@ graph import compiler.frontend {
         unparse_node
     }
     codeinfo --> dist.precompile_bytecode.is_toolchain_package { jaclang_pkg_root }
+    codeinfo --> compiler.driver.wiring.wiring_for_path { is_package_keyed_path }
 }
 
 graph import compiler.frontend.parser {
@@ -10910,7 +10911,7 @@ graph import project {
     pyvenv --> project.tool_paths { get_venv_site_packages }
     pyvenv --> scale.injector.bundle._venv_stage { get_venv_site_packages }
     pyvenv --> scale.injector.bundle.staged_venv_files { get_venv_site_packages }
-    source --> cli.commands.analysis._iter_jac_files { drop_git_ignored }
+    textio --> cli.commands.analysis._iter_jac_files { drop_git_ignored }
     source --> cli.commands.analysis._normalize_ignore_patterns {
         normalize_exclude_patterns
     }
@@ -10919,7 +10920,7 @@ graph import project {
     source --> compiler.backends.es.es_unparse.JSCodeGenerator.generate {
         pascal_to_snake
     }
-    source --> compiler.driver.wiring { drop_git_ignored }
+    textio --> compiler.driver.wiring { drop_git_ignored }
     source --> compiler.passes.context.Alert.as_log { render_diagnostic_header }
     source --> compiler.passes.context.Alert.pretty_print { render_diagnostic }
     source --> compiler.passes.import_wiring_pass { pascal_to_snake }
@@ -11001,7 +11002,7 @@ graph import project {
     workspace --> dist.precompile_bytecode._application_sources { workspace_for_path }
     workspace --> lsp.server.engine.JacLangServer.type_check_file { workspace_for_path }
     workspace --> project.kinds.resolve_app_kind { workspace_for_path }
-    source --> cli.commands.architecture._arch_files { drop_git_ignored }
+    textio --> cli.commands.architecture._arch_files { drop_git_ignored }
     app_kinds --> compiler.driver.pipeline_runner.compile_application {
         kind_has_client
     }
