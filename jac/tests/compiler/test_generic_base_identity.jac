@@ -103,9 +103,7 @@ test "stdlib enum ancestry survives independently loaded class graphs" {
             + "def label -> str { return Label.FIRST.value; }\n"
             + "def number -> int { return Number.FIRST.value; }\n"
             + "def guest -> str { return Constants.GUEST.value; }\n",
-        options=CompileOptions(
-            no_cgen=True, force_target_program=True, need_full_ast=True
-        )
+        options=CompileOptions(no_cgen=True, need_full_ast=True)
     );
     assert not program.errors_had , str(program.errors_had);
 }

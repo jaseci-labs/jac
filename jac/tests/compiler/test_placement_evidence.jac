@@ -13,6 +13,7 @@ import shutil;
 import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.frontend.unitree { AstAccessNode }
 
 def _proj(files: dict[str, any], pins: str = "") -> str {
     d = tempfile.mkdtemp(prefix="jacplace_");
@@ -52,7 +53,9 @@ test "authenticated endpoints bridge within their app without placement pins" {
             assert not prog.errors_had , [str(e) for e in prog.errors_had];
             assert '__jacCallFunction("read_value"' in mod.gen.js , mod.gen.js;
             binding = mod.gen.interop_manifest.bindings["read_value"];
-            assert binding.ast_node.access.tag.value == access;
+            decl = binding.ast_node;
+            assert isinstance(decl, AstAccessNode) and decl.access is not None;
+            assert decl.access.tag.value == access;
             provider = JacProgram().compile(
                 os.path.join(d, "api.jac"), options=CompileOptions(no_ir_cache=True)
             );

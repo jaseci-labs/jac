@@ -109,13 +109,17 @@ test "an annotation-only binding preserves module evaluation" {
 test "client artifact caches preserve the runtime import contract" {
     import pickle;
     import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
+    import from jaclang.compiler.driver.compiler {
+        client_artifact_bytes,
+        client_artifact_from_bytes
+    }
     manifest = ClientManifest(runtime_imports={"provider.jac": ["Value"]});
     artifact = ClientArtifact(js="", manifest=manifest);
-    restored = ClientArtifact.from_bytes(artifact.to_bytes());
+    restored = client_artifact_from_bytes(client_artifact_bytes(artifact));
     assert restored is not None;
     assert restored.manifest.runtime_imports == manifest.runtime_imports;
     legacy = pickle.dumps(("", manifest, [], [], {}, ""));
-    assert ClientArtifact.from_bytes(legacy) is None;
+    assert client_artifact_from_bytes(legacy) is None;
 }
 
 test "jsx references and shadowed names retain their runtime imports" {

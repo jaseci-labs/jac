@@ -1,8 +1,9 @@
 """Native comprehensions iterate every source a native for-loop iterates."""
 
 import ctypes;
+import from tests.support { native_address }
 import os;
-import from tests.support { TESTS_DIR, native_address }
+import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -18,10 +19,7 @@ test "comprehensions over ranges, strings, bytes, sets and adapters run natively
             "comprehension_sources.jac"
         ),
         options=CompileOptions(
-            force_codespace="native",
-            force_target_program=True,
-            need_full_ast=True,
-            no_ir_cache=True
+            force_codespace="native", need_full_ast=True, no_ir_cache=True
         )
     );
     assert not program.errors_had , str(program.errors_had);

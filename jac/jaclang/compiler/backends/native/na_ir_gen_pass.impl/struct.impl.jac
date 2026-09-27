@@ -306,6 +306,7 @@ impl NaIRGenPass._emit_struct_unpack(
         too_short, "struct.error", f"unpack requires a buffer of {total} bytes"
     );
     (values, elem_types) = self._emit_struct_decode(fields, little, data);
+    self._release_owned_args([data_val], op="struct_unpack_buffer");
     return self._emit_struct_tuple(values, elem_types);
 }
 
@@ -374,5 +375,6 @@ impl NaIRGenPass._emit_struct_unpack_from(
     );
     data = self.builder.gep(view[0], [off_adj], name="uf.data");
     (values, elem_types) = self._emit_struct_decode(fields, little, data);
+    self._release_owned_args([data_val], op="struct_unpack_buffer");
     return self._emit_struct_tuple(values, elem_types);
 }

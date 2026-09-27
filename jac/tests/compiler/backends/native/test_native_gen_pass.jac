@@ -22,7 +22,8 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import ctypes;
 import from jaclang.compiler.driver.compile_options {
@@ -664,7 +665,7 @@ test "context isolation native excluded from python" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
     # Python source should NOT contain native_add
-    py_src = ir.gen.py;
+    py_src = generated_python(ir.gen);
     assert "native_add" not in py_src;
     # Python source should contain server_hello
     assert "server_hello" in py_src;
@@ -2431,9 +2432,7 @@ def _context_mgr__context_managers_with_enter_exit_once(eng: any, _ir: any) {
 }
 
 test "context managers preserve borrowed owners with slot exceptions" {
-    options = CompileOptions(
-        force_codespace="native", force_target_program=True, memory_profile="nogc"
-    );
+    options = CompileOptions(force_codespace="native", memory_profile="nogc");
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "context_mgr_nogc.jac"), options=options
@@ -2761,7 +2760,7 @@ test "py interop py functions in python codegen" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = ir.gen.py;
+    py_src = generated_python(ir.gen);
     assert "py_double" in py_src;
     assert "call_native" in py_src;
 }
@@ -2773,7 +2772,7 @@ test "py interop native function has stub in python" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = ir.gen.py;
+    py_src = generated_python(ir.gen);
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
     # The native function body should NOT appear as executable code in Python
@@ -2834,7 +2833,9 @@ test "py interop full entry chain" {
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
-        ir.gen.py, str(os.path.join(FIXTURES, "na_py_interop.jac")), "exec"
+        generated_python(ir.gen),
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        "exec"
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,
@@ -2922,7 +2923,9 @@ test "multi module full multi module chain" {
     assert ir.gen.native_engine is not None , "No native engine created";
 
     py_code = compile(
-        ir.gen.py, str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), "exec"
+        generated_python(ir.gen),
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        "exec"
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,
@@ -3194,7 +3197,7 @@ test "clib decl with no return arrow lowers to void, not i64" {
         "    def explicit_none(x: f64) -> None;\n"
         "}\n"
         "def use_it(n: f64) -> f64 { return n; }\n",
-        options=native_force_opts()
+        options=CompileOptions(force_codespace="native", skip_native_engine=True)
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     s = source_spelled(str(ir.gen.llvm_ir));
@@ -3254,9 +3257,10 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
     # extern `declare`s for the brace-block decls and resolve to exactly one
     # logical library name -- no cross-module dependency leak.
     prog = JacProgram();
+    opts = native_force_opts();
+    opts.skip_native_engine = True;
     ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_logical_import.jac")),
-        options=native_force_opts()
+        str(os.path.join(FIXTURES, "clib_logical_import.jac")), options=opts
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     s = source_spelled(str(ir.gen.llvm_ir));
@@ -3266,9 +3270,7 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
     assert ir.gen._clib_paths is not None;
     assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
     # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
-    # module, so the type-checker emits no W1100 "module not found" for it. (A
-    # W5021 "C library not found" at JIT time is expected here and unrelated --
-    # raylib is not installed on the test host.)
+    # module, so the type-checker emits no W1100 "module not found" for it.
     _warns = [
         w
         for w in prog.warnings_had
@@ -3297,7 +3299,7 @@ test "clib extensionless import resolves per platform (issue #6387)" {
         ] {
             push_native_target(tgt);
             prog = JacProgram();
-            ir = prog.compile(_fix, options=CompileOptions());
+            ir = prog.compile(_fix, options=CompileOptions(skip_native_engine=True));
             assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
             assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
         }
@@ -3316,10 +3318,14 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
     _fix = str(os.path.join(FIXTURES, "clib_logical_dotted.jac"));
     try {
         push_native_target("x86_64-unknown-linux-gnu");
-        ir = JacProgram().compile(_fix, options=CompileOptions());
+        ir = JacProgram().compile(
+            _fix, options=CompileOptions(skip_native_engine=True)
+        );
         assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
         push_native_target("arm64-apple-darwin");
-        ir2 = JacProgram().compile(_fix, options=CompileOptions());
+        ir2 = JacProgram().compile(
+            _fix, options=CompileOptions(skip_native_engine=True)
+        );
         assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
     } finally {
         pop_native_target(_saved);
@@ -3798,10 +3804,7 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
     mod = prog.compile(
         fixture,
         options=CompileOptions(
-            aot_mode=True,
-            default_codespace='native',
-            force_target_program=True,
-            skip_native_engine=True
+            aot_mode=True, default_codespace='native', skip_native_engine=True
         )
     );
     assert not prog.errors_had , f"Errors: {[str(e) for e in prog.errors_had]}";

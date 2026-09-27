@@ -35,7 +35,7 @@ glob BATCH_DIR = str(
 
 Mirrors the CLI's per-file loop: an impl annex is resolved back to its base
 module, and every entry is compiled into the shared program with
-`force_target_program` so they land in one hub. Returns the messages of every
+a session-owned program so they land in one hub. Returns the messages of every
 error emitted across the batch.
 """
 def check_batch(files: list[str]) -> list[str] {
@@ -46,10 +46,7 @@ def check_batch(files: list[str]) -> list[str] {
         if base_path is not None {
             file_path = base_path;
         }
-        prog.compile(
-            file_path=file_path,
-            options=CompileOptions(no_cgen=True, force_target_program=True)
-        );
+        prog.compile(file_path=file_path, options=CompileOptions(no_cgen=True));
     }
     return [str(e) for e in prog.errors_had];
 }
