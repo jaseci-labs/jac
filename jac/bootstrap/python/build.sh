@@ -188,6 +188,13 @@ SH
                 -e 's/-current_version,$(VERSION)/-current_version,$(VERSION).0/g' \
                 Makefile.pre.in > Makefile.pre.in.new
             mv Makefile.pre.in.new Makefile.pre.in
+            # configure passes ld64's -stack_size as bare hex ("1000000" means
+            # the 16 MiB it also gives THREAD_STACK_SIZE). Zig's Mach-O linker
+            # reads it as decimal, which leaves the main thread under 1 MiB.
+            sed 's/-Wl,-stack_size,\$stack_size/-Wl,-stack_size,0x$stack_size/g' \
+                configure > configure.new
+            mv configure.new configure
+            chmod +x configure
             ;;
     esac
     chmod +x "$work/bin/pycc"
