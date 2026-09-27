@@ -692,16 +692,56 @@ def _precompile_unit(
     );
 }
 
-def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
+def _seal_boot_unit(
+    jac_path: str, pkg_root: str, out_root: str, embed_src: bool
+) -> str {
     import from jaclang.jac0 {
         compile_jac as jac0_compile,
         discover_impl_files as jac0_impls
     }
-    failed = 0;
-    if pkg_dir.name != "jaclang" {
-        return failed;
+    jac_file = Path(jac_path);
+    pkg_dir = Path(pkg_root);
+    try {
+        impl_sources: list[tuple[str, str]] = [];
+        for impl_path in jac0_impls(jac_path) {
+            impl_sources.append(
+                (Path(impl_path).read_text(encoding="utf-8"), impl_path)
+            );
+        }
+        py_source = jac0_compile(
+            jac_file.read_text(encoding="utf-8"),
+            jac_path,
+            impl_sources=impl_sources or None
+        );
+        code = compile(py_source, jac_path, "exec");
+        bc = patch_co_filenames_bytes(
+            marshal.dumps(code), pkg_root, PRECOMPILE_SENTINEL
+        );
+        with precompile_unit_context(jac_path, pkg_root, collect=False) as program {
+            program.iface_registry().ensure(jac_path);
+            extra = _unit_extra(jac_path, pkg_root, embed_src);
+        }
+        jir_path = Path(out_root) / jac_file.relative_to(pkg_dir).with_suffix(".jir");
+        jir_path.parent.mkdir(parents=True, exist_ok=True);
+        jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
+        return "";
+    } except Exception as e {
+        return f"{type(e).__name__}: {e}";
     }
+}
+
+def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
+    if pkg_dir.name != "jaclang" {
+        return 0;
+    }
+    import time;
     import from jaclang.bootstrap_manifest { seed_abs_entries, is_native_only }
+    import from jaclang.cli.workpool {
+        WORKER_MEM_BYTES,
+        WorkPool,
+        pool_available,
+        resolve_jobs
+    }
     (seed_dirs, seed_files) = seed_abs_entries(str(pkg_dir));
     seed_sources: list[Path] = [
         Path(p)
@@ -711,8 +751,7 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
     for d in seed_dirs {
         seed_sources.extend(Path(d).rglob("*.jac"));
     }
-    import time;
-    spent: dict[str, float] = {"jac0": 0.0, "compile": 0.0, "iface": 0.0};
+    units: list[str] = [];
     for jac_file in sorted(seed_sources) {
         if ext_registry.is_annex(str(jac_file)) {
             continue;
@@ -726,48 +765,54 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
         if is_native_only(str(jac_file.relative_to(pkg_dir)).replace(os.sep, "/")) {
             continue;
         }
-        try {
-            impl_paths = jac0_impls(str(jac_file));
-            impl_sources: list[tuple[str, str]] = [];
-            for impl_path in impl_paths {
-                impl_sources.append(
-                    (Path(impl_path).read_text(encoding="utf-8"), impl_path)
-                );
-            }
-            t0 = time.monotonic();
-            py_source = jac0_compile(
-                jac_file.read_text(encoding="utf-8"),
-                str(jac_file),
-                impl_sources=impl_sources or None
-            );
-            t1 = time.monotonic();
-            code = compile(py_source, str(jac_file), "exec");
-            t2 = time.monotonic();
-            bc = patch_co_filenames_bytes(
-                marshal.dumps(code), str(pkg_dir), PRECOMPILE_SENTINEL
-            );
-            with precompile_unit_context(str(jac_file), str(pkg_dir)) as program {
-                program.iface_registry().ensure(str(jac_file));
-                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
-            }
-            t3 = time.monotonic();
-            spent["jac0"] += t1 - t0;
-            spent["compile"] += t2 - t1;
-            spent["iface"] += t3 - t2;
-            jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
-            jir_path = out_dir / jir_rel;
-            jir_path.parent.mkdir(parents=True, exist_ok=True);
-            jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
-        } except Exception as e {
-            console.error(f"BOOTSTRAP FAIL: {jac_file.name} - {e}");
-            failed += 1;
+        units.append(str(jac_file));
+    }
+    started = time.monotonic();
+    failures: list[str] = [];
+
+    def boot_job(request: dict[(str, any)]) -> dict[(str, any)] {
+        return {
+            "error": _seal_boot_unit(
+                str(request["path"]), str(pkg_dir), str(out_dir), embed_src
+            )
+        };
+    }
+
+    def on_record(idx: int, record: dict[(str, any)]) {
+        result = record.get("result");
+        error = str(result.get("error") or "")
+            if isinstance(result, dict)
+            else str(record.get("crash") or record.get("error") or "no result");
+        if error {
+            failures.append(f"{Path(units[idx]).name} - {error}");
         }
     }
-    sys.stderr.write(
-        f"  [precompile] bootstrap units: jac0 {spent['jac0']:.1f}s, compile "
-        f"{spent['compile']:.1f}s, interface {spent['iface']:.1f}s\n"
+
+    jobs = resolve_jobs(
+        None, env_var="JAC_PRECOMPILE_JOBS", worker_bytes=WORKER_MEM_BYTES
     );
-    return failed;
+    pool = WorkPool(
+        items=units,
+        job=boot_job,
+        on_record=on_record,
+        jobs=max(1, min(jobs, len(units))),
+        retire=_precompile_retire,
+        rss_log_env="JAC_PRECOMPILE_RSS_LOG",
+        crash_prefix="jac-precompile-crash-"
+    );
+    if units and pool_available() and jobs > 1 {
+        pool.run();
+    } elif units {
+        pool.run_inline();
+    }
+    for failure in failures {
+        console.error(f"BOOTSTRAP FAIL: {failure}");
+    }
+    sys.stderr.write(
+        f"  [precompile] bootstrap units: {len(units)} in "
+        f"{time.monotonic() - started:.1f}s with {jobs} worker(s)\n"
+    );
+    return len(failures);
 }
 
 glob PRECOMPILED_KEEP_DIRS: tuple[str, ...] = ();
