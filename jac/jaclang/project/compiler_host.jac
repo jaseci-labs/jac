@@ -55,6 +55,7 @@ obj ProjectHost(HostServices) {
     ) -> tuple[str, str];
 
     def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None);
+    def jac_virtual_module_path(target: str) -> (str | None);
     def is_path_alias(target: str, base_path: str) -> bool;
     def is_untyped_third_party(path: str) -> bool;
     def in_typeshed_tree(path: str) -> bool;
@@ -136,6 +137,14 @@ obj ProjectHost(HostServices) {
         program: JacProgram, file_path: str, use_str: (str | None)
     ) -> Module;
 
+    def run_module_pipeline(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> Module;
+
+    def native_session_active(program: JacProgram) -> bool;
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);
@@ -164,7 +173,8 @@ def check_settings_of(check: any) -> CheckSettings {
         lint_select=list(lint.select) if lint else [],
         lint_ignore=list(lint.ignore) if lint else [],
         enforce_access=bool(check.enforce_access),
-        untyped_external_error=check.untyped_external == "error"
+        untyped_external_error=check.untyped_external == "error",
+        warn_native_seams=bool(check.warn_native_seams)
     );
 }
 
@@ -183,6 +193,7 @@ def project_defaults_of(cfg: any) -> ProjectDefaults {
         memory_profile=memory.profile,
         memory_enforce=list(memory.enforce),
         memory_exempt=list(memory.exempt),
-        check=check_settings_of(cfg.check)
+        check=check_settings_of(cfg.check),
+        client_framework=cfg.client.framework if cfg.client else "react"
     );
 }

@@ -5803,15 +5803,38 @@ impl NativeBuiltinEmitter.emit_int(
         return b.fptosi(arg_val, i64, name="int.from.float");
     }
 
+    if p._is_jacval_ty(arg_val.type) {
+        return self._int_from_boxed(ctx, arg_val);
+    }
+    base: (ir.Value | None) = None;
+    if len(args) >= 2 and isinstance(args[1].type, ir.IntType) {
+        base = b.trunc(args[1], ir.IntType(32), name="int.base")
+            if args[1].type.width > 32
+            else args[1];
+    }
+    return self._int_from_c_string(ctx, arg_val, base);
+}
+
+impl NativeBuiltinEmitter._int_from_c_string(
+    self: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    text: ir.Value,
+    base: (ir.Value | None) = None
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
     endptr_alloca = b.alloca(i8p, name="endptr");
     result_val = b.call(
-        strtol_fn, [arg_val, endptr_alloca, ir.Constant(i32, 10)], name="strtol.result"
+        strtol_fn,
+        [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
+        name="strtol.result"
     );
     endptr_val = b.load(endptr_alloca, name="endptr.val");
-    no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="int.noparse");
+    no_parse = b.icmp_unsigned("==", endptr_val, text, name="int.noparse");
     p._emit_runtime_raise(no_parse, "ValueError", "invalid literal for int()");
     end_char = b.load(endptr_val, name="end.char");
     has_trail = b.icmp_unsigned(
@@ -5819,6 +5842,57 @@ impl NativeBuiltinEmitter.emit_int(
     );
     p._emit_runtime_raise(has_trail, "ValueError", "invalid literal for int()");
     return result_val;
+}
+
+impl NativeBuiltinEmitter._int_from_boxed(
+    self: NativeBuiltinEmitter, ctx: NativeEmitCtx, boxed: ir.Value
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    tag = b.extract_value(boxed, 0, name="int.box.tag");
+    payload = b.extract_value(boxed, 1, name="int.box.payload");
+    func = b.function;
+    str_bb = func.append_basic_block(name="int.box.str");
+    num_bb = func.append_basic_block(name="int.box.num");
+    done_bb = func.append_basic_block(name="int.box.done");
+    is_str = b.icmp_unsigned("==", tag, ir.Constant(i8, 2), name="int.box.isstr");
+    b.cbranch(is_str, str_bb, num_bb);
+
+    b.position_at_end(str_bb);
+    parsed = self._int_from_c_string(
+        ctx, b.inttoptr(payload, ir.IntType(8).as_pointer(), name="int.box.strp")
+    );
+    str_end = b.block;
+    b.branch(done_bb);
+
+    b.position_at_end(num_bb);
+    is_float = b.icmp_unsigned("==", tag, ir.Constant(i8, 1), name="int.box.isflt");
+    is_int = b.icmp_unsigned("==", tag, ir.Constant(i8, 0), name="int.box.isint");
+    is_bool = b.icmp_unsigned("==", tag, ir.Constant(i8, 7), name="int.box.isbool");
+    numeric = b.or_(
+        is_float, b.or_(is_int, is_bool, name="int.box.intish"), name="int.box.numeric"
+    );
+    p._emit_runtime_raise(
+        b.not_(numeric, name="int.box.bad"),
+        "TypeError",
+        "int() argument must be a string, a bytes-like object or a real number"
+    );
+    truncated = b.fptosi(
+        b.bitcast(payload, ir.DoubleType(), name="int.box.fbits"),
+        i64,
+        name="int.box.ftrunc"
+    );
+    number = b.select(is_float, truncated, payload, name="int.box.number");
+    num_end = b.block;
+    b.branch(done_bb);
+
+    b.position_at_end(done_bb);
+    result = b.phi(i64, name="int.box.result");
+    result.add_incoming(parsed, str_end);
+    result.add_incoming(number, num_end);
+    return result;
 }
 
 impl NativeBuiltinEmitter.emit_float(

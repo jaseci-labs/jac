@@ -125,6 +125,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     }
     try {
         (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
+        parity_view: any = None;
         if opts.get("parse_only") {
             import from jaclang.compiler.frontend.parser.frontend {
                 parse_diags,
@@ -163,7 +164,18 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 }
                 compile_application(prog, file_path, compile_options);
             } else {
-                prog.compile(file_path, options=compile_options);
+                kernel_view: any = None;
+                if not opts.get("placements") and not opts.get("native_coverage") {
+                    import from jaclang.project.kernel_check { kernel_check }
+                    kernel_view = kernel_check(prog, file_path, compile_options);
+                }
+                adopted = kernel_view is not None and kernel_view.adopted;
+                if not adopted {
+                    prog.compile(file_path, options=compile_options);
+                    if kernel_view is not None and kernel_view.parity {
+                        parity_view = kernel_view;
+                    }
+                }
                 if opts.get("named") {
                     project_dir = os.path.realpath(
                         str(opts["project_root"])
@@ -171,12 +183,15 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                             else os.path.dirname(file_path)
                     );
                     checked = os.path.realpath(file_path);
+                    reached_keys: list[str] = [str(key) for key in prog.mod.hub];
+                    if adopted {
+                        import from jaclang.project.kernel_check { reached_modules }
+                        reached_keys = reached_modules(kernel_view.outcome);
+                    }
                     result['reached'] = sorted(
                         {
                             real
-                            for real in [
-                                os.path.realpath(str(key)) for key in prog.mod.hub
-                            ]
+                            for real in [os.path.realpath(key) for key in reached_keys]
                             if real.endswith(".jac")
                                 and not real.endswith((".impl.jac", ".test.jac"))
                                 and real.startswith(project_dir + os.sep)
@@ -213,6 +228,24 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                         annex_filter_path is None
                         or issue.loc.mod_path == annex_filter_path
                     )
+            );
+        }
+        if parity_view is not None {
+            import from jaclang.project.kernel_check { report_parity }
+            report_parity(
+                parity_view,
+                file_path,
+                [
+                    e
+                    for e in new_errors
+                    if keep(e)
+                ],
+                [
+                    w
+                    for w in new_warnings
+                    if keep(w)
+                ],
+                keep
             );
         }
         result['errors'] = [

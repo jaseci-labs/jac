@@ -713,7 +713,13 @@ impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) ->
         return;
     }
     universe = set(self.linear_decl.keys());
-    must_in = solve_forward_must(cfg_nodes, self._transfer, universe);
+    must_in = solve_forward_must(
+        cfg_nodes,
+        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._transfer(
+            nd, in_set
+        ); },
+        universe
+    );
     for (sid, decl) in self.linear_decl.items() {
         scope: UniNode | None = decl.find_parent_of_type(Ability);
         if scope is None {
@@ -1040,7 +1046,12 @@ impl OwnershipCheckPass._solve_backward_dataflow(
 }
 
 impl OwnershipCheckPass._run_dataflow(cfg_nodes: list[UniCFGNode]) -> None {
-    self.in_consumed = self._solve_forward_dataflow(cfg_nodes, self._transfer);
+    self.in_consumed = self._solve_forward_dataflow(
+        cfg_nodes,
+        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._transfer(
+            nd, in_set
+        ); }
+    );
     self.consumed_syms = set();
     for n in cfg_nodes {
         out = self._transfer(n, self.in_consumed.get(id(n), set()));
@@ -1101,7 +1112,10 @@ impl OwnershipCheckPass._live_transfer(
 
 impl OwnershipCheckPass._run_borrow_liveness(cfg_nodes: list[UniCFGNode]) -> None {
     self.in_live_borrows = self._solve_backward_dataflow(
-        cfg_nodes, self._live_transfer
+        cfg_nodes,
+        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._live_transfer(
+            nd, in_set
+        ); }
     );
 }
 
@@ -1121,7 +1135,10 @@ impl OwnershipCheckPass._reaching_transfer(
 
 impl OwnershipCheckPass._run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> None {
     self.in_reaching_borrows = self._solve_forward_dataflow(
-        cfg_nodes, self._reaching_transfer
+        cfg_nodes,
+        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._reaching_transfer(
+            nd, in_set
+        ); }
     );
 }
 
