@@ -60,7 +60,20 @@ import from jaclang.jac0core.sealed {
     SEC_NOBJ as SEALED_SEC_NOBJ
 }
 
-glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
+glob RESULT_NAME: str = "PRECOMPILE_RESULT.json",
+     _PHASE_T: list[float] = [];
+
+def _phase(label: str) {
+    import time;
+    now = time.monotonic();
+    if _PHASE_T {
+        sys.stderr.write(f"  [precompile] {label}: {now - _PHASE_T[0]:.1f}s\n");
+        sys.stderr.flush();
+        _PHASE_T[0] = now;
+    } else {
+        _PHASE_T.append(now);
+    }
+}
 
 def compiler_identity -> str {
     digest = running_compiler_digest();
@@ -969,6 +982,7 @@ def seal_finalize(
     embed_src: bool,
     app: str = ""
 ) -> int {
+    _phase("start");
     writes = (
         FORMAT_VERSION,
         HEADER_SIZE,
@@ -1020,6 +1034,7 @@ def seal_finalize(
     }
 
     identity = compiler_identity();
+    _phase("completeness check");
     foreign: list[str] = [];
     for p in sealable_sources(str(pkg_path), app) {
         rel = Path(p).relative_to(pkg_path);
@@ -1049,7 +1064,9 @@ def seal_finalize(
     }
 
     console.print("  Freezing the bootstrap seed layer...");
+    _phase("identity check");
     boot_failed = seal_bootstrap(pkg_path, out_dir, embed_src);
+    _phase("bootstrap freeze");
     if boot_failed > 0 {
         console.error(f"Seal aborted: {boot_failed} bootstrap module(s) failed.");
         return 1;
@@ -1086,6 +1103,7 @@ def seal_finalize(
         return 1;
     }
 
+    _phase("native seal");
     payloads = collect_payloads(pkg_path);
     if payloads {
         console.print(f"  Payload files: {len(payloads)}");
@@ -1113,6 +1131,7 @@ def seal_finalize(
         app_meta,
         native_record
     );
+    _phase("payloads and manifest");
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
     return 0;
 }
@@ -1517,6 +1536,14 @@ def precompile_exit(code: int) {
 }
 
 def main {
+    t0 = os.environ.get("JAC_PAYLOAD_CHILD_T0", "");
+    if t0 {
+        import time;
+        sys.stderr.write(
+            f"  [precompile] process ready in {time.time() - float(t0):.1f}s\n"
+        );
+        sys.stderr.flush();
+    }
     args = sys.argv[1:];
     seal = "--seal" in args;
     seal_compile = "--seal-compile" in args;
@@ -1640,6 +1667,7 @@ def run_precompile(
             if exclude_seed
             else find_jac_files(package_dir)
     );
+    _phase("start");
     console.print(f"  Found {len(jac_files)} .jac files");
     native_units_set: set[str] = set();
     native_only_units: list[str] = [];
@@ -1827,6 +1855,7 @@ def run_precompile(
         counts[status] = counts.get(status, 0) + 1;
     }
 
+    _phase("unit discovery");
     if use_pool and native_units_set {
         prebuild_native_units(
             sorted(native_units_set)
@@ -1835,6 +1864,7 @@ def run_precompile(
         );
     }
 
+    _phase("native prebuild");
     pool = WorkPool(
         items=list(jac_files),
         job=unit_job,
@@ -1850,6 +1880,7 @@ def run_precompile(
     } else {
         pool.run_inline();
     }
+    _phase("unit pool");
     compiled = counts["compiled"];
     reused = counts["reused"];
     failed = counts["failed"];
