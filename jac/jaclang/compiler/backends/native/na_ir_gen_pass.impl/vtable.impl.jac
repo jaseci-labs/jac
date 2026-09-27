@@ -250,7 +250,11 @@ impl NaIRGenPass._isinstance_class_name_hit(
 }
 
 impl NaIRGenPass._codegen_virtual_call(
-    obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
+    obj_val: ir.Value,
+    method_name: str,
+    args: list[ir.Value],
+    obj_type_name: str,
+    release_args: bool = True
 ) -> (ir.Value | None) {
     _vc_struct = self.struct_types.get(obj_type_name);
     if _vc_struct is not None and obj_val.type != _vc_struct.as_pointer() {
@@ -370,14 +374,18 @@ impl NaIRGenPass._codegen_virtual_call(
         self.builder.position_at_end(_vd_done);
         _vd_ret_t = fn_type.return_type;
         if isinstance(_vd_ret_t, ir.VoidType) {
-            self._release_owned_args(coerced, op="vcall_arg");
+            if release_args {
+                self._release_owned_args(coerced, op="vcall_arg");
+            }
             return _vd_fb;
         }
         _vd_phi = self.builder.phi(_vd_ret_t, name=f"vd.{method_name}.res");
         for (_vr, _vb) in _vd_incoming {
             _vd_phi.add_incoming(_vr, _vb);
         }
-        self._release_owned_args(coerced, op="vcall_arg");
+        if release_args {
+            self._release_owned_args(coerced, op="vcall_arg");
+        }
         return _vd_phi;
     }
 
@@ -396,7 +404,9 @@ impl NaIRGenPass._codegen_virtual_call(
     );
     _vt_res = self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
 
-    self._release_owned_args(coerced, op="vcall_arg");
+    if release_args {
+        self._release_owned_args(coerced, op="vcall_arg");
+    }
     return _vt_res;
 }
 

@@ -3004,7 +3004,11 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _codegen_virtual_call(
-        obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
+        obj_val: ir.Value,
+        method_name: str,
+        args: list[ir.Value],
+        obj_type_name: str,
+        release_args: bool = True
     ) -> (ir.Value | None);
 
     def _generate_inherited_method_wrappers -> None;

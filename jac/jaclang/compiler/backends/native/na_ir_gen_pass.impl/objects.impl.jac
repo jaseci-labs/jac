@@ -3632,7 +3632,9 @@ impl NaIRGenPass._codegen_accessor_call(
     }
     _all_args: list[ir.Value] = [obj_val] + args;
     if self._arch_has_vtable(type_name) {
-        result = self._codegen_virtual_call(obj_val, slot, _all_args, type_name);
+        result = self._codegen_virtual_call(
+            obj_val, slot, _all_args, type_name, release_args=False
+        );
         if result is not None {
             return self._mark_reference_owned(result);
         }
