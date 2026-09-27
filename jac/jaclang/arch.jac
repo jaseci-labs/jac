@@ -7773,6 +7773,7 @@ graph import compiler.frontend {
     unparse --> compiler.backends.es.esast_gen_pass | compiler.backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type | compiler.passes.endpoint_effect_pass.EndpointEffectPass._scan | compiler.passes.layout_pass | compiler.passes.mtir_gen_pass | compiler.passes.variant_agreement_pass.annotation_text | compiler.passes.wasm_contract.value_contract | compiler.tools.cfg_dot.CoalesceBBPass._node_label | compiler.tools.code_intel | compiler.tools.jac_auto_lint_pass | dist.publish.dts | dist.publish.jsdoc | lsp.server.engine {
         unparse_node
     }
+    codeinfo --> dist.precompile_bytecode.is_toolchain_package { jaclang_pkg_root }
 }
 
 graph import compiler.frontend.parser {
