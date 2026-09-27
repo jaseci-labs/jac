@@ -2707,6 +2707,14 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="slice",
+            name=self._get_name(nd.target) or "<expr>",
+            help_text="Only lists, strings and bytes slice natively; a slice of any other receiver (a tuple, an untyped value, an object) has no native lowering. Convert the receiver to a list first, or move this code to a @sv/Python context."
+        );
+        return None;
     }
 
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) and nd.right.slices {

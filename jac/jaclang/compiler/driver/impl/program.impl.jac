@@ -647,16 +647,28 @@ impl JacProgram.stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> N
 }
 
 impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.driver.boundary_classify { native_only_import_target }
+    import from jaclang.compiler.driver.boundary_classify {
+        import_bound_names,
+        native_only_import_target,
+        python_side_name_refs
+    }
     import os;
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     needs_native = mod.decided_codespace == 'native'
         or ModuleFacts.has_native_context_stmts(mod);
+    py_refs: (set[str] | None) = None;
     for imp in mod.get_all_sub_nodes(uni.Import) {
         target = native_only_import_target(imp, self);
-        imp.native_only_drop = needs_native
+        drop = needs_native
             and target is not None
             and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target);
+        if drop {
+            if py_refs is None {
+                py_refs = python_side_name_refs(mod);
+            }
+            drop = not any(name in py_refs for name in import_bound_names(imp));
+        }
+        imp.native_only_drop = drop;
     }
 }
 
