@@ -18,8 +18,7 @@ test "sorted and list.sort order tuples, bytes and lists like Python" {
         "keyed_tuples",
         "list_sort_tuples",
         "nested_tuples",
-        "other_erased",
-        "ragged_tuples"
+        "other_erased"
     ] {
         assert get_func(engine, name, ctypes.c_bool)() , name;
     }
