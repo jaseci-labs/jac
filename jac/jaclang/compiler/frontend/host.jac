@@ -70,7 +70,8 @@ obj ProjectFacts {
     has project_root: str,
         check: CheckSettings,
         arch_closed: list[str] = [],
-        client_framework: str = "react";
+        client_framework: str = "react",
+        package_prefix: str = "";
 }
 
 obj HostServices {

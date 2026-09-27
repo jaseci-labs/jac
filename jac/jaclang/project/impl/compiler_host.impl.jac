@@ -49,6 +49,11 @@ impl ProjectHost.check_settings(target_app: str) -> CheckSettings {
     return check_settings_of(cfg.check);
 }
 
+def package_prefix_of(name: str) -> str {
+    import from jaclang.project.modresolver { is_scoped_package_name }
+    return name.replace("/", ".") + "." if is_scoped_package_name(name) else "";
+}
+
 impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
     import from pathlib { Path }
     try {
@@ -69,7 +74,8 @@ impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
         project_root=project_root,
         check=check_settings_of(cfg.check),
         arch_closed=list(cfg.arch.closed),
-        client_framework=cfg.client.framework if cfg.client else "react"
+        client_framework=cfg.client.framework if cfg.client else "react",
+        package_prefix=package_prefix_of(cfg.project.name)
     );
     self._facts[project_root] = (cfg, facts);
     return facts;

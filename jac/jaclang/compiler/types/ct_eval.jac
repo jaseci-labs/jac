@@ -2199,12 +2199,12 @@ obj CtEvaluator(CtCaller) {
     }
 
     def _embed(nd: FuncCall, rel: str, as_bytes: bool) -> CtValue {
-        import from jaclang.project.modresolver { find_jac_project_root }
+        import from jaclang.compiler.frontend.host { active_host }
         mod = nd.find_parent_of_type(Module);
         base = os.path.dirname(mod.loc.mod_path) if mod is not None and mod.loc else "";
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
-        pkg_root = (find_jac_project_root(base) or base) if base else "";
+        pkg_root = (active_host().project_root(base) or base) if base else "";
         if pkg_root {
             real_root = os.path.realpath(pkg_root);
             real_path = os.path.realpath(path);

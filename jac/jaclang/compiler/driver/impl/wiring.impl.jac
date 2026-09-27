@@ -71,9 +71,35 @@ impl WiringSpec._ensure_policy -> None {
 }
 
 impl WiringSpec.module_name(path: str) -> (str | None) {
-    import from jaclang.project.modresolver { module_name_in }
-    local = module_name_in(self.root_dir, path);
-    return self.package_prefix + local if local is not None else None;
+    try {
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(self.root_dir));
+    } except ValueError {
+        return None;
+    }
+    if rel.startswith("..") {
+        return None;
+    }
+    stem: str;
+    if rel.endswith(".jac") {
+        stem = rel[:-4];
+    } elif rel.endswith(".py") {
+        stem = rel[:-3];
+    } else {
+        return None;
+    }
+    parts = stem.split(os.sep);
+    if parts and parts[-1] == "__init__" {
+        parts = parts[:-1];
+    }
+    if not parts {
+        return None;
+    }
+    for part in parts {
+        if not part.isidentifier() {
+            return None;
+        }
+    }
+    return self.package_prefix + ".".join(parts);
 }
 
 impl WiringSpec._local_name(name: str) -> (str | None) {
@@ -87,20 +113,8 @@ impl WiringSpec._local_name(name: str) -> (str | None) {
 }
 
 def _package_prefix(root_dir: str) -> str {
-    import tomllib;
-    import from jaclang.project.modresolver { is_scoped_package_name }
-    try {
-        with open(os.path.join(root_dir, "jac.toml"), "rb") as fh {
-            project = tomllib.load(fh).get("project", {});
-        }
-    } except Exception {
-        return "";
-    }
-    name = project.get("name", "") if isinstance(project, dict) else "";
-    if isinstance(name, str) and is_scoped_package_name(name) {
-        return name.replace("/", ".") + ".";
-    }
-    return "";
+    facts = active_host().project_facts(root_dir);
+    return facts.package_prefix if facts is not None else "";
 }
 
 impl WiringSpec.module_file(name: str) -> (str | None) {
