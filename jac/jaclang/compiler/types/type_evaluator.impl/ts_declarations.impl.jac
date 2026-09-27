@@ -15,21 +15,18 @@ impl TypeEvaluator._ts_decl_path(from_loc: ModulePath) -> (str | None) {
     if cache_key in self._ts_decl_path_cache {
         return self._ts_decl_path_cache[cache_key];
     }
-    import from jaclang.project.modresolver {
-        resolve_client_npm_declarations,
-        sibling_declaration_file
-    }
+    import from jaclang.compiler.frontend.host { active_host }
     dts_path: (str | None) = None;
     try {
         if spec.startswith('.') {
             js_path = from_loc.resolve_relative_path();
             if js_path {
-                dts_path = sibling_declaration_file(js_path);
+                dts_path = active_host().sibling_declaration(js_path);
             }
         } else {
             base = self._client_npm_base(spec, mod_path);
             if base is not None {
-                dts_path = resolve_client_npm_declarations(spec, base);
+                dts_path = active_host().npm_declarations(spec, base);
             }
         }
     } except Exception {
@@ -91,13 +88,11 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | 
     if dts_path in self._ts_decl_cache {
         return self._ts_decl_cache[dts_path];
     }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.types.ts_decl_parser { parse_dts }
     decls: (dict[str, TsDecl] | None) = None;
     try {
-        with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
-            source = f.read();
-        }
-        decls = parse_dts(source);
+        decls = parse_dts(active_host().read_source(dts_path));
     } except Exception {
         decls = None;
     }
@@ -474,28 +469,9 @@ impl TypeEvaluator._untyped_external_is_error(node_: UniNode) -> bool {
     if not mod_path {
         return False;
     }
-    import from jaclang.project.modresolver { find_jac_project_root }
-    proj_root = find_jac_project_root(mod_path);
-    if not proj_root {
-        return False;
-    }
-    if proj_root in self._untyped_external_cfg_cache {
-        return self._untyped_external_cfg_cache[proj_root];
-    }
-    import os;
-    result = False;
-    try {
-        import from jaclang.project.tomlio { read_toml_with_encoding }
-        data = read_toml_with_encoding(os.path.join(proj_root, 'jac.toml'));
-        check_cfg = data.get('check', {}) if isinstance(data, dict) else {};
-        result = (
-            isinstance(check_cfg, dict) and check_cfg.get('untyped-external') == 'error'
-        );
-    } except Exception {
-        result = False;
-    }
-    self._untyped_external_cfg_cache[proj_root] = result;
-    return result;
+    import from jaclang.compiler.frontend.host { active_host }
+    facts = active_host().project_facts(mod_path);
+    return facts is not None and facts.check.untyped_external_error;
 }
 
 impl TypeEvaluator._jac_virtual_sibling_dts(
@@ -504,6 +480,6 @@ impl TypeEvaluator._jac_virtual_sibling_dts(
     if not import_node.is_virtual_jac or from_mod_type.file_uri is None {
         return None;
     }
-    import from jaclang.project.modresolver { sibling_declaration_file }
-    return sibling_declaration_file(str(from_mod_type.file_uri));
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().sibling_declaration(str(from_mod_type.file_uri));
 }

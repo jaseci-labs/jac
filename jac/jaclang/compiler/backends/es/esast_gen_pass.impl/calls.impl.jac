@@ -1,6 +1,6 @@
 import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
 
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 
 impl EsastGenPass._field_constructor_args(
@@ -874,6 +874,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
 
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
     source_module = ability_node.find_parent_of_type(uni.Module);
+    assert source_module is not None;
     contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
     rpc_options = es.ObjectExpression(
         properties=[

@@ -417,26 +417,6 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         return ParameterCategory.Positional;
     }
 
-    def _convert_param_kind(kind: UniParamKind) -> ParamKind {
-        match kind {
-            case UniParamKind.POSONLY:
-                return ParamKind.POSONLY;
-
-            case UniParamKind.NORMAL:
-                return ParamKind.NORMAL;
-
-            case UniParamKind.VARARG:
-                return ParamKind.VARARG;
-
-            case UniParamKind.KWONLY:
-                return ParamKind.KWONLY;
-
-            case UniParamKind.KWARG:
-                return ParamKind.KWARG;
-
-        }
-    }
-
     if node_.find_parent_of_type(Import) is not None {
         extern_params: list[Parameter] = [];
         ret_type: TypeBase = AnyType(is_foreign=True);
@@ -450,7 +430,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                             extern_param.type_tag.tag if extern_param.type_tag else None
                         ),
                         default_value=extern_param.value,
-                        param_kind=_convert_param_kind(extern_param.param_kind),
+                        param_kind=extern_param.param_kind,
                     )
                 );
             }
@@ -493,6 +473,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                 or (
                     isinstance(param.name, Name)
                     and param.name.value == "self"
+                    and (node_.is_method or node_.class_body_owner is not None)
                     and node_.signature is not None
                     and not node_.signature.is_static
                 )
@@ -500,7 +481,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                     node_.is_method
                     and node_.signature is not None
                     and node_.signature.is_in_py_class
-                    and param.param_kind in (UniParamKind.POSONLY, UniParamKind.NORMAL)
+                    and param.param_kind in (ParamKind.POSONLY, ParamKind.NORMAL)
                     and node_.name_spec.sym_name
                         not in ("__new__", "__init_subclass__", "__class_getitem__")
                     and not self._is_ability_staticmethod(node_)
@@ -515,7 +496,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                 default_value=param.value,
                 is_self=is_self_param,
                 is_cls=is_cls_param,
-                param_kind=_convert_param_kind(param.param_kind),
+                param_kind=param.param_kind,
                 is_comptime=param.is_comptime,
             )
         );
@@ -810,7 +791,10 @@ impl TypeEvaluator._intrinsic_function_type(name: str) -> (FunctionType | None) 
     import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
     import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
     registry = intrinsic_registry_if_ready();
-    intr = registry.get(name) if isinstance(registry, IntrinsicRegistry) else None;
+    if not isinstance(registry, IntrinsicRegistry) {
+        return None;
+    }
+    intr = registry.get(name);
     if intr is None {
         return None;
     }

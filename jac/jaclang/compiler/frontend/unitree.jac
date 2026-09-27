@@ -173,7 +173,6 @@ node UniNode {
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _link(kid: Sequence[UniNode], roles: dict[type, any]) -> None;
-    def detached_copy -> UniNode;
     def __deepcopy__(memo: dict[int, object]) -> UniNode;
     def _assert_thawed -> None;
     def freeze_structure -> None;
@@ -278,7 +277,8 @@ node Symbol {
         na_stack_ok: bool = False,
         _in_stub_scope: (bool | None) = None,
         _binding_kind: (BindingKind | None) = None,
-        provider: SymbolProvider | None = None;
+        provider: SymbolProvider | None = None,
+        imported_from: Symbol | None = None;
 
     def init(
         defn: NameAtom,
@@ -702,7 +702,6 @@ node Module(AstDocNode, UniScopeNode) {
     has annexable_by: (str | None) { getter; }
 
     def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
-    def absorb_annex_body(stmts: Sequence[UniNode]) -> None;
     def record_comptime_dependency(path: str, body: bool = False) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
@@ -1218,6 +1217,7 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     has is_cls_method: bool { getter; }
     has is_def: bool { getter; }
     has method_owner: Archetype | Enum | None { getter; }
+    has class_body_owner: Archetype | Enum | None { getter; }
     has is_genai_ability: bool { getter; }
     has surface_kind: str { getter; }
     has served: bool { getter; }
@@ -2667,6 +2667,7 @@ node PythonModuleAst(EmptyToken) {
 
 glob _HEX_DIGITS: str = '0123456789abcdefABCDEF',
      _OCT_DIGITS: str = '01234567',
+     _RADIX_DIGITS: str = '0123456789abcdefghijklmnopqrstuvwxyz',
      _LIT_PREFIX_CHARS: str = 'bBrR',
      _MAX_CODE_POINT: int = 1114111,
      _SIMPLE_ESCAPES: dict[str, str] = {
@@ -2711,6 +2712,44 @@ def _lit_quote_len(text: str, start: int) -> int {
     return 1;
 }
 
+def radix_int(digits: str, base: int) -> int {
+    value = 0;
+    seen = False;
+    for c in digits.lower() {
+        if c == "_" and seen {
+            continue;
+        }
+        digit = _RADIX_DIGITS.find(c);
+        if digit < 0 or digit >= base {
+            raise ValueError(f"invalid literal for int() with base {base}: '{digits}'");
+        }
+        value = value * base + digit;
+        seen = True;
+    }
+    if not seen {
+        raise ValueError(f"invalid literal for int() with base {base}: '{digits}'");
+    }
+    return value;
+}
+
+def int_literal_value(text: str) -> int {
+    lowered = text.lower();
+    for (prefix, base) in (("0x", 16), ("0o", 8), ("0b", 2)) {
+        if lowered.startswith(prefix) {
+            body = text[2:];
+            if body.startswith("_") {
+                body = body[1:];
+            }
+            return radix_int(body, base);
+        }
+    }
+    digits = text.replace("_", "");
+    if len(digits) > 1 and digits.startswith("0") and digits.strip("0") {
+        raise ValueError(f"invalid literal for int() with base 0: '{text}'");
+    }
+    return radix_int(text, 10);
+}
+
 def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {
     digits = text[at + 2:at + 2 + width];
     bad = len(digits) != width;
@@ -2727,7 +2766,7 @@ def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {
             f"truncated \\{kind} escape: expected {width} hex digits, got '{digits}'"
         );
     }
-    code = int(digits, 16);
+    code = radix_int(digits, 16);
     if (code > _MAX_CODE_POINT) {
         raise ValueError(f"illegal Unicode character in \\{kind}{digits} escape");
     }
@@ -2768,7 +2807,7 @@ def _decode_str_escapes(text: str) -> str {
             while (j < end and text[j] in _OCT_DIGITS) {
                 j += 1;
             }
-            out.append(chr(int(text[i + 1:j], 8)));
+            out.append(chr(radix_int(text[i + 1:j], 8)));
             i = j;
             continue;
         }
@@ -2827,7 +2866,7 @@ def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
             while (j < end and text[j] in _OCT_DIGITS) {
                 j += 1;
             }
-            out.append(int(text[i + 1:j], 8) % 256);
+            out.append(radix_int(text[i + 1:j], 8) % 256);
             i = j;
             continue;
         }

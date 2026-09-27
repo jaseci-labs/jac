@@ -1,3 +1,11 @@
+import from _file_native {
+    close_stream,
+    open_stream,
+    read_stream,
+    read_stream_all,
+    seek_stream
+}
+
 glob:pub SEEK_SET: int = 0,
      SEEK_CUR: int = 1,
      SEEK_END: int = 2,
@@ -173,6 +181,99 @@ obj:pub BytesIO {
     }
 
     def __enter__ -> BytesIO {
+        self._check_closed();
+        return self;
+    }
+
+    def __exit__(exc_type: any, exc: any, tb: any) -> bool {
+        self.close();
+        return False;
+    }
+}
+
+obj:pub FileIO {
+    has name: str = "",
+        mode: str = "rb",
+        closed: bool = False,
+        _stream: int = 0;
+
+    def init(file: str, mode: str = "r") {
+        if mode.replace("b", "") != "r" {
+            raise ValueError("FileIO mode " + mode + " is not supported natively");
+        }
+        self.name = file;
+        self.mode = "rb";
+        self.closed = False;
+        self._stream = open_stream(file, "rb");
+    }
+
+    def _check_closed {
+        if self.closed {
+            raise ValueError("I/O operation on closed file");
+        }
+    }
+
+    def readable -> bool {
+        self._check_closed();
+        return True;
+    }
+
+    def writable -> bool {
+        self._check_closed();
+        return False;
+    }
+
+    def seekable -> bool {
+        self._check_closed();
+        return True;
+    }
+
+    def read(size: int = -1) -> bytes {
+        self._check_closed();
+        if size < 0 {
+            return read_stream_all(self._stream, self.name);
+        }
+        return read_stream(self._stream, size, self.name);
+    }
+
+    def readall -> bytes {
+        self._check_closed();
+        return read_stream_all(self._stream, self.name);
+    }
+
+    def write(b: bytes) -> int {
+        self._check_closed();
+        raise UnsupportedOperation("File not open for writing");
+    }
+
+    def seek(pos: int, whence: int = 0) -> int {
+        self._check_closed();
+        if whence < 0 or whence > 2 {
+            raise ValueError(
+                "invalid whence (" + str(whence) + ", should be 0, 1 or 2)"
+            );
+        }
+        return seek_stream(self._stream, pos, whence, self.name);
+    }
+
+    def tell -> int {
+        self._check_closed();
+        return seek_stream(self._stream, 0, SEEK_CUR, self.name);
+    }
+
+    def flush {
+        self._check_closed();
+    }
+
+    def close {
+        if not self.closed {
+            close_stream(self._stream);
+            self._stream = 0;
+            self.closed = True;
+        }
+    }
+
+    def __enter__ -> FileIO {
         self._check_closed();
         return self;
     }

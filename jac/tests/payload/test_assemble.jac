@@ -25,6 +25,7 @@ import from jaclang.dist.payload.assemble {
     assemble_site,
     collect_stage_entries,
     is_volatile_path,
+    precompile_env,
     shim_file_name,
     stage_floor,
     tar_stage,
@@ -233,6 +234,23 @@ test "skipping the payload catalog cannot reuse a cached catalog" {
         }
         assert rf(out) == b"";
         assert not os.path.exists(os.path.join(cache, "stubcat.bin"));
+    }
+}
+
+test "the precompile child keeps the stage-0 cache and source tree while HOME moves" {
+    with tempfile.TemporaryDirectory() as tmp {
+        site = os.path.join(tmp, "site");
+        os.makedirs(site);
+        outer = {
+            "JAC_CACHE_HOME": os.path.join(tmp, "cache"),
+            "JAC_STAGE0_ROOT": os.path.join(tmp, "checkout", "jac")
+        };
+        with patch.dict(os.environ, outer) {
+            env = precompile_env(os.path.join(tmp, "python"), site);
+        }
+        assert env["JAC_CACHE_HOME"] == outer["JAC_CACHE_HOME"];
+        assert env["JAC_STAGE0_ROOT"] == outer["JAC_STAGE0_ROOT"];
+        assert env["HOME"] == site + ".home";
     }
 }
 

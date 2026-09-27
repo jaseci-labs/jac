@@ -42,14 +42,14 @@ def _opts(mode: str = "") -> CompileOptions {
     return CompileOptions(
         aot_mode=True,
         default_codespace='native',
-        force_target_program=True,
         skip_native_engine=True,
         native_link_mode=(mode or None)
     );
 }
 
-"""A private copy of the diamond in `tmp`, so edits never touch the fixtures."""
-def _diamond_copy(tmp: str) -> str {
+"""A private copy of the diamond, so edits never touch the fixtures."""
+def _diamond_copy -> str {
+    tmp = tempfile.mkdtemp(prefix="jac-diamond-");
     for name in UNITS {
         shutil.copy(os.path.join(FIXTURES, name), os.path.join(tmp, name));
     }
@@ -69,76 +69,65 @@ def _can_link_host -> bool {
 }
 
 test "the plan holds every unit of the diamond, dependencies first" {
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        toolchain = [
-            u.path
-            for u in plan.units
-            if is_kernel_unit_path(u.path)
-        ];
-        names = [
-            os.path.basename(u.path)
-            for u in plan.units
-            if not is_kernel_unit_path(u.path)
-        ];
-        assert sorted(names) == sorted(UNITS) , names;
-        assert toolchain;
-        for u in plan.units {
-            for dep in u.iface.deps {
-                assert plan.units.index(plan.unit(dep)) < plan.units.index(u) , f"{dep} must precede its consumer {u.path}";
-            }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    toolchain = [
+        u.path
+        for u in plan.units
+        if is_kernel_unit_path(u.path)
+    ];
+    names = [
+        os.path.basename(u.path)
+        for u in plan.units
+        if not is_kernel_unit_path(u.path)
+    ];
+    assert sorted(names) == sorted(UNITS) , names;
+    assert toolchain;
+    for u in plan.units {
+        for dep in u.iface.deps {
+            assert plan.units.index(plan.unit(dep)) < plan.units.index(u) , f"{dep} must precede its consumer {u.path}";
         }
-        assert names[-1] == "top.jac" , "the root_dir comes last";
-        assert names.index("base.jac") < names.index("left.jac");
-        assert names.index("base.jac") < names.index("right.jac");
-        assert names.index("base.jac") < names.index("extra.jac");
-        assert plan.root_unit().path
-            == os.path.realpath(os.path.join(root_dir, "top.jac"));
-        inits = plan.init_symbols();
-        assert native_glob_init_name(os.path.join(root_dir, "base.jac")) in inits;
-        assert inits.index(native_glob_init_name(os.path.join(root_dir, "base.jac")))
-            < inits.index(native_glob_init_name(os.path.join(root_dir, "left.jac")));
-        assert inits[-1] == native_glob_init_name(os.path.join(root_dir, "top.jac"));
-        assert plan.root_unit().iface.entry_symbol
-            == native_entry_name(os.path.join(root_dir, "top.jac"));
-        assert "diamond_abi_version" in plan.pub_exports();
     }
+    assert names[-1] == "top.jac" , "the root_dir comes last";
+    assert names.index("base.jac") < names.index("left.jac");
+    assert names.index("base.jac") < names.index("right.jac");
+    assert names.index("base.jac") < names.index("extra.jac");
+    assert plan.root_unit().path == os.path.realpath(os.path.join(root_dir, "top.jac"));
+    inits = plan.init_symbols();
+    assert native_glob_init_name(os.path.join(root_dir, "base.jac")) in inits;
+    assert inits.index(native_glob_init_name(os.path.join(root_dir, "base.jac")))
+        < inits.index(native_glob_init_name(os.path.join(root_dir, "left.jac")));
+    assert inits[-1] == native_glob_init_name(os.path.join(root_dir, "top.jac"));
+    assert plan.root_unit().iface.entry_symbol
+        == native_entry_name(os.path.join(root_dir, "top.jac"));
+    assert "diamond_abi_version" in plan.pub_exports();
 }
 
 test "a body edit rewrites one object and keeps every interface" {
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        registry = prog.native_units();
-        obj_before = registry.object_for(os.path.join(root_dir, "left.jac"), _opts());
-        base_obj_before = registry.object_for(
-            os.path.join(root_dir, "base.jac"), _opts()
-        );
-        assert obj_before is not None and base_obj_before is not None;
-        left = Path(root_dir) / "left.jac";
-        left.write_text(
-            left.read_text().replace("scale(p.sum(), 2)", "scale(p.sum(), 3)")
-        );
-        (prog2, plan2) = _plan_for(root_dir);
-        registry2 = prog2.native_units();
-        assert registry2.compiled_paths == [os.path.realpath(str(left))] , registry2.compiled_paths;
-        assert registry2.object_for(str(left), _opts()) != obj_before , "left's object must be rebuilt";
-        assert registry2.object_for(os.path.join(root_dir, "base.jac"), _opts())
-            == base_obj_before , "base is untouched";
-        for u in plan2.units {
-            prev = plan.unit(u.path);
-            assert prev is not None and prev.digest == u.digest , f"{u.path} interface moved on a body edit";
-        }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    obj_before = registry.object_for(os.path.join(root_dir, "left.jac"), _opts());
+    base_obj_before = registry.object_for(os.path.join(root_dir, "base.jac"), _opts());
+    assert obj_before is not None and base_obj_before is not None;
+
+    left = Path(root_dir) / "left.jac";
+    left.write_text(left.read_text().replace("scale(p.sum(), 2)", "scale(p.sum(), 3)"));
+    (prog2, plan2) = _plan_for(root_dir);
+    registry2 = prog2.native_units();
+    assert registry2.compiled_paths == [os.path.realpath(str(left))] , registry2.compiled_paths;
+    assert registry2.object_for(str(left), _opts()) != obj_before , "left's object must be rebuilt";
+    assert registry2.object_for(os.path.join(root_dir, "base.jac"), _opts())
+        == base_obj_before , "base is untouched";
+    for u in plan2.units {
+        prev = plan.unit(u.path);
+        assert prev is not None and prev.digest == u.digest , f"{u.path} interface moved on a body edit";
     }
 }
 
 test "a no-op build lowers no units and preserves the linked artifact" {
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+    if _can_link_host() {
+        root_dir = _diamond_copy();
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         first = link_artifact(plan, output, ArtifactKind.EXECUTABLE);
@@ -159,15 +148,12 @@ test "a no-op build lowers no units and preserves the linked artifact" {
 }
 
 test "the layout sidecar records the inputs a kernel is accepted by" {
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
-    import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
-    import from jaclang.compiler.driver.jir { running_compiler_digest }
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+    if _can_link_host() {
+        import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
+        import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
+        import from jaclang.compiler.driver.jir { running_compiler_digest }
+        import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+        root_dir = _diamond_copy();
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         link_artifact(plan, output, ArtifactKind.EXECUTABLE);
@@ -186,11 +172,26 @@ test "the layout sidecar records the inputs a kernel is accepted by" {
     }
 }
 
+test "a closure release keeps native interfaces and drops their products" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    kept = set(registry.entries);
+    assert kept , "the plan registers its units";
+    prog.release_compile_closure();
+    assert set(registry.entries) == kept , "interfaces outlive the compile that produced them";
+    assert all(
+        ent.bitcode is None and ent.object_bytes is None
+        for ent in registry.entries.values()
+    ) , "products do not";
+    assert registry.compiled_paths == [];
+    prog.release_compile_closure(retain_stubs=False);
+    assert not registry.entries , "a full release drops the interfaces too";
+}
+
 test "changing a default argument updates an unchanged caller's executable" {
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-default-link-") as root_dir {
+    if _can_link_host() {
+        root_dir = tempfile.mkdtemp(prefix="jac-default-link-");
         base = Path(root_dir) / "base.jac";
         base.write_text("def f(x: int = 1) -> int { return x; }");
         consumer = Path(root_dir) / "consumer.jac";
@@ -211,27 +212,22 @@ test "changing a default argument updates an unchanged caller's executable" {
 }
 
 test "bitcode builds emit objects on demand without lowering again" {
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
-        registry = prog.native_units();
-        unit_path = plan.root_unit().path;
-        ent = registry.entries[unit_path];
-        assert ent.bitcode is not None and ent.object_bytes is None;
-        emitted_before = list(registry.compiled_paths);
-        obj_bytes = registry.object_for(unit_path, _opts());
-        assert obj_bytes is not None;
-        assert registry.compiled_paths == emitted_before;
-    }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+    registry = prog.native_units();
+    unit_path = plan.root_unit().path;
+    ent = registry.entries[unit_path];
+    assert ent.bitcode is not None and ent.object_bytes is None;
+    emitted_before = list(registry.compiled_paths);
+    obj_bytes = registry.object_for(unit_path, _opts());
+    assert obj_bytes is not None;
+    assert registry.compiled_paths == emitted_before;
 }
 
 test "a warm bitcode artifact skips whole-program optimization and emission" {
     import from unittest.mock { patch }
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+    if _can_link_host() {
+        root_dir = _diamond_copy();
         (_, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
         products = {
             u.path: hashlib.sha256(
@@ -264,61 +260,52 @@ test "a warm bitcode artifact skips whole-program optimization and emission" {
 test "settlement refreshes edges and removes dependencies no longer reachable" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.native_iface { NativeIface }
-    with tempfile.TemporaryDirectory(prefix="jac-plan-edges-") as scratch_dir {
-        scratch = Path(scratch_dir);
-        paths: dict[str, str] = {};
-        for name in ["top", "old", "new"] {
-            path = scratch / (name + ".jac");
-            path.write_text("def f -> int { return 1; }");
-            paths[name] = str(path.resolve());
-        }
-        prog = JacProgram();
-        opts = _opts();
-        prog.options = opts;
-        registry = prog.native_units();
-        registry.record(paths["old"], NativeIface(module="old", prefix="old"), opts);
-        replacement = registry.record(
-            paths["new"], NativeIface(module="new", prefix="new"), opts
-        );
-        registry.record(
-            paths["top"],
-            NativeIface(module="top", prefix="top", deps=[paths["old"]]),
-            opts
-        );
-        def recompile(path: str, options: CompileOptions) -> any {
-            assert path == paths["top"];
-            return registry.record(
-                path,
-                NativeIface(module="top", prefix="top", deps=[paths["new"]]),
-                options,
-                dep_digests={paths["new"]: replacement.digest}
-            );
-        }
-        with patch.object(
-            registry, "compile_unit", side_effect=recompile
-        ) as compile_unit {
-            plan = build_link_plan(prog, [paths["top"]], opts);
-            assert compile_unit.call_count == 1;
-        }
-        assert [u.path for u in plan.units] == [paths["new"], paths["top"]];
+    scratch = Path(tempfile.mkdtemp(prefix="jac-plan-edges-"));
+    paths: dict[str, str] = {};
+    for name in ["top", "old", "new"] {
+        path = scratch / (name + ".jac");
+        path.write_text("def f -> int { return 1; }");
+        paths[name] = str(path.resolve());
     }
+    prog = JacProgram();
+    opts = _opts();
+    prog.options = opts;
+    registry = prog.native_units();
+    registry.record(paths["old"], NativeIface(module="old", prefix="old"), opts);
+    replacement = registry.record(
+        paths["new"], NativeIface(module="new", prefix="new"), opts
+    );
+    registry.record(
+        paths["top"], NativeIface(module="top", prefix="top", deps=[paths["old"]]), opts
+    );
+    def recompile(path: str, options: CompileOptions) -> any {
+        assert path == paths["top"];
+        return registry.record(
+            path,
+            NativeIface(module="top", prefix="top", deps=[paths["new"]]),
+            options,
+            dep_digests={paths["new"]: replacement.digest}
+        );
+    }
+    with patch.object(
+        registry, "compile_unit", side_effect=recompile
+    ) as compile_unit {
+        plan = build_link_plan(prog, [paths["top"]], opts);
+        assert compile_unit.call_count == 1;
+    }
+    assert [u.path for u in plan.units] == [paths["new"], paths["top"]];
 }
 
 test "an imported generic body invalidates native code after a bytecode cache merge" {
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    import from jaclang.compiler.driver.jir {
-        SEC_CTDEPS,
-        SEC_NCTDEPS,
-        get_module_cache_path,
-        read_section_bytes,
-        write_module_cache
-    }
-    with tempfile.TemporaryDirectory(
-        prefix="jac-generic-incremental-"
-    ) as scratch_dir {
-        scratch = Path(scratch_dir);
+    if _can_link_host() {
+        import from jaclang.compiler.driver.jir {
+            SEC_CTDEPS,
+            SEC_NCTDEPS,
+            get_module_cache_path,
+            read_section_bytes,
+            write_module_cache
+        }
+        scratch = Path(tempfile.mkdtemp(prefix="jac-generic-incremental-"));
         base = scratch / "base.jac";
         base.write_text("def pick[T](xs: list[T]) -> T { return xs[0]; }");
         top = scratch / "top.jac";
@@ -347,60 +334,55 @@ test "an imported generic body invalidates native code after a bytecode cache me
 }
 
 test "an interface edit moves the dependents' recorded digests" {
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        base = Path(root_dir) / "base.jac";
-        base_digest = plan.unit(str(base)).digest;
-        base.write_text(
-            base.read_text()
-                + "\ndef newly_exported(v: int) -> int {\n    return v;\n}\n"
-        );
-        (prog2, plan2) = _plan_for(root_dir);
-        assert plan2.unit(str(base)).digest != base_digest , "an export must move base's digest";
-        for u in plan2.units {
-            for (dep, recorded) in prog2.native_units().recorded_native_deps(u.path) {
-                live = plan2.unit(dep);
-                if live is not None {
-                    assert recorded == live.digest , f"{u.path} still records a stale digest for {dep}";
-                }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    base = Path(root_dir) / "base.jac";
+    base_digest = plan.unit(str(base)).digest;
+    base.write_text(
+        base.read_text() + "\ndef newly_exported(v: int) -> int {\n    return v;\n}\n"
+    );
+    (prog2, plan2) = _plan_for(root_dir);
+    assert plan2.unit(str(base)).digest != base_digest , "an export must move base's digest";
+    for u in plan2.units {
+        for (dep, recorded) in prog2.native_units().recorded_native_deps(u.path) {
+            live = plan2.unit(dep);
+            if live is not None {
+                assert recorded == live.digest , f"{u.path} still records a stale digest for {dep}";
             }
         }
     }
 }
 
 test "a stale recorded dependency is recompiled until the plan agrees" {
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        registry = prog.native_units();
-        top = os.path.realpath(os.path.join(root_dir, "top.jac"));
-        stale = dict(registry.entries[top].dep_digests);
-        assert stale , "top must have recorded its dependencies";
-        victim = sorted(stale.keys())[0];
-        stale[victim] = "0" * 64;
-        registry.entries[top].dep_digests = stale;
-        plan2 = build_link_plan(prog, [top], _opts());
-        recorded = dict(registry.recorded_native_deps(top));
-        victim_unit = plan2.unit(victim);
-        assert victim_unit is not None , victim;
-        assert recorded.get(victim) == victim_unit.digest , recorded;
-        for u in plan2.units {
-            rows: list[tuple[str, str]] = registry.recorded_native_deps(u.path);
-            for (dep, digest) in rows {
-                live = plan2.unit(dep);
-                assert live is None or live.digest == digest , f"{u.path} disagrees on {dep}";
-            }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    top = os.path.realpath(os.path.join(root_dir, "top.jac"));
+    stale = dict(registry.entries[top].dep_digests);
+    assert stale , "top must have recorded its dependencies";
+    victim = sorted(stale.keys())[0];
+    stale[victim] = "0" * 64;
+    registry.entries[top].dep_digests = stale;
+    plan2 = build_link_plan(prog, [top], _opts());
+    recorded = dict(registry.recorded_native_deps(top));
+    victim_unit = plan2.unit(victim);
+    assert victim_unit is not None , victim;
+    assert recorded.get(victim) == victim_unit.digest , recorded;
+    for u in plan2.units {
+        rows: list[tuple[str, str]] = registry.recorded_native_deps(u.path);
+        for (dep, digest) in rows {
+            live = plan2.unit(dep);
+            assert live is None or live.digest == digest , f"{u.path} disagrees on {dep}";
         }
     }
 }
 
 test "two links from one cache are byte-identical" {
     if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+        import pytest;
+        pytest.skip("host linker unavailable");
+    } else {
+        root_dir = _diamond_copy();
         (prog, plan) = _plan_for(root_dir);
         out_a = os.path.join(root_dir, "top_a");
         out_b = os.path.join(root_dir, "top_b");
@@ -419,10 +401,10 @@ test "two links from one cache are byte-identical" {
 
 test "objects mode and bitcode mode agree on the program" {
     if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+        import pytest;
+        pytest.skip("host linker unavailable");
+    } else {
+        root_dir = _diamond_copy();
         (prog_o, plan_o) = _plan_for(root_dir, NATIVE_LINK_MODE_OBJECTS);
         (prog_b, plan_b) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
         assert plan_o.mode == NATIVE_LINK_MODE_OBJECTS;
@@ -441,10 +423,10 @@ test "objects mode and bitcode mode agree on the program" {
 
 test "a shared link exports only the C ABI" {
     if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+        import pytest;
+        pytest.skip("host linker unavailable");
+    } else {
+        root_dir = _diamond_copy();
         prog = JacProgram();
         opts = _opts();
         base = os.path.join(root_dir, "base.jac");
@@ -463,18 +445,15 @@ test "a shared link exports only the C ABI" {
 }
 
 test "shared retain and release helpers honor --gc none" {
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    import ctypes;
-    import from jaclang.compiler.frontend.codeinfo {
-        HDR_TOTAL,
-        HDR_ALLOC_ID_OFF,
-        HDR_MAGIC_SHIFT_BASE,
-        HDR_RC_OFF
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
+    if _can_link_host() {
+        import ctypes;
+        import from jaclang.compiler.frontend.codeinfo {
+            HDR_TOTAL,
+            HDR_ALLOC_ID_OFF,
+            HDR_MAGIC_SHIFT_BASE,
+            HDR_RC_OFF
+        }
+        root_dir = _diamond_copy();
         prog = JacProgram();
         opts = _opts();
         opts.na_gc_mode = "none";
@@ -504,68 +483,65 @@ test "the glue supplies the region-death hook only when no unit does" {
         REGION_DIED_HOOK,
         link_glue_ir
     }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        spec = plan.glue_spec(ArtifactKind.JIT, "jit", False);
-        assert spec.needs_region_hook;
-        (glue_ir, _exports) = link_glue_ir(spec);
-        assert f"define void @{REGION_DIED_HOOK}(" in glue_ir;
-        graph_path = os.path.join(root_dir, "graph.jac");
-        with open(graph_path, "w") as f {
-            f.write(
-                "node Cell { has v: int = 0; }\n"
-                "walker Sum { has total: int = 0;\n"
-                "    can add with Cell entry { self.total += here.v; visit [-->]; }\n"
-                "}\n"
-                "with entry { r = Cell(v=1); r ++> Cell(v=2); print(Sum() spawn r); }\n"
-            );
-        }
-        gprog = JacProgram();
-        opts = _opts();
-        gprog.compile(file_path=graph_path, options=opts);
-        assert not gprog.errors_had , [str(e) for e in gprog.errors_had];
-        gplan = build_link_plan(gprog, [graph_path], opts);
-        suppliers = [
-            u.path
-            for u in gplan.units
-            if REGION_DIED_HOOK in u.iface.exports
-        ];
-        assert suppliers , [u.path for u in gplan.units];
-        gspec = gplan.glue_spec(ArtifactKind.JIT, "jit", False);
-        assert not gspec.needs_region_hook;
-        (gglue_ir, _gexports) = link_glue_ir(gspec);
-        assert REGION_DIED_HOOK not in gglue_ir;
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    spec = plan.glue_spec(ArtifactKind.JIT, "jit", False);
+    assert spec.needs_region_hook;
+    (glue_ir, _exports) = link_glue_ir(spec);
+    assert f"define void @{REGION_DIED_HOOK}(" in glue_ir;
+
+    graph_path = os.path.join(root_dir, "graph.jac");
+    with open(graph_path, "w") as f {
+        f.write(
+            "node Cell { has v: int = 0; }\n"
+            "walker Sum { has total: int = 0;\n"
+            "    can add with Cell entry { self.total += here.v; visit [-->]; }\n"
+            "}\n"
+            "with entry { r = Cell(v=1); r ++> Cell(v=2); print(Sum() spawn r); }\n"
+        );
     }
+    gprog = JacProgram();
+    opts = _opts();
+    gprog.compile(file_path=graph_path, options=opts);
+    assert not gprog.errors_had , [str(e) for e in gprog.errors_had];
+    gplan = build_link_plan(gprog, [graph_path], opts);
+    suppliers = [
+        u.path
+        for u in gplan.units
+        if REGION_DIED_HOOK in u.iface.exports
+    ];
+    assert suppliers , [u.path for u in gplan.units];
+    gspec = gplan.glue_spec(ArtifactKind.JIT, "jit", False);
+    assert not gspec.needs_region_hook;
+    (gglue_ir, _gexports) = link_glue_ir(gspec);
+    assert REGION_DIED_HOOK not in gglue_ir;
 }
 
 
 test "the glue defines atexit wherever glibc would leave it unresolved" {
     import from jaclang.compiler.backends.native.link_glue { link_glue_ir }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        shim = "define hidden i32 @atexit(";
-        dynamic_exec = plan.glue_spec(ArtifactKind.EXECUTABLE, "elf", False);
-        assert dynamic_exec.needs_atexit_shim , (
-            "a dynamically linked ELF executable resolves atexit itself"
-        );
-        assert shim in link_glue_ir(dynamic_exec)[0];
-        shared = plan.glue_spec(ArtifactKind.SHARED, "elf", False);
-        assert shared.needs_atexit_shim;
-        static_exec = plan.glue_spec(ArtifactKind.EXECUTABLE, "elf", True);
-        assert not static_exec.needs_atexit_shim , "musl's libc.a supplies atexit";
-        assert shim not in link_glue_ir(static_exec)[0];
-        macho = plan.glue_spec(ArtifactKind.EXECUTABLE, "macho", False);
-        assert not macho.needs_atexit_shim;
-        jit = plan.glue_spec(ArtifactKind.JIT, "jit", False);
-        assert not jit.needs_atexit_shim;
-    }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    shim = "define hidden i32 @atexit(";
+    dynamic_exec = plan.glue_spec(ArtifactKind.EXECUTABLE, "elf", False);
+    assert dynamic_exec.needs_atexit_shim , (
+        "a dynamically linked ELF executable resolves atexit itself"
+    );
+    assert shim in link_glue_ir(dynamic_exec)[0];
+    shared = plan.glue_spec(ArtifactKind.SHARED, "elf", False);
+    assert shared.needs_atexit_shim;
+    static_exec = plan.glue_spec(ArtifactKind.EXECUTABLE, "elf", True);
+    assert not static_exec.needs_atexit_shim , "musl's libc.a supplies atexit";
+    assert shim not in link_glue_ir(static_exec)[0];
+    macho = plan.glue_spec(ArtifactKind.EXECUTABLE, "macho", False);
+    assert not macho.needs_atexit_shim;
+    jit = plan.glue_spec(ArtifactKind.JIT, "jit", False);
+    assert not jit.needs_atexit_shim;
 }
 
 test "a source string can settle after its dependency interface changes" {
     if not _can_link_host() {
-        testskip("host linker unavailable");
+        return;
     }
     with tempfile.TemporaryDirectory(prefix="jac-plan-source-") as tmp {
         dep = Path(tmp) / "dep.jac";
@@ -597,37 +573,32 @@ test "a source string can settle after its dependency interface changes" {
 test "a unit retains prepared dependency interfaces when disk products are unavailable" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir);
-        registry = prog.native_units();
-        top = plan.root_unit().path;
-        prior = dict(registry.entries[top].dep_digests);
-        assert prior and all(prior.values());
-        with patch.object(NativeUnitRegistry, "_module_jir", return_value=None) {
-            ent = registry.compile_unit(top, _opts());
-        }
-        assert ent is not None , registry.failures;
-        assert ent.dep_digests == prior;
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    top = plan.root_unit().path;
+    prior = dict(registry.entries[top].dep_digests);
+    assert prior and all(prior.values());
+    with patch.object(NativeUnitRegistry, "_module_jir", return_value=None) {
+        ent = registry.compile_unit(top, _opts());
     }
+    assert ent is not None , registry.failures;
+    assert ent.dep_digests == prior;
 }
 
 test "native plans compile without per-unit subprocesses" {
     import from unittest.mock { patch }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        with patch(
-            "subprocess.run",
-            side_effect=AssertionError("native unit started a subprocess")
-        ) {
-            (prog, plan) = _plan_for(root_dir);
-        }
-        events = prog.analysis.cache_events;
-        assert events.get("native_unit_analysis", 0) > 0;
-        assert events.get("native_unit_analysis", 0)
-            == len(prog.native_units().compiled_paths);
-        assert prog.native_units().session is None;
+    root_dir = _diamond_copy();
+    with patch(
+        "subprocess.run", side_effect=AssertionError("native unit started a subprocess")
+    ) {
+        (prog, plan) = _plan_for(root_dir);
     }
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_analysis", 0) > 0;
+    assert events.get("native_unit_analysis", 0)
+        == len(prog.native_units().compiled_paths);
+    assert prog.native_units().session is None;
 }
 
 test "an import cycle settles without repeating frontend analysis or optimization" {
@@ -658,13 +629,12 @@ test "an import cycle settles without repeating frontend analysis or optimizatio
                 assert consumed[dep] == dependency.digest;
             }
         }
-        if not _can_link_host() {
-            testskip("host linker unavailable");
+        if _can_link_host() {
+            output = str(Path(root_dir) / "cycle");
+            link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+            run = subprocess.run([output], capture_output=True, text=True, timeout=10);
+            assert run.returncode == 0 and run.stdout.strip() == "True" , run.stderr;
         }
-        output = str(Path(root_dir) / "cycle");
-        link_artifact(plan, output, ArtifactKind.EXECUTABLE);
-        run = subprocess.run([output], capture_output=True, text=True, timeout=10);
-        assert run.returncode == 0 and run.stdout.strip() == "True" , run.stderr;
     }
 }
 
@@ -674,26 +644,24 @@ test "object emission preserves the native record without an existing disk entry
         ct_deps_section,
         rebase_ct_deps_section
     }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
-        registry = prog.native_units();
-        path = plan.root_unit().path;
-        prior = registry.entries[path];
-        prior.compile_deps_base = root_dir;
-        prior.compile_deps = rebase_ct_deps_section(
-            ct_deps_section([os.path.join(root_dir, "base.jac")]), root_dir
-        );
-        get_module_cache_path(path).unlink();
-        assert registry.object_for(path, _opts()) is not None;
-        warm = JacProgram().native_units().ensure(
-            path, compile_on_miss=False, options=_opts()
-        );
-        assert warm is not None;
-        assert warm.digest == prior.digest;
-        assert warm.dep_digests == prior.dep_digests;
-        assert warm.bitcode == prior.bitcode;
-    }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+    registry = prog.native_units();
+    path = plan.root_unit().path;
+    prior = registry.entries[path];
+    prior.compile_deps_base = root_dir;
+    prior.compile_deps = rebase_ct_deps_section(
+        ct_deps_section([os.path.join(root_dir, "base.jac")]), root_dir
+    );
+    get_module_cache_path(path).unlink();
+    assert registry.object_for(path, _opts()) is not None;
+    warm = JacProgram().native_units().ensure(
+        path, compile_on_miss=False, options=_opts()
+    );
+    assert warm is not None;
+    assert warm.digest == prior.digest;
+    assert warm.dep_digests == prior.dep_digests;
+    assert warm.bitcode == prior.bitcode;
 }
 
 test "cross-target build sessions preserve source identity and prepared interfaces" {
@@ -701,25 +669,23 @@ test "cross-target build sessions preserve source identity and prepared interfac
     import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
     import jaclang.compiler.backends.native.llvm.binding as llvm;
     host = CompileOptions().effective_triple();
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        root_dir = _diamond_copy(scratch_dir);
-        opts = _opts();
-        opts.native_target = "aarch64-unknown-linux-gnu";
-        prog = JacProgram();
-        plan = build_link_plan(prog, [os.path.join(root_dir, "top.jac")], opts);
-        registry = prog.native_units();
-        top = plan.root_unit().path;
-        prior = dict(registry.entries[top].dep_digests);
-        with patch.object(NativeUnitRegistry, "_module_jir", return_value=None) {
-            ent = registry.compile_unit(top, opts);
-        }
-        assert ent is not None , registry.failures;
-        assert ent.dep_digests == prior;
-        assert ent.bitcode is not None;
-        assert f'target triple = "{opts.native_target}"'
-            in str(llvm.parse_bitcode(ent.bitcode));
-        assert CompileOptions().effective_triple() == host;
+    root_dir = _diamond_copy();
+    opts = _opts();
+    opts.native_target = "aarch64-unknown-linux-gnu";
+    prog = JacProgram();
+    plan = build_link_plan(prog, [os.path.join(root_dir, "top.jac")], opts);
+    registry = prog.native_units();
+    top = plan.root_unit().path;
+    prior = dict(registry.entries[top].dep_digests);
+    with patch.object(NativeUnitRegistry, "_module_jir", return_value=None) {
+        ent = registry.compile_unit(top, opts);
     }
+    assert ent is not None , registry.failures;
+    assert ent.dep_digests == prior;
+    assert ent.bitcode is not None;
+    assert f'target triple = "{opts.native_target}"'
+        in str(llvm.parse_bitcode(ent.bitcode));
+    assert CompileOptions().effective_triple() == host;
 }
 
 test "native build CLI reuses warm artifacts under each memory profile" {
@@ -973,30 +939,56 @@ test "shared artifacts reject Python imports before publishing" {
 }
 
 test "imported strings keep their ABI across enforced and runtime units" {
-    if not _can_link_host() {
-        testskip("host linker unavailable");
-    }
-    with tempfile.TemporaryDirectory(prefix="jac-string-abi-") as root_dir {
-        (Path(root_dir) / "base.jac").write_text(
-            'def suffix(value: str) -> str { return value[1:] + "!"; }\n'
-        );
-        top = Path(root_dir) / "top.jac";
-        top.write_text(
-            'import from base { suffix }\n' + 'with entry { print(suffix("hello")); }\n'
-        );
-        for mode in (NATIVE_LINK_MODE_OBJECTS, NATIVE_LINK_MODE_BITCODE) {
-            options = _opts(mode);
-            options.memory_profile = "nogc";
-            options.memory_enforce = ["top"];
-            program = JacProgram();
-            program.options = options;
-            plan = build_link_plan(program, [str(top)], options, mode=mode);
-            output = os.path.join(root_dir, "program-" + mode);
-            link_artifact(plan, output, ArtifactKind.EXECUTABLE);
-            run = subprocess.run([output], capture_output=True, text=True);
-            assert run.returncode == 0 , run.stderr;
-            assert run.stdout == "ello!\n" , run.stdout;
+    if _can_link_host() {
+        with tempfile.TemporaryDirectory(prefix="jac-string-abi-") as root_dir {
+            (Path(root_dir) / "base.jac").write_text(
+                'def suffix(value: str) -> str { return value[1:] + "!"; }\n'
+            );
+            top = Path(root_dir) / "top.jac";
+            top.write_text(
+                'import from base { suffix }\n'
+                    + 'with entry { print(suffix("hello")); }\n'
+            );
+            for mode in (NATIVE_LINK_MODE_OBJECTS, NATIVE_LINK_MODE_BITCODE) {
+                options = _opts(mode);
+                options.memory_profile = "nogc";
+                options.memory_enforce = ["top"];
+                program = JacProgram();
+                program.options = options;
+                plan = build_link_plan(program, [str(top)], options, mode=mode);
+                output = os.path.join(root_dir, "program-" + mode);
+                link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+                run = subprocess.run([output], capture_output=True, text=True);
+                assert run.returncode == 0 , run.stderr;
+                assert run.stdout == "ello!\n" , run.stdout;
+            }
         }
+    }
+}
+
+test "the JIT reuses the optimized image of an unchanged link plan" {
+    import ctypes;
+    import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
+    with tempfile.TemporaryDirectory(prefix="jac-jit-image-") as cache_dir {
+        source = str(Path(cache_dir) / "reuse.jac");
+        Path(source).write_text("def:pub answer -> int { return 42; }\n");
+        opts = _opts(NATIVE_LINK_MODE_BITCODE);
+        first = JacProgram();
+        first.options = opts;
+        engine = jit_engine_for_cached(first, source, opts);
+        assert engine is not None;
+        events = first.analysis.cache_events;
+        assert events.get("jit_image_build", 0) == 1 , dict(events);
+        second = JacProgram();
+        second.options = opts;
+        again = jit_engine_for_cached(second, source, opts);
+        assert again is not None;
+        events = second.analysis.cache_events;
+        assert events.get("jit_image_hit", 0) == 1 , dict(events);
+        assert events.get("jit_image_build", 0) == 0 , dict(events);
+        address = again.get_function_address("answer");
+        assert address;
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == 42;
     }
 }
 
@@ -1007,32 +999,64 @@ test "an analysis-only consumer records a dependency's interface without emittin
         SEC_NBITCODE,
         SEC_NOBJ
     }
-    with tempfile.TemporaryDirectory(prefix="jac-diamond-") as scratch_dir {
-        tmp = _diamond_copy(scratch_dir);
-        top = os.path.join(tmp, "top.jac");
-        prog = JacProgram();
-        opts = CompileOptions(
-            no_cgen=True,
-            native_required=True,
-            default_codespace='native',
-            skip_native_engine=True
-        );
-        prog.compile(file_path=top, options=opts);
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        events = prog.analysis.cache_events;
-        assert events.get("native_unit_analysis_only", 0) >= 1 , dict(events);
-        registry = prog.native_units();
-        for name in ["base.jac", "left.jac", "right.jac", "extra.jac"] {
-            dep = os.path.realpath(os.path.join(tmp, name));
-            ent = registry.entries.get(dep);
-            assert ent is not None and ent.iface is not None , name;
-            assert ent.bitcode is None and ent.object_bytes is None , name;
-            cache_path = get_module_cache_path(dep);
-            if cache_path.exists() {
-                data = cache_path.read_bytes();
-                assert read_section_bytes(data, SEC_NBITCODE) is None , name;
-                assert read_section_bytes(data, SEC_NOBJ) is None , name;
-            }
+    tmp = _diamond_copy();
+    top = os.path.join(tmp, "top.jac");
+    prog = JacProgram();
+    opts = CompileOptions(
+        no_cgen=True,
+        native_required=True,
+        default_codespace='native',
+        skip_native_engine=True
+    );
+    prog.compile(file_path=top, options=opts);
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_analysis_only", 0) >= 1 , dict(events);
+    registry = prog.native_units();
+    for name in ["base.jac", "left.jac", "right.jac", "extra.jac"] {
+        dep = os.path.realpath(os.path.join(tmp, name));
+        ent = registry.entries.get(dep);
+        assert ent is not None and ent.iface is not None , name;
+        assert ent.bitcode is None and ent.object_bytes is None , name;
+        cache_path = get_module_cache_path(dep);
+        if cache_path.exists() {
+            data = cache_path.read_bytes();
+            assert read_section_bytes(data, SEC_NBITCODE) is None , name;
+            assert read_section_bytes(data, SEC_NOBJ) is None , name;
         }
     }
+}
+
+"""The facts an importer records for an imported function come from the
+dependency's own interface, so a unit lowered against a warm dependency
+records the same element keys as one lowered alongside it."""
+def _imported_ret_keys(root_dir: str) -> any {
+    prog = JacProgram();
+    opts = _opts(NATIVE_LINK_MODE_BITCODE);
+    prog.options = opts;
+    top = os.path.join(root_dir, "top.jac");
+    unit = prog.native_units().ensure(top, compile_on_miss=True, options=opts);
+    assert unit is not None and unit.iface.layout is not None;
+    record = unit.iface.layout.functions.get("evens");
+    return record.ret_elem_keys if record is not None else None;
+}
+
+test "an importer records an imported function's element keys from its interface" {
+    root_dir = tempfile.mkdtemp(prefix="jac-imported-keys-");
+    Path(root_dir, "lib.jac").write_text(
+        "def:pub evens(n: int) -> list[int] {\n"
+        "    return [i * 2 for i in range(n)];\n"
+        "}\n"
+    );
+    top = Path(root_dir, "top.jac");
+    top.write_text(
+        "import from .lib { evens }\n" "with entry { print(len(evens(3))); }\n"
+    );
+    cold = _imported_ret_keys(root_dir);
+    top.write_text(
+        "import from .lib { evens }\n" "with entry { print(len(evens(4))); }\n"
+    );
+    warm = _imported_ret_keys(root_dir);
+    assert cold == warm , f"cold {cold} vs warm {warm}";
+    assert cold == ["int"] , cold;
 }
