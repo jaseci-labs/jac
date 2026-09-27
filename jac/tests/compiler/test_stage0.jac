@@ -22,12 +22,16 @@ import jaclang.compiler.backends.native.stage0_build as stage0_build;
 import from jaclang.compiler.backends.native.kernel_resolve {
     KERNEL_DEV_LINK_MODE,
     KernelUnavailable,
+    PR_KIT_EVENT,
+    PR_KIT_LINK_ENV,
+    PR_KIT_LINK_MODE,
     SEALED_LINK_MODE,
     _accept_in_tree,
     _derive_in_tree,
     _from_sealed_image,
     kernel_options,
-    read_sidecar
+    read_sidecar,
+    seal_link_mode
 }
 import from jaclang.compiler.backends.native.stage0_pin {
     STAGE0_PIN_ENV,
@@ -362,13 +366,24 @@ test "stage 0 links a dev kernel from unit objects and a sealed kernel as one op
     assert old is not None and old.link_mode == "" , "an older spec leaves the mode to the builder";
 }
 
-def _seal_with(pin: Stage0Pin, sidecar: (dict[str, any] | None), tmp: str) -> any {
+def _seal_with(
+    pin: Stage0Pin,
+    sidecar: (dict[str, any] | None),
+    tmp: str,
+    env: (dict[str, (str | None)] | None) = None,
+    spec_modes: (list[str] | None) = None
+) -> any {
     import from jaclang.dist.precompile_bytecode { seal_stage0_kernel }
+    import from jaclang.compiler.kernel_target { read_kernel_target }
     pin_path = os.path.join(tmp, "stage0.json");
     write_stage0_pin(pin, pin_path);
     lib = Path(tmp, "compiler", "libjac_compiler.so");
     lib.parent.mkdir(parents=True, exist_ok=True);
     def child(snapshot: str, spec_path: str, dst: str) -> int {
+        if spec_modes is not None {
+            spec = read_kernel_target(spec_path);
+            spec_modes.append(spec.link_mode if spec is not None else "unreadable");
+        }
         Path(dst).write_bytes(b"a stage-0 kernel");
         _write_json(dst + ".layout.json", sidecar);
         return 0;
@@ -388,7 +403,12 @@ def _seal_with(pin: Stage0Pin, sidecar: (dict[str, any] | None), tmp: str) -> an
         stage0_build, "run_stage0_child", side_effect=child
     ), patch.object(stage0_build, "restamp_stage0_sidecar", return_value={}) {
         return _with_env(
-            {STAGE0_PIN_ENV: pin_path, STAGE0_STRICT_ENV: "1"},
+            {
+                STAGE0_PIN_ENV: pin_path,
+                STAGE0_STRICT_ENV: "1",
+                PR_KIT_LINK_ENV: None,
+                ** (env or {})
+            },
             lambda() { seal_stage0_kernel(
                 Path(jaclang_pkg_root()), lib, "compiler/libjac_compiler.so"
             ); }
@@ -425,7 +445,83 @@ test "the seal selects the kernel's builder by the pin: self seals as before, st
         } except RuntimeError {
             refused = True;
         }
-        assert refused , "an objects-mode kernel is never sealed";
+        assert refused , "a kernel linked in another mode than the seal asked for is refused";
+        assert "kit" not in artifact , "a bitcode kernel is not marked a pull-request kit";
+    }
+}
+
+glob PR_KIT_ENV: dict[str, (str | None)] = {
+         PR_KIT_LINK_ENV: PR_KIT_LINK_MODE,
+         "GITHUB_ACTIONS": "true",
+         "GITHUB_EVENT_NAME": PR_KIT_EVENT
+     };
+
+test "only a pull-request CI build may seal an objects-linked kernel" {
+    def mode_for(env: dict[str, (str | None)]) -> str {
+        return _with_env(
+            {
+                PR_KIT_LINK_ENV: None,
+                "GITHUB_ACTIONS": None,
+                "GITHUB_EVENT_NAME": None,
+                ** env
+            },
+            seal_link_mode
+        );
+    }
+    def refused(env: dict[str, (str | None)]) -> bool {
+        try {
+            mode_for(env);
+        } except (RuntimeError, ValueError) {
+            return True;
+        }
+        return False;
+    }
+    assert mode_for({}) == SEALED_LINK_MODE;
+    assert mode_for({PR_KIT_LINK_ENV: ""}) == SEALED_LINK_MODE;
+    assert mode_for({PR_KIT_LINK_ENV: SEALED_LINK_MODE}) == SEALED_LINK_MODE;
+    assert mode_for(PR_KIT_ENV) == PR_KIT_LINK_MODE;
+    assert refused({** PR_KIT_ENV, "GITHUB_EVENT_NAME": "push"}) , "main pushes seal bitcode";
+    assert refused({** PR_KIT_ENV, "GITHUB_EVENT_NAME": "workflow_dispatch"});
+    assert refused({** PR_KIT_ENV, "GITHUB_ACTIONS": None}) , "a local build cannot opt in";
+    assert refused({** PR_KIT_ENV, PR_KIT_LINK_ENV: "thin"});
+}
+
+test "a pull-request kit seals the stage-0 kernel as an objects link and marks it" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        pin = _commit_pin();
+        sidecar = {
+            "classes": {},
+            "plan_digest": "p" * 64,
+            "layout_digest": "l" * 64,
+            "triple": kernel_options().effective_triple(),
+            "link_mode": PR_KIT_LINK_MODE,
+            "builder": "stage0",
+            "stage0": {"commit": pin.commit, "digest": pin.compiler_digest}
+        };
+        modes: list[str] = [];
+        record = _seal_with(pin, sidecar, tmp, env=PR_KIT_ENV, spec_modes=modes);
+        assert modes == [PR_KIT_LINK_MODE] , "stage 0 is asked for an objects link";
+        artifact = record["artifact"];
+        assert artifact["mode"] == PR_KIT_LINK_MODE;
+        assert artifact["kit"] == PR_KIT_EVENT;
+        refused = False;
+        try {
+            _seal_with(
+                pin, {** sidecar, "link_mode": SEALED_LINK_MODE}, tmp, env=PR_KIT_ENV
+            );
+        } except RuntimeError {
+            refused = True;
+        }
+        assert refused , "the seal records the mode stage 0 linked, not the one it asked for";
+        modes.clear();
+        _seal_with(
+            pin,
+            {** sidecar, "link_mode": SEALED_LINK_MODE},
+            tmp,
+            env={PR_KIT_LINK_ENV: None},
+            spec_modes=modes
+        );
+        assert modes == [SEALED_LINK_MODE] , "without the opt-in the seal asks for bitcode";
     }
 }
 
@@ -463,10 +559,17 @@ test "a sealed image whose kernel is not a whole-program link is refused" {
         }
         assert resolve(record) == (True, False);
         assert resolve({** record, "mode": KERNEL_DEV_LINK_MODE}) == (False, True);
+        assert resolve({** record, "kit": PR_KIT_EVENT}) == (True, False);
         _write_json(
             str(lib) + ".layout.json", {** sidecar, "link_mode": KERNEL_DEV_LINK_MODE}
         );
         assert resolve(record) == (False, True);
+        objects = {** record, "mode": KERNEL_DEV_LINK_MODE};
+        assert resolve(objects) == (False, True) , "an unmarked objects link is refused";
+        assert resolve({** objects, "kit": "release"}) == (False, True);
+        assert resolve({** objects, "kit": PR_KIT_EVENT}) == (True, False) , "a pull-request kit runs its objects link";
+        _write_json(str(lib) + ".layout.json", sidecar);
+        assert resolve({** objects, "kit": PR_KIT_EVENT}) == (False, True) , "manifest and sidecar must agree";
     }
 }
 
