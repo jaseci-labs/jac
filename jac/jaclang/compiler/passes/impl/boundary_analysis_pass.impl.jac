@@ -1232,7 +1232,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             for item in body_items {
                 if isinstance(item, Assignment) {
                     member_name = '';
-                    member_val = None;
+                    member_val: (int | str | None) = None;
                     targets = item.target
                         if isinstance(item.target, list)
                         else [item.target];

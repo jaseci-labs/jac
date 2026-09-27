@@ -19,11 +19,12 @@ impl NaIRGenPass._get_exception_state_type -> ir.Type {
 impl NaIRGenPass._declare_exception_runtime -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
+    (setjmp_name, longjmp_name) = self._exc_jmp_symbols();
 
-    setjmp_fn = self._get_or_declare_extern("setjmp", i32, [i8p]);
+    setjmp_fn = self._get_or_declare_extern(setjmp_name, i32, [i8p]);
     setjmp_fn.attributes.add("returns_twice");
 
-    longjmp_fn = self._get_or_declare_extern("longjmp", ir.VoidType(), [i8p, i32]);
+    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), [i8p, i32]);
     longjmp_fn.attributes.add("noreturn");
 
     self._get_or_declare_extern("abort", ir.VoidType(), []);
@@ -33,6 +34,39 @@ impl NaIRGenPass._declare_exception_runtime -> None {
     self._emit_exc_pop_helper();
 
     self._emit_exc_raise_helper();
+}
+
+impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
+    """The setjmp/longjmp pair every native exception frame arms and unwinds through.
+
+    Plain `setjmp` saves the signal mask: on Darwin it costs a `sigprocmask`
+    and a `sigaltstack` syscall per armed frame (and `longjmp` two more per
+    raise), on glibc it is `__sigsetjmp(env, 1)` and one `rt_sigprocmask`. Jac
+    code never changes the mask between arming a frame and raising into it,
+    so that is dead work on every `try`, walker spawn and guarded call.
+    `_setjmp`/`_longjmp` leave the mask alone. They only work as a pair --
+    Darwin's `longjmp` restores the mask from a buffer slot `_setjmp` never
+    writes -- so every frame raises through the matching `_longjmp`. Windows
+    and wasm keep the portable names: neither saves a mask, and wasm's SjLj
+    lowering matches the names.
+    """;
+    triple = str(self.llvm_module.triple or "").lower();
+    if any(
+        os_name in triple for os_name in ("wasm", "windows", "win32", "mingw", "msvc")
+    ) {
+        return ("setjmp", "longjmp");
+    }
+    return ("_setjmp", "_longjmp");
+}
+
+impl NaIRGenPass._exc_setjmp_fn -> ir.Function {
+    """The setjmp of `_exc_jmp_symbols`, once `_declare_exception_runtime` ran.""";
+    return self.extern_funcs[self._exc_jmp_symbols()[0]];
+}
+
+impl NaIRGenPass._exc_longjmp_fn -> ir.Function {
+    """The longjmp of `_exc_jmp_symbols`, the pair of `_exc_setjmp_fn`.""";
+    return self.extern_funcs[self._exc_jmp_symbols()[1]];
 }
 
 impl NaIRGenPass._emit_exc_push_helper -> None {
@@ -165,8 +199,7 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="env.i8p");
-    longjmp_fn = self.extern_funcs["longjmp"];
-    b.call(longjmp_fn, [env_i8p, ir.Constant(i32, 1)]);
+    b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
     b.unreachable();
     self._exc_raise_fn = func;
 }
@@ -1234,9 +1267,7 @@ impl NaIRGenPass._push_exception_handler(
     self.builder.call(self._exc_push_fn, [state]);
     self.builder.store(self._region_depth(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
-    result = self.builder.call(
-        self.extern_funcs["setjmp"], [self.builder.bitcast(env, i8p)]
-    );
+    result = self.builder.call(self._exc_setjmp_fn(), [self.builder.bitcast(env, i8p)]);
     self.builder.cbranch(
         self.builder.icmp_signed("!=", result, ir.Constant(i32, 0)), dispatch, body
     );

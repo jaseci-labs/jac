@@ -21,10 +21,12 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 import from jaclang.compiler.driver.na_coverage {
-    _drop_demoted_native_bindings,
     na_coverage_begin,
     na_coverage_end,
-    na_coverage_record,
+    na_coverage_record
+}
+import from jaclang.compiler.driver.session_compile {
+    drop_demoted_native_bindings,
     na_demotion_note
 }
 import from jaclang.compiler.driver.boundary_classify {
@@ -230,7 +232,7 @@ test "importer invalidation clears ES output and NATIVE bindings" {
     assert app.gen.js == "" , "stale ES output must be cleared";
     assert app.gen.es_ast is None;
     for m in cleared {
-        _drop_demoted_native_bindings(m, models_path);
+        drop_demoted_native_bindings(m, models_path);
     }
     assert "double" not in manifest.bindings , "the NATIVE binding naming the demoted module must be dropped";
     assert "unrelated" in manifest.bindings , "bindings in other contexts must survive";

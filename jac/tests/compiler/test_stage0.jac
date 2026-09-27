@@ -143,13 +143,14 @@ test "the stage-0 pin reads self, a commit and a missing file, and refuses malfo
     }
 }
 
-test "the checkout ships a self pin beside its jaclang package" {
+test "the checkout ships a valid pin beside its jaclang package" {
     # The suite may run against a jaclang installed outside the checkout, where
     # no pin sits beside the package and stage 0 is the self build; the pin the
     # checkout ships is read from the checkout itself.
     shipped = os.path.join(JAC_ROOT, "bootstrap", "stage0.json");
     assert os.path.isfile(shipped);
-    assert read_stage0_pin(shipped).is_self();
+    pin = read_stage0_pin(shipped);
+    assert pin.is_self() or pin.commit;
     path = _with_env(
         {STAGE0_PIN_ENV: None, STAGE0_ROOT_ENV: None}, lambda() { stage0_pin_path(); }
     );
@@ -672,5 +673,77 @@ test "stage 0 pinned to HEAD builds this tree's kernel and the checkout accepts 
     } finally {
         set_kernel_target(prev_target);
         shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "a snapshot is digested under its own compiler_inputs.txt, not this tree's" {
+    import from jaclang.compiler.driver.jir { compiler_source_digest }
+    import from jaclang.bootstrap_manifest { NATIVE_LOWERED_PATHS }
+    tmp = tempfile.mkdtemp(prefix="jac_stage0_rules_");
+    try {
+        pkg = os.path.join(tmp, "jaclang");
+        for rel in NATIVE_LOWERED_PATHS {
+            os.makedirs(os.path.join(pkg, rel));
+        }
+        for rel in (
+            "core/a.jac",
+            "core/native/b.jac",
+            "compiler/c.jac",
+            "client/d.jac"
+        ) {
+            os.makedirs(os.path.dirname(os.path.join(pkg, rel)), exist_ok=True);
+            with open(os.path.join(pkg, rel), "w") as f {
+                f.write(f"glob NAME: str = '{rel}';\n");
+            }
+        }
+        with open(os.path.join(pkg, "compiler_inputs.txt"), "w") as f {
+            f.write("# a snapshot's own declaration\ncore\n!core/native\n");
+        }
+        # The snapshot declares core/ with core/native as a roster: its digest
+        # covers the manifest and the two core files, whatever this tree
+        # declares (this tree lists compiler/ and client/ files; the snapshot
+        # does not).
+        digest = compiler_source_digest(pkg);
+        assert digest.startswith("3:") , digest;
+        # A roster input is digested by path: editing it keeps the digest.
+        with open(os.path.join(pkg, "core/native/b.jac"), "w") as f {
+            f.write("glob NAME: str = 'edited';\n");
+        }
+        assert compiler_source_digest(pkg) == digest;
+        # A declared input is digested by content.
+        with open(os.path.join(pkg, "core/a.jac"), "w") as f {
+            f.write("glob NAME: str = 'edited';\n");
+        }
+        assert compiler_source_digest(pkg) != digest;
+        # Files outside the snapshot's declaration never count.
+        with open(os.path.join(pkg, "compiler/c.jac"), "w") as f {
+            f.write("glob NAME: str = 'edited too';\n");
+        }
+        after = compiler_source_digest(pkg);
+        with open(os.path.join(pkg, "compiler/c.jac"), "w") as f {
+            f.write("glob NAME: str = 'again';\n");
+        }
+        assert compiler_source_digest(pkg) == after;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "with a stage-0 kernel the compile pass lowers only the native units programs link" {
+    import from jaclang.dist.precompile_bytecode { _compiler_kernel_units }
+    import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
+    import from jaclang.compiler.frontend.codeinfo { kernel_unit_paths }
+    left = _compiler_kernel_units();
+    # The compiler's analysis zone and its roots are the stage-0 kernel's.
+    assert os.path.realpath(kernel_root_path()) in left;
+    for p in native_scope_paths() {
+        if os.path.realpath(p)
+            not in {os.path.realpath(k) for k in kernel_unit_paths()} {
+            assert os.path.realpath(p) in left , p;
+        }
+    }
+    # The kernels user programs link (OSP, region, format) stay in the pass.
+    for p in kernel_unit_paths() {
+        assert os.path.realpath(p) not in left , p;
     }
 }

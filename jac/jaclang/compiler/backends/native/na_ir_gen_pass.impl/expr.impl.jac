@@ -304,9 +304,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name=f"rearm.envp.{k}");
-        sj = self.builder.call(
-            self.extern_funcs["setjmp"], [env_i8p], name=f"rearm.sj.{k}"
-        );
+        sj = self.builder.call(self._exc_setjmp_fn(), [env_i8p], name=f"rearm.sj.{k}");
         is_exc = self.builder.icmp_signed(
             "!=", sj, ir.Constant(i32, 0), name=f"rearm.isexc.{k}"
         );
@@ -2130,6 +2128,22 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     return result;
 }
 
+impl NaIRGenPass._is_bare_function_value(val: ir.Value) -> bool {
+    return isinstance(val.type, ir.FunctionType)
+        or (
+            isinstance(val.type, ir.PointerType)
+            and isinstance(val.type.pointee, ir.FunctionType)
+        );
+}
+
+impl NaIRGenPass._closure_like_type(val_type: ir.Type) -> bool {
+    if self._closure_struct_of(val_type) is not None {
+        return True;
+    }
+    payload = self._opt_payload_of(val_type);
+    return payload is not None and self._closure_struct_of(payload) is not None;
+}
+
 impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) {
     cond = self._codegen_expr(nd.condition);
     if cond is None {
@@ -2156,6 +2170,29 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     else_open = not self.builder.block.is_terminated;
 
     if then_val is not None and else_val is not None {
+        if then_val.type != else_val.type {
+            if then_open
+                and self._is_bare_function_value(then_val)
+                and self._closure_like_type(else_val.type) {
+                self.builder.position_at_end(then_end_bb);
+                then_val = self._wrap_fn_as_closure_value(then_val);
+                if then_val.type != else_val.type
+                    and self._opt_payload_of(else_val.type) is not None {
+                    then_val = self._coerce_type(then_val, else_val.type);
+                }
+                then_end_bb = self.builder.block;
+            } elif else_open
+                and self._is_bare_function_value(else_val)
+                and self._closure_like_type(then_val.type) {
+                self.builder.position_at_end(else_end_bb);
+                else_val = self._wrap_fn_as_closure_value(else_val);
+                if else_val.type != then_val.type
+                    and self._opt_payload_of(then_val.type) is not None {
+                    else_val = self._coerce_type(else_val, then_val.type);
+                }
+                else_end_bb = self.builder.block;
+            }
+        }
         if then_val.type != else_val.type
             and self._str_desc_ty is not None
             and (
@@ -2567,6 +2604,17 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             } else {
                 type_name = self._infer_type_name(obj_val);
+            }
+            if type_name is not None
+                and right_name not in self.struct_field_indices.get(type_name, {})
+                and self._accessor_slot_of(type_name, right_name, "property") is None
+                and self._resolve_method(type_name, right_name) is not None {
+                bound = self._emit_bound_method_value(
+                    self._opt_unwrap_attr(obj_val), type_name, right_name
+                );
+                if bound is not None {
+                    return bound;
+                }
             }
             if type_name is not None {
                 value = self._read_field_or_refuse(nd, obj_val, right_name, type_name);

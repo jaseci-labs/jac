@@ -25,7 +25,8 @@ obj CheckSettings {
         lint_select: list[str] = [],
         lint_ignore: list[str] = [],
         enforce_access: bool = False,
-        untyped_external_error: bool = False;
+        untyped_external_error: bool = False,
+        warn_native_seams: bool = True;
 }
 
 obj ProjectDefaults {
@@ -40,7 +41,8 @@ obj ProjectDefaults {
         memory_profile: str,
         memory_enforce: list[str],
         memory_exempt: list[str],
-        check: CheckSettings;
+        check: CheckSettings,
+        client_framework: str = "react";
 }
 
 obj PathFacts {
@@ -111,6 +113,10 @@ obj HostServices {
     }
 
     def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None) {
+        return None;
+    }
+
+    def jac_virtual_module_path(target: str) -> (str | None) {
         return None;
     }
 
@@ -231,6 +237,10 @@ obj HostServices {
         return None;
     }
 
+    def native_session_active(program: JacProgram) -> bool {
+        return False;
+    }
+
     def native_verdict(
         path: str, program: (JacProgram | None) = None
     ) -> (NativeVerdict | None) {
@@ -284,6 +294,15 @@ obj HostServices {
         raise RuntimeError("no compiler host is installed");
     }
 
+    def run_module_pipeline(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> Module {
+        raise RuntimeError("no compiler host is installed");
+    }
+
     def internal_program(program: JacProgram) -> (JacProgram | None) {
         return None;
     }
@@ -327,9 +346,11 @@ obj HostServices {
     }
 }
 
+obj NeutralHost(HostServices) {}
+
 glob KERNEL_HOST_ENV: str = "JAC_KERNEL_HOST",
      _HOSTS: list[HostServices] = [],
-     _NEUTRAL_HOST: HostServices = HostServices(),
+     _NEUTRAL_HOST: HostServices = NeutralHost(),
      _PACKAGE_ROOT: list[str] = [];
 
 def active_host -> HostServices {

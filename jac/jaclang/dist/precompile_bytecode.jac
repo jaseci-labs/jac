@@ -621,15 +621,20 @@ def precompile_unit(
     pkg_root: str,
     embed_src: bool = False,
     collect: bool = True,
-    app: str = ""
+    app: str = "",
+    skip_analysis: bool = False
 ) -> bytes | None {
     with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
-        return _precompile_unit(jac_path, pkg_root, program, embed_src);
+        return _precompile_unit(jac_path, pkg_root, program, embed_src, skip_analysis);
     }
 }
 
 def _precompile_unit(
-    jac_path: str, pkg_root: str, program: JacProgram, embed_src: bool = False
+    jac_path: str,
+    pkg_root: str,
+    program: JacProgram,
+    embed_src: bool = False,
+    skip_analysis: bool = False
 ) -> bytes | None {
     try {
         import from jaclang.compiler.driver.jir { cache_mode }
@@ -656,7 +661,9 @@ def _precompile_unit(
     compiler = program._get_compiler();
 
     program.iface_registry().ensure(jac_path);
-    code = compiler.get_bytecode(full_target=jac_path, target_program=program);
+    code = compiler.get_bytecode(
+        full_target=jac_path, target_program=program, skip_analysis=skip_analysis
+    );
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
         return None;
@@ -1118,6 +1125,27 @@ def native_roots(pkg_name: str, units: list[str]) -> list[str] {
     return list(units);
 }
 
+def _stage0_builds_kernel -> bool {
+    import from jaclang.compiler.backends.native.stage0_pin {
+        Stage0PinError,
+        read_stage0_pin
+    }
+    try {
+        return not read_stage0_pin().is_self();
+    } except (Stage0PinError, OSError) {
+        return False;
+    }
+}
+
+def _compiler_kernel_units -> set[str] {
+    import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
+    import from jaclang.compiler.frontend.codeinfo { kernel_unit_paths }
+    linked = {os.path.realpath(p) for p in kernel_unit_paths()};
+    scope = {os.path.realpath(p) for p in native_scope_paths()};
+    scope.add(os.path.realpath(kernel_root_path()));
+    return scope - linked;
+}
+
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -1276,22 +1304,66 @@ def seal_native(
     };
 }
 
+def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
+    import shutil;
+    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
+    work = get_jir_cache_dir() / "stage0-kernel";
+    target = work / "target" / pkg_path.name;
+    if target.exists() {
+        shutil.rmtree(target);
+    }
+    shutil.copytree(
+        pkg_path,
+        target,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(
+            "__pycache__",
+            "_precompiled",
+            "_bun",
+            "*.so",
+            "*.so.*",
+            "*.dylib",
+            "*.dll",
+            ".jac"
+        )
+    );
+    out = work / "out" / artifact_name;
+    out.parent.mkdir(parents=True, exist_ok=True);
+    return (target, out);
+}
+
 def seal_stage0_kernel(
     pkg_path: Path, artifact_path: Path, artifact_rel: str
 ) -> (dict[str, any] | None) {
+    import shutil;
     import from jaclang.compiler.backends.native.kernel_resolve {
+        LAYOUT_SIDECAR_SUFFIX,
         SEALED_LINK_MODE,
         STAGE0_BUILDER,
         read_sidecar
     }
     import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
     import from jaclang.compiler.backends.native.stage0_build { build_kernel_by_pin }
-    if not build_kernel_by_pin(
-        str(artifact_path),
-        spec=running_kernel_target(str(pkg_path)),
-        link_mode=SEALED_LINK_MODE
-    ) {
-        return None;
+    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
+    import from jaclang.jac0core.cache_paths { FileLock }
+    lock_path = get_jir_cache_dir() / "stage0-kernel.lock";
+    lock_path.parent.mkdir(parents=True, exist_ok=True);
+    lock = FileLock(str(lock_path), timeout=7200.0);
+    lock.acquire();
+    try {
+        (target, out) = _stage0_kernel_workdir(pkg_path, artifact_path.name);
+        if not build_kernel_by_pin(
+            str(out),
+            spec=running_kernel_target(str(target)),
+            link_mode=SEALED_LINK_MODE
+        ) {
+            return None;
+        }
+        for suffix in ("", LAYOUT_SIDECAR_SUFFIX) {
+            shutil.copyfile(str(out) + suffix, str(artifact_path) + suffix);
+        }
+    } finally {
+        lock.release();
     }
     sidecar = read_sidecar(str(artifact_path));
     if sidecar is None {
@@ -1510,6 +1582,11 @@ def main {
     );
 }
 
+def is_toolchain_package(package_dir: str) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    return os.path.realpath(package_dir) == os.path.realpath(jaclang_pkg_root());
+}
+
 def run_precompile(
     source_dir: str,
     seal: bool = False,
@@ -1540,6 +1617,7 @@ def run_precompile(
     }
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
     precompiled_dir = Path(package_dir) / "_precompiled";
+    skip_analysis = is_toolchain_package(package_dir);
 
     if finalize_only {
         console.print(f"Sealing {pkg_name} for {pyver} (finalize)...");
@@ -1553,6 +1631,9 @@ def run_precompile(
     console.print(f"Precompiling {pkg_name} for {pyver}...");
     console.print(f"  Package directory: {package_dir}");
     console.print(f"  Compiler identity: {compiler_identity()}");
+    if skip_analysis {
+        console.print("  Analysis: skipped for Python-lane units (toolchain package)");
+    }
 
     jac_files = (
         sealable_sources(package_dir, app)
@@ -1579,6 +1660,21 @@ def run_precompile(
         for unit in native_only_units {
             if unit not in jac_files {
                 jac_files.append(unit);
+            }
+        }
+        if pkg_name == "jaclang" and _stage0_builds_kernel() {
+            kernel_only = _compiler_kernel_units();
+            dropped = {
+                u
+                for u in native_units_set
+                if os.path.realpath(u) in kernel_only
+            };
+            native_units_set = native_units_set - dropped;
+            if dropped {
+                console.print(
+                    f"  Compiler kernel: {len(dropped)} unit(s) left to the stage-0 "
+                    "kernel build; lowering the units programs link"
+                );
             }
         }
     }
@@ -1673,7 +1769,12 @@ def run_precompile(
                 );
             } else {
                 jir_bytes = precompile_unit(
-                    jac_path, package_dir, embed_src, collect=not use_pool, app=app
+                    jac_path,
+                    package_dir,
+                    embed_src,
+                    collect=not use_pool,
+                    app=app,
+                    skip_analysis=skip_analysis
                 );
             }
             if jir_bytes is None {
@@ -1727,7 +1828,11 @@ def run_precompile(
     }
 
     if use_pool and native_units_set {
-        prebuild_native_units(native_roots(pkg_name, sorted(native_units_set)));
+        prebuild_native_units(
+            sorted(native_units_set)
+                if pkg_name == "jaclang" and _stage0_builds_kernel()
+                else native_roots(pkg_name, sorted(native_units_set))
+        );
     }
 
     pool = WorkPool(

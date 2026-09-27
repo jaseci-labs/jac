@@ -8,12 +8,12 @@ import from jaclang.compiler.frontend.constant {
 import type from jaclang.compiler.driver.program { JacProgram }
 
 glob PLACEMENT_SCHEMA: int = 2,
-     PLACEMENT_SV_SIGNAL_NODES: tuple[tuple[str, type[uni.UniNode]], ...] = (
+     PLACEMENT_SV_SIGNAL_NODES: list[tuple[str, type[uni.UniNode]]] = [
          ("TypedCtxBlock", uni.TypedCtxBlock),
          ("PyInlineCode", uni.PyInlineCode),
          ("JsxElement", uni.JsxElement)
-     ),
-     PLACEMENT_NATIVE_REJECT_NODES: tuple[tuple[str, type[uni.UniNode]], ...] = (),
+     ],
+     PLACEMENT_NATIVE_REJECT_NODES: list[tuple[str, type[uni.UniNode]]] = [],
      PLACEMENT_INFERENCE_HELD: dict[str, str] = {
          "compiler/frontend/codeinfo.jac": (
              "runtime JIT inference stays conservative: admitting codeinfo "

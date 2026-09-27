@@ -112,8 +112,10 @@ obj ModuleAnalysis {
             and not _annex_of_base
             and (
                 self.native
-                or not self.program.internal
-                or not host.import_in_flight(self.path)
+                or not (
+                    self.options.skip_analysis
+                    or (self.program.internal and host.import_in_flight(self.path))
+                )
             );
 
         if _analyze

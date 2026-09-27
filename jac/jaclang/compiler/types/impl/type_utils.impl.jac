@@ -21,7 +21,14 @@ impl expr_primitive_name(expr_node: UniNode) -> str {
     while isinstance(expr_node, CfgExpr) {
         expr_node = expr_node.expr;
     }
-    return primitive_type_name_of(expr_node?.type) or "";
+    if not isinstance(expr_node, Expr) {
+        return "";
+    }
+    return expr_type_primitive_name(expr_node);
+}
+
+impl expr_type_primitive_name(expr_node: Expr) -> str {
+    return primitive_type_name_of(expr_node.type) or "";
 }
 
 impl get_generator_type_args(return_type: TypeBase) -> (list[TypeBase] | None) {

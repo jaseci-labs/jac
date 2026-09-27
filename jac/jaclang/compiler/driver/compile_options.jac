@@ -22,6 +22,7 @@ obj CompileOptions {
         native_require: (list[str] | None) = None,
         iface_ok: bool = False,
         need_full_ast: bool = False,
+        skip_analysis: bool = False,
         skip_native_engine: bool = False,
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
