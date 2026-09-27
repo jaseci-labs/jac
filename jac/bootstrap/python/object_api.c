@@ -618,5 +618,52 @@ int64_t jacpy_long_u64_checked(PyObject *value, uint64_t *out) {
     return bytes > (Py_ssize_t)sizeof(*out);
 }
 
+/* Argument Clinic's unsigned_long and unsigned_long_long converters (the
+ * non-bitwise ones): __index__ is accepted, a negative value raises ValueError
+ * and a wider one OverflowError naming the C type. 1 on success. */
+#include "internal/pycore_long.h"
+int64_t jacpy_unsigned_converter(PyObject *value, uint64_t *out, int64_t long_long) {
+    if (long_long) return _PyLong_UnsignedLongLong_Converter(value, out);
+    unsigned long result = 0;
+    int ok = _PyLong_UnsignedLong_Converter(value, &result);
+    *out = result;
+    return ok;
+}
+
 /* The address an int denotes, as struct's 'P' format packs it. */
 uint64_t jacpy_long_address(PyObject *value) { return (uint64_t)(uintptr_t)PyLong_AsVoidPtr(value); }
+
+/* PyErr_FormatUnraisable is variadic; modules pass the message and, where the
+ * C format rendered one with %R, the object it names. */
+void jacpy_unraisable(const char *message, PyObject *object) {
+    if (object) PyErr_FormatUnraisable("%s %R", message, object);
+    else PyErr_FormatUnraisable("%s", message);
+}
+
+/* HACL*'s vectorized BLAKE2 runs only where configure compiled it and the CPU
+ * has the instructions; the CPUID probe is an intrinsic Jac cannot express.
+ * Bit 0: SSE through SSE4.2 and CMOV (Blake2s SIMD128); bit 1: AVX and AVX2
+ * (Blake2b SIMD256). Both stay 0 off x86-64, as in blake2module.c. */
+#if defined(__x86_64__) && defined(__GNUC__)
+#include <cpuid.h>
+#endif
+int64_t jacpy_hacl_simd_features(void) {
+    int64_t features = 0;
+#if defined(__x86_64__) && defined(__GNUC__)
+    unsigned int eax1 = 0, ebx1 = 0, ecx1 = 0, edx1 = 0;
+    unsigned int eax7 = 0, ebx7 = 0, ecx7 = 0, edx7 = 0;
+    __cpuid_count(1, 0, eax1, ebx1, ecx1, edx1);
+    __cpuid_count(7, 0, eax7, ebx7, ecx7, edx7);
+    (void)eax1; (void)ebx1; (void)ecx1; (void)edx1;
+    (void)eax7; (void)ebx7; (void)ecx7; (void)edx7;
+#ifdef _Py_HACL_CAN_COMPILE_VEC128
+    if ((edx1 & (1u << 25)) && (edx1 & (1u << 26)) && (ecx1 & (1u << 0))
+        && (ecx1 & (1u << 19)) && (ecx1 & (1u << 20)) && (edx1 & (1u << 15)))
+        features |= 1;
+#endif
+#ifdef _Py_HACL_CAN_COMPILE_VEC256
+    if ((ecx1 & (1u << 28)) && (ebx7 & (1u << 5))) features |= 2;
+#endif
+#endif
+    return features;
+}

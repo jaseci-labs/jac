@@ -168,7 +168,9 @@ def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
             limited_capi=False
         );
         clinic.parse(text);
-        for module in clinic.modules.values() {
+        # Classes declared without a module prefix (md5's `class MD5Type`)
+        # belong to the clinic itself rather than to one of its modules.
+        for module in [clinic] + list(clinic.modules.values()) {
             found += [(None, f) for f in module.functions];
             stack = list(module.classes.values());
             while stack {
@@ -594,7 +596,8 @@ obj Emitter {
 
     def accessor(cls: any, f: any) {
         base = f.c_basename;
-        impl_name = base + "_impl";
+        # Clinic names accessor impls <c_basename>_get_impl / _set_impl.
+        impl_name = base + ("_get_impl" if f.kind.name == "GETTER" else "_set_impl");
         self.impls.add(impl_name);
         record = self.getsets.setdefault(self.table_name(cls), {}).setdefault(
             f.name, {"doc": ""}

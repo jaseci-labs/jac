@@ -18,8 +18,6 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_AsLong,
     PyLong_AsLongLong,
     PyLong_AsSsize_t,
-    PyLong_AsUnsignedLong,
-    PyLong_AsUnsignedLongLong,
     PyLong_AsUnsignedLongLongMask,
     PyLong_AsUnsignedLongMask,
     PyLong_FromLong,
@@ -34,9 +32,13 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_float,
     jacpy_is_none,
     jacpy_is_unicode,
-    jacpy_release
+    jacpy_release,
+    jacpy_unsigned_converter
 }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_base }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_base,
+    jacpy_binding_type_matches
+}
 import from jaclang.runtime.python.capi {
     boundary_failure,
     object_error,
@@ -119,8 +121,8 @@ def convert_unsigned_long(
         }
         return PyLong_AsUnsignedLongMask(value);
     }
-    result = PyLong_AsUnsignedLong(value);
-    if result == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+    result: u64 = 0;
+    if jacpy_unsigned_converter(value, &mut result, 0) == 0 {
         raise boundary_failure();
     }
     return result;
@@ -135,8 +137,8 @@ def convert_unsigned_long_long(
         }
         return PyLong_AsUnsignedLongLongMask(value);
     }
-    result = PyLong_AsUnsignedLongLong(value);
-    if result == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+    result: u64 = 0;
+    if jacpy_unsigned_converter(value, &mut result, 1) == 0 {
         raise boundary_failure();
     }
     return result;
@@ -251,20 +253,40 @@ def borrowed_false -> ptr[PyObject] {
 
 # A clinic class's defining-class token: the binding stores its type
 # definition here once the type exists, and methods that take defining_class
-# find it in the receiver's MRO by that token.
+# find it in the receiver's MRO by that token. Several heap types can share
+# one clinic class's methods (sha2's SHA224Type and SHA256Type); the binding
+# binds the first and shares the others.
 obj ClassToken {
-    has handle: ptr = ptr();
+    has handle: ptr = ptr(),
+        shared: list[ptr] = [];
 
-    # Bindings set the token through this method: assigning the field of an
+    # Bindings set the token through these methods: assigning the field of an
     # imported glob directly miscompiles in the native emitter (IntType has
     # no is_opaque, #9596), while a method of the object lowers correctly.
     def bind(handle: ptr) {
         self.handle = handle;
     }
+
+    def share(handle: ptr) {
+        if handle not in self.shared {
+            self.shared.append(handle);
+        }
+    }
+
+    # The definition `cls` derives from; the bound one when none matches.
+    def definition_of(cls: ptr[PyObject]) -> ptr {
+        for handle in self.shared {
+            if jacpy_binding_type_matches(cls, handle) != 0 {
+                return handle;
+            }
+        }
+        return self.handle;
+    }
 }
 
 def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
-    found = jacpy_binding_base(Py_TYPE(receiver), token.handle);
+    cls = Py_TYPE(receiver);
+    found = jacpy_binding_base(cls, token.definition_of(cls));
     if not found {
         raise boundary_failure();
     }
@@ -275,7 +297,7 @@ def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] 
 def defining_class_of_type(
     receiver: ptr[PyObject], token: ClassToken
 ) -> ptr[PyObject] {
-    found = jacpy_binding_base(receiver, token.handle);
+    found = jacpy_binding_base(receiver, token.definition_of(receiver));
     if not found {
         raise boundary_failure();
     }
