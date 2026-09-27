@@ -129,6 +129,7 @@ def wiring_annex_for(file_path: str) -> (WovenAnnex | None);
 def wiring_digest_for(file_path: str) -> str;
 def dedupe_generated_imports(mod: Module) -> None;
 def compiled_by_seed(path: str) -> bool;
+def is_kernel_abi_contract(path: str) -> bool;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def scope_path_of(nd: UniNode) -> (list[str] | None);
 def scope_owners(mod: Module) -> dict[str, (Ability | ImplDef)];

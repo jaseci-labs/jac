@@ -2103,6 +2103,9 @@ graph import compiler {
         kernel_root_path,
         native_scope_paths
     }
+    native_scope --> compiler.driver.wiring.is_kernel_abi_contract {
+        KERNEL_ABI_CONTRACT_REL
+    }
 }
 
 graph import compiler.backends {
@@ -4284,6 +4287,9 @@ graph import compiler.driver {
     }
     jir --> dist.precompile_bytecode._stage0_kernel_workdir { get_jir_cache_dir }
     jir --> dist.precompile_bytecode.seal_stage0_kernel { get_jir_cache_dir }
+    wiring --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._strip_wired_imports {
+        is_kernel_abi_contract
+    }
 }
 
 graph import compiler.frontend {

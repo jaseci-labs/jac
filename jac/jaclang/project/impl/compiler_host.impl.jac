@@ -353,7 +353,9 @@ impl ProjectHost.native_parse(
 ) -> (tuple[Module, bool] | None) {
     import from jaclang.compiler.frontend.parser.frontend { finish_parse }
     import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded() if load_kernel else _jc.loaded_kernel();
+    kernel = _jc.ensure_loaded()
+        if load_kernel
+        else (_jc._KERNEL_CELL[0] if _jc._KERNEL_CELL else None);
     if kernel is None {
         return None;
     }

@@ -2412,7 +2412,10 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         return;
     }
     own_path = nd.loc.mod_path;
-    if self._is_file_excluded(own_path) or compiled_by_seed(own_path) {
+
+    if self._is_file_excluded(own_path)
+        or compiled_by_seed(own_path)
+        or is_kernel_abi_contract(own_path) {
         return;
     }
     spec = wiring_for_path(own_path);
