@@ -2671,7 +2671,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             } else {
-                target_val = self._codegen_expr(nd.target);
+                target_val = self._opt_unwrap_subscript(
+                    self._codegen_expr(nd.target)
+                );
                 if target_val is not None
                     and self._str_desc_ty is not None
                     and target_val.type == self._str_desc_ty {

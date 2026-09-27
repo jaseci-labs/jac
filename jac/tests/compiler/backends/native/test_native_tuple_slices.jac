@@ -50,6 +50,11 @@ test "an annotated variadic local holds every unpacked field" {
     assert get_func(eng, "local_tail_len", ctypes.c_int64)() == 2;
 }
 
+test "a slice of a None-narrowed optional string still lowers" {
+    eng = _engine();
+    assert get_func(eng, "narrowed_str_tail", ctypes.c_int64)() == 3;
+}
+
 test "a fixed tuple slice is refused rather than read as an index" {
     path = os.path.join(FIXTURES, "tuple_slice_refusal.jac");
     prog = JacProgram();

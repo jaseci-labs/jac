@@ -47,3 +47,16 @@ def local_tail_len -> int {
     t: tuple[any, ...] = struct.unpack("<3f", struct.pack("<3f", 1.0, 2.0, 3.0));
     return len(t[1:]);
 }
+
+obj Escape {
+    has metadata: str | None = None;
+}
+
+def narrowed_str_tail -> int {
+    tok = Escape(metadata="escape:abc");
+    if tok.metadata is not None and tok.metadata.startswith("escape:") {
+        rest = tok.metadata[7:];
+        return len(rest) if rest == "abc" else -1;
+    }
+    return -2;
+}
