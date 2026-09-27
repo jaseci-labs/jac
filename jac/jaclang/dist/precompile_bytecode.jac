@@ -1026,6 +1026,21 @@ def native_roots(pkg_name: str, units: list[str]) -> list[str] {
     return list(units);
 }
 
+def _stage0_builds_kernel -> bool {
+    try {
+        return not read_stage0_pin().is_self();
+    } except (Stage0PinError, OSError) {
+        return False;
+    }
+}
+
+def _compiler_kernel_units -> set[str] {
+    linked = {os.path.realpath(p) for p in kernel_unit_paths()};
+    scope = {os.path.realpath(p) for p in native_scope_paths()};
+    scope.add(os.path.realpath(kernel_root_path()));
+    return scope - linked;
+}
+
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
     options = CompileOptions(
         aot_mode=True,
@@ -1163,15 +1178,57 @@ def seal_native(
     };
 }
 
+def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
+    import shutil;
+
+    work = get_jir_cache_dir() / "stage0-kernel";
+    target = work / "target" / pkg_path.name;
+    if target.exists() {
+        shutil.rmtree(target);
+    }
+    shutil.copytree(
+        pkg_path,
+        target,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(
+            "__pycache__",
+            "_precompiled",
+            "_bun",
+            "*.so",
+            "*.so.*",
+            "*.dylib",
+            "*.dll",
+            ".jac"
+        )
+    );
+    out = work / "out" / artifact_name;
+    out.parent.mkdir(parents=True, exist_ok=True);
+    return (target, out);
+}
+
 def seal_stage0_kernel(
     pkg_path: Path, artifact_path: Path, artifact_rel: str
 ) -> (dict[str, any] | None) {
-    if not build_kernel_by_pin(
-        str(artifact_path),
-        spec=running_kernel_target(str(pkg_path)),
-        link_mode=SEALED_LINK_MODE
-    ) {
-        return None;
+    import shutil;
+
+    lock_path = get_jir_cache_dir() / "stage0-kernel.lock";
+    lock_path.parent.mkdir(parents=True, exist_ok=True);
+    lock = FileLock(str(lock_path), timeout=7200.0);
+    lock.acquire();
+    try {
+        (target, out) = _stage0_kernel_workdir(pkg_path, artifact_path.name);
+        if not build_kernel_by_pin(
+            str(out),
+            spec=running_kernel_target(str(target)),
+            link_mode=SEALED_LINK_MODE
+        ) {
+            return None;
+        }
+        for suffix in ("", LAYOUT_SIDECAR_SUFFIX) {
+            shutil.copyfile(str(out) + suffix, str(artifact_path) + suffix);
+        }
+    } finally {
+        lock.release();
     }
     sidecar = read_sidecar(str(artifact_path));
     if sidecar is None {
@@ -1462,6 +1519,21 @@ def run_precompile(
                 jac_files.append(unit);
             }
         }
+        if pkg_name == "jaclang" and _stage0_builds_kernel() {
+            kernel_only = _compiler_kernel_units();
+            dropped = {
+                u
+                for u in native_units_set
+                if os.path.realpath(u) in kernel_only
+            };
+            native_units_set = native_units_set - dropped;
+            if dropped {
+                console.print(
+                    f"  Compiler kernel: {len(dropped)} unit(s) left to the stage-0 "
+                    "kernel build; lowering the units programs link"
+                );
+            }
+        }
     }
 
     if not jac_files and not exclude_seed {
@@ -1602,7 +1674,11 @@ def run_precompile(
     }
 
     if use_pool and native_units_set {
-        prebuild_native_units(native_roots(pkg_name, sorted(native_units_set)));
+        prebuild_native_units(
+            sorted(native_units_set)
+                if pkg_name == "jaclang" and _stage0_builds_kernel()
+                else native_roots(pkg_name, sorted(native_units_set))
+        );
     }
 
     pool = WorkPool(

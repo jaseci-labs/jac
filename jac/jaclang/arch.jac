@@ -107,6 +107,10 @@ graph import {
         NATIVE_ONLY_REL,
         SEED_PATHS
     }
+    bootstrap_manifest --> compiler.driver.jir {
+        COMPILER_DIGEST_ROSTER,
+        read_input_rules
+    }
 }
 
 graph import byllm {
@@ -2093,6 +2097,12 @@ graph import compiler {
         is_client_boundary_import,
         resolve_import_source_module
     }
+    kernel_target --> compiler.driver.jir._ct_pkg_ref { target_package_rel }
+    kernel_target --> compiler.driver.jir._ct_row_path { target_pkg_root }
+    native_scope --> dist.precompile_bytecode._compiler_kernel_units {
+        kernel_root_path,
+        native_scope_paths
+    }
 }
 
 graph import compiler.backends {
@@ -2723,6 +2733,13 @@ graph import compiler.backends.native {
         stage0_strict
     }
     static_link --> compiler.backends.native.link_plan { load_outline_atomics }
+    kernel_resolve --> dist.precompile_bytecode.seal_stage0_kernel {
+        LAYOUT_SIDECAR_SUFFIX
+    }
+    stage0_pin --> dist.precompile_bytecode._stage0_builds_kernel {
+        Stage0PinError,
+        read_stage0_pin
+    }
 }
 
 graph import compiler.backends.native.llvm {
@@ -4265,6 +4282,8 @@ graph import compiler.driver {
     wiring --> project.compiler_host.ProjectHost.place_wired_imports {
         dedupe_generated_imports
     }
+    jir --> dist.precompile_bytecode._stage0_kernel_workdir { get_jir_cache_dir }
+    jir --> dist.precompile_bytecode.seal_stage0_kernel { get_jir_cache_dir }
 }
 
 graph import compiler.frontend {
@@ -7775,6 +7794,7 @@ graph import compiler.frontend {
     }
     codeinfo --> dist.precompile_bytecode.is_toolchain_package { jaclang_pkg_root }
     codeinfo --> compiler.driver.wiring.wiring_for_path { is_package_keyed_path }
+    codeinfo --> dist.precompile_bytecode._compiler_kernel_units { kernel_unit_paths }
 }
 
 graph import compiler.frontend.parser {
@@ -10373,6 +10393,7 @@ graph import jac0core {
     stubcat_hook --> project.compiler_host.ProjectHost.has_active_stub_catalog | project.kernel_snapshot.snapshot_inputs {
         active
     }
+    cache_paths --> dist.precompile_bytecode.seal_stage0_kernel { FileLock }
 }
 
 graph import lib {
