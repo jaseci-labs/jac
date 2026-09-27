@@ -2743,6 +2743,11 @@ graph import compiler.backends.native {
         Stage0PinError,
         read_stage0_pin
     }
+    na_constants --> compiler.backends.native.na_ir_gen_pass {
+        EXC_LINEAGE_BITS,
+        EXC_LINEAGE_MIX,
+        EXC_LINEAGE_SLOTS
+    }
 }
 
 graph import compiler.backends.native.llvm {
@@ -7801,6 +7806,9 @@ graph import compiler.frontend {
     codeinfo --> dist.precompile_bytecode.is_toolchain_package { jaclang_pkg_root }
     codeinfo --> compiler.driver.wiring.wiring_for_path { is_package_keyed_path }
     codeinfo --> dist.precompile_bytecode._compiler_kernel_units { kernel_unit_paths }
+    codeinfo --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._demote_native_test {
+        native_test_symbol
+    }
 }
 
 graph import compiler.frontend.parser {
@@ -8336,6 +8344,19 @@ graph import compiler.passes {
     wasm_contract --> compiler.passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
         host_contract_dicts
     }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name {
+        class_type_native_name
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._is_graph_type {
+        class_type_native_name
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._register_exc_lineage {
+        class_type_native_name
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._vtable_slot_certain {
+        class_type_native_name
+    }
+    osp_analysis --> compiler.backends.native.na_ir_gen_pass { OSP_ANY_TAGS }
 }
 
 graph import compiler.placement {
@@ -9724,6 +9745,17 @@ graph import compiler.types {
     }
     type types --> compiler.passes.layout_pass { ClassType }
     type types --> compiler.passes.ownership_check_pass { TypeBase }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name {
+        ClassType
+    }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._is_graph_type {
+        ClassType as _GtClassType
+    }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._register_exc_lineage {
+        ClassType,
+        TypeBase
+    }
+    type types --> compiler.backends.native.primitives_native { TypeBase }
 }
 
 graph import compiler.types.stubcat {

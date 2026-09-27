@@ -546,8 +546,10 @@ impl JcirGenPass.exit_event_signature with EventSignature exit {
             annotation = tag_recipe;
         }
     }
-    if (annotation is not None and self._recipe_contains_root(annotation)) {
-        self.jaclib_imports.add('Root');
+    if annotation is not None {
+        for ambient in self._recipe_ambient_names(annotation) {
+            self.jaclib_imports.add(ambient);
+        }
     }
     arch_arg = self.nod(
         'arg',
@@ -587,26 +589,31 @@ impl JcirGenPass.exit_event_signature with EventSignature exit {
     );
 }
 
-impl JcirGenPass._recipe_contains_root(v: any) -> bool {
+impl JcirGenPass._recipe_ambient_names(v: any) -> list[str] {
+    found: list[str] = [];
     if isinstance(v, CgNode) {
-        if (v.cls == 'Name' and v.hasf('id') and v.get('id') == 'Root') {
-            return True;
+        if v.cls == 'Name'
+            and v.hasf('id')
+            and v.get('id') in ('Root', 'Node', 'Edge', 'Walker') {
+            found.append(v.get('id'));
         }
         for item in v.vals {
-            if self._recipe_contains_root(item) {
-                return True;
+            for name in self._recipe_ambient_names(item) {
+                if name not in found {
+                    found.append(name);
+                }
             }
         }
-        return False;
-    }
-    if isinstance(v, list) {
+    } elif isinstance(v, list) {
         for item in v {
-            if self._recipe_contains_root(item) {
-                return True;
+            for name in self._recipe_ambient_names(item) {
+                if name not in found {
+                    found.append(name);
+                }
             }
         }
     }
-    return False;
+    return found;
 }
 
 impl JcirGenPass.exit_param_var with ParamVar exit {

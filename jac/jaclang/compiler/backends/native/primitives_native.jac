@@ -1017,7 +1017,7 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         ctx: NativeEmitCtx,
         target: ir.Value,
         reverse: (ir.Value | None)
-    ) -> ir.Value;
+    ) -> (ir.Value | None);
 
     def emit_reverse(
         self: NativeListEmitter,

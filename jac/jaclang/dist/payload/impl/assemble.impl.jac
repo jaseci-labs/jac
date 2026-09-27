@@ -1,5 +1,6 @@
 import io;
 import os;
+import sys;
 import tarfile;
 
 import from compression.zstd { CompressionParameter, compress, decompress }
@@ -344,7 +345,7 @@ impl stage_python_bin(python_dir: str, stage: str) {
     dst = os.path.join(bin_dst, bare);
     copy_file(py, dst);
     os.chmod(dst, 0o755);
-    strip_best_effort(dst);
+    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else None);
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
 }
 

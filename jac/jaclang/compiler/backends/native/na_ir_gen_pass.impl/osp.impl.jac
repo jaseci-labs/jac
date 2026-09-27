@@ -474,6 +474,14 @@ impl NaIRGenPass._emit_osp_setup -> None {
                     );
                 }
             }
+
+            _kind = _model.arch_kind.get(_name, "");
+            _any = OSP_ANY_TAGS.get(_kind.capitalize(), 0) if _kind else 0;
+            if _any != 0 {
+                self._rc_call_with_ctx(
+                    _lh["append"], [_bases, ir.Constant(i64, _any)], op="append", loc=""
+                );
+            }
             _rt_args = _reg_ty_fn.function_type.args;
             self.builder.call(
                 _reg_ty_fn,
