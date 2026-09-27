@@ -71,7 +71,9 @@ obj ProjectFacts {
         check: CheckSettings,
         arch_closed: list[str] = [],
         client_framework: str = "react",
-        package_prefix: str = "";
+        package_name: str = "",
+        package_exports: list[str] = [],
+        package_mounts: str = "";
 }
 
 obj HostServices {

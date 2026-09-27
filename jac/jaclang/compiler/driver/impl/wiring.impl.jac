@@ -71,8 +71,13 @@ impl WiringSpec._ensure_policy -> None {
 }
 
 impl WiringSpec.module_name(path: str) -> (str | None) {
+    local = local_module_name(self.root_dir, path);
+    return self.package_prefix + local if local is not None else None;
+}
+
+impl local_module_name(root_dir: str, path: str) -> (str | None) {
     try {
-        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(self.root_dir));
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
     } except ValueError {
         return None;
     }
@@ -99,7 +104,7 @@ impl WiringSpec.module_name(path: str) -> (str | None) {
             return None;
         }
     }
-    return self.package_prefix + ".".join(parts);
+    return ".".join(parts);
 }
 
 impl WiringSpec._local_name(name: str) -> (str | None) {
@@ -114,7 +119,10 @@ impl WiringSpec._local_name(name: str) -> (str | None) {
 
 def _package_prefix(root_dir: str) -> str {
     facts = active_host().project_facts(root_dir);
-    return facts.package_prefix if facts is not None else "";
+    if facts is None or not facts.package_name {
+        return "";
+    }
+    return facts.package_name.replace("/", ".") + ".";
 }
 
 impl WiringSpec.module_file(name: str) -> (str | None) {

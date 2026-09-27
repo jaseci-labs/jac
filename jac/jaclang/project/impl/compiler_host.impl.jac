@@ -49,13 +49,14 @@ impl ProjectHost.check_settings(target_app: str) -> CheckSettings {
     return check_settings_of(cfg.check);
 }
 
-def package_prefix_of(name: str) -> str {
+def package_name_of(name: str) -> str {
     import from jaclang.project.modresolver { is_scoped_package_name }
-    return name.replace("/", ".") + "." if is_scoped_package_name(name) else "";
+    return name if is_scoped_package_name(name) else "";
 }
 
 impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
     import from pathlib { Path }
+    import from jaclang.project.modresolver { project_mounts_dir }
     try {
         import from jaclang.project.config { get_config_for_path }
         cfg = get_config_for_path(Path(path));
@@ -75,7 +76,9 @@ impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
         check=check_settings_of(cfg.check),
         arch_closed=list(cfg.arch.closed),
         client_framework=cfg.client.framework if cfg.client else "react",
-        package_prefix=package_prefix_of(cfg.project.name)
+        package_name=package_name_of(cfg.project.name),
+        package_exports=list(cfg.project.exports),
+        package_mounts=project_mounts_dir(project_root)
     );
     self._facts[project_root] = (cfg, facts);
     return facts;

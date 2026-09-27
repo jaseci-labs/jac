@@ -135,7 +135,8 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
-glob _mounts_by_root: dict[str, str] = {},
+glob _mounts_by_root: dict[str, tuple[str, str]] = {},
+     _self_mounted: set[str] = set(),
      MOUNTS_DIR_NAME: str = 'packages';
 
 def is_scoped_package_name(name: str) -> bool {
@@ -171,10 +172,9 @@ def _ensure_self_mount(mounts: str, name: str, project_root: str) {
     }
 }
 
-def project_mounts(project_root: str) -> (str | None) {
+def _mounts_entry(project_root: str) -> tuple[str, str] {
     if project_root not in _mounts_by_root {
         mounts = os.path.join(project_root, '.jac', MOUNTS_DIR_NAME);
-        _mounts_by_root[project_root] = mounts;
         name = '';
         try {
             with open(os.path.join(project_root, 'jac.toml'), 'rb') as fh {
@@ -183,7 +183,6 @@ def project_mounts(project_root: str) -> (str | None) {
             build = data.get('build', {});
             if isinstance(build, dict) and isinstance(build.get('dir'), str) {
                 mounts = os.path.join(project_root, build['dir'], MOUNTS_DIR_NAME);
-                _mounts_by_root[project_root] = mounts;
             }
             project = data.get('project', {});
             if isinstance(project, dict) and isinstance(project.get('name'), str) {
@@ -192,12 +191,26 @@ def project_mounts(project_root: str) -> (str | None) {
         } except Exception {
             name = '';
         }
+        _mounts_by_root[project_root] = (mounts, name);
+    }
+    return _mounts_by_root[project_root];
+}
+
+def project_mounts_dir(project_root: str) -> str {
+    """Where a project mounts its packages, without touching the disk: a
+    caller asking about someone else's package must not mount into it.""";
+    return _mounts_entry(project_root)[0];
+}
+
+def project_mounts(project_root: str) -> (str | None) {
+    (mounts, name) = _mounts_entry(project_root);
+    if project_root not in _self_mounted {
+        _self_mounted.add(project_root);
         if is_scoped_package_name(name) {
             _ensure_self_mount(mounts, name, project_root);
         }
     }
-    found = _mounts_by_root[project_root];
-    return found if os.path.isdir(found) else None;
+    return mounts if os.path.isdir(mounts) else None;
 }
 
 def module_name_in(root_dir: str, path: str) -> (str | None) {

@@ -950,13 +950,19 @@ def resolve_native_module(
     }
 
     if allow_inferred and not clean.startswith('jaclang.') {
-        import from jaclang.project.modresolver {
-            find_jac_project_root,
-            project_mounts
+        import from jaclang.compiler.frontend.host { active_host }
+        host = active_host();
+        owners: list[str] = [];
+        for start in [base_dir, ""] {
+            owner = host.project_root(start);
+            if owner {
+                owners.append(owner);
+            }
         }
-        for owner in (find_jac_project_root(base_dir), find_jac_project_root(None)) {
-            mounts = project_mounts(owner) if owner else None;
-            if mounts {
+        for owner in owners {
+            facts = host.project_facts(owner);
+            mounts = facts.package_mounts if facts is not None else "";
+            if mounts and os.path.isdir(mounts) {
                 mounted = _inferred_native_path(
                     _native_variant_path(os.path.join(mounts, path_name))
                 );

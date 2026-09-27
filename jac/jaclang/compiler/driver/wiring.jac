@@ -116,3 +116,4 @@ def wiring_annex_for(file_path: str) -> (WovenAnnex | None);
 def wiring_digest_for(file_path: str) -> str;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def _closed_patterns_for(root_dir: str) -> list[str];
+def local_module_name(root_dir: str, path: str) -> (str | None);

@@ -20,6 +20,7 @@ import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
 import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.import_wiring_pass { ImportWiringPass }
+import from jaclang.compiler.passes.package_boundary_pass { PackageBoundaryPass }
 
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
 import from jaclang.compiler.frontend.host { active_host }
@@ -338,7 +339,6 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.passes.cfg_build_pass',
          'jaclang.compiler.passes.sem_def_match_pass',
          'jaclang.compiler.passes.jsx_intrinsic_guard_pass',
-         'jaclang.compiler.passes.package_boundary_pass',
          'jaclang.compiler.passes.mtir_gen_pass',
          'jaclang.compiler.passes.comptime_resolve_pass',
          'jaclang.project.mobui_scope'
@@ -450,9 +450,6 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> PassSc
         import from jaclang.compiler.passes.sem_def_match_pass { SemDefMatchPass }
         import from jaclang.compiler.passes.jsx_intrinsic_guard_pass {
             JsxIntrinsicGuardPass
-        }
-        import from jaclang.compiler.passes.package_boundary_pass {
-            PackageBoundaryPass
         }
 
         passes: PassSchedule = [
