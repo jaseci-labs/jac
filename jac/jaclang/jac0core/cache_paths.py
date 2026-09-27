@@ -24,6 +24,11 @@ a module including its native interface and object) are project-aware and
 therefore resolved in ``jaclang.compiler.driver.jir`` via
 ``get_module_cache_path(source_path)``, which falls back to the project's
 ``.jac/cache`` when inside a project.
+
+Platform roots:
+    Linux:   ~/.cache/jac/jir/             ($XDG_CACHE_HOME honored)
+    macOS:   ~/Library/Caches/jac/jir/
+    Windows: %LOCALAPPDATA%/jac/cache/jir/
 """
 
 import errno
@@ -58,6 +63,11 @@ def get_jir_cache_dir() -> Path:
 def get_bootstrap_cache_dir() -> Path:
     """Global cache dir for marshalled jac0core bootstrap bytecode."""
     return get_jir_cache_dir() / "bootstrap"
+
+
+def get_app_cache_dir() -> Path:
+    """Global cache dir for materialized app bundles (.jab), content-keyed."""
+    return get_jir_cache_dir().parent / "apps"
 
 
 class FileLock:

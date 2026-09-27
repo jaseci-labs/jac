@@ -99,7 +99,7 @@ test "osp filter predicates: field compares over type-filtered elements" {
         "filter_pred_py",
         "filter_pred_cl",
         "filter_pred_na",
-        require=["na"]
+        require=["na", "cl"]
     );
 }
 

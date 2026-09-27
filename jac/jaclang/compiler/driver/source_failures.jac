@@ -40,8 +40,8 @@ def bootstrap_tier_failure_details(path: str) -> str {
 }
 
 def _compiler_source_root -> str {
-    import jaclang;
-    return os.path.realpath(os.path.dirname(str(jaclang.__file__)));
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    return os.path.realpath(jaclang_pkg_root());
 }
 
 def _jac_source_failure_path(err: BaseException) -> (str | None) {

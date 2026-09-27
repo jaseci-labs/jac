@@ -28,20 +28,20 @@ import from jaclang.compiler.backends.es.backends.preact { PreactBackend }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
      );
 
-def compile_with_backend(fixture_name: str, backend: object) -> str {
+def compile_with_backend(fixture_name: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture_name), no_cgen=True);
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    return es_to_js(es_pass.module.gen.es_ast);
+    return es_js_with_backend(ir, prog, backend);
 }
 
 def assert_store_contract(js: str, backend_name: str) {

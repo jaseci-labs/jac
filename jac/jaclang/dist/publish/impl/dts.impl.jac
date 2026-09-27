@@ -7,7 +7,7 @@ import from jaclang.compiler.frontend.unitree {
     GlobalVars,
     UniNode
 }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.dist.publish.jsdoc { jac_type_to_ts }
 
 def _param_type_str(param: AstTypedVarNode) -> str {

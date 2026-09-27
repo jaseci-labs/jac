@@ -10,9 +10,7 @@ def check_containers(profile: str) {
     program = JacProgram();
     module = program.compile(
         str(Path(__file__).parent / "fixtures" / "rc_container_temporaries.jac"),
-        options=CompileOptions(
-            force_codespace="native", force_target_program=True, memory_profile=profile
-        )
+        options=CompileOptions(force_codespace="native", memory_profile=profile)
     );
     assert not program.errors_had , [str(error) for error in program.errors_had];
     engine = module.gen.native_engine;
@@ -31,7 +29,9 @@ def check_containers(profile: str) {
         ("borrowed_default", 9, 2),
         ("nested_receiver", 8, 1),
         ("property_receiver", 9, 1),
-        ("borrowed_field_write", 12, 1)
+        ("borrowed_field_write", 12, 1),
+        ("subscript_receiver", 13, 1),
+        ("borrowed_subscript_receiver", 14, 1)
     ] {
         address = native_address(engine, name);
         assert address != 0;

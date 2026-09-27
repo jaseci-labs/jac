@@ -6,12 +6,18 @@ import sys;
 import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
+import from jaclang.compiler.frontend.codeinfo {
+    is_package_keyed_path,
+    native_unit_identity
+}
 import from jaclang.bootstrap_manifest {
     COMPILER_DIGEST_ROOTS,
+    COMPILER_DIGEST_ROSTER,
     COMPILER_IDENTITY_NAME,
     NATIVE_LOWERED_PATHS,
     is_native_lowered,
-    is_roster_input
+    is_roster_input,
+    read_input_rules
 }
 
 glob MAGIC = b"JIR\x00",
@@ -42,6 +48,7 @@ glob MAGIC = b"JIR\x00",
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
+     CT_PKG_PREFIX: str = "@jaclang/",
      FLAG_BOOTSTRAP: int = 0x04;
 
 glob NATIVE_SECTIONS: tuple[int, ...] = (
@@ -377,17 +384,8 @@ def is_compiler_tree_path(source_path: str) -> bool {
     return False;
 }
 
-def is_compiler_source_path(source_path: str) -> bool {
-    try {
-        resolved = str(Path(source_path).resolve());
-    } except OSError {
-        return False;
-    }
-    return resolved.startswith(_jaclang_pkg_dir + os.sep);
-}
-
 def _module_codespace_mode(source_path: str) -> str {
-    if is_compiler_source_path(source_path) {
+    if is_package_keyed_path(source_path) {
         return "internal";
     }
     try {
@@ -403,13 +401,23 @@ glob COMPILER_DIGEST_ROSTER_MARK: str = "roster",
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
+def compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
+    manifest = os.path.join(str(pkg_dir), "compiler_inputs.txt");
+    try {
+        return read_input_rules(manifest);
+    } except OSError {
+        return (COMPILER_DIGEST_ROOTS, COMPILER_DIGEST_ROSTER);
+    }
+}
+
 def compiler_source_files(pkg_dir: str) -> list[str] {
     base = str(Path(pkg_dir));
     rels: list[str] = [];
     if os.path.isfile(os.path.join(base, "compiler_inputs.txt")) {
         rels.append("compiler_inputs.txt");
     }
-    for `entry in COMPILER_DIGEST_ROOTS {
+    (roots, _roster) = compiler_input_rules(base);
+    for `entry in roots {
         target = os.path.join(base, `entry.replace("/", os.sep));
         if os.path.isfile(target) {
             rels.append(`entry);
@@ -480,7 +488,8 @@ def declared_compiler_inputs(pkg_dir: str, recorded: dict[str, str]) -> list[str
 }
 
 def resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) -> str {
-    if is_roster_input(rel) {
+    (_roots, roster) = compiler_input_rules(pkg_dir);
+    if is_roster_input(rel, roster) {
         return COMPILER_DIGEST_ROSTER_MARK;
     }
     full = os.path.join(str(pkg_dir), rel.replace("/", os.sep));
@@ -553,6 +562,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     base = str(Path(pkg_dir));
     recorded = read_compiler_identity(base);
     rels = declared_compiler_inputs(base, recorded);
+    (_roots, roster) = compiler_input_rules(base);
     manifest_path = _digest_manifest_path(base);
     entries: dict[str, any] = {};
     stored_digest = "";
@@ -568,7 +578,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     new_entries: dict[str, list[float | int | str]] = {};
     rows: list[tuple[str, str]] = [];
     for rel in rels {
-        if is_roster_input(rel) {
+        if is_roster_input(rel, roster) {
             rows.append((rel, COMPILER_DIGEST_ROSTER_MARK));
             continue;
         }
@@ -715,15 +725,12 @@ def _project_env_fingerprint(source_path: str) -> str {
         pins_digest,
         config_kind_space
     }
-    import from jaclang.project.workspace {
-        app_fact_digest,
-        app_for_path,
-        workspace_for_path
-    }
+    import from jaclang.compiler.frontend.host { active_host }
     h.update(pins_digest(source_path).encode());
     h.update(config_kind_space(source_path).encode());
-    h.update(app_fact_digest(app_for_path(source_path)).encode());
-    _ws = workspace_for_path(source_path);
+    _ws = active_host().workspace(source_path);
+    _app = active_host().app_for_path(source_path) if _ws is not None else None;
+    h.update((_app.fact_digest if _app is not None else '').encode());
     h.update((_ws.digest if _ws is not None else '').encode());
     h.update(_analysis_fingerprint_for(source_path).encode());
     return h.hexdigest();
@@ -737,7 +744,7 @@ def _full_env_fingerprint(source_path: str) -> str {
 }
 
 def _env_fingerprint_for(source_path: str) -> str {
-    if is_stub_like_path(source_path) or is_compiler_source_path(source_path) {
+    if is_stub_like_path(source_path) or is_package_keyed_path(source_path) {
         return _toolchain_env_fingerprint();
     }
     return _full_env_fingerprint(source_path);
@@ -774,14 +781,14 @@ def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
     a kernel built by the kit records its units by package identity, so the
     checkout that matches the kit's sources can accept it without the
     build's paths existing here.""";
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    import from jaclang.compiler.kernel_target { target_pkg_root }
     units = sidecar.get("units");
     ids = sidecar.get("unit_ids");
     recorded = [str(u) for u in units] if isinstance(units, list) else [];
     if not isinstance(ids, list) or len(ids) != len(recorded) {
         return recorded;
     }
-    pkg_parent = os.path.dirname(jaclang_pkg_root());
+    pkg_parent = os.path.dirname(target_pkg_root());
     out: list[str] = [];
     for (path, ident) in zip(recorded, ids) {
         ident_s = str(ident);
@@ -796,8 +803,13 @@ def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
 }
 
 def compute_module_key(source_path: str) -> str {
+    """A module the running compiler package owns is keyed canonically,
+    whatever compilation scope is active: the package's precompile, the
+    compiler's bootstrap, a consumer's analysis and a native build session
+    all read and write the same entry for it.""";
     h = hashlib.sha256();
-    h.update(_owner_projection().encode());
+    projection = '' if is_package_keyed_path(source_path) else _owner_projection();
+    h.update(projection.encode());
     h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
@@ -875,9 +887,33 @@ def ct_dep_digest(path: str, with_annexes: bool = False) -> str {
     }
 }
 
+def _ct_pkg_ref(path: str) -> str {
+    """A dependency inside the package being compiled is named by its place in
+    that package, so a unit cached from one staging of the tree still reads as
+    fresh in another: kernel units are built under a per-build staging
+    directory, and an absolute row there names a file the next build lacks.""";
+    import from jaclang.compiler.kernel_target { target_package_rel }
+    rel = target_package_rel(path);
+    if rel is None {
+        return path;
+    }
+    return CT_PKG_PREFIX + rel.replace(os.sep, "/");
+}
+
+def _ct_row_path(stored: str, base: str) -> str {
+    if stored.startswith(CT_PKG_PREFIX) {
+        import from jaclang.compiler.kernel_target { target_pkg_root }
+        return os.path.join(target_pkg_root(), *stored[len(CT_PKG_PREFIX):].split("/"));
+    }
+    if os.path.isabs(stored) or not base {
+        return stored;
+    }
+    return os.path.normpath(os.path.join(base, stored));
+}
+
 def _ct_dep_store_path(path: str, base: str) -> str {
     if not base {
-        return path;
+        return _ct_pkg_ref(path);
     }
     try {
         if os.path.commonpath([path, base]) == base {
@@ -953,14 +989,14 @@ def rebase_placement_section(raw: bytes, base: str) -> bytes {
 def rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, is_body) in _ct_dep_rows(raw.decode("utf-8")) {
-        lines.append(_ct_dep_line(path, digest, is_body, base));
+        lines.append(_ct_dep_line(_ct_row_path(path, ""), digest, is_body, base));
     }
     return "\n".join(lines).encode("utf-8");
 }
 
 def _ct_rows_fresh(rows: list[tuple[(str, str, bool)]], base: str) -> bool {
     for (path, digest, is_body) in rows {
-        full = path if os.path.isabs(path) else os.path.join(base, path);
+        full = _ct_row_path(path, base);
         if not digest or ct_dep_digest(full, is_body) != digest {
             return False;
         }
@@ -987,9 +1023,7 @@ def module_ct_deps_text(mod: any) -> str {
 def absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, is_body) in _ct_dep_rows(raw.decode("utf-8")) {
-        full = path
-            if os.path.isabs(path)
-            else os.path.normpath(os.path.join(base, path));
+        full = _ct_row_path(path, base);
         lines.append(_ct_dep_line(full, digest, is_body, ""));
     }
     return "\n".join(lines).encode("utf-8");
@@ -1041,7 +1075,7 @@ def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
 }
 
 def native_deps_section(dep_digests: dict[str, str]) -> bytes {
-    import from jaclang.compiler.frontend.codeinfo { native_unit_ref }
+    import from jaclang.compiler.driver.native_iface { native_unit_ref }
     lines: list[str] = [];
     for path in sorted(dep_digests) {
         lines.append(f"{native_unit_ref(path)}\t{dep_digests[path]}");
@@ -1050,7 +1084,7 @@ def native_deps_section(dep_digests: dict[str, str]) -> bytes {
 }
 
 def parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]] {
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_unit_ref }
+    import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
     out: list[tuple[str, str]] = [];
     for line in raw.decode("utf-8").split("\n") {
         if "\t" not in line {
@@ -1202,7 +1236,8 @@ def _module_cache_root(source_path: str) -> Path {
     resolved = Path(source_path).resolve();
     resolved_str = str(resolved);
 
-    if resolved_str.startswith(_jaclang_pkg_dir + os.sep) {
+    if resolved_str.startswith(_jaclang_pkg_dir + os.sep)
+        or is_package_keyed_path(resolved_str) {
         return get_jir_cache_dir() / 'modules';
     }
     try {
@@ -1234,7 +1269,15 @@ def _get_module_cache_dir(source_path: str) -> Path {
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    path_hash = hashlib.sha256((str(source) + _owner_projection()).encode()).hexdigest()[:8];
+    projection = '' if is_package_keyed_path(str(source)) else _owner_projection();
+    import from jaclang.compiler.kernel_target {
+        is_target_package_path,
+        kernel_target_active
+    }
+    name = native_unit_identity(str(source))
+        if kernel_target_active() and is_target_package_path(str(source))
+        else str(source);
+    path_hash = hashlib.sha256((name + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }

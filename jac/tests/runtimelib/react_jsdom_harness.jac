@@ -18,10 +18,8 @@ import subprocess;
 import from pathlib { Path }
 
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
@@ -59,8 +57,7 @@ def compile_react(path: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=ReactBackend());
-    return point_jac_prelude_at(es_to_js(es_pass.module.gen.es_ast));
+    return point_jac_prelude_at(es_js_with_backend(ir, prog, ReactBackend()));
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
