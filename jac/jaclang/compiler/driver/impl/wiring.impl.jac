@@ -63,12 +63,8 @@ impl WiringSpec.import_prefix -> str {
         top = -1;
         cur = os.path.realpath(self.root_dir);
         while cur != stop {
-            if any(
-                [
-                    os.path.isfile(os.path.join(cur, "__init__" + ext))
-                    for ext in (".jac", ".py")
-                ]
-            ) {
+            if os.path.isfile(os.path.join(cur, "__init__.jac"))
+                or os.path.isfile(os.path.join(cur, "__init__.py")) {
                 top = len(chain);
             }
             chain.append(os.path.basename(cur));

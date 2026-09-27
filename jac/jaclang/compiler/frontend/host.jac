@@ -218,6 +218,11 @@ obj HostServices {
         return None;
     }
 
+    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None) {
+        return None;
+    }
+
+    def place_wired_imports(module: Module) {}
     def drop_python_lane_products(path: str, program: JacProgram) {}
     def compiler_for(program: JacProgram) -> JacCompiler {
         raise RuntimeError("no compiler host is installed");

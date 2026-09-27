@@ -54,20 +54,15 @@ def _native_dep_scan(
         return ("previously-demoted", []);
     }
     import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.driver.wiring {
-        arch_file_for,
-        dedupe_generated_imports
-    }
-    import from jaclang.compiler.frontend.parser.frontend { annex_sources, parse_woven }
+    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
+    host = active_host();
     files = [path]
-        + active_host().annex_files(path, '.impl.jac')
-        + active_host().annex_files(path, '.test.jac');
-    arch = arch_file_for(path);
-    if arch is not None {
-        files.append(arch);
-    }
+        + host.annex_files(path, '.impl.jac')
+        + host.annex_files(path, '.test.jac');
+    arch = host.wiring_file(path);
+    stamped = files + ([arch] if arch is not None else []);
     fresh: list[tuple[str, float, int]] = [];
-    for f in files {
+    for f in stamped {
         try {
             fresh.append((f, os.path.getmtime(f), os.path.getsize(f)));
         } except OSError {
@@ -82,23 +77,32 @@ def _native_dep_scan(
     sv_reason = '';
     deps: list[str] = [];
     base_dir = os.path.dirname(os.path.abspath(path)) or '.';
-    src: (str | None) = None;
-    try {
-        src = active_host().read_source(path);
-    } except Exception {
-        sv_reason = "unreadable module";
-    }
-    if src is not None {
-        (dep_mod, had_err) = parse_woven(
-            src, path, JacProgram(), annex_sources(path), load_kernel=False
+    woven = host.woven_module(path, JacProgram()) if arch is not None else None;
+    if woven is not None {
+        (sv_reason, deps) = scan_native_blockers(
+            woven, base_dir, allow_pub=True, hold_exempt=hold_exempt
         );
-        if had_err {
-            sv_reason = "parse error";
-        } else {
-            dedupe_generated_imports(dep_mod);
-            (sv_reason, deps) = scan_native_blockers(
+    } else {
+        for f in files {
+            try {
+                src = host.read_source(f);
+            } except Exception {
+                sv_reason = "unreadable annex";
+                break;
+            }
+            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
+            if had_err {
+                sv_reason = "parse error";
+                break;
+            }
+            (f_sv, f_deps) = scan_native_blockers(
                 dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
             );
+            if f_sv {
+                sv_reason = f_sv;
+                break;
+            }
+            deps.extend(f_deps);
         }
     }
     if sv_reason {

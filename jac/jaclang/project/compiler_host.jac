@@ -93,6 +93,8 @@ obj ProjectHost(HostServices) {
         load_kernel: bool = True
     ) -> (tuple[Module, bool] | None);
 
+    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
+    def place_wired_imports(module: Module);
     def drop_python_lane_products(path: str, program: JacProgram);
     def compiler_for(program: JacProgram) -> JacCompiler;
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;

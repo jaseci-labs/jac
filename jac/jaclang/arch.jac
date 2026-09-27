@@ -3988,10 +3988,6 @@ graph import compiler.driver {
         scope_path_of,
         wiring_for_path
     }
-    wiring --> compiler.placement.placement_solver._native_dep_scan {
-        arch_file_for,
-        dedupe_generated_imports
-    }
     bccache --> project.compiler_host.ProjectHost.annex_files { discover_annex_files }
     bccache --> project.compiler_host.ProjectHost.base_file { discover_base_file }
     bccache --> project.compiler_host.ProjectHost.is_annex_path_of | project.kernel_snapshot.snapshot_inputs {
@@ -4259,9 +4255,6 @@ graph import compiler.driver {
         _codegen_sched_loading,
         native_pipeline_available
     }
-    wiring --> compiler.driver.program.JacProgram.parse_source {
-        dedupe_generated_imports
-    }
     wiring --> compiler.frontend.kernel_host.KernelHost.wiring_file | project.compiler_host.ProjectHost.wiring_file {
         arch_file_for,
         is_arch_file
@@ -4269,6 +4262,9 @@ graph import compiler.driver {
     wiring --> project.compiler_host.ProjectHost.session { wiring_scope }
     wiring --> project.kernel_snapshot.ClosureScan.scan_jac { wiring_for_path }
     pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
+    wiring --> project.compiler_host.ProjectHost.place_wired_imports {
+        dedupe_generated_imports
+    }
 }
 
 graph import compiler.frontend {
@@ -7836,10 +7832,6 @@ graph import compiler.frontend.parser {
     tokens --> compiler.tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind }
     tokens --> compiler.tools.jac_auto_lint_pass { KEYWORDS }
     tokens --> lsp.server.engine { TokenKind }
-    frontend --> compiler.placement.placement_solver._native_dep_scan {
-        annex_sources,
-        parse_woven
-    }
     frontend --> compiler.driver.program.JacProgram.parse_source {
         annex_sources,
         parse_woven
@@ -7854,6 +7846,13 @@ graph import compiler.frontend.parser {
     }
     parser --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature {
         Parser
+    }
+    frontend --> compiler.placement.placement_solver._native_dep_scan {
+        parse as rd_parse
+    }
+    frontend --> project.compiler_host.ProjectHost.woven_module {
+        annex_sources,
+        parse_woven
     }
 }
 

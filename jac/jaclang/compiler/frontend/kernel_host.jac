@@ -757,6 +757,25 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None) {
+        if self.kernel_only("woven_module") {
+            return None;
+        }
+        with self.delegating("woven_module") as host {
+            answer = host.woven_module(path, program);
+        }
+        return answer;
+    }
+
+    def place_wired_imports(module: Module) {
+        if self.kernel_only("place_wired_imports") {
+            return;
+        }
+        with self.delegating("place_wired_imports") as host {
+            host.place_wired_imports(module);
+        }
+    }
+
     def drop_python_lane_products(path: str, program: JacProgram) {
         if self.kernel_only("drop_python_lane_products") {
             return;

@@ -386,6 +386,30 @@ impl ProjectHost.native_parse(
     return (module, had_error);
 }
 
+impl ProjectHost.woven_module(
+    path: str, program: (JacProgram | None)
+) -> (Module | None) {
+    import from jaclang.compiler.frontend.parser.frontend { annex_sources, parse_woven }
+    try {
+        source = self.read_source(path);
+    } except Exception {
+        return None;
+    }
+    (module, had_error) = parse_woven(
+        source, path, program, annex_sources(path), load_kernel=False
+    );
+    if had_error {
+        return None;
+    }
+    self.place_wired_imports(module);
+    return module;
+}
+
+impl ProjectHost.place_wired_imports(module: Module) {
+    import from jaclang.compiler.driver.wiring { dedupe_generated_imports }
+    dedupe_generated_imports(module);
+}
+
 impl ProjectHost.resolve_local_module(
     base: str, parts: list[str]
 ) -> (tuple[str, str] | None) {
