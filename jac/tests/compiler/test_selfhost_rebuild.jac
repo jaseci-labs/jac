@@ -14,7 +14,6 @@ It forces the rerouted compiler source so the rebuild is of this checkout
 whatever lane it runs in."""
 import json;
 import os;
-import resource;
 import subprocess;
 import sys;
 import tempfile;
@@ -38,16 +37,32 @@ glob SYMTAB_PER_MODULE: float = 1.75,
          "}\n"
      ),
      DRIVER: str = (
-         "import gc, sys\n"
+         "import atexit, gc, resource, sys\n"
          "from unittest.mock import patch\n"
+         "def peak():\n"
+         "    usage = [resource.getrusage(w).ru_maxrss\n"
+         "             for w in (resource.RUSAGE_SELF, resource.RUSAGE_CHILDREN)]\n"
+         "    print('PEAK_RSS=' + str(max(usage)), flush=True)\n"
+         "atexit.register(peak)\n"
          "with patch('gc.collect', wraps=gc.collect):\n"
          "    from jaclang.cli.cli_boot import start_cli\n"
          "    sys.argv = ['jac', 'run', sys.argv[1]]\n"
          "    start_cli()"
      );
 
-def _peak_children_mb -> int {
-    peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss;
+"""Convert a `PEAK_RSS=` report from the driver to MB.
+
+The driver reports its own peak and its children's, so the figure covers the
+rebuild alone. `RUSAGE_CHILDREN` read here would also count every earlier
+child of a pooled test worker."""
+def _peak_mb(stdout: str) -> int {
+    peak = 0;
+    for line in stdout.splitlines() {
+        if line.startswith("PEAK_RSS=") {
+            peak = int(line[len("PEAK_RSS="):]);
+        }
+    }
+    assert peak > 0 , f"no PEAK_RSS= line in stdout:\n{stdout[-1500:]}";
     if sys.platform == "darwin" {
         return int(peak // (1024 * 1024));
     }
@@ -102,7 +117,7 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
         }
     }
     assert payload is not None , f"no SELFHOST= line in stdout:\n{proc.stdout[-1500:]}";
-    return (compiled, payload, _peak_children_mb(), );
+    return (compiled, payload, _peak_mb(proc.stdout), );
 }
 
 test "a cold compiler rebuild ingests each dependency about once and collects on its budget" {
