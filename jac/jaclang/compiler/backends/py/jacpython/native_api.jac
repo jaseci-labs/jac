@@ -46,6 +46,7 @@ import from jaclang.runtime.python.bindings.bz2 { PyInit__bz2 }
 import from jaclang.runtime.python.bindings.errno { PyInit_errno }
 import from jaclang.runtime.python.bindings.syslog { PyInit_syslog }
 import from jaclang.runtime.python.bindings.resource { PyInit_resource }
+import from jaclang.runtime.python.bindings.atexit { PyInit_atexit }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

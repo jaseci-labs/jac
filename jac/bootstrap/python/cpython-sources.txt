@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 58 C files / 111,789 lines; 38 headers / 14,455 lines.
-#   Total: 96 files / 126,244 source lines.
+#   Excluded: 59 C files / 112,150 lines; 38 headers / 14,455 lines.
+#   Total: 97 files / 126,605 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -482,7 +482,7 @@ Modules/_zstd/zstddict.c
 Modules/_zstd/zstddict.h
 Modules/addrinfo.h
 # Modules/arraymodule.c  # removed: 3,359 source lines
-Modules/atexitmodule.c
+# Modules/atexitmodule.c  # removed: 361 source lines
 # Modules/binascii.c  # removed: 1,337 source lines
 Modules/blake2module.c
 Modules/cjkcodecs/_codecs_cn.c
