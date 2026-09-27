@@ -678,7 +678,8 @@ impl JacProgram.stamp_app_facts(self: JacProgram, mod: uni.Module) -> None {
         import from jaclang.compiler.placement.placement_pins { module_dot_path }
         if ws is not None {
             mod.persistence = [
-                ws.persistence_namespace, module_dot_path(mod_path, ws.project_root)
+                ws.persistence_namespace,
+                module_dot_path(mod_path, ws.project_root)
             ];
         } else {
             entry_path = opts.entry_point or mod_path;
