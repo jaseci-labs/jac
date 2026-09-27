@@ -53,21 +53,10 @@ import from jaclang.compiler.frontend.unitree {
     WhileStmt,
     WithStmt
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from typing { cast }
 
-walker CFGBuildPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module;
-
+walker CFGBuildPass(TreePass) {
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
     def _exit_wired(nd: UniCFGNode) -> bool;
@@ -150,27 +139,21 @@ walker CFGBuildPass(TreeWalker) {
     can exit_test with Test exit;
 }
 
-walker CoalesceBBPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
+def is_structural_child(nd: UniNode) -> bool;
+
+def _unwrap_parens(expr: Expr) -> Expr {
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
     }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
-        bb_counter: int = 0;
-
-    can prepare with entry;
-    def get_bb(nd: UniCFGNode) -> list[UniCFGNode];
-    can coalesce_collect with UniNode entry;
-    def printgraph_cfg -> str;
-    def _node_label(nd: UniNode) -> str;
-    def _has_bool_sc(condition: Expr) -> bool;
+    return expr;
 }
 
-def _is_structural_child(nd: UniNode) -> bool;
-def cfg_dot_from_file(file_name: str) -> str;
+def unwrap_to_bool(cfg: CfgExpr) -> BoolExpr | None {
+    inner = _unwrap_parens(cfg.expr);
+    return inner if isinstance(inner, BoolExpr) else None;
+}
+
+def _bool_is_and(expr: BoolExpr) -> bool {
+    import from jaclang.compiler.frontend.constant { Tokens as Tok }
+    return isinstance(expr.op, Token) and expr.op.name == Tok.KW_AND;
+}

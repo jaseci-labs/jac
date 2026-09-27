@@ -20,9 +20,7 @@ def compile_with_profile(memory: str) -> tuple[any, any] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=FIXTURE,
-        options=CompileOptions(
-            force_codespace='native', force_target_program=True, memory_profile=memory
-        )
+        options=CompileOptions(force_codespace='native', memory_profile=memory)
     );
     assert not prog.errors_had , (
         f"{memory}: compilation errors: {[str(e) for e in prog.errors_had]}"

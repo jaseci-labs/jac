@@ -1,4 +1,9 @@
-import from jaclang.compiler.frontend.constant { SymbolAccess, SymbolType, Tokens }
+import from jaclang.compiler.frontend.constant {
+    ParamKind,
+    SymbolAccess,
+    SymbolType,
+    Tokens
+}
 import from jaclang.compiler.frontend.unitree { Name, Source }
 import from jaclang.compiler.types.types {
     ClassType,
@@ -6,7 +11,6 @@ import from jaclang.compiler.types.types {
     FunctionTypeFlags,
     Parameter,
     ParameterCategory,
-    ParamKind,
     TypeBase
 }
 

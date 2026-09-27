@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import os;
 import from jaclang.compiler.frontend.unitree {
     Archetype,
@@ -27,10 +27,8 @@ import from jaclang.compiler.frontend.diagnostics {
     W2039,
 }
 
-walker AccessCheckPass {
-    has ctx: CompileContext,
-        module: Module,
-        _enforce: bool = False,
+walker AccessCheckPass(CompilerPass) {
+    has _enforce: bool = False,
         _bridged_syms: set[int] = set(),
         _bridged_mods: set[str] = set();
 

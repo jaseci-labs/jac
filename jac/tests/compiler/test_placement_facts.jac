@@ -95,7 +95,7 @@ test "a module with compile errors is never classified client-only" {
 
 test "sealed images persist placement and expose it without re-derivation" {
     import json;
-    import from jaclang.compiler.placement.placement_facts { sealed_spaces_for }
+    import from jaclang.compiler.placement.placement_export { sealed_spaces_for }
     import from jaclang.jac0core.sealed { SealedImage, MANIFEST_FORMAT }
     d = tempfile.mkdtemp(prefix="jac-sealed-facts-");
     pre = os.path.join(d, "_precompiled");
@@ -126,9 +126,10 @@ test "placement_pins imports stay within the documented allowlist" {
     allow = {
         "jaclang/cli/commands/impl/fix.impl.jac",
         "jaclang/compiler/driver/boundary_classify.jac",
-        "jaclang/compiler/driver/impl/compiler.impl.jac",
+        "jaclang/compiler/driver/impl/program.impl.jac",
         "jaclang/compiler/driver/jir.jac",
         "jaclang/compiler/driver/na_coverage.jac",
+        "jaclang/compiler/native_scope.jac",
         "jaclang/project/modresolver.jac",
         "jaclang/compiler/passes/impl/boundary_analysis_pass.impl.jac",
         "jaclang/compiler/passes/impl/static_analysis_pass.impl.jac",
@@ -178,9 +179,8 @@ test "native_only names the modules with no bytecode meaning" {
     assert not native_only(_pkg_path("compiler", "frontend", "unitree.jac"));
     assert not native_only(_pkg_path("dist", "precompile_bytecode.jac"));
     # Anything outside the package is never a toolchain native-only module.
-    with tempfile.TemporaryDirectory(prefix="jac-native-only-") as d {
-        assert not native_only(os.path.join(d, "jc_unit.jac"));
-    }
+    d = tempfile.mkdtemp(prefix="jac-native-only-");
+    assert not native_only(os.path.join(d, "jc_unit.jac"));
 }
 
 
