@@ -5,8 +5,6 @@ sys.stderr redirect, os.chdir, xfail, etc.  All simple "run fixture
 and check stdout" tests live in test_language.jac.
 """
 
-import from jaclang.compiler.passes.execution { run_walker }
-
 import ast as py_ast;
 import io;
 import os;
@@ -24,9 +22,9 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution, transform }
 import from jaclang.compiler.driver.jir { get_jir_cache_dir, get_module_cache_path }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
-import from jaclang.project.source { read_file_with_encoding }
+import from jaclang.compiler.passes.pyast_load_pass { build_python_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
+import from jaclang.project.textio { read_file_with_encoding }
 import from jaclang.project.tomlio { read_toml_with_encoding }
 import tomllib;
 
@@ -53,13 +51,12 @@ test "pyfunc 1" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "def greet2(**kwargs: any) -> None {" in output;
@@ -76,13 +73,12 @@ test "pyfunc 2" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "class X {\n    with entry {\n        a_b = 67;" in output;
@@ -97,13 +93,12 @@ test "pyfunc 3" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "if (0 <= x <= 5) {" in output;
@@ -118,13 +113,12 @@ test "pyfunc binop" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
@@ -155,13 +149,12 @@ test "py2jac" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "match Container(inner=Inner(x=a, y=b)) {\n" in output;
@@ -176,13 +169,12 @@ test "py2jac metaclass" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     # The class keyword `metaclass=Meta` must survive py2jac, alongside the
@@ -196,13 +188,12 @@ test "py2jac params" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert (
@@ -220,12 +211,11 @@ test "py2jac empty file" {
     py_out_path = os.path.join(FIXTURES, "py2jac_empty.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        converted_ast = run_walker(
-            PyastBuildPass,
-            module=uni.PythonModuleAst(
+        converted_ast = build_python_module(
+            uni.PythonModuleAst(
                 py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             )
-        ).module;
+        );
     }
     assert isinstance(converted_ast, uni.Module);
 }
@@ -236,13 +226,12 @@ test "py2jac augassign and doc" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "x += 2;" in output;
@@ -255,13 +244,12 @@ test "py2jac reassign semantics" {
     with open(py_out_path) as f {
         file_source = f.read();
         jac_code = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
 
@@ -298,13 +286,12 @@ test "py namedexpr" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "(x := 10)" in output;
@@ -316,13 +303,12 @@ test "py bool parentheses" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            run_walker(
-                PyastBuildPass,
-                module=uni.PythonModuleAst(
+            build_python_module(
+                uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).module
+            )
         );
     }
     assert "(prev_token_index is None)" in output;

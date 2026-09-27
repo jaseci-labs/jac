@@ -2,17 +2,16 @@ import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl EsastGenPass._ensure_backend -> FrameworkBackend {
     if self.backend is None {
         import from jaclang.compiler.backends.es.backends.registry {
-            resolve_active_backend
+            active_framework,
+            resolve_framework_backend
         }
+        framework = active_framework();
         try {
-            self.backend = resolve_active_backend();
+            self.backend = resolve_framework_backend(framework);
         } except ValueError {
-            import from jaclang.project.config { get_config }
             import from jaclang.compiler.frontend.diagnostics { E5081 }
             import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-            cfg = get_config();
-            fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
-            self.ctx.emit(E5081, framework=fw);
+            self.ctx.emit(E5081, framework=framework);
             self.backend = ReactBackend();
         }
     }

@@ -96,4 +96,24 @@ printf example > jac/examples/tiny_jacyac/web.jac
 commit tiny-example
 after=$(keys)
 changed binary; same compiler; same python_cpython; same python_jacpython
+
+# The stage-0 key names the committed pin's commit, "self" otherwise.
+[ "$(key "$after" stage0)" = self ] || { echo "No pin must key stage0=self" >&2; exit 1; }
+before=$after
+printf '{"stage0": "self"}\n' > jac/bootstrap/stage0.json
+commit stage0-self
+after=$(keys)
+[ "$(key "$after" stage0)" = self ] || { echo "A self pin must key stage0=self" >&2; exit 1; }
+same compiler; same python_cpython; same stage0
+pinned=0123456789abcdef0123456789abcdef01234567
+printf '{\n "commit": "%s",\n "compiler_digest": "7:d",\n "format": 1,\n "jaclang_tree": "%s",\n "native_tree": "%s",\n "typeshed_pin": "p"\n}\n' \
+  "$pinned" "$(printf b%.0s {1..40})" "$(printf c%.0s {1..40})" > jac/bootstrap/stage0.json
+commit stage0-pin
+before=$after
+after=$(keys)
+[ "$(key "$after" stage0)" = "$pinned" ] || { echo "Missed stage0 pin: $(key "$after" stage0)" >&2; exit 1; }
+same compiler; same python_cpython
+printf '{"stage0": "self"}\n' > jac/bootstrap/stage0.json
+[ "$(key "$(keys)" stage0)" = "$pinned" ] || { echo "An uncommitted pin edit must not move stage0" >&2; exit 1; }
+git checkout -q -- jac/bootstrap/stage0.json
 echo 'CI cache mutation tests passed'

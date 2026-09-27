@@ -40,8 +40,7 @@ import jaclang.compiler.backends.native.llvm.binding as llvm
 program = JacProgram()
 entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
 options = CompileOptions(
-    aot_mode=True, default_codespace="native", force_target_program=True,
-    skip_native_engine=True,
+    aot_mode=True, default_codespace="native", skip_native_engine=True,
     native_required=True,
     memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
 )

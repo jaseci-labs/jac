@@ -1,4 +1,5 @@
 import from jaclang.compiler.c_interop { is_ptr_view_type }
+import from jaclang.compiler.types.types { ClassType, UnionType }
 import from jaclang.compiler.frontend.diagnostics { E1315 }
 
 impl OwnershipCheckPass._is_c_view(expr: (UniNode | None)) -> bool {
@@ -11,22 +12,25 @@ impl OwnershipCheckPass._is_c_view(expr: (UniNode | None)) -> bool {
         and expr.find_parent_of_type(SubTag) is None;
 }
 
-impl OwnershipCheckPass._mentions_c_view(t: object, depth: int = 0) -> bool {
+impl OwnershipCheckPass._mentions_c_view(t: (TypeBase | None), depth: int = 0) -> bool {
     if depth > 8 or t is None {
         return False;
     }
     if is_ptr_view_type(t) {
         return True;
     }
-    for member in (t?.types or []) {
-        if self._mentions_c_view(member, depth + 1) {
-            return True;
+    if isinstance(t, UnionType) {
+        for member in t.types {
+            if self._mentions_c_view(member, depth + 1) {
+                return True;
+            }
         }
     }
-    private = t?.private;
-    for arg in (private?.type_args or []) {
-        if self._mentions_c_view(arg, depth + 1) {
-            return True;
+    if isinstance(t, ClassType) {
+        for arg in (t.private.type_args or []) {
+            if self._mentions_c_view(arg, depth + 1) {
+                return True;
+            }
         }
     }
     return False;

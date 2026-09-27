@@ -11,7 +11,8 @@ looked for later beside the file, and recompiled. The root now follows the
 import os;
 import tempfile;
 import from pathlib { Path }
-import jaclang.compiler.driver.compile_options as compile_options;
+import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.project.compiler_host { ProjectHost }
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
     module_env_fingerprint
@@ -80,12 +81,15 @@ test "a module's env key is the same inside and outside the config probe guards"
         for path in [str(mod), internal] {
             plain = module_env_fingerprint(path);
             # The enclosing-project kind chain and its probe guard are gone
-            # (#8823): the config probe is the only re-entrancy guard left.
-            compile_options._config_probe["active"] = True;
+            # (#8823): the host's project-defaults guard is the only
+            # re-entrancy guard left.
+            host = active_host();
+            assert isinstance(host, ProjectHost);
+            host._defaults_active = True;
             try {
                 guarded = module_env_fingerprint(path);
             } finally {
-                compile_options._config_probe["active"] = False;
+                host._defaults_active = False;
             }
             assert plain == guarded , (
                 f"the env key of {os.path.basename(path)} must not depend on the "

@@ -14,12 +14,16 @@ def fragment_py -> dict[str, any] {
     c = FragmentItem(3);
     d = FragmentItem(4);
     f = graph { a ++> [b, c] +>:FragmentLink(weight=9):+> d; };
-    nested = graph { FragmentItem(5) ++> [graph { FragmentItem(6) ++> FragmentItem(7); }]; };
+    nested = graph {
+        FragmentItem(5) ++> [graph { FragmentItem(6) ++> FragmentItem(7); }];
+    };
     computed = graph {
         FragmentItem(8) ++> [FragmentItem(i) ++> FragmentItem(i + 10) for i in [9, 10]];
     };
     branch = graph {
-        FragmentItem(11) ++> (FragmentItem(12) ++> FragmentItem(13) if a.value == 1 else FragmentItem(14));
+        FragmentItem(11) ++> (
+            FragmentItem(12) ++> FragmentItem(13) if a.value == 1 else FragmentItem(14)
+        );
     };
     projected = (graph { FragmentItem(99) ++> FragmentItem(100); }).root;
     total_weight = 0;
@@ -56,12 +60,16 @@ def fragment_cl -> dict[str, any] {
     c = FragmentItem(3);
     d = FragmentItem(4);
     f = graph { a ++> [b, c] +>:FragmentLink(weight=9):+> d; };
-    nested = graph { FragmentItem(5) ++> [graph { FragmentItem(6) ++> FragmentItem(7); }]; };
+    nested = graph {
+        FragmentItem(5) ++> [graph { FragmentItem(6) ++> FragmentItem(7); }];
+    };
     computed = graph {
         FragmentItem(8) ++> [FragmentItem(i) ++> FragmentItem(i + 10) for i in [9, 10]];
     };
     branch = graph {
-        FragmentItem(11) ++> (FragmentItem(12) ++> FragmentItem(13) if a.value == 1 else FragmentItem(14));
+        FragmentItem(11) ++> (
+            FragmentItem(12) ++> FragmentItem(13) if a.value == 1 else FragmentItem(14)
+        );
     };
     projected = (graph { FragmentItem(99) ++> FragmentItem(100); }).root;
     total_weight = 0;
@@ -98,12 +106,16 @@ def fragment_na -> dict[str, any] {
     c = FragmentItem(3);
     d = FragmentItem(4);
     f = graph { a ++> [b, c] +>:FragmentLink(weight=9):+> d; };
-    nested = graph { FragmentItem(5) ++> [graph { FragmentItem(6) ++> FragmentItem(7); }]; };
+    nested = graph {
+        FragmentItem(5) ++> [graph { FragmentItem(6) ++> FragmentItem(7); }];
+    };
     computed = graph {
         FragmentItem(8) ++> [FragmentItem(i) ++> FragmentItem(i + 10) for i in [9, 10]];
     };
     branch = graph {
-        FragmentItem(11) ++> (FragmentItem(12) ++> FragmentItem(13) if a.value == 1 else FragmentItem(14));
+        FragmentItem(11) ++> (
+            FragmentItem(12) ++> FragmentItem(13) if a.value == 1 else FragmentItem(14)
+        );
     };
     projected = (graph { FragmentItem(99) ++> FragmentItem(100); }).root;
     total_weight = 0;

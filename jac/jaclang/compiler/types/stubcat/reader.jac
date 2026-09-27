@@ -1,7 +1,6 @@
-import mmap;
+import io;
 import os;
 import json;
-import struct;
 import from pathlib { Path }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -16,6 +15,7 @@ import from jaclang.compiler.frontend.unitree {
     UniScopeNode
 }
 import from jaclang.compiler.frontend.constant {
+    ParamKind,
     BindingKind,
     ImmutabilityKind,
     OwnershipKind,
@@ -34,7 +34,6 @@ import from jaclang.compiler.types.types {
     ModuleType,
     NeverType,
     OverloadedType,
-    ParamKind,
     Parameter,
     ParameterCategory,
     TypeBase,
@@ -43,6 +42,7 @@ import from jaclang.compiler.types.types {
     UnionType,
     UnknownType
 }
+import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
 import from jaclang.compiler.types.stubcat.format {
     ACCESS_PRIVATE,
     ACCESS_PROTECTED,
@@ -86,7 +86,12 @@ import from jaclang.compiler.types.stubcat.format {
     TY_TYPEVAR,
     TY_UNION,
     TY_UNKNOWN,
+    u32_at,
     unpack_header
+}
+
+def keep_path(rel: str) -> str {
+    return rel;
 }
 
 obj CatProvider(SymbolProvider) {
@@ -284,10 +289,9 @@ obj SymbolRec {
 }
 
 obj StubCatalog {
-    has buf: any,
+    has buf: bytes,
         pkg_dir: str,
-        keepalive: any = None,
-        resolver: any = None,
+        resolver: (CatalogResolver | None) = None,
         path_mapper: Callable[[str], str] | None = None,
         hdr: Header postinit,
         _str_memo: dict[int, str] postinit,
@@ -300,7 +304,16 @@ obj StubCatalog {
         _mod_names: dict[str, int] postinit,
         _mod_rel: dict[str, int] postinit,
         _mod_recs: list[tuple[str, str, int, int, str]] postinit,
-        _base_dir: str postinit;
+        _base_dir: str postinit,
+        _mapper: Callable[[str], str] postinit;
+
+    def for_session -> StubCatalog {
+        """Share the immutable catalog bytes, never hydrated semantic objects.
+        Types, symbols and declaration nodes are mutable during analysis and
+        can retain an evaluator. Their lifetime belongs to one program, which
+        keeps them from one compile to the next the way it keeps stub trees.""";
+        return StubCatalog(buf=self.buf, pkg_dir=self.pkg_dir);
+    }
 
     def postinit {
         hdr = unpack_header(self.buf);
@@ -319,6 +332,7 @@ obj StubCatalog {
         self._mod_rel = {};
         self._mod_recs = [];
         self._base_dir = os.path.realpath(self.pkg_dir);
+        self._mapper = self.path_mapper if self.path_mapper is not None else keep_path;
         for i in range(hdr.n_modules) {
             c = self._rec(hdr.off_modtab, i);
             name = self.string(c.u());
@@ -337,11 +351,10 @@ obj StubCatalog {
         if found is not None {
             return found;
         }
-        (off, length) = struct.unpack_from(
-            "<II", self.buf, self.hdr.off_strtab + sid * 8
-        );
-        start = self.hdr.off_strblob + off;
-        text = bytes(self.buf[start:start + length]).decode("utf-8");
+        slot = self.hdr.off_strtab + sid * 8;
+        start = self.hdr.off_strblob + u32_at(self.buf, slot);
+        length = u32_at(self.buf, slot + 4);
+        text = self.buf[start:start + length].decode("utf-8");
         self._str_memo[sid] = text;
         return text;
     }
@@ -354,7 +367,7 @@ obj StubCatalog {
     }
 
     def _rec(table_off: int, idx: int) -> Cursor {
-        (off, ) = struct.unpack_from("<I", self.buf, table_off + idx * 4);
+        off = u32_at(self.buf, table_off + idx * 4);
         return Cursor(buf=self.buf, pos=self.hdr.off_recblob + off);
     }
 
@@ -363,10 +376,16 @@ obj StubCatalog {
     }
 
     def ambient_typing_names -> dict[str, set[str]] {
-        raw = json.loads(self.string(self.hdr.ambient_sid));
+        raw: dict[str, any] = json.loads(self.string(self.hdr.ambient_sid));
         out: dict[str, set[str]] = {};
         for (mod_name, names) in raw.items() {
-            out[mod_name] = set(names);
+            members: set[str] = set();
+            if isinstance(names, list) {
+                for name in names {
+                    members.add(str(name));
+                }
+            }
+            out[mod_name] = members;
         }
         return out;
     }
@@ -375,16 +394,18 @@ obj StubCatalog {
         if not rel {
             return "";
         }
-        if self.path_mapper is not None {
-            mapped = self.path_mapper(rel);
-            if mapped != rel {
-                return mapped;
-            }
+        mapped = self._mapper(rel);
+        if mapped != rel {
+            return mapped;
         }
         if os.path.isabs(rel) {
             return rel;
         }
-        return os.path.join(self._base_dir, *rel.split("/"));
+        path = self._base_dir;
+        for part in rel.split("/") {
+            path = os.path.join(path, part);
+        }
+        return path;
     }
 
     def rel_of(path: str) -> (str | None) {
@@ -474,9 +495,10 @@ obj StubCatalog {
         (name, rel, flags, scope_id, decided) = self._mod_recs[mid];
         if (flags & MOD_EXTERNAL) != 0 or scope_id < 0 {
             ext: (Module | None) = None;
-            if self.resolver is not None {
+            resolver = self.resolver;
+            if resolver is not None {
                 try {
-                    ext = self.resolver.resolve_module(self.abs_path(rel));
+                    ext = resolver.resolve_module(self.abs_path(rel));
                 } except Exception {
                     ext = None;
                 }
@@ -970,9 +992,10 @@ obj StubCatalog {
             ident_line = c.u();
             ident_col = c.u();
             resolved: (ClassDetailsShared | None) = None;
-            if self.resolver is not None and xmid >= 0 {
+            resolver = self.resolver;
+            if resolver is not None and xmid >= 0 {
                 try {
-                    resolved = self.resolver.resolve_shared(
+                    resolved = resolver.resolve_shared(
                         self.abs_path(self._mod_recs[xmid][1]), dotted, name
                     );
                 } except Exception {
@@ -1127,24 +1150,37 @@ obj StubCatalog {
     }
 }
 
-def map_region(path: str, offset: int, length: int) -> (tuple[any, any] | None) {
+def read_region(path: str, offset: int, length: int) -> (bytes | None) {
+    if offset < 0 or length <= 0 {
+        return None;
+    }
     try {
-        fd = os.open(path, os.O_RDONLY);
+        with io.FileIO(path, "r") as f {
+            f.seek(offset);
+            data: bytes = f.read(length);
+            while len(data) < length {
+                more: bytes = f.read(length - len(data));
+                if not more {
+                    break;
+                }
+                data = data + more;
+            }
+        }
     } except OSError {
         return None;
     }
-    try {
-        gran = mmap.ALLOCATIONGRANULARITY;
-        base = offset - (offset % gran);
-        span = length + (offset - base);
-        mm = mmap.mmap(fd, span, access=mmap.ACCESS_READ, offset=base);
-    } except (OSError, ValueError) {
-        os.close(fd);
+    if len(data) != length {
         return None;
     }
-    os.close(fd);
-    view = memoryview(mm)[offset - base:offset - base + length];
-    return (mm, view);
+    return data;
+}
+
+def open_catalog_bytes(buf: bytes, pkg_dir: str) -> (StubCatalog | None) {
+    try {
+        return StubCatalog(buf=buf, pkg_dir=pkg_dir);
+    } except ValueError {
+        return None;
+    }
 }
 
 def open_catalog_file(path: str, pkg_dir: str) -> (StubCatalog | None) {
@@ -1153,35 +1189,19 @@ def open_catalog_file(path: str, pkg_dir: str) -> (StubCatalog | None) {
     } except OSError {
         return None;
     }
-    if size <= 0 {
+    data = read_region(path, 0, size);
+    if data is None {
         return None;
     }
-    mapped = map_region(path, 0, size);
-    if mapped is None {
-        return None;
-    }
-    (mm, view) = mapped;
-    try {
-        return StubCatalog(buf=view, pkg_dir=pkg_dir, keepalive=mm);
-    } except ValueError {
-        return None;
-    }
+    return open_catalog_bytes(data, pkg_dir);
 }
 
 def open_catalog_region(
     path: str, offset: int, length: int, pkg_dir: str
 ) -> (StubCatalog | None) {
-    if length <= 0 {
+    data = read_region(path, offset, length);
+    if data is None {
         return None;
     }
-    mapped = map_region(path, offset, length);
-    if mapped is None {
-        return None;
-    }
-    (mm, view) = mapped;
-    try {
-        return StubCatalog(buf=view, pkg_dir=pkg_dir, keepalive=mm);
-    } except ValueError {
-        return None;
-    }
+    return open_catalog_bytes(data, pkg_dir);
 }
