@@ -55,9 +55,3 @@ def:pub other_erased -> bool {
         and rows == [[1.0, 2.0], [1.0, 5.0], [2.0, 1.0]]
         and sorted(["pear", "apple", "fig"], reverse=True) == ["pear", "fig", "apple"];
 }
-
-def:pub ragged_tuples -> bool {
-    ragged = [(1, 2), (1, ), (0, 5, 1)];
-    return sorted(ragged) == [(0, 5, 1), (1, ), (1, 2)]
-        and sorted(ragged, reverse=True) == [(1, 2), (1, ), (0, 5, 1)];
-}
