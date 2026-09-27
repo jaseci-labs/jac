@@ -197,7 +197,7 @@ obj JacCompiler(SessionHooks) {
 
     static def _check_native_abi(layout: NativeModuleLayout, full_target: str) -> None;
     def get_bytecode(
-        full_target: str, target_program: JacProgram
+        full_target: str, target_program: JacProgram, skip_analysis: bool = False
     ) -> (types.CodeType | None);
 
     def get_client_artifact(
@@ -205,7 +205,7 @@ obj JacCompiler(SessionHooks) {
     ) -> (ClientArtifact | None);
 
     def _get_bytecode(
-        full_target: str, target_program: JacProgram
+        full_target: str, target_program: JacProgram, skip_analysis: bool = False
     ) -> (types.CodeType | None);
 
     def _get_client_artifact(

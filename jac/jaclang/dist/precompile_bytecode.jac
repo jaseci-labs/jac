@@ -621,15 +621,20 @@ def precompile_unit(
     pkg_root: str,
     embed_src: bool = False,
     collect: bool = True,
-    app: str = ""
+    app: str = "",
+    skip_analysis: bool = False
 ) -> bytes | None {
     with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
-        return _precompile_unit(jac_path, pkg_root, program, embed_src);
+        return _precompile_unit(jac_path, pkg_root, program, embed_src, skip_analysis);
     }
 }
 
 def _precompile_unit(
-    jac_path: str, pkg_root: str, program: JacProgram, embed_src: bool = False
+    jac_path: str,
+    pkg_root: str,
+    program: JacProgram,
+    embed_src: bool = False,
+    skip_analysis: bool = False
 ) -> bytes | None {
     try {
         import from jaclang.compiler.driver.jir { cache_mode }
@@ -656,7 +661,9 @@ def _precompile_unit(
     compiler = program._get_compiler();
 
     program.iface_registry().ensure(jac_path);
-    code = compiler.get_bytecode(full_target=jac_path, target_program=program);
+    code = compiler.get_bytecode(
+        full_target=jac_path, target_program=program, skip_analysis=skip_analysis
+    );
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
         return None;
@@ -1510,6 +1517,11 @@ def main {
     );
 }
 
+def is_toolchain_package(package_dir: str) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    return os.path.realpath(package_dir) == os.path.realpath(jaclang_pkg_root());
+}
+
 def run_precompile(
     source_dir: str,
     seal: bool = False,
@@ -1540,6 +1552,7 @@ def run_precompile(
     }
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
     precompiled_dir = Path(package_dir) / "_precompiled";
+    skip_analysis = is_toolchain_package(package_dir);
 
     if finalize_only {
         console.print(f"Sealing {pkg_name} for {pyver} (finalize)...");
@@ -1553,6 +1566,9 @@ def run_precompile(
     console.print(f"Precompiling {pkg_name} for {pyver}...");
     console.print(f"  Package directory: {package_dir}");
     console.print(f"  Compiler identity: {compiler_identity()}");
+    if skip_analysis {
+        console.print("  Analysis: skipped for Python-lane units (toolchain package)");
+    }
 
     jac_files = (
         sealable_sources(package_dir, app)
@@ -1673,7 +1689,12 @@ def run_precompile(
                 );
             } else {
                 jir_bytes = precompile_unit(
-                    jac_path, package_dir, embed_src, collect=not use_pool, app=app
+                    jac_path,
+                    package_dir,
+                    embed_src,
+                    collect=not use_pool,
+                    app=app,
+                    skip_analysis=skip_analysis
                 );
             }
             if jir_bytes is None {

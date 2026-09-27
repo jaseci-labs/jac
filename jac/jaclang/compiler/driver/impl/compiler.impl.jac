@@ -124,7 +124,7 @@ impl JacCompiler._check_native_abi(
 }
 
 impl JacCompiler.get_bytecode(
-    full_target: str, target_program: JacProgram
+    full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
     import from jaclang.compiler.driver.compilation_context {
         compilation_scope,
@@ -139,12 +139,12 @@ impl JacCompiler.get_bytecode(
     }
     actual = self.product_program(full_target, target_program, execution=True);
     with compilation_scope(owner_scope_options(actual)) {
-        return self._get_bytecode(full_target, actual);
+        return self._get_bytecode(full_target, actual, skip_analysis);
     }
 }
 
 impl JacCompiler._get_bytecode(
-    full_target: str, target_program: JacProgram
+    full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program, execution=True);
     (rebuild, no_precompile) = cache_mode();
@@ -274,7 +274,8 @@ impl JacCompiler._get_bytecode(
         self.selfhost.enter_bytecode();
     }
     options = CompileOptions(
-        skip_native_engine=not self._wants_native_engine(full_target, actual_program)
+        skip_native_engine=not self._wants_native_engine(full_target, actual_program),
+        skip_analysis=skip_analysis
     );
     result: (uni.Module | None) = None;
     enclosing_closure = self._closure_opts;
