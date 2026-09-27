@@ -257,7 +257,7 @@ obj ClassToken {
 
     # Bindings set the token through this method: assigning the field of an
     # imported glob directly miscompiles in the native emitter (IntType has
-    # no is_opaque), while a method of the object lowers correctly.
+    # no is_opaque, #9596), while a method of the object lowers correctly.
     def bind(handle: ptr) {
         self.handle = handle;
     }
