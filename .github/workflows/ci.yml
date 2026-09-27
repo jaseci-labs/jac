@@ -604,6 +604,33 @@ jobs:
             exit 1
           fi
 
+      # Only main saves the stage-0 snapshot and kernel-units caches
+      # (build-kit), so a PR that moves the pin builds its kernel from a cold
+      # stage 0 on every push. A pin-only PR lands first and main warms the
+      # caches before anything builds on it (stage0-bump.yml opens those).
+      # Diffed from the PR's merge base, so a pin bump that landed on main
+      # after this branch forked is not this PR's change.
+      - name: Keep stage-0 pin bumps in their own PR
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-stage0-pin-check')
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          pin=jac/bootstrap/stage0.json
+          base=$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")
+          changed=$(git diff --name-only --no-renames "$base" "$HEAD_SHA")
+          grep -qxF "$pin" <<<"$changed" || exit 0
+          others=$(grep -vxF "$pin" <<<"$changed" || true)
+          [ -z "$others" ] && exit 0
+          echo "::error file=$pin::This PR changes $pin together with $(grep -c . <<<"$others") other file(s). Bump the stage-0 pin in a PR that changes only $pin and merge it first: only runs on main save the stage-0 snapshot and kernel-units caches, so until the new pin lands on its own every push here builds the kernel from a cold stage 0 (slow, and it can run build-kit out of memory). Then rebase this PR onto main. The Stage-0 pin bump workflow (Actions tab, Run workflow, optionally naming a commit) opens such a PR."
+          echo "To skip this check, add the 'skip-stage0-pin-check' label to your PR."
+          echo "Other files changed since the merge base ($base):"
+          head -n 50 <<<"$others"
+          exit 1
+
       - name: Block duplicate diagnostic codes
         # Two branches each take the next free code and the merge keeps both;
         # the registry refuses at import, which here means the kit fails to
