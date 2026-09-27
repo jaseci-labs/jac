@@ -2106,6 +2106,7 @@ graph import compiler {
     native_scope --> compiler.driver.wiring.is_kernel_abi_contract {
         KERNEL_ABI_CONTRACT_REL
     }
+    c_interop --> compiler.passes.ownership_check_pass { is_ptr_type }
 }
 
 graph import compiler.backends {
@@ -17825,11 +17826,6 @@ graph import runtime.python {
     capi --> compiler.backends.py.jacpython.native_api {
         boundary_failure,
         checked,
-        jacpy_int,
-        jacpy_none,
-        jacpy_release,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
         required,
         text_object,
         text_value
@@ -17840,175 +17836,34 @@ graph import runtime.python {
     capi --> compiler.frontend.python.source_input { boundary_failure, read_buffer }
     capi --> runtime.python.bindings.arguments {
         boundary_failure,
-        jacpy_dict_items,
-        jacpy_error_pending,
-        jacpy_index,
-        jacpy_is_unicode,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_unicode_char,
-        jacpy_unicode_size,
         object_error,
         required,
         text_value
     }
     capi --> runtime.python.bindings.array {
-        SliceBounds,
         jac_heap_size,
-        jacpy_audit,
-        jacpy_builtins,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_dict_get,
-        jacpy_dict_size,
-        jacpy_error_pending,
-        jacpy_getattr_string,
-        jacpy_import_attr,
-        jacpy_index_check,
-        jacpy_int,
-        jacpy_is_bytearray,
-        jacpy_is_bytes,
-        jacpy_is_list,
-        jacpy_is_long,
-        jacpy_is_slice,
-        jacpy_is_type,
-        jacpy_is_unicode,
-        jacpy_long_as_int32,
-        jacpy_none,
-        jacpy_not_implemented,
-        jacpy_number_ssize,
-        jacpy_optional_attr,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_slice_adjust,
-        jacpy_slice_unpack,
-        jacpy_tuple_new,
-        jacpy_type_check,
-        jacpy_type_subtype,
-        jacpy_uint,
-        jacpy_unicode_from_ordinal,
-        jacpy_warn,
         object_error,
         text_object,
         type_name
     }
-    capi --> runtime.python.bindings.binascii {
-        jacpy_buffer_byte,
-        jacpy_error_pending,
-        jacpy_is_bytes,
-        jacpy_is_unicode,
-        jacpy_long_as_int32,
-        jacpy_object_size,
-        jacpy_release,
-        jacpy_truth,
-        object_error
-    }
-    capi --> runtime.python.bindings.bisect { jacpy_is_none }
-    capi --> runtime.python.bindings.cmath { jacpy_complex, jacpy_float }
+    capi --> runtime.python.bindings.binascii { object_error }
     capi --> runtime.python.bindings.collections {
         boundary_failure,
         jac_heap_size,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_callable,
-        jacpy_dict_new,
-        jacpy_dict_update,
-        jacpy_error_pending,
-        jacpy_getattr_string,
-        jacpy_int,
-        jacpy_is_dict,
-        jacpy_is_none,
-        jacpy_is_tuple,
-        jacpy_iter,
-        jacpy_none,
-        jacpy_not_implemented,
-        jacpy_ordered_dict_new,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_tuple_slice,
-        jacpy_type_check,
         object_error,
         repr_value,
         text_object,
         type_name
     }
-    capi --> runtime.python.bindings.csv {
-        jacpy_call,
-        jacpy_callable,
-        jacpy_dict_new,
-        jacpy_dict_set,
-        jacpy_error_pending,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_exact_long,
-        jacpy_is_unicode,
-        jacpy_iter,
-        jacpy_none,
-        jacpy_optional_attr,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_text,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_type_check,
-        jacpy_unicode_from_ordinal,
-        object_error,
-        type_name
-    }
+    capi --> runtime.python.bindings.csv { object_error, type_name }
     capi --> runtime.python.bindings.functools {
         boundary_failure,
-        jacpy_callable,
-        jacpy_compare,
-        jacpy_dict_size,
-        jacpy_error_pending,
-        jacpy_getattr_string,
-        jacpy_index_check,
-        jacpy_is_none,
-        jacpy_none,
-        jacpy_not_implemented,
-        jacpy_recursion_enter,
-        jacpy_recursion_leave,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_tuple_slice,
-        jacpy_type_check,
         object_error,
         text_object
     }
-    capi --> runtime.python.bindings.heapq { jacpy_is_list, type_name }
+    capi --> runtime.python.bindings.heapq { type_name }
     capi --> runtime.python.bindings.itertools {
         boundary_failure,
-        jacpy_clear_error,
-        jacpy_dict_get,
-        jacpy_dict_size,
-        jacpy_error_pending,
-        jacpy_int,
-        jacpy_is_list,
-        jacpy_is_none,
-        jacpy_list_size,
-        jacpy_none,
-        jacpy_number_check,
-        jacpy_number_ssize,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_type_check,
         object_error,
         required,
         text_object,
@@ -18016,27 +17871,12 @@ graph import runtime.python {
     }
     capi --> runtime.python.bindings.json {
         boundary_failure,
-        jacpy_boolean,
-        jacpy_getattr_string,
-        jacpy_is_dict,
-        jacpy_is_none,
-        jacpy_is_unicode,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_truth,
         object_error,
         object_tuple,
         type_name
     }
-    capi --> runtime.python.bindings.math { jacpy_float }
-    capi --> runtime.python.bindings.module { jacpy_release }
     capi --> runtime.python.bindings.operator {
         boundary_failure,
-        jacpy_dict_size,
-        jacpy_is_unicode,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_size,
         object_error,
         text_object,
         type_name
@@ -18044,82 +17884,17 @@ graph import runtime.python {
     capi --> runtime.python.bindings.pickle {
         boundary_failure,
         builtin_kind,
-        jacpy_boolean,
-        jacpy_builtin_type,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_clear_error,
-        jacpy_dict_new,
-        jacpy_dict_set,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_generic_getattr,
-        jacpy_generic_setattr,
-        jacpy_getattr_string,
-        jacpy_import_attr,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_none,
-        jacpy_is_unicode,
-        jacpy_long_as_int32,
-        jacpy_none,
-        jacpy_optional_attr,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_exception,
-        jacpy_truth,
         object_error,
         required,
         text_object,
         text_value
     }
-    capi --> runtime.python.bindings.queue {
-        jacpy_boolean,
-        jacpy_int,
-        jacpy_lock_new,
-        jacpy_none,
-        jacpy_release,
-        jacpy_truth,
-        object_error
-    }
-    capi --> runtime.python.bindings.random {
-        jacpy_dict_size,
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_index,
-        jacpy_is_none,
-        jacpy_long_sign,
-        jacpy_long_u64,
-        jacpy_none,
-        jacpy_release,
-        object_error
-    }
-    capi --> runtime.python.bindings.references {
-        jacpy_release,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned
-    }
+    capi --> runtime.python.bindings.queue { object_error }
+    capi --> runtime.python.bindings.random { object_error }
     capi --> runtime.python.bindings.struct {
         boundary_failure,
         jac_heap_size,
         jac_list_heap_size,
-        jacpy_bytes_address,
-        jacpy_bytes_decode,
-        jacpy_bytes_from_memory,
-        jacpy_dict_clear,
-        jacpy_dict_new,
-        jacpy_error_pending,
-        jacpy_int,
-        jacpy_is_bytes,
-        jacpy_is_unicode,
-        jacpy_none,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_exception,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_tuple_slice,
-        jacpy_unicode_encode,
         object_error,
         repr_value,
         text_object,
@@ -18128,19 +17903,6 @@ graph import runtime.python {
     capi --> runtime.python.constant_input { boundary_failure, read_buffer }
     capi --> runtime.python.constant_output {
         checked,
-        jacpy_boolean,
-        jacpy_complex,
-        jacpy_ellipsis,
-        jacpy_float,
-        jacpy_int,
-        jacpy_long_from_bytes,
-        jacpy_neg,
-        jacpy_none,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_new,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
         required,
         text_object,
         write_buffer
@@ -18149,102 +17911,23 @@ graph import runtime.python {
         boundary_failure,
         checked,
         jac_heap_size,
-        jacpy_boolean,
-        jacpy_bytearray_memory,
-        jacpy_bytearray_new,
-        jacpy_bytearray_resize,
-        jacpy_bytes_address,
-        jacpy_bytes_from_memory,
-        jacpy_bytes_length,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_compare,
-        jacpy_compare_bool,
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_float32_bits,
-        jacpy_float_bits,
-        jacpy_float_unpack,
-        jacpy_getattr_string,
-        jacpy_index,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_bytes,
-        jacpy_is_unicode,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_list_append,
-        jacpy_list_new,
-        jacpy_long_u64,
-        jacpy_memory_copy,
-        jacpy_memory_move,
-        jacpy_memory_zero,
-        jacpy_native_little_endian,
-        jacpy_native_size,
-        jacpy_number_as_double,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_unicode_char,
-        jacpy_unicode_decode_bytes,
-        jacpy_unicode_from_ordinal,
-        jacpy_unicode_join,
-        jacpy_unicode_size,
         object_error,
         object_tuple,
         repr_value,
         required,
         text_object
     }
-    capi --> runtime.python.modules.binary_scalars {
-        jacpy_int,
-        jacpy_memory_byte,
-        jacpy_memory_set,
-        jacpy_uint,
-        required
-    }
+    capi --> runtime.python.modules.binary_scalars { required }
     capi --> runtime.python.modules.binascii {
-        jacpy_buffer_byte,
-        jacpy_buffer_size,
-        jacpy_int,
-        jacpy_set_exception,
         module_failure,
         object_error,
         read_buffer,
         write_buffer
     }
-    capi --> runtime.python.modules.bisect {
-        jacpy_call_one,
-        jacpy_comparison_slot,
-        jacpy_insert,
-        jacpy_int,
-        jacpy_less,
-        jacpy_none,
-        jacpy_object_size,
-        jacpy_recursion_enter,
-        jacpy_recursion_leave,
-        jacpy_release,
-        jacpy_same_type,
-        jacpy_sequence_slot,
-        jacpy_slot_item,
-        jacpy_slot_less,
-        object_error
-    }
+    capi --> runtime.python.modules.bisect { object_error }
     capi --> runtime.python.modules.cmath {
         boundary_failure,
         checked,
-        jacpy_boolean,
-        jacpy_clear_errno,
-        jacpy_complex,
-        jacpy_complex_imag,
-        jacpy_complex_real,
-        jacpy_complex_value,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_math_errno,
-        jacpy_number_as_double,
-        jacpy_release,
-        jacpy_truediv,
         object_error,
         object_tuple,
         required
@@ -18254,27 +17937,6 @@ graph import runtime.python {
         checked,
         jac_heap_size,
         jac_list_heap_size,
-        jacpy_add,
-        jacpy_boolean,
-        jacpy_call,
-        jacpy_compare_bool,
-        jacpy_dict_default,
-        jacpy_dict_repr,
-        jacpy_error_pending,
-        jacpy_getattr,
-        jacpy_int,
-        jacpy_is_none,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_release,
-        jacpy_repr_enter,
-        jacpy_repr_leave,
-        jacpy_retain,
-        jacpy_sequence_list,
-        jacpy_set_key_error,
-        jacpy_setitem,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
         object_error,
         repr_value,
         required,
@@ -18287,56 +17949,12 @@ graph import runtime.python {
         checked,
         jac_heap_size,
         jac_list_heap_size,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_sequence_tuple,
-        jacpy_tuple_exchange,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
         object_error,
         required
     }
     capi --> runtime.python.modules.csv {
         boundary_failure,
         checked,
-        jacpy_boolean,
-        jacpy_call_one,
-        jacpy_clear_error,
-        jacpy_dict_get,
-        jacpy_dict_keys,
-        jacpy_dict_pop_discard,
-        jacpy_dict_set,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_getattr_string,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_exact_long,
-        jacpy_is_none,
-        jacpy_is_unicode,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_list_append,
-        jacpy_list_new,
-        jacpy_long_as_int32,
-        jacpy_none,
-        jacpy_number_check,
-        jacpy_number_float,
-        jacpy_object_str,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_exception,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_type_check,
-        jacpy_unicode_char,
-        jacpy_unicode_size,
-        jacpy_writer_char,
-        jacpy_writer_discard,
-        jacpy_writer_finish,
-        jacpy_writer_new,
         object_error,
         object_tuple,
         required,
@@ -18346,49 +17964,6 @@ graph import runtime.python {
     capi --> runtime.python.modules.functools {
         boundary_failure,
         checked,
-        jacpy_boolean,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_call_two,
-        jacpy_callable,
-        jacpy_compare,
-        jacpy_dict_clear,
-        jacpy_dict_copy,
-        jacpy_dict_entry,
-        jacpy_dict_get,
-        jacpy_dict_new,
-        jacpy_dict_set,
-        jacpy_dict_size,
-        jacpy_dict_update,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_getattr_string,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_dict,
-        jacpy_is_exact_dict,
-        jacpy_is_exact_long,
-        jacpy_is_exact_tuple,
-        jacpy_is_exact_unicode,
-        jacpy_is_none,
-        jacpy_is_tuple,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_none,
-        jacpy_object_hash,
-        jacpy_object_str,
-        jacpy_object_type,
-        jacpy_ordered_dict_new,
-        jacpy_release,
-        jacpy_repr_enter,
-        jacpy_repr_leave,
-        jacpy_retain,
-        jacpy_sequence_tuple,
-        jacpy_setitem,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
         object_error,
         repr_value,
         required,
@@ -18396,63 +17971,11 @@ graph import runtime.python {
         text_value,
         type_name
     }
-    capi --> runtime.python.modules.grouping {
-        boundary_failure,
-        checked,
-        jacpy_call_one,
-        jacpy_compare_bool,
-        jacpy_is_none,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        required
-    }
-    capi --> runtime.python.modules.heapq {
-        jacpy_less,
-        jacpy_list_append,
-        jacpy_list_delete,
-        jacpy_list_exchange,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_list_swap,
-        jacpy_none,
-        jacpy_release,
-        jacpy_retain,
-        object_error
-    }
+    capi --> runtime.python.modules.grouping { boundary_failure, checked, required }
+    capi --> runtime.python.modules.heapq { object_error }
     capi --> runtime.python.modules.iterators {
         boundary_failure,
         checked,
-        jacpy_add,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_call_two,
-        jacpy_clear_error,
-        jacpy_error_pending,
-        jacpy_integer_value,
-        jacpy_is_long,
-        jacpy_is_none,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_list_append,
-        jacpy_list_exchange,
-        jacpy_list_item,
-        jacpy_list_new,
-        jacpy_list_size,
-        jacpy_none,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_sequence_tuple,
-        jacpy_truth,
-        jacpy_tuple_exchange,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_tuple_unique,
         object_error,
         repr_value,
         required,
@@ -18462,64 +17985,6 @@ graph import runtime.python {
     capi --> runtime.python.modules.json {
         boundary_failure,
         checked,
-        jacpy_boolean,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_contains,
-        jacpy_dict_default,
-        jacpy_dict_entry,
-        jacpy_dict_new,
-        jacpy_dict_remove,
-        jacpy_dict_set,
-        jacpy_dict_size,
-        jacpy_error_pending,
-        jacpy_fast_item,
-        jacpy_fast_size,
-        jacpy_float_repr,
-        jacpy_float_value,
-        jacpy_identity,
-        jacpy_import_attr,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_bool,
-        jacpy_is_dict,
-        jacpy_is_exact_dict,
-        jacpy_is_float,
-        jacpy_is_list,
-        jacpy_is_long,
-        jacpy_is_none,
-        jacpy_is_tuple,
-        jacpy_is_unicode,
-        jacpy_list_append,
-        jacpy_list_item,
-        jacpy_list_new,
-        jacpy_list_size,
-        jacpy_list_sort,
-        jacpy_long_repr,
-        jacpy_mapping_items,
-        jacpy_none,
-        jacpy_raise_value,
-        jacpy_recursion_enter,
-        jacpy_recursion_leave,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_sequence_fast,
-        jacpy_sequence_repeat,
-        jacpy_set_object_exception,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_unicode_char,
-        jacpy_unicode_concat,
-        jacpy_unicode_size,
-        jacpy_unicode_slice,
-        jacpy_writer_ascii,
-        jacpy_writer_char,
-        jacpy_writer_discard,
-        jacpy_writer_finish,
-        jacpy_writer_new,
-        jacpy_writer_slice,
-        jacpy_writer_text,
         object_error,
         object_tuple,
         pair,
@@ -18531,49 +17996,6 @@ graph import runtime.python {
     }
     capi --> runtime.python.modules.math {
         boundary_failure,
-        jacpy_abs,
-        jacpy_add,
-        jacpy_boolean,
-        jacpy_clear_errno,
-        jacpy_clear_error,
-        jacpy_compare_bool,
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_float_bits,
-        jacpy_float_from_bits,
-        jacpy_floordiv,
-        jacpy_index,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_bool,
-        jacpy_is_exact_float,
-        jacpy_is_exact_long,
-        jacpy_is_long,
-        jacpy_is_none,
-        jacpy_is_tuple,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_libm_parts,
-        jacpy_long_bits,
-        jacpy_long_double,
-        jacpy_long_fits_i64,
-        jacpy_long_frexp,
-        jacpy_long_from_double,
-        jacpy_long_gcd,
-        jacpy_long_shift,
-        jacpy_long_sign,
-        jacpy_long_u64,
-        jacpy_math_errno,
-        jacpy_mul,
-        jacpy_number_as_double,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_sequence_tuple,
-        jacpy_special_noargs,
-        jacpy_sub,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_uint,
         object_error,
         repr_value,
         required,
@@ -18581,76 +18003,6 @@ graph import runtime.python {
     }
     capi --> runtime.python.modules.operator {
         boundary_failure,
-        jacpy_abs,
-        jacpy_add,
-        jacpy_and_,
-        jacpy_boolean,
-        jacpy_call,
-        jacpy_compare,
-        jacpy_concat,
-        jacpy_contains,
-        jacpy_crypto_compare,
-        jacpy_delitem,
-        jacpy_dict_entry,
-        jacpy_dict_size,
-        jacpy_error_pending,
-        jacpy_floordiv,
-        jacpy_getattr,
-        jacpy_getitem,
-        jacpy_iadd,
-        jacpy_iand,
-        jacpy_iconcat,
-        jacpy_ifloordiv,
-        jacpy_ilshift,
-        jacpy_imatmul,
-        jacpy_imod,
-        jacpy_import_attr,
-        jacpy_imul,
-        jacpy_index,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_invert,
-        jacpy_ior,
-        jacpy_irshift,
-        jacpy_is_none,
-        jacpy_is_unicode,
-        jacpy_isub,
-        jacpy_itruediv,
-        jacpy_ixor,
-        jacpy_length_hint,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_lshift,
-        jacpy_matmul,
-        jacpy_mod,
-        jacpy_mul,
-        jacpy_neg,
-        jacpy_none,
-        jacpy_or_,
-        jacpy_pos,
-        jacpy_power,
-        jacpy_release,
-        jacpy_repr,
-        jacpy_repr_enter,
-        jacpy_repr_leave,
-        jacpy_retain,
-        jacpy_rshift,
-        jacpy_sequence_count,
-        jacpy_sequence_index,
-        jacpy_setitem,
-        jacpy_sub,
-        jacpy_text,
-        jacpy_truediv,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_tuple_slice,
-        jacpy_unicode_join,
-        jacpy_unicode_split,
-        jacpy_utf8,
-        jacpy_xor,
         object_error,
         pair,
         repr_value,
@@ -18663,86 +18015,12 @@ graph import runtime.python {
         checked,
         jac_heap_size,
         jac_list_heap_size,
-        jacpy_bytearray_memory,
-        jacpy_dict_clear,
-        jacpy_dict_copy,
-        jacpy_dict_memory,
-        jacpy_dict_new,
-        jacpy_dict_set,
-        jacpy_error_pending,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_dict,
-        jacpy_is_tuple,
-        jacpy_iter,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_mapping_items,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_uint,
         required,
         text_value
     }
     capi --> runtime.python.modules.pickle_decode {
         boundary_failure,
         checked,
-        jacpy_boolean,
-        jacpy_bytearray_new,
-        jacpy_bytes_address,
-        jacpy_bytes_decode,
-        jacpy_bytes_from_memory,
-        jacpy_bytes_length,
-        jacpy_bytes_unescape,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_dict_get,
-        jacpy_dict_items,
-        jacpy_dict_new,
-        jacpy_dict_set,
-        jacpy_dict_size,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_float_from_text,
-        jacpy_float_unpack,
-        jacpy_getattr_string,
-        jacpy_import_attr,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_dict,
-        jacpy_is_exact_unicode,
-        jacpy_is_list,
-        jacpy_is_none,
-        jacpy_is_tuple,
-        jacpy_is_type,
-        jacpy_is_unicode,
-        jacpy_iter_next,
-        jacpy_list_append,
-        jacpy_list_item,
-        jacpy_list_new,
-        jacpy_list_size,
-        jacpy_long_from_signed_bytes,
-        jacpy_memory_byte,
-        jacpy_memory_copy,
-        jacpy_memoryview,
-        jacpy_none,
-        jacpy_number_long,
-        jacpy_optional_attr,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_new,
-        jacpy_setattr,
-        jacpy_setitem,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_type_new,
-        jacpy_unicode_intern,
         object_tuple,
         required,
         text_value
@@ -18751,66 +18029,6 @@ graph import runtime.python {
         boundary_failure,
         builtin_kind,
         checked,
-        jacpy_add,
-        jacpy_builtin_kind,
-        jacpy_bytearray_resize,
-        jacpy_bytes_address,
-        jacpy_bytes_decode,
-        jacpy_bytes_from_memory,
-        jacpy_bytes_length,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_callable,
-        jacpy_dict_get,
-        jacpy_dict_set,
-        jacpy_dict_size,
-        jacpy_ellipsis,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_float_bits,
-        jacpy_float_repr,
-        jacpy_float_value,
-        jacpy_getattr_string,
-        jacpy_import_attr,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_dict,
-        jacpy_is_iterator,
-        jacpy_is_none,
-        jacpy_is_not_implemented,
-        jacpy_is_tuple,
-        jacpy_is_type,
-        jacpy_is_unicode,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_long_bits,
-        jacpy_long_fits_i64,
-        jacpy_long_repr,
-        jacpy_long_sign,
-        jacpy_long_signed_bytes,
-        jacpy_mapping_items,
-        jacpy_mapping_optional_item,
-        jacpy_memory_byte,
-        jacpy_none,
-        jacpy_not_implemented,
-        jacpy_object_str,
-        jacpy_object_type,
-        jacpy_optional_attr,
-        jacpy_recursion_enter,
-        jacpy_recursion_leave,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_sequence_list,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
-        jacpy_tuple_slice,
-        jacpy_uint,
-        jacpy_unicode_char,
-        jacpy_unicode_encode,
-        jacpy_unicode_size,
         object_tuple,
         repr_value,
         required,
@@ -18822,28 +18040,6 @@ graph import runtime.python {
     capi --> runtime.python.modules.pickle_objects {
         boundary_failure,
         checked,
-        jacpy_audit_pickle_find,
-        jacpy_dict_copy,
-        jacpy_dict_get,
-        jacpy_dict_keys,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_error_restore,
-        jacpy_error_take,
-        jacpy_getattr,
-        jacpy_import_attr,
-        jacpy_import_object,
-        jacpy_is_none,
-        jacpy_is_tuple,
-        jacpy_is_unicode,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_object_str,
-        jacpy_optional_attr,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_item,
-        jacpy_tuple_size,
         object_tuple,
         repr_value,
         required,
@@ -18853,142 +18049,24 @@ graph import runtime.python {
     capi --> runtime.python.modules.pickle_stream {
         boundary_failure,
         checked,
-        jacpy_bytearray_new,
-        jacpy_bytearray_resize,
-        jacpy_bytes_address,
-        jacpy_bytes_from_memory,
-        jacpy_bytes_length,
-        jacpy_call,
-        jacpy_call_one,
-        jacpy_error_restore,
-        jacpy_error_take,
-        jacpy_exception_context,
-        jacpy_int,
-        jacpy_is_bytes,
-        jacpy_memory_byte,
-        jacpy_memory_copy,
-        jacpy_memory_set,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_exception,
         object_error,
         object_tuple,
         required
     }
-    capi --> runtime.python.modules.queue {
-        jacpy_deadline,
-        jacpy_deadline_remaining,
-        jacpy_error_pending,
-        jacpy_is_none,
-        jacpy_lock_free,
-        jacpy_lock_notify,
-        jacpy_lock_wait,
-        jacpy_pending_calls,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_none_exception,
-        jacpy_timeout_ns,
-        object_error
-    }
-    capi --> runtime.python.modules.random {
-        jacpy_buffer_byte,
-        jacpy_buffer_new,
-        jacpy_buffer_set,
-        jacpy_buffer_size,
-        jacpy_clear_error,
-        jacpy_entropy,
-        jacpy_error_pending,
-        jacpy_hash_unsigned,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_long,
-        jacpy_is_tuple,
-        jacpy_long_absolute,
-        jacpy_long_bits,
-        jacpy_long_bytes,
-        jacpy_long_from_bytes,
-        jacpy_monotonic_time,
-        jacpy_process_id,
-        jacpy_release,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_unsigned_long,
-        jacpy_wall_time,
-        object_error
-    }
-    capi --> runtime.python.modules.statistics {
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_number_as_double,
-        object_error
-    }
+    capi --> runtime.python.modules.queue { object_error }
+    capi --> runtime.python.modules.random { object_error }
+    capi --> runtime.python.modules.statistics { object_error }
     capi --> runtime.python.modules.struct {
         boundary_failure,
         checked,
         jac_heap_size,
         jac_list_heap_size,
-        jacpy_boolean,
-        jacpy_bytes_address,
-        jacpy_bytes_from_memory,
-        jacpy_bytes_length,
-        jacpy_call_one,
-        jacpy_clear_error,
-        jacpy_complex,
-        jacpy_complex_imag,
-        jacpy_complex_real,
-        jacpy_complex_value,
-        jacpy_dict_clear,
-        jacpy_dict_get,
-        jacpy_dict_set,
-        jacpy_dict_size,
-        jacpy_error_is,
-        jacpy_error_pending,
-        jacpy_float,
-        jacpy_float_pack,
-        jacpy_float_unpack,
-        jacpy_index,
-        jacpy_index_check,
-        jacpy_int,
-        jacpy_integer_value,
-        jacpy_is_bytearray,
-        jacpy_is_bytes,
-        jacpy_is_long,
-        jacpy_long_pointer,
-        jacpy_long_u64,
-        jacpy_memory_byte,
-        jacpy_memory_copy,
-        jacpy_memory_set,
-        jacpy_memory_zero,
-        jacpy_native_float_store,
-        jacpy_native_little_endian,
-        jacpy_native_size,
-        jacpy_number_as_double,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_set_exception,
-        jacpy_truth,
-        jacpy_tuple_item,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_tuple_size,
-        jacpy_uint,
         object_error,
         required
     }
     capi --> runtime.python.modules.tee {
         boundary_failure,
         checked,
-        jacpy_iter,
-        jacpy_iter_next,
-        jacpy_list_item,
-        jacpy_list_size,
-        jacpy_release,
-        jacpy_retain,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
-        jacpy_type_check,
         object_error,
         required
     }
@@ -18997,10 +18075,6 @@ graph import runtime.python {
     capi --> runtime.python.tokenize {
         boundary_failure,
         checked,
-        jacpy_int,
-        jacpy_release,
-        jacpy_tuple_new,
-        jacpy_tuple_set_owned,
         required,
         text_object
     }
@@ -19987,6 +19061,1665 @@ graph import runtime.python {
         token_iterator_state,
         token_object
     }
+    capi --> runtime.python.bindings.converters {
+        boundary_failure,
+        object_error,
+        text_value,
+        type_name
+    }
+    capi --> runtime.python.bindings.errno { object_error }
+    capi --> runtime.python.bindings.grp { object_error }
+    capi --> runtime.python.bindings.pwd { object_error }
+    capi --> runtime.python.bindings.resource { object_error }
+    capi --> runtime.python.bindings.runtime_objects { object_error }
+    capi --> runtime.python.bindings.stat { boundary_failure, object_error }
+    capi --> runtime.python.bindings.syslog { boundary_failure, object_error }
+    capi --> runtime.python.modules.bz2 { object_error }
+    capi --> runtime.python.modules.csv | runtime.python.modules.json { new_writer }
+    capi --> runtime.python.modules.grp { object_error, repr_value }
+    capi --> runtime.python.modules.opcode { object_error, object_tuple, type_name }
+    capi --> runtime.python.modules.output_buffer { object_error }
+    capi --> runtime.python.modules.pwd { object_error, repr_value }
+    capi --> runtime.python.modules.resource { object_error, object_tuple }
+    capi --> runtime.python.modules.stat { boundary_failure, object_error }
+    capi --> runtime.python.modules.suggestions { object_error }
+    capi --> runtime.python.modules.syslog { object_error, object_tuple }
+    capi --> runtime.python.modules.zlib { object_error, text_value }
+    cpython_api --> compiler.backends.py.jacpython.compiler_emit { NULL }
+    cpython_api --> compiler.backends.py.jacpython.native_api {
+        NULL,
+        PyLong_FromLongLong,
+        PyObject,
+        PyTuple_New,
+        jacpy_error_pending,
+        jacpy_none,
+        jacpy_raise_compiler_error,
+        jacpy_release,
+        jacpy_source_kind,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> compiler.frontend.python.ast_input {
+        PyLong_AsLongLong,
+        PyObject,
+        jacpy_ast_kind,
+        jacpy_error_pending,
+        jacpy_field,
+        jacpy_is_list,
+        jacpy_optional_field,
+        jacpy_release,
+        jacpy_sequence_item,
+        jacpy_sequence_size,
+        jacpy_utf8,
+        jacpy_value_kind
+    }
+    cpython_api --> compiler.frontend.python.ast_output {
+        PyLong_FromLongLong,
+        PyObject,
+        jacpy_ast_new,
+        jacpy_list_append_owned,
+        jacpy_list_new,
+        jacpy_none,
+        jacpy_release,
+        jacpy_set_owned,
+        jacpy_text
+    }
+    cpython_api --> compiler.frontend.python.compiler_symtable {
+        _PyST_GetScope,
+        _Py_Mangle
+    }
+    cpython_api --> compiler.frontend.python.source_encoding {
+        PyObject,
+        jacpy_codec_valid,
+        jacpy_error_is,
+        jacpy_fd_line
+    }
+    cpython_api --> compiler.frontend.python.source_input {
+        PyObject,
+        jacpy_decode,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_release,
+        jacpy_source_bytes,
+        jacpy_source_kind,
+        jacpy_utf8
+    }
+    cpython_api --> compiler.frontend.python.tokenizer { _PyToken_ThreeChars }
+    cpython_api --> runtime.python.bindings.arguments {
+        NULL,
+        PyDict_Items,
+        PyList_GetItemRef,
+        PyLong_AsSsize_t,
+        PyNumber_Index,
+        PyObject,
+        PyTuple_Size,
+        PyUnicode_ReadChar,
+        Py_NewRef,
+        jacpy_error_pending,
+        jacpy_is_unicode,
+        jacpy_list_size,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_unicode_size
+    }
+    cpython_api --> runtime.python.bindings.array {
+        NULL,
+        PyImport_ImportModuleAttrString,
+        PyIndex_Check,
+        PyLong_AsInt,
+        PyLong_AsSsize_t,
+        PyLong_FromLongLong,
+        PyLong_FromUnsignedLongLong,
+        PyLong_FromVoidPtr,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PySys_AuditTuple,
+        PyTuple_New,
+        PyType_GetSlot,
+        PyType_IsSubtype,
+        PyUnicode_FromOrdinal,
+        Py_GenericAlias,
+        Py_NewRef,
+        Py_TYPE,
+        Py_buffer,
+        SliceBounds,
+        jacpy_builtins,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_is_bytearray,
+        jacpy_is_bytes,
+        jacpy_is_list,
+        jacpy_is_long,
+        jacpy_is_slice,
+        jacpy_is_type,
+        jacpy_is_unicode,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_number_ssize,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_slice_adjust,
+        jacpy_slice_unpack,
+        jacpy_type_check,
+        jacpy_warn
+    }
+    cpython_api --> runtime.python.bindings.binascii {
+        NULL,
+        PyLong_AsInt,
+        PyLong_AsUnsignedLongMask,
+        PyObject,
+        PyObject_IsTrue,
+        PySequence_Size,
+        PyUnicode_ReadChar,
+        jacpy_buffer_byte,
+        jacpy_error_pending,
+        jacpy_is_bytes,
+        jacpy_is_unicode,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.bisect { NULL, PyObject, jacpy_is_none }
+    cpython_api --> runtime.python.bindings.buffer {
+        PyObject,
+        Py_buffer,
+        jacpy_buffer_acquire,
+        jacpy_buffer_acquire_writable,
+        jacpy_buffer_address,
+        jacpy_buffer_bytes,
+        jacpy_buffer_dimensions,
+        jacpy_buffer_length,
+        jacpy_buffer_owner,
+        jacpy_buffer_release
+    }
+    cpython_api --> runtime.python.bindings.bz2 {
+        NULL,
+        PyBool_FromLong,
+        PyObject,
+        Py_NewRef
+    }
+    cpython_api --> runtime.python.bindings.clinic.bz2 { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.grp { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.opcode { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.pwd { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.resource { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.suggestions { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.sysconfig { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.syslog { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.tracemalloc { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.typing { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.clinic.weakref {
+        NULL,
+        PyObject,
+        jacpy_is_dict
+    }
+    cpython_api --> runtime.python.bindings.clinic.zlib {
+        NULL,
+        PyObject,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.cmath {
+        NULL,
+        PyComplex_FromDoubles,
+        PyFloat_FromDouble,
+        PyObject
+    }
+    cpython_api --> runtime.python.bindings.collections {
+        NULL,
+        PyCallable_Check,
+        PyDict_New,
+        PyDict_Update,
+        PyLong_AsSsize_t,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PyObject_GetIter,
+        PyTuple_GetSlice,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_GenericAlias,
+        Py_NewRef,
+        Py_TYPE,
+        _PyObject_GetState,
+        jacpy_error_pending,
+        jacpy_is_dict,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_number_ssize,
+        jacpy_ordered_dict_new,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_type_check
+    }
+    cpython_api --> runtime.python.bindings.converters {
+        NULL,
+        PyBool_FromLong,
+        PyErr_Occurred,
+        PyFloat_AsDouble,
+        PyFloat_FromDouble,
+        PyIndex_Check,
+        PyLong_AsInt,
+        PyLong_AsLong,
+        PyLong_AsLongLong,
+        PyLong_AsSsize_t,
+        PyLong_AsUnsignedLong,
+        PyLong_AsUnsignedLongLong,
+        PyLong_AsUnsignedLongLongMask,
+        PyLong_AsUnsignedLongMask,
+        PyLong_FromLong,
+        PyLong_FromSize_t,
+        PyLong_FromSsize_t,
+        PyLong_FromUnsignedLong,
+        PyNumber_Index,
+        PyObject,
+        PyObject_IsTrue,
+        Py_GetConstantBorrowed,
+        Py_TYPE,
+        jacpy_is_float,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.csv {
+        NULL,
+        PyCallable_Check,
+        PyDict_New,
+        PyDict_SetItem,
+        PyLong_AsLongLong,
+        PyLong_AsSsize_t,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_Call,
+        PyObject_GetIter,
+        PyTuple_New,
+        PyUnicode_FromOrdinal,
+        Py_NewRef,
+        Py_TYPE,
+        jacpy_error_pending,
+        jacpy_is_exact_long,
+        jacpy_is_unicode,
+        jacpy_none,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_text,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_type_check
+    }
+    cpython_api --> runtime.python.bindings.errno {
+        PyDict_New,
+        PyDict_SetItem,
+        PyDict_SetItemString,
+        PyLong_FromLong,
+        PyModule_GetDict,
+        PyObject,
+        PyUnicode_FromString,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.functools {
+        NULL,
+        PyCallable_Check,
+        PyIndex_Check,
+        PyMethod_New,
+        PyObject,
+        PyObject_GenericGetDict,
+        PyObject_GenericSetDict,
+        PyObject_GetAttrString,
+        PyObject_IsTrue,
+        PyObject_RichCompare,
+        PyTuple_GetSlice,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_GenericAlias,
+        Py_LeaveRecursiveCall,
+        Py_NewRef,
+        Py_TYPE,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_recursion_enter,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_type_check
+    }
+    cpython_api --> runtime.python.bindings.grp { PyObject, jacpy_struct_sequence_type }
+    cpython_api --> runtime.python.bindings.heapq { NULL, PyObject, jacpy_is_list }
+    cpython_api --> runtime.python.bindings.itertools {
+        NULL,
+        PyErr_Clear,
+        PyLong_AsSsize_t,
+        PyLong_FromLongLong,
+        PyNumber_Check,
+        PyObject,
+        PyObject_IsTrue,
+        PyTuple_Size,
+        PyType_GetSlot,
+        Py_GenericAlias,
+        Py_NewRef,
+        Py_TYPE,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_is_list,
+        jacpy_is_none,
+        jacpy_list_size,
+        jacpy_none,
+        jacpy_number_ssize,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_type_check
+    }
+    cpython_api --> runtime.python.bindings.json {
+        NULL,
+        PyBool_FromLong,
+        PyObject,
+        PyObject_GetAttrString,
+        PyObject_IsTrue,
+        Py_NewRef,
+        jacpy_is_dict,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.math { NULL, PyFloat_FromDouble, PyObject }
+    cpython_api --> runtime.python.bindings.module {
+        NULL,
+        PyModule_AddObjectRef,
+        PyObject,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.opcode { PyModule_AddIntConstant, PyObject }
+    cpython_api --> runtime.python.bindings.operator {
+        NULL,
+        PyObject,
+        PyObject_CheckBuffer,
+        PyTuple_Size,
+        PyVectorcall_NARGS,
+        Py_NewRef,
+        Py_TYPE,
+        jacpy_dict_size,
+        jacpy_is_unicode,
+        jacpy_release,
+        jacpy_unicode_ascii
+    }
+    cpython_api --> runtime.python.bindings.payload { PyObject, Py_TYPE }
+    cpython_api --> runtime.python.bindings.pickle {
+        NULL,
+        PyBool_FromLong,
+        PyDict_New,
+        PyDict_SetItem,
+        PyErr_Clear,
+        PyImport_ImportModuleAttrString,
+        PyLong_AsInt,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GenericGetAttr,
+        PyObject_GenericSetAttr,
+        PyObject_GetAttrString,
+        PyObject_IsTrue,
+        Py_NewRef,
+        Py_TYPE,
+        jacpy_builtin_type,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_none,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_set_exception
+    }
+    cpython_api --> runtime.python.bindings.pwd { PyObject, jacpy_struct_sequence_type }
+    cpython_api --> runtime.python.bindings.queue {
+        NULL,
+        PyBool_FromLong,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_IsTrue,
+        PyType_GetSlot,
+        Py_GenericAlias,
+        Py_TYPE,
+        jacpy_lock_new,
+        jacpy_none,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.random {
+        NULL,
+        PyFloat_FromDouble,
+        PyLong_AsUnsignedLongLong,
+        PyNumber_Index,
+        PyObject,
+        PyType_GetSlot,
+        Py_TYPE,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_long_sign,
+        jacpy_none,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.references {
+        NULL,
+        PyObject,
+        PyTuple_New,
+        jacpy_release,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.bindings.resource {
+        PyLong_FromLong,
+        PyModule_AddIntConstant,
+        PyModule_AddObjectRef,
+        PyObject,
+        jacpy_exception_type,
+        jacpy_struct_sequence_type
+    }
+    cpython_api --> runtime.python.bindings.runtime_objects {
+        PyModule_AddObjectRef,
+        PyObject,
+        jacpy_runtime_object
+    }
+    cpython_api --> runtime.python.bindings.stat {
+        NULL,
+        PyBool_FromLong,
+        PyLong_FromUnsignedLong,
+        PyModule_AddIntConstant,
+        PyObject,
+        PyUnicode_FromString
+    }
+    cpython_api --> runtime.python.bindings.state { PyObject }
+    cpython_api --> runtime.python.bindings.statistics { NULL, PyObject }
+    cpython_api --> runtime.python.bindings.struct {
+        NULL,
+        PyDict_Clear,
+        PyDict_New,
+        PyLong_FromLongLong,
+        PyObject,
+        PyTuple_GetSlice,
+        PyTuple_Size,
+        PyUnicode_AsEncodedString,
+        Py_NewRef,
+        Py_TYPE,
+        jacpy_buffer_new,
+        jacpy_bytes_address,
+        jacpy_bytes_decode,
+        jacpy_bytes_from_memory,
+        jacpy_error_pending,
+        jacpy_is_bytes,
+        jacpy_is_unicode,
+        jacpy_none,
+        jacpy_number_ssize,
+        jacpy_offset,
+        jacpy_release,
+        jacpy_set_exception,
+        jacpy_tuple_item
+    }
+    cpython_api --> runtime.python.bindings.suggestions { PyObject }
+    cpython_api --> runtime.python.bindings.sysconfig { PyObject }
+    cpython_api --> runtime.python.bindings.syslog {
+        NULL,
+        PyModule_AddIntConstant,
+        PyObject,
+        PyTuple_GetItem,
+        PyTuple_Size
+    }
+    cpython_api --> runtime.python.bindings.tracemalloc { PyObject }
+    cpython_api --> runtime.python.bindings.type { NULL, PyObject, Py_buffer }
+    cpython_api --> runtime.python.bindings.types { PyObject }
+    cpython_api --> runtime.python.bindings.typing { PyObject }
+    cpython_api --> runtime.python.bindings.weakref { PyObject }
+    cpython_api --> runtime.python.bindings.zlib {
+        NULL,
+        PyArg_ParseTupleAndKeywords,
+        PyBool_FromLong,
+        PyModule_AddIntConstant,
+        PyModule_AddObjectRef,
+        PyObject,
+        PyUnicode_FromString,
+        Py_NewRef,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.capi {
+        PyBytes_FromStringAndSize,
+        PyErr_GetRaisedException,
+        PyErr_SetRaisedException,
+        PyObject,
+        PyObject_Repr,
+        PyTuple_New,
+        PyUnicodeWriter,
+        Py_NewRef,
+        jacpy_bytes_copy_to,
+        jacpy_bytes_length,
+        jacpy_exception_note,
+        jacpy_qualified_type_name,
+        jacpy_raise_error,
+        jacpy_release,
+        jacpy_text,
+        jacpy_tuple_set_owned,
+        jacpy_type_name,
+        jacpy_utf8,
+        jacpy_writer_new
+    }
+    cpython_api --> runtime.python.characters {
+        _PyUnicode_IsPrintable,
+        _PyUnicode_IsXidContinue,
+        _PyUnicode_IsXidStart
+    }
+    cpython_api --> runtime.python.constant_input {
+        PyComplex_ImagAsDouble,
+        PyComplex_RealAsDouble,
+        PyObject,
+        PyObject_IsTrue,
+        PySequence_List,
+        jacpy_float_value,
+        jacpy_marshal,
+        jacpy_release,
+        jacpy_sequence_item,
+        jacpy_sequence_size,
+        jacpy_utf8,
+        jacpy_value_kind
+    }
+    cpython_api --> runtime.python.constant_output {
+        NULL,
+        PyBool_FromLong,
+        PyComplex_FromDoubles,
+        PyFloat_FromDouble,
+        PyLong_FromLongLong,
+        PyNumber_Negative,
+        PyObject,
+        PySlice_New,
+        PyTuple_New,
+        Py_NewRef,
+        jacpy_code_new,
+        jacpy_ellipsis,
+        jacpy_long_from_bytes,
+        jacpy_none,
+        jacpy_release,
+        jacpy_set_new,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.modules.array {
+        NULL,
+        PyBool_FromLong,
+        PyByteArray_Resize,
+        PyFloat_AsDouble,
+        PyFloat_FromDouble,
+        PyIter_Next,
+        PyList_Append,
+        PyLong_AsLongLong,
+        PyLong_AsUnsignedLongLong,
+        PyLong_FromLongLong,
+        PyNumber_Index,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PyObject_GetIter,
+        PyObject_RichCompare,
+        PyObject_RichCompareBool,
+        PyUnicode_FromOrdinal,
+        PyUnicode_Join,
+        PyUnicode_ReadChar,
+        Py_NewRef,
+        jacpy_bytearray_memory,
+        jacpy_bytearray_new,
+        jacpy_bytes_address,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_error_pending,
+        jacpy_float32_bits,
+        jacpy_float_bits,
+        jacpy_float_unpack,
+        jacpy_is_bytes,
+        jacpy_is_unicode,
+        jacpy_list_new,
+        jacpy_memory_copy,
+        jacpy_memory_move,
+        jacpy_memory_zero,
+        jacpy_native_little_endian,
+        jacpy_native_size,
+        jacpy_offset,
+        jacpy_release,
+        jacpy_unicode_decode_bytes,
+        jacpy_unicode_size
+    }
+    cpython_api --> runtime.python.modules.binary_scalars {
+        NULL,
+        PyLong_FromLongLong,
+        PyLong_FromUnsignedLongLong,
+        PyObject,
+        jacpy_memory_byte,
+        jacpy_memory_set
+    }
+    cpython_api --> runtime.python.modules.binascii {
+        NULL,
+        PyLong_FromLongLong,
+        PyObject,
+        _Py_strhex_bytes_with_sep,
+        jacpy_buffer_byte,
+        jacpy_buffer_size,
+        jacpy_set_exception
+    }
+    cpython_api --> runtime.python.modules.bisect {
+        NULL,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_CallOneArg,
+        PySequence_Size,
+        Py_LeaveRecursiveCall,
+        jacpy_comparison_slot,
+        jacpy_insert,
+        jacpy_less,
+        jacpy_none,
+        jacpy_recursion_enter,
+        jacpy_release,
+        jacpy_same_type,
+        jacpy_sequence_slot,
+        jacpy_slot_item,
+        jacpy_slot_less
+    }
+    cpython_api --> runtime.python.modules.bz2 {
+        NULL,
+        PyBytes_AsString,
+        PyErr_NoMemory,
+        PyEval_RestoreThread,
+        PyEval_SaveThread,
+        PyMem_Free,
+        PyMem_Malloc,
+        PyMem_RawFree,
+        PyMem_RawMalloc,
+        PyMem_Realloc,
+        PyObject,
+        PyThreadState,
+        PyThread_acquire_lock,
+        PyThread_allocate_lock,
+        PyThread_free_lock,
+        PyThread_release_lock,
+        jacpy_buffer_new,
+        jacpy_distance,
+        jacpy_memory_copy,
+        jacpy_memory_move,
+        jacpy_offset,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.cmath {
+        NULL,
+        PyBool_FromLong,
+        PyComplex_FromDoubles,
+        PyComplex_ImagAsDouble,
+        PyComplex_RealAsDouble,
+        PyFloat_AsDouble,
+        PyFloat_FromDouble,
+        PyNumber_TrueDivide,
+        PyObject,
+        _Py_c_abs,
+        jacpy_clear_errno,
+        jacpy_complex_value,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_math_errno,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.collections {
+        NULL,
+        PyBool_FromLong,
+        PyIter_Next,
+        PyLong_FromLongLong,
+        PyNumber_Add,
+        PyObject,
+        PyObject_Call,
+        PyObject_GetAttr,
+        PyObject_GetIter,
+        PyObject_RichCompareBool,
+        PyObject_SetItem,
+        PySequence_List,
+        PyTuple_New,
+        Py_NewRef,
+        Py_ReprEnter,
+        Py_ReprLeave,
+        jacpy_dict_default,
+        jacpy_dict_repr,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_release,
+        jacpy_set_key_error,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.modules.combinatorics {
+        NULL,
+        PyObject,
+        PySequence_Tuple,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_release,
+        jacpy_tuple_exchange,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.modules.csv {
+        NULL,
+        PyBool_FromLong,
+        PyDict_Keys,
+        PyDict_SetItem,
+        PyErr_Clear,
+        PyIter_Next,
+        PyList_Append,
+        PyLong_AsInt,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyNumber_Check,
+        PyNumber_Float,
+        PyObject,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PyObject_GetIter,
+        PyObject_IsTrue,
+        PyObject_Str,
+        PyUnicodeWriter,
+        PyUnicodeWriter_Discard,
+        PyUnicodeWriter_Finish,
+        PyUnicodeWriter_WriteChar,
+        PyUnicode_ReadChar,
+        Py_NewRef,
+        jacpy_dict_get,
+        jacpy_dict_pop_discard,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_is_exact_long,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_list_new,
+        jacpy_none,
+        jacpy_release,
+        jacpy_set_exception,
+        jacpy_tuple_item,
+        jacpy_type_check,
+        jacpy_unicode_size,
+        jacpy_writer_new
+    }
+    cpython_api --> runtime.python.modules.functools {
+        NULL,
+        PyBool_FromLong,
+        PyCallable_Check,
+        PyDict_Clear,
+        PyDict_Copy,
+        PyDict_New,
+        PyDict_SetItem,
+        PyDict_Update,
+        PyIter_Next,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PyObject_GetIter,
+        PyObject_Hash,
+        PyObject_RichCompare,
+        PyObject_SetItem,
+        PyObject_Str,
+        PySequence_Tuple,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_NewRef,
+        Py_ReprEnter,
+        Py_ReprLeave,
+        jacpy_call_two,
+        jacpy_dict_entry,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_is_dict,
+        jacpy_is_exact_dict,
+        jacpy_is_exact_long,
+        jacpy_is_exact_tuple,
+        jacpy_is_exact_unicode,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_none,
+        jacpy_object_type,
+        jacpy_ordered_dict_new,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.modules.grouping {
+        NULL,
+        PyIter_Next,
+        PyObject,
+        PyObject_CallOneArg,
+        PyObject_GetIter,
+        PyObject_RichCompareBool,
+        PyTuple_New,
+        Py_NewRef,
+        jacpy_is_none,
+        jacpy_release,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.modules.grp {
+        NULL,
+        PyBytes_AsString,
+        PyErr_NoMemory,
+        PyErr_Occurred,
+        PyEval_RestoreThread,
+        PyEval_SaveThread,
+        PyList_Append,
+        PyList_New,
+        PyLong_FromLong,
+        PyMem_RawFree,
+        PyMem_RawRealloc,
+        PyObject,
+        PySequence_Contains,
+        PyStructSequence_New,
+        PyStructSequence_SetItem,
+        PyUnicode_EncodeFSDefault,
+        jacpy_fs_text,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.heapq {
+        NULL,
+        PyList_Append,
+        PyList_GetItemRef,
+        PyObject,
+        Py_NewRef,
+        jacpy_less,
+        jacpy_list_delete,
+        jacpy_list_exchange,
+        jacpy_list_size,
+        jacpy_list_swap,
+        jacpy_none,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.iterators {
+        NULL,
+        PyErr_Clear,
+        PyIter_Next,
+        PyList_Append,
+        PyList_GetItemRef,
+        PyLong_AsLongLong,
+        PyNumber_Add,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetIter,
+        PyObject_IsTrue,
+        PySequence_Tuple,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_call_two,
+        jacpy_error_pending,
+        jacpy_is_long,
+        jacpy_is_none,
+        jacpy_list_exchange,
+        jacpy_list_new,
+        jacpy_list_size,
+        jacpy_none,
+        jacpy_release,
+        jacpy_tuple_exchange,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_unique
+    }
+    cpython_api --> runtime.python.modules.json {
+        NULL,
+        PyBool_FromLong,
+        PyDict_DelItem,
+        PyDict_New,
+        PyDict_SetItem,
+        PyErr_SetObject,
+        PyImport_ImportModuleAttrString,
+        PyList_Append,
+        PyList_GetItemRef,
+        PyList_Sort,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyLong_FromVoidPtr,
+        PyMapping_Items,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_IsTrue,
+        PySequence_Contains,
+        PySequence_Fast,
+        PySequence_Repeat,
+        PyTuple_Size,
+        PyUnicodeWriter,
+        PyUnicodeWriter_Discard,
+        PyUnicodeWriter_Finish,
+        PyUnicodeWriter_WriteASCII,
+        PyUnicodeWriter_WriteChar,
+        PyUnicodeWriter_WriteStr,
+        PyUnicodeWriter_WriteSubstring,
+        PyUnicode_Concat,
+        PyUnicode_ReadChar,
+        PyUnicode_Substring,
+        Py_LeaveRecursiveCall,
+        Py_NewRef,
+        jacpy_dict_default,
+        jacpy_dict_entry,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_fast_item,
+        jacpy_fast_size,
+        jacpy_float_repr,
+        jacpy_float_value,
+        jacpy_is_bool,
+        jacpy_is_dict,
+        jacpy_is_exact_dict,
+        jacpy_is_float,
+        jacpy_is_list,
+        jacpy_is_long,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_is_unicode,
+        jacpy_list_new,
+        jacpy_list_size,
+        jacpy_long_repr,
+        jacpy_none,
+        jacpy_raise_value,
+        jacpy_recursion_enter,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_unicode_size,
+        jacpy_writer_new
+    }
+    cpython_api --> runtime.python.modules.math {
+        NULL,
+        PyBool_FromLong,
+        PyErr_Clear,
+        PyFloat_AsDouble,
+        PyFloat_FromDouble,
+        PyIter_Next,
+        PyLong_AsDouble,
+        PyLong_AsLongLong,
+        PyLong_AsUnsignedLongLong,
+        PyLong_FromDouble,
+        PyLong_FromLongLong,
+        PyLong_FromUnsignedLongLong,
+        PyNumber_Absolute,
+        PyNumber_Add,
+        PyNumber_FloorDivide,
+        PyNumber_Index,
+        PyNumber_Multiply,
+        PyNumber_Subtract,
+        PyObject,
+        PyObject_GetIter,
+        PyObject_RichCompareBool,
+        PySequence_Tuple,
+        PyTuple_Size,
+        Py_NewRef,
+        _PyLong_GCD,
+        _PyLong_NumBits,
+        jacpy_clear_errno,
+        jacpy_error_pending,
+        jacpy_float_bits,
+        jacpy_float_from_bits,
+        jacpy_is_bool,
+        jacpy_is_exact_float,
+        jacpy_is_exact_long,
+        jacpy_is_long,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_libm_parts,
+        jacpy_long_fits_i64,
+        jacpy_long_frexp,
+        jacpy_long_shift,
+        jacpy_long_sign,
+        jacpy_math_errno,
+        jacpy_release,
+        jacpy_special_noargs,
+        jacpy_tuple_item
+    }
+    cpython_api --> runtime.python.modules.object_ring { NULL, PyObject }
+    cpython_api --> runtime.python.modules.opcode {
+        NULL,
+        PyErr_Occurred,
+        PyList_Append,
+        PyList_New,
+        PyLong_AsLong,
+        PyObject,
+        PyUnicode_FromString,
+        PyUnicode_InternFromString,
+        Py_NewRef,
+        _PyCompile_GetBinaryIntrinsicName,
+        _PyCompile_GetUnaryIntrinsicName,
+        jacpy_is_code,
+        jacpy_is_none,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.operator {
+        NULL,
+        PyBool_FromLong,
+        PyImport_ImportModuleAttrString,
+        PyList_GetItemRef,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyNumber_Absolute,
+        PyNumber_Add,
+        PyNumber_And,
+        PyNumber_FloorDivide,
+        PyNumber_InPlaceAdd,
+        PyNumber_InPlaceAnd,
+        PyNumber_InPlaceFloorDivide,
+        PyNumber_InPlaceLshift,
+        PyNumber_InPlaceMatrixMultiply,
+        PyNumber_InPlaceMultiply,
+        PyNumber_InPlaceOr,
+        PyNumber_InPlaceRemainder,
+        PyNumber_InPlaceRshift,
+        PyNumber_InPlaceSubtract,
+        PyNumber_InPlaceTrueDivide,
+        PyNumber_InPlaceXor,
+        PyNumber_Index,
+        PyNumber_Invert,
+        PyNumber_Lshift,
+        PyNumber_MatrixMultiply,
+        PyNumber_Multiply,
+        PyNumber_Negative,
+        PyNumber_Or,
+        PyNumber_Positive,
+        PyNumber_Remainder,
+        PyNumber_Rshift,
+        PyNumber_Subtract,
+        PyNumber_TrueDivide,
+        PyNumber_Xor,
+        PyObject,
+        PyObject_Call,
+        PyObject_DelItem,
+        PyObject_GetAttr,
+        PyObject_GetItem,
+        PyObject_IsTrue,
+        PyObject_LengthHint,
+        PyObject_Repr,
+        PyObject_RichCompare,
+        PyObject_SetItem,
+        PySequence_Concat,
+        PySequence_Contains,
+        PySequence_Count,
+        PySequence_InPlaceConcat,
+        PySequence_Index,
+        PyTuple_GetSlice,
+        PyTuple_New,
+        PyTuple_Size,
+        PyUnicode_Join,
+        Py_NewRef,
+        Py_ReprEnter,
+        Py_ReprLeave,
+        jacpy_crypto_compare,
+        jacpy_dict_entry,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_list_size,
+        jacpy_none,
+        jacpy_power,
+        jacpy_release,
+        jacpy_text,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_unicode_split,
+        jacpy_utf8
+    }
+    cpython_api --> runtime.python.modules.output_buffer {
+        NULL,
+        PyBytes_AsString,
+        PyBytes_Size,
+        PyList_Append,
+        PyList_GetItem,
+        PyList_New,
+        PyList_Size,
+        PyObject,
+        Py_NewRef,
+        jacpy_buffer_new,
+        jacpy_memory_copy,
+        jacpy_offset,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.pickle {
+        NULL,
+        PyDict_Clear,
+        PyDict_Copy,
+        PyDict_New,
+        PyDict_SetItem,
+        PyList_GetItemRef,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyLong_FromUnsignedLongLong,
+        PyLong_FromVoidPtr,
+        PyMapping_Items,
+        PyObject,
+        PyObject_GetIter,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_bytearray_memory,
+        jacpy_dict_memory,
+        jacpy_error_pending,
+        jacpy_is_dict,
+        jacpy_is_tuple,
+        jacpy_list_size,
+        jacpy_release,
+        jacpy_tuple_item
+    }
+    cpython_api --> runtime.python.modules.pickle_decode {
+        NULL,
+        PyBool_FromLong,
+        PyDict_Items,
+        PyDict_New,
+        PyDict_SetItem,
+        PyFloat_FromDouble,
+        PyFloat_FromString,
+        PyImport_ImportModuleAttrString,
+        PyIter_Next,
+        PyList_Append,
+        PyList_GetItemRef,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyMemoryView_FromObject,
+        PyNumber_Long,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PyObject_IsTrue,
+        PyObject_SetAttr,
+        PyObject_SetItem,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_bytearray_new,
+        jacpy_bytes_address,
+        jacpy_bytes_decode,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_bytes_unescape,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float_unpack,
+        jacpy_is_dict,
+        jacpy_is_exact_unicode,
+        jacpy_is_list,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_is_type,
+        jacpy_is_unicode,
+        jacpy_list_new,
+        jacpy_list_size,
+        jacpy_long_from_signed_bytes,
+        jacpy_memory_byte,
+        jacpy_memory_copy,
+        jacpy_none,
+        jacpy_offset,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_set_new,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_type_new,
+        jacpy_unicode_intern
+    }
+    cpython_api --> runtime.python.modules.pickle_encode {
+        NULL,
+        PyByteArray_Resize,
+        PyCallable_Check,
+        PyDict_SetItem,
+        PyImport_ImportModuleAttrString,
+        PyIter_Check,
+        PyIter_Next,
+        PyList_GetItemRef,
+        PyLong_AsLongLong,
+        PyLong_FromLongLong,
+        PyLong_FromUnsignedLongLong,
+        PyLong_FromVoidPtr,
+        PyMapping_Items,
+        PyNumber_Add,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        PyObject_GetAttrString,
+        PyObject_GetIter,
+        PyObject_IsTrue,
+        PyObject_Str,
+        PySequence_List,
+        PyTuple_GetSlice,
+        PyTuple_Size,
+        PyUnicode_AsEncodedString,
+        PyUnicode_ReadChar,
+        Py_LeaveRecursiveCall,
+        Py_NewRef,
+        _PyLong_NumBits,
+        jacpy_builtin_kind,
+        jacpy_bytes_address,
+        jacpy_bytes_decode,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_ellipsis,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float_bits,
+        jacpy_float_repr,
+        jacpy_float_value,
+        jacpy_is_dict,
+        jacpy_is_none,
+        jacpy_is_not_implemented,
+        jacpy_is_tuple,
+        jacpy_is_type,
+        jacpy_is_unicode,
+        jacpy_list_size,
+        jacpy_long_fits_i64,
+        jacpy_long_repr,
+        jacpy_long_sign,
+        jacpy_long_signed_bytes,
+        jacpy_mapping_optional_item,
+        jacpy_memory_byte,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_object_type,
+        jacpy_optional_attr,
+        jacpy_recursion_enter,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_unicode_size
+    }
+    cpython_api --> runtime.python.modules.pickle_objects {
+        NULL,
+        PyDict_Copy,
+        PyDict_Keys,
+        PyErr_GetRaisedException,
+        PyErr_SetRaisedException,
+        PyImport_Import,
+        PyImport_ImportModuleAttrString,
+        PyList_GetItemRef,
+        PyObject,
+        PyObject_GetAttr,
+        PyObject_Str,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_audit_pickle_find,
+        jacpy_dict_get,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_is_unicode,
+        jacpy_list_size,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_tuple_item
+    }
+    cpython_api --> runtime.python.modules.pickle_stream {
+        NULL,
+        PyByteArray_Resize,
+        PyErr_GetRaisedException,
+        PyErr_SetRaisedException,
+        PyLong_FromLongLong,
+        PyObject,
+        PyObject_Call,
+        PyObject_CallOneArg,
+        Py_NewRef,
+        jacpy_bytearray_new,
+        jacpy_bytes_address,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_exception_context,
+        jacpy_is_bytes,
+        jacpy_memory_byte,
+        jacpy_memory_copy,
+        jacpy_memory_set,
+        jacpy_offset,
+        jacpy_release,
+        jacpy_set_exception
+    }
+    cpython_api --> runtime.python.modules.pwd {
+        NULL,
+        PyBytes_AsString,
+        PyErr_NoMemory,
+        PyEval_RestoreThread,
+        PyEval_SaveThread,
+        PyList_Append,
+        PyList_New,
+        PyLong_FromLong,
+        PyMem_RawFree,
+        PyMem_RawRealloc,
+        PyObject,
+        PySequence_Contains,
+        PyStructSequence_New,
+        PyStructSequence_SetItem,
+        PyThreadState,
+        PyUnicode_EncodeFSDefault,
+        PyUnicode_FromString,
+        jacpy_error_is,
+        jacpy_fs_text,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.queue {
+        NULL,
+        PyErr_SetNone,
+        PyObject,
+        PyThread_release_lock,
+        Py_MakePendingCalls,
+        Py_NewRef,
+        _PyDeadline_Get,
+        _PyDeadline_Init,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_lock_free,
+        jacpy_lock_wait,
+        jacpy_release,
+        jacpy_timeout_ns
+    }
+    cpython_api --> runtime.python.modules.random {
+        NULL,
+        PyErr_Clear,
+        PyLong_AsLongLong,
+        PyLong_AsUnsignedLong,
+        PyLong_FromLongLong,
+        PyObject,
+        PyTuple_New,
+        PyTuple_Size,
+        _PyLong_NumBits,
+        jacpy_buffer_byte,
+        jacpy_buffer_new,
+        jacpy_buffer_set,
+        jacpy_buffer_size,
+        jacpy_entropy,
+        jacpy_error_pending,
+        jacpy_hash_unsigned,
+        jacpy_is_long,
+        jacpy_is_tuple,
+        jacpy_long_absolute,
+        jacpy_long_bytes,
+        jacpy_long_from_bytes,
+        jacpy_monotonic_time,
+        jacpy_process_id,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned,
+        jacpy_wall_time
+    }
+    cpython_api --> runtime.python.modules.resource {
+        NULL,
+        PyErr_SetFromErrno,
+        PyFloat_FromDouble,
+        PyLong_FromLong,
+        PyLong_FromUnsignedLongLong,
+        PyLong_IsNegative,
+        PyNumber_Index,
+        PyObject,
+        PySequence_Tuple,
+        PyStructSequence_New,
+        PyStructSequence_SetItem,
+        PySys_AuditTuple,
+        PyTuple_GetItem,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_errno,
+        jacpy_exception_type,
+        jacpy_long_u64_checked,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.stat {
+        PyErr_Occurred,
+        PyLong_AsUnsignedLong,
+        PyNumber_Index,
+        PyObject,
+        jacpy_is_long,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.statistics {
+        NULL,
+        PyFloat_AsDouble,
+        PyFloat_FromDouble,
+        PyObject,
+        jacpy_error_pending
+    }
+    cpython_api --> runtime.python.modules.struct {
+        NULL,
+        PyBool_FromLong,
+        PyComplex_FromDoubles,
+        PyComplex_ImagAsDouble,
+        PyComplex_RealAsDouble,
+        PyDict_Clear,
+        PyDict_SetItem,
+        PyErr_Clear,
+        PyFloat_AsDouble,
+        PyFloat_FromDouble,
+        PyIndex_Check,
+        PyLong_AsLongLong,
+        PyLong_AsUnsignedLongLong,
+        PyLong_AsVoidPtr,
+        PyLong_FromLongLong,
+        PyLong_FromUnsignedLongLong,
+        PyNumber_Index,
+        PyObject,
+        PyObject_CallOneArg,
+        PyObject_IsTrue,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_bytes_address,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_complex_value,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float_pack,
+        jacpy_float_unpack,
+        jacpy_is_bytearray,
+        jacpy_is_bytes,
+        jacpy_is_long,
+        jacpy_long_address,
+        jacpy_memory_byte,
+        jacpy_memory_copy,
+        jacpy_memory_set,
+        jacpy_memory_zero,
+        jacpy_native_float_store,
+        jacpy_native_little_endian,
+        jacpy_native_size,
+        jacpy_offset,
+        jacpy_release,
+        jacpy_set_exception,
+        jacpy_tuple_item,
+        jacpy_tuple_set_owned
+    }
+    cpython_api --> runtime.python.modules.suggestions {
+        NULL,
+        PyErr_Occurred,
+        PyList_GetItem,
+        PyList_Size,
+        PyObject,
+        Py_NewRef,
+        _Py_CalculateSuggestions,
+        jacpy_is_exact_list,
+        jacpy_is_unicode
+    }
+    cpython_api --> runtime.python.modules.sysconfig {
+        NULL,
+        PyDict_New,
+        PyDict_SetItemString,
+        PyLong_FromLong,
+        PyObject,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.syslog {
+        NULL,
+        PyErr_Clear,
+        PyErr_Occurred,
+        PyInterpreterState_Get,
+        PyInterpreterState_Main,
+        PyList_GetItem,
+        PyList_Size,
+        PyLong_FromLong,
+        PyObject,
+        PySys_AuditTuple,
+        PyUnicode_AsUTF8,
+        PyUnicode_FindChar,
+        PyUnicode_FromString,
+        PyUnicode_GetLength,
+        PyUnicode_Substring,
+        Py_NewRef,
+        _PySys_GetOptionalAttrString,
+        jacpy_is_unicode,
+        jacpy_release,
+        jacpy_syslog
+    }
+    cpython_api --> runtime.python.modules.tee {
+        NULL,
+        PyIter_Next,
+        PyList_GetItemRef,
+        PyObject,
+        PyObject_GetIter,
+        PyTuple_New,
+        Py_NewRef,
+        jacpy_list_size,
+        jacpy_object_type,
+        jacpy_release,
+        jacpy_tuple_set_owned,
+        jacpy_type_check
+    }
+    cpython_api --> runtime.python.modules.tracemalloc {
+        NULL,
+        PyBool_FromLong,
+        PyLong_FromLong,
+        PyLong_FromSize_t,
+        PyObject,
+        Py_NewRef,
+        _PyTraceMalloc_ClearTraces,
+        _PyTraceMalloc_GetMemory,
+        _PyTraceMalloc_GetObjectTraceback,
+        _PyTraceMalloc_GetTracebackLimit,
+        _PyTraceMalloc_GetTracedMemory,
+        _PyTraceMalloc_GetTraces,
+        _PyTraceMalloc_IsTracing,
+        _PyTraceMalloc_ResetPeak,
+        _PyTraceMalloc_Start,
+        _PyTraceMalloc_Stop
+    }
+    cpython_api --> runtime.python.modules.typing { PyObject, Py_NewRef }
+    cpython_api --> runtime.python.modules.weakref {
+        NULL,
+        PyObject,
+        PyWeakref_NewProxy,
+        Py_NewRef,
+        _PyWeakref_GetWeakrefCount,
+        jacpy_remove_dead_weakref,
+        jacpy_weakref_list
+    }
+    cpython_api --> runtime.python.modules.zlib {
+        NULL,
+        PyBytes_AsString,
+        PyBytes_FromStringAndSize,
+        PyBytes_Size,
+        PyErr_NoMemory,
+        PyErr_SetNone,
+        PyErr_SetString,
+        PyEval_RestoreThread,
+        PyEval_SaveThread,
+        PyLong_FromUnsignedLong,
+        PyMem_Free,
+        PyMem_Malloc,
+        PyMem_RawFree,
+        PyMem_RawMalloc,
+        PyMem_Realloc,
+        PyObject,
+        PyObject_CheckBuffer,
+        PyThreadState,
+        PyThread_acquire_lock,
+        PyThread_allocate_lock,
+        PyThread_free_lock,
+        PyThread_release_lock,
+        PyType_GetModule,
+        Py_NewRef,
+        Py_TYPE,
+        _PyBytes_Resize,
+        jacpy_buffer_acquire,
+        jacpy_buffer_address,
+        jacpy_buffer_length,
+        jacpy_buffer_new,
+        jacpy_buffer_release,
+        jacpy_distance,
+        jacpy_fs_text,
+        jacpy_memory_copy,
+        jacpy_memory_move,
+        jacpy_offset,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.native_services {
+        PyObject,
+        jacpy_bytes_escape,
+        jacpy_error_is,
+        jacpy_float_value,
+        jacpy_normalize,
+        jacpy_parse_float,
+        jacpy_parse_long,
+        jacpy_release,
+        jacpy_take_error_text,
+        jacpy_unicode_escape,
+        jacpy_warning
+    }
+    cpython_api --> runtime.python.objects {
+        NULL,
+        PyErr_SetFromErrnoWithFilenameObjects,
+        PyObject_IsTrue,
+        PyObject_RichCompare,
+        PyObject_RichCompareBool,
+        PySequence_Fast,
+        PySequence_GetItem,
+        PySequence_Tuple,
+        PySlice_AdjustIndices,
+        PyUnicode_Format,
+        _Py_c_pow,
+        _Py_c_quot
+    }
+    cpython_api --> runtime.python.symtable {
+        NULL,
+        PyDict_New,
+        PyLong_FromLongLong,
+        PyObject,
+        jacpy_dict_set_owned,
+        jacpy_list_new,
+        jacpy_release,
+        jacpy_symtable_entry
+    }
+    cpython_api --> runtime.python.tokenize {
+        NULL,
+        PyLong_FromLongLong,
+        PyObject,
+        PyTuple_New,
+        jacpy_readline,
+        jacpy_release,
+        jacpy_tuple_set_owned
+    }
+    opcode_meta --> runtime.python.modules.opcode {
+        is_block_push_opcode,
+        opcode_has_arg,
+        opcode_has_const,
+        opcode_has_free,
+        opcode_has_jump,
+        opcode_has_local,
+        opcode_has_name,
+        opcode_is_valid,
+        stack_effect
+    }
 }
 
 graph import runtime.python.bindings {
@@ -19995,8 +20728,7 @@ graph import runtime.python.bindings {
         CallSignature,
         character_value,
         index_value,
-        invoke,
-        jacpy_ssize
+        invoke
     }
     arguments --> runtime.python.bindings.binascii {
         BoundArguments,
@@ -20018,15 +20750,9 @@ graph import runtime.python.bindings {
         BoundArguments,
         CallSignature,
         index_value,
-        invoke,
-        jacpy_ssize
+        invoke
     }
-    arguments --> runtime.python.bindings.csv {
-        BoundArguments,
-        CallSignature,
-        invoke,
-        jacpy_ssize
-    }
+    arguments --> runtime.python.bindings.csv { BoundArguments, CallSignature, invoke }
     arguments --> runtime.python.bindings.functools {
         BoundArguments,
         CallSignature,
@@ -20044,8 +20770,7 @@ graph import runtime.python.bindings {
         BoundArguments,
         CallSignature,
         index_value,
-        invoke,
-        jacpy_ssize
+        invoke
     }
     arguments --> runtime.python.bindings.json {
         BoundArguments,
@@ -20384,11 +21109,8 @@ graph import runtime.python.bindings {
         TypeSlot,
         jacpy_binding_allocate,
         jacpy_binding_basicsize,
-        jacpy_binding_generic_alias,
         jacpy_binding_matches,
-        jacpy_binding_owner,
-        jacpy_binding_slot,
-        jacpy_binding_typeof
+        jacpy_binding_owner
     }
     type --> runtime.python.bindings.collections {
         PropertyCallbacks,
@@ -20403,12 +21125,9 @@ graph import runtime.python.bindings {
         jacpy_binding_base_new,
         jacpy_binding_base_traverse,
         jacpy_binding_basicsize,
-        jacpy_binding_generic_alias,
         jacpy_binding_matches,
-        jacpy_binding_object_state,
         jacpy_binding_owner,
-        jacpy_binding_parent,
-        jacpy_binding_typeof
+        jacpy_binding_parent
     }
     type --> runtime.python.bindings.csv {
         PropertyCallbacks,
@@ -20417,8 +21136,7 @@ graph import runtime.python.bindings {
         TypeFlags,
         TypeHooks,
         jacpy_binding_allocate,
-        jacpy_binding_owner,
-        jacpy_binding_typeof
+        jacpy_binding_owner
     }
     type --> runtime.python.bindings.functools {
         PropertyCallbacks,
@@ -20427,15 +21145,11 @@ graph import runtime.python.bindings {
         TypeFlags,
         TypeHooks,
         jacpy_binding_allocate,
-        jacpy_binding_dict_get,
         jacpy_binding_dict_peek,
         jacpy_binding_dict_present,
         jacpy_binding_dict_replace,
-        jacpy_binding_dict_set,
         jacpy_binding_marker,
-        jacpy_binding_method_bind,
-        jacpy_binding_owner,
-        jacpy_binding_typeof
+        jacpy_binding_owner
     }
     type --> runtime.python.bindings.itertools {
         TypeDefinition,
@@ -20444,11 +21158,8 @@ graph import runtime.python.bindings {
         TypeSlot,
         jacpy_binding_allocate,
         jacpy_binding_basicsize,
-        jacpy_binding_generic_alias,
         jacpy_binding_owner,
-        jacpy_binding_slot,
-        jacpy_binding_type_matches,
-        jacpy_binding_typeof
+        jacpy_binding_type_matches
     }
     type --> runtime.python.bindings.json {
         PropertyCallbacks,
@@ -20464,14 +21175,12 @@ graph import runtime.python.bindings {
         TypeDefinition,
         TypeFlags,
         TypeHooks,
-        jacpy_binding_allocate,
-        jacpy_binding_typeof
+        jacpy_binding_allocate
     }
     type --> runtime.python.bindings.payload {
         jacpy_binding_dict_clear,
         jacpy_binding_dict_visit,
-        jacpy_binding_free,
-        jacpy_binding_typeof
+        jacpy_binding_free
     }
     type --> runtime.python.bindings.pickle {
         PropertyCallbacks,
@@ -20483,8 +21192,7 @@ graph import runtime.python.bindings {
         jacpy_binding_basicsize,
         jacpy_binding_matches,
         jacpy_binding_owner,
-        jacpy_binding_type_matches,
-        jacpy_binding_typeof
+        jacpy_binding_type_matches
     }
     type --> runtime.python.bindings.queue {
         TypeDefinition,
@@ -20493,9 +21201,7 @@ graph import runtime.python.bindings {
         TypeSlot,
         jacpy_binding_allocate,
         jacpy_binding_base,
-        jacpy_binding_owner,
-        jacpy_binding_slot,
-        jacpy_binding_typeof
+        jacpy_binding_owner
     }
     type --> runtime.python.bindings.random {
         TypeDefinition,
@@ -20504,9 +21210,7 @@ graph import runtime.python.bindings {
         TypeSlot,
         jacpy_binding_allocate,
         jacpy_binding_base,
-        jacpy_binding_free,
-        jacpy_binding_slot,
-        jacpy_binding_typeof
+        jacpy_binding_free
     }
     type --> runtime.python.bindings.struct {
         PropertyCallbacks,
@@ -20515,9 +21219,352 @@ graph import runtime.python.bindings {
         TypeFlags,
         TypeHooks,
         jacpy_binding_allocate,
-        jacpy_binding_owner,
-        jacpy_binding_typeof
+        jacpy_binding_owner
     }
+    arguments --> runtime.python.bindings.clinic.bz2 {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.grp {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.opcode {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.pwd {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.resource {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.suggestions {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.sysconfig {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.syslog {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.tracemalloc {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.typing {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.weakref {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.clinic.zlib {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.zlib { BoundArguments, CallSignature, invoke }
+    buffer --> runtime.python.bindings.clinic.bz2 { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.grp { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.opcode { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.pwd { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.resource { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.suggestions { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.sysconfig { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.syslog { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.tracemalloc { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.typing { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.weakref { BufferArgument }
+    buffer --> runtime.python.bindings.clinic.zlib { BufferArgument }
+    buffer --> runtime.python.bindings.converters { BufferArgument }
+    buffer --> runtime.python.modules.bz2 { BufferArgument }
+    buffer --> runtime.python.modules.zlib { BufferArgument }
+    bz2 --> compiler.backends.py.jacpython.native_api { PyInit__bz2 }
+    converters --> runtime.python.bindings.clinic.bz2 {
+        argument_label,
+        convert_buffer,
+        convert_int,
+        convert_ssize
+    }
+    converters --> runtime.python.bindings.clinic.grp {
+        argument_label,
+        convert_unicode
+    }
+    converters --> runtime.python.bindings.clinic.opcode {
+        argument_label,
+        borrowed_none,
+        convert_int,
+        return_bool,
+        return_int
+    }
+    converters --> runtime.python.bindings.clinic.pwd {
+        argument_label,
+        convert_unicode
+    }
+    converters --> runtime.python.bindings.clinic.resource {
+        argument_label,
+        borrowed_none,
+        convert_int,
+        return_int
+    }
+    converters --> runtime.python.bindings.clinic.suggestions {
+        argument_label,
+        convert_unicode
+    }
+    converters --> runtime.python.bindings.clinic.syslog {
+        argument_label,
+        convert_long,
+        convert_unicode,
+        return_long
+    }
+    converters --> runtime.python.bindings.clinic.tracemalloc {
+        argument_label,
+        convert_int
+    }
+    converters --> runtime.python.bindings.clinic.typing { argument_label }
+    converters --> runtime.python.bindings.clinic.weakref {
+        argument_label,
+        bad_argument,
+        return_ssize
+    }
+    converters --> runtime.python.bindings.clinic.zlib {
+        argument_label,
+        convert_buffer,
+        convert_int,
+        convert_ssize,
+        convert_unsigned_bounded,
+        defining_class,
+        return_unsigned
+    }
+    converters --> runtime.python.bindings.syslog {
+        argument_label,
+        convert_int,
+        convert_str
+    }
+    converters --> runtime.python.bindings.zlib { convert_int }
+    converters --> runtime.python.modules.bz2 { ClassToken }
+    converters --> runtime.python.modules.opcode {
+        borrowed_false,
+        borrowed_none,
+        borrowed_true
+    }
+    converters --> runtime.python.modules.resource { borrowed_none, convert_int }
+    converters --> runtime.python.modules.suggestions { borrowed_none }
+    converters --> runtime.python.modules.syslog { borrowed_none }
+    converters --> runtime.python.modules.tracemalloc { borrowed_none }
+    converters --> runtime.python.modules.weakref { borrowed_none }
+    converters --> runtime.python.modules.zlib { ClassToken }
+    errno --> compiler.backends.py.jacpython.native_api { PyInit_errno }
+    grp --> compiler.backends.py.jacpython.native_api { PyInit_grp }
+    module --> runtime.python.bindings.bz2 {
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned
+    }
+    module --> runtime.python.bindings.clinic.bz2 { MethodCallbacks, MethodDefinition }
+    module --> runtime.python.bindings.clinic.grp { MethodCallbacks, MethodDefinition }
+    module --> runtime.python.bindings.clinic.opcode {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.pwd { MethodCallbacks, MethodDefinition }
+    module --> runtime.python.bindings.clinic.resource {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.suggestions {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.sysconfig {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.syslog {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.tracemalloc {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.typing {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.weakref {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.clinic.zlib { MethodCallbacks, MethodDefinition }
+    module --> runtime.python.bindings.errno { ModuleDefinition, ModuleHooks }
+    module --> runtime.python.bindings.grp {
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned
+    }
+    module --> runtime.python.bindings.opcode { ModuleDefinition, ModuleHooks }
+    module --> runtime.python.bindings.pwd {
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned
+    }
+    module --> runtime.python.bindings.resource {
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned
+    }
+    module --> runtime.python.bindings.stat {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks
+    }
+    module --> runtime.python.bindings.suggestions { ModuleDefinition }
+    module --> runtime.python.bindings.sysconfig { ModuleDefinition }
+    module --> runtime.python.bindings.syslog {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks
+    }
+    module --> runtime.python.bindings.tracemalloc { ModuleDefinition }
+    module --> runtime.python.bindings.types { ModuleDefinition, ModuleHooks }
+    module --> runtime.python.bindings.typing { ModuleDefinition, ModuleHooks }
+    module --> runtime.python.bindings.weakref { ModuleDefinition, ModuleHooks }
+    module --> runtime.python.bindings.zlib {
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_state_set
+    }
+    module --> runtime.python.modules.grp { jacpy_binding_state_get }
+    module --> runtime.python.modules.pwd { jacpy_binding_state_get }
+    module --> runtime.python.modules.resource { jacpy_binding_state_get }
+    module --> runtime.python.modules.zlib {
+        jacpy_binding_state_get,
+        jacpy_binding_visit
+    }
+    opcode --> compiler.backends.py.jacpython.native_api { PyInit__opcode }
+    payload --> runtime.python.bindings.bz2 { dispose_payload, traverse_payload }
+    payload --> runtime.python.bindings.zlib {
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        traverse_payload
+    }
+    payload --> runtime.python.modules.bz2 {
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set
+    }
+    payload --> runtime.python.modules.zlib {
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set
+    }
+    pwd --> compiler.backends.py.jacpython.native_api { PyInit_pwd }
+    resource --> compiler.backends.py.jacpython.native_api { PyInit_resource }
+    runtime_objects --> runtime.python.bindings.types { export_runtime_objects }
+    runtime_objects --> runtime.python.bindings.typing { export_runtime_objects }
+    runtime_objects --> runtime.python.bindings.weakref { export_runtime_objects }
+    stat --> compiler.backends.py.jacpython.native_api { PyInit__stat }
+    state --> runtime.python.modules.bz2 | runtime.python.modules.zlib { NativeState }
+    suggestions --> compiler.backends.py.jacpython.native_api { PyInit__suggestions }
+    sysconfig --> compiler.backends.py.jacpython.native_api { PyInit__sysconfig }
+    syslog --> compiler.backends.py.jacpython.native_api { PyInit_syslog }
+    tracemalloc --> compiler.backends.py.jacpython.native_api { PyInit__tracemalloc }
+    type --> runtime.python.bindings.bz2 {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks
+    }
+    type --> runtime.python.bindings.clinic.bz2 {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.grp {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.opcode {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.pwd {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.resource {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.suggestions {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.sysconfig {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.syslog {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.tracemalloc {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.typing {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.weakref {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.clinic.zlib {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.converters { jacpy_binding_base }
+    type --> runtime.python.bindings.zlib {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks
+    }
+    type --> runtime.python.modules.bz2 { jacpy_binding_allocate }
+    type --> runtime.python.modules.zlib { jacpy_binding_allocate }
+    types --> compiler.backends.py.jacpython.native_api { PyInit__types }
+    typing --> compiler.backends.py.jacpython.native_api { PyInit__typing }
+    weakref --> compiler.backends.py.jacpython.native_api { PyInit__weakref }
+    zlib --> compiler.backends.py.jacpython.native_api { PyInit_zlib }
 }
 
 graph import runtime.python.modules {
@@ -20921,5 +21968,256 @@ graph import runtime.python.modules {
         jacpy_tee_split,
         tee_block,
         tee_cursor
+    }
+    bz2 --> runtime.python.bindings.bz2 {
+        BZ2Compressor_token,
+        BZ2Decompressor_token,
+        decompressor_of
+    }
+    bz2 --> runtime.python.bindings.clinic.bz2 {
+        _bz2_BZ2Compressor_compress_impl,
+        _bz2_BZ2Compressor_flush_impl,
+        _bz2_BZ2Compressor_impl,
+        _bz2_BZ2Decompressor_decompress_impl,
+        _bz2_BZ2Decompressor_impl
+    }
+    errno_constants --> runtime.python.bindings.errno { CONSTANTS, PLATFORM }
+    grp --> runtime.python.bindings.clinic.grp {
+        grp_getgrall_impl,
+        grp_getgrgid_impl,
+        grp_getgrnam_impl
+    }
+    opcode --> runtime.python.bindings.clinic.opcode {
+        _opcode_get_executor_impl,
+        _opcode_get_intrinsic1_descs_impl,
+        _opcode_get_intrinsic2_descs_impl,
+        _opcode_get_nb_ops_impl,
+        _opcode_get_special_method_names_impl,
+        _opcode_get_specialization_stats_impl,
+        _opcode_has_arg_impl,
+        _opcode_has_const_impl,
+        _opcode_has_exc_impl,
+        _opcode_has_free_impl,
+        _opcode_has_jump_impl,
+        _opcode_has_local_impl,
+        _opcode_has_name_impl,
+        _opcode_is_valid_impl,
+        _opcode_stack_effect_impl
+    }
+    opcode --> runtime.python.bindings.opcode {
+        ENABLE_SPECIALIZATION,
+        ENABLE_SPECIALIZATION_FT
+    }
+    output_buffer --> runtime.python.modules.bz2 { BlocksOutputBuffer, Cursor }
+    output_buffer --> runtime.python.modules.zlib { BlocksOutputBuffer, Cursor }
+    pwd --> runtime.python.bindings.clinic.pwd {
+        pwd_getpwall_impl,
+        pwd_getpwnam_impl,
+        pwd_getpwuid_impl
+    }
+    resource --> runtime.python.bindings.clinic.resource {
+        convert_pid_t,
+        resource_getpagesize_impl,
+        resource_getrlimit_impl,
+        resource_getrusage_impl,
+        resource_prlimit_impl,
+        resource_setrlimit_impl
+    }
+    resource_constants --> runtime.python.bindings.resource { CONSTANTS, RLIM_INFINITY }
+    resource_constants --> runtime.python.modules.resource {
+        RLIM_INFINITY,
+        RLIM_NLIMITS
+    }
+    resource_records --> runtime.python.bindings.resource { HAS_PRLIMIT, PLATFORM }
+    resource_records --> runtime.python.modules.resource {
+        prlimit,
+        rlimit,
+        rusage,
+        timeval
+    }
+    stat --> runtime.python.bindings.stat {
+        S_IFBLK,
+        S_IFCHR,
+        S_IFDIR,
+        S_IFDOOR,
+        S_IFIFO,
+        S_IFLNK,
+        S_IFMT,
+        S_IFPORT,
+        S_IFREG,
+        S_IFSOCK,
+        S_IMODE,
+        S_IRGRP,
+        S_IROTH,
+        S_IRUSR,
+        S_IRWXG,
+        S_IRWXO,
+        S_IRWXU,
+        S_ISGID,
+        S_ISUID,
+        S_ISVTX,
+        S_IWGRP,
+        S_IWOTH,
+        S_IWUSR,
+        S_IXGRP,
+        S_IXOTH,
+        S_IXUSR,
+        filemode_text,
+        is_type,
+        mode_value
+    }
+    stat_platform --> runtime.python.bindings.stat {
+        HAS_SF_SUPPORTED,
+        PLATFORM,
+        SF_APPEND,
+        SF_ARCHIVED,
+        SF_DATALESS,
+        SF_FIRMLINK,
+        SF_IMMUTABLE,
+        SF_NOUNLINK,
+        SF_SETTABLE,
+        SF_SNAPSHOT,
+        SF_SUPPORTED,
+        SF_SYNTHETIC,
+        S_IFWHT,
+        UF_APPEND,
+        UF_COMPRESSED,
+        UF_DATAVAULT,
+        UF_HIDDEN,
+        UF_IMMUTABLE,
+        UF_NODUMP,
+        UF_NOUNLINK,
+        UF_OPAQUE,
+        UF_SETTABLE,
+        UF_TRACKED
+    }
+    suggestions --> runtime.python.bindings.clinic.suggestions {
+        _suggestions__generate_suggestions_impl
+    }
+    sysconfig --> runtime.python.bindings.clinic.sysconfig {
+        _sysconfig_config_vars_impl
+    }
+    syslog --> runtime.python.bindings.clinic.syslog {
+        LOG_USER,
+        syslog_LOG_MASK_impl,
+        syslog_LOG_UPTO_impl,
+        syslog_closelog_impl,
+        syslog_openlog_impl,
+        syslog_setlogmask_impl
+    }
+    syslog --> runtime.python.bindings.syslog { default_priority, syslog_syslog_impl }
+    syslog_constants --> runtime.python.bindings.syslog { CONSTANTS, PLATFORM }
+    syslog_constants --> runtime.python.modules.syslog { LOG_INFO, LOG_USER }
+    tracemalloc --> runtime.python.bindings.clinic.tracemalloc {
+        _tracemalloc__get_object_traceback_impl,
+        _tracemalloc__get_traces_impl,
+        _tracemalloc_clear_traces_impl,
+        _tracemalloc_get_traceback_limit_impl,
+        _tracemalloc_get_traced_memory_impl,
+        _tracemalloc_get_tracemalloc_memory_impl,
+        _tracemalloc_is_tracing_impl,
+        _tracemalloc_reset_peak_impl,
+        _tracemalloc_start_impl,
+        _tracemalloc_stop_impl
+    }
+    typing --> runtime.python.bindings.clinic.typing { _typing__idfunc_impl }
+    user_records --> runtime.python.bindings.grp { PLATFORM }
+    user_records --> runtime.python.bindings.pwd { PLATFORM }
+    user_records --> runtime.python.modules.grp { SC_GETGR_R_SIZE_MAX }
+    user_records --> runtime.python.modules.pwd { SC_GETPW_R_SIZE_MAX, passwd }
+    weakref --> runtime.python.bindings.clinic.weakref {
+        _weakref__remove_dead_weakref_impl,
+        _weakref_getweakrefcount_impl,
+        _weakref_getweakrefs_impl,
+        _weakref_proxy_impl
+    }
+    zlib --> runtime.python.bindings.clinic.zlib {
+        Compress_token,
+        DEFLATED,
+        DEF_BUF_SIZE,
+        DEF_MEM_LEVEL,
+        Decompress_token,
+        MAX_WBITS,
+        Z_DEFAULT_COMPRESSION,
+        Z_DEFAULT_STRATEGY,
+        Z_FINISH,
+        zlib_Compress___copy___impl,
+        zlib_Compress___deepcopy___impl,
+        zlib_Compress_compress_impl,
+        zlib_Compress_copy_impl,
+        zlib_Compress_flush_impl,
+        zlib_Decompress___copy___impl,
+        zlib_Decompress___deepcopy___impl,
+        zlib_Decompress_copy_impl,
+        zlib_Decompress_decompress_impl,
+        zlib_Decompress_flush_impl,
+        zlib_ZlibDecompressor_decompress_impl,
+        zlib_adler32_impl,
+        zlib_compress_impl,
+        zlib_compressobj_impl,
+        zlib_crc32_impl,
+        zlib_decompress_impl,
+        zlib_decompressobj_impl
+    }
+    zlib --> runtime.python.bindings.zlib {
+        COMPRESS_TYPE,
+        Compress_token,
+        DECOMPRESSOR_TYPE,
+        DECOMPRESS_TYPE,
+        DEFLATED,
+        DEF_BUF_SIZE,
+        DEF_MEM_LEVEL,
+        Decompress_token,
+        MAX_WBITS,
+        ZLIB_ERROR,
+        ZLIB_VERSION,
+        Z_BEST_COMPRESSION,
+        Z_BEST_SPEED,
+        Z_BLOCK,
+        Z_DEFAULT_COMPRESSION,
+        Z_DEFAULT_STRATEGY,
+        Z_FILTERED,
+        Z_FINISH,
+        Z_FIXED,
+        Z_FULL_FLUSH,
+        Z_HUFFMAN_ONLY,
+        Z_NO_COMPRESSION,
+        Z_NO_FLUSH,
+        Z_PARTIAL_FLUSH,
+        Z_RLE,
+        Z_SYNC_FLUSH,
+        Z_TREES,
+        ZlibDecompressorState,
+        ZlibDecompressor_token,
+        ZlibStream,
+        runtime_version,
+        zlib_decompressor_new
+    }
+}
+
+graph import runtime.python.bindings.clinic {
+    bz2 --> runtime.python.bindings.bz2 {
+        BZ2Compressor_doc,
+        BZ2Compressor_methods,
+        BZ2Decompressor_doc,
+        BZ2Decompressor_methods,
+        _bz2_BZ2Compressor_new,
+        _bz2_BZ2Decompressor_new
+    }
+    grp --> runtime.python.bindings.grp { module_methods }
+    opcode --> runtime.python.bindings.opcode { module_methods }
+    pwd --> runtime.python.bindings.pwd { module_methods }
+    resource --> runtime.python.bindings.resource { module_methods }
+    suggestions --> runtime.python.bindings.suggestions { module_methods }
+    sysconfig --> runtime.python.bindings.sysconfig { module_methods }
+    syslog --> runtime.python.bindings.syslog { module_methods }
+    tracemalloc --> runtime.python.bindings.tracemalloc { module_methods }
+    typing --> runtime.python.bindings.typing { module_methods }
+    weakref --> runtime.python.bindings.weakref { module_methods }
+    zlib --> runtime.python.bindings.zlib {
+        Compress_methods,
+        Decompress_methods,
+        ZlibDecompressor_methods,
+        module_methods
     }
 }

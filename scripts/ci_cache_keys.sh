@@ -22,7 +22,7 @@ python_tree() {
     if [ "$1" = cpython ]; then
       # Matches build_python.buildKey's host-mode exclusions. Jac sources and
       # native bridge edits cannot invalidate the ordinary CPython SDK.
-      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c)$/'
+      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c|jacpython-modules.txt)$/'
     else
       cat
     fi

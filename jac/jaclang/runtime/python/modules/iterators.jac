@@ -5,34 +5,39 @@ is recycled only under exclusive ownership, with finalizers deferred until the
 replacement contents have been published. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_retain,
-    jacpy_iter,
-    jacpy_iter_next,
-    jacpy_error_pending,
-    jacpy_clear_error,
-    jacpy_call,
-    jacpy_call_one,
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyErr_Clear,
+    PyIter_Next,
+    PyList_Append,
+    PyList_GetItemRef,
+    PyLong_AsLongLong,
+    PyNumber_Add,
+    PyObject,
+    PyObject_Call,
+    PyObject_CallOneArg,
+    PyObject_GetIter,
+    PyObject_IsTrue,
+    PySequence_Tuple,
+    PyTuple_New,
+    PyTuple_Size,
+    Py_NewRef,
     jacpy_call_two,
-    jacpy_truth,
-    jacpy_add,
-    jacpy_none,
-    jacpy_is_none,
+    jacpy_error_pending,
     jacpy_is_long,
-    jacpy_integer_value,
-    jacpy_tuple_new,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned,
-    jacpy_tuple_unique,
-    jacpy_tuple_exchange,
-    jacpy_sequence_tuple,
+    jacpy_is_none,
+    jacpy_list_exchange,
     jacpy_list_new,
     jacpy_list_size,
-    jacpy_list_append,
-    jacpy_list_item,
-    jacpy_list_exchange,
+    jacpy_none,
+    jacpy_release,
+    jacpy_tuple_exchange,
+    jacpy_tuple_item,
+    jacpy_tuple_set_owned,
+    jacpy_tuple_unique
+}
+import from jaclang.runtime.python.capi {
     required,
     checked,
     boundary_failure,
@@ -62,13 +67,13 @@ enum pipeline_kind {
 
 obj pipeline_state {
     has kind: i64 = 0,
-        source: u64 = 0,
-        auxiliary: u64 = 0,
-        function: u64 = 0,
-        value: u64 = 0,
-        initial: u64 = 0,
-        result: u64 = 0,
-        saved: u64 = 0,
+        source: ptr[PyObject] = NULL,
+        auxiliary: ptr[PyObject] = NULL,
+        function: ptr[PyObject] = NULL,
+        value: ptr[PyObject] = NULL,
+        initial: ptr[PyObject] = NULL,
+        result: ptr[PyObject] = NULL,
+        saved: ptr[PyObject] = NULL,
         position: i64 = 0,
         stop: i64 = -1,
         step: i64 = 1,
@@ -81,7 +86,7 @@ def:pub jacpy_pipeline_new -> pipeline_state {
     return pipeline_state();
 }
 
-def:pub jacpy_pipeline_field(state: pipeline_state, field: i64) -> u64 {
+def:pub jacpy_pipeline_field(state: pipeline_state, field: i64) -> ptr[PyObject] {
     if field == 0 {
         return state.source;
     }
@@ -111,13 +116,13 @@ def:pub jacpy_pipeline_clear(state: pipeline_state) {
     initial = state.initial;
     result = state.result;
     saved = state.saved;
-    state.source = 0;
-    state.auxiliary = 0;
-    state.function = 0;
-    state.value = 0;
-    state.initial = 0;
-    state.result = 0;
-    state.saved = 0;
+    state.source = NULL;
+    state.auxiliary = NULL;
+    state.function = NULL;
+    state.value = NULL;
+    state.initial = NULL;
+    state.result = NULL;
+    state.saved = NULL;
     jacpy_release(source);
     jacpy_release(auxiliary);
     jacpy_release(function);
@@ -130,10 +135,10 @@ def:pub jacpy_pipeline_clear(state: pipeline_state) {
 def:pub jacpy_pipeline_init(
     state: pipeline_state,
     kind: i64,
-    source: u64,
-    second: u64,
-    function: u64,
-    initial: u64,
+    source: ptr[PyObject],
+    second: ptr[PyObject],
+    function: ptr[PyObject],
+    initial: ptr[PyObject],
     first: i64,
     stop: i64,
     step: i64,
@@ -144,37 +149,37 @@ def:pub jacpy_pipeline_init(
     state.stop = stop;
     state.step = step;
     state.flag = flag != 0;
-    item: u64 = 0;
-    iterator: u64 = 0;
+    item: ptr[PyObject] = NULL;
+    iterator: ptr[PyObject] = NULL;
     try {
         if kind == pipeline_kind.COUNT.value or kind == pipeline_kind.REPEAT.value {
-            state.value = jacpy_retain(source);
+            state.value = Py_NewRef(source);
             if second != 0 {
-                state.auxiliary = jacpy_retain(second);
+                state.auxiliary = Py_NewRef(second);
             }
         } elif kind == pipeline_kind.ZIP_LONGEST.value {
             state.source = required(jacpy_list_new());
-            state.function = jacpy_retain(function);
-            state.active = jacpy_tuple_size(source);
+            state.function = Py_NewRef(function);
+            state.active = PyTuple_Size(source);
             for i in range(int(state.active)) {
                 item = required(jacpy_tuple_item(source, i64(i)));
-                iterator = required(jacpy_iter(item));
-                checked(jacpy_list_append(state.source, iterator));
+                iterator = required(PyObject_GetIter(item));
+                checked(PyList_Append(state.source, iterator));
                 jacpy_release(item);
-                item = 0;
+                item = NULL;
                 jacpy_release(iterator);
-                iterator = 0;
+                iterator = NULL;
             }
         } else {
-            state.source = required(jacpy_iter(source));
+            state.source = required(PyObject_GetIter(source));
             if second != 0 {
-                state.auxiliary = required(jacpy_iter(second));
+                state.auxiliary = required(PyObject_GetIter(second));
             }
             if function != 0 and jacpy_is_none(function) == 0 {
-                state.function = jacpy_retain(function);
+                state.function = Py_NewRef(function);
             }
             if initial != 0 and jacpy_is_none(initial) == 0 {
-                state.initial = jacpy_retain(initial);
+                state.initial = Py_NewRef(initial);
             }
             if kind == pipeline_kind.CYCLE.value {
                 state.saved = required(jacpy_list_new());
@@ -191,11 +196,11 @@ def:pub jacpy_pipeline_init(
 
 # The returned tuple is owned by the caller, so callback-driven next() cannot
 # recycle it while its previous elements are being released.
-def reusable_tuple(previous: u64, width: i64) -> u64 {
+def reusable_tuple(previous: ptr[PyObject], width: i64) -> ptr[PyObject] {
     if previous != 0 and jacpy_tuple_unique(previous) != 0 {
-        return jacpy_retain(previous);
+        return Py_NewRef(previous);
     }
-    result = required(jacpy_tuple_new(width));
+    result = required(PyTuple_New(width));
     for i in range(int(width)) {
         checked(jacpy_tuple_set_owned(result, i64(i), jacpy_none()));
     }
@@ -204,61 +209,62 @@ def reusable_tuple(previous: u64, width: i64) -> u64 {
 
 def:priv stop_source(state: pipeline_state) {
     old = state.source;
-    state.source = 0;
+    state.source = NULL;
     jacpy_release(old);
 }
 
-def:priv pipeline_pairwise(state: pipeline_state) -> u64 {
+def:priv pipeline_pairwise(state: pipeline_state) -> ptr[PyObject] {
     if state.source == 0 {
-        return 0;
+        return NULL;
     }
-    old: u64 = 0;
-    value: u64 = 0;
-    result: u64 = 0;
-    previous_left: u64 = 0;
-    previous_right: u64 = 0;
+    old: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
+    result: ptr[PyObject] = NULL;
+    previous_left: ptr[PyObject] = NULL;
+    previous_right: ptr[PyObject] = NULL;
+    replaced: ptr[PyObject] = NULL;
     try {
-        if state.value == 0 {
-            value = jacpy_iter_next(state.source);
+        if not state.value {
+            value = PyIter_Next(state.source);
             replaced = state.value;
             state.value = value;
-            value = 0;
+            value = NULL;
             jacpy_release(replaced);
             if state.value == 0 {
                 stop_source(state);
-                return 0;
+                return NULL;
             }
             if state.source == 0 {
                 replaced = state.value;
-                state.value = 0;
+                state.value = NULL;
                 jacpy_release(replaced);
-                return 0;
+                return NULL;
             }
         }
-        old = jacpy_retain(state.value);
-        value = jacpy_iter_next(state.source);
+        old = Py_NewRef(state.value);
+        value = PyIter_Next(state.source);
         if value == 0 {
             stop_source(state);
             replaced = state.value;
-            state.value = 0;
+            state.value = NULL;
             jacpy_release(replaced);
-            return 0;
+            return NULL;
         }
         result = reusable_tuple(state.result, 2);
         previous_left = jacpy_tuple_exchange(result, 0, old);
         previous_right = jacpy_tuple_exchange(result, 1, value);
         prior = state.result;
-        state.result = jacpy_retain(result);
+        state.result = Py_NewRef(result);
         jacpy_release(prior);
         prior = state.value;
         state.value = value;
-        value = 0;
+        value = NULL;
         jacpy_release(prior);
         answer = result;
-        result = 0;
+        result = NULL;
         return answer;
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(old);
         jacpy_release(value);
@@ -268,50 +274,50 @@ def:priv pipeline_pairwise(state: pipeline_state) -> u64 {
     }
 }
 
-def:priv pipeline_zip(state: pipeline_state) -> u64 {
+def:priv pipeline_zip(state: pipeline_state) -> ptr[PyObject] {
     if state.active == 0 {
-        return 0;
+        return NULL;
     }
     width = jacpy_list_size(state.source);
-    result: u64 = 0;
-    iterator: u64 = 0;
-    item: u64 = 0;
-    old_values: list[u64] = [];
+    result: ptr[PyObject] = NULL;
+    iterator: ptr[PyObject] = NULL;
+    item: ptr[PyObject] = NULL;
+    old_values: list[ptr[PyObject]] = [];
     try {
         result = reusable_tuple(state.result, width);
         for i in range(int(width)) {
-            iterator = required(jacpy_list_item(state.source, i64(i)));
+            iterator = required(PyList_GetItemRef(state.source, i64(i)));
             if jacpy_is_none(iterator) != 0 {
-                item = jacpy_retain(state.function);
+                item = Py_NewRef(state.function);
             } else {
-                item = jacpy_iter_next(iterator);
+                item = PyIter_Next(iterator);
                 if item == 0 {
                     state.active -= 1;
                     if state.active == 0 or jacpy_error_pending() != 0 {
                         state.active = 0;
-                        return 0;
+                        return NULL;
                     }
                     empty = jacpy_none();
                     previous = jacpy_list_exchange(state.source, i64(i), empty);
                     jacpy_release(empty);
                     jacpy_release(previous);
-                    item = jacpy_retain(state.function);
+                    item = Py_NewRef(state.function);
                 }
             }
             old_values.append(jacpy_tuple_exchange(result, i64(i), item));
             jacpy_release(item);
-            item = 0;
+            item = NULL;
             jacpy_release(iterator);
-            iterator = 0;
+            iterator = NULL;
         }
         prior = state.result;
-        state.result = jacpy_retain(result);
+        state.result = Py_NewRef(result);
         jacpy_release(prior);
         answer = result;
-        result = 0;
+        result = NULL;
         return answer;
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(result);
         jacpy_release(iterator);
@@ -322,7 +328,7 @@ def:priv pipeline_zip(state: pipeline_state) -> u64 {
     }
 }
 
-def:pub jacpy_pipeline_next(state: pipeline_state) -> u64 {
+def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
     kind = state.kind;
     if kind == pipeline_kind.PAIRWISE.value {
         return pipeline_pairwise(state);
@@ -330,116 +336,116 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> u64 {
     if kind == pipeline_kind.ZIP_LONGEST.value {
         return pipeline_zip(state);
     }
-    item: u64 = 0;
-    good: u64 = 0;
-    result: u64 = 0;
+    item: ptr[PyObject] = NULL;
+    good: ptr[PyObject] = NULL;
+    result: ptr[PyObject] = NULL;
     try {
         if kind == pipeline_kind.COUNT.value {
-            item = jacpy_retain(state.value);
-            result = required(jacpy_add(item, state.auxiliary));
+            item = Py_NewRef(state.value);
+            result = required(PyNumber_Add(item, state.auxiliary));
             prior = state.value;
             state.value = result;
-            result = 0;
+            result = NULL;
             jacpy_release(prior);
             answer = item;
-            item = 0;
+            item = NULL;
             return answer;
         }
         if kind == pipeline_kind.REPEAT.value {
             if state.stop == 0 {
-                return 0;
+                return NULL;
             }
             if state.stop > 0 {
                 state.stop -= 1;
             }
-            return jacpy_retain(state.value);
+            return Py_NewRef(state.value);
         }
         if kind == pipeline_kind.ACCUMULATE.value and state.initial != 0 {
             prior = state.value;
             state.value = state.initial;
-            state.initial = 0;
+            state.initial = NULL;
             jacpy_release(prior);
-            return jacpy_retain(state.value);
+            return Py_NewRef(state.value);
         }
         if kind == pipeline_kind.CYCLE.value {
             if state.source != 0 {
-                item = jacpy_iter_next(state.source);
+                item = PyIter_Next(state.source);
                 if item != 0 {
-                    checked(jacpy_list_append(state.saved, item));
+                    checked(PyList_Append(state.saved, item));
                     answer = item;
-                    item = 0;
+                    item = NULL;
                     return answer;
                 }
                 if jacpy_error_pending() != 0 {
-                    return 0;
+                    return NULL;
                 }
                 stop_source(state);
             }
             size = jacpy_list_size(state.saved);
             if size == 0 {
-                return 0;
+                return NULL;
             }
-            result = jacpy_list_item(state.saved, state.position);
+            result = PyList_GetItemRef(state.saved, state.position);
             state.position = (state.position + 1) % size;
             answer = result;
-            result = 0;
+            result = NULL;
             return answer;
         }
         if state.source == 0 {
-            return 0;
+            return NULL;
         }
         if kind == pipeline_kind.CHAIN.value {
             while state.source != 0 {
                 if state.auxiliary == 0 {
-                    item = jacpy_iter_next(state.source);
+                    item = PyIter_Next(state.source);
                     if item == 0 {
                         stop_source(state);
-                        return 0;
+                        return NULL;
                     }
-                    good = jacpy_iter(item);
+                    good = PyObject_GetIter(item);
                     jacpy_release(item);
-                    item = 0;
+                    item = NULL;
                     if good == 0 {
                         stop_source(state);
-                        return 0;
+                        return NULL;
                     }
                     state.auxiliary = good;
-                    good = 0;
+                    good = NULL;
                 }
-                item = jacpy_iter_next(state.auxiliary);
+                item = PyIter_Next(state.auxiliary);
                 if item != 0 {
                     answer = item;
-                    item = 0;
+                    item = NULL;
                     return answer;
                 }
                 if jacpy_error_pending() != 0 {
-                    return 0;
+                    return NULL;
                 }
                 prior = state.auxiliary;
-                state.auxiliary = 0;
+                state.auxiliary = NULL;
                 jacpy_release(prior);
             }
-            return 0;
+            return NULL;
         }
         if kind == pipeline_kind.ISLICE.value {
             while state.consumed < state.position {
-                item = jacpy_iter_next(state.source);
+                item = PyIter_Next(state.source);
                 if item == 0 {
                     stop_source(state);
-                    return 0;
+                    return NULL;
                 }
                 jacpy_release(item);
-                item = 0;
+                item = NULL;
                 state.consumed += 1;
             }
             if state.stop >= 0 and state.consumed >= state.stop {
                 stop_source(state);
-                return 0;
+                return NULL;
             }
-            item = jacpy_iter_next(state.source);
+            item = PyIter_Next(state.source);
             if item == 0 {
                 stop_source(state);
-                return 0;
+                return NULL;
             }
             state.consumed += 1;
             if state.position > i64(9223372036854775807) - state.step {
@@ -451,24 +457,24 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> u64 {
                 }
             }
             answer = item;
-            item = 0;
+            item = NULL;
             return answer;
         }
         if kind == pipeline_kind.BATCHED.value {
-            result = required(jacpy_tuple_new(state.step));
+            result = required(PyTuple_New(state.step));
             for i in range(int(state.step)) {
-                item = jacpy_iter_next(state.source);
+                item = PyIter_Next(state.source);
                 if item == 0 {
                     stop_source(state);
                     if jacpy_error_pending() != 0 or i == 0 {
-                        return 0;
+                        return NULL;
                     }
                     if state.flag {
                         object_error("ValueError", "batched(): incomplete batch");
-                        return 0;
+                        return NULL;
                     }
                     # Copy the initialized prefix; the unused tuple slots stay NULL.
-                    short = required(jacpy_tuple_new(i64(i)));
+                    short = required(PyTuple_New(i64(i)));
                     for j in range(i) {
                         checked(
                             jacpy_tuple_set_owned(
@@ -481,69 +487,69 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> u64 {
                     return short;
                 }
                 checked(jacpy_tuple_set_owned(result, i64(i), item));
-                item = 0;
+                item = NULL;
             }
             answer = result;
-            result = 0;
+            result = NULL;
             return answer;
         }
         if kind == pipeline_kind.TAKEWHILE.value and state.flag {
-            return 0;
+            return NULL;
         }
         while True {
-            item = jacpy_iter_next(state.source);
+            item = PyIter_Next(state.source);
             if item == 0 {
-                return 0;
+                return NULL;
             }
             if kind == pipeline_kind.ACCUMULATE.value {
                 if state.value == 0 {
-                    state.value = jacpy_retain(item);
+                    state.value = Py_NewRef(item);
                     answer = item;
-                    item = 0;
+                    item = NULL;
                     return answer;
                 }
                 result = required(
-                    jacpy_add(state.value, item)
+                    PyNumber_Add(state.value, item)
                         if state.function == 0
                         else jacpy_call_two(state.function, state.value, item)
                 );
                 prior = state.value;
-                state.value = jacpy_retain(result);
+                state.value = Py_NewRef(result);
                 jacpy_release(prior);
                 answer = result;
-                result = 0;
+                result = NULL;
                 return answer;
             }
             if kind == pipeline_kind.STARMAP.value {
-                good = required(jacpy_sequence_tuple(item));
-                return jacpy_call(state.function, good, 0);
+                good = required(PySequence_Tuple(item));
+                return PyObject_Call(state.function, good, NULL);
             }
             if kind == pipeline_kind.DROPWHILE.value and state.flag {
                 answer = item;
-                item = 0;
+                item = NULL;
                 return answer;
             }
             if kind == pipeline_kind.COMPRESS.value {
-                good = jacpy_iter_next(state.auxiliary);
+                good = PyIter_Next(state.auxiliary);
                 if good == 0 {
-                    return 0;
+                    return NULL;
                 }
             } elif state.function == 0 {
-                good = jacpy_retain(item);
+                good = Py_NewRef(item);
             } else {
-                good = required(jacpy_call_one(state.function, item));
+                good = required(PyObject_CallOneArg(state.function, item));
             }
-            truth = jacpy_truth(good);
+            truth = PyObject_IsTrue(good);
             checked(truth);
             jacpy_release(good);
-            good = 0;
+            good = NULL;
             if kind == pipeline_kind.TAKEWHILE.value {
                 if truth == 0 {
                     state.flag = True;
-                    return 0;
+                    return NULL;
                 }
                 answer = item;
-                item = 0;
+                item = NULL;
                 return answer;
             }
             if (kind == pipeline_kind.COMPRESS.value and truth != 0)
@@ -552,14 +558,14 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> u64 {
                     state.flag = True;
                 }
                 answer = item;
-                item = 0;
+                item = NULL;
                 return answer;
             }
             jacpy_release(item);
-            item = 0;
+            item = NULL;
         }
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(item);
         jacpy_release(good);
@@ -571,7 +577,9 @@ def:pub jacpy_pipeline_length(state: pipeline_state) -> i64 {
     return state.stop;
 }
 
-def:pub jacpy_pipeline_repr(state: pipeline_state, owner: u64) -> u64 {
+def:pub jacpy_pipeline_repr(
+    state: pipeline_state, owner: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         name = type_name(owner, False);
         if name.startswith("itertools.") {
@@ -588,9 +596,9 @@ def:pub jacpy_pipeline_repr(state: pipeline_state, owner: u64) -> u64 {
         }
         show_step = True;
         if jacpy_is_long(state.auxiliary) != 0 {
-            step = jacpy_integer_value(state.auxiliary);
+            step = PyLong_AsLongLong(state.auxiliary);
             if jacpy_error_pending() != 0 {
-                jacpy_clear_error();
+                PyErr_Clear();
             } else {
                 show_step = step != 1;
             }
@@ -603,6 +611,6 @@ def:pub jacpy_pipeline_repr(state: pipeline_state, owner: u64) -> u64 {
                 + ")"
         );
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }

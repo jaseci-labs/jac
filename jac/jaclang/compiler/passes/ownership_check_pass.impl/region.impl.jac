@@ -472,6 +472,10 @@ impl OwnershipCheckPass._region_expr_is_scalar(expr: Expr | None) -> bool {
     if expr.type is None {
         return False;
     }
+
+    if is_ptr_type(expr.type) {
+        return True;
+    }
     _m = "";
     try {
         _m = expr.type.mangle();

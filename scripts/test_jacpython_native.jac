@@ -97,6 +97,7 @@ def main -> int {
             "runtime/python/objects.jac",
             "runtime/python/compiler_integer.jac",
             "runtime/python/opcode_meta.jac",
+            "runtime/python/cpython_api.jac",
             "runtime/python/capi.jac",
             "runtime/python/constant_keys.jac",
             "runtime/python/constant_output.jac",

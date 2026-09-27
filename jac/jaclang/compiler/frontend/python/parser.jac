@@ -17130,7 +17130,6 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
     );
 }
 
-
 def parse_func_type(
     source: str, filename: str, flags: int = 0, feature_version: int = 14
 ) -> mod | None {

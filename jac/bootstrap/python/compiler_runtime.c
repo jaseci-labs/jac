@@ -51,37 +51,37 @@ PyObject *jacpy_exception_type(const char *name) {
 
 /* Values returned by this boundary are owned PyBytes handles. Callers hold
  * the GIL, copy the UTF-8 payload into Jac-owned storage, and release them. */
-static uint64_t utf8_result(PyObject *value) {
-    if (value == NULL) return 0;
+static PyObject *utf8_result(PyObject *value) {
+    if (value == NULL) return NULL;
     PyObject *bytes = PyUnicode_AsEncodedString(value, "utf-8", "surrogatepass");
     Py_DECREF(value);
-    return (uint64_t)(uintptr_t)bytes;
+    return bytes;
 }
-uint64_t jacpy_normalize(const char *source, int64_t size) {
+PyObject *jacpy_normalize(const char *source, int64_t size) {
     PyObject *text = PyUnicode_DecodeUTF8(source, size, "surrogatepass");
-    if (text == NULL) return 0;
+    if (text == NULL) return NULL;
     PyObject *module = PyImport_ImportModule("unicodedata");
-    if (module == NULL) { Py_DECREF(text); return 0; }
+    if (module == NULL) { Py_DECREF(text); return NULL; }
     PyObject *result = PyObject_CallMethod(module, "normalize", "sO", "NFKC", text);
     Py_DECREF(module);
     Py_DECREF(text);
     return utf8_result(result);
 }
-uint64_t jacpy_unicode_escape(const char *source, int64_t size) {
+PyObject *jacpy_unicode_escape(const char *source, int64_t size) {
     const char *invalid = NULL;
     int invalid_char = -1;
     return utf8_result(_PyUnicode_DecodeUnicodeEscapeInternal2(source, size, NULL, NULL, &invalid_char, &invalid));
 }
-uint64_t jacpy_bytes_escape(const char *source, int64_t size) {
+PyObject *jacpy_bytes_escape(const char *source, int64_t size) {
     const char *invalid = NULL;
     int invalid_char = -1;
-    return (uint64_t)(uintptr_t)_PyBytes_DecodeEscape2(source, size, NULL, &invalid_char, &invalid);
+    return _PyBytes_DecodeEscape2(source, size, NULL, &invalid_char, &invalid);
 }
-int64_t jacpy_buffer_size(uint64_t handle) { return PyBytes_GET_SIZE((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_buffer_byte(uint64_t handle, int64_t index) {
-    return (unsigned char)PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index];
+int64_t jacpy_buffer_size(PyObject *handle) { return PyBytes_GET_SIZE(handle); }
+int64_t jacpy_buffer_byte(PyObject *handle, int64_t index) {
+    return (unsigned char)PyBytes_AS_STRING(handle)[index];
 }
-void jacpy_release(uint64_t handle) { Py_XDECREF((PyObject *)(uintptr_t)handle); }
+void jacpy_release(PyObject *handle) { Py_XDECREF(handle); }
 int64_t jacpy_warning(const char *message, const char *filename, int64_t line) {
     return PyErr_WarnExplicit(PyExc_SyntaxWarning, message, filename, (int)line, NULL, NULL);
 }
@@ -89,24 +89,24 @@ int64_t jacpy_warning(const char *message, const char *filename, int64_t line) {
 /* Numeric conversion is retained object-runtime behavior. The Jac parser
  * classifies literals and the native compiler owns their serialized values. */
 #include "marshal.h"
-uint64_t jacpy_parse_long(const char *source, int64_t size) {
+PyObject *jacpy_parse_long(const char *source, int64_t size) {
     PyObject *text = PyUnicode_DecodeUTF8(source, size, "strict");
-    if (text == NULL) return 0;
+    if (text == NULL) return NULL;
     PyObject *value = PyLong_FromUnicodeObject(text, 0);
     Py_DECREF(text);
-    if (value == NULL) return 0;
+    if (value == NULL) return NULL;
     PyObject *data = PyMarshal_WriteObjectToString(value, 4);
     Py_DECREF(value);
-    return (uint64_t)(uintptr_t)data;
+    return data;
 }
-uint64_t jacpy_parse_float(const char *source, int64_t size) {
+PyObject *jacpy_parse_float(const char *source, int64_t size) {
     PyObject *text = PyUnicode_DecodeUTF8(source, size, "strict");
-    if (text == NULL) return 0;
+    if (text == NULL) return NULL;
     PyObject *value = PyFloat_FromString(text);
     Py_DECREF(text);
-    return (uint64_t)(uintptr_t)value;
+    return value;
 }
-double jacpy_float_value(uint64_t handle) { return PyFloat_AS_DOUBLE((PyObject *)(uintptr_t)handle); }
+double jacpy_float_value(PyObject *handle) { return PyFloat_AS_DOUBLE(handle); }
 
 /* AST constructors and attributes are retained CPython value operations.
  * Traversal, node selection, and field conversion live in native Jac.
@@ -160,10 +160,10 @@ static PyObject *jac_ast_slot(struct ast_state *state, ptrdiff_t offset) {
 /* Exact types resolve by identity; subclasses take the first kind in
  * declaration order, like obj2ast's isinstance chain. -1: not a concrete
  * node, -2: the AST state could not be initialized. */
-int64_t jacpy_ast_kind(uint64_t handle) {
+int64_t jacpy_ast_kind(PyObject *handle) {
     struct ast_state *state = jac_ast_state();
     if (state == NULL) return -2;
-    PyTypeObject *type = Py_TYPE((PyObject *)(uintptr_t)handle);
+    PyTypeObject *type = Py_TYPE(handle);
     for (int64_t kind = 0; kind < JAC_AST_KIND_COUNT; kind++) {
         if ((PyObject *)type == jac_ast_slot(state, jac_ast_kinds[kind].type)) return kind;
     }
@@ -172,15 +172,15 @@ int64_t jacpy_ast_kind(uint64_t handle) {
     }
     return -1;
 }
-uint64_t jacpy_ast_new(int64_t kind) {
+PyObject *jacpy_ast_new(int64_t kind) {
     struct ast_state *state = jac_ast_state();
-    if (state == NULL) return 0;
+    if (state == NULL) return NULL;
     if (jac_ast_kinds[kind].singleton >= 0)
-        return (uint64_t)(uintptr_t)Py_NewRef(jac_ast_slot(state, jac_ast_kinds[kind].singleton));
+        return Py_NewRef(jac_ast_slot(state, jac_ast_kinds[kind].singleton));
     /* All fields are filled by Jac before publication; invoking __init__
      * here would warn about fields that have not yet crossed the boundary. */
     PyTypeObject *type = (PyTypeObject *)jac_ast_slot(state, jac_ast_kinds[kind].type);
-    return (uint64_t)(uintptr_t)PyType_GenericAlloc(type, 0);
+    return PyType_GenericAlloc(type, 0);
 }
 /* Field names are the interned identifiers of the same AST state, numbered in
  * the order of `ast_field` (jaclang/compiler/frontend/python/ast_nodes.jac). */
@@ -210,81 +210,72 @@ static PyObject *jac_ast_field_name(int64_t field) {
     struct ast_state *state = jac_ast_state();
     return state == NULL ? NULL : jac_ast_slot(state, jac_ast_fields[field]);
 }
-int64_t jacpy_set_owned(uint64_t target, int64_t field, uint64_t value) {
+int64_t jacpy_set_owned(PyObject *target, int64_t field, PyObject *value) {
     if (!value) return -1;
-    PyObject *item = (PyObject *)(uintptr_t)value;
+    PyObject *item = value;
     PyObject *name = jac_ast_field_name(field);
-    int status = name == NULL ? -1 : PyObject_SetAttr((PyObject *)(uintptr_t)target, name, item);
+    int status = name == NULL ? -1 : PyObject_SetAttr(target, name, item);
     Py_DECREF(item);
     return status;
 }
-uint64_t jacpy_field(uint64_t handle, int64_t field) {
+PyObject *jacpy_field(PyObject *handle, int64_t field) {
     PyObject *name = jac_ast_field_name(field);
     PyObject *value = NULL;
-    if (name == NULL || PyObject_GetOptionalAttr((PyObject *)(uintptr_t)handle, name, &value) < 0) return 0;
+    if (name == NULL || PyObject_GetOptionalAttr(handle, name, &value) < 0) return NULL;
     if (value == NULL)
         PyErr_Format(PyExc_TypeError, "required field \"%U\" missing from %s", name,
-                     Py_TYPE((PyObject *)(uintptr_t)handle)->tp_name);
-    return (uint64_t)(uintptr_t)value;
+                     Py_TYPE(handle)->tp_name);
+    return value;
 }
-uint64_t jacpy_optional_field(uint64_t handle, int64_t field) {
+PyObject *jacpy_optional_field(PyObject *handle, int64_t field) {
     PyObject *name = jac_ast_field_name(field);
     PyObject *value = NULL;
-    if (name == NULL || PyObject_GetOptionalAttr((PyObject *)(uintptr_t)handle, name, &value) < 0) return 0;
-    return (uint64_t)(uintptr_t)(value != NULL ? value : Py_NewRef(Py_None));
+    if (name == NULL || PyObject_GetOptionalAttr(handle, name, &value) < 0) return NULL;
+    return (value != NULL ? value : Py_NewRef(Py_None));
 }
-uint64_t jacpy_list_new(void) { return (uint64_t)(uintptr_t)PyList_New(0); }
-int64_t jacpy_list_append_owned(uint64_t target, uint64_t value) {
+PyObject *jacpy_list_new(void) { return PyList_New(0); }
+int64_t jacpy_list_append_owned(PyObject *target, PyObject *value) {
     if (!value) return -1;
-    PyObject *item = (PyObject *)(uintptr_t)value;
-    int status = PyList_Append((PyObject *)(uintptr_t)target, item);
+    PyObject *item = value;
+    int status = PyList_Append(target, item);
     Py_DECREF(item);
     return status;
 }
-uint64_t jacpy_none(void) { return (uint64_t)(uintptr_t)Py_NewRef(Py_None); }
-uint64_t jacpy_int(int64_t value) { return (uint64_t)(uintptr_t)PyLong_FromLongLong(value); }
-uint64_t jacpy_text(const char *value, int64_t size) {
-    return (uint64_t)(uintptr_t)PyUnicode_DecodeUTF8(value, size, "surrogatepass");
+PyObject *jacpy_none(void) { return Py_NewRef(Py_None); }
+PyObject *jacpy_text(const char *value, int64_t size) {
+    return PyUnicode_DecodeUTF8(value, size, "surrogatepass");
 }
-uint64_t jacpy_buffer_new(int64_t size) { return (uint64_t)(uintptr_t)PyBytes_FromStringAndSize(NULL, size); }
-void jacpy_buffer_set(uint64_t handle, int64_t index, int64_t value) {
-    PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index] = (char)value;
+PyObject *jacpy_buffer_new(int64_t size) { return PyBytes_FromStringAndSize(NULL, size); }
+void jacpy_buffer_set(PyObject *handle, int64_t index, int64_t value) {
+    PyBytes_AS_STRING(handle)[index] = (char)value;
 }
 /* Code objects are assembled by native Jac and constructed through the same
  * validated constructor marshal uses. Handles are borrowed. */
-uint64_t jacpy_code_new(int64_t argcount, int64_t posonlyargcount, int64_t kwonlyargcount,
-                        int64_t stacksize, int64_t flags, uint64_t code, uint64_t consts,
-                        uint64_t names, uint64_t localsplusnames, uint64_t localspluskinds,
-                        uint64_t filename, uint64_t name, uint64_t qualname,
-                        int64_t firstlineno, uint64_t linetable, uint64_t exceptiontable) {
+PyObject *jacpy_code_new(int64_t argcount, int64_t posonlyargcount, int64_t kwonlyargcount, int64_t stacksize, int64_t flags, PyObject *code, PyObject *consts, PyObject *names, PyObject *localsplusnames, PyObject *localspluskinds, PyObject *filename, PyObject *name, PyObject *qualname, int64_t firstlineno, PyObject *linetable, PyObject *exceptiontable) {
     struct _PyCodeConstructor con = {
-        .filename = (PyObject *)(uintptr_t)filename,
-        .name = (PyObject *)(uintptr_t)name,
-        .qualname = (PyObject *)(uintptr_t)qualname,
+        .filename = filename,
+        .name = name,
+        .qualname = qualname,
         .flags = (int)flags,
-        .code = (PyObject *)(uintptr_t)code,
+        .code = code,
         .firstlineno = (int)firstlineno,
-        .linetable = (PyObject *)(uintptr_t)linetable,
-        .consts = (PyObject *)(uintptr_t)consts,
-        .names = (PyObject *)(uintptr_t)names,
-        .localsplusnames = (PyObject *)(uintptr_t)localsplusnames,
-        .localspluskinds = (PyObject *)(uintptr_t)localspluskinds,
+        .linetable = linetable,
+        .consts = consts,
+        .names = names,
+        .localsplusnames = localsplusnames,
+        .localspluskinds = localspluskinds,
         .argcount = (int)argcount,
         .posonlyargcount = (int)posonlyargcount,
         .kwonlyargcount = (int)kwonlyargcount,
         .stacksize = (int)stacksize,
-        .exceptiontable = (PyObject *)(uintptr_t)exceptiontable,
+        .exceptiontable = exceptiontable,
     };
-    if (_PyCode_Validate(&con) < 0) return 0;
-    return (uint64_t)(uintptr_t)_PyCode_New(&con);
-}
-uint64_t jacpy_slice_new(uint64_t start, uint64_t stop, uint64_t step) {
-    return (uint64_t)(uintptr_t)PySlice_New((PyObject *)(uintptr_t)start, (PyObject *)(uintptr_t)stop,
-                                            (PyObject *)(uintptr_t)step);
+    if (_PyCode_Validate(&con) < 0) return NULL;
+    return (PyObject *)_PyCode_New(&con);
 }
 
-int64_t jacpy_value_kind(uint64_t handle) {
-    PyObject *value = (PyObject *)(uintptr_t)handle;
+int64_t jacpy_value_kind(PyObject *handle) {
+    PyObject *value = handle;
     if (value == Py_None) return 0;
     if (value == Py_Ellipsis) return 1;
     if (PyBool_Check(value)) return 2;
@@ -297,49 +288,44 @@ int64_t jacpy_value_kind(uint64_t handle) {
     if (PyFrozenSet_Check(value)) return 9;
     return -1;
 }
-int64_t jacpy_truth(uint64_t handle) { return PyObject_IsTrue((PyObject *)(uintptr_t)handle); }
-uint64_t jacpy_marshal(uint64_t handle) {
-    return (uint64_t)(uintptr_t)PyMarshal_WriteObjectToString((PyObject *)(uintptr_t)handle, 4);
+PyObject *jacpy_marshal(PyObject *handle) {
+    return PyMarshal_WriteObjectToString(handle, 4);
 }
-uint64_t jacpy_utf8(uint64_t handle) {
-    return (uint64_t)(uintptr_t)PyUnicode_AsEncodedString((PyObject *)(uintptr_t)handle,"utf-8","surrogatepass");
+PyObject *jacpy_utf8(PyObject *handle) {
+    return PyUnicode_AsEncodedString(handle,"utf-8","surrogatepass");
 }
-double jacpy_real(uint64_t handle) { return PyComplex_RealAsDouble((PyObject *)(uintptr_t)handle); }
-double jacpy_imag(uint64_t handle) { return PyComplex_ImagAsDouble((PyObject *)(uintptr_t)handle); }
-uint64_t jacpy_sequence(uint64_t handle) { return (uint64_t)(uintptr_t)PySequence_List((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_sequence_size(uint64_t handle) { return PyList_GET_SIZE((PyObject *)(uintptr_t)handle); }
-uint64_t jacpy_sequence_item(uint64_t handle, int64_t index) {
-    return (uint64_t)(uintptr_t)Py_NewRef(PyList_GET_ITEM((PyObject *)(uintptr_t)handle,index));
+int64_t jacpy_sequence_size(PyObject *handle) { return PyList_GET_SIZE(handle); }
+PyObject *jacpy_sequence_item(PyObject *handle, int64_t index) {
+    return Py_NewRef(PyList_GET_ITEM(handle,index));
 }
-int64_t jacpy_is_list(uint64_t handle) { return PyList_Check((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_integer_value(uint64_t handle) { return PyLong_AsLongLong((PyObject *)(uintptr_t)handle); }
+int64_t jacpy_is_list(PyObject *handle) { return PyList_Check(handle); }
 int64_t jacpy_error_pending(void) { return PyErr_Occurred() != NULL; }
 
-uint64_t jacpy_decode(uint64_t handle, const char *encoding) {
-    PyObject *data = (PyObject *)(uintptr_t)handle;
+PyObject *jacpy_decode(PyObject *handle, const char *encoding) {
+    PyObject *data = handle;
     return utf8_result(PyUnicode_Decode(PyBytes_AS_STRING(data),PyBytes_GET_SIZE(data),encoding,"strict"));
 }
-uint64_t jacpy_take_error_text(void) {
+PyObject *jacpy_take_error_text(void) {
     PyObject *error = PyErr_GetRaisedException();
-    if (error == NULL) { PyErr_SetString(PyExc_SystemError,"missing boundary exception"); return 0; }
+    if (error == NULL) { PyErr_SetString(PyExc_SystemError,"missing boundary exception"); return NULL; }
     PyObject *text = PyObject_Str(error);
     Py_DECREF(error);
     return utf8_result(text);
 }
 /* Compiler failures keep CPython's argument shape: SyntaxError subclasses take
  * (message, (filename, lineno, offset, text, end_lineno, end_offset)). */
-void jacpy_raise_compiler_error(const char *kind, uint64_t message, uint64_t location) {
+void jacpy_raise_compiler_error(const char *kind, PyObject *message, PyObject *location) {
     PyObject *type = jacpy_exception_type(kind);
     if (type == NULL) {
         PyErr_Format(PyExc_SystemError, "unknown native diagnostic %s", kind);
         return;
     }
     if (location != 0 && PyObject_IsSubclass(type, PyExc_SyntaxError) > 0) {
-        PyObject *args = PyTuple_Pack(2, (PyObject *)(uintptr_t)message, (PyObject *)(uintptr_t)location);
+        PyObject *args = PyTuple_Pack(2, message, location);
         if (args != NULL) { PyErr_SetObject(type, args); Py_DECREF(args); }
         return;
     }
-    PyErr_SetObject(type, (PyObject *)(uintptr_t)message);
+    PyErr_SetObject(type, message);
 }
 int64_t jacpy_error_is(const char *name) {
     PyObject *type = jacpy_exception_type(name);
@@ -392,63 +378,61 @@ static PyType_Spec jac_entry_spec = {
     .name="_symtable.SymtableEntry",.basicsize=sizeof(JacSymtableEntry),
     .flags=Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_GC,.slots=jac_entry_slots
 };
-uint64_t jacpy_symtable_entry(uint64_t name, int64_t kind, int64_t lineno, int64_t nested,
-                            uint64_t symbols, uint64_t varnames, uint64_t children) {
+PyObject *jacpy_symtable_entry(PyObject *name, int64_t kind, int64_t lineno, int64_t nested, PyObject *symbols, PyObject *varnames, PyObject *children) {
     PyObject *state=PyInterpreterState_GetDict(PyInterpreterState_Get());
-    if (state == NULL) return 0;
+    if (state == NULL) return NULL;
     PyObject *type=PyDict_GetItemString(state,"_jacpython_symtable_type");
     if (type == NULL) {
         type=PyType_FromSpec(&jac_entry_spec);
-        if (type == NULL) return 0;
+        if (type == NULL) return NULL;
         int status=PyDict_SetItemString(state,"_jacpython_symtable_type",type);
         Py_DECREF(type);
-        if (status < 0) return 0;
+        if (status < 0) return NULL;
         type=PyDict_GetItemString(state,"_jacpython_symtable_type");
     }
     JacSymtableEntry *entry=(JacSymtableEntry *)PyType_GenericAlloc((PyTypeObject *)type,0);
-    if (entry == NULL) return 0;
-    entry->name=Py_NewRef((PyObject *)(uintptr_t)name);
-    entry->symbols=Py_NewRef((PyObject *)(uintptr_t)symbols);
-    entry->varnames=Py_NewRef((PyObject *)(uintptr_t)varnames);
-    entry->children=Py_NewRef((PyObject *)(uintptr_t)children);
+    if (entry == NULL) return NULL;
+    entry->name=Py_NewRef(name);
+    entry->symbols=Py_NewRef(symbols);
+    entry->varnames=Py_NewRef(varnames);
+    entry->children=Py_NewRef(children);
     entry->type=(int)kind; entry->lineno=(int)lineno; entry->nested=(int)nested;
-    return (uint64_t)(uintptr_t)entry;
+    return (PyObject *)entry;
 }
-uint64_t jacpy_dict_new(void) { return (uint64_t)(uintptr_t)PyDict_New(); }
-int64_t jacpy_dict_set_owned(uint64_t dictionary,uint64_t key,uint64_t value) {
-    PyObject *k=(PyObject *)(uintptr_t)key,*v=(PyObject *)(uintptr_t)value;
+int64_t jacpy_dict_set_owned(PyObject *dictionary, PyObject *key, PyObject *value) {
+    PyObject *k=key,*v=value;
     if (k == NULL || v == NULL) { Py_XDECREF(k); Py_XDECREF(v); return -1; }
-    int status=PyDict_SetItem((PyObject *)(uintptr_t)dictionary,k,v);
+    int status=PyDict_SetItem(dictionary,k,v);
     Py_DECREF(k); Py_DECREF(v); return status;
 }
 /* Calling the user's readline function is an input boundary; tokenization
  * and stream state are native Jac. Return owned UTF-8 bytes. */
-uint64_t jacpy_readline(uint64_t reader, const char *encoding, int64_t decode) {
-    PyObject *line=PyObject_CallNoArgs((PyObject *)(uintptr_t)reader);
+PyObject *jacpy_readline(PyObject *reader, const char *encoding, int64_t decode) {
+    PyObject *line=PyObject_CallNoArgs(reader);
     if (line == NULL) {
-        if (!PyErr_ExceptionMatches(PyExc_StopIteration)) return 0;
-        PyErr_Clear(); return (uint64_t)(uintptr_t)PyBytes_FromStringAndSize("",0);
+        if (!PyErr_ExceptionMatches(PyExc_StopIteration)) return NULL;
+        PyErr_Clear(); return PyBytes_FromStringAndSize("",0);
     }
     if (decode) {
         if (!PyBytes_Check(line)) {
-            Py_DECREF(line); PyErr_SetString(PyExc_TypeError,"readline() returned a non-bytes object"); return 0;
+            Py_DECREF(line); PyErr_SetString(PyExc_TypeError,"readline() returned a non-bytes object"); return NULL;
         }
         PyObject *text=PyUnicode_Decode(PyBytes_AS_STRING(line),PyBytes_GET_SIZE(line),encoding,"replace");
         Py_DECREF(line); line=text;
     } else if (!PyUnicode_Check(line)) {
-        Py_DECREF(line); PyErr_SetString(PyExc_TypeError,"readline() returned a non-string"); return 0;
+        Py_DECREF(line); PyErr_SetString(PyExc_TypeError,"readline() returned a non-string"); return NULL;
     }
     return utf8_result(line);
 }
-uint64_t jacpy_source_bytes(uint64_t handle) {
+PyObject *jacpy_source_bytes(PyObject *handle) {
     Py_buffer view;
-    if (PyObject_GetBuffer((PyObject *)(uintptr_t)handle,&view,PyBUF_SIMPLE) < 0) return 0;
+    if (PyObject_GetBuffer(handle,&view,PyBUF_SIMPLE) < 0) return NULL;
     PyObject *copy=PyBytes_FromStringAndSize(view.buf,view.len);
     PyBuffer_Release(&view);
-    return (uint64_t)(uintptr_t)copy;
+    return copy;
 }
-int64_t jacpy_source_kind(uint64_t handle) {
-    PyObject *value=(PyObject *)(uintptr_t)handle;
+int64_t jacpy_source_kind(PyObject *handle) {
+    PyObject *value=handle;
     if (PyUnicode_Check(value)) return 0;
     if (PyObject_CheckBuffer(value)) return 1;
     int is_ast=PyAST_Check(value);
@@ -459,20 +443,20 @@ int64_t jacpy_codec_valid(const char *name) {
     if (codec == NULL) return 0;
     Py_DECREF(codec); return 1;
 }
-uint64_t jacpy_fd_line(int64_t fd) {
+PyObject *jacpy_fd_line(int64_t fd) {
     PyObject *line=PyByteArray_FromStringAndSize(NULL,0);
-    if (!line) return 0;
+    if (!line) return NULL;
     for (;;) {
         char ch; ssize_t count=read((int)fd,&ch,1);
-        if (count < 0) { if (errno == EINTR) { if (PyErr_CheckSignals() < 0) { Py_DECREF(line); return 0; } continue; } Py_DECREF(line); PyErr_SetFromErrno(PyExc_OSError); return 0; }
+        if (count < 0) { if (errno == EINTR) { if (PyErr_CheckSignals() < 0) { Py_DECREF(line); return NULL; } continue; } Py_DECREF(line); PyErr_SetFromErrno(PyExc_OSError); return NULL; }
         if (!count) break;
         Py_ssize_t length=PyByteArray_GET_SIZE(line);
-        if (PyByteArray_Resize(line,length+1) < 0) { Py_DECREF(line); return 0; }
+        if (PyByteArray_Resize(line,length+1) < 0) { Py_DECREF(line); return NULL; }
         PyByteArray_AS_STRING(line)[length]=ch;
         if (ch == '\n') break;
     }
     PyObject *result=PyBytes_FromObject(line); Py_DECREF(line);
-    return (uint64_t)(uintptr_t)result;
+    return result;
 }
 void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
     PyObject *type=jacpy_exception_type(kind);

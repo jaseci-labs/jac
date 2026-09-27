@@ -1,4 +1,15 @@
 """Native public symbol-table data and projection from compiler scopes."""
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyDict_New,
+    PyLong_FromLongLong,
+    PyObject,
+    jacpy_dict_set_owned,
+    jacpy_list_new,
+    jacpy_release,
+    jacpy_symtable_entry
+}
 import from jaclang.compiler.frontend.python.compiler_symtable {
     sym_block,
     scope_kind,
@@ -24,7 +35,6 @@ glob PUBLIC_DEF_FREE_CLASS: int = 64,
      TYPE_TYPE_PARAMETERS: int = 5,
      TYPE_TYPE_VARIABLE: int = 6,
      SCOPE_MASK: int = 15;
-
 
 obj SymtableEntry {
     has _name: str,
@@ -155,7 +165,6 @@ def _entry_children(table: SymtableEntry, b: sym_block, nested: bool) {
     }
 }
 
-
 import from jaclang.compiler.frontend.python.ast_output {
     ast_output_checked,
     ast_write_text,
@@ -175,22 +184,6 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
 import from jaclang.runtime.python.objects { PyObj, py_error }
 import from jaclang.runtime.python.capi { boundary_failure }
-import from c {
-    def jacpy_symtable_entry(
-        name: u64,
-        kind: i64,
-        line: i64,
-        nested: i64,
-        symbols: u64,
-        varnames: u64,
-        children: u64
-    ) -> u64;  def jacpy_dict_new -> u64;  def jacpy_dict_set_owned(
-        dictionary: u64, key: u64, value: u64
-    ) -> i64;  def jacpy_list_new -> u64;  def jacpy_int(value: i64) -> u64;  def jacpy_release(
-        handle: u64
-    );
-}
-
 def source_symtable(source: str, filename: str, mode: str) -> SymtableEntry | PyObj {
     body: list[stmt] = [];
     if mode == "eval" {
@@ -238,16 +231,16 @@ def source_symtable(source: str, filename: str, mode: str) -> SymtableEntry | Py
     return _entry_from_block(result.top);
 }
 
-def symtable_to_object(table: SymtableEntry) -> u64 {
+def symtable_to_object(table: SymtableEntry) -> ptr[PyObject] {
     name = ast_write_text(table.name);
-    symbols: u64 = 0;
-    varnames: u64 = 0;
-    children: u64 = 0;
+    symbols: ptr[PyObject] = NULL;
+    varnames: ptr[PyObject] = NULL;
+    children: ptr[PyObject] = NULL;
     try {
-        symbols = ast_output_checked(jacpy_dict_new());
+        symbols = ast_output_checked(PyDict_New());
         for (key, value) in table.symbols.items() {
             key_object = ast_write_text(key);
-            value_object = jacpy_int(i64(value));
+            value_object = PyLong_FromLongLong(i64(value));
             if jacpy_dict_set_owned(symbols, key_object, value_object) < 0 {
                 raise boundary_failure();
             }
