@@ -305,6 +305,7 @@ cp "$deps/lib/"*.a "$work/python/build/lib/"
 if [ -n "$host" ]; then
     cp "$host/python/build/cacert.pem" "$work/python/build/cacert.pem"
     cp "$work/native/sha256" "$work/python/build/jacpython-native-sha256"
+    cp "$work/native/sources" "$work/python/build/jacpython-native-sources"
     rm -rf "$work/native"
 else
     # Only dependency headers/archives are reused by the target build. Host
