@@ -115,8 +115,8 @@ glob:priv compressor_type = TypeDefinition(
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    BZ2Compressor_token.bind(compressor_type.handle);
-    BZ2Decompressor_token.bind(decompressor_type.handle);
+    BZ2Compressor_token.handle = compressor_type.handle;
+    BZ2Decompressor_token.handle = decompressor_type.handle;
     if not add_state_owned(module, 0, "BZ2Compressor", compressor_type.create(module))
         or not add_state_owned(
             module, 1, "BZ2Decompressor", decompressor_type.create(module)

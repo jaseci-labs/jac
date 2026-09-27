@@ -254,13 +254,6 @@ def borrowed_false -> ptr[PyObject] {
 # find it in the receiver's MRO by that token.
 obj ClassToken {
     has handle: ptr = ptr();
-
-    # Bindings set the token through this method: assigning the field of an
-    # imported glob directly miscompiles in the native emitter (IntType has
-    # no is_opaque, #9596), while a method of the object lowers correctly.
-    def bind(handle: ptr) {
-        self.handle = handle;
-    }
 }
 
 def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
