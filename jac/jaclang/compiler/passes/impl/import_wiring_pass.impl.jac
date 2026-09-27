@@ -1,4 +1,8 @@
 impl ImportWiringPass.run_walk with Module entry {
+    import from jaclang.compiler.frontend.host { active_host }
+    if active_host().in_kernel() {
+        return;
+    }
     mod = here;
     path = mod.loc.mod_path;
     if is_arch_file(path) {

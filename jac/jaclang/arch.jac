@@ -7809,6 +7809,12 @@ graph import compiler.frontend {
     codeinfo --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._demote_native_test {
         native_test_symbol
     }
+    host --> compiler.passes.import_wiring_pass.ImportWiringPass.run_walk {
+        active_host
+    }
+    host --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass.exit_module {
+        active_host
+    }
 }
 
 graph import compiler.frontend.parser {

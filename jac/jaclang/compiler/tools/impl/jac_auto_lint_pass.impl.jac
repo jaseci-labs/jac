@@ -2664,7 +2664,9 @@ impl JacAutoLintPass._strip_duplicate_wires(nd: uni.Module) -> None {
 
 impl JacAutoLintPass.exit_module with uni.Module exit {
     self._strip_usestate_imports(here);
-    self._strip_wired_imports(here);
+    if not active_host().in_kernel() {
+        self._strip_wired_imports(here);
+    }
     self._strip_duplicate_wires(here);
     self._strip_redundant_semis(here);
     self._strip_noise(here);
