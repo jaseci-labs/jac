@@ -32,7 +32,7 @@ def materialize(
     name: str, version: str, sha256: str, data: bytes, source: str
 ) -> Path {
     import from jaclang.cache.registry { bucket }
-    import from jaclang.toolchains.store { InstallLock }
+    import from jaclang.jac0core.cache_paths { FileLock }
     actual = hashlib.sha256(data).hexdigest();
     if actual != sha256 {
         raise StoreError(
@@ -42,7 +42,7 @@ def materialize(
     }
     dest = store_path(name, version, sha256);
     dest.parent.mkdir(parents=True, exist_ok=True);
-    with InstallLock(dest.parent / f".{dest.name}.lock") {
+    with FileLock(dest.parent / f".{dest.name}.lock") {
         if is_materialized(dest, sha256) {
             bucket("pkgs").note_hit(dest / MARKER_NAME);
             return dest;

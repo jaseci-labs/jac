@@ -37,9 +37,10 @@ def _mirror_dir(url: str) -> Path {
 }
 
 def checkout(url: str, rev: str = "") -> GitCheckout {
-    import from jaclang.toolchains.store { InstallLock, offline }
+    import from jaclang.jac0core.cache_paths { FileLock }
+    import from jaclang.toolchains.store { offline }
     mirror = _mirror_dir(url);
-    with InstallLock(mirror.with_suffix(".lock")) {
+    with FileLock(mirror.with_suffix(".lock")) {
         if not (mirror / "HEAD").is_file() {
             if offline() {
                 raise GitError(f"{url} is not cached and JAC_OFFLINE is set");

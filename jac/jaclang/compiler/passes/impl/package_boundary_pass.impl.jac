@@ -3,7 +3,7 @@ import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.diagnostics { E2095, E2096 }
 
 impl PackageBoundaryPass.run_walk with Module entry {
-    import from jaclang.compiler.driver.jir { is_compiler_source_path }
+    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     mod = here;
     path = mod.loc.mod_path if mod.loc else "";
     if not path or not path.endswith(".jac") or is_compiler_source_path(path) {

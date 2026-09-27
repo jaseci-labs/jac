@@ -225,9 +225,7 @@ def package_surface(base_root: Path, exports: list[str]) -> dict[str, any] {
             missing.append(module);
             continue;
         }
-        options = CompileOptions(
-            no_cgen=True, force_target_program=True, project_root=str(base_root)
-        );
+        options = CompileOptions(no_cgen=True, project_root=str(base_root));
         with compilation_scope(options) {
             mod = program.compile(str(path), options=options);
         }
