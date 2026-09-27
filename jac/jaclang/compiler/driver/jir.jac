@@ -46,6 +46,7 @@ glob MAGIC = b"JIR\x00",
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
+     CT_PKG_PREFIX: str = "@jaclang/",
      FLAG_BOOTSTRAP: int = 0x04;
 
 glob NATIVE_SECTIONS: tuple[int, ...] = (
@@ -872,9 +873,33 @@ def ct_dep_digest(path: str, with_annexes: bool = False) -> str {
     }
 }
 
+def _ct_pkg_ref(path: str) -> str {
+    """A dependency inside the package being compiled is named by its place in
+    that package, so a unit cached from one staging of the tree still reads as
+    fresh in another: kernel units are built under a per-build staging
+    directory, and an absolute row there names a file the next build lacks.""";
+    import from jaclang.compiler.kernel_target { target_package_rel }
+    rel = target_package_rel(path);
+    if rel is None {
+        return path;
+    }
+    return CT_PKG_PREFIX + rel.replace(os.sep, "/");
+}
+
+def _ct_row_path(stored: str, base: str) -> str {
+    if stored.startswith(CT_PKG_PREFIX) {
+        import from jaclang.compiler.kernel_target { target_pkg_root }
+        return os.path.join(target_pkg_root(), *stored[len(CT_PKG_PREFIX):].split("/"));
+    }
+    if os.path.isabs(stored) or not base {
+        return stored;
+    }
+    return os.path.normpath(os.path.join(base, stored));
+}
+
 def _ct_dep_store_path(path: str, base: str) -> str {
     if not base {
-        return path;
+        return _ct_pkg_ref(path);
     }
     try {
         if os.path.commonpath([path, base]) == base {
@@ -950,14 +975,14 @@ def rebase_placement_section(raw: bytes, base: str) -> bytes {
 def rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, is_body) in _ct_dep_rows(raw.decode("utf-8")) {
-        lines.append(_ct_dep_line(path, digest, is_body, base));
+        lines.append(_ct_dep_line(_ct_row_path(path, ""), digest, is_body, base));
     }
     return "\n".join(lines).encode("utf-8");
 }
 
 def _ct_rows_fresh(rows: list[tuple[(str, str, bool)]], base: str) -> bool {
     for (path, digest, is_body) in rows {
-        full = path if os.path.isabs(path) else os.path.join(base, path);
+        full = _ct_row_path(path, base);
         if not digest or ct_dep_digest(full, is_body) != digest {
             return False;
         }
@@ -984,9 +1009,7 @@ def module_ct_deps_text(mod: any) -> str {
 def absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, is_body) in _ct_dep_rows(raw.decode("utf-8")) {
-        full = path
-            if os.path.isabs(path)
-            else os.path.normpath(os.path.join(base, path));
+        full = _ct_row_path(path, base);
         lines.append(_ct_dep_line(full, digest, is_body, ""));
     }
     return "\n".join(lines).encode("utf-8");
