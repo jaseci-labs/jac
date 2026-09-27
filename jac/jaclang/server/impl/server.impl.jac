@@ -1149,9 +1149,11 @@ impl JacAPIServer.add_shutdown_hook(fn: Callable[..., any]) -> None {
 
 impl JacAPIServer._install_middleware -> None {
     import from jaclang.server.middleware { jwt_middleware, request_context_middleware }
+
     self.add_middleware(
         request_context_middleware(
-            base_path_dir=self.base_path or None, full_target_path=self.module_file
+            base_path_dir=Jac.get_base_path_dir() or self.base_path or None,
+            full_target_path=Jac.get_full_target_path() or self.module_file
         )
     );
     self.add_middleware(jwt_middleware(self.user_manager));
