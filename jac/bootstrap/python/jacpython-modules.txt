@@ -8,7 +8,10 @@
 #                     scripts/run_cpython_compiler_tests.jac runs against it.
 #                     Omitted when every upstream suite for the module needs
 #                     something outside it (_testcapi, compiler features).
-#   linker flags      Extra Setup.local flags for a foreign library.
+#   linker flags      Extra Setup.local flags for a foreign library. A path
+#                     Modules/<name>.a names an archive CPython's makefile
+#                     builds (the vendored HACL* libraries); build.sh makes
+#                     it before linking the interpreter.
 #
 # This file is the single list. build.sh writes the Setup.local *static* block
 # from it and fails when native_api.jac does not import a listed PyInit;

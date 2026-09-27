@@ -183,9 +183,13 @@ exec "$JAC_PYTHON_ZIG" cc -target "$JAC_PYTHON_TARGET" -isysroot "$JAC_PYTHON_SD
 SH
             # Keep the dylib relocatable and use the three-component versions
             # required by Zig's Mach-O linker (CPython supplies major.minor).
+            # Link the static modules' libraries into the dylib, as the Linux
+            # .so rule does. Upstream leaves them to -undefined dynamic_lookup,
+            # which only resolves against whatever else the process loaded.
             sed -e 's|-Wl,-install_name,$(prefix)/lib/|-Wl,-install_name,@rpath/|' \
                 -e 's/-compatibility_version,$(VERSION)/-compatibility_version,$(VERSION).0/g' \
                 -e 's/-current_version,$(VERSION)/-current_version,$(VERSION).0/g' \
+                -e 's/-o $@ $(LIBRARY_OBJS) $(DTRACE_OBJS) $(SHLIBS)/-o $@ $(LIBRARY_OBJS) $(DTRACE_OBJS) $(MODLIBS) $(SHLIBS)/' \
                 Makefile.pre.in > Makefile.pre.in.new
             mv Makefile.pre.in.new Makefile.pre.in
             ;;
@@ -214,6 +218,7 @@ _curses
 _curses_panel
 readline
 SETUP
+    archives=
     if [ -n "$host" ]; then
         # Setup.local is read first and its first rule wins, so a registered
         # module's PyInit resolves from jacpython.o even when Setup.bootstrap
@@ -228,6 +233,13 @@ SETUP
                 exit 1
             }
             echo "$module $flags" >> Modules/Setup.local
+            # A flag naming an archive under Modules/ is one of CPython's own
+            # make targets (the vendored HACL* libraries). makesetup only puts
+            # it on the link line: a module without a C source has no rule
+            # that depends on it, so it is built before the interpreter.
+            for flag in $flags; do
+                case "$flag" in Modules/*.a) archives="$archives $flag" ;; esac
+            done
         done < "$registry"
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
@@ -244,6 +256,10 @@ SETUP
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
         --with-system-expat --with-system-libmpdec --without-readline
+    if [ -n "$archives" ]; then
+        # shellcheck disable=SC2086 # one make target per archive
+        python_make -j"$jobs" $archives
+    fi
     # Embed the same core objects in the executable: venv --copies must run
     # without a libpython next to the copied executable. Jac's launcher still
     # uses the separately built shared library. Neither needs libpython3.so.
