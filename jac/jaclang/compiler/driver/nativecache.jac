@@ -798,7 +798,7 @@ def _module_files_and_imports(path: str) -> tuple[list[str], list[str]] {
     if cached is not None and cached[0] == fresh {
         return (cached[1], cached[2]);
     }
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.textio { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
     import from jaclang.compiler.placement.placement { jac_import_targets }
