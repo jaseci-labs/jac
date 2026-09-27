@@ -436,9 +436,16 @@ walker NaIRGenPass(CompilerPass) {
         rc_roots_count_gv: object = None,
         rc_collecting_gv: object = None,
         rc_push_root_fn: (ir.Function | None) = None,
+        rc_garbage_buf_gv: object = None,
+        rc_garbage_cap_gv: object = None,
+        rc_garbage_count_gv: object = None,
+        rc_push_garbage_fn: (ir.Function | None) = None,
         rc_collect_cycles_fn: (ir.Function | None) = None,
         rc_trace_lookup_fn: (ir.Function | None) = None,
         rc_trace_pairs: dict[str, tuple[any, ir.Function]] = {},
+        rc_treg_find_fn: (ir.Function | None) = None,
+        rc_treg_register_fn: (ir.Function | None) = None,
+        rc_treg_final: bool = False,
         rc_retains_emitted: int = 0,
         rc_releases_emitted: int = 0,
         rc_ops_elided: int = 0,
@@ -1246,6 +1253,9 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
     ) -> ir.Value;
 
+    def _emit_rc_trace_registry -> None;
+    def _rc_treg_register -> ir.Function;
+    def _fill_rc_treg_register -> None;
     def _emit_rc_trace_dispatch(
         fn: ir.Function,
         b: ir.IRBuilder,
@@ -1259,6 +1269,8 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_rc_scan_black_phase -> ir.Function;
     def _emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function;
     def _emit_rc_collect_white_phase -> ir.Function;
+    def _emit_rc_garbage_buffer -> None;
+    def _emit_rc_reclaim_garbage_fn -> ir.Function;
     def _emit_rc_collect_white_reclaim(
         fn: ir.Function, done_bb: ir.Block, ptr: ir.Value
     ) -> ir.Block;
@@ -2886,6 +2898,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value;
+    def _is_graph_type(ty: (TypeBase | None)) -> bool;
     def _cmp_static_type(
         left_node: uni.UniNode, right_node: uni.UniNode
     ) -> (TypeBase | None);
