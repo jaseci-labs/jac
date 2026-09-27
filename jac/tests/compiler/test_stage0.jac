@@ -371,8 +371,10 @@ def _seal_with(
     sidecar: (dict[str, any] | None),
     tmp: str,
     env: (dict[str, (str | None)] | None) = None,
-    spec_modes: (list[str] | None) = None
+    spec_modes: (list[str] | None) = None,
+    cached_bitcode_current: bool = False
 ) -> any {
+    import jaclang.dist.precompile_bytecode as precompile_bytecode;
     import from jaclang.dist.precompile_bytecode { seal_stage0_kernel }
     import from jaclang.compiler.kernel_target { read_kernel_target }
     pin_path = os.path.join(tmp, "stage0.json");
@@ -401,7 +403,9 @@ def _seal_with(
         stage0_build, "native_tree_trips", return_value=[]
     ), patch.object(stage0_build, "file_guard_trips", return_value=[]), patch.object(
         stage0_build, "run_stage0_child", side_effect=child
-    ), patch.object(stage0_build, "restamp_stage0_sidecar", return_value={}) {
+    ), patch.object(stage0_build, "restamp_stage0_sidecar", return_value={}), patch.object(
+        precompile_bytecode, "_sealed_link_current", return_value=cached_bitcode_current
+    ) {
         return _with_env(
             {
                 STAGE0_PIN_ENV: pin_path,
@@ -522,6 +526,49 @@ test "a pull-request kit seals the stage-0 kernel as an objects link and marks i
             spec_modes=modes
         );
         assert modes == [SEALED_LINK_MODE] , "without the opt-in the seal asks for bitcode";
+        modes.clear();
+        record = _seal_with(
+            pin,
+            {** sidecar, "link_mode": SEALED_LINK_MODE},
+            tmp,
+            env=PR_KIT_ENV,
+            spec_modes=modes,
+            cached_bitcode_current=True
+        );
+        assert modes == [SEALED_LINK_MODE] , "an unchanged kernel reuses its cached bitcode link";
+        assert record["artifact"]["mode"] == SEALED_LINK_MODE;
+        assert "kit" not in record["artifact"];
+    }
+}
+
+test "a pull-request kit reuses the cached bitcode link only when it matches the units" {
+    import from jaclang.dist.precompile_bytecode { _sealed_link_current }
+    import jaclang.compiler.backends.native.kernel_resolve as kernel_resolve;
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        out = Path(tmp, "libjac_compiler.so");
+        assert not _sealed_link_current(out) , "no cached link";
+        out.write_bytes(b"kernel");
+        _write_json(
+            str(out) + ".layout.json", {"classes": {}, "link_mode": SEALED_LINK_MODE}
+        );
+        with patch.object(
+            kernel_resolve, "_sidecar_matches_sources", return_value=True
+        ) {
+            assert _sealed_link_current(out);
+        }
+        with patch.object(
+            kernel_resolve, "_sidecar_matches_sources", return_value=False
+        ) {
+            assert not _sealed_link_current(out) , "a unit changed since the cached link";
+        }
+        _write_json(
+            str(out) + ".layout.json", {"classes": {}, "link_mode": PR_KIT_LINK_MODE}
+        );
+        with patch.object(
+            kernel_resolve, "_sidecar_matches_sources", return_value=True
+        ) {
+            assert not _sealed_link_current(out) , "only a bitcode link is reused as bitcode";
+        }
     }
 }
 

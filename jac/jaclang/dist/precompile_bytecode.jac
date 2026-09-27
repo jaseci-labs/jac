@@ -1332,6 +1332,25 @@ def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Pa
     return (target, out);
 }
 
+def _sealed_link_current(out: Path) -> bool {
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        SEALED_LINK_MODE,
+        _sidecar_matches_sources,
+        read_sidecar
+    }
+    sidecar = read_sidecar(str(out));
+    if sidecar is None
+        or not out.is_file()
+        or sidecar.get("link_mode") != SEALED_LINK_MODE {
+        return False;
+    }
+    try {
+        return _sidecar_matches_sources(sidecar);
+    } except Exception {
+        return False;
+    }
+}
+
 def seal_stage0_kernel(
     pkg_path: Path, artifact_path: Path, artifact_rel: str
 ) -> (dict[str, any] | None) {
@@ -1355,6 +1374,12 @@ def seal_stage0_kernel(
     lock.acquire();
     try {
         (target, out) = _stage0_kernel_workdir(pkg_path, artifact_path.name);
+        if link_mode != SEALED_LINK_MODE and _sealed_link_current(out) {
+            console.print(
+                "  Kernel: the cached bitcode link matches these units; reusing it"
+            );
+            link_mode = SEALED_LINK_MODE;
+        }
         if not build_kernel_by_pin(
             str(out), spec=running_kernel_target(str(target)), link_mode=link_mode
         ) {
