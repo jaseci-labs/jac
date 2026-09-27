@@ -48,11 +48,9 @@ glob FIXTURES = os.path.join(
      );
 
 
-"""Forced-native options that skip the IR cache."""
+"""Forced-native compile options."""
 def _opts -> CompileOptions {
-    return CompileOptions(
-        force_codespace='native', force_target_program=True, no_ir_cache=True
-    );
+    return CompileOptions(force_codespace='native');
 }
 
 
@@ -238,20 +236,22 @@ test "a mixed typing import is still judged per name" {
 
 
 test "a consumer links a ClassVar-importing dependency" {
-    (prog, ir, coverage) = _compile_with_coverage("classvar_marker_consumer.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , (
-        "no native IR for a module whose dependency's only compile-time "
-        "import is `ClassVar`"
-    );
-    members = sorted({os.path.basename(p) for p in coverage});
-    assert "classvar_marker_dep.jac" in members , (
-        f"the dependency has to be in the consumer's native closure, not "
-        f"refused at placement and left to Python: {members}"
-    );
-    assert _native_int_fn(ir, "run")() == 42 , (
-        "the linked dependency has to answer across the native edge"
-    );
+    for _ in range(2) {
+        (prog, ir, coverage) = _compile_with_coverage("classvar_marker_consumer.jac");
+        assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+        assert ir is not None and ir.gen.llvm_ir , (
+            "no native IR for a module whose dependency's only compile-time "
+            "import is `ClassVar`"
+        );
+        members = sorted({os.path.basename(p) for p in coverage});
+        assert "classvar_marker_dep.jac" in members , (
+            f"the dependency has to be in the consumer's native closure, not "
+            f"refused at placement and left to Python: {members}"
+        );
+        assert _native_int_fn(ir, "run")() == 42 , (
+            "the linked dependency has to answer across the native edge"
+        );
+    }
 }
 
 

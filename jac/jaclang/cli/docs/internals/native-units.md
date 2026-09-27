@@ -10,7 +10,7 @@ page describes the JIR sections the interface layer owns.
 
 ## The unit
 
-A native unit is one module lowered in the link plan's native build session. Its products
+A native unit is one module analyzed in a build-owned compiler session. Its products
 live in the module's JIR entry, beside the bytecode the compiler runs for
 the same file, under `MODKEY`. Each native section holds a map of stamped variants:
 
@@ -154,15 +154,21 @@ callers, and the plan knows nothing about any of them.
    list and the source key in the `<artifact>.layout.json` sidecar.
 
 The JIT is the same plan rooted at the module, always in bitcode mode, with
-the merged module optimized whole-program before MCJIT sees it. Each run
-merges and optimizes the unit bitcode again; no JIT image is cached. Its target
+the merged module optimized whole-program before MCJIT sees it. The optimized
+merged image is written under the `jir-jit` cache bucket keyed by the plan
+digest, so a later run of an unchanged plan parses that image instead of
+merging and optimizing again; debug builds, IR dumps and cache bypasses never
+reuse one. Its target
 machine is llvmlite's default for `jit=True`: with the position-independent
 small-model pair the linked artifacts use, MCJIT's AArch64 stubs branch into
 the GOT instead of through it.
 
-Before it creates the engine, the JIT loads every C library the plan's unit
-interfaces declare into the process (`load_jit_clib`), and MCJIT resolves the
-units' C imports against the process's symbols.
+C imports bind through handles for their declared shared libraries, using
+the platform loader's search paths. The link plan installs those addresses
+in the execution engine and retains the handles for the engine's lifetime.
+Missing libraries or symbols fail compilation before an engine is returned;
+a symbol from an unrelated library already loaded in the process cannot
+silently replace the declared dependency.
 
 ### Incremental development builds
 
@@ -208,8 +214,7 @@ module built from the plan's unit records, never by pattern-matching linked
 IR: the `jac_entry` preamble (the root's runtime probe, every initializer in
 dependency order, the root's entry body), the platform entry point, the
 `__jac_shared_init` a shared library exports, the `jac_retain` /
-`jac_release` / `jac_str_new` C ABI wrappers, the `atexit` shim and the
-aarch64 outline-atomics helpers the C floor was built against. The shim is
+`jac_release` / `jac_str_new` C ABI wrappers and the `atexit` shim. The shim is
 for glibc, which exports `__cxa_atexit` but keeps `atexit` in
 `libc_nonshared.a`: every ELF artifact that is not static against musl
 defines `atexit` over `__cxa_atexit`, or the loader refuses it.
@@ -320,46 +325,69 @@ fails rather than letting a lane quietly pay it. Sealed lanes skip the check:
 they boot from the payload's own image.
 
 The kernel is always the host's. `kernel_options()` pins the target to the
-host whatever target the artifacts being built use, so a cross-compiled
-artifact's units parse with a kernel the process can load.
+host whatever `JAC_NATIVE_TARGET` says, so a cross-compiled artifact's units
+parse with a kernel the process can load.
 
 The toolchain units (the OSP kernel, the format kernel, the region arena)
 are ordinary native units pulled in by dependency edge. The region arena
 allocates on the heap for the kernel units themselves and in the current
 arena for everything else; the kernel unit never depends on itself.
 
-## The build session
+## Semantic ownership and lifetime
 
-`NativeBuildSession` in `driver/nativecache.jac` is where units are analyzed
-and lowered. `build_link_plan` opens one for the outermost plan and installs
-it as the registry's `session`; a plan started while one is open (a
-dependency reached from inside a consumer's lowering) reuses it rather than
-opening another. The session lowers units in a `JacProgram` of its own,
-configured with the native-import options.
+Dependency types resolve on demand through the evaluator. In particular, a
+context-manager alias uses the same binding operation during lazy dependency
+analysis and the statement checker; its type does not depend on which walker
+visited a body first.
 
-`lower()` runs a stale unit's frontend analysis once, with code generation
-off, then lowers it and records its interface. Dependency-ordered interface
-settlement lowers a unit again from the tree it already analyzed; a unit
-already being lowered returns nothing, so a cycle does not recurse.
-`finish()` runs after the plan's interfaces agree: it checks that no unit's
-source changed since its analysis, runs code generation once for each
-reachable changed unit, and persists its ordinary JIR products. The plan
-closes the session in a `finally`, so cleanup runs on success and failure,
-and the native target and default codespace a lowering sets are restored
-when it returns. The registry's counters distinguish frontend analysis
-(`native_unit_analysis`), lowering visits (`native_unit_lower`) and final
-code generation (`native_unit_codegen`).
+The build session owns its `JacProgram`, module hub, evaluator and hydrated
+catalog objects. Source analysis never borrows mutable trees from the
+process-global program used to execute the compiler itself. The compiler's own
+package is therefore no longer a special input: a tool that compiles runtime
+modules on an application's behalf, such as runtime vendoring for a source
+export, gives them the codespace the running compiler gives its package (the
+server codespace unless the module is native by policy) instead of letting the
+application's placement default infer native placement over the whole runtime. A `StubCatalog`
+session shares immutable catalog bytes and their backing storage, while its
+memo tables and hydrated types belong to that session. Releasing a compile
+closure drops the evaluator and every source module; the program keeps its
+stub trees, its hydrated catalog and the native unit interfaces it has read
+(their products go) for its next compile, and a full release
+(`retain_stubs=False`) drops those too.
 
-The session replaces the per-unit child processes the kernel build and the
-seal used before, along with their option serialization, recursion guards
-and product-transfer codec. Interface records still pass through
-`NativeUnitRegistry`; the session uses the same registry, source keys and
-compile-time dependency checks as disk cache reads.
+The meta importer keeps the compiler's own analysis session alive until the
+outermost module execution completes, including its nested imports. Retrieving
+bytecode alone does not end that session: otherwise execution immediately
+re-ingests the dependencies just analyzed. The existing self-host cache defers
+its release to that boundary, including exception unwinding.
 
-A module the checker served from its interface catalog has no archetype
-bodies. The typed-import walk that lays out imported classes asks for the
-full AST when it meets one (`_full_ast_of`), which loads it through the
-program's existing dependency loader.
+This ownership boundary replaces per-unit subprocess isolation and its option
+serialization, recursion guards and product-transfer codec. Interface records
+still pass through `NativeUnitRegistry`; the build session uses the same
+registry, source keys and compile-time dependency checks as disk cache reads.
+A full AST requested behind a catalog interface loads through the program's
+existing dependency loader.
+
+`NativeBuildSession.lower()` reuses analyzed trees during dependency-ordered
+interface settlement. `finish()` checks source revisions, optimizes each
+reachable changed unit once, and persists ordinary JIR products. Session
+cleanup runs on success and failure. Target and codespace overrides are scoped
+to the build and restored on exit. The existing analysis counters distinguish
+frontend analysis, lowering visits and final code generation.
+
+## Compiler runtime archives
+
+Linux AArch64 floor libraries call outline-atomic helpers supplied by compiler-rt.
+The payload vendor builds the pinned upstream LLVM implementations into
+`libclang_rt.atomics.a`, with one helper per archive member and a separate CPU
+detection member. The ordinary archive selection code follows undefined
+symbols to select the helpers and their feature flag, without bringing in
+unrelated libc definitions. The upstream helpers use LSE where available and
+fall back to LL/SC. No handwritten atomic ABI implementation is emitted in glue.
+
+The ELF linker preserves input constructors and their priority order for shared
+and executable artifacts, so the runtime's CPU detection runs before application
+initializers. Runtime archive bytes participate in artifact invalidation.
 
 ## Sealed applications
 
@@ -389,17 +417,12 @@ frontend, macOS arm64, September 2026:
 | kernel, cold derivation | about 3 min | about 5.5 min |
 | kernel size | 9.2 MB | 8.4 MB |
 
-The table records the original unit-model implementation, in which the
-kernel build and the seal compiled each unit in a child process; it has not
-been re-measured with the build session. Runtime and parse speed are at
-parity: bitcode mode keeps the whole-program optimization a fused build had,
-and the JIT runs the same pass pipeline over the merged module. The unit
-model pays on first compile, where it emits both an object and bitcode and
-persists the interface, and on the cold kernel build, where the frontend's
-import cycles make demotion-dependent interfaces settle over more than one
-round. The build session analyzes each stale unit once and reuses its tree
-across those rounds; compiling a strongly connected component as one group
-remains a possible follow-up.
+The table above records the original unit-model implementation, before build
+sessions. A local session-path kernel build took 175 seconds for 34 units:
+34 frontend analyses, 73 lowering visits and 34 final code generations, with
+about 7.5 GB peak process RSS. These are local measurements, not a controlled
+CI comparison. Build-kit timing must be measured separately because it also
+includes bytecode sealing, runtime packaging and compression.
 
 ## Diagnosing a broken artifact
 
@@ -423,27 +446,26 @@ transactions hold the shared file lock across their read and atomic replacement.
 
 ## Package modules and consumers
 
+A module the running compiler package owns is analyzed the way the package
+analyzes itself, whoever imports it (`owned_module_options` in
+`compilation_context.jac`). The consumer's application, codespace and entry
+are dropped from the binding: its placement default would otherwise be
+inferred over the runtime, its codespace flags would refuse the module's
+cached interface, and each consumer would key its own analysis of the same
+module. The canonical analysis runs under an empty cache projection, so its
+entries are the ones the package's precompile wrote and the ones the
+compiler's own bootstrap reads. A native unit build (`native_unit` or
+`aot_mode` options) keeps its own binding for package modules.
+
 A unit's native products are stamped with `unit_codegen_identity`: the codegen
 identity every unit shares plus whether the placement policy names that unit.
 The policy's other patterns and the consumer's application change nothing in
 a unit's code, so products a kit sealed under its build policy serve every
 consumer whose memory model and target agree.
 
-Native record lookups consult, after the module cache, the precompiled
-tree beside the package: a sealed image by its manifest, and an unsealed
-bundle (a checkout seeded with the kit's precompile) while the unit's key
-still matches its source. A native pass consults a dependency's native products only when
+Interface and native record lookups consult, after the module cache, the
+precompiled tree beside the package: a sealed image by its manifest, and an
+unsealed bundle (a checkout seeded with the kit's precompile) by the unit's
+key. A native pass consults a dependency's native products only when
 placement makes that dependency native; any other import is bound through
 interop without being lowered.
-
-## Source exports and the vendored closure
-
-A source export vendors the runtime modules the exported project imports,
-following every import the generated Python contains, nested ones included.
-An exported project's wasm tooling (`dist/source/build`) reaches the LEB and
-archive codecs in `linker_common`, so nothing beside those codecs may import
-the runtime, the fused-binary support or the compiler: the floor archive and
-static runtime lookups a native link consumes live in `static_link`, which
-`link_plan` imports and the exported tooling never does. With that split the
-replay fixture's export vendors the same 16 modules as before the unit model
-instead of the whole package.

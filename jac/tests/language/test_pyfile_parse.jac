@@ -4,17 +4,15 @@ Ensures all Jaclang Python source files can be parsed via PyastBuildPass
 and that the generated Jac code can be re-parsed by the Jac parser.
 """
 
-import from jaclang.compiler.passes.execution { run_walker }
-
 import ast as py_ast;
 import os;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.compiler.frontend.unitree as ast;
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+import from jaclang.compiler.passes.pyast_load_pass { build_python_module }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { JACLANG_PYTHON_FILES }
 
@@ -22,12 +20,9 @@ import from tests.fixtures_list { JACLANG_PYTHON_FILES }
 def pyfile_parse_test(rel_path: str) {
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     source = Path(filename).read_text();
-    py_module = run_walker(
-        PyastBuildPass,
-        module=ast.PythonModuleAst(
-            py_ast.parse(source), orig_src=ast.Source(source, filename)
-        )
-    ).module;
+    py_module = build_python_module(
+        ast.PythonModuleAst(py_ast.parse(source), orig_src=ast.Source(source, filename))
+    );
 
     assert isinstance(py_module, ast.Module);
     unparsed = unparse_module(py_module, requires_format=False);

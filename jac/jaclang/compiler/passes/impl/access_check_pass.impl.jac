@@ -34,11 +34,13 @@ impl AccessCheckPass._collect_bridged_imports(ir_in: Module) -> None {
             return nd.abs_path;
         }
         try {
-            found = nd.resolve_relative_path();
+            if isinstance(nd, ModulePath) {
+                return nd.resolve_relative_path();
+            }
+            return nd.resolve_relative_path();
         } except Exception {
             return None;
         }
-        return found if isinstance(found, str) else None;
     }
 
     import from jaclang.compiler.driver.boundary_classify { classify_cross_app_import }
@@ -134,12 +136,12 @@ impl AccessCheckPass._module_app_facts(
     if not mod_path {
         return (None, mod.jac_project_root);
     }
-    import from jaclang.project.modresolver { find_jac_project_root }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.driver.compilation_context { context_app }
     app = context_app(mod_path);
     return (
         app.name if app is not None else None,
-        mod.jac_project_root or find_jac_project_root(mod_path)
+        mod.jac_project_root or active_host().project_root(mod_path)
     );
 }
 

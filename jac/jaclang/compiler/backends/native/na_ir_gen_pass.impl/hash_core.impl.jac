@@ -18,7 +18,8 @@ impl NaIRGenPass._hash_key_spec(key_type: ir.Type) -> tuple[str, int] {
     return ("i64", 0);
 }
 
-glob HASH_CTRL_EMPTY: int = 0,
+glob IDENTITY_KEY_SPEC: str = "oref",
+     HASH_CTRL_EMPTY: int = 0,
      HASH_CTRL_TOMBSTONE: int = 1,
      HASH_INIT_CAP: int = 8,
      HASH_FNV_BASIS: int = -3750763034362895579,
@@ -45,7 +46,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
     has_vals: bool = val_type is not None;
     _vt: ir.Type = val_type if val_type is not None else i64;
     _vt_dyn: any = val_type;
-    is_str_key: bool = key_type == i8p;
+    is_identity_key: bool = key_type_name == IDENTITY_KEY_SPEC;
+    is_str_key: bool = key_type == i8p and not is_identity_key;
     is_bytes_key: bool = key_type_name == "bytes";
     _key_sz: int = int(key_size);
     if _key_sz == 0 and isinstance(key_type, ir.PointerType) {
@@ -214,7 +216,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
 
     bke = ir.IRBuilder(keq_bb);
     kke: any = bke.load(bke.gep(keysf, [sl], name="kp"), name="k");
-    keq = self._emit_key_comparison(bke, key_type, kke, k_f, _key_sz);
+    keq = bke.icmp_unsigned("==", kke, k_f, name="key.eq")
+        if is_identity_key
+        else self._emit_key_comparison(bke, key_type, kke, k_f, _key_sz);
     bke.cbranch(keq, found_bb, next_bb);
 
     bfnd = ir.IRBuilder(found_bb);

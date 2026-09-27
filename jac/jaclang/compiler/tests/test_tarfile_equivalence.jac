@@ -113,7 +113,7 @@ def _tree(base: str) -> list[any] {
 
 def _compile_native_forced(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
-    opts = CompileOptions(default_codespace="native", force_target_program=True);
+    opts = CompileOptions(default_codespace="native");
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";

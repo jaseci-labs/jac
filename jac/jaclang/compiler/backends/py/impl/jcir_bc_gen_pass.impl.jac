@@ -26,7 +26,7 @@ impl JcirBytecodeGenPass.transcribe_module(mod: Module) -> None {
     if result.modules {
         compiled = result.modules[0];
         mod.gen.py_ast = [compiled.tree];
-        mod.gen._py = None;
+        mod.gen.py_text = None;
         mod.gen.py_bytecode = compiled.bytecode;
     }
 }

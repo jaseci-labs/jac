@@ -23,28 +23,37 @@ from __future__ import annotations
 
 import os
 
+def read_input_rules(manifest_path: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The (roots, roster) a compiler_inputs.txt declares.
+
+    `!path` lines name inputs the digest covers by path only: native-only
+    units whose own module keys already track their content. Adding or
+    removing one still changes the digest; editing one does not. Every tree is
+    digested under its own declaration, so a pinned snapshot keeps the
+    identity its pin recorded when this tree's declaration changes.
+    """
+    with open(manifest_path) as inputs:
+        lines = tuple(
+            line.strip() for line in inputs
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    roots = tuple(line for line in lines if not line.startswith("!"))
+    roster = tuple(line[1:] for line in lines if line.startswith("!"))
+    return roots, roster
+
+
 # Data, not compiler code: the Zig bootstrap and CI read this same manifest
 # before a Jac compiler exists. Include the manifest itself in source digests.
-with open(os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")) as _inputs:
-    _INPUT_LINES: tuple[str, ...] = tuple(
-        line.strip() for line in _inputs
-        if line.strip() and not line.lstrip().startswith("#")
-    )
-COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
-    line for line in _INPUT_LINES if not line.startswith("!")
-)
-# `!path` lines name inputs the digest covers by path only: native-only units
-# whose own module keys already track their content. Adding or removing one
-# still changes the digest; editing one does not.
-COMPILER_DIGEST_ROSTER: tuple[str, ...] = tuple(
-    line[1:] for line in _INPUT_LINES if line.startswith("!")
+COMPILER_DIGEST_ROOTS, COMPILER_DIGEST_ROSTER = read_input_rules(
+    os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")
 )
 
 
-def is_roster_input(rel_path: str) -> bool:
+def is_roster_input(rel_path: str, roster: tuple[str, ...] | None = None) -> bool:
     """Whether a declared compiler input is digested by its path alone."""
     return any(
-        rel_path == p or rel_path.startswith(p + "/") for p in COMPILER_DIGEST_ROSTER
+        rel_path == p or rel_path.startswith(p + "/")
+        for p in (COMPILER_DIGEST_ROSTER if roster is None else roster)
     )
 
 
@@ -85,6 +94,9 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/frontend/diagnostic_utils.jac",
     "compiler/frontend/diagnostics.jac",
     "compiler/frontend/helpers.jac",
+    "compiler/frontend/host.jac",
+    "compiler/frontend/source_layout.jac",
+    "compiler/types/stubcat/resolver.jac",
     "compiler/frontend/impl/",
     "compiler/frontend/module_facts.jac",
     "compiler/frontend/parser/",
@@ -117,6 +129,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
     "compiler/native_scope.jac",
+    "compiler/kernel_target.jac",
     "compiler/field_semantics.jac",
     "compiler/c_interop.jac",
     "compiler/native_compiler.jac",
@@ -157,9 +170,12 @@ SEED_PATHS: tuple[str, ...] = (
     "project/__init__.jac",
     "project/tomlio.jac",
     "project/source.jac",
+    "project/textio.jac",
     "project/apps.jac",
     "project/modresolver.jac",
     "project/workspace.jac",
+    "project/workspace_model.jac",
+    "project/compiler_host.jac",
     "project/placement.jac",
     "project/app_kinds.jac",
 )

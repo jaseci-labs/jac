@@ -210,6 +210,7 @@ def export_project(
         (base / 'project.json').write_text(
             json.dumps(data, indent=2) + '\n', encoding='utf-8'
         );
+        program._get_compiler().release_compile_state(program);
         vendor_runtime(
             base,
             sources,

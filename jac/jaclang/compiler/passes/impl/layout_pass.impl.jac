@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 
 impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
@@ -266,7 +266,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
     );
     needs_vtable = bool(parents) or vtable_by_dispatch;
 
-    fields: list[FieldInfo] = [];
+    fields: list[FieldLayout] = [];
     field_index: dict[str, int] = {};
     parent_field_start: dict[str, int] = {};
     seen_fields: set[str] = set();
@@ -302,7 +302,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
                 continue;
             }
             seen_fields.add(finfo.name);
-            new_field = FieldInfo(
+            new_field = FieldLayout(
                 name=finfo.name,
                 index=current_idx,
                 type_tag=finfo.type_tag,
@@ -316,6 +316,18 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
             field_index[finfo.name] = current_idx;
             current_idx += 1;
         }
+    }
+
+    if EXC_MESSAGE_FIELD not in seen_fields
+        and any(JAC_TYPE_REGISTRY.is_exception(p) for p in parents) {
+        seen_fields.add(EXC_MESSAGE_FIELD);
+        fields.append(
+            FieldLayout(
+                name=EXC_MESSAGE_FIELD, index=current_idx, type_tag="str", owner=aname
+            )
+        );
+        field_index[EXC_MESSAGE_FIELD] = current_idx;
+        current_idx += 1;
     }
 
     for var in arch.get_has_vars() {
@@ -340,7 +352,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
             type_tag = unparse_node(type_node) or str(type_node);
         }
         is_fn_ptr = type_node is not None and isinstance(type_node, FuncSignature);
-        new_field = FieldInfo(
+        new_field = FieldLayout(
             name=fname,
             index=current_idx,
             type_tag=type_tag,
@@ -367,7 +379,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         tnode = tp.bound;
         ptag = (unparse_node(tnode) or str(tnode)) if tnode is not None else "int";
         fields.append(
-            FieldInfo(
+            FieldLayout(
                 name=pname,
                 index=current_idx,
                 type_tag=ptag,
@@ -877,7 +889,7 @@ impl LayoutPass._is_layout_compatible_type(
     }
 
     if isinstance(type_node, BinaryExpr) {
-        op_val = getattr(type_node.op, 'value', '');
+        op_val = type_node.op.value if isinstance(type_node.op, Token) else '';
         if op_val == "|" {
             return (
                 self._is_layout_compatible_type(type_node.left, arch_map)
@@ -924,7 +936,7 @@ impl LayoutPass.run_walk with Module entry {
     self.module = self._run_impl(here);
 }
 
-impl FieldInfo.semantic_type.getter -> TypeBase | None {
+impl FieldLayout.semantic_type.getter -> TypeBase | None {
     declaration = self.decl_node;
     if isinstance(declaration, AstTypedVarNode) {
         return declaration.type;

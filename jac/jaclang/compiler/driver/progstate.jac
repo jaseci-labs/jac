@@ -1,11 +1,12 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import os;
-import sys;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.passes.context { Alert, PassResult }
 import type from jaclang.runtime.semantic { Info }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
+import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
+import type from jaclang.compiler.placement.placement { PlacementSummary }
+import type from jaclang.compiler.placement.placement_work { PlacementWork }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
     CompilationProduct,
@@ -15,22 +16,19 @@ import from jaclang.compiler.driver.pipeline_types {
 obj ModuleHub {
     has mod: uni.ProgramModule,
         stamps: dict[str, float] = {},
-        artifacts: dict[str, any] = {},
+        artifacts: dict[str, CodeGenTarget] = {},
         client_artifacts: dict[str, ClientArtifact] = {};
 
     def stamp(resolved_path: str) {
         import time;
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_wiring_file
-        }
+        import from jaclang.compiler.frontend.host { active_host }
         seen = time.time();
         try {
             seen = max(seen, os.path.getmtime(resolved_path));
-            for related in discover_annex_files(resolved_path) {
+            for related in active_host().annex_files(resolved_path) {
                 seen = max(seen, os.path.getmtime(related));
             }
-            wiring = discover_wiring_file(resolved_path);
+            wiring = active_host().wiring_file(resolved_path);
             if wiring is not None {
                 seen = max(seen, os.path.getmtime(wiring));
             }
@@ -40,10 +38,7 @@ obj ModuleHub {
 
     def is_fresh(resolved_path: str) -> bool {
         import os;
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_wiring_file
-        }
+        import from jaclang.compiler.frontend.host { active_host }
         cached_at = self.stamps.get(resolved_path);
         if cached_at is None {
             return True;
@@ -52,12 +47,12 @@ obj ModuleHub {
             if os.path.getmtime(resolved_path) > cached_at {
                 return False;
             }
-            for related in discover_annex_files(resolved_path) {
+            for related in active_host().annex_files(resolved_path) {
                 if os.path.getmtime(related) > cached_at {
                     return False;
                 }
             }
-            wiring = discover_wiring_file(resolved_path);
+            wiring = active_host().wiring_file(resolved_path);
             if wiring is not None and os.path.getmtime(wiring) > cached_at {
                 return False;
             }
@@ -106,7 +101,7 @@ obj ModuleHub {
                 dropped.append(mod);
             }
         }
-        dropped_ids: set[int] = set(id(m) for m in dropped);
+        dropped_ids: set[int] = {id(m) for m in dropped};
         prog_root = self.mod;
         main = prog_root.main_mod;
         if main is not None and id(main) in dropped_ids {
@@ -124,9 +119,7 @@ obj ModuleHub {
             del [edge mod<-:ScopeChild:<-];
         }
         prog_root.hub.clear();
-        prog_root.hub.update(retained_mods);
         self.stamps.clear();
-        self.stamps.update(retained_stamps);
         self.client_artifacts.clear();
     }
 }
@@ -148,7 +141,6 @@ obj DepGraph {
     }
 
     def record_module(mod: uni.Module) -> None {
-        import from pathlib { Path }
         if mod.loc is None {
             return;
         }
@@ -156,11 +148,7 @@ obj DepGraph {
         if not mod_path.endswith(".jac") {
             return;
         }
-        try {
-            importer = str(Path(mod_path).resolve());
-        } except Exception {
-            return;
-        }
+        importer = os.path.realpath(mod_path);
         for imp in mod.get_all_sub_nodes(uni.Import) {
             paths: list[uni.ModulePath] = [];
             if imp.from_loc is not None {
@@ -174,7 +162,7 @@ obj DepGraph {
             }
             for mp in paths {
                 try {
-                    target = str(Path(mp.resolve_relative_path()).resolve());
+                    target = os.path.realpath(mp.resolve_relative_path());
                 } except Exception {
                     continue;
                 }
@@ -222,28 +210,40 @@ obj DiagLedger {
         ];
     }
 
+    def owned_warnings(path: str) -> list[Alert] {
+        return [
+            a
+            for a in self.warnings
+            if self._owned(a, path)
+        ];
+    }
+
     def drop_module(resolved_path: str) {
-        self.errors[:] = [
+        kept_errors = [
             a
             for a in self.errors
             if not self._owned(a, resolved_path)
         ];
-        self.warnings[:] = [
+        kept_warnings = [
             a
             for a in self.warnings
             if not self._owned(a, resolved_path)
         ];
+        self.errors.clear();
+        self.errors.extend(kept_errors);
+        self.warnings.clear();
+        self.warnings.extend(kept_warnings);
     }
 
     def _owned(alert: Alert, path: str) -> bool {
         import os;
-        import from jaclang.jac0core.ext_registry { is_annex_path_of }
+        import from jaclang.compiler.frontend.host { active_host }
         try {
             norm = os.path.realpath(path);
         } except OSError {
             return False;
         }
-        return alert.owner == norm or is_annex_path_of(alert.owner, norm);
+        return alert.owner == norm or active_host().is_annex_path_of(alert.owner, norm);
     }
 
     def clear {
@@ -253,51 +253,52 @@ obj DiagLedger {
 }
 
 obj BuildScratch {
-    has compile_depth: int = 0;
+    has boundary_parse_memo: dict[str, any] = {},
+        compile_depth: int = 0;
 
     def clear {
+        self.boundary_parse_memo.clear();
         self.compile_depth = 0;
     }
 }
 
 class AnalysisLedger {
     has _tags: dict[int, set[AnalysisFact]],
-        _owners: dict[int, any];
+        _owners: dict[int, uni.Module];
 
     def init(self: AnalysisLedger) {
         self._tags: dict[int, set[AnalysisFact]] = {};
-        self._owners: dict[int, any] = {};
+        self._owners: dict[int, uni.Module] = {};
     }
 
-    def _drop(self: AnalysisLedger, key: int) {
-        try {
-            self._tags.pop(key, None);
-            self._owners.pop(key, None);
-        } except Exception {}
-    }
-
-    def provided(self: AnalysisLedger, mod: any) -> set[AnalysisFact] {
-        import weakref;
+    def provided(self: AnalysisLedger, mod: uni.Module) -> set[AnalysisFact] {
         key = id(mod);
-        owner = self._owners.get(key);
-        if owner is not None and owner() is mod {
+        if self._owners.get(key) is mod {
             return self._tags[key];
         }
         tags: set[AnalysisFact] = set();
         self._tags[key] = tags;
-        self._owners[key] = weakref.ref(mod, lambda (_ref: any) { self._drop(key); });
+        self._owners[key] = mod;
         return tags;
     }
 
-    def provides(self: AnalysisLedger, mod: any, tag: AnalysisFact) -> bool {
-        owner = self._owners.get(id(mod));
-        return owner is not None and owner() is mod and tag in self._tags[id(mod)];
+    def provides(self: AnalysisLedger, mod: uni.Module, tag: AnalysisFact) -> bool {
+        key = id(mod);
+        return self._owners.get(key) is mod and tag in self._tags[key];
     }
 
-    def mark(self: AnalysisLedger, mod: any, tags: set[AnalysisFact]) {
+    def mark(self: AnalysisLedger, mod: uni.Module, tags: set[AnalysisFact]) {
         live = self.provided(mod);
         live.clear();
         live.update(tags);
+    }
+
+    def forget(self: AnalysisLedger, mod: uni.Module) {
+        key = id(mod);
+        if self._owners.get(key) is mod {
+            self._tags.pop(key, None);
+            self._owners.pop(key, None);
+        }
     }
 
     def clear(self: AnalysisLedger) {
@@ -316,8 +317,9 @@ obj PendingPassResults {
 }
 
 class AnalysisCaches {
-    has placement_summaries: dict[str, any],
-        placement_state: dict[str, any],
+    has placement_summaries: dict[str, PlacementSummary],
+        placement_work: (PlacementWork | None),
+        placement_evidence: dict[str, list[str]],
         native_verdict_notes: dict[str, tuple[str, str]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
@@ -326,43 +328,61 @@ class AnalysisCaches {
         phase_time: dict[str, float],
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
-        task_owners: dict[int, any],
+        task_owners: dict[int, uni.Module],
         early_passes: dict[int, PendingPassResults],
         cache_events: dict[str, int];
 
     def init(self: AnalysisCaches) {
-        self.placement_summaries: dict[str, any] = {};
-        self.placement_state: dict[str, any] = {};
+        self.placement_summaries: dict[str, PlacementSummary] = {};
+        self.placement_work: (PlacementWork | None) = None;
+        self.placement_evidence: dict[str, list[str]] = {};
         self.native_verdict_notes: dict[str, tuple[str, str]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.pass_runs: dict[str, int] = {};
         self.pass_time: dict[str, float] = {};
         self.phase_time: dict[str, float] = {};
-        self.completed_passes = {};
-        self.product_tasks = {};
-        self.task_owners = {};
+        self.completed_passes: dict[int, set[str]] = {};
+        self.product_tasks: dict[int, dict[CompilationProduct, ProductTask]] = {};
+        self.task_owners: dict[int, uni.Module] = {};
         self.early_passes: dict[int, PendingPassResults] = {};
         self.cache_events: dict[str, int] = {};
     }
 
     def retain_tasks(self: AnalysisCaches, module: uni.Module) {
-        import weakref;
         key = id(module);
-        owner = self.task_owners.get(key);
-        if owner is not None and owner() is module {
+        if self.task_owners.get(key) is module {
             return;
         }
         self.drop_tasks(key);
-        self.task_owners[key] = weakref.ref(
-            module, lambda (_ref: any) { self.drop_tasks(key); }
-        );
+        self.task_owners[key] = module;
     }
 
     def drop_tasks(self: AnalysisCaches, key: int) {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
         self.task_owners.pop(key, None);
+    }
+
+    def forget_module(self: AnalysisCaches, module: uni.Module) {
+        key = id(module);
+        self.analyses_run.forget(module);
+        if self.task_owners.get(key) is module {
+            self.drop_tasks(key);
+        }
+        pending = self.early_passes.get(key);
+        if pending is not None and pending.module is module {
+            self.early_passes.pop(key, None);
+        }
+    }
+
+    def reset_module_state(self: AnalysisCaches) {
+        self.analyses_run.clear();
+        self.placement_work = None;
+        self.early_passes.clear();
+        self.product_tasks.clear();
+        self.completed_passes.clear();
+        self.task_owners.clear();
     }
 
     def record_early(
@@ -385,56 +405,3 @@ class AnalysisCaches {
         return result;
     }
 }
-
-glob UNIT_COLLECT_EVERY: int = 16,
-     UNIT_COLLECT_GROWTH_MB: int = 512;
-
-def _env_int(name: str, fallback: int) -> int {
-    raw = os.environ.get(name, "").strip();
-    if not raw {
-        return fallback;
-    }
-    try {
-        return int(raw);
-    } except ValueError {
-        return fallback;
-    }
-}
-
-def _peak_rss_mb -> int {
-    try {
-        import resource;
-    } except ImportError {
-        return 0;
-    }
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-    if sys.platform == "darwin" {
-        return int(peak // (1024 * 1024));
-    }
-    return int(peak // 1024);
-}
-
-obj UnitCollectBudget {
-    has releases: int = 0,
-        last_peak_mb: int = 0;
-
-    def due -> bool {
-        self.releases += 1;
-        every = _env_int("JAC_UNIT_COLLECT_EVERY", UNIT_COLLECT_EVERY);
-        growth = _env_int("JAC_UNIT_COLLECT_GROWTH_MB", UNIT_COLLECT_GROWTH_MB);
-        peak = _peak_rss_mb();
-        if self.last_peak_mb == 0 {
-            self.last_peak_mb = peak;
-        }
-        by_count = every > 0 and self.releases >= every;
-        by_growth = growth > 0 and (peak - self.last_peak_mb) >= growth;
-        if not (by_count or by_growth) {
-            return False;
-        }
-        self.releases = 0;
-        self.last_peak_mb = peak;
-        return True;
-    }
-}
-
-glob unit_collect_budget: UnitCollectBudget = UnitCollectBudget();
