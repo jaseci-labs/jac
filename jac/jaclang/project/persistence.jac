@@ -1,3 +1,5 @@
+import from jaclang.project.workspace { persistence_namespace }
+
 obj PersistenceConfig {
     has namespace: str = "main";
 
@@ -7,12 +9,5 @@ obj PersistenceConfig {
 }
 
 def parse_persistence(raw: any, project_name: str) -> PersistenceConfig {
-    if (not isinstance(raw, dict) or set(raw) - {'namespace'}) {
-        raise ValueError('[persistence] accepts only namespace');
-    }
-    namespace = raw.get('namespace', project_name.strip() or 'main');
-    if not isinstance(namespace, str) or not namespace.strip() {
-        raise ValueError('[persistence] namespace must be a nonempty string');
-    }
-    return PersistenceConfig(namespace=namespace);
+    return PersistenceConfig(namespace=persistence_namespace(raw, project_name));
 }
