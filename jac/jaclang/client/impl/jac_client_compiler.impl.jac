@@ -245,7 +245,7 @@ impl JacClientCompiler.emit_dependencies(
     if (collected_globals is None) {
         collected_globals = {};
     }
-    import from jaclang.compiler.driver.pipeline { collect_client_graph }
+    import from jaclang.compiler.driver.client_graph { collect_client_graph }
     module_path = module_path.resolve();
     source_root = source_root.resolve()
         if source_root is not None

@@ -23,6 +23,7 @@ took the first element's lowered type (i64, from the literal `1`) in place of
 the checker's `float`.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_address, native_force_opts }
@@ -69,7 +70,7 @@ def sv_funcs(fixture: str) -> dict[str, any] {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors in {fixture}: {errors}";
     ns: dict[str, any] = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(generated_python(ir.gen), path, "exec"), ns);
     return ns;
 }
 

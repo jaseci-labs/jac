@@ -1,7 +1,8 @@
 """C6 gate (#7870): the zero-copy parse kernel's tokenize loop is
 allocation-free per token in the enforced build -- tokens are rootless
 slice views, keyword compares run length-aware memcmp over descriptor
-parts (__jac_str_cmp3), and char probes read the static char cache.
+parts (__jac_str_cmp3, or `bcmp` once the linked-module optimizer folds
+the descriptor compare), and char probes read the static char cache.
 Behavioral identity across modes rides the ownbench differential."""
 
 import os;
@@ -40,7 +41,9 @@ test "enforced tokenize loop allocates nothing per token" {
     assert "s.view" in body , "tokens are not slice views";
     assert "__jac_halloc" not in body , "enforced tokenize still allocates";
     assert "__rc_alloc" not in body , "enforced tokenize emits rc allocation";
-    assert "__jac_str_cmp3" in body , "keyword compares bypass descriptor parts";
+    assert "__jac_str_cmp3" in body or "bcmp" in body , (
+        "keyword compares bypass descriptor parts"
+    );
     assert "s.view.root" not in body , "enforced views carry a root store";
 }
 

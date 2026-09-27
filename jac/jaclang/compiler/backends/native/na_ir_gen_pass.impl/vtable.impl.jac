@@ -18,7 +18,10 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     i8_ptr = ir.IntType(8).as_pointer();
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
-    entries: list[ir.Value] = [self._emit_class_name_const(arch_name)];
+    entries: list[ir.Value] = [
+        self._emit_class_name_const(arch_name),
+        self._emit_vtable_ancestry(arch_name).bitcast(i8_ptr)
+    ];
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);
         if func is not None {
@@ -44,10 +47,16 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 }
 
 impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
-    import from jaclang.compiler.frontend.codeinfo { native_symbol_name }
+    import from jaclang.compiler.frontend.codeinfo {
+        native_symbol_name,
+        native_unit_spelling
+    }
     src = self._struct_source_mod.get(arch_name, "");
     prefix = self._prefix_of_path(src) if src else self._own_prefix();
-    return native_symbol_name(prefix, f"{arch_name}.__vtable");
+    owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
+    return native_symbol_name(
+        prefix, native_unit_spelling(f"{arch_name}.__vtable", owner_path)
+    );
 }
 
 impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None) {
@@ -395,14 +404,39 @@ impl NaIRGenPass._codegen_virtual_call(
 }
 
 impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
+    """The class-name string that is an archetype's runtime identity.
+
+    It is the archetype's native name, so two same-named archetypes from
+    different modules never answer for each other in `isinstance` or dispatch.
+    A module-scoped name is laid out behind a pointer to its source-level name
+    (`CLASS_DISPLAY_OFF` bytes before the text), which is what `__name__` reads
+    back when the class is only known at run time.
+    """;
     cached = self._class_name_consts.get(arch_name);
     if cached is not None {
         return cached;
     }
     i32 = ir.IntType(32);
-    (struct_type, struct_val) = self._static_str_struct_const(
-        (arch_name + "\0").encode("utf8")
-    );
+    text = (arch_name + "\0").encode("utf8");
+    (struct_type, struct_val) = self._static_str_struct_const(text);
+    text_field = 2;
+    if self._arch_display(arch_name) != arch_name {
+        i64 = ir.IntType(64);
+        text_type = ir.ArrayType(ir.IntType(8), len(text));
+        struct_type = ir.LiteralStructType(
+            [ir.IntType(8).as_pointer(), i64, i64, text_type]
+        );
+        struct_val = ir.Constant(
+            struct_type,
+            [
+                self._emit_class_display_const(arch_name),
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(i64, str_len_tag(len(text) - 1)),
+                ir.Constant(text_type, bytearray(text))
+            ]
+        );
+        text_field = 3;
+    }
     global_str = ir.GlobalVariable(
         self.llvm_module, struct_type, name=f".clsname.{arch_name}"
     );
@@ -412,10 +446,86 @@ impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
     global_str.initializer = struct_val;
 
     ptr = global_str.gep(
-        [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
+        [ir.Constant(i32, 0), ir.Constant(i32, text_field), ir.Constant(i32, 0)]
     );
     self._class_name_consts[arch_name] = ptr;
     return ptr;
+}
+
+impl NaIRGenPass._emit_class_display_const(arch_name: str) -> ir.Constant {
+    """The source-level name of an archetype, as a static string.""";
+    display = self._arch_display(arch_name);
+    if display == arch_name {
+        return self._emit_class_name_const(arch_name);
+    }
+    _key = f".clsdisp.{arch_name}";
+    cached = self._class_name_consts.get(_key);
+    if cached is not None {
+        return cached;
+    }
+    i32 = ir.IntType(32);
+    (struct_type, struct_val) = self._static_str_struct_const(
+        (display + "\0").encode("utf8")
+    );
+    global_str = ir.GlobalVariable(self.llvm_module, struct_type, name=_key);
+    global_str.linkage = "linkonce_odr";
+    global_str.global_constant = True;
+    global_str.initializer = struct_val;
+    ptr = global_str.gep(
+        [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
+    );
+    self._class_name_consts[_key] = ptr;
+    return ptr;
+}
+
+impl NaIRGenPass._emit_class_display_fn -> ir.Function {
+    """`__jac_class_display(cls)`: the source-level name of a runtime class id.
+
+    A module-scoped identity (it contains the scope separator) was emitted by
+    `_emit_class_name_const`, which stores a pointer to the source-level name
+    `CLASS_DISPLAY_OFF` bytes before the text; any other class name already is
+    its source-level name.
+    """;
+    if self._class_display_fn is not None {
+        return self._class_display_fn;
+    }
+    import from jaclang.compiler.frontend.codeinfo { NATIVE_ARCH_SCOPE_SEP }
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    strchr = self._get_or_declare_extern("strchr", i8p, [i8p, i32]);
+    fn = self._define_function("__jac_class_display", ir.FunctionType(i8p, [i8p]));
+    fn.linkage = "private";
+    fn.args[0].name = "cls";
+    self._class_display_fn = fn;
+    _entry = fn.append_basic_block("entry");
+    _probe = fn.append_basic_block("probe");
+    _scoped = fn.append_basic_block("scoped");
+    _plain = fn.append_basic_block("plain");
+    b = ir.IRBuilder(_entry);
+    b.cbranch(
+        b.icmp_unsigned("==", fn.args[0], ir.Constant(i8p, None), name="cd.null"),
+        _plain,
+        _probe
+    );
+    b = ir.IRBuilder(_probe);
+    _sep = b.call(
+        strchr,
+        [fn.args[0], ir.Constant(i32, ord(NATIVE_ARCH_SCOPE_SEP))],
+        name="cd.sep"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", _sep, ir.Constant(i8p, None), name="cd.bare"),
+        _plain,
+        _scoped
+    );
+    b = ir.IRBuilder(_scoped);
+    _slot = b.gep(fn.args[0], [ir.Constant(i64, -CLASS_DISPLAY_OFF)], name="cd.slot");
+    b.ret(b.load(b.bitcast(_slot, i8p.as_pointer(), name="cd.slot.p"), name="cd.name"));
+    b = ir.IRBuilder(_plain);
+    b.ret(fn.args[0]);
+    return fn;
 }
 
 impl NaIRGenPass._emit_runtime_class_name_fn -> (ir.Function | None) {
@@ -556,11 +666,65 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
         and inner.params
         and len(inner.params) == 1 {
         receiver = inner.params[0];
+    } elif self._is_runtime_class_value(inner) {
+        value = self._codegen_expr(inner);
+        if value is None or not isinstance(value.type, ir.PointerType) {
+            return None;
+        }
+        return self.builder.call(
+            self._emit_class_display_fn(),
+            [self._coerce_type(value, ir.IntType(8).as_pointer())],
+            name="clsval.display"
+        );
+    } else {
+        static_class = self._class_expr_bound(inner);
+        if static_class is not None
+            and static_class in self.struct_types
+            and not self._is_enum_arch(static_class) {
+            return self._emit_class_display_const(static_class);
+        }
     }
     if receiver is None {
         return None;
     }
+    _static_arch = self._struct_name_of(receiver);
+    if _static_arch is not None and not self._arch_has_vtable(_static_arch) {
+        return self._emit_class_display_const(_static_arch);
+    }
+    _cls_id = self._codegen_class_id(receiver);
+    if _cls_id is None {
+        return None;
+    }
+    return self.builder.call(
+        self._emit_class_display_fn(),
+        [self._coerce_type(_cls_id, ir.IntType(8).as_pointer())],
+        name="clsname.display"
+    );
+}
+
+impl NaIRGenPass._codegen_type_of(receiver: uni.UniNode) -> (ir.Value | None) {
+    scalar = self._scalar_shape(receiver);
+    if scalar is not None {
+        return self._codegen_type_name_str(scalar.name);
+    }
     return self._codegen_class_id(receiver);
+}
+
+impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
+    while isinstance(expr, uni.AtomUnit) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, uni.AtomTrailer)
+        or not expr.is_attr
+        or not isinstance(expr.target, uni.Expr)
+        or not isinstance(expr.target.type, ModuleType)
+        or not isinstance(expr.type, ClassType) {
+        return None;
+    }
+    if not expr.type.is_instantiable() or expr.type.is_instance() {
+        return None;
+    }
+    return expr.type.shared.class_name;
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {
@@ -588,6 +752,12 @@ impl NaIRGenPass._class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Val
         return self._emit_class_name_const(arch_name);
     }
     i32 = ir.IntType(32);
+    _struct = self.struct_types.get(arch_name);
+    if _struct is not None and obj_val.type != _struct.as_pointer() {
+        obj_val = self.builder.bitcast(
+            obj_val, _struct.as_pointer(), name="clsname.recv"
+        );
+    }
     vtable_ptr_ptr = self.builder.gep(
         obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="clsname.vt.ptr.ptr"
     );
@@ -598,7 +768,9 @@ impl NaIRGenPass._class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Val
     return self.builder.load(name_slot, name="clsname");
 }
 
-impl NaIRGenPass._codegen_class_ref(nd: uni.Name) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_class_ref(
+    nd: uni.Name | uni.AtomTrailer
+) -> (ir.Value | None) {
     _np = nd.parent;
     if isinstance(_np, uni.AtomTrailer) and _np.target is nd {
         return None;
@@ -610,8 +782,10 @@ impl NaIRGenPass._codegen_class_ref(nd: uni.Name) -> (ir.Value | None) {
     if _np?.collection is nd {
         return None;
     }
-    _arch = self._arch_alias_target(nd) or nd.value;
-    if _arch not in self.struct_types or self._is_enum_arch(_arch) {
+    _arch = self._module_class_name(nd)
+        if isinstance(nd, uni.AtomTrailer)
+        else (self._arch_alias_target(nd) or nd.value);
+    if _arch is None or _arch not in self.struct_types or self._is_enum_arch(_arch) {
         return None;
     }
     return self._emit_class_name_const(_arch);
@@ -892,6 +1066,223 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     return fn;
 }
 
+impl NaIRGenPass._emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable {
+    """The class's own MRO, which vtable header slot 1 points at.
+
+    Records of `{name hash, class name}`, the class itself first and a
+    `{0, null}` record last. The vtable is emitted once, by the module that
+    defines the class, and that module sees the class's whole chain -- so an
+    `isinstance` in a module that never imported the class can still ask its
+    instances what they derive from, although that module's candidate vtables
+    and class index do not list the class at all.
+    """;
+    gv_name = f".jac.mro.{arch_name}";
+    existing = self.llvm_module.globals.get(gv_name);
+    if isinstance(existing, ir.GlobalVariable) {
+        return existing;
+    }
+    i8_ptr = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    rec_ty = ir.LiteralStructType([i64, i8_ptr]);
+    records: list[ir.Constant] = [];
+    for anc in (self._mro_of(arch_name) or [arch_name]) {
+        records.append(
+            ir.Constant(
+                rec_ty,
+                [
+                    ir.Constant(i64, self._static_str_hash(anc)),
+                    self._emit_class_name_const(anc)
+                ]
+            )
+        );
+    }
+    records.append(
+        ir.Constant(rec_ty, [ir.Constant(i64, 0), ir.Constant(i8_ptr, None)])
+    );
+    arr_ty = ir.ArrayType(rec_ty, len(records));
+    gv = ir.GlobalVariable(self.llvm_module, arr_ty, name=gv_name);
+    gv.linkage = "private";
+    gv.global_constant = True;
+    gv.initializer = ir.Constant(arr_ty, records);
+    return gv;
+}
+
+impl NaIRGenPass._emit_isa_vtable_fn -> ir.Function {
+    """`__jac_isa_vt(vptr, tgt, tgt_hash)`: does the class behind a vtable answer for `tgt`?
+
+    Walks the ancestry records that vtable header slot 1 points at (see
+    `_emit_vtable_ancestry`) up to the null record; an object with no vtable
+    stamped answers `False`. The candidate-vtable
+    compare and the class index only know the classes the checking module can
+    see; this also answers for a subclass defined in a module it never
+    imported. Names match as in `__jac_isa_h`: the hash first, then the
+    address, then one `strcmp` for a name another unit emitted.
+    """;
+    if self._isa_vt_fn is not None {
+        return self._isa_vt_fn;
+    }
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    rec_ty = ir.LiteralStructType([i64, i8p]);
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    fn: any = self._define_function(
+        "__jac_isa_vt", ir.FunctionType(i1, [i8p.as_pointer(), i8p, i64])
+    );
+    fn.linkage = "private";
+    zero32 = ir.Constant(i32, 0);
+
+    head = fn.append_basic_block("entry");
+    load = fn.append_basic_block("load");
+    walk = fn.append_basic_block("walk");
+    walk_hash = fn.append_basic_block("walk.hash");
+    walk_name = fn.append_basic_block("walk.name");
+    walk_next = fn.append_basic_block("walk.next");
+    yes = fn.append_basic_block("yes");
+    no = fn.append_basic_block("no");
+
+    b = ir.IRBuilder(head);
+    b.cbranch(
+        b.icmp_unsigned(
+            "==", fn.args[0], ir.Constant(fn.args[0].type, None), name="isavt.novt"
+        ),
+        no,
+        load
+    );
+
+    b = ir.IRBuilder(load);
+    slot = b.gep(fn.args[0], [ir.Constant(i32, 1)], name="isavt.slot");
+    table = b.bitcast(
+        b.load(slot, name="isavt.raw"), rec_ty.as_pointer(), name="isavt.tab"
+    );
+    b.branch(walk);
+
+    b = ir.IRBuilder(walk);
+    i = b.phi(i64, name="isavt.i");
+    rec = b.gep(table, [i], name="isavt.rec");
+    name = b.load(
+        b.gep(rec, [zero32, ir.Constant(i32, 1)], name="isavt.np"), name="isavt.name"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", name, ir.Constant(i8p, None), name="isavt.end"),
+        no,
+        walk_hash
+    );
+
+    b = ir.IRBuilder(walk_hash);
+    rec_hash = b.load(b.gep(rec, [zero32, zero32], name="isavt.hp"), name="isavt.hash");
+    b.cbranch(
+        b.icmp_unsigned("==", rec_hash, fn.args[2], name="isavt.hit"),
+        walk_name,
+        walk_next
+    );
+
+    b = ir.IRBuilder(walk_name);
+    self._emit_isa_name_match(b, None, name, fn.args[1], strcmp, yes, walk_next);
+
+    b = ir.IRBuilder(walk_next);
+    nxt = b.add(i, ir.Constant(i64, 1), name="isavt.in");
+    b.branch(walk);
+    i.add_incoming(ir.Constant(i64, 0), load);
+    i.add_incoming(nxt, walk_next);
+
+    ir.IRBuilder(yes).ret(ir.Constant(i1, 1));
+    ir.IRBuilder(no).ret(ir.Constant(i1, 0));
+    self._isa_vt_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value {
+    """Whether the class whose vtable is `vptr` derives from any of `names`.""";
+    i1 = ir.IntType(1);
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    vt_fn = self._emit_isa_vtable_fn();
+    vptr = self.builder.bitcast(vptr, i8p.as_pointer(), name="isavt.vptr");
+    hit: ir.Value = ir.Constant(i1, 0);
+    for name in names {
+        one = self.builder.call(
+            vt_fn,
+            [
+                vptr,
+                self._emit_class_name_const(name),
+                ir.Constant(i64, self._static_str_hash(name))
+            ],
+            name="isavt.res"
+        );
+        hit = self.builder.or_(hit, one, name="isavt.or");
+    }
+    return hit;
+}
+
+impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
+    """Does every object this static type admits hold a vtable pointer in slot 0?
+
+    The ancestry walk dereferences slot 0 as a vtable, so it may only run where
+    no admitted class is flat. A union of class pointers is stored with its
+    first member's layout, and a flat member there keeps a field in slot 0;
+    the candidate compare shrugs that off as a miss, a walk would chase it.
+    `None` members are fine (the operand is null-checked first); an unknown or
+    non-class type is not.
+    """;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    members: list[TypeBase] = (
+        list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
+    );
+    certain = False;
+    for member in members {
+        if not isinstance(member, ClassType) {
+            return False;
+        }
+        if member._shared is not None
+            and member.shared.class_name in ("NoneType", "None") {
+            continue;
+        }
+        arch = class_type_native_name(member);
+        if arch is None
+            or arch not in self.struct_types
+            or not self._arch_has_vtable(arch) {
+            return False;
+        }
+        certain = True;
+    }
+    return certain;
+}
+
+impl NaIRGenPass._isinstance_vtable_fallback(
+    hit: (ir.Value | None), vptr: ir.Value, names: list[str], prefix: str
+) -> ir.Value {
+    """`hit`, or else what the object's own vtable ancestry answers.
+
+    `hit` is the compare against the candidate vtables this module knows, which
+    settles every class the module can see; the ancestry walk runs only on a
+    miss, where the object may be a subclass from a module this one never
+    imported and no local candidate names it. Only pass a `vptr` read from an
+    operand whose static archetype carries a vtable, so that slot 0 is known to
+    hold one (see `_vtable_slot_certain`). With no local candidate at all (`hit` is `None`) the walk alone
+    answers.
+    """;
+    if hit is None {
+        return self._isinstance_vtable_hit(vptr, names);
+    }
+    i1 = ir.IntType(1);
+    fn = self.builder.block.function;
+    fast_end = self.builder.block;
+    walk_bb = fn.append_basic_block(name=f"{prefix}.vt.walk");
+    done_bb = fn.append_basic_block(name=f"{prefix}.vt.done");
+    self.builder.cbranch(hit, done_bb, walk_bb);
+    self.builder.position_at_end(walk_bb);
+    walked = self._isinstance_vtable_hit(vptr, names);
+    walk_end = self.builder.block;
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    res = self.builder.phi(i1, name=f"{prefix}.vt.res");
+    res.add_incoming(ir.Constant(i1, 1), fast_end);
+    res.add_incoming(walked, walk_end);
+    return res;
+}
+
 impl NaIRGenPass._emit_isa_name_match(
     b: ir.IRBuilder,
     gate: (ir.Value | None),
@@ -1143,6 +1534,24 @@ impl NaIRGenPass._emit_isinstance_runtime(
         for tgt in tgts {
             one = self.builder.call(isa_fn, [cls_id, tgt], name="isa.res");
             hit = one if hit is None else self.builder.or_(hit, one, name="isa.or");
+        }
+        if self._vtable_slot_certain(
+            self._flow_narrowed_type_of(nd.params[0] if nd.params else None)
+        ) {
+            i8p = ir.IntType(8).as_pointer();
+            vptr = self.builder.load(
+                self.builder.bitcast(
+                    operand, i8p.as_pointer().as_pointer(), name="isa.vt.obj"
+                ),
+                name="isa.vt.ptr"
+            );
+            vt_fn = self._emit_isa_vtable_fn();
+            hash_fn = self._emit_cstr_hash_fn();
+            for tgt in tgts {
+                th = self.builder.call(hash_fn, [tgt], name="isa.vt.th");
+                one = self.builder.call(vt_fn, [vptr, tgt, th], name="isa.vt.res");
+                hit = self.builder.or_(hit, one, name="isa.vt.or");
+            }
         }
     }
     if self._is_owned(operand) {

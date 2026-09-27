@@ -29,7 +29,7 @@ test "multi-file fmt engages the parallel pool" {
         }
         buf = io.StringIO();
         with contextlib.redirect_stdout(buf) {
-            ret = format([tmp], check=True);
+            ret = format([tmp], check=True, jobs="2");
         }
         out = buf.getvalue();
     } finally {

@@ -24,7 +24,7 @@ import from jaclang.compiler.frontend.unitree {
     TypedCtxBlock,
     VisitStmt
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from collections.abc { Sequence }
 import from jaclang.compiler.frontend.constant { ExprCtx }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
@@ -40,18 +40,7 @@ import from jaclang.compiler.frontend.diagnostics {
 
 def inform_from_walker(nd: UniNode) -> None;
 
-walker SemanticAnalysisPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module;
-
+walker SemanticAnalysisPass(TreePass) {
     can enter_archetype with Archetype entry;
     def _check_archetype(nd: Archetype) -> None;
     def _property_type_names(methods: list[Ability]) -> dict[str, str];

@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.compile_options { CancelToken }
 import asyncio;
 import type from jaclang.compiler.passes.context { Alert }
 import logging;
@@ -47,7 +48,7 @@ def _merge_app_alerts(
 obj Task {
     has file_uri: str,
         task_id: int postinit,
-        cancel_token: threading.Event postinit;
+        cancel_token: CancelToken postinit;
 
     static has _task_id: int = 0;
 
@@ -83,7 +84,7 @@ obj JacLangServer(LanguageServer) {
     ) -> None;
 
     def type_check_file(
-        file_uri: str, cancel_token: threading.Event | None = None
+        file_uri: str, cancel_token: (CancelToken | None) = None
     ) -> bool;
 
     def type_check(file_uri: str) -> None;

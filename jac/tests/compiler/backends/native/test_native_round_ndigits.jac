@@ -38,3 +38,12 @@ test "round follows Python halves and ndigits" {
     }
     assert get_func(eng, "round_int_places", ctypes.c_int64)() == 7;
 }
+
+test "round with ndigits keeps floats in an unannotated comprehension" {
+    # The checker typed `round(x, n)` as int (it solved `_SupportsRound2[_T]`
+    # from `float.__round__`'s first overload), so the comprehension built an
+    # int list and each element was truncated: [0, 1] instead of [0.157, 1.5].
+    (eng, _ir) = compile_native("round_ndigits.jac");
+    total = get_func(eng, "round_places_in_comprehension", ctypes.c_double)();
+    assert abs(total - 1.657) < 1e-9;
+}

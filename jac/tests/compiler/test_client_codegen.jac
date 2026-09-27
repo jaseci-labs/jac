@@ -1,5 +1,6 @@
 """Client-side code generation tests -- migrated from test_client_codegen.py."""
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import tempfile;
 import from pathlib { Path }
@@ -11,14 +12,11 @@ import from jaclang.compiler.frontend.codeinfo { endpoint_key }
 
 test "endpoint identity preserves compact JSON and escaping" {
     import json;
-    import from types { SimpleNamespace }
     import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
+    import from jaclang.compiler.frontend.parser.frontend { parse }
     with TemporaryDirectory() as directory {
-        mod = SimpleNamespace(
-            loc=SimpleNamespace(mod_path=os.path.join(directory, "identity.jac")),
-            name='module, "quoted"',
-            app=""
-        );
+        (mod, _had_error) = parse("", os.path.join(directory, "identity.jac"));
+        mod.name = 'module, "quoted"';
         name = 'name with spaces, "quotes" and \\slashes';
         descriptor = endpoint_descriptor(mod, "func", name);
         assert endpoint_key(mod, "func", name)
@@ -75,11 +73,11 @@ test "compilation skips python stubs" {
     assert "__jacJsx(" in mod.gen.js;
 
     # Client Python definitions are intentionally omitted
-    assert "def component" not in mod.gen.py;
-    assert "__jac_client__" not in mod.gen.py;
+    assert "def component" not in generated_python(mod.gen);
+    assert "__jac_client__" not in generated_python(mod.gen);
 
     # Manifest data should be in mod.gen.client_manifest
-    assert "__jac_client_manifest__" not in mod.gen.py;
+    assert "__jac_client_manifest__" not in generated_python(mod.gen);
     manifest = mod.gen.client_manifest;
     assert manifest , "Client manifest should be available in mod.gen";
     assert "component" in manifest.exports;

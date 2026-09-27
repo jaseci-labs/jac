@@ -92,7 +92,7 @@
 +    StringRef Name = F.getName();
 +    if (F.isDeclaration() &&
 +        (Name == "setjmp" || Name == "longjmp" || Name == "_setjmp" ||
-+         Name == "sigsetjmp" || Name == "siglongjmp"))
++         Name == "_longjmp" || Name == "sigsetjmp" || Name == "siglongjmp"))
 +      headerUseSetjmp();
 +  }
 +
@@ -117,9 +117,11 @@
        case Intrinsic::ceil:
        case Intrinsic::ctlz:
        case Intrinsic::ctpop:
-@@ -2615,13 +2617,6 @@
+@@ -2615,13 +2617,7 @@
           (I->getName() == "setjmp" || I->getName() == "longjmp" ||
-           I->getName() == "_setjmp" || I->getName() == "siglongjmp" ||
+-          I->getName() == "_setjmp" || I->getName() == "siglongjmp" ||
++          I->getName() == "_setjmp" || I->getName() == "_longjmp" ||
++          I->getName() == "siglongjmp" ||
            I->getName() == "sigsetjmp")) ||
 -        (headerIncMath() &&
 -         (I->getName() == "pow" || I->getName() == "powf" ||
@@ -415,12 +417,13 @@
  
            default:
              // All other intrinsic calls we must lower.
-@@ -5047,4 +5024,4 @@
+@@ -5047,4 +5024,5 @@
 -    if (Name == "sigsetjmp")
 +    if (Name == "sigsetjmp" || Name == "siglongjmp")
        Out << "*(sigjmp_buf*)";
 -    else if (Name == "setjmp")
-+    else if (Name == "setjmp" || Name == "_setjmp" || Name == "longjmp")
++    else if (Name == "setjmp" || Name == "_setjmp" || Name == "longjmp" ||
++             Name == "_longjmp")
        Out << "*(jmp_buf*)";
 @@ -5086,6 +5055,21 @@
    case Intrinsic::dbg_declare:

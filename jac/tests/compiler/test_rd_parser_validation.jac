@@ -3,7 +3,7 @@ import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.project.source { read_file_with_encoding }
+import from jaclang.project.textio { read_file_with_encoding }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }

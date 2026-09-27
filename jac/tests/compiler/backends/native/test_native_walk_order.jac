@@ -35,7 +35,7 @@ import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from tests.support { native_address }
+import from tests.support { native_address, source_spelled }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      WALK_ORDERS: list[any] = [
@@ -51,7 +51,6 @@ def compile_ir_text(fixture: str, walk_order: str | None) -> str {
     prog = JacProgram();
     opts = CompileOptions(
         force_codespace='native',
-        force_target_program=True,
         skip_native_engine=True,
         native_module_walk_order=walk_order
     );
@@ -114,7 +113,7 @@ test "imported obj-field chain IR is walk-order independent" {
 
 test "imported obj-field chain executes correctly" {
     prog = JacProgram();
-    opts = CompileOptions(force_codespace='native', force_target_program=True);
+    opts = CompileOptions(force_codespace='native');
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, "xmodfield_entry.jac"), options=opts
     );
@@ -130,9 +129,7 @@ test "imported obj-field chain executes correctly" {
 
 test "an unlowerable field erases loudly: the declaration seams, every touch refuses" {
     prog = JacProgram();
-    opts = CompileOptions(
-        force_codespace='native', force_target_program=True, skip_native_engine=True
-    );
+    opts = CompileOptions(force_codespace='native', skip_native_engine=True);
     na_coverage_begin();
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts
@@ -141,7 +138,7 @@ test "an unlowerable field erases loudly: the declaration seams, every touch ref
     seams: list[any] = [];
     for (path, rec) in snap.items() {
         if os.path.basename(path) == "unlowerable_field.jac" {
-            seams = list(rec['seams']);
+            seams = [source_spelled(str(s)) for s in rec['seams']];
         }
     }
     # The declaration owns its refusal: E5092 and the offending type name

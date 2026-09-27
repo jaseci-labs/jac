@@ -64,7 +64,7 @@ impl project_database(base_path: str, target_path: (str | None)) -> ProjectDatab
             database_root = project_root;
             in_project = True;
         }
-        name = workspace.persistence.namespace;
+        name = workspace.persistence_namespace;
     } else {
         name = get_name(target_path=target_path) or 'main';
     }

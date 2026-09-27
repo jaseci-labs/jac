@@ -470,7 +470,7 @@ impl JacConfig.save -> None {
     old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
         import tomllib;
-        import from jaclang.project.source { read_file_with_encoding }
+        import from jaclang.project.textio { read_file_with_encoding }
         import from jaclang.project.tomlio { MalformedJacTomlError }
         text = read_file_with_encoding(str(self.toml_path));
         try {
@@ -1270,7 +1270,8 @@ impl _parse_toml_data(
             suppress=check_data.get("suppress", []),
             suppress_categories=check_data.get("suppress_categories", []),
             enforce_access=check_data.get("enforce_access", False),
-            warn_native_seams=check_data.get("warn_native_seams", True)
+            warn_native_seams=check_data.get("warn_native_seams", True),
+            untyped_external=str(check_data.get("untyped-external", "warning"))
         );
     }
     if "dot" in data {

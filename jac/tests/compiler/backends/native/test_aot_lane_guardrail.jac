@@ -22,9 +22,9 @@ import from jaclang.compiler.driver.pipeline {
     get_analysis_sched,
     get_boundary_analysis_sched,
     get_ir_gen_sched,
-    get_py_code_gen,
     providers_of
 }
+import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -34,7 +34,8 @@ glob FIXTURES = os.path.join(
 
 
 test "the native codegen schedule carries the native passes" {
-    import from jaclang.compiler.backends.native { NaIRGenPass, NativeCompilePass }
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
     # Codegen runs after the analysis stage in the single pipeline, so the
     # standalone schedule is constructed against its provides.
     sched = get_py_code_gen(
@@ -57,12 +58,7 @@ test "an AOT compile that lowers nothing names the module" {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "aot_no_lowerable_code.jac"),
-        options=CompileOptions(
-            aot_mode=True,
-            force_codespace='native',
-            force_target_program=True,
-            no_ir_cache=True
-        )
+        options=CompileOptions(aot_mode=True, force_codespace='native')
     );
     assert ir.gen.llvm_ir is None , "the fixture is not supposed to lower";
     assert prog.errors_had , (

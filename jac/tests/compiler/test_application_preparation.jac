@@ -277,9 +277,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 stored_payload: any = Serializer.serialize(
                     source_module.Stored().__jac__, include_type=True
                 );
-                import from jaclang.compiler.driver.compilation_context {
-                    artifact_cache_path
-                }
+                import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
                 data = artifact_cache_path(str(path), source_program).read_bytes();
                 init_data = artifact_cache_path(
                     str(package_init), source_program
@@ -680,7 +678,7 @@ test "preparation does not load native libraries used only by the client" {
         try {
             with patch.object(
                 linking,
-                'load_jit_clib',
+                'load_jit_library',
                 side_effect=AssertionError('client library loaded on the server')
             ) {
                 for iteration in range(2) {

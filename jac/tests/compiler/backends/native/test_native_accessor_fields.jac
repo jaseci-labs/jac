@@ -15,7 +15,12 @@ accessors, so it only reads back as `11` if properties took no slots.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    native_address,
+    native_force_opts
+}
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -101,17 +106,17 @@ test "a property is absent from the exported struct layout" {
     (_eng, ir) = accessor_engine();
     layout = ir.gen.native_layout;
     assert layout is not None , "no native layout exported";
-    names = [f.name for f in layout.structs["Box"].fields];
+    names = [f.name for f in by_source_name(layout.structs)["Box"].fields];
     assert "doubled" not in names and "width" not in names , (
         f"properties still occupy data slots in the marshalling layout: {names}"
     );
     assert "head" in names and "_width" in names and "tail" in names , (
         f"real fields went missing from the layout: {names}"
     );
-    assert "Box.width.__get__" in layout.methods , (
+    assert "Box.width.__get__" in by_source_name(layout.methods) , (
         "no getter method exported for Box.width"
     );
-    assert "Box.width.__set__" in layout.methods , (
+    assert "Box.width.__set__" in by_source_name(layout.methods) , (
         "no setter method exported for Box.width"
     );
 }

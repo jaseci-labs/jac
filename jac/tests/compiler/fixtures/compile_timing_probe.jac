@@ -9,7 +9,7 @@ both halves of the comparison and neither tree needs to carry a copy.
 
 Corpus paths are resolved against the cwd and so name the sources of whichever
 tree is being measured. The schedule phases (parse, ir_gen, analysis, boundary,
-codegen) are the schedules `JacCompiler` `_compile_once` itself runs for a
+codegen) are the schedules `JacCompiler` `run_module` itself runs for a
 plain Python-lane module, driven here one at a time so each is attributable;
 `full` is the whole-closure `JacProgram.compile` that a real `jac run` pays,
 and `check` is a fresh-program full-analysis compile (`no_cgen` +
@@ -33,12 +33,8 @@ import time;
 
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    get_py_code_gen
-}
+import from jaclang.compiler.driver.pipeline { get_analysis_sched, get_boundary_analysis_sched, get_ir_gen_sched }
+import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob CORPUS: list[str] = [
@@ -82,9 +78,7 @@ def phase_row(src: str) -> dict[any, any] {
     errors += len(whole.errors_had);
     whole.release_compile_closure();
     checker = JacProgram();
-    check_opts = CompileOptions(
-        no_cgen=True, native_parity=True, force_target_program=True
-    );
+    check_opts = CompileOptions(no_cgen=True, native_parity=True);
     if hasattr(check_opts, "iface_ok") {
         check_opts.iface_ok = True;
     }

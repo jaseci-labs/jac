@@ -1,6 +1,6 @@
 import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
 
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 
 impl EsastGenPass._field_constructor_args(
@@ -10,7 +10,10 @@ impl EsastGenPass._field_constructor_args(
 ) -> (es.Expression | None) {
     import from jaclang.compiler.types.types { ClassType }
     import from jaclang.compiler.field_semantics { positional_field_names }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.passes.layout_pass {
+        archetype_native_name,
+        get_layout_registry
+    }
 
     target_type = nd.target.type;
     if not isinstance(target_type, ClassType)
@@ -27,7 +30,9 @@ impl EsastGenPass._field_constructor_args(
     }
     source = arch.find_parent_of_type(uni.Module);
     assert source is not None;
-    layout = get_layout_registry(source, self.prog).get_layout(arch.sym_name);
+    layout = get_layout_registry(source, self.prog).get_layout(
+        archetype_native_name(arch)
+    );
     assert layout is not None;
     fields: list[uni.HasVar] = [];
     for field in layout.fields {
@@ -869,6 +874,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
 
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
     source_module = ability_node.find_parent_of_type(uni.Module);
+    assert source_module is not None;
     contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
     rpc_options = es.ObjectExpression(
         properties=[

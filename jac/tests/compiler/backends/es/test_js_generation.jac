@@ -28,7 +28,7 @@ import from jaclang.compiler.backends.es.es_unparse {
     template_element_raw
 }
 import from jaclang.compiler.backends.es.primitives_es { ESDictEmitter, ESEmitCtx }
-import from jaclang.project.modresolver { convert_to_js_import_path }
+import from jaclang.compiler.backends.es.js_paths { convert_to_js_import_path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
@@ -883,7 +883,11 @@ test "separated files" {
         "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
             + "{\"app\": \"separated\", \"route\": \"/separated\", \"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
-    );
+    ) , js_code;
+    import from tests.compiler.backends.es.codegen_helpers { _js_compile_cache }
+    _js_compile_cache.pop(os.path.abspath(os.path.join(FIXTURES, client_fixture)));
+    warm = compile_fixture_to_js(client_fixture, FIXTURES);
+    assert warm == js_code , "a hydrated walker interface changed the service call";
 }
 
 test "separated defpub generates rpc stubs" {
@@ -1118,23 +1122,21 @@ test "bridged call duplicate kwarg is a compile error" {
     # reported as a compile-time error so the build fails fast rather than
     # silently emitting a JS object with a duplicated key.
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.backends.es { EsastGenPass }
 
     fixture = os.path.join(FIXTURES, "svc_kwargs/sv_import_kwargs_dup.jac");
     prog = JacProgram();
-    ir = prog.compile(file_path=fixture, no_cgen=True);
-    run_pass(EsastGenPass, ir, prog);
+    prog.compile(file_path=fixture, no_cgen=True);
 
     dup_errs = [
         e
         for e in prog.errors_had
-        if "given both positionally and by keyword" in str(e)
+        if e.code is not None and e.code.code == "E1057"
     ];
     assert len(dup_errs) == 1 , (
-        "Expected exactly one E5080 collision diagnostic, got "
+        "Expected exactly one E1057 collision diagnostic, got "
         + str([str(e) for e in prog.errors_had])
     );
-    assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
+    assert "name" in str(dup_errs[0]);
 }
 
 test "bridged import nested in a client block emits no dead import" {
@@ -2291,6 +2293,37 @@ test "user-defined exception except is not a catch-all" {
     }
 }
 
+
+test "user-defined exception except with a binding is not a catch-all" {
+    # The type checker stamps the class of an `except` clause, so a clause
+    # binding its exception (`except MyError as err`) resolves to a known
+    # user class. That must still emit `instanceof MyError`, not `if (true)`.
+    jac_code = "\"\"\"bound user-defined except is not a catch-all.\"\"\"\n\nobj MyError {}\ndef classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError as err { return \"mine\"; } except ValueError as ve { return \"ve\"; }\n    return \"none\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "instanceof MyError" in js_code , (
+            f"bound user-defined except must emit `instanceof MyError`, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n'
+            + js_code
+            + "\nif (classify(1) !== 'mine')"
+            + " { throw new Error('except MyError must catch MyError'); }"
+            + "\nif (classify(2) !== 've')"
+            + " { throw new Error('except MyError must NOT catch a ValueError'); }"
+            + "\nconsole.log('ok');\n"
+        );
+        result = run_js_module(wrapper);
+        assert result.returncode == 0 , (
+            f"bound user-defined except behaved as a catch-all:\nstderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
 
 test "exception archetype subclassing a builtin extends _jac.exc.X" {
     jac_code = "\"\"\"custom exception base test.\"\"\"\n\nobj MyError(Exception) {}\ndef boom() -> int {\n    try { raise MyError(\"x\"); } except Exception { return 1; }\n    return 0;\n}\n";

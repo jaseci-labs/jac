@@ -18,9 +18,10 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
+    compile_native_ir,
     native_address,
     native_force_opts,
-    compile_native_ir
+    source_spelled
 }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -63,7 +64,7 @@ def retain_calls(fixture: str, move_lower: bool) -> int {
         ir = compile_native_ir(fixture);
         count = 0;
         in_helper = False;
-        for line in str(ir.gen.llvm_ir).splitlines() {
+        for line in source_spelled(str(ir.gen.llvm_ir)).splitlines() {
             if line.startswith("define ") {
                 in_helper = '.jac_retain"' in line;
             }
@@ -96,7 +97,7 @@ test "move-lowering elides exactly the `b = a` alias retain" {
 
 test "move-lowering nulls the source slot (keeps the free sound)" {
     ir = compile_native_ir("move_elision.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is
     # freed exactly once (by the destination's cleanup).

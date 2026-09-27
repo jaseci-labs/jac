@@ -1044,7 +1044,7 @@ def _exec_file(
                 full_path = os.path.abspath(filename);
                 program = Jac.get_program();
                 _run_options = (
-                    _RunOpts(force_codespace='native', force_target_program=True)
+                    _RunOpts(force_codespace='native')
                         if _kind_forced or backend == "native"
                         else None
                 );

@@ -1,13 +1,13 @@
 """Tests for the LayoutPass CType struct contract.
 
 Validates that the layout pass correctly identifies layout-compatible
-and incompatible field types on obj archetypes, and that FieldInfo
+and incompatible field types on obj archetypes, and that FieldLayout
 tracks function pointer fields.
 """
 
 import from jaclang.compiler.passes.layout_pass {
     LAYOUT_COMPATIBLE_PRIMITIVES,
-    FieldInfo,
+    FieldLayout,
     ArchetypeLayout,
     LayoutRegistry,
     LayoutPass,
@@ -16,7 +16,7 @@ import from jaclang.compiler.passes.layout_pass {
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, by_source_name }
 import jaclang;
 
 glob FIXTURES = os.path.join(
@@ -44,7 +44,9 @@ test "dispatch headers are independent of backend placement" {
             options=CompileOptions(force_codespace=context, no_cgen=True)
         );
         assert not program.errors_had;
-        layout = get_layout_registry(module, program).get_layout("Box");
+        layout = by_source_name(get_layout_registry(module, program).layouts).get(
+            "Box"
+        );
         assert layout is not None;
         layouts.append(layout);
     }
@@ -76,21 +78,21 @@ test "LAYOUT_COMPATIBLE_PRIMITIVES contains all expected types" {
     assert LAYOUT_COMPATIBLE_PRIMITIVES == expected;
 }
 
-# ── FieldInfo.is_func_ptr ────────────────────────────────────
-test "FieldInfo default is_func_ptr is False" {
-    fi = FieldInfo(name="x", index=0, type_tag="int");
+# ── FieldLayout.is_func_ptr ────────────────────────────────────
+test "FieldLayout default is_func_ptr is False" {
+    fi = FieldLayout(name="x", index=0, type_tag="int");
     assert fi.is_func_ptr == False;
 }
 
-test "FieldInfo is_func_ptr can be set True" {
-    fi = FieldInfo(name="cb", index=0, type_tag="fn", is_func_ptr=True);
+test "FieldLayout is_func_ptr can be set True" {
+    fi = FieldLayout(name="cb", index=0, type_tag="fn", is_func_ptr=True);
     assert fi.is_func_ptr == True;
 }
 
 # ── Layout registry: primitive fields ────────────────────────
 test "obj with int fields produces correct layout" {
     reg = get_registry("valid_primitives.jac");
-    layout = reg.get_layout("IntFields");
+    layout = by_source_name(reg.layouts).get("IntFields");
     assert layout is not None;
     assert len(layout.fields) == 3;
     names = [f.name for f in layout.fields];
@@ -101,7 +103,7 @@ test "obj with int fields produces correct layout" {
 
 test "obj with all primitive types produces layout" {
     reg = get_registry("valid_primitives.jac");
-    layout = reg.get_layout("AllPrimitives");
+    layout = by_source_name(reg.layouts).get("AllPrimitives");
     assert layout is not None;
     assert len(layout.fields) == 5;
 }
@@ -109,7 +111,7 @@ test "obj with all primitive types produces layout" {
 # ── Layout registry: obj reference fields ────────────────────
 test "obj with other obj field produces layout" {
     reg = get_registry("valid_obj_refs.jac");
-    layout = reg.get_layout("Line");
+    layout = by_source_name(reg.layouts).get("Line");
     assert layout is not None;
     names = [f.name for f in layout.fields];
     assert "start" in names;
@@ -120,7 +122,7 @@ test "obj with other obj field produces layout" {
 # ── Layout registry: typed collections ───────────────────────
 test "obj with typed list field produces layout" {
     reg = get_registry("valid_collections.jac");
-    layout = reg.get_layout("WithList");
+    layout = by_source_name(reg.layouts).get("WithList");
     assert layout is not None;
     assert len(layout.fields) == 1;
     assert layout.fields[0].name == "items";
@@ -128,7 +130,7 @@ test "obj with typed list field produces layout" {
 
 test "obj with typed dict field produces layout" {
     reg = get_registry("valid_collections.jac");
-    layout = reg.get_layout("WithDict");
+    layout = by_source_name(reg.layouts).get("WithDict");
     assert layout is not None;
     assert len(layout.fields) == 1;
     assert layout.fields[0].name == "entries";
@@ -137,7 +139,7 @@ test "obj with typed dict field produces layout" {
 # ── Layout registry: optional fields ─────────────────────────
 test "obj with optional field produces layout" {
     reg = get_registry("valid_optional.jac");
-    layout = reg.get_layout("OptionalFields");
+    layout = by_source_name(reg.layouts).get("OptionalFields");
     assert layout is not None;
     names = [f.name for f in layout.fields];
     assert "maybe_int" in names;
@@ -147,7 +149,7 @@ test "obj with optional field produces layout" {
 # ── Layout registry: enum fields ─────────────────────────────
 test "obj with enum field produces layout" {
     reg = get_registry("valid_enum.jac");
-    layout = reg.get_layout("Colored");
+    layout = by_source_name(reg.layouts).get("Colored");
     assert layout is not None;
     names = [f.name for f in layout.fields];
     assert "color" in names;
@@ -156,7 +158,7 @@ test "obj with enum field produces layout" {
 # ── Layout registry: inheritance ─────────────────────────────
 test "child obj inherits parent fields in MRO order" {
     reg = get_registry("valid_inheritance.jac");
-    layout = reg.get_layout("Child");
+    layout = by_source_name(reg.layouts).get("Child");
     assert layout is not None;
     names = [f.name for f in layout.fields];
     assert names[0] == "parent_field";
@@ -210,11 +212,48 @@ test "imported Jac field layouts use resolved declarations including aliases" {
         program = JacProgram();
         module = program.compile(str(consumer), options=CompileOptions(no_cgen=True));
         assert not program.errors_had , str(program.errors_had);
-        layout = get_layout_registry(module, program).get_layout("Holder");
+        layout = by_source_name(get_layout_registry(module, program).layouts).get(
+            "Holder"
+        );
         assert layout is not None and len(layout.fields) == 6;
         assert not any(
             warning.code is not None and warning.code.code == "W5032"
             for warning in program.warnings_had
         ) , str(program.warnings_had);
     }
+}
+
+"""The registry's MRO table catches up with a layout whose chain is longer.
+
+A class defined in one module over a base from another keeps its short
+linearization in any registry that saw it before its base's own bases; the
+layout object that crosses modules carries the complete chain. Adopting
+imported bases must bring the MRO table up to that chain, or every
+`isinstance` against an ancestor past the short end refuses to lower.
+"""
+test "adopting imported bases completes a short MRO table entry" {
+    import from jaclang.compiler.passes.layout_pass { adopt_imported_bases }
+    prog = JacProgram();
+    module = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "valid_inheritance.jac"))
+    );
+    reg = LayoutRegistry();
+    reg.layouts["Root"] = ArchetypeLayout(name="Root", arch_type="node", mro=["Root"]);
+    reg.layouts["Scope"] = ArchetypeLayout(
+        name="Scope", arch_type="node", parents=["Root"], mro=["Scope", "Root"]
+    );
+    reg.layouts["CatScope"] = ArchetypeLayout(
+        name="CatScope",
+        arch_type="node",
+        parents=["Scope"],
+        mro=["CatScope", "Scope", "Root"]
+    );
+    reg.mro_order = {
+        "Root": ["Root"],
+        "Scope": ["Scope", "Root"],
+        "CatScope": ["CatScope", "Scope"]
+    };
+    module.gen.layout_registry = reg;
+    adopt_imported_bases(module);
+    assert reg.mro_order["CatScope"] == ["CatScope", "Scope", "Root"] , reg.mro_order;
 }

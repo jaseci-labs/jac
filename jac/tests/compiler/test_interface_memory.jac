@@ -10,7 +10,7 @@ import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
 test "interface symbol identities resolve each module path once" {
     program = JacProgram();
     source = '\n'.join(f'def function_{i} -> int {{ return {i}; }}' for i in range(40));
-    options = CompileOptions(symtab_ir_only=True, force_target_program=True);
+    options = CompileOptions(symtab_ir_only=True);
     boundary = program.compile('identity.jac', use_str=source, options=options);
     twin = JacProgram().compile('identity.jac', use_str=source, options=options);
     external = JacProgram().compile('external.jac', use_str=source, options=options);

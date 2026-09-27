@@ -7,7 +7,9 @@ running in Python changes `[:n]` from "n you may see" to "up to n, some of which
 then vanish".
 
 The standard model compiles: you own it (`root_id`), it is granted to everyone
-(`access.all`), or it is granted to you by name (`access.roots.anchors`). A
+(`access.all`), it is granted to you by name (`access.roots.anchors`), or the
+root that owns it grants it to you or to everyone (a record owned by an org root
+is reached through the one grant on that root). A
 per-root grant does not scale to a large audience, so a grant may also name a
 *group*, and membership is an edge -- one grant, one membership per member,
 instead of one dict entry per member on every object.
@@ -213,6 +215,55 @@ test "a grant to a group reaches every member without a per-root entry" {
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();
+        }
+    }
+}
+
+
+test "a grant on the owning root reaches its records through a typed hop" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        org_id: str;
+        member_id: str;
+        stranger_id: str;
+        try {
+            # An org root owns the records and a member holds one grant on the
+            # org root, not an entry on every record.
+            org = _mk_root(ctx.mem);
+            member = _mk_root(ctx.mem);
+            stranger = _mk_root(ctx.mem);
+            _seed(ctx, org, org, 5, 0);
+            JacRuntimeInterface.allow_root(org.archetype, member.id, AccessLevel.READ);
+            ctx.mem.commit();
+            org_id = str(org.id);
+            member_id = str(member.id);
+            stranger_id = str(stranger.id);
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        for (caller, want) in [(member_id, 5), (stranger_id, 0)] {
+            ctx2 = _ctx(td);
+            JacRuntime.exec_ctx = ctx2;
+            try {
+                ctx2.set_user_root(caller);
+                hub = ctx2.mem.get(UUID(org_id));
+                assert hub is not None;
+                typed = len([_as_any(hub).archetype-->[?:Doc]]);
+                untyped = len([_as_any(hub).archetype-->]);
+                assert typed == want , (
+                    f"a typed hop returned {typed} of the {want} records the "
+                    "owning root's grant admits"
+                );
+                assert untyped == want , (
+                    f"the untyped hop returned {untyped}, expected {want}"
+                );
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx2.close();
+            }
         }
     }
 }

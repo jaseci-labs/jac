@@ -1,37 +1,15 @@
-import from collections.abc { Callable }
-
-obj MTRuntime {
-    has caller: Callable[(..., object)],
-        args: dict[((int | str), object)],
-        call_params: dict[(str, object)],
-        mtir: (MTIR | None);
-
-    static def factory(
-        caller: Callable[(..., object)],
-        args: dict[((int | str), object)],
-        call_params: dict[(str, object)],
-        mtir: (MTIR | None) = None
-    ) -> MTRuntime {
-        return MTRuntime(caller=caller, args=args, call_params=call_params, mtir=mtir);
-    }
-}
-
-obj MTIR {
-    has caller: Callable[(..., object)],
-        args: dict[((int | str), object)],
-        call_params: dict[(str, object)],
-        ir_info: (Info | None) = None;
-
-    has runtime: MTRuntime { getter; }
-}
-
 obj Info {
     has name: str,
         semstr: (str | None);
 }
 
+obj TypeForm {
+    has head: str,
+        args: list[(ClassInfo | EnumInfo | TypeForm | str | None)] = [];
+}
+
 obj VarInfo(Info) {
-    has type_info: (ClassInfo | EnumInfo | str | tuple[object, ...] | None) = None;
+    has type_info: (ClassInfo | EnumInfo | TypeForm | str | None) = None;
 }
 
 obj ParamInfo(VarInfo) {}
@@ -52,7 +30,7 @@ obj ClassInfo(Info) {
 
 obj FunctionInfo(Info) {
     has params: (list[ParamInfo] | None) = None,
-        return_type: (str | ClassInfo | EnumInfo | tuple[object, ...] | None) = None,
+        return_type: (ClassInfo | EnumInfo | TypeForm | str | None) = None,
         tools: (list[FunctionInfo] | None) = None,
         by_call: bool = False;
 
@@ -63,92 +41,39 @@ obj MethodInfo(FunctionInfo) {
     has parent_class: (ClassInfo | None) = None;
 }
 
-def mk_list(inner: object) -> tuple[str, any] {
-    return ('list', inner);
+def mk_form(
+    head: str, args: list[(ClassInfo | EnumInfo | TypeForm | str | None)]
+) -> TypeForm {
+    return TypeForm(head=head, args=list(args));
 }
 
-def mk_dict(key: object, val: object) -> tuple[str, any, any] {
-    return ('dict', key, val);
+def mk_list(inner: (ClassInfo | EnumInfo | TypeForm | str | None)) -> TypeForm {
+    return TypeForm(head='list', args=[inner]);
 }
 
-def mk_tuple(*types: object) -> tuple[object, ...] {
-    return (('tuple', ) + `tuple(types));
+def mk_dict(
+    key: (ClassInfo | EnumInfo | TypeForm | str | None),
+    val: (ClassInfo | EnumInfo | TypeForm | str | None)
+) -> TypeForm {
+    return TypeForm(head='dict', args=[key, val]);
 }
 
-
-def type_to_str(t: object) -> str {
-    if (t is None) {
+def type_to_str(t: (Info | TypeForm | str | None)) -> str {
+    if t is None {
         return 'None';
     }
     if isinstance(t, str) {
         return t;
     }
-    try {
-        import from jaclang.runtime.object_interop { is_record }
-        if (is_record(t) and t?.name) {
-            tname = t?.name;
-            if isinstance(tname, str) {
-                return tname;
-            }
+    if isinstance(t, TypeForm) {
+        parts: list[str] = [];
+        for arg in t.args {
+            parts.append(type_to_str(arg));
         }
-    } except Exception {}
-    if isinstance(t, `tuple) {
-        head = t[0];
-        if (head == 'list') {
-            return f"list[{type_to_str(t[1])}]";
+        if t.head == 'union' {
+            return '|'.join(parts);
         }
-        if (head == 'dict') {
-            return f"dict[{type_to_str(t[1])},{type_to_str(t[2])}]";
-        }
-        if (head == 'tuple') {
-            return 'tuple[' + ','.join(type_to_str(x) for x in t[1:]) + ']';
-        }
-        if (head == 'union') {
-            return '|'.join(type_to_str(x) for x in t[1:]);
-        }
-        inner = ','.join(type_to_str(x) for x in t[1:]);
-        return f"{head}[{inner}]";
+        return f"{t.head}[{','.join(parts)}]";
     }
-    return str(t);
-}
-
-def fetch_mtir(func: Callable) -> Info | None {
-    import sys;
-    import from pathlib { Path }
-    import from jaclang.runtime.runtime { JacRuntime }
-    module_name = None;
-    try {
-        module_name = getattr(func, "__module__");
-    } except AttributeError {
-        module_name = None;
-    }
-
-    if module_name and module_name == "__main__" {
-        main_mod = sys.modules.get("__main__");
-        main_file = main_mod?.__file__ if main_mod else None;
-        if main_file {
-            stem = Path(main_file).stem;
-
-            if stem.endswith(".impl") {
-                stem = stem[:-5];
-            } elif stem.endswith(".cl") {
-                stem = stem[:-3];
-            }
-            module = stem;
-        } else {
-            module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
-        }
-    } elif module_name {
-        module = module_name;
-    } else {
-        module = "__main__";
-    }
-
-    try {
-        qualname = func.__qualname__;
-        current_scope = ".".join([module, qualname]);
-        return JacRuntime.get_mtir_from_map(current_scope);
-    } except (KeyError, AttributeError) {
-        return None;
-    }
+    return t.name;
 }

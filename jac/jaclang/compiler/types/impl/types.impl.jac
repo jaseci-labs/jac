@@ -214,8 +214,10 @@ impl ClassDetailsShared.enum_value_type.setter(
 
 impl ClassDetailsShared.typeddict_fields.getter -> dict[str, TypeBase] {
     d: dict[str, TypeBase] = {};
-    for ea in [edge self->:TypeMemberOf:->] {
-        d[ea.name] = getattr(ea, "__jac__").target.archetype;
+    members = [edge self->:TypeMemberOf:->];
+    targets = [self->:TypeMemberOf:->];
+    for (member, target) in zip(members, targets) {
+        d[member.name] = target;
     }
     return d;
 }
@@ -231,8 +233,10 @@ impl ClassDetailsShared.typeddict_fields.setter(
 
 impl ClassDetailsShared.enum_members.getter -> dict[str, EnumMemberInfo] {
     d: dict[str, EnumMemberInfo] = {};
-    for ea in [edge self->:EnumMemberOf:->] {
-        d[ea.name] = getattr(ea, "__jac__").target.archetype;
+    members = [edge self->:EnumMemberOf:->];
+    targets = [self->:EnumMemberOf:->];
+    for (member, target) in zip(members, targets) {
+        d[member.name] = target;
     }
     return d;
 }
@@ -290,7 +294,7 @@ impl ClassDetailsShared.init(
 impl ClassDetailsPrivate.init(
     *,
     type_args: (list[TypeBase] | None) = None,
-    ct_args: (dict[str, any] | None) = None,
+    ct_args: (dict[str, CtValue] | None) = None,
     alias_name: (str | None) = None,
     literal_value: (str | int | bool | None) = None,
     distinct_key: (str | None) = None
@@ -1259,6 +1263,14 @@ impl ClassDetailsShared.same_class(other: ClassDetailsShared) -> bool {
 
 impl TypeBase.is_class_instance -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instance());
+}
+
+impl TypeBase.as_class -> (ClassType | None) {
+    return None;
+}
+
+impl ClassType.as_class -> (ClassType | None) {
+    return self if self._shared is not None else None;
 }
 
 impl TypeBase.is_instantiable_class -> bool {

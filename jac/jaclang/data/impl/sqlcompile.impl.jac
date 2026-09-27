@@ -200,7 +200,19 @@ def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str
         f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
         f" AND ({alias}.props->'access'->'groups'->'anchors')"
         f" ? CAST(ge.dst AS text)"
-        f"))"
+        f")"
+        f" OR (EXISTS ("
+        f"SELECT 1 FROM anchors ro"
+        f" WHERE ro.id = {alias}.root_id"
+        f" AND COALESCE("
+        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" (ro.props->'access'->>'all')::int"
+        f") > -1"
+        f") AND COALESCE("
+        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" 0"
+        f") > -1)"
+        f")"
     );
 }
 

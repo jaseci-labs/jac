@@ -1,8 +1,7 @@
-import from typing { TypeAlias }
 import from jaclang.compiler.frontend.unitree { UniCFGNode }
 
-glob SymId: TypeAlias = int,
-     DataflowTransfer: TypeAlias = Callable[[UniCFGNode, set[SymId]], set[SymId]];
+type SymId = int;
+type DataflowTransfer = Callable[[UniCFGNode, set[SymId]], set[SymId]];
 
 def _state_at(state: dict[int, set[SymId]], key: int) -> set[SymId] {
     _cur = state.get(key);

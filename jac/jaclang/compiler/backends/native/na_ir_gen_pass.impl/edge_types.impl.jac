@@ -7,29 +7,13 @@ impl NaIRGenPass._osp_static_edge_name(expr: uni.UniNode) -> (str | None) {
         or expr.value in self.global_vars {
         return None;
     }
-    name = self._arch_alias_target(expr) or expr.value;
-    model = self.module.gen.osp_model;
+    name = self._arch_ref_key(expr) or expr.value;
+    model = self.module.gen.native_osp_model;
     return name if model is not None and model.arch_kind.get(name) == "edge" else None;
 }
 
 impl NaIRGenPass._osp_edge_class_name(expr: uni.UniNode) -> (str | None) {
-    while isinstance(expr, uni.AtomUnit) {
-        expr = expr.value;
-    }
-    if not isinstance(expr, uni.Expr) or not isinstance(expr.type, ClassType) {
-        return None;
-    }
-    typ = expr.type;
-    if typ.is_builtin("type") {
-        args = typ.private.type_args or [];
-        if not args or not isinstance(args[0], ClassType) {
-            return "Edge";
-        }
-        typ = args[0];
-    } elif not typ.is_instantiable() or typ.is_instance() {
-        return None;
-    }
-    return typ.shared.class_name;
+    return self._class_expr_bound(expr, unbounded="Edge");
 }
 
 impl NaIRGenPass._osp_edge_tag(
@@ -40,7 +24,7 @@ impl NaIRGenPass._osp_edge_tag(
         return ir.Constant(i64, -1);
     }
     name = self._osp_static_edge_name(expr);
-    model = self.module.gen.osp_model;
+    model = self.module.gen.native_osp_model;
     if name is not None and model is not None {
         return ir.Constant(i64, model.tags[name]);
     }
@@ -104,7 +88,7 @@ impl NaIRGenPass._osp_edge_factory(name: str) -> ir.Function {
 }
 
 impl NaIRGenPass._emit_osp_edge_factories -> None {
-    model = self.module.gen.osp_model;
+    model = self.module.gen.native_osp_model;
     if model is None or self._osp_setup_fn is None {
         return;
     }
@@ -120,15 +104,9 @@ impl NaIRGenPass._emit_osp_edge_factories -> None {
         try {
             arch = self.arch_ast_map.get(name);
             constructible = arch is not None and self._demoted_init_of(name) is None;
-            init_sig: uni.FuncSignature | None = None;
-            for owner in self._mro_of(name) {
-                init_sig = self._arch_init_sig_of(owner);
-                if init_sig is not None {
-                    break;
-                }
-            }
-            if init_sig is not None {
-                for param in init_sig.get_parameters() {
+            init_params = self._arch_init_params_of(name);
+            if init_params is not None {
+                for param in init_params {
                     if param.value is None {
                         constructible = False;
                     }

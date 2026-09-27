@@ -212,14 +212,16 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
     }
 
     if isinstance(value_node, uni.FuncCall) {
-        call_name = self._get_name(value_node.target);
+        call_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if call_name is not None and call_name in self.struct_types {
             return self.struct_types[call_name].as_pointer();
         }
     }
 
     if isinstance(value_node, uni.AtomTrailer) {
-        target_name = self._get_name(value_node.target);
+        target_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
         }
@@ -254,11 +256,16 @@ impl NaIRGenPass._codegen_const_expr(
         return ir.Constant(target_type, None);
     }
     cv = nd.ct_value if isinstance(nd, uni.Expr) else None;
-    if cv is not None and not cv.is_deferred and isinstance(cv.v, (bool, int, float)) {
-        if isinstance(cv.v, bool) {
-            return ir.Constant(target_type, 1 if cv.v else 0);
+    if cv is not None and not cv.is_deferred {
+        if isinstance(cv, CtBool) {
+            return ir.Constant(target_type, 1 if cv.value else 0);
         }
-        return ir.Constant(target_type, cv.v);
+        if isinstance(cv, CtInt) and not cv.mag {
+            return ir.Constant(target_type, cv.small);
+        }
+        if isinstance(cv, CtFloat) {
+            return ir.Constant(target_type, cv.value);
+        }
     }
     (ok, v) = fold_const(nd);
     if not ok {

@@ -77,7 +77,7 @@ like the old suffix.
 """
 def native_force_opts -> CompileOptions {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    return CompileOptions(force_codespace='native', force_target_program=True);
+    return CompileOptions(force_codespace='native');
 }
 
 
@@ -194,6 +194,53 @@ glob NATIVE_FIXTURES: str = str(
              / "fixtures"
      );
 
+"""The native identity of archetype `name` declared in `source`.
+
+Structs, method symbols, vtables and layout keys are spelled with it
+(`codeinfo.native_arch_name`: the name scoped by its defining module). A
+relative `source` names a file in the native fixtures directory.
+"""
+def native_arch(source: str, name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
+    path = Path(source);
+    if not path.is_absolute() {
+        path = Path(NATIVE_FIXTURES) / source;
+    }
+    return native_arch_name(str(path), name);
+}
+
+"""`text` (IR, a symbol, a layout key) with archetype identities spelled by
+source name, for assertions about everything but the scoping itself."""
+def source_spelled(text: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_display_text }
+    return native_display_text(text);
+}
+
+"""`mapping` re-keyed by source name (layout registries, exported layouts)."""
+def by_source_name(mapping: dict[str, any]) -> any {
+    return {source_spelled(key): value for (key, value) in mapping.items()};
+}
+
+"""The link symbol `iface` exports for `name`. A record names the unit's own
+archetypes by source name; an export whose name involves another module's
+archetype (a specialization over it) keeps that archetype's scope, and is
+found here by its source spelling too."""
+def iface_symbol(iface: any, name: str) -> (str | None) {
+    if iface is None {
+        return None;
+    }
+    found = iface.symbol_of(name);
+    if found is not None {
+        return found;
+    }
+    for (key, ex) in iface.exports.items() {
+        if source_spelled(key) == name {
+            return ex.symbol;
+        }
+    }
+    return None;
+}
+
 """Compile a .jac fixture into the native codespace and return (engine, module).
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where
@@ -217,10 +264,9 @@ def compile_native(
 """The whole-program LLVM IR of `fixture` linked for `triple`: its unit
 bitcode merged with the link glue that defines `jac_entry`, the way an
 executable's object is assembled before the platform linker sees it. Tests
-that hand a single relocatable object to a linker start from this text. The
-triple rides on the options: the link plan scopes its unit compiles to
-`options.native_target`."""
+that hand a single relocatable object to a linker start from this text."""
 def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
+    import os;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
@@ -229,20 +275,39 @@ def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,
         build_link_plan,
-        whole_program_module,
-        _platform_of
+        whole_program_module
     }
-    prog = JacProgram();
-    opts = CompileOptions(
-        aot_mode=True, native_link_mode=NATIVE_LINK_MODE_BITCODE, native_target=triple
-    );
-    path = str(Path(NATIVE_FIXTURES) / fixture);
-    plan = build_link_plan(prog, [path], options=opts, mode=NATIVE_LINK_MODE_BITCODE);
-    assert not prog.errors_had , f"compile errors: {[str(e) for e in prog.errors_had]}";
-    assert plan.triple == triple , f"plan linked for {plan.triple}, not {triple}";
-    spec = plan.glue_spec(ArtifactKind.EXECUTABLE, _platform_of(triple), static_musl);
-    (merged, _exports) = whole_program_module(plan, spec);
-    return str(merged);
+    prev = os.environ.get("JAC_NATIVE_TARGET", None);
+    os.environ["JAC_NATIVE_TARGET"] = triple;
+    try {
+        prog = JacProgram();
+        opts = CompileOptions(aot_mode=True, native_link_mode=NATIVE_LINK_MODE_BITCODE);
+        path = str(Path(NATIVE_FIXTURES) / fixture);
+        plan = build_link_plan(
+            prog, [path], options=opts, mode=NATIVE_LINK_MODE_BITCODE
+        );
+        assert not prog.errors_had , f"compile errors: {[
+            str(e) for e in prog.errors_had
+        ]}";
+        tl = triple.lower();
+        platform = "elf";
+        if "darwin" in tl or "apple" in tl {
+            platform = "macho";
+        } elif "windows" in tl or "msvc" in tl or "mingw" in tl {
+            platform = "pe";
+        } elif "wasm" in tl {
+            platform = "wasm";
+        }
+        spec = plan.glue_spec(ArtifactKind.EXECUTABLE, platform, static_musl);
+        (merged, _exports) = whole_program_module(plan, spec);
+        return str(merged);
+    } finally {
+        if prev is None {
+            os.environ.pop("JAC_NATIVE_TARGET", None);
+        } else {
+            os.environ["JAC_NATIVE_TARGET"] = prev;
+        }
+    }
 }
 
 """Pin the compiled module's unit path and native interface on its engine,
@@ -278,7 +343,7 @@ def native_symbol(eng: any, name: str) -> str {
         interfaces.insert(0, iface);
     }
     for unit_iface in interfaces {
-        found = unit_iface.symbol_of(name);
+        found = iface_symbol(unit_iface, name);
         if found is not None {
             return found;
         }
@@ -304,11 +369,9 @@ interface record first, the mangling rule second. Tests that grep emitted
 IR for a function or global build their marker from this."""
 def unit_symbol(ir: any, name: str) -> str {
     iface = ir.gen.native_iface if ir?.gen else None;
-    if iface is not None {
-        found = iface.symbol_of(name);
-        if found is not None {
-            return found;
-        }
+    found = iface_symbol(iface, name);
+    if found is not None {
+        return found;
     }
     path = ir.loc.mod_path if ir?.loc else "";
     if not path {
