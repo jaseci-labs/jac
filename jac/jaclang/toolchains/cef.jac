@@ -38,7 +38,7 @@ def ensure_cef(directory: Path, headers_only: bool = False) -> Path {
     artifact = cef_artifact(directory / "cef_sums.lock");
     top = artifact.url.rsplit("/", 1)[1].removesuffix(".tar.bz2");
     installed = install(artifact, top + "/Release/libcef.so") / top;
-    with InstallLock(directory / ".cef.lock") {
+    with FileLock(directory / ".cef.lock") {
         stamp = directory / ".cef-digest";
         healthy = (directory / "cef_dist" / "libcef.so").is_file()
             and (

@@ -14,7 +14,12 @@ def name_erased_natively(name_nd: UniNode) -> bool;
 
 def static_fstring_spec_text(spec: UniNode) -> (str | None);
 
-def call_has_kwargs_sink(call: FuncCall) -> bool;
+def call_binds_kwargs_spread(call: FuncCall) -> bool;
+
+def call_constructs_class_value(call: FuncCall) -> bool;
+
+def _class_bounded_typevar(t: object) -> bool;
+
 
 def native_capability_violations(
     mod: Module
@@ -31,10 +36,7 @@ def partition_native_capability_violations(
     )
 ];
 
-walker PortabilityWarnPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker PortabilityWarnPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_js_globals(mod: Module) -> None;
@@ -44,18 +46,12 @@ walker PortabilityWarnPass {
     def _check_js_properties(mod: Module) -> None;
 }
 
-walker NativeCapabilityCheckPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker NativeCapabilityCheckPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
 
-walker ClientCapabilityCheckPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker ClientCapabilityCheckPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }

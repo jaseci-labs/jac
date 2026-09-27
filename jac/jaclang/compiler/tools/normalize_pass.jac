@@ -1,15 +1,4 @@
-walker NormalizePass(TreeWalker) {
-    can enter_walk with uni.UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with uni.UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: uni.Module;
-
+walker NormalizePass(TreePass) {
     can enter_sub_tag with uni.SubTag entry;
     can enter_module with uni.Module entry;
     can enter_type_param with uni.TypeParam entry;

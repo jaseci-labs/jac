@@ -25,7 +25,7 @@ def _woven_text(path: Path) -> str {
     import from jaclang.compiler.driver.wiring { wiring_annex_for }
 
     annex = wiring_annex_for(str(path));
-    return path.read_text() + ("\n" + annex[0] if annex else "");
+    return path.read_text() + ("\n" + annex.source if annex else "");
 }
 
 def _register_client_targets {

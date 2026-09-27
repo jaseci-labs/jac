@@ -32,6 +32,7 @@ __all__ = [
 ]
 
 _T = TypeVar("_T")
+_D = TypeVar("_D")
 
 def managed(__x: _T) -> _T: ...
 
@@ -52,7 +53,10 @@ class Region:
 def region_of(__x: object) -> Region | None: ...
 
 def iter(__o: Iterable[_T]) -> Iterator[_T]: ...
+@overload
 def next(__i: Iterator[_T]) -> _T: ...
+@overload
+def next(__i: Iterator[_T], __default: _D) -> _T | _D: ...
 
 class File:
     # Fields backing the emitted struct (handle is opaque and intentionally

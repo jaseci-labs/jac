@@ -32,7 +32,7 @@ def source_workspace(source: Path, name: str) -> Path {
         digest.update(path.read_bytes());
     }
     destination = build_slot(name, host_platform(), digest.hexdigest()[:20]);
-    with InstallLock(destination.with_suffix(".lock")) {
+    with FileLock(destination.with_suffix(".lock")) {
         if not slot_ready(destination) {
             destination.parent.mkdir(parents=True, exist_ok=True);
             with tempfile.TemporaryDirectory(
@@ -141,7 +141,7 @@ def ensure_webview(directory: Path) -> Path {
 def build_webview(directory: Path, build: WebviewBuild) -> Path {
     output = directory / build.library;
     stamp = directory / ".webview-build";
-    with InstallLock(directory / ".build.lock") {
+    with FileLock(directory / ".build.lock") {
         if output.is_file()
             and stamp.is_file()
             and stamp.read_text() == build.identity {

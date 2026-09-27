@@ -6,12 +6,6 @@ graph import {
         is_native_lowered,
         is_roster_input
     }
-    bootstrap_manifest --> compiler.passes.static_analysis_pass.is_bootstrap_compiled_module {
-        is_seed_source
-    }
-    bootstrap_manifest --> compiler.placement.placement_facts.native_only {
-        is_native_only
-    }
     bootstrap_manifest --> dist.payload.fsutil.skip_jaclang { is_native_lowered }
     bootstrap_manifest --> dist.precompile_bytecode.find_jac_files { is_native_lowered }
     bootstrap_manifest --> dist.precompile_bytecode.seal_bootstrap {
@@ -92,13 +86,27 @@ graph import {
     }
     project --> cli.commands.native_build.native_build { get_config }
     project --> compiler.backends.native.wasm_build._project_gc_settings { get_config }
-    project --> compiler.passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced {
-        get_config
-    }
-    project --> compiler.passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
-        get_config
-    }
     scale as scale_mod --> server.endpoints.pages.register_graph_endpoints.graph_page;
+    bootstrap_manifest --> compiler.backends.native.kernel_stage0.running_kernel_target {
+        NATIVE_LOWERED_PATHS,
+        NATIVE_ONLY_DIR_REL,
+        NATIVE_ONLY_REL
+    }
+    bootstrap_manifest --> project.compiler_host.ProjectHost.is_native_lowered_source {
+        is_native_lowered
+    }
+    bootstrap_manifest --> project.compiler_host.ProjectHost.is_native_only_source {
+        is_native_only
+    }
+    bootstrap_manifest --> project.compiler_host.ProjectHost.is_seed_source {
+        is_seed_source
+    }
+    bootstrap_manifest --> project.kernel_snapshot.manifest_sets {
+        NATIVE_LOWERED_PATHS,
+        NATIVE_ONLY_DIR_REL,
+        NATIVE_ONLY_REL,
+        SEED_PATHS
+    }
 }
 
 graph import byllm {
@@ -353,6 +361,7 @@ graph import byllm {
     types --> byllm.tests.test_usage { IterationContext, MockToolCall }
     types --> byllm.visit_routing.route_visit { Message, MessageRole }
     visit_routing --> runtime.runtime.JacLLM.by_operator { route_visit }
+    mtir --> byllm.tests.test_mtir_integration { MTIR }
 }
 
 graph import byllm._optdeps {
@@ -488,7 +497,7 @@ graph import cache {
     home --> cache.policy { CACHEDIR_TAG }
     home --> cache.registry { CACHEDIR_TAG, cache_home, ensure_cache_dir, ensure_root }
     home --> cli.commands.cache { cache_home }
-    locking --> cache.policy | toolchains.store { FileLock }
+    locking --> cache.policy { FileLock }
     policy --> cache.registry {
         CacheEntry,
         EntryKind,
@@ -531,6 +540,7 @@ graph import cache {
     registry --> scale.injector.binary._scale_cache_root { bucket }
     registry --> toolchains.android { bucket }
     registry --> toolchains.store { bucket, maybe_sweep }
+    policy --> cache.registry { KeepMatch }
 }
 
 graph import cli {
@@ -673,26 +683,8 @@ graph import cli {
     console --> client.vite_bundler { console }
     console --> client.vite_client_bundle { console }
     console --> compiler.backends.native.elf_linker { console }
-    console --> compiler.backends.native.na_ir_gen_pass { console }
-    console --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable {
-        console
-    }
-    console --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
-        console
-    }
-    console --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype {
-        console
-    }
-    console --> compiler.backends.native.wasm_build._link_wasm_libc { console }
     console --> compiler.driver.application.prepare_application { console }
     console --> compiler.driver.application.prepare_dynamic_module { console }
-    console --> compiler.driver.compiler.JacCompiler.compile {
-        console as _note_console
-    }
-    console --> compiler.driver.na_coverage._note_native_closure_cap { console }
-    console --> compiler.placement.placement_solver.demote_client_pulled_elements {
-        console
-    }
     console --> compiler.tools.lang_tools { console }
     console --> dist.precompile_bytecode { console }
     console --> dist.seal { console }
@@ -867,6 +859,9 @@ graph import cli {
     }
     workpool --> testing.test_runner._test_retire { env_int }
     workpool --> testing.test_runner.resolve_jobs { resolve_jobs as _resolve_pool_jobs }
+    console --> project.compiler_host.ProjectHost.note { console }
+    workpool --> dist.precompile_bytecode.prebuild_native_units { WorkPool }
+    workpool --> testing.test_runner._test_rss_cap_mb { env_int }
 }
 
 graph import cli.commands {
@@ -1690,15 +1685,6 @@ graph import compiler {
         c_builtin_kind
     }
     expr_keys --> compiler.backends.native.na_ir_gen_pass { type_tag_borrows }
-    expr_keys --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-        is_builtin_region_type
-    }
-    expr_keys --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_method_call_inner {
-        is_builtin_region_type
-    }
-    expr_keys --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._lower_partition_unpack {
-        is_builtin_region_type
-    }
     expr_keys --> compiler.passes.cfg_build_pass.CFGBuildPass._wire_bool_operands {
         collect_narrowing_symbols
     }
@@ -1720,13 +1706,7 @@ graph import compiler {
     expr_keys --> compiler.passes.cfg_build_pass.CFGBuildPass.exit_if_else_expr {
         collect_narrowing_symbols
     }
-    expr_keys --> compiler.passes.ownership_check_pass {
-        is_builtin_region_type,
-        type_tag_borrows
-    }
-    expr_keys --> compiler.passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
-        expr_is_builtin_region
-    }
+    expr_keys --> compiler.passes.ownership_check_pass { type_tag_borrows }
     expr_keys --> compiler.symbol_utils {
         classify_condition_key,
         collect_assigned_symbols,
@@ -1777,17 +1757,11 @@ graph import compiler {
     jc_materialize --> compiler.jc_unit {
         hint_commentdata,
         hint_srcdiag,
-        jc_mz_dispose,
         jc_mz_obj,
-        jc_mz_run,
-        jc_mz_shapes3
+        jc_mz_run
     }
-    native_compiler as _jc --> compiler.frontend.parser.frontend._native_parse_woven;
     native_scope --> compiler.backends.native.kernel_resolve.kernel_plan {
         kernel_root_path
-    }
-    native_scope --> compiler.driver.compiler.JacCompiler.parse_str {
-        in_native_scope_path
     }
     native_scope --> compiler.driver.selfhost.SelfHostCache.resolve {
         in_native_scope_path
@@ -1843,9 +1817,6 @@ graph import compiler {
     symbol_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_atom_trailer {
         imported_module_name
     }
-    symbol_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-        erased_identity_call_arg
-    }
     symbol_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_method_call_inner {
         imported_module_name
     }
@@ -1871,7 +1842,6 @@ graph import compiler {
         CallKind,
         classify_call
     }
-    symbol_utils --> compiler.field_semantics.is_field_marker { erased_import_binds }
     symbol_utils --> compiler.passes.ownership_check_pass { CallKind, classify_call }
     symbol_utils --> compiler.passes.ownership_check_pass.OwnershipCheckPass._callee_ability {
         resolved_callee
@@ -1895,12 +1865,6 @@ graph import compiler {
         ability_of_symbol,
         classify_call,
         resolve_expr_symbol
-    }
-    symbol_utils --> compiler.placement.placement.collect_placement_rows {
-        ClientImportVerdict,
-        classify_client_import_item,
-        is_client_boundary_import,
-        resolve_import_source_module
     }
     symbol_utils --> compiler.placement.placement_solver.PlacementApplyPass._run_impl {
         report_serverless_kind_errors
@@ -2040,23 +2004,111 @@ graph import compiler {
     types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
         types as jtypes
     }
+    erased_imports --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
+        contextmanager_ability,
+        erased_identity_call_arg
+    }
+    erased_imports --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._ctxmgr_callee {
+        contextmanager_ability
+    }
+    erased_imports --> compiler.field_semantics.is_field_marker { erased_import_binds }
+    erased_imports --> compiler.passes.capability_check_pass.native_capability_violations {
+        contextmanager_ability,
+        is_contextmanager_decorator
+    }
+    field_semantics --> compiler.backends.native.na_ir_gen_pass { field_initialization }
+    type intrinsic_registry --> compiler.symbol_utils { IntrinsicRegistry }
+    jc_materialize --> compiler.jc_unit { jc_mz_shape_keys }
+    kernel_target --> compiler.backends.native.kernel_stage0 {
+        KERNEL_TARGET_FORMAT,
+        KernelTarget,
+        read_kernel_target,
+        set_kernel_target
+    }
+    kernel_target --> compiler.backends.native.stage0_build.build_kernel_by_pin {
+        active_kernel_target,
+        with_link_mode,
+        write_kernel_target
+    }
+    kernel_target --> compiler.backends.native.stage0_build.stage0_child_env {
+        KERNEL_TARGET_ENV
+    }
+    kernel_target --> compiler.backends.native.stage0_pin.stage0_sidecar_matches | compiler.driver.jir.sidecar_unit_paths | compiler.driver.native_iface | compiler.native_scope.scope_module_path {
+        target_pkg_root
+    }
+    kernel_target --> compiler.driver.jir.get_module_cache_path {
+        is_target_package_path,
+        kernel_target_active
+    }
+    kernel_target --> compiler.frontend.codeinfo {
+        active_kernel_target,
+        is_target_package_path,
+        kernel_target_active,
+        kernel_target_generation,
+        target_pkg_root
+    }
+    kernel_target --> compiler.native_scope.kernel_root_module | compiler.placement.placement_facts.native_lowered {
+        active_kernel_target
+    }
+    kernel_target --> compiler.native_scope.scope_modules | compiler.placement.placement_facts.native_only {
+        active_kernel_target
+    }
+    kernel_target --> compiler.native_scope.native_scope_path_suffixes {
+        kernel_target_generation
+    }
+    kernel_target --> compiler.placement.placement_facts._toolchain_rel {
+        target_package_rel
+    }
+    type kernel_target --> compiler.backends.native.kernel_resolve | compiler.backends.native.stage0_build {
+        KernelTarget
+    }
+    native_compiler as _jc --> project.compiler_host.ProjectHost.native_parse;
+    native_compiler --> project.kernel_check.analysis_kernel | project.kernel_snapshot.kernel_analysis {
+        ensure_loaded
+    }
+    native_scope --> compiler.backends.native.kernel_stage0.running_kernel_target {
+        KERNEL_ROOT_MODULE,
+        NATIVE_SCOPE
+    }
+    native_scope --> compiler.backends.native.stage0_pin.abi_contract_differences {
+        KERNEL_ABI_CONTRACT_REL
+    }
+    native_scope --> compiler.backends.native.stage0_pin.abi_contract_digest {
+        KERNEL_ABI_CONTRACT_REL
+    }
+    native_scope --> compiler.driver.program.JacProgram.declared_codespace {
+        package_host_edge
+    }
+    native_scope --> compiler.driver.program.JacProgram.infers_native_codespace {
+        in_native_scope_path,
+        package_host_edge
+    }
+    native_scope --> dist.precompile_bytecode.native_roots { kernel_root_path }
+    symbol_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._copy_call_kind {
+        imported_module_name
+    }
+    symbol_utils --> compiler.placement.placement_export.collect_placement_rows {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
+        resolve_import_source_module
+    }
 }
 
 graph import compiler.backends {
     es --> compiler.backends.es.client_kernel_cache._lower { estree as es }
     es --> compiler.backends.es.es_unparse { estree as es }
     es --> compiler.backends.es.jsx_processor.EsJsxProcessor.init { estree as es }
-    es --> compiler.driver.pipeline.get_py_code_gen { EsastGenPass }
     es --> compiler.tests.xbackend_equiv { EsastGenPass }
     es --> compiler.tools.lang_tools { EsastGenPass, es_node_to_dict }
-    native --> compiler.driver.compiler.JacCompiler._report_missing_native_ir {
-        NaIRGenPass
-    }
-    native --> compiler.driver.pipeline.get_py_code_gen {
+    es --> compiler.driver.pipeline_runner.get_py_code_gen { EsastGenPass }
+    native --> compiler.driver.pipeline_runner.get_py_code_gen {
         NaIRGenPass,
         NativeCompilePass
     }
-    native --> compiler.driver.pipeline.product_pipeline { NaIRGenPass }
+    native --> compiler.driver.pipeline_runner.native_ir_product_schedule {
+        NaIRGenPass
+    }
 }
 
 graph import compiler.backends.common {
@@ -2114,7 +2166,6 @@ graph import compiler.backends.es {
     es_unparse --> compiler.tools.lang_tools { es_to_js }
     esast_gen_pass --> compiler.backends.es.client_kernel_cache._lower { EsastGenPass }
     type esast_gen_pass --> compiler.backends.es.jsx_processor { EsastGenPass }
-    esast_gen_pass --> compiler.driver.pipeline.product_pipeline { EsastGenPass }
     esast_gen_pass --> compiler.tests.test_client_codegen_facts { EsastGenPass }
     esast_gen_pass --> dist.publish.npm_sources._compile_module { EsastGenPass }
     estree as es --> compiler.backends.es.backends.react;
@@ -2316,6 +2367,14 @@ graph import compiler.backends.es {
         RefAttr,
         StaticAttr
     }
+    esast_gen_pass --> compiler.driver.pipeline_runner.client_product_schedule {
+        EsastGenPass
+    }
+    js_paths --> compiler.backends.es.esast_gen_pass {
+        convert_to_js_import_path,
+        relative_js_specifier
+    }
+    js_paths --> project.modresolver.resolve_module { convert_to_js_import_path }
 }
 
 graph import compiler.backends.es.backends {
@@ -2341,9 +2400,6 @@ graph import compiler.backends.es.backends {
     registry --> client.vite_bundler.ViteBundler._generate_vite_config_content {
         resolve_active_backend
     }
-    registry --> compiler.backends.es.esast_gen_pass.EsastGenPass._ensure_backend {
-        resolve_active_backend
-    }
     registry --> compiler.driver.build_services.CompilerBuildServices.client_runtime_basename {
         resolve_active_backend,
         resolve_framework_backend
@@ -2357,6 +2413,10 @@ graph import compiler.backends.es.backends {
     solid --> compiler.backends.es.backends.registry.resolve_framework_backend {
         SolidBackend
     }
+    registry --> compiler.backends.es.esast_gen_pass.EsastGenPass._ensure_backend {
+        active_framework,
+        resolve_framework_backend
+    }
 }
 
 graph import compiler.backends.native {
@@ -2367,24 +2427,6 @@ graph import compiler.backends.native {
     c_emit --> dist.native_product.write_native_product { emit_c }
     c_emit --> dist.source.client.write_client { emit_c }
     elf_linker --> compiler.backends.native.link_plan.link_artifact { ElfLinker }
-    floor --> compiler.backends.native.static_link.clib_needed_libs {
-        clib_needed_libs as implementation
-    }
-    floor --> compiler.backends.native.static_link.clib_symbol_lib_map {
-        clib_symbol_lib_map as implementation
-    }
-    floor --> compiler.backends.native.static_link.clib_to_archive_name {
-        clib_to_archive_name as implementation
-    }
-    floor --> compiler.backends.native.static_link.collect_floor_archives {
-        collect_floor_archives as implementation
-    }
-    floor --> compiler.backends.native.static_link.floor_lib_dir {
-        floor_lib_dir as implementation
-    }
-    floor --> compiler.backends.native.static_link.resolve_floor_dir {
-        resolve_floor_dir as implementation
-    }
     foreign --> compiler.backends.native.abi.classify_foreign_fn {
         foreign_struct_layout
     }
@@ -2428,10 +2470,6 @@ graph import compiler.backends.native {
     link_plan --> compiler.backends.native.kernel_resolve._sidecar_matches_sources {
         units_source_key
     }
-    link_plan --> compiler.backends.native.kernel_resolve.build_kernel {
-        ArtifactKind,
-        link_artifact
-    }
     link_plan --> compiler.backends.native.kernel_resolve.kernel_plan {
         build_link_plan
     }
@@ -2468,9 +2506,6 @@ graph import compiler.backends.native {
         _find_entry_vaddr,
         _resolve_patch_site,
         _resolve_seg_vaddr
-    }
-    linker_common --> compiler.backends.native.floor.collect_floor_archives {
-        select_ar_members
     }
     linker_common --> compiler.backends.native.macho_linker {
         _align,
@@ -2513,7 +2548,6 @@ graph import compiler.backends.native {
     llvm --> compiler.backends.native.lowering { ir }
     llvm --> compiler.backends.native.na_ir_gen_pass { binding as llvm, ir }
     llvm --> compiler.backends.native.primitives_native { ir }
-    llvm --> compiler.driver.pipeline.native_pipeline_available { _find_shim }
     lowering --> compiler.backends.native.entry_points.validate_native_application {
         native_lowering_issues
     }
@@ -2538,7 +2572,6 @@ graph import compiler.backends.native {
     na_compile_pass --> compiler.backends.native.link_plan {
         NATIVE_CODE_MODEL,
         NATIVE_RELOC_MODEL,
-        load_jit_clib,
         optimize_unit
     }
     na_compile_pass --> compiler.backends.native.wasm_build.prepare_wasm_module {
@@ -2618,6 +2651,78 @@ graph import compiler.backends.native {
     }
     wasm_linker --> compiler.backends.native.wasm_build.emit_wasm_from_ir { WasmLinker }
     wasm_linker --> dist.source.build.build_native_product { WasmLinker }
+    kernel_resolve --> compiler.backends.native.kernel_stage0 {
+        KERNEL_DEV_LINK_MODE,
+        _StoreParserSpan,
+        kernel_plan
+    }
+    kernel_resolve --> compiler.backends.native.stage0_build {
+        KERNEL_DEV_LINK_MODE,
+        STAGE0_BUILDER
+    }
+    kernel_resolve --> compiler.backends.native.stage0_build._fall_back {
+        KernelUnavailable
+    }
+    kernel_resolve --> compiler.backends.native.stage0_build.restamp_stage0_sidecar {
+        LAYOUT_SIDECAR_SUFFIX,
+        kernel_options,
+        read_sidecar
+    }
+    kernel_resolve --> compiler.backends.native.stage0_build.stage0_child_env {
+        KERNEL_LIB_ENV
+    }
+    kernel_resolve --> dist.precompile_bytecode.seal_native { SEALED_LINK_MODE }
+    kernel_resolve --> dist.precompile_bytecode.seal_stage0_kernel {
+        SEALED_LINK_MODE,
+        STAGE0_BUILDER,
+        read_sidecar
+    }
+    kernel_stage0 --> compiler.backends.native.kernel_resolve.build_kernel {
+        link_kernel
+    }
+    kernel_stage0 --> compiler.backends.native.stage0_build.build_kernel_by_pin | dist.precompile_bytecode.seal_stage0_kernel {
+        running_kernel_target
+    }
+    link_plan --> compiler.backends.native.kernel_stage0.link_kernel {
+        ArtifactKind,
+        link_artifact
+    }
+    link_plan --> dist.precompile_bytecode.prebuild_native_closure { build_link_plan }
+    type link_plan --> compiler.backends.native.kernel_resolve { LinkPlan }
+    type link_plan --> compiler.backends.native.kernel_stage0 { LinkResult }
+    linker_common --> compiler.backends.native.link_plan.link_artifact {
+        object_undefined_symbols
+    }
+    llvm --> compiler.backends.native.stage0_build.stage0_child_env | compiler.driver.toolchain.native_pipeline_available {
+        _find_shim
+    }
+    na_compile_pass --> compiler.driver.nativecache.NativeBuildSession.lower {
+        settle_unit_ir
+    }
+    na_constants --> compiler.backends.native.na_ir_gen_pass {
+        JACVAL_ELLIPSIS_TAG,
+        NATIVE_CONTAINER_CODES,
+        NATIVE_COPY_FUNCS
+    }
+    na_ir_gen_pass --> compiler.driver.pipeline_runner.ModuleCompilation.report_missing_native_ir {
+        NaIRGenPass
+    }
+    stage0_build --> compiler.backends.native.kernel_resolve._derive_in_tree | dist.precompile_bytecode.seal_stage0_kernel {
+        build_kernel_by_pin
+    }
+    stage0_pin --> compiler.backends.native.kernel_resolve._unit_sources_match {
+        stage0_sidecar_matches
+    }
+    stage0_pin --> compiler.backends.native.stage0_build {
+        Stage0Pin,
+        Stage0PinError,
+        abi_contract_differences,
+        abi_contract_digest,
+        read_stage0_pin,
+        stage0_source_dir,
+        stage0_strict
+    }
+    static_link --> compiler.backends.native.link_plan { load_outline_atomics }
 }
 
 graph import compiler.backends.native.llvm {
@@ -2660,9 +2765,6 @@ graph import compiler.backends.native.llvm {
     }
     binding as llvm --> compiler.backends.native.wasm_build._load_libc_module;
     binding as llvm --> compiler.backends.native.wasm_build.prepare_wasm_module;
-    binding --> compiler.driver.compile_options.CompileOptions.effective_triple {
-        get_default_triple
-    }
     binding as llvm --> compiler.driver.compiler.JacCompiler._load_native_from_cache;
     type binding --> compiler.driver.compiler.JacCompiler._load_native_from_cache {
         ExecutionEngine
@@ -2684,6 +2786,9 @@ graph import compiler.backends.native.llvm {
     }
     ir --> compiler.backends.native.llvm.ir.values { _utils, types, values }
     type ir --> compiler.frontend.codeinfo { Module as IRModule }
+    binding --> project.compiler_host.ProjectHost.default_target_triple {
+        get_default_triple
+    }
 }
 
 graph import compiler.backends.native.llvm.binding {
@@ -2766,9 +2871,6 @@ graph import compiler.backends.py {
         package_sources,
         runtime_sources
     }
-    artifact_imports --> compiler.driver.pipeline.compile_application {
-        package_sources
-    }
     artifact_imports --> dist.precompile_bytecode.seal_runtime_closure {
         runtime_sources
     }
@@ -2802,7 +2904,6 @@ graph import compiler.backends.py {
     codegen_shim --> compiler.backends.py.jcir_bc_gen_pass.JcirBytecodeGenPass.transcribe_module {
         compile_ir
     }
-    jcir_bc_gen_pass --> compiler.driver.pipeline { JcirBytecodeGenPass }
     jcir_facts --> compiler.backends.py.codegen_ir { jcir_python_version }
     jcir_facts --> compiler.backends.py.jcir_gen_pass {
         JCIR_AMBIENT_TYPING_NAMES,
@@ -2810,7 +2911,18 @@ graph import compiler.backends.py {
         jcir_is_test_path
     }
     jcir_gen_pass --> compiler.driver.compiler { JcirGenPass }
-    jcir_gen_pass --> compiler.driver.pipeline { JcirGenPass }
+    artifact_imports --> compiler.driver.pipeline_runner.compile_application {
+        package_sources
+    }
+    codegen_shim --> cli.commands.transform.jac2py | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py | compiler.driver.source_products.python_source {
+        generated_python
+    }
+    jcir_bc_gen_pass --> compiler.driver.pipeline_runner { JcirBytecodeGenPass }
+    jcir_gen_pass --> compiler.driver.pipeline_runner { JcirGenPass }
+    jcir_gen_pass --> compiler.driver.pipeline_runner.ModuleCompilation.report_missing_native_ir {
+        JcirGenPass
+    }
+    codegen_shim --> compiler.tools.lang_tools.AstTool.ir { generated_python }
 }
 
 graph import compiler.driver {
@@ -2846,46 +2958,17 @@ graph import compiler.driver {
     bccache --> cli.commands.analysis.precommit { discover_annex_files }
     bccache --> cli.commands.architecture { discover_annex_files }
     bccache --> compiler.backends.es.scoped_styles { discover_style_annex }
-    bccache --> compiler.driver.compiler.JacCompiler._compile_once {
-        discover_base_file
-    }
     bccache --> compiler.driver.ifacecache.IfaceRegistry._entry_fresh {
-        discover_annex_files,
-        discover_wiring_file
+        discover_annex_files
     }
     bccache --> compiler.driver.jir._related_files {
         discover_annex_files,
         discover_style_annex
     }
-    bccache --> compiler.driver.pipeline_runner.ModuleCompilation.analysis {
-        discover_base_file as _cc_base_file
-    }
-    bccache --> compiler.driver.progstate.ModuleHub.is_fresh {
-        discover_annex_files,
-        discover_wiring_file
-    }
-    bccache --> compiler.driver.progstate.ModuleHub.stamp {
-        discover_annex_files,
-        discover_wiring_file
-    }
     bccache --> compiler.driver.wiring.compiled_by_seed { discover_base_file }
-    bccache --> compiler.frontend.parser.frontend.annex_sources {
-        discover_annex_files,
-        discover_base_file
-    }
-    bccache --> compiler.frontend.unitree.Module.annexable_by.getter {
-        discover_base_file
-    }
-    bccache --> compiler.placement.placement_solver._native_dep_scan {
-        discover_annex_files
-    }
     bccache --> compiler.tests.test_batch_decl_identity { discover_base_file }
     bccache --> compiler.tests.test_global_narrowing { discover_base_file }
     bccache --> compiler.tools.code_intel { discover_annex_files }
-    bccache --> compiler.tools.jac_auto_lint_pass { discover_base_file }
-    bccache --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes {
-        discover_base_file
-    }
     bccache --> lsp.server.engine { discover_annex_files, discover_base_file }
     bccache --> server.hmr { discover_base_file }
     bccache --> testing.test_runner._suite_source { discover_base_file }
@@ -3045,7 +3128,6 @@ graph import compiler.driver {
         classify_cross_app_import,
         is_client_native_edge_import
     }
-    client_graph --> compiler.driver.pipeline { collect_client_graph }
     compilation_context --> compiler.backends.native.link_plan.units_source_key {
         cache_scope
     }
@@ -3082,20 +3164,11 @@ graph import compiler.driver {
         compilation_scope,
         context_program
     }
-    compilation_context --> compiler.driver.compiler.JacCompiler.get_native_interop_setup {
-        program_for
-    }
-    compilation_context --> compiler.driver.compiler.JacCompiler.get_native_layout {
-        program_for
-    }
     compilation_context --> compiler.driver.ifacecache.IfaceRegistry._compilation_scope {
         compilation_scope
     }
     compilation_context --> compiler.driver.ifacecache.IfaceRegistry.ensure {
         program_for
-    }
-    compilation_context --> compiler.driver.ifacecache.seed_dep_edges {
-        artifact_cache_path
     }
     compilation_context --> compiler.driver.jir._owner_projection { active_options }
     compilation_context --> compiler.driver.jir.compute_precompile_module_key {
@@ -3104,15 +3177,6 @@ graph import compiler.driver {
     compilation_context --> compiler.driver.nativecache.NativeUnitRegistry._source_key {
         cache_scope
     }
-    compilation_context --> compiler.driver.pipeline.compile_application {
-        bind_options,
-        context_program
-    }
-    compilation_context --> compiler.driver.pipeline.invalidate_client_product {
-        cache_scope
-    }
-    type compilation_context --> compiler.driver.program { SourceStore }
-    compilation_context --> compiler.driver.program.JacProgram.init { SourceStore }
     compilation_context --> compiler.driver.program.JacProgram.load_dependency_module {
         program_for
     }
@@ -3123,9 +3187,6 @@ graph import compiler.driver {
         context_app
     }
     compilation_context --> compiler.placement.placement_pins { context_app }
-    compilation_context --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__ {
-        context_app
-    }
     compilation_context --> dist.precompile_bytecode._application_sources {
         bind_options
     }
@@ -3156,7 +3217,6 @@ graph import compiler.driver {
     compile_options --> compiler.backends.native.elf_linker.ElfLinker.link {
         env_symmap_requested
     }
-    compile_options --> compiler.backends.native.floor.floor_lib_dir { env_floor_dir }
     compile_options --> compiler.backends.native.kernel_resolve {
         CompileOptions,
         NATIVE_LINK_MODE_BITCODE
@@ -3263,17 +3323,13 @@ graph import compiler.driver {
     compile_options --> dist.precompile_bytecode.precompile_native_unit {
         CompileOptions
     }
-    compile_options --> dist.precompile_bytecode.seal_native {
-        CompileOptions,
-        NATIVE_LINK_MODE_BITCODE
-    }
+    compile_options --> dist.precompile_bytecode.seal_native { CompileOptions }
     compile_options --> dist.publish.builder._module_is_client_source { CompileOptions }
     compile_options --> dist.publish.npm_sources._compile_module { CompileOptions }
     compile_options --> lsp.server.engine.JacLangServer.type_check_file {
         CompileOptions
     }
     compile_options --> testing.cl_test_runner.module_is_client { CompileOptions }
-    compiler --> cli.commands.analysis.check { COMPILE_GC_THRESHOLDS }
     compiler --> cli.mcp.compiler_bridge.CompilerBridge.lint_snippet._do_lint {
         JacCompiler
     }
@@ -3281,7 +3337,6 @@ graph import compiler.driver {
     compiler --> compiler.driver.build_services.CompilerBuildServices.compiler {
         JacCompiler
     }
-    type compiler --> compiler.driver.pipeline { JacCompiler }
     type compiler --> compiler.driver.pipeline_runner { JacCompiler }
     type compiler --> compiler.driver.program { JacCompiler }
     compiler --> compiler.driver.program.JacProgram._get_compiler { JacCompiler }
@@ -3295,8 +3350,7 @@ graph import compiler.driver {
     context_passes --> compiler.driver.pipeline {
         AbsorbImportsPass,
         AppContextPass,
-        BoundaryFactsPass,
-        NativeImportFactsPass
+        BoundaryFactsPass
     }
     dependency_graph --> compiler.backends.native.link_plan._build_link_plan {
         dependency_groups
@@ -3365,9 +3419,6 @@ graph import compiler.driver {
         read_bytecode_only,
         read_sections
     }
-    jir --> compiler.driver.compilation_context.artifact_cache_path {
-        get_module_cache_path
-    }
     jir --> compiler.driver.compiler {
         FLAG_PRECOMPILED,
         HEADER_SIZE,
@@ -3419,9 +3470,6 @@ graph import compiler.driver {
     jir --> compiler.driver.compiler.JacCompiler._restore_sections {
         JirPaths,
         SEC_PATH_ROOT
-    }
-    jir --> compiler.driver.compiler.JacCompiler._wants_native_engine {
-        is_compiler_source_path
     }
     jir --> compiler.driver.ifacecache {
         DepRow,
@@ -3487,9 +3535,6 @@ graph import compiler.driver {
         SEC_NDEPS,
         absolutize_ct_deps_section,
         native_deps_section
-    }
-    jir --> compiler.driver.pipeline.invalidate_client_product {
-        drop_python_lane_products
     }
     jir --> compiler.driver.pipeline_runner.ModuleCompilation.interface {
         is_compiler_tree_path
@@ -3582,17 +3627,9 @@ graph import compiler.driver {
     na_coverage --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
         na_coverage_seam
     }
-    na_coverage --> compiler.driver.compiler {
-        _drop_demoted_native_bindings,
-        na_coverage_record,
-        na_demotion_note
-    }
     na_coverage --> compiler.driver.pipeline_runner.wasm_ir {
         na_coverage_begin,
         na_coverage_end
-    }
-    na_coverage --> compiler.placement.placement_solver._native_deps_ok {
-        _note_native_closure_cap
     }
     native_iface --> compiler.backends.native.link_plan {
         NativeIface,
@@ -3619,83 +3656,50 @@ graph import compiler.driver {
     nativecache --> compiler.driver.program.JacProgram.native_units {
         NativeUnitRegistry
     }
-    nativecache --> compiler.placement.placement_pins._native_verdict {
-        read_native_verdict
-    }
     nativecache --> compiler.tests.test_native_kernel_cache { NativeUnitEntry }
-    pass_driver --> compiler.backends.native.kernel_resolve._derive_in_tree {
-        setup_progress
-    }
     pass_driver --> compiler.driver.application.prepare_application { compile_progress }
     pass_driver --> compiler.driver.compiler {
         build_diagnostic_policy,
         compile_progress,
         deliver_alerts,
-        run_pass,
-        setup_progress
+        run_pass
     }
     pass_driver --> compiler.driver.ifacecache.IfaceRegistry.analysis_profile {
-        config_for_app,
         diagnostic_policy_for
     }
     pass_driver --> compiler.driver.pipeline.execute_passes {
         build_diagnostic_policy,
         run_pass
     }
-    pass_driver --> compiler.driver.pipeline.run_utility { run_pass }
     pass_driver --> compiler.tests.test_client_codegen_facts { run_pass }
     pass_driver as pass_driver --> compiler.tests.test_pipeline_products;
     pass_driver --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__ {
         diagnostic_policy_for
     }
-    pipeline --> cli.commands.analysis._check_file_job { compile_application }
-    pipeline --> cli.commands.analysis.grammar { UtilityProduct, run_utility }
-    pipeline --> cli.commands.transform.py2jac { UtilityProduct, run_utility }
-    pipeline --> client.compiler.ViteCompiler._compile_wasm_module { build_wasm }
-    pipeline --> client.jac_client_compiler.JacClientCompiler.emit_dependencies {
-        collect_client_graph
-    }
-    pipeline --> client.route_scanner.resolve_route_exports { route_exports }
     pipeline --> compiler.backends.es.client_kernel_cache._lower {
         CompilationProduct,
         require_product
-    }
-    pipeline --> compiler.backends.native.kernel_resolve._toolchain_available {
-        native_pipeline_available
     }
     pipeline --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
         CompilationProduct,
         require_product
     }
-    pipeline --> compiler.backends.native.wasm_build.compile_to_wasm { build_wasm }
     pipeline --> compiler.driver.application._manifest {
         CompilationProduct,
         require_product
     }
-    pipeline --> compiler.driver.application._prepare { compile_application }
-    pipeline --> compiler.driver.application.prepare_route_metadata { route_exports }
     pipeline --> compiler.driver.application_edges.application_edges {
         CompilationProduct,
         require_product
     }
     pipeline --> compiler.driver.compiler {
-        UtilityProduct,
         get_analysis_sched,
         get_boundary_analysis_sched,
-        get_format_sched,
         get_ir_gen_sched,
-        get_lint_sched,
-        get_py_code_gen,
         get_symtab_ir_sched,
-        native_pipeline_available,
-        native_schedule_failure,
         pass_provides,
         providers_of,
-        run_utility,
         validate_schedule
-    }
-    pipeline --> compiler.driver.compiler.JacCompiler._compile_pipeline {
-        compile_module
     }
     pipeline --> compiler.driver.compiler.JacCompiler.ensure_client_codegen {
         CompilationProduct,
@@ -3708,7 +3712,6 @@ graph import compiler.driver {
     pipeline --> compiler.driver.compiler.JacCompiler.jac_str_formatter {
         execute_passes
     }
-    pipeline --> compiler.driver.compiler.JacCompiler.run_schedule { execute_passes }
     pipeline --> compiler.driver.ifacecache.IfaceRegistry._ensure_flow_graph {
         CompilationProduct,
         require_product
@@ -3721,18 +3724,8 @@ graph import compiler.driver {
         get_symtab_ir_sched,
         providers_of
     }
-    pipeline --> compiler.driver.pipeline_runner.ModuleCompilation.analysis {
-        CompilationProduct,
-        product_ready,
-        require_product
-    }
-    pipeline --> compiler.driver.pipeline_runner.ModuleCompilation.boundaries {
-        get_boundary_analysis_sched
-    }
     pipeline --> compiler.driver.pipeline_runner.ModuleCompilation.codegen {
         CompilationProduct,
-        get_bootstrap_code_gen,
-        get_py_code_gen,
         product_ready,
         require_product
     }
@@ -3740,26 +3733,13 @@ graph import compiler.driver {
         CompilationProduct,
         require_product
     }
-    pipeline --> compiler.driver.pipeline_runner.ModuleCompilation.ir {
-        get_ir_gen_sched,
-        get_symtab_ir_sched,
-        providers_of
-    }
     pipeline --> compiler.driver.pipeline_runner.ModuleCompilation.native_checks {
         CompilationProduct,
         product_ready,
         require_product
     }
-    pipeline --> compiler.driver.program.JacProgram.load_dependency_module {
-        UtilityProduct,
-        run_utility
-    }
     pipeline --> compiler.driver.source_failures.bootstrap_tier_failure_details {
         schedule_tier_reason
-    }
-    pipeline --> compiler.passes.cfg_build_pass.cfg_dot_from_file {
-        UtilityProduct,
-        run_utility
     }
     pipeline --> compiler.passes.layout_pass.get_layout_registry {
         CompilationProduct,
@@ -3771,9 +3751,6 @@ graph import compiler.driver {
     pipeline --> compiler.placement.placement_solver.invalidate_importers_es {
         invalidate_client_product
     }
-    pipeline --> compiler.placement.placement_solver.native_default_verdict {
-        native_pipeline_available
-    }
     pipeline --> compiler.placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
         invalidate_client_product
     }
@@ -3784,26 +3761,11 @@ graph import compiler.driver {
         require_product,
         validate_product_specs
     }
-    pipeline --> compiler.tools.jac_formatter_pass.format_module {
-        UtilityProduct,
-        run_utility
-    }
     pipeline --> compiler.tools.lang_tools { CompilationProduct, require_product }
-    pipeline --> compiler.tools.lang_tools.AstTool.ir { UtilityProduct, run_utility }
-    pipeline --> compiler.tools.unparse_pass.unparse_module {
-        UtilityProduct,
-        run_utility
-    }
-    pipeline --> dist.precompile_bytecode._application_sources { compile_application }
-    pipeline --> dist.precompile_bytecode.seal_native { native_pipeline_available }
     pipeline --> dist.publish.npm_sources._compile_module {
         CompilationProduct,
         require_product
     }
-    type pipeline_runner --> compiler.driver.pipeline { ModuleCompilation }
-    pipeline_runner --> compiler.driver.pipeline.build_wasm { wasm_artifact }
-    pipeline_runner --> compiler.driver.pipeline.compile_module { ModuleCompilation }
-    pipeline_runner --> compiler.driver.pipeline.module_pipeline { ModuleCompilation }
     pipeline_runner --> dist.source.client.write_client { wasm_ir }
     pipeline_runner --> dist.source.project.export_project { native_application }
     pipeline_types --> compiler.backends.native.na_ir_gen_pass { AnalysisFact }
@@ -3869,11 +3831,8 @@ graph import compiler.driver {
     type program --> client.compiler { JacProgram }
     type program --> client.vite_client_bundle { JacProgram }
     program --> compiler.backends.es.client_kernel_cache._lower { JacProgram }
-    type program --> compiler.backends.es.esast_gen_pass { JacProgram }
     program --> compiler.backends.native.kernel_resolve.kernel_plan { JacProgram }
     type program --> compiler.backends.native.link_plan { JacProgram }
-    type program --> compiler.backends.native.na_compile_pass { JacProgram }
-    type program --> compiler.backends.native.na_ir_gen_pass { JacProgram }
     program --> compiler.backends.native.wasm_build.compile_to_wasm { JacProgram }
     program --> compiler.driver.application_edges.application_edges { JacProgram }
     program --> compiler.driver.boundary_classify { JacProgram }
@@ -3882,13 +3841,11 @@ graph import compiler.driver {
         JacProgram
     }
     type program --> compiler.driver.compilation_context { JacProgram }
-    program --> compiler.driver.compilation_context.SourceStore.parse { JacProgram }
     program --> compiler.driver.compilation_context.context_program { JacProgram }
     program --> compiler.driver.compiler { JacProgram }
     program --> compiler.driver.compiler.JacCompiler._prepare_tool_program {
         JacProgram
     }
-    program --> compiler.driver.context_passes { JacProgram }
     program --> compiler.driver.ifacecache.IfaceRegistry._fresh_verify_program {
         JacProgram
     }
@@ -3903,12 +3860,6 @@ graph import compiler.driver {
     program --> compiler.driver.source_failures { JacProgram }
     type program --> compiler.driver.source_products { JacProgram }
     type program --> compiler.frontend.parser.frontend { JacProgram }
-    type program --> compiler.passes.boundary_analysis_pass { JacProgram }
-    program --> compiler.passes.cfg_build_pass.cfg_dot_from_file { JacProgram }
-    type program --> compiler.passes.ownership_check_pass { JacProgram }
-    type program --> compiler.passes.static_analysis_pass { JacProgram }
-    type program --> compiler.passes.type_checker_pass { JacProgram }
-    type program --> compiler.passes.variant_agreement_pass { JacProgram }
     type program --> compiler.passes.wasm_contract { JacProgram }
     program --> compiler.placement.placement_facts.discover_spaces { JacProgram }
     type program --> compiler.placement.placement_solver { JacProgram }
@@ -3938,7 +3889,6 @@ graph import compiler.driver {
     }
     program --> compiler.tools.jac_formatter_pass.format_module { JacProgram }
     program --> compiler.tools.lang_tools { JacProgram }
-    program --> compiler.tools.unparse_pass.unparse_module { JacProgram }
     type program --> compiler.types.stubcat.build { JacProgram }
     program --> compiler.types.stubcat.build.build_catalog { JacProgram }
     type program --> compiler.types.type_evaluator { JacProgram }
@@ -3975,8 +3925,7 @@ graph import compiler.driver {
         BuildScratch,
         DepGraph,
         DiagLedger,
-        ModuleHub,
-        unit_collect_budget
+        ModuleHub
     }
     type selfhost --> compiler.driver.build_services { SelfHostCache }
     selfhost --> compiler.driver.build_services.CompilerBuildServices.selfhost {
@@ -3998,8 +3947,6 @@ graph import compiler.driver {
         module_scoped_failure_details,
         note_compiler_source_failure
     }
-    source_failures --> compiler.driver.pipeline { fail_loud_on_compiler_source }
-    source_failures --> compiler.driver.pipeline_runner { module_import_in_flight }
     source_failures --> compiler.driver.source_products.python_source {
         bootstrap_tier_failure_details,
         module_scoped_failure_details
@@ -4022,18 +3969,9 @@ graph import compiler.driver {
         scope_path_of,
         wiring_for_path
     }
-    wiring --> compiler.driver.bccache.discover_wiring_file {
-        arch_file_for,
-        is_arch_file
-    }
-    wiring --> compiler.driver.compilation_context.compilation_scope { wiring_scope }
-    wiring --> compiler.driver.compiler.JacCompiler.parse_str {
-        dedupe_generated_imports
-    }
     wiring --> compiler.driver.jir.compute_module_key { wiring_digest_for }
     wiring --> dist.precompile_bytecode.find_jac_files { is_arch_file }
     wiring --> compiler.driver.jir.unit_source_digest { wiring_digest_for }
-    wiring --> compiler.frontend.parser.frontend._native_parse_woven { is_arch_file }
     wiring --> compiler.frontend.parser.frontend.annex_sources { wiring_annex_for }
     wiring --> compiler.passes.import_wiring_pass {
         WireBinding,
@@ -4054,6 +3992,283 @@ graph import compiler.driver {
         arch_file_for,
         dedupe_generated_imports
     }
+    bccache --> project.compiler_host.ProjectHost.annex_files { discover_annex_files }
+    bccache --> project.compiler_host.ProjectHost.base_file { discover_base_file }
+    bccache --> project.compiler_host.ProjectHost.is_annex_path_of | project.kernel_snapshot.snapshot_inputs {
+        host_layout_tables
+    }
+    bccache --> project.compiler_host.ProjectHost.package_init { host_layout_tables }
+    bccache --> project.compiler_host.ProjectHost.path_facts { host_layout_tables }
+    boundary_classify --> compiler.driver.program.JacProgram.declared_codespace {
+        _default_codespace_for
+    }
+    boundary_classify --> compiler.driver.program.JacProgram.infers_native_codespace {
+        _default_codespace_for
+    }
+    boundary_classify --> compiler.driver.program.JacProgram.parse_source {
+        _coerce_client_module,
+        _coerce_native_module
+    }
+    boundary_classify --> compiler.driver.program.JacProgram.stamp_boundary_facts {
+        ClientImportVerdict,
+        _default_codespace_for,
+        classify_client_import_item,
+        import_declares_native_target,
+        is_client_boundary_import,
+        is_client_native_edge_import
+    }
+    boundary_classify --> compiler.driver.program.JacProgram.stamp_native_import_facts {
+        native_only_import_target
+    }
+    client_graph --> client.jac_client_compiler.JacClientCompiler.emit_dependencies {
+        collect_client_graph
+    }
+    compilation_context --> compiler.driver.compiler.JacCompiler.get_bytecode | compiler.driver.ifacecache.IfaceRegistry._compilation_scope | dist.precompile_bytecode.precompile_unit_context {
+        owner_scope_options
+    }
+    compilation_context --> compiler.driver.compiler.JacCompiler.get_client_artifact {
+        owner_scope_options
+    }
+    compilation_context --> compiler.driver.compiler.JacCompiler.product_program | compiler.driver.pipeline_runner.compile_application | compiler.driver.session_compile.select_context {
+        bind_options,
+        context_program
+    }
+    compilation_context --> compiler.driver.ifacecache.artifact_cache_path {
+        cache_scope,
+        program_for
+    }
+    compilation_context --> compiler.driver.session_compile.compile_in_session {
+        compilation_scope,
+        owner_scope_options
+    }
+    compilation_context --> compiler.frontend.kernel_host { package_owned }
+    compilation_context --> project.compiler_host.ProjectHost.drop_python_lane_products {
+        cache_scope,
+        owner_scope_options
+    }
+    compilation_context --> project.compiler_host.ProjectHost.lint_settings {
+        context_app
+    }
+    compile_options --> compiler.backends.native.kernel_resolve {
+        NATIVE_LINK_MODE_OBJECTS
+    }
+    compile_options --> compiler.backends.native.stage0_build.restamp_stage0_sidecar {
+        NATIVE_LINK_MODE_BITCODE
+    }
+    compile_options --> compiler.backends.native.static_link.floor_lib_dir {
+        env_floor_dir
+    }
+    compile_options --> compiler.driver.module_analysis | compiler.driver.session_compile | compiler.frontend.kernel_host | compiler.frontend.kernel_inputs | dist.precompile_bytecode.prebuild_native_closure | dist.publish.runtime_vendor | dist.seal | project.kernel_check | project.kernel_snapshot {
+        CompileOptions
+    }
+    compile_options --> compiler.driver.pass_driver | compiler.passes.context | compiler.passes.execution | compiler.tests.test_pipeline_products | lsp.server.engine {
+        CancelToken
+    }
+    type compile_options --> compiler.driver.pipeline | compiler.driver.pipeline_runner | compiler.driver.program {
+        CancelToken
+    }
+    type compile_options --> compiler.frontend.host | compiler.placement.placement_facts | project.compiler_host {
+        CompileOptions
+    }
+    compiler --> cli.commands.analysis.check { CHECK_GC_THRESHOLDS }
+    compiler --> project.compiler_host.ProjectHost.compiler_for { JacCompiler }
+    compiler --> project.compiler_host.ProjectHost.format_file { JacCompiler }
+    compiler --> project.compiler_host.ProjectHost.format_source { JacCompiler }
+    compiler --> project.compiler_host.ProjectHost.lint_file { JacCompiler }
+    type compiler --> compiler.frontend.host | compiler.frontend.kernel_host | project.compiler_host {
+        JacCompiler
+    }
+    context_passes --> compiler.driver.pipeline_runner { NativeImportFactsPass }
+    ifacecache --> project.compiler_host.ProjectHost.iface_registry_for {
+        IfaceRegistry
+    }
+    type ifacecache --> compiler.driver.program | compiler.frontend.host | compiler.frontend.kernel_host | project.compiler_host {
+        IfaceRegistry
+    }
+    jir --> compiler.backends.native.link_plan._jit_image_path {
+        cache_mode,
+        get_jir_cache_dir
+    }
+    jir --> compiler.backends.native.stage0_build.pin_for_commit {
+        compiler_source_digest
+    }
+    jir --> compiler.backends.native.stage0_build.provision_stage0 {
+        compiler_source_digest
+    }
+    jir --> compiler.backends.native.stage0_build.restamp_stage0_sidecar {
+        sidecar_unit_paths,
+        unit_source_digest
+    }
+    jir --> compiler.backends.native.stage0_build.unit_sources_before {
+        unit_source_digest
+    }
+    jir --> compiler.driver.ifacecache.artifact_cache_path { get_module_cache_path }
+    jir --> project.compiler_host.ProjectHost.drop_python_lane_products {
+        drop_python_lane_products
+    }
+    jir --> project.kernel_snapshot.interface_cache_file {
+        get_jir_cache_dir,
+        running_compiler_digest
+    }
+    module_analysis --> compiler.driver.pipeline_runner {
+        ANALYSIS_PHASES,
+        ModuleAnalysis,
+        analyze_module,
+        cancelled,
+        record_phase
+    }
+    module_analysis --> compiler.frontend.kernel_analyze { ModuleAnalysis }
+    module_analysis --> compiler.frontend.kernel_host | project.kernel_snapshot {
+        ModuleAnalysis,
+        analyze_module
+    }
+    module_analysis --> project.compiler_host.ProjectHost.native_analyze {
+        analyze_module
+    }
+    type module_analysis --> compiler.frontend.host | project.compiler_host {
+        ModuleAnalysis
+    }
+    na_coverage --> project.compiler_host.ProjectHost.record_native_coverage {
+        na_coverage_record
+    }
+    native_iface --> compiler.driver.jir.native_deps_section { native_unit_ref }
+    native_iface --> compiler.driver.jir.parse_native_dep_rows {
+        resolve_native_unit_ref
+    }
+    nativecache --> project.compiler_host.ProjectHost.native_units_for {
+        NativeUnitRegistry
+    }
+    nativecache --> project.compiler_host.ProjectHost.native_verdict {
+        read_native_verdict
+    }
+    type nativecache --> compiler.frontend.host | compiler.frontend.kernel_host | project.compiler_host {
+        NativeUnitRegistry
+    }
+    pass_driver --> compiler.driver.pipeline_runner.ModuleCompilation.report_missing_native_ir {
+        deliver_alerts
+    }
+    pass_driver --> compiler.driver.pipeline_runner.run_utility | compiler.driver.program.JacProgram.load_dependency_module {
+        run_pass
+    }
+    pass_driver --> compiler.driver.session_compile.compile_in_session {
+        compile_progress
+    }
+    pipeline --> compiler.driver.module_analysis.ModuleAnalysis.analysis {
+        CompilationProduct,
+        product_ready,
+        require_product
+    }
+    pipeline --> compiler.driver.module_analysis.ModuleAnalysis.boundaries {
+        get_boundary_analysis_sched
+    }
+    pipeline --> compiler.driver.module_analysis.ModuleAnalysis.ir {
+        get_ir_gen_sched,
+        get_symtab_ir_sched,
+        providers_of
+    }
+    pipeline --> compiler.driver.pipeline_runner {
+        providers_of_product,
+        register_product_schedule,
+        schedule_tier_reason,
+        validate_schedule
+    }
+    pipeline --> compiler.driver.program.JacProgram.run_schedule { execute_passes }
+    pipeline --> compiler.driver.toolchain {
+        _analysis_sched_loading,
+        _ir_sched_loading
+    }
+    pipeline_runner --> cli.commands.analysis._check_file_job | compiler.driver.application._prepare | dist.precompile_bytecode._application_sources {
+        compile_application
+    }
+    pipeline_runner --> cli.commands.analysis.grammar | cli.commands.transform.py2jac | compiler.tests.test_module_exports | compiler.tools.cfg_dot.cfg_dot_from_file | compiler.tools.jac_formatter_pass.format_module | compiler.tools.lang_tools.AstTool.ir {
+        run_utility
+    }
+    pipeline_runner --> compiler.tools.jac_formatter_pass.unparse_module { run_utility }
+    pipeline_runner --> client.compiler.ViteCompiler._compile_wasm_module | compiler.backends.native.wasm_build.compile_to_wasm {
+        build_wasm
+    }
+    pipeline_runner --> client.route_scanner.resolve_route_exports | compiler.driver.application.prepare_route_metadata {
+        route_exports
+    }
+    pipeline_runner --> compiler.driver.compiler {
+        get_format_sched,
+        get_lint_sched,
+        get_py_code_gen,
+        native_schedule_failure,
+        run_utility
+    }
+    pipeline_runner --> compiler.driver.compiler.JacCompiler._compile_pipeline {
+        compile_module
+    }
+    pipeline_runner --> project.compiler_host.ProjectHost.parse_python {
+        UtilityProduct,
+        run_utility
+    }
+    pipeline_types --> cli.commands.analysis.grammar | cli.commands.transform.py2jac | compiler.driver.compiler | compiler.tests.test_module_exports | compiler.tools.cfg_dot.cfg_dot_from_file | compiler.tools.jac_formatter_pass.format_module | compiler.tools.lang_tools.AstTool.ir {
+        UtilityProduct
+    }
+    pipeline_types --> compiler.tools.jac_formatter_pass.unparse_module {
+        UtilityProduct
+    }
+    pipeline_types --> compiler.driver.module_analysis {
+        AnalysisFact,
+        CompilationPhase
+    }
+    pipeline_types --> compiler.driver.pipeline_runner {
+        CompilationPhase,
+        CompilationProduct,
+        UtilityProduct
+    }
+    program --> compiler.driver.module_analysis | compiler.driver.session_compile | compiler.frontend.kernel_analyze | compiler.frontend.kernel_host | compiler.tests.test_module_exports | compiler.tools.cfg_dot.cfg_dot_from_file | compiler.tools.jac_formatter_pass.unparse_module | dist.precompile_bytecode.prebuild_native_closure | dist.seal | project.kernel_check | project.kernel_snapshot {
+        JacProgram
+    }
+    type program --> compiler.backends.native.kernel_resolve | compiler.backends.native.kernel_stage0 | compiler.boundary_audit | compiler.driver.ifacecache | compiler.frontend.host | compiler.passes.context | compiler.passes.execution | compiler.passes.layout_pass | compiler.placement.placement | compiler.placement.placement_export | compiler.placement.placement_facts | compiler.placement.placement_pins | compiler.placement.placement_work | project.compiler_host {
+        JacProgram
+    }
+    session_compile --> compiler.driver.compiler {
+        CompileFrame,
+        SessionContext,
+        SessionHooks
+    }
+    session_compile --> compiler.driver.compiler.JacCompiler.compile {
+        compile_in_session
+    }
+    session_compile --> compiler.frontend.kernel_host {
+        SessionHooks,
+        compile_in_session
+    }
+    session_compile --> project.kernel_snapshot {
+        CompileFrame,
+        SessionContext,
+        SessionHooks,
+        compile_in_session
+    }
+    setup_progress --> compiler.backends.native.kernel_resolve._derive_in_tree | compiler.driver.compiler {
+        setup_progress
+    }
+    source_failures --> compiler.driver.pipeline_runner | compiler.driver.toolchain | project.compiler_host.ProjectHost.load_modules {
+        fail_loud_on_compiler_source
+    }
+    source_failures --> project.compiler_host.ProjectHost.import_in_flight {
+        module_import_in_flight
+    }
+    toolchain --> compiler.backends.native.kernel_resolve._toolchain_available | compiler.driver.compiler | dist.precompile_bytecode.seal_native | project.compiler_host.ProjectHost.native_pipeline_available {
+        native_pipeline_available
+    }
+    toolchain --> compiler.driver.pipeline_runner {
+        _codegen_sched_loading,
+        native_pipeline_available
+    }
+    wiring --> compiler.driver.program.JacProgram.parse_source {
+        dedupe_generated_imports
+    }
+    wiring --> compiler.frontend.kernel_host.KernelHost.wiring_file | project.compiler_host.ProjectHost.wiring_file {
+        arch_file_for,
+        is_arch_file
+    }
+    wiring --> project.compiler_host.ProjectHost.session { wiring_scope }
+    wiring --> project.kernel_snapshot.ClosureScan.scan_jac { wiring_for_path }
+    pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
 }
 
 graph import compiler.frontend {
@@ -4112,10 +4327,7 @@ graph import compiler.frontend {
     }
     type codeinfo --> compiler.backends.native.link_glue { InteropBinding }
     codeinfo --> compiler.backends.native.link_glue.inject_heap_accounting { HDR_TOTAL }
-    codeinfo --> compiler.backends.native.link_plan {
-        install_native_static_init,
-        kernel_unit_path
-    }
+    codeinfo --> compiler.backends.native.link_plan { kernel_unit_path }
     type codeinfo --> compiler.backends.native.link_plan { InteropBinding }
     codeinfo --> compiler.backends.native.link_plan._build_link_plan {
         is_kernel_unit_path
@@ -4341,9 +4553,6 @@ graph import compiler.frontend {
     codeinfo --> compiler.driver.compiler.JacCompiler._check_native_abi {
         NATIVE_ABI_VERSION
     }
-    codeinfo --> compiler.driver.compiler.JacCompiler._compile_once {
-        set_effective_default_codespace
-    }
     codeinfo --> compiler.driver.compiler.JacCompiler._deserialize_interop_table {
         InteropBinding,
         InteropContext,
@@ -4358,19 +4567,6 @@ graph import compiler.frontend {
     codeinfo --> compiler.driver.compiler.JacCompiler.client_artifact_of {
         ClientArtifact
     }
-    codeinfo --> compiler.driver.compiler.JacCompiler.compile {
-        get_effective_default_codespace_override,
-        reset_native_unit_compile,
-        set_effective_default_codespace,
-        set_native_unit_compile
-    }
-    codeinfo --> compiler.driver.compiler.JacCompiler.parse_str {
-        is_client_by_location as _cbl
-    }
-    codeinfo --> compiler.driver.compiler.JacCompiler.stamp_boundary_facts {
-        is_bundled_native_module,
-        resolve_native_module
-    }
     codeinfo --> compiler.driver.ifacecache.IfaceRegistry.client_boundary_facts {
         CodeGenTarget
     }
@@ -4380,24 +4576,7 @@ graph import compiler.frontend {
     codeinfo --> compiler.driver.jir._module_codespace_mode {
         effective_default_codespace
     }
-    codeinfo --> compiler.driver.jir.native_deps_section { native_unit_ref }
-    codeinfo --> compiler.driver.jir.parse_native_dep_rows { resolve_native_unit_ref }
-    codeinfo --> compiler.driver.jir.sidecar_unit_paths { jaclang_pkg_root }
-    codeinfo --> compiler.driver.na_coverage._drop_demoted_native_bindings {
-        InteropContext,
-        InteropManifest
-    }
-    codeinfo --> compiler.driver.native_iface {
-        NativeModuleLayout,
-        native_layout_to_dict
-    }
-    codeinfo --> compiler.driver.native_iface.NativeIface.from_dict {
-        native_layout_from_dict
-    }
-    codeinfo --> compiler.driver.native_iface.NativeIface.resolve_deps {
-        resolve_native_unit_ref
-    }
-    codeinfo --> compiler.driver.native_iface.NativeIface.to_dict { native_unit_ref }
+    codeinfo --> compiler.driver.native_iface { NativeModuleLayout }
     type codeinfo --> compiler.driver.nativecache { CodeGenTarget }
     codeinfo --> compiler.driver.nativecache.NativeBuildSession.lower {
         get_effective_default_codespace_override,
@@ -4412,7 +4591,6 @@ graph import compiler.frontend {
     codeinfo --> compiler.driver.nativecache.NativeUnitRegistry._stash_products {
         CodeGenTarget
     }
-    type codeinfo --> compiler.driver.program { ClientArtifact }
     type codeinfo --> compiler.driver.progstate { ClientArtifact }
     codeinfo --> compiler.driver.selfhost.SelfHostCache.evict_unit { CodeGenTarget }
     codeinfo --> compiler.driver.selfhost.SelfHostCache.resolve {
@@ -4431,7 +4609,6 @@ graph import compiler.frontend {
         native_unit_compile_active,
         native_unit_identity
     }
-    codeinfo --> compiler.native_scope.scope_module_path { jaclang_pkg_root }
     codeinfo --> compiler.passes.boundary_analysis_pass {
         BoundaryTypeInfo,
         InteropBinding,
@@ -4480,7 +4657,6 @@ graph import compiler.frontend {
         is_bundled_native_module,
         resolve_native_module
     }
-    codeinfo --> compiler.placement.placement_facts._toolchain_rel { jaclang_pkg_root }
     codeinfo --> compiler.placement.placement_facts.native_unit {
         is_kernel_unit_path,
         native_unit_compile_active
@@ -4489,10 +4665,6 @@ graph import compiler.frontend {
         effective_native_closure_cap,
         native_unit_compile_active
     }
-    codeinfo --> compiler.symbol_utils.erased_identity_call_arg {
-        NATIVE_ERASED_IDENTITY_CALLS
-    }
-    codeinfo --> compiler.symbol_utils.erased_import_binds { NATIVE_ERASED_IMPORTS }
     codeinfo --> compiler.tests.xbackend_equiv {
         JAC_ENTRY_SYMBOL,
         native_symbol_name,
@@ -4604,9 +4776,6 @@ graph import compiler.frontend {
     constant --> compiler.driver.compiler { CodeContext, Tokens as Tok }
     constant --> compiler.driver.ifacecache.IfaceRegistry._client_edges { CodeContext }
     constant --> compiler.driver.pipeline_runner { CodeContext }
-    constant --> compiler.driver.pipeline_runner.ModuleCompilation.analysis {
-        CodeContext as _CodeCtx
-    }
     constant --> compiler.driver.wiring { Tokens as Tok }
     constant --> compiler.expr_keys { Tokens as Tok }
     constant --> compiler.expr_keys.type_tag_borrows { is_borrow_kind }
@@ -4678,9 +4847,6 @@ graph import compiler.frontend {
         Tokens as Tok
     }
     constant --> compiler.passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt {
-        Tokens as Tok
-    }
-    constant --> compiler.passes.cfg_build_pass.CoalesceBBPass._node_label {
         Tokens as Tok
     }
     constant --> compiler.passes.cfg_build_pass._bool_is_and { Tokens as Tok }
@@ -4879,12 +5045,7 @@ graph import compiler.frontend {
         W6005
     }
     diagnostics --> compiler.backends.es.esast_gen_pass.EsastGenPass.prepare { E5096 }
-    diagnostics --> compiler.backends.native.na_compile_pass {
-        E5020,
-        E5026,
-        W5021,
-        W5022
-    }
+    diagnostics --> compiler.backends.native.na_compile_pass { E5020, E5026 }
     diagnostics --> compiler.backends.native.na_ir_gen_pass {
         DiagnosticInfo,
         E5026,
@@ -4913,12 +5074,6 @@ graph import compiler.frontend {
         E5098,
         E5102,
         W5096
-    }
-    diagnostics --> compiler.driver.compiler.JacCompiler._module_scoped_errors {
-        Category
-    }
-    diagnostics --> compiler.driver.compiler.JacCompiler._report_missing_native_ir {
-        E5092
     }
     diagnostics --> compiler.driver.ifacecache._alert_from_record { DIAGNOSTICS }
     diagnostics --> compiler.frontend.diagnostic_utils.resolve_diagnostic_tokens {
@@ -5307,12 +5462,6 @@ graph import compiler.frontend {
     }
     module_facts --> compiler.backends.native.na_ir_gen_pass { ModuleFacts }
     module_facts --> compiler.backends.py.jcir_gen_pass { ModuleFacts }
-    module_facts --> compiler.driver.compiler.JacCompiler._report_missing_native_ir {
-        ModuleFacts
-    }
-    module_facts --> compiler.driver.compiler.JacCompiler.stamp_native_import_facts {
-        ModuleFacts
-    }
     module_facts --> compiler.driver.pipeline_runner.ModuleCompilation.codegen {
         ModuleFacts
     }
@@ -5341,9 +5490,6 @@ graph import compiler.frontend {
     parser --> cli.commands.fix._parse_module { parse as rd_parse }
     parser --> cli.commands.fix._parses_clean { parse as rd_parse }
     parser --> compiler.driver.compiler.JacCompiler._prepare_tool_program {
-        parse as rd_parse
-    }
-    parser --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes {
         parse as rd_parse
     }
     relations --> compiler.driver.program { ScopeChild }
@@ -5564,7 +5710,7 @@ graph import compiler.frontend {
     roles --> compiler.tools.normalize_pass { BodyRole, ItemsRole, Kid }
     roles --> compiler.tools.reactive_use_walk { Kid, ValueRole }
     roles --> compiler.tools.treeprinter { Kid }
-    roles --> compiler.tools.unparse_pass { BodyRole, Kid, Role }
+    roles --> compiler.tools.unparse_pass { Kid, Role }
     roles --> compiler.types.operations { Kid }
     roles --> compiler.types.stubcat.writer { Kid }
     roles --> compiler.types.type_evaluator { Kid }
@@ -5575,7 +5721,6 @@ graph import compiler.frontend {
     srcloc --> compiler.passes.context { CodeLocInfo, Span }
     srcloc --> lsp.server.utils { Span }
     type srcloc --> project.source { Span }
-    srcloc --> project.source.span_for_file { Span }
     unitree --> cli.commands.analysis._check_file_job { Source as _Src }
     unitree --> cli.commands.architecture {
         GraphImport,
@@ -5745,18 +5890,12 @@ graph import compiler.frontend {
     unitree --> compiler.c_interop.c_call_borrows_args { FuncCall }
     unitree --> compiler.c_interop.is_builtin_pin_call { FuncCall, Name }
     unitree as uni --> compiler.driver.boundary_classify;
-    unitree --> compiler.driver.compilation_context { Module }
     unitree as uni --> compiler.driver.compiler;
     unitree --> compiler.driver.compiler { ability_of_symbol }
-    unitree --> compiler.driver.compiler.JacCompiler.resolve_absorb_imports {
-        find_python_scope_node_of
-    }
     unitree --> compiler.driver.context_passes { Module }
     unitree as uni --> compiler.driver.ifacecache.IfaceRegistry._client_edges;
-    unitree as uni --> compiler.driver.na_coverage;
     type unitree --> compiler.driver.nativecache { Module }
     type unitree --> compiler.driver.pipeline { Module }
-    unitree --> compiler.driver.pipeline.compile_application { Import, ModulePath }
     unitree as uni --> compiler.driver.pipeline_runner;
     unitree as uni --> compiler.driver.program;
     unitree as uni --> compiler.driver.progstate;
@@ -5802,7 +5941,6 @@ graph import compiler.frontend {
         UnaryExpr,
         UniNode
     }
-    unitree --> compiler.expr_keys.is_builtin_region_type { Archetype }
     unitree --> compiler.expr_keys.type_tag_borrows { SubTag, UnaryExpr }
     unitree --> compiler.field_semantics {
         AstSymbolNode,
@@ -5815,7 +5953,7 @@ graph import compiler.frontend {
         ModuleItem,
         Name
     }
-    type unitree --> compiler.frontend.codeinfo { CommentToken, Source, Token }
+    type unitree --> compiler.frontend.codeinfo { CommentToken }
     unitree --> compiler.frontend.const_fold {
         AtomUnit,
         BinaryExpr,
@@ -6091,7 +6229,7 @@ graph import compiler.frontend {
         WireItem
     }
     type unitree --> compiler.frontend.srcloc { Source, Token }
-    unitree --> compiler.jc_unit { GraphExpr, Import, Module, UniNode }
+    unitree --> compiler.jc_unit { Import, Module }
     unitree --> compiler.passes.access_check_pass {
         Archetype,
         AstSymbolNode,
@@ -7161,7 +7299,6 @@ graph import compiler.frontend {
         NameAtom,
         Null,
         OpenStmt,
-        ParamKind as UniParamKind,
         ParamVar,
         RaiseStmt,
         ReturnStmt,
@@ -7267,16 +7404,384 @@ graph import compiler.frontend {
         is_in_jaclang_package
     }
     diagnostics --> compiler.passes.import_wiring_pass { W2084 }
+    codeinfo --> compiler.backends.native.kernel_stage0.running_kernel_target {
+        KERNEL_UNIT_REL,
+        jaclang_pkg_root
+    }
+    codeinfo --> compiler.backends.native.link_plan { JAC_ENTRY_SYMBOL }
+    codeinfo --> compiler.backends.native.link_plan.LinkPlan.plan_digest | compiler.native_scope.package_host_edge {
+        native_unit_identity
+    }
+    codeinfo --> compiler.backends.native.na_ir_gen_pass {
+        NativeFuncLayout,
+        is_package_keyed_path,
+        native_unit_identity
+    }
+    codeinfo --> compiler.backends.native.stage0_build._materialize_typeshed | compiler.backends.native.stage0_pin.stage0_source_dir | compiler.driver.boundary_classify.plain_native_import_target | compiler.driver.pass_driver._alert_in_internal_stub | compiler.driver.pipeline.typeshed_stubs_available | compiler.driver.setup_progress | compiler.driver.source_failures._compiler_source_root | compiler.types.type_evaluator.TypeEvaluator.__post_init__ {
+        jaclang_pkg_root
+    }
+    codeinfo --> compiler.backends.native.stage0_build.file_guard_trips {
+        NATIVE_ABI_VERSION,
+        jaclang_pkg_root
+    }
+    codeinfo --> compiler.backends.native.stage0_build.restamp_stage0_sidecar | compiler.backends.native.stage0_pin.stage0_sidecar_matches {
+        NATIVE_ABI_VERSION
+    }
+    codeinfo --> compiler.driver.compilation_context { is_package_keyed_path }
+    codeinfo --> compiler.driver.compiler.JacCompiler._wants_native_engine | compiler.driver.selfhost.SelfHostCache.owns | project.kernel_check.kernel_check | project.kernel_snapshot {
+        is_compiler_source_path
+    }
+    codeinfo --> project.kernel_check.parity_mismatches { is_compiler_source_path }
+    codeinfo --> compiler.driver.compiler.client_artifact_from_bytes {
+        ClientArtifact as _ClientArtifact,
+        ClientManifest
+    }
+    codeinfo --> compiler.driver.jir { is_package_keyed_path, native_unit_identity }
+    codeinfo --> compiler.driver.native_iface {
+        NATIVE_ABI_VERSION,
+        NativeEnumLayout,
+        NativeFieldInfo,
+        NativeFuncLayout,
+        NativeStructLayout,
+        NativeTupleLayout,
+        native_unit_identity,
+        native_unit_root
+    }
+    codeinfo --> compiler.driver.program.JacProgram.declared_codespace {
+        is_client_by_location
+    }
+    codeinfo --> compiler.driver.program.JacProgram.stamp_boundary_facts {
+        is_bundled_native_module,
+        resolve_native_module
+    }
+    codeinfo --> compiler.driver.session_compile.compile_in_session {
+        get_effective_default_codespace_override,
+        reset_native_unit_compile,
+        set_effective_default_codespace,
+        set_native_unit_compile
+    }
+    codeinfo --> compiler.driver.session_compile.drop_demoted_native_bindings {
+        InteropContext,
+        InteropManifest
+    }
+    codeinfo --> compiler.driver.session_compile.inherit_session_options {
+        set_effective_default_codespace
+    }
+    codeinfo --> compiler.erased_imports.erased_identity_call_arg {
+        NATIVE_ERASED_IDENTITY_CALLS
+    }
+    codeinfo --> compiler.erased_imports.erased_import_binds { NATIVE_ERASED_IMPORTS }
+    codeinfo --> compiler.passes.boundary_analysis_pass { InteropManifest }
+    codeinfo --> dist.publish.runtime_vendor._runtime_module_options {
+        is_native_by_location,
+        is_shared_runtime_module
+    }
+    type codeinfo --> compiler.backends.py.codegen_shim | compiler.driver.progstate {
+        CodeGenTarget
+    }
+    type codeinfo --> compiler.driver.boundary_classify { InteropManifest }
+    constant --> compiler.backends.native.na_ir_gen_pass { SymbolType }
+    constant --> compiler.driver.module_analysis.ModuleAnalysis.analysis {
+        CodeContext as _CodeCtx
+    }
+    constant --> compiler.driver.program.JacProgram.parse_source | compiler.placement.placement_export {
+        CodeContext
+    }
+    constant --> compiler.driver.program.JacProgram.stamp_boundary_facts { CodeContext }
+    constant --> compiler.tools.cfg_dot.CoalesceBBPass._node_label { Tokens as Tok }
+    constant --> compiler.types.builtin_extensions | compiler.types.stubcat.reader | compiler.types.type_evaluator | compiler.types.type_utils | compiler.types.types {
+        ParamKind
+    }
+    diagnostics --> compiler.driver.pipeline_runner.ModuleCompilation.report_missing_native_ir {
+        E5092
+    }
+    diagnostics --> compiler.driver.program.JacProgram.module_scoped_errors { Category }
+    diagnostics --> project.kernel_check.alert_of { DIAGNOSTICS }
+    host --> compiler.backends.es.backends.registry.active_framework | compiler.backends.es.esast_gen_pass | compiler.backends.native.na_ir_gen_pass | compiler.backends.native.wasm_build._link_wasm_libc | compiler.backends.py.artifact_imports | compiler.driver.boundary_classify | compiler.driver.compilation_context.bind_options | compiler.driver.compile_options.CompileOptions.__post_init__ | compiler.driver.ifacecache.IfaceRegistry._entry_fresh | compiler.driver.jir._project_env_fingerprint | compiler.driver.module_analysis | compiler.driver.pipeline | compiler.driver.pipeline_runner | compiler.driver.program.JacProgram._get_compiler | compiler.driver.progstate.DiagLedger._owned | compiler.driver.session_compile | compiler.driver.wiring | compiler.frontend.codeinfo.effective_default_codespace | compiler.frontend.helpers.evaluate_version_condition | compiler.frontend.parser.frontend.annex_paths | compiler.frontend.unitree.Import.__jac_detected.getter | compiler.passes.access_check_pass.AccessCheckPass._module_app_facts | compiler.passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_atom_trailer | compiler.passes.mtir_gen_pass.MTIRGenPass._get_scope_str | compiler.passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced | compiler.passes.static_analysis_pass.StaticAnalysisPass._check_client_imports | compiler.passes.variant_agreement_pass.VariantAgreementPass._parse_sibling | compiler.placement.placement_facts | compiler.placement.placement_solver._native_dep_scan | compiler.symbol_utils.intrinsic_registry_if_ready | compiler.tools.jac_auto_lint_pass | compiler.types.type_evaluator.TypeEvaluator.__post_init__ | project.kernel_check {
+        active_host
+    }
+    host --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable | compiler.driver.compilation_context.compilation_scope | compiler.driver.compile_options.CompileOptions.effective_triple | compiler.driver.ifacecache.IfaceRegistry.analysis_profile | compiler.driver.program.JacProgram.build | compiler.driver.progstate.ModuleHub.is_fresh | compiler.frontend.codeinfo.effective_native_closure_cap | compiler.frontend.parser.frontend.annex_sources | compiler.frontend.unitree.Module.annexable_by.getter | compiler.passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance | compiler.passes.static_analysis_pass.is_bootstrap_compiled_module | compiler.placement.placement_solver.demote_client_pulled_elements | compiler.tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__ | compiler.types.type_evaluator.TypeEvaluator._client_npm_base {
+        active_host
+    }
+    host --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable | compiler.driver.compilation_context.context_app | compiler.driver.program.JacProgram.compile | compiler.driver.progstate.ModuleHub.stamp | compiler.frontend.codeinfo.effective_native_target | compiler.frontend.parser.frontend.parse_woven | compiler.frontend.unitree.ModulePath.resolve_relative_path | compiler.placement.placement_solver.native_default_verdict | compiler.tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes | compiler.types.type_evaluator.TypeEvaluator._declared_missing_dependency {
+        active_host
+    }
+    host --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype | compiler.driver.compilation_context.context_program | compiler.driver.program.JacProgram.execution_hubs | compiler.frontend.codeinfo.endpoint_descriptor | compiler.placement.placement_solver.note_native_closure_cap | compiler.types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
+        active_host
+    }
+    host --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._seam_warnings_on | compiler.driver.program.JacProgram.iface_registry | compiler.frontend.codeinfo.native_target_arch | compiler.types.type_evaluator.TypeEvaluator._load_ts_declarations {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.invalidate_module | compiler.frontend.codeinfo.resolve_native_module | compiler.types.type_evaluator.TypeEvaluator._resolve_client_npm_module {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.jac_file_formatter | compiler.types.type_evaluator.TypeEvaluator._resolve_submodule_attr {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.jac_file_linter | compiler.types.type_evaluator.TypeEvaluator._ts_decl_path {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.jac_str_formatter | compiler.types.type_evaluator.TypeEvaluator._untyped_external_is_error {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.load_dependency_module | compiler.types.type_evaluator.TypeEvaluator.get_type_of_module {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.native_units | compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
+        active_host
+    }
+    host --> compiler.driver.program.JacProgram.note_stub_tree_served { active_host }
+    host --> compiler.driver.program.JacProgram.parse_source { active_host }
+    host --> compiler.driver.program.JacProgram.release_compile_closure { active_host }
+    host --> compiler.driver.program.JacProgram.stamp_access_check_facts { active_host }
+    host --> compiler.driver.program.JacProgram.stamp_app_facts { active_host }
+    host --> compiler.driver.program.JacProgram.stub_catalog { active_host }
+    host --> compiler.driver.compiler.JacCompiler.enter_compile {
+        active_host,
+        install_host
+    }
+    host --> compiler.driver.compiler.JacCompiler.finish_compile { install_host }
+    host --> compiler.driver.nativecache { NativeVerdict }
+    host --> compiler.driver.pass_driver { CheckSettings, active_host }
+    host --> compiler.frontend.codeinfo.jaclang_pkg_root | compiler.kernel_target.target_pkg_root | project.kernel_snapshot.snapshot_inputs {
+        package_root
+    }
+    host --> compiler.frontend.kernel_analyze {
+        active_host,
+        install_host,
+        set_package_root
+    }
+    host --> compiler.frontend.kernel_host {
+        CheckSettings,
+        HostPlatform,
+        HostServices,
+        LintSettings,
+        NativeVerdict,
+        PathFacts,
+        ProjectDefaults,
+        ProjectFacts,
+        active_host,
+        install_host
+    }
+    host --> compiler.frontend.kernel_inputs {
+        CheckSettings,
+        HostPlatform,
+        LintSettings,
+        NativeVerdict,
+        ProjectDefaults,
+        ProjectFacts
+    }
+    host --> compiler.frontend.source_layout { PathFacts }
+    host --> compiler.placement.placement_pins { NativeVerdict, active_host }
+    host --> project.compiler_host {
+        CheckSettings,
+        HostPlatform,
+        HostServices,
+        LintSettings,
+        NativeVerdict,
+        PathFacts,
+        ProjectDefaults,
+        ProjectFacts
+    }
+    host --> project.compiler_host.ProjectHost.native_analyze {
+        active_host,
+        install_host,
+        kernel_host_enabled
+    }
+    host --> project.kernel_snapshot {
+        HostServices,
+        active_host,
+        install_host,
+        kernel_host_mode
+    }
+    type host --> compiler.driver.compiler { HostServices }
+    kernel_analyze --> compiler.jc_unit {
+        ANALYSIS_CRASHED,
+        AnalysisReport,
+        run_kernel_analysis
+    }
+    kernel_analyze --> project.kernel_check { AnalysisDiag, AnalysisReport, DiagSpan }
+    kernel_analyze --> project.kernel_snapshot {
+        ANALYSIS_CRASHED,
+        ANALYSIS_OK,
+        AnalysisReport,
+        analysis_report,
+        run_kernel_analysis
+    }
+    kernel_host --> compiler.frontend.kernel_analyze | project.compiler_host.ProjectHost.native_analyze {
+        KernelHost
+    }
+    kernel_host --> project.kernel_snapshot { HostCensus, KernelHost }
+    kernel_inputs --> compiler.frontend.kernel_analyze {
+        KernelInputs,
+        json_int,
+        json_map,
+        json_maps,
+        json_opt_str,
+        json_str_list
+    }
+    kernel_inputs --> compiler.frontend.kernel_host {
+        DeclaredDependencies,
+        ImportResolution,
+        KEY_SEP,
+        KernelInputs,
+        LocalResolution,
+        NpmAnswer,
+        PythonInterface,
+        local_key,
+        pair_key,
+        resolution_key
+    }
+    kernel_inputs --> project.kernel_snapshot {
+        KernelInputs,
+        ManifestSets,
+        PythonInterface,
+        request_of
+    }
+    type kernel_inputs --> project.compiler_host { KernelInputs }
+    module_facts --> compiler.driver.pipeline_runner.ModuleCompilation.report_missing_native_ir | compiler.driver.program.JacProgram.stamp_native_import_facts | compiler.frontend.kernel_analyze {
+        ModuleFacts
+    }
+    roles --> compiler.frontend.unparse | compiler.passes.annex_weave | compiler.tools.cfg_dot {
+        Kid
+    }
+    roles --> compiler.passes.ownership_check_pass | compiler.passes.static_analysis_pass {
+        BodyRole
+    }
+    roles --> compiler.tools.jac_formatter_pass { BodyRole, Kid }
+    source_layout --> compiler.driver.bccache {
+        LayoutTables,
+        annex_files_of,
+        base_file_of
+    }
+    source_layout --> compiler.frontend.kernel_host {
+        annex_files_of,
+        base_file_of,
+        is_annex_path_of,
+        list_directory,
+        package_init_of,
+        path_facts_of
+    }
+    source_layout --> compiler.frontend.kernel_inputs { LayoutTables }
+    source_layout --> project.compiler_host.ProjectHost.is_annex_path_of {
+        is_annex_path_of
+    }
+    source_layout --> project.compiler_host.ProjectHost.package_init { package_init_of }
+    source_layout --> project.compiler_host.ProjectHost.path_facts { path_facts_of }
+    srcloc --> compiler.frontend.kernel_analyze | project.kernel_check { Span }
+    srcloc --> project.textio.span_for_file { Span as SrcSpan }
+    type srcloc --> project.textio { Span }
+    unitree as uni --> compiler.driver.module_analysis | compiler.driver.session_compile | compiler.frontend.unparse | compiler.placement.placement_export | project.compiler_host.ProjectHost.parse_python | project.kernel_snapshot;
+    unitree --> compiler.backends.py.jcir_gen_pass { AstAccessNode }
+    unitree --> compiler.driver.module_analysis | compiler.passes.execution { Module }
+    unitree --> compiler.driver.pass_driver { Module, Source }
+    unitree --> compiler.driver.pipeline_runner.compile_application {
+        Import,
+        ModulePath
+    }
+    unitree --> compiler.driver.program.JacProgram.resolve_absorb_imports {
+        find_python_scope_node_of
+    }
+    unitree --> compiler.driver.program.JacProgram.stamp_boundary_facts {
+        ability_of_symbol
+    }
+    unitree --> compiler.erased_imports {
+        Ability,
+        Expr,
+        FuncCall,
+        ImplDef,
+        Import,
+        Module,
+        ModuleItem,
+        Name,
+        UniNode
+    }
+    unitree --> compiler.frontend.const_fold { Token }
+    unitree --> compiler.frontend.kernel_host { Module, UniScopeNode }
+    unitree --> compiler.passes.annex_weave {
+        EmptyToken,
+        Import,
+        ModuleItem,
+        ModulePath,
+        UniNode
+    }
+    unitree --> compiler.passes.context { Module, TreeWalker }
+    unitree --> compiler.passes.endpoint_effect_pass {
+        Expr,
+        ListVal,
+        MultiString,
+        String
+    }
+    unitree --> compiler.passes.layout_pass { KWPair, Token, UniScopeNode }
+    unitree --> compiler.passes.wasm_contract { Expr, FuncCall, Module }
+    unitree --> compiler.symbol_utils { ImplDef }
+    unitree --> compiler.tools.cfg_dot {
+        Ability,
+        Archetype,
+        AssertStmt,
+        AstElseBodyNode,
+        AtomUnit,
+        AwaitingClause,
+        BoolExpr,
+        CfgExpr,
+        CodeBlockStmt,
+        CtrlStmt,
+        DictCompr,
+        DisengageStmt,
+        ElseIf,
+        ElseStmt,
+        Except,
+        Expr,
+        FinallyStmt,
+        ForeverStmt,
+        GenCompr,
+        GlobalVars,
+        IfElseExpr,
+        IfStmt,
+        ImplDef,
+        InForStmt,
+        InnerCompr,
+        IterForStmt,
+        JsxSlot,
+        LambdaExpr,
+        ListCompr,
+        MatchCase,
+        MatchStmt,
+        Module,
+        ModuleCode,
+        Name,
+        OpenStmt,
+        RaiseStmt,
+        ReturnStmt,
+        SemDef,
+        Semi,
+        SetCompr,
+        SwitchCase,
+        SwitchStmt,
+        Test,
+        Token,
+        TreeWalker,
+        TryStmt,
+        TypeAlias,
+        TypedCtxBlock,
+        UniCFGNode,
+        UniNode,
+        WhileStmt,
+        WithStmt
+    }
+    unitree --> compiler.types.ct_eval { AstImplNeedingNode, UniScopeNode }
+    type unitree --> compiler.driver.ifacecache | compiler.frontend.host | compiler.types.stubcat.resolver | project.compiler_host {
+        Module
+    }
+    type unitree --> compiler.frontend.codeinfo { Module, UniNode }
+    unparse --> compiler.backends.es.esast_gen_pass | compiler.backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type | compiler.passes.endpoint_effect_pass.EndpointEffectPass._scan | compiler.passes.layout_pass | compiler.passes.mtir_gen_pass | compiler.passes.variant_agreement_pass.annotation_text | compiler.passes.wasm_contract.value_contract | compiler.tools.cfg_dot.CoalesceBBPass._node_label | compiler.tools.code_intel | compiler.tools.jac_auto_lint_pass | dist.publish.dts | dist.publish.jsdoc | lsp.server.engine {
+        unparse_node
+    }
 }
 
 graph import compiler.frontend.parser {
     frontend --> cli.commands.analysis._check_file_job { _replay_diags, parse_diags }
     frontend --> cli.commands.architecture._parse_imports { parse_woven }
-    frontend --> compiler.driver.compilation_context.SourceStore.parse { parse_woven }
-    frontend --> compiler.driver.compiler.JacCompiler.parse_str {
-        annex_sources,
-        parse_woven
-    }
     frontend --> compiler.driver.wiring.WiringSpec.__post_init__ { parse_woven }
     frontend --> compiler.passes.variant_agreement_pass.VariantAgreementPass._parse_sibling {
         parse
@@ -7335,6 +7840,21 @@ graph import compiler.frontend.parser {
         annex_sources,
         parse_woven
     }
+    frontend --> compiler.driver.program.JacProgram.parse_source {
+        annex_sources,
+        parse_woven
+    }
+    frontend --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes {
+        parse as rd_parse
+    }
+    frontend --> project.compiler_host.ProjectHost.native_parse { finish_parse }
+    frontend --> project.kernel_snapshot.ClosureScan.scan_jac { parse }
+    lexer --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature {
+        tokenize_full
+    }
+    parser --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature {
+        Parser
+    }
 }
 
 graph import compiler.passes {
@@ -7343,10 +7863,6 @@ graph import compiler.passes {
     }
     annex_weave --> compiler.frontend.parser.frontend.parse_woven { merge_annex_into }
     ast_validation_pass --> compiler.driver.pipeline { ASTValidationPass }
-    ast_validation_pass --> compiler.jc_unit { ASTValidationPass }
-    ast_validation_pass --> compiler.native_compiler.NativeCompiler.take_pass_results {
-        ASTValidationPass
-    }
     boundary_analysis_pass --> compiler.driver.compiler { BoundaryAnalysisPass }
     boundary_analysis_pass --> compiler.driver.pipeline { BoundaryAnalysisPass }
     capability_check_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._fstring_spec_text {
@@ -7366,9 +7882,7 @@ graph import compiler.passes {
     }
     cfg_build_pass --> compiler.driver.pipeline.get_ir_gen_sched { CFGBuildPass }
     cfg_build_pass --> compiler.driver.pipeline.product_pipeline { CFGBuildPass }
-    cfg_build_pass --> compiler.driver.pipeline.run_utility { CoalesceBBPass }
     cfg_build_pass --> compiler.tests.test_pipeline_products { CFGBuildPass }
-    cfg_build_pass --> compiler.tools.lang_tools { cfg_dot_from_file }
     comptime_resolve_pass --> compiler.driver.pipeline.get_ir_gen_sched {
         ComptimeResolvePass
     }
@@ -7377,8 +7891,6 @@ graph import compiler.passes {
     context --> compiler.backends.native.na_compile_pass { CompileContext }
     context --> compiler.backends.native.na_ir_gen_pass { CompileContext }
     context --> compiler.backends.py.jcir_bc_gen_pass { CompileContext }
-    context --> compiler.driver.compilation_context { Alert }
-    context --> compiler.driver.compiler.JacCompiler._report_missing_native_ir { Alert }
     context --> compiler.driver.context_passes { CompileContext }
     context --> compiler.driver.ifacecache._alert_from_record { Alert }
     context --> compiler.driver.pass_driver { Alert, DiagnosticPolicy }
@@ -7441,11 +7953,7 @@ graph import compiler.passes {
     decl_impl_match_pass --> compiler.driver.pipeline { DeclImplMatchPass }
     endpoint_effect_pass --> compiler.driver.pipeline { EndpointEffectPass }
     execution --> compiler.driver.pass_driver { run_walker }
-    execution --> compiler.tests.test_module_exports { run_walker }
     execution --> compiler.tests.xbackend_equiv { run_walker }
-    freeze_structure_pass --> compiler.driver.pipeline.get_py_code_gen {
-        FreezeStructurePass
-    }
     graph_lowering_pass --> compiler.driver.pipeline { GraphLoweringPass }
     import_wiring_pass --> compiler.driver.pipeline { ImportWiringPass }
     jsx_intrinsic_guard_pass --> compiler.driver.pipeline.get_ir_gen_sched {
@@ -7528,9 +8036,6 @@ graph import compiler.passes {
     }
     layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._enum_ctor_layout {
         get_layout_registry
-    }
-    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exception_handler_ids {
-        class_type_native_name
     }
     layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._is_enum_arch {
         get_layout_registry
@@ -7630,14 +8135,6 @@ graph import compiler.passes {
         inferred_hints
     }
     pyast_load_pass --> cli.commands.transform.py2jac { PyastBuildPass }
-    pyast_load_pass --> compiler.driver.compiler.JacCompiler.parse_str {
-        PyastBuildPass
-    }
-    pyast_load_pass --> compiler.driver.pipeline.run_utility { PyastBuildPass }
-    pyast_load_pass --> compiler.driver.program.JacProgram.load_dependency_module {
-        PyastBuildPass
-    }
-    pyast_load_pass --> compiler.tests.test_module_exports { PyastBuildPass }
     pyast_load_pass --> compiler.tools.lang_tools { PyastBuildPass }
     pyast_load_pass --> compiler.tools.lang_tools.AstTool.py_uni_nodes {
         PyastBuildPass
@@ -7677,8 +8174,6 @@ graph import compiler.passes {
     rc_facts_pass --> compiler.driver.nativecache.NativeBuildSession.lower {
         RcFactsPass
     }
-    rc_facts_pass --> compiler.driver.pipeline.get_py_code_gen { RcFactsPass }
-    rc_facts_pass --> compiler.driver.pipeline.product_pipeline { RcFactsPass }
     rc_facts_pass --> compiler.passes.ownership_check_pass.OwnershipCheckPass._nogc_infer_state {
         Ownership,
         result_ownership
@@ -7703,10 +8198,6 @@ graph import compiler.passes {
     sym_tab_build_pass --> compiler.driver.program.JacProgram.load_dependency_module {
         SymTabBuildPass
     }
-    sym_tab_build_pass --> compiler.jc_unit { SymTabBuildPass }
-    sym_tab_build_pass --> compiler.native_compiler.NativeCompiler.take_pass_results {
-        SymTabBuildPass
-    }
     type_checker_pass --> compiler.driver.pipeline.get_analysis_sched { TypeCheckPass }
     type_checker_pass --> compiler.passes.comptime_resolve_pass { TypeCheckPass }
     type_checker_pass --> compiler.tests.test_pipeline_products { TypeCheckPass }
@@ -7717,46 +8208,132 @@ graph import compiler.passes {
         VariantAgreementPass
     }
     wasm_contract --> compiler.passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
-        function_contract,
-        host_contracts
+        function_contract
     }
     wasm_contract --> compiler.passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_func_call {
         check_host_call
     }
+    annex_weave --> cli.commands.architecture | compiler.passes.import_wiring_pass | compiler.tools.jac_auto_lint_pass {
+        import_form
+    }
+    annex_weave --> compiler.driver.wiring {
+        WovenAnnex,
+        import_form,
+        import_items,
+        import_keys,
+        relative_twin
+    }
+    annex_weave --> compiler.frontend.parser.frontend {
+        WovenAnnex,
+        merge_annex_into,
+        prune_generated_imports
+    }
+    annex_weave --> compiler.jc_unit { merge_annex_into, prune_generated_imports }
+    type annex_weave --> compiler.frontend.host | compiler.frontend.kernel_host | compiler.native_compiler | project.compiler_host {
+        WovenAnnex
+    }
+    ast_validation_pass --> compiler.passes.early_passes { ASTValidationPass }
+    cfg_build_pass --> compiler.passes.early_passes { CFGBuildPass }
+    cfg_build_pass --> compiler.tools.cfg_dot { is_structural_child, unwrap_to_bool }
+    context --> compiler.backends.common.ast_gen_base | compiler.passes.ast_validation_pass | compiler.passes.boundary_analysis_pass | compiler.passes.cfg_build_pass | compiler.passes.endpoint_effect_pass | compiler.passes.graph_lowering_pass | compiler.passes.jsx_intrinsic_guard_pass | compiler.passes.semantic_analysis_pass | compiler.passes.sym_tab_build_pass | compiler.passes.type_checker_pass | compiler.tools.doc_ir_gen_pass | compiler.tools.grammar_extract_pass | compiler.tools.jac_auto_lint_pass | compiler.tools.normalize_pass | compiler.tools.unparse_pass {
+        TreePass
+    }
+    context --> compiler.backends.native.na_compile_pass | compiler.backends.native.na_ir_gen_pass | compiler.backends.py.jcir_bc_gen_pass | compiler.driver.context_passes | compiler.driver.pass_driver | compiler.passes.access_check_pass | compiler.passes.capability_check_pass | compiler.passes.decl_impl_match_pass | compiler.passes.early_passes | compiler.passes.execution | compiler.passes.freeze_structure_pass | compiler.passes.import_wiring_pass | compiler.passes.layout_pass | compiler.passes.mtir_gen_pass | compiler.passes.ownership_check_pass | compiler.passes.pyast_load_pass | compiler.passes.rc_facts_pass | compiler.passes.region_infer_pass | compiler.passes.sem_def_match_pass | compiler.passes.static_analysis_pass | compiler.passes.variant_agreement_pass | compiler.placement.placement_solver | compiler.tools.comment_attach_pass | compiler.tools.jac_formatter_pass | project.kernel_check.pass_type_named {
+        CompilerPass
+    }
+    context --> compiler.driver.pipeline | compiler.driver.pipeline_runner | compiler.driver.program {
+        PassSchedule
+    }
+    context --> compiler.driver.pipeline_runner.ModuleCompilation.report_missing_native_ir | compiler.frontend.kernel_analyze | project.kernel_check {
+        Alert
+    }
+    context --> compiler.tools.cfg_dot { CompileContext, TreePass }
+    type context --> compiler.symbol_utils { CompilerPass }
+    dataflow --> compiler.passes.ownership_check_pass { DataflowTransfer, SymId }
+    dataflow --> compiler.passes.rc_facts_pass { SymId }
+    decl_impl_match_pass --> compiler.passes.early_passes { DeclImplMatchPass }
+    early_passes --> compiler.jc_unit { EARLY_PASSES, SymTabBuildPass }
+    execution --> compiler.passes.pyast_load_pass.build_python_module {
+        new_context,
+        walk_pass
+    }
+    freeze_structure_pass --> compiler.driver.pipeline_runner.get_py_code_gen {
+        FreezeStructurePass
+    }
+    graph_lowering_pass --> compiler.passes.early_passes { GraphLoweringPass }
+    jsx_intrinsic_guard_pass --> compiler.passes.early_passes { JsxIntrinsicGuardPass }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._class_expr_bound {
+        class_type_native_name
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exception_handler_targets {
+        class_type_native_name
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_archetype {
+        EXC_MESSAGE_FIELD
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_instantiation {
+        EXC_MESSAGE_FIELD
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exc_message_slot {
+        EXC_MESSAGE_FIELD
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exc_stored_message {
+        EXC_MESSAGE_FIELD
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._store_exc_message {
+        EXC_MESSAGE_FIELD
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._copy_candidates {
+        get_layout_registry
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._emit_exception_match {
+        get_layout_registry
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._emit_subclass_str {
+        get_layout_registry
+    }
+    layout_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._get_exc_descendants {
+        get_layout_registry
+    }
+    type layout_pass --> compiler.frontend.codeinfo { LayoutRegistry }
+    pyast_load_pass --> compiler.driver.pipeline_runner.run_utility { PyastBuildPass }
+    rc_facts_pass --> compiler.driver.pipeline_runner.get_py_code_gen { RcFactsPass }
+    rc_facts_pass --> compiler.driver.pipeline_runner.native_ir_product_schedule {
+        RcFactsPass
+    }
+    sem_def_match_pass --> compiler.passes.early_passes { SemDefMatchPass }
+    semantic_analysis_pass --> compiler.passes.early_passes { SemanticAnalysisPass }
+    sym_tab_build_pass --> compiler.driver.pipeline_runner | compiler.passes.early_passes {
+        SymTabBuildPass
+    }
+    wasm_contract --> compiler.passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
+        host_contract_dicts
+    }
 }
 
 graph import compiler.placement {
-    placement --> cli.commands.analysis._check_file_job { collect_placement_rows }
-    placement --> cli.commands.analysis.explain { collect_placement_rows }
     placement --> cli.commands.fix._verify_claims { element_display_name }
     placement --> compiler.driver.compiler.JacCompiler._persist_module_cache {
-        get_module_summary,
-        summary_to_bytes
+        get_module_summary
     }
     placement --> compiler.driver.compiler.JacCompiler._persist_native_unit {
-        get_module_summary,
-        summary_to_bytes
+        get_module_summary
     }
     placement --> compiler.driver.compiler.JacCompiler._restore_sections {
-        summary_from_bytes,
         summary_store
     }
     placement --> compiler.driver.ifacecache.IfaceRegistry._persist_in_context {
-        get_module_summary,
-        summary_to_bytes
+        get_module_summary
     }
     placement --> compiler.driver.ifacecache.IfaceRegistry._restore_placement {
-        summary_from_bytes,
         summary_store
     }
     placement --> compiler.driver.nativecache.NativeUnitRegistry.record_verdict {
         note_native_verdict
     }
-    placement --> compiler.driver.nativecache.verdict_from_jir { summary_from_bytes }
     placement --> compiler.placement.placement_solver {
         PLACEMENT_HOLD_EXEMPT_ROOTS,
         get_module_summary,
-        placement_state,
         record_placement_evidence,
         scan_native_blockers,
         summarize_module
@@ -7779,19 +8356,11 @@ graph import compiler.placement {
         get_module_summary,
         project_has_server
     }
-    placement --> dist.precompile_bytecode._unit_extra {
-        summary_from_bytes,
-        summary_to_bytes
-    }
     placement_facts --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._dep_is_native_unit {
         native_unit
     }
     placement_facts --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_struct_types {
         native_unit as _typed_native_unit
-    }
-    placement_facts --> compiler.driver.compiler.JacCompiler.parse_str {
-        native_only as _native_only,
-        native_unit as _native_unit
     }
     placement_facts --> compiler.driver.nativecache.NativeUnitRegistry.known_native_deps {
         native_unit
@@ -7825,14 +8394,6 @@ graph import compiler.placement {
     placement_pins --> compiler.driver.boundary_classify.plain_native_import_target {
         effective_module_pin,
         module_native_demoted
-    }
-    placement_pins --> compiler.driver.compiler.JacCompiler.parse_str {
-        config_kind_space as _kind_space_of,
-        effective_module_pin as _mod_pin,
-        native_demotion_code
-    }
-    placement_pins --> compiler.driver.compiler.JacCompiler.stamp_boundary_facts {
-        config_module_pin
     }
     placement_pins --> compiler.driver.jir._project_env_fingerprint {
         config_kind_space,
@@ -7881,20 +8442,10 @@ graph import compiler.placement {
     placement_solver --> compiler.driver.boundary_classify.plain_native_import_target {
         _materialize_module
     }
-    placement_solver --> compiler.driver.compiler.JacCompiler.compile {
-        invalidate_importers_es
-    }
-    placement_solver --> compiler.driver.compiler.JacCompiler.parse_str {
-        native_default_verdict
-    }
     placement_solver --> compiler.driver.na_coverage.na_coverage_begin {
         native_scan_memo_clear
     }
     placement_solver --> compiler.driver.pipeline { PlacementApplyPass }
-    placement_solver --> compiler.driver.pipeline_runner.ModuleCompilation.placement {
-        refresh_placement_module,
-        solve_program_placement
-    }
     placement_solver --> compiler.frontend.codeinfo._inferred_native_path {
         native_default_path_ok
     }
@@ -7912,6 +8463,71 @@ graph import compiler.placement {
     }
     placement_solver --> dist.seal.bake_native_payloads { native_default_path_ok }
     placement_work --> compiler.placement.placement_solver { PlacementWork }
+    placement --> compiler.placement.placement_export {
+        ElementSummary,
+        PLACEMENT_SCHEMA,
+        PlacementSummary,
+        element_display_name,
+        get_module_summary,
+        placement_evidence_for
+    }
+    type placement --> compiler.driver.progstate { PlacementSummary }
+    placement_export --> cli.commands.analysis._check_file_job {
+        collect_placement_rows
+    }
+    placement_export --> cli.commands.analysis.explain { collect_placement_rows }
+    placement_export --> compiler.driver.compiler.JacCompiler._persist_module_cache | compiler.driver.ifacecache.IfaceRegistry._persist_in_context {
+        summary_to_bytes
+    }
+    placement_export --> compiler.driver.compiler.JacCompiler._persist_native_unit {
+        summary_to_bytes
+    }
+    placement_export --> compiler.driver.compiler.JacCompiler._restore_sections | compiler.driver.ifacecache.IfaceRegistry._restore_placement | compiler.driver.nativecache.verdict_from_jir {
+        summary_from_bytes
+    }
+    placement_export --> dist.precompile_bytecode._unit_extra {
+        summary_from_bytes,
+        summary_to_bytes
+    }
+    placement_facts --> compiler.driver.program.JacProgram.declared_codespace {
+        native_only,
+        native_unit
+    }
+    placement_facts --> compiler.native_scope.package_host_edge {
+        native_lowered,
+        native_unit
+    }
+    placement_facts --> dist.publish.runtime_vendor._runtime_module_options {
+        SPACE_SERVER
+    }
+    placement_facts --> project.compiler_host.ProjectHost.native_session_declares {
+        session_declares_native
+    }
+    placement_pins --> compiler.driver.program.JacProgram.declared_codespace {
+        config_kind_space,
+        effective_module_pin
+    }
+    placement_pins --> compiler.driver.program.JacProgram.parse_source {
+        native_demotion_code
+    }
+    placement_pins --> compiler.driver.program.JacProgram.stamp_boundary_facts {
+        config_module_pin
+    }
+    placement_pins --> compiler.placement.placement_facts.session_declares_native {
+        config_kind_space,
+        effective_pin_for
+    }
+    placement_solver --> compiler.driver.module_analysis.ModuleAnalysis.placement {
+        refresh_placement_module,
+        solve_program_placement
+    }
+    placement_solver --> compiler.driver.program.JacProgram.parse_source {
+        native_default_verdict
+    }
+    placement_solver --> compiler.driver.session_compile.demote_native_failure {
+        invalidate_importers_es
+    }
+    type placement_work --> compiler.driver.progstate { PlacementWork }
 }
 
 graph import compiler.tests {
@@ -7987,30 +8603,17 @@ graph import compiler.tests {
 graph import compiler.tools {
     code_intel --> cli.commands.code { CodeIntelligence }
     code_intel --> compiler.tests.test_code_intel { CodeIntelligence }
-    comment_attach_pass --> compiler.driver.pipeline.get_format_sched {
-        CommentAttachPass
-    }
     type doc_ir --> compiler.frontend.codeinfo { Doc }
     doc_ir as doc --> compiler.frontend.codeinfo.CodeGenTarget.doc_ir.getter;
     doc_ir as doc --> compiler.tools.doc_ir_gen_pass;
     doc_ir as doc --> compiler.tools.jac_formatter_pass;
-    doc_ir_gen_pass --> compiler.driver.pipeline.get_format_sched { DocIRGenPass }
-    doc_ir_gen_pass --> compiler.driver.pipeline.run_utility { DocIRGenPass }
     doc_ir_gen_pass --> compiler.tools.jac_formatter_pass.format_module { DocIRGenPass }
     doc_ir_gen_pass --> compiler.tools.lang_tools { DocIRGenPass }
     grammar_extract_pass --> cli.commands.analysis.grammar { GrammarExtractPass }
-    grammar_extract_pass --> compiler.driver.pipeline.run_utility { GrammarExtractPass }
     jac_auto_lint_pass --> compiler.driver.pipeline.get_analysis_sched {
         JacLintCheckPass
     }
-    jac_auto_lint_pass --> compiler.driver.pipeline.get_format_sched { JacAutoLintPass }
-    jac_auto_lint_pass --> compiler.driver.pipeline.get_lint_sched { JacLintCheckPass }
-    jac_formatter_pass --> compiler.driver.pipeline.get_format_sched { JacFormatPass }
-    jac_formatter_pass --> compiler.driver.pipeline.run_utility { JacFormatPass }
-    jac_formatter_pass --> compiler.tools.unparse_pass.unparse_module { format_module }
     lang_tools --> cli.commands.tools.tool { AstTool }
-    normalize_pass --> compiler.driver.pipeline.run_utility { NormalizePass }
-    normalize_pass --> compiler.tools.unparse_pass.unparse_module { NormalizePass }
     reactive_use_walk --> compiler.tools.jac_auto_lint_pass { ReactiveUseWalker }
     treeprinter --> cli.mcp.compiler_bridge { node_to_dict, print_ast_tree }
     treeprinter --> compiler.tools.lang_tools {
@@ -8019,34 +8622,35 @@ graph import compiler.tools {
         printgraph_ast_tree,
         printgraph_symtab_tree
     }
-    unparse_pass --> cli.commands.transform.py2jac { unparse_module }
-    unparse_pass --> cli.mcp.compiler_bridge { unparse_module }
-    unparse_pass --> compiler.backends.es.esast_gen_pass { unparse_node }
-    unparse_pass --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type {
-        unparse_node
+    cfg_dot --> compiler.driver.pipeline_runner.run_utility { CoalesceBBPass }
+    cfg_dot --> compiler.tools.lang_tools { cfg_dot_from_file }
+    comment_attach_pass --> compiler.driver.pipeline_runner.get_format_sched {
+        CommentAttachPass
     }
-    unparse_pass --> compiler.driver.pipeline.run_utility { UnparsePass }
-    unparse_pass --> compiler.passes.cfg_build_pass.CoalesceBBPass._node_label {
-        unparse_node
+    doc_ir_gen_pass --> compiler.driver.pipeline_runner.get_format_sched {
+        DocIRGenPass
     }
-    unparse_pass --> compiler.passes.endpoint_effect_pass.EndpointEffectPass._declaration_effects {
-        unparse_node
+    doc_ir_gen_pass --> compiler.driver.pipeline_runner.run_utility { DocIRGenPass }
+    grammar_extract_pass --> compiler.driver.pipeline_runner.run_utility {
+        GrammarExtractPass
     }
-    unparse_pass --> compiler.passes.endpoint_effect_pass.EndpointEffectPass._scan {
-        unparse_node
+    jac_auto_lint_pass --> compiler.driver.pipeline_runner.get_format_sched {
+        JacAutoLintPass
     }
-    unparse_pass --> compiler.passes.layout_pass { unparse_node }
-    unparse_pass --> compiler.passes.mtir_gen_pass { unparse_node }
-    unparse_pass --> compiler.passes.variant_agreement_pass.annotation_text {
-        unparse_node
+    jac_auto_lint_pass --> compiler.driver.pipeline_runner.get_lint_sched {
+        JacLintCheckPass
     }
-    unparse_pass --> compiler.passes.wasm_contract.value_contract { unparse_node }
-    unparse_pass --> compiler.tools.code_intel { unparse_node }
-    unparse_pass --> compiler.tools.jac_auto_lint_pass { unparse_node }
-    unparse_pass --> compiler.tools.lang_tools { unparse_module }
-    unparse_pass --> dist.publish.dts { unparse_node }
-    unparse_pass --> dist.publish.jsdoc { unparse_node }
-    unparse_pass --> lsp.server.engine { unparse_node }
+    jac_formatter_pass --> cli.commands.transform.py2jac | cli.mcp.compiler_bridge | compiler.tools.lang_tools {
+        unparse_module
+    }
+    jac_formatter_pass --> compiler.driver.pipeline_runner.get_format_sched {
+        JacFormatPass
+    }
+    jac_formatter_pass --> compiler.driver.pipeline_runner.run_utility { JacFormatPass }
+    normalize_pass --> compiler.driver.pipeline_runner.run_utility | compiler.tools.jac_formatter_pass.unparse_module {
+        NormalizePass
+    }
+    unparse_pass --> compiler.driver.pipeline_runner.run_utility { UnparsePass }
 }
 
 graph import compiler.types {
@@ -8345,9 +8949,6 @@ graph import compiler.types {
     types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._erased_typevar_names {
         TypeVarType as _EtvTypeVarType
     }
-    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exception_handler_ids {
-        ClassType
-    }
     types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._foreign_optional_field {
         ClassType as _FofClassType,
         TypeVarType as _FofTypeVarType,
@@ -8427,7 +9028,6 @@ graph import compiler.types {
     types --> compiler.c_interop.c_type_arg { AnyType, ClassType, UnknownType }
     types --> compiler.c_interop.c_type_spec { ClassType, FunctionType, UnionType }
     types --> compiler.c_interop.is_builtin_pin_call { FunctionType }
-    types --> compiler.expr_keys.is_builtin_region_type { ClassType }
     type types --> compiler.frontend.relations {
         ClassDetailsPrivate,
         ClassDetailsShared,
@@ -8514,7 +9114,6 @@ graph import compiler.types {
         ClassType,
         FunctionType,
         FunctionTypeFlags,
-        ParamKind,
         Parameter,
         ParameterCategory,
         TypeBase
@@ -8552,7 +9151,6 @@ graph import compiler.types {
         ModuleType,
         NeverType,
         OverloadedType,
-        ParamKind,
         Parameter,
         ParameterCategory,
         TypeBase,
@@ -8589,7 +9187,6 @@ graph import compiler.types {
         ModuleType,
         NeverType,
         OverloadedType,
-        ParamKind,
         Parameter,
         ParameterCategory,
         TypeBase,
@@ -8609,7 +9206,6 @@ graph import compiler.types {
         EnumMemberType,
         FunctionType,
         NeverType,
-        ParamKind,
         Parameter,
         TypeBase,
         TypeVarType,
@@ -8624,6 +9220,483 @@ graph import compiler.types {
         TypeBase
     }
     types --> lsp.server.utils { ClassType, ModuleType, TypeBase }
+    ct_builtins --> compiler.types.ct_eval {
+        CT_BUILTIN_EXCEPTIONS,
+        CT_BUILTIN_FUNCS,
+        CT_BUILTIN_TYPES,
+        ct_call_builtin,
+        ct_call_method,
+        ct_call_method_value,
+        ct_construct_builtin,
+        ct_type_attr,
+        ct_value_attr
+    }
+    type ct_eval --> compiler.backends.native.na_ir_gen_pass { CtEvaluator }
+    ct_format --> compiler.types.ct_builtins {
+        ct_binary,
+        ct_format,
+        ct_str_format,
+        pad_text
+    }
+    ct_format --> compiler.types.ct_eval {
+        ct_binary,
+        ct_convert,
+        ct_format,
+        ct_inplace
+    }
+    ct_int --> compiler.types.ct_builtins {
+        MAX_STR_DIGITS,
+        mag_bit_length,
+        mag_divmod,
+        mag_from_int,
+        mag_gcd,
+        mag_isqrt,
+        mag_low_bits_nonzero,
+        mag_mul,
+        mag_shl,
+        mag_shr,
+        mag_to_int
+    }
+    ct_int --> compiler.types.ct_ops {
+        MAG_MASK,
+        MAG_SHIFT,
+        MAX_STR_DIGITS,
+        mag_add,
+        mag_add_small,
+        mag_bit_length,
+        mag_cmp,
+        mag_divmod,
+        mag_from_int,
+        mag_low_bits_nonzero,
+        mag_mul,
+        mag_parse_digits,
+        mag_shl,
+        mag_shr,
+        mag_sub,
+        mag_to_int,
+        mag_to_pow2_str,
+        twos_limbs,
+        twos_to_signed
+    }
+    ct_int --> compiler.types.ct_value {
+        MAX_STR_DIGITS,
+        mag_add_small,
+        mag_bit_length,
+        mag_cmp,
+        mag_decimal_digits,
+        mag_from_int,
+        mag_shl,
+        mag_to_int
+    }
+    ct_ops --> compiler.types.ct_builtins {
+        ct_binop,
+        ct_contains,
+        ct_hash,
+        ct_int_parse,
+        ct_lt,
+        ct_order,
+        float_divmod,
+        float_round_to_int,
+        int_abs,
+        int_add,
+        int_bit_length,
+        int_divmod,
+        int_is_neg,
+        int_is_zero,
+        int_mul,
+        int_prefixed,
+        int_round,
+        int_sub,
+        int_to_float,
+        set_algebra,
+        slice_indices
+    }
+    ct_ops --> compiler.types.ct_eval {
+        ct_compare,
+        ct_getitem,
+        ct_getslice,
+        ct_int_literal,
+        ct_setitem,
+        ct_symbol,
+        ct_unary,
+        int_add,
+        int_cmp
+    }
+    ct_ops --> compiler.types.ct_format {
+        ct_binop,
+        ct_getitem,
+        int_abs,
+        int_is_neg,
+        int_to_base_str,
+        int_to_float,
+        set_algebra
+    }
+    ct_value --> compiler.backends.es.esast_gen_pass {
+        CtBool,
+        CtDict,
+        CtFloat,
+        CtInt,
+        CtList,
+        CtNone,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtValue,
+        int_host
+    }
+    ct_value --> compiler.backends.native.na_ir_gen_pass {
+        CtBool,
+        CtBytes,
+        CtFloat,
+        CtInt,
+        CtNone,
+        CtStr,
+        CtValue,
+        ct_iter,
+        ct_mangle,
+        ct_truthy
+    }
+    ct_value --> compiler.backends.py.jcir_gen_pass.JcirGenPass._ct_kind {
+        CtBool,
+        CtBytes,
+        CtDict,
+        CtEnumMember,
+        CtFloat,
+        CtFunc,
+        CtInt,
+        CtList,
+        CtNone,
+        CtRecord,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtType,
+        ct_host_scalar,
+        ct_is_materializable,
+        ct_is_scalar,
+        ct_repr
+    }
+    ct_value --> compiler.backends.py.jcir_gen_pass.JcirGenPass._ct_materializable {
+        CtBool,
+        CtBytes,
+        CtDict,
+        CtEnumMember,
+        CtFloat,
+        CtFunc,
+        CtInt,
+        CtList,
+        CtNone,
+        CtRecord,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtType,
+        ct_host_scalar,
+        ct_is_materializable,
+        ct_is_scalar,
+        ct_repr
+    }
+    ct_value --> compiler.backends.py.jcir_gen_pass.JcirGenPass._ct_order_key {
+        CtBool,
+        CtBytes,
+        CtDict,
+        CtEnumMember,
+        CtFloat,
+        CtFunc,
+        CtInt,
+        CtList,
+        CtNone,
+        CtRecord,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtType,
+        ct_host_scalar,
+        ct_is_materializable,
+        ct_is_scalar,
+        ct_repr
+    }
+    ct_value --> compiler.backends.py.jcir_gen_pass.JcirGenPass._materialize {
+        CtBool,
+        CtBytes,
+        CtDict,
+        CtEnumMember,
+        CtFloat,
+        CtFunc,
+        CtInt,
+        CtList,
+        CtNone,
+        CtRecord,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtType,
+        ct_host_scalar,
+        ct_is_materializable,
+        ct_is_scalar,
+        ct_repr
+    }
+    ct_value --> compiler.frontend.host.HostServices.ct_environment | compiler.frontend.kernel_inputs | project.compiler_host.ProjectHost.ct_environment {
+        CtEnvironment
+    }
+    ct_value --> compiler.passes.type_checker_pass {
+        ct_is_iterable,
+        ct_str,
+        ct_truthy,
+        ct_type_name
+    }
+    ct_value --> compiler.types.ct_builtins {
+        CT_FALSE,
+        CT_NONE,
+        CT_TRUE,
+        CtBool,
+        CtBuiltin,
+        CtBytes,
+        CtCaller,
+        CtDict,
+        CtError,
+        CtExc,
+        CtFloat,
+        CtInt,
+        CtList,
+        CtMethod,
+        CtModule,
+        CtNone,
+        CtRange,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtValue,
+        CtView,
+        as_ct_int,
+        ct_eq,
+        ct_exc,
+        ct_exc_value,
+        ct_iter,
+        ct_len,
+        ct_repr,
+        ct_same_or_eq,
+        ct_str,
+        ct_truthy,
+        ct_type_name,
+        dict_copy,
+        dict_delete,
+        dict_get,
+        dict_set,
+        float_ceil,
+        float_floor,
+        float_to_ct_int,
+        int_cmp,
+        int_sign_mag,
+        mk_bool,
+        mk_bytes,
+        mk_dict,
+        mk_float,
+        mk_int,
+        mk_int_mag,
+        mk_list,
+        mk_set,
+        mk_str,
+        mk_tuple,
+        range_len,
+        set_add,
+        set_discard,
+        set_has
+    }
+    ct_value --> compiler.types.ct_eval {
+        CT_NONE,
+        CtBool,
+        CtBound,
+        CtBuiltin,
+        CtBytes,
+        CtCaller,
+        CtDeferredSignal,
+        CtDict,
+        CtEnvironment,
+        CtError,
+        CtExc,
+        CtFloat,
+        CtInt,
+        CtList,
+        CtMethod,
+        CtModule,
+        CtNone,
+        CtNotComptime,
+        CtRaise,
+        CtRange,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtView,
+        as_ct_int,
+        ascii_escape,
+        ct_eq,
+        ct_exc,
+        ct_exc_is,
+        ct_iter,
+        ct_repr,
+        ct_str,
+        ct_truthy,
+        ct_type_name,
+        dict_set,
+        mk_bool,
+        mk_bytes,
+        mk_dict,
+        mk_float,
+        mk_int,
+        mk_list,
+        mk_set,
+        mk_str,
+        mk_tuple,
+        range_len,
+        set_add
+    }
+    ct_value --> compiler.types.ct_format {
+        CtBool,
+        CtBytes,
+        CtDict,
+        CtEnumMember,
+        CtError,
+        CtFloat,
+        CtInt,
+        CtList,
+        CtNone,
+        CtRecord,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtValue,
+        as_ct_int,
+        ascii_escape,
+        ct_exc,
+        ct_exc_value,
+        ct_iter,
+        ct_repr,
+        ct_str,
+        ct_type_name,
+        dict_get,
+        dict_set,
+        float_to_ct_int,
+        int_decimal,
+        mk_str
+    }
+    ct_value --> compiler.types.ct_ops {
+        CT_FALSE,
+        CT_NONE,
+        CT_TRUE,
+        CtBool,
+        CtBytes,
+        CtDeferred,
+        CtDeferredSignal,
+        CtDict,
+        CtEnumMember,
+        CtError,
+        CtFloat,
+        CtFunc,
+        CtInt,
+        CtList,
+        CtNone,
+        CtRaise,
+        CtRange,
+        CtRecord,
+        CtSet,
+        CtStr,
+        CtTuple,
+        CtType,
+        CtValue,
+        CtView,
+        as_ct_int,
+        bytes_has,
+        ct_eq,
+        ct_exc,
+        ct_exc_value,
+        ct_is_unhashable,
+        ct_iter,
+        ct_len,
+        ct_repr,
+        ct_same_or_eq,
+        ct_str,
+        ct_truthy,
+        ct_type_name,
+        dict_copy,
+        dict_get,
+        dict_key_of,
+        dict_set,
+        float_floor,
+        float_to_ct_int,
+        int_cmp,
+        int_decimal,
+        int_float_cmp,
+        int_sign_mag,
+        mk_bool,
+        mk_bytes,
+        mk_float,
+        mk_int,
+        mk_int_mag,
+        mk_list,
+        mk_set,
+        mk_str,
+        mk_tuple,
+        range_len,
+        set_add,
+        set_has,
+        set_key_of,
+        view_items_set
+    }
+    type ct_value --> compiler.backends.py.jcir_gen_pass { CtRecord, CtValue }
+    type ct_value --> compiler.frontend.host | compiler.frontend.kernel_host | project.compiler_host {
+        CtEnvironment
+    }
+    type ct_value --> compiler.types.types { CtValue }
+    type_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call | compiler.passes.ownership_check_pass {
+        is_builtin_region_type
+    }
+    type_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_method_call_inner {
+        is_builtin_region_type
+    }
+    type_utils --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._lower_partition_unpack {
+        is_builtin_region_type
+    }
+    type_utils --> compiler.passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
+        expr_is_builtin_region
+    }
+    types --> compiler.backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call | compiler.backends.native.na_ir_gen_pass.NaIRGenPass._exception_handler_targets | compiler.passes.capability_check_pass | compiler.passes.layout_pass.class_form_enum_scalar | compiler.passes.ownership_check_pass.OwnershipCheckPass._raised_class_names {
+        ClassType
+    }
+    types --> compiler.passes.layout_pass.enum_class_of { ClassType }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._class_expr_bound {
+        TypeVarType
+    }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._erased_decl {
+        ClassType as _EdClassType,
+        TypeVarType as _EdTypeVarType,
+        UnionType as _EdUnionType
+    }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._erased_decl_names {
+        TypeVarType as _EnTypeVarType,
+        UnionType as _EnUnionType
+    }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._is_object_union_key | compiler.passes.ownership_check_pass {
+        ClassType,
+        UnionType
+    }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._typevar_bound_struct {
+        ClassType,
+        TypeVarType,
+        UnionType
+    }
+    types --> compiler.frontend.kernel_host { ClassDetailsShared, ClassType, TypeBase }
+    types --> compiler.passes.capability_check_pass._class_bounded_typevar {
+        ClassType,
+        TypeVarType
+    }
+    types --> compiler.passes.layout_pass.class_form_enum_member { EnumMemberType }
+    type types --> compiler.c_interop { ClassType, TypeBase }
+    type types --> compiler.driver.ifacecache | compiler.types.stubcat.resolver {
+        ClassDetailsShared
+    }
+    type types --> compiler.passes.layout_pass { ClassType }
+    type types --> compiler.passes.ownership_check_pass { TypeBase }
 }
 
 graph import compiler.types.stubcat {
@@ -8765,9 +9838,6 @@ graph import compiler.types.stubcat {
         jaclang_pkg_dir,
         typeshed_stdlib_dir
     }
-    modiface --> compiler.driver.ifacecache.IfaceRegistry._encode_iface {
-        IncoherentInterface
-    }
     modiface --> dist.precompile_bytecode.precompile_unit_context;
     type reader --> compiler.driver.compiler { StubCatalog }
     reader --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog;
@@ -8792,7 +9862,37 @@ graph import compiler.types.stubcat {
     reader --> compiler.types.types.ClassType.get_class_symbol { CatScope }
     reader --> compiler.types.types._class_scope_category { CatScope }
     writer --> compiler.types.stubcat.build { CatalogWriter }
-    writer --> compiler.types.stubcat.modiface { CatalogWriter }
+    format --> compiler.types.stubcat.modiface { IFACE_HASH_LEN }
+    format --> compiler.types.stubcat.reader { u32_at }
+    format --> compiler.types.type_evaluator.TypeEvaluator._is_instance_method_member {
+        SYMF_INSTANCE_METHOD
+    }
+    format --> project.kernel_snapshot.interface_dependencies { MOD_EXTERNAL }
+    locate --> compiler.driver.compiler.JacCompiler.enter_compile {
+        StubCatalogUnavailable
+    }
+    locate --> project.kernel_snapshot.snapshot_inputs { catalog_origin }
+    modiface --> compiler.frontend.kernel_host { iface_module, open_module_iface }
+    modiface --> project.kernel_snapshot.interface_dependencies { open_module_iface }
+    reader --> compiler.driver.program.JacProgram.load_dependency_module | compiler.types.ct_eval {
+        CatModule
+    }
+    reader --> compiler.frontend.kernel_host { StubCatalog, open_catalog_region }
+    reader --> compiler.types.type_evaluator.TypeEvaluator._is_instance_method_member {
+        CatProvider
+    }
+    type reader --> compiler.frontend.host | project.compiler_host { StubCatalog }
+    resolver --> compiler.driver.ifacecache | compiler.frontend.kernel_host | compiler.types.stubcat.modiface | compiler.types.stubcat.reader {
+        CatalogResolver
+    }
+    writer --> dist.precompile_bytecode.precompile_unit_context;
+    writer --> compiler.driver.ifacecache.IfaceRegistry._encode_iface {
+        IncoherentInterface
+    }
+    writer --> project.kernel_snapshot.python_interface {
+        IncoherentInterface,
+        build_module_iface
+    }
 }
 
 graph import data {
@@ -8923,7 +10023,6 @@ graph import data {
     storage --> runtime.runtime.JacPersistence.store { LocalStorage }
     storage --> scale.plugin { Storage }
     type storage --> scale.runtime.provider { Storage }
-    storage --> scale.storage.factory { Storage }
     storage --> scale.storage.factory.StorageFactory.create { LocalStorage }
     storage --> scale.tests.data.test_s3_storage { Storage }
     storage --> scale.tests.data.test_storage { LocalStorage }
@@ -8956,6 +10055,7 @@ graph import data.storage {
     storage --> data.storage { Storage }
     storage --> data.storage.local_storage { Storage }
     storage --> scale.storage.bucket_storage { Storage }
+    storage --> scale.storage.factory { Storage }
 }
 
 graph import dist {
@@ -8963,9 +10063,6 @@ graph import dist {
     fused_binary --> cli.commands.project._bundle_binary { append_overlay, has_runtime }
     fused_binary --> client.targets.desktop.desktop_build._bundle_runtime {
         graft_runtime
-    }
-    fused_binary --> compiler.backends.native.floor.resolve_floor_dir {
-        bundled_floor_roots
     }
     fused_binary --> compiler.backends.native.static_link.musl_lib_dir {
         bundled_floor_roots
@@ -9018,6 +10115,9 @@ graph import dist {
         vendor_jab_deps as _vendor_jab_deps
     }
     seal --> client.targets.desktop.desktop_build.stage_program { build_jab }
+    fused_binary --> compiler.backends.native.static_link.resolve_floor_dir {
+        bundled_floor_roots
+    }
 }
 
 graph import dist.payload {
@@ -9189,23 +10289,6 @@ graph import jac0core {
     ext_registry --> client.targets.client_dev_common.dev_proxy_paths { base_stem }
     ext_registry --> compiler.driver.application._semantic_metadata { base_stem }
     ext_registry --> compiler.driver.bccache { ANNEX_FOLDER, MODULE_SUFFIXES }
-    ext_registry --> compiler.driver.compiler.JacCompiler._compile_once { is_annex }
-    ext_registry --> compiler.driver.compiler.JacCompiler.parse_str {
-        is_retired_client_marker,
-        is_retired_native_marker
-    }
-    ext_registry --> compiler.driver.pipeline.compile_application { is_annex }
-    ext_registry --> compiler.driver.pipeline_runner.ModuleCompilation.analysis {
-        is_annex as _cc_is_annex
-    }
-    ext_registry --> compiler.driver.progstate.DiagLedger._owned { is_annex_path_of }
-    ext_registry --> compiler.frontend.unitree.Import.__jac_detected.getter {
-        INIT_FILES,
-        is_jac
-    }
-    ext_registry --> compiler.passes.mtir_gen_pass.MTIRGenPass._get_scope_str {
-        STEM_REKEY_SUFFIXES
-    }
     ext_registry --> compiler.tools.code_intel {
         ANNEX_FOLDER,
         ANNEX_SUFFIXES,
@@ -9262,11 +10345,33 @@ graph import jac0core {
         env_disabled
     }
     stubcat_hook --> compiler.driver.compiler.JacCompiler.stub_catalog { active }
-    stubcat_hook --> compiler.driver.pipeline.require_typeshed_stubs { active }
     stubcat_hook --> compiler.types.stubcat.locate._publish { set_active }
     stubcat_hook --> compiler.types.stubcat.locate.reset_catalog_cache { set_active }
     stubcat_hook --> project.modresolver._candidate_from_stub_catalog { active }
     stubcat_hook --> project.modresolver._stub_catalog_active { active }
+    cache_paths --> client.targets.desktop.desktop_build._native_build_cef | client.targets.node_tooling_common.run_manifest_install | client.targets.react_native.build.run_gradle_assemble | compiler.backends.native.stage0_build.pin_for_commit | data.pgembed.PgRuntime._download_zonky | toolchains.android | toolchains.apple | toolchains.c_backend | toolchains.cef | toolchains.desktop | toolchains.store {
+        FileLock
+    }
+    cache_paths --> compiler.backends.native.stage0_build.provision_stage0 { FileLock }
+    cache_paths --> compiler.backends.native.stage0_build.restamp_stage0_sidecar | compiler.types.stubcat.build | scale.injector.binary {
+        atomic_write
+    }
+    cache_paths --> compiler.backends.native.stage0_build.stage0_dir { get_cache_home }
+    ext_registry --> compiler.driver.bccache.host_layout_tables {
+        ANNEX_FOLDER,
+        INIT_FILES,
+        JAC_SUFFIX,
+        MODULE_SUFFIXES,
+        RETIRED_CLIENT_SUFFIX,
+        RETIRED_NATIVE_SUFFIX,
+        STEM_REKEY_SUFFIXES,
+        _JS_SUFFIXES,
+        _PY_SUFFIXES
+    }
+    ext_registry --> compiler.driver.pipeline_runner.compile_application { is_annex }
+    stubcat_hook --> project.compiler_host.ProjectHost.has_active_stub_catalog | project.kernel_snapshot.snapshot_inputs {
+        active
+    }
 }
 
 graph import lib {
@@ -9319,7 +10424,6 @@ graph import lsp.server {
 }
 
 graph import project {
-    app_kinds --> compiler.driver.pipeline.compile_application { kind_has_client }
     app_kinds --> dist.seal.build_serve_manifest { kind_has_server }
     app_kinds --> dist.source.project.export_project {
         kind_has_client,
@@ -9539,37 +10643,6 @@ graph import project {
     config --> client.vite_client_bundle.make_client_bundle_builder {
         find_project_root
     }
-    config --> compiler.backends.es.backends.registry.resolve_active_backend {
-        get_config
-    }
-    config --> compiler.backends.es.esast_gen_pass.EsastGenPass._ensure_backend {
-        get_config
-    }
-    config --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._seam_warnings_on {
-        get_config
-    }
-    config --> compiler.driver.compiler.JacCompiler.stamp_access_check_facts {
-        get_config
-    }
-    config --> compiler.driver.ifacecache.IfaceRegistry.analysis_profile { get_config }
-    config --> compiler.driver.pass_driver.build_diagnostic_policy { get_config }
-    config --> compiler.frontend.codeinfo.effective_default_codespace {
-        PlacementConfig,
-        get_config
-    }
-    config --> compiler.frontend.codeinfo.effective_native_closure_cap {
-        BuildConfig,
-        get_config
-    }
-    config --> compiler.frontend.codeinfo.effective_native_target { get_config }
-    config --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__ {
-        JacConfig,
-        get_config_for_path,
-        get_explicit_config
-    }
-    config --> compiler.types.type_evaluator.TypeEvaluator._declared_missing_dependency {
-        get_config_for_path
-    }
     config --> dist.precompile_bytecode.app_metadata { get_config_for_path }
     config --> dist.precompile_bytecode.precompile_context { get_config_for_path }
     config --> dist.publish.builder { JacConfig }
@@ -9727,76 +10800,8 @@ graph import project {
         resolve_jac_virtual_module_exports,
         resolve_jac_virtual_module_path
     }
-    modresolver --> compiler.backends.es.esast_gen_pass {
-        convert_to_js_import_path,
-        relative_js_specifier,
-        resolve_relative_path
-    }
-    modresolver --> compiler.backends.es.esast_gen_pass.EsastGenPass._register_jac_virtual_import {
-        resolve_jac_virtual_module_path
-    }
-    modresolver --> compiler.backends.py.artifact_imports { resolve_local_module }
-    modresolver --> compiler.driver.compiler.JacCompiler.note_stub_tree_served {
-        _in_typeshed_tree
-    }
-    modresolver --> compiler.driver.compiler.JacCompiler.stamp_app_facts {
-        find_jac_project_root
-    }
-    modresolver --> compiler.driver.wiring {
-        find_jac_project_root,
-        resolve_local_module
-    }
-    modresolver --> compiler.frontend.codeinfo.resolve_native_module { resolve_module }
-    modresolver --> compiler.frontend.unitree.ModulePath.resolve_relative_path {
-        resolve_relative_path
-    }
-    modresolver --> compiler.passes.access_check_pass.AccessCheckPass._module_app_facts {
-        find_jac_project_root
-    }
-    modresolver --> compiler.passes.static_analysis_pass.StaticAnalysisPass._check_client_imports {
-        is_path_alias_import
-    }
-    modresolver --> compiler.placement.placement_facts.project_root_of {
-        find_jac_project_root
-    }
-    modresolver --> compiler.placement.placement_pins { find_jac_project_root }
-    modresolver --> compiler.placement.placement_pins._declared_npm_rule {
-        npm_package_root
-    }
-    modresolver --> compiler.placement.placement_pins._installed_npm_rule {
-        has_client_npm_package
-    }
-    modresolver --> compiler.placement.placement_pins.classify_bare_import {
-        resolve_module
-    }
     modresolver --> compiler.tests.test_jac_mobui_typing {
         resolve_jac_virtual_module_path
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator._client_npm_base {
-        has_client_npm_package
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
-        sibling_declaration_file
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator._resolve_client_npm_module {
-        resolve_client_npm_package
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator._resolve_submodule_attr {
-        is_untyped_third_party_module
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator._ts_decl_path {
-        resolve_client_npm_declarations,
-        sibling_declaration_file
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator._untyped_external_is_error {
-        find_jac_project_root
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator.get_type_of_module {
-        is_untyped_third_party_module
-    }
-    modresolver --> compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
-        is_untyped_third_party_module,
-        sibling_declaration_file
     }
     modresolver --> dist.publish.py_imports { resolve_module }
     modresolver --> dist.publish.runtime_vendor._module_to_file { resolve_local_module }
@@ -9824,9 +10829,7 @@ graph import project {
         resolve_jac_virtual_module_path
     }
     placement --> cli.commands.fix._verify_claims { module_dot_path }
-    placement --> compiler.placement.placement_pins { match_pin, validate_pins }
     placement --> project.kinds.resolve_app_kind { match_pin, validate_pins }
-    placement --> project.workspace.WorkspaceSpec.module_dot_path { module_dot_path }
     plugin_config --> byllm.config_loader { PluginConfigBase }
     plugin_config --> client.config_loader { PluginConfigBase, deep_merge }
     plugin_config --> client.desktop_config { PluginConfigBase }
@@ -9907,71 +10910,31 @@ graph import project {
     pyvenv --> project.tool_paths { get_venv_site_packages }
     pyvenv --> scale.injector.bundle._venv_stage { get_venv_site_packages }
     pyvenv --> scale.injector.bundle.staged_venv_files { get_venv_site_packages }
-    source --> cli.commands.analysis._check_file_job {
-        read_file_with_encoding as _read_src
-    }
-    source --> cli.commands.analysis._format_single_file_worker {
-        read_file_with_encoding
-    }
     source --> cli.commands.analysis._iter_jac_files { drop_git_ignored }
     source --> cli.commands.analysis._normalize_ignore_patterns {
         normalize_exclude_patterns
     }
     source --> cli.commands.analysis._should_ignore { path_matches_exclude }
-    source --> cli.commands.architecture { read_file_with_encoding }
-    source --> cli.commands.transform.py2jac { read_file_with_encoding }
-    source --> client.client_diagnostics.ClientDiagnostic.render {
-        read_file_with_encoding,
-        render_diagnostic,
-        span_for_file
-    }
+    source --> client.client_diagnostics.ClientDiagnostic.render { render_diagnostic }
     source --> compiler.backends.es.es_unparse.JSCodeGenerator.generate {
         pascal_to_snake
     }
-    source --> compiler.driver.compiler { read_file_with_encoding }
-    source --> compiler.driver.compiler.JacCompiler.get_bytecode {
-        read_file_with_encoding
-    }
-    source --> compiler.driver.pipeline_runner { read_file_with_encoding }
-    source --> compiler.driver.program.JacProgram.load_dependency_module {
-        read_file_with_encoding
-    }
-    source --> compiler.driver.wiring { drop_git_ignored, read_file_with_encoding }
-    source --> compiler.frontend.parser.frontend.annex_sources {
-        read_file_with_encoding
-    }
+    source --> compiler.driver.wiring { drop_git_ignored }
     source --> compiler.passes.context.Alert.as_log { render_diagnostic_header }
     source --> compiler.passes.context.Alert.pretty_print { render_diagnostic }
     source --> compiler.passes.import_wiring_pass { pascal_to_snake }
     source --> compiler.passes.pyast_load_pass.PyastBuildPass.convert {
         pascal_to_snake
     }
-    source --> compiler.passes.variant_agreement_pass.VariantAgreementPass._parse_sibling {
-        read_file_with_encoding
-    }
-    source --> compiler.placement.placement_solver._native_dep_scan {
-        read_file_with_encoding
-    }
-    source --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes {
-        read_file_with_encoding
-    }
     source --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._is_file_excluded {
         path_matches_exclude
     }
-    source --> compiler.tools.lang_tools { pascal_to_snake, read_file_with_encoding }
-    source --> compiler.types.type_evaluator { read_file_with_encoding }
-    source --> project.config.JacConfig.save { read_file_with_encoding }
-    source --> project.template_loader.scaffold_app { read_file_with_encoding }
-    source --> project.tomlio { read_file_with_encoding }
-    source --> runtime.traceback_render {
-        pretty_print_source_location,
-        read_file_with_encoding
-    }
+    source --> compiler.tools.lang_tools { pascal_to_snake }
+    source --> runtime.traceback_render { pretty_print_source_location }
     source --> scale.injector.bundle.BundleSourceFilter.matching_ignore_pattern {
         path_matches_exclude
     }
     source --> scale.injector.bundle.BundleSourceFilter.parks { path_matches_exclude }
-    source --> scale.injector.bundle.source_filter_for { read_jacignore_patterns }
     template_loader --> cli.commands.fix._ensure_workspace { migrate_implicit_app }
     template_loader --> cli.commands.project._create_app { scaffold_app }
     template_loader --> cli.commands.project._create_body {
@@ -10016,9 +10979,6 @@ graph import project {
     tomlio --> cli.commands.project._toml_apps_and_default { read_toml_with_encoding }
     tomlio --> cli.commands.project.jacpack { read_toml_with_encoding }
     tomlio --> cli.dispatch._discover_project_config { MalformedJacTomlError }
-    tomlio --> compiler.types.type_evaluator.TypeEvaluator._untyped_external_is_error {
-        read_toml_with_encoding
-    }
     tomlio --> project.config.JacConfig.load { read_toml_with_encoding }
     tomlio --> project.config.JacConfig.merge_from_toml_file { read_toml_with_encoding }
     tomlio --> project.config.JacConfig.save { MalformedJacTomlError }
@@ -10038,42 +10998,104 @@ graph import project {
     workspace --> compiler.driver.application._warn_private_declarations {
         app_for_path
     }
-    workspace --> compiler.driver.boundary_classify {
-        AppSpec,
-        app_for_path,
-        workspace_for_path
-    }
-    workspace --> compiler.driver.boundary_classify.is_service_app_entry {
-        app_for_path
-    }
-    type workspace --> compiler.driver.compilation_context { AppSpec }
-    workspace --> compiler.driver.compilation_context.bind_options {
-        workspace_for_path
-    }
-    workspace --> compiler.driver.compilation_context.compilation_scope {
-        workspace_scope
-    }
-    workspace --> compiler.driver.compilation_context.context_app { workspace_for_path }
-    workspace --> compiler.driver.compiler.JacCompiler.stamp_app_facts {
-        UI_MOBUI,
-        workspace_for_path
-    }
-    workspace --> compiler.driver.jir._project_env_fingerprint {
-        app_fact_digest,
-        app_for_path,
-        workspace_for_path
-    }
-    workspace --> compiler.frontend.codeinfo.endpoint_descriptor { workspace_for_path }
-    workspace --> compiler.placement.placement.project_has_server { kind_codespace }
-    workspace --> compiler.placement.placement_pins {
-        app_fact_digest,
-        kind_codespace,
-        workspace_for_path
-    }
     workspace --> dist.precompile_bytecode._application_sources { workspace_for_path }
     workspace --> lsp.server.engine.JacLangServer.type_check_file { workspace_for_path }
     workspace --> project.kinds.resolve_app_kind { workspace_for_path }
     source --> cli.commands.architecture._arch_files { drop_git_ignored }
+    app_kinds --> compiler.driver.pipeline_runner.compile_application {
+        kind_has_client
+    }
+    app_kinds --> compiler.driver.program.JacProgram.stamp_app_facts { UI_MOBUI }
+    app_kinds --> compiler.placement.placement.project_has_server | compiler.placement.placement_pins {
+        kind_codespace
+    }
+    config --> project.compiler_host.ProjectHost.check_settings { get_config }
+    config --> project.compiler_host.ProjectHost.declared_dependencies {
+        get_config_for_path
+    }
+    config --> project.compiler_host.ProjectHost.project_facts { get_config_for_path }
+    config --> project.compiler_host.ProjectHost.lint_settings {
+        JacConfig,
+        get_config_for_path,
+        get_explicit_config
+    }
+    config --> project.compiler_host.ProjectHost.project_defaults {
+        JacConfig,
+        get_config
+    }
+    kernel_check --> cli.commands.analysis._check_file_job {
+        kernel_check,
+        reached_modules,
+        report_parity
+    }
+    kernel_snapshot --> project.compiler_host.ProjectHost.kernel_inputs {
+        snapshot_inputs
+    }
+    kernel_snapshot --> project.compiler_host.ProjectHost.native_analyze {
+        record_kernel_session
+    }
+    kernel_snapshot --> project.kernel_check { kernel_analysis }
+    modresolver --> project.compiler_host.ProjectHost.has_npm_package {
+        has_client_npm_package
+    }
+    modresolver --> project.compiler_host.ProjectHost.in_typeshed_tree {
+        in_typeshed_tree
+    }
+    modresolver --> project.compiler_host.ProjectHost.is_path_alias {
+        is_path_alias_import
+    }
+    modresolver --> project.compiler_host.ProjectHost.is_untyped_third_party {
+        is_untyped_third_party_module
+    }
+    modresolver --> project.compiler_host.ProjectHost.jac_virtual_module_path {
+        resolve_jac_virtual_module_path
+    }
+    modresolver --> project.compiler_host.ProjectHost.npm_declarations {
+        resolve_client_npm_declarations
+    }
+    modresolver --> project.compiler_host.ProjectHost.project_root {
+        find_jac_project_root
+    }
+    modresolver --> project.compiler_host.ProjectHost.resolve_local_module {
+        resolve_local_module
+    }
+    modresolver --> project.compiler_host.ProjectHost.resolve_module { resolve_module }
+    modresolver --> project.compiler_host.ProjectHost.resolve_npm_package {
+        resolve_client_npm_package
+    }
+    modresolver --> project.compiler_host.ProjectHost.sibling_declaration {
+        sibling_declaration_file
+    }
+    modresolver --> project.kernel_snapshot.snapshot_inputs {
+        get_jac_search_paths,
+        get_typeshed_paths
+    }
+    source --> project.textio { JACIGNORE_FILENAME, normalize_exclude_patterns }
+    textio --> cli.commands.analysis._check_file_job {
+        read_file_with_encoding as _read_src
+    }
+    textio --> cli.commands.analysis._format_single_file_worker | cli.commands.architecture | cli.commands.transform.py2jac | compiler.driver.compiler | compiler.tools.lang_tools | project.compiler_host.ProjectHost.read_source | project.config.JacConfig.save | project.template_loader.scaffold_app | project.tomlio | runtime.traceback_render {
+        read_file_with_encoding
+    }
+    textio --> compiler.driver.compiler.JacCompiler.get_bytecode {
+        read_file_with_encoding
+    }
+    textio --> client.client_diagnostics.ClientDiagnostic.render {
+        read_file_with_encoding,
+        span_for_file
+    }
+    textio --> scale.injector.bundle.source_filter_for { read_jacignore_patterns }
+    workspace --> project.compiler_host.ProjectHost.app_for_path { app_for_path }
+    workspace --> project.compiler_host.ProjectHost.session { workspace_scope }
+    workspace --> project.compiler_host.ProjectHost.workspace { workspace_for_path }
+    workspace_model --> compiler.driver.boundary_classify | compiler.driver.compilation_context {
+        AppSpec
+    }
+    workspace_model --> compiler.frontend.host | compiler.frontend.kernel_host | compiler.frontend.kernel_inputs | project.workspace {
+        AppSpec,
+        WorkspaceSpec
+    }
+    type workspace_model --> project.compiler_host { AppSpec, WorkspaceSpec }
 }
 
 graph import runtime {
@@ -10305,10 +11327,6 @@ graph import runtime {
     graph_query --> runtime.graph_walk { GraphQuery, QHop, QPred }
     graph_query --> runtime.runtime { GraphQuery, QHop, QPred, filter_query_nodes }
     graph_utils --> cli.commands.db._project_target { get_name }
-    graph_utils --> compiler.backends.native.floor.resolve_floor_dir { triple_arch }
-    graph_utils --> compiler.backends.native.link_glue.aarch64_floor_atomics_ir {
-        triple_arch
-    }
     graph_utils --> compiler.backends.native.static_link.musl_lib_dir { triple_arch }
     graph_utils --> runtime.builtin._jac_graph_json { collect_node_connections }
     graph_utils --> runtime.runtime.JacBuiltin.printgraph { traverse_graph }
@@ -10380,7 +11398,6 @@ graph import runtime {
     object_interop --> data.contracts { fields, is_record }
     object_interop --> data.schema_rules { fields, is_record }
     object_interop --> data.serializer { fields, is_record }
-    object_interop --> runtime.semantic.type_to_str { is_record }
     object_interop --> runtime.typecache { fields, is_record }
     object_interop --> server.server { fields as record_fields, is_record }
     object_interop --> server.serving.coerce { is_record }
@@ -10627,11 +11644,10 @@ graph import runtime {
     runtime --> runtime.graph_walk.access_gated { JacRuntimeInterface }
     runtime --> runtime.graph_walk.acl_read_ok { JacRuntimeInterface }
     runtime --> runtime.interop_bridge._pyb_import_module { JacModule }
-    runtime --> runtime.osp_graph_sv._mem_or_ctx { JacRuntime, _request_context }
-    runtime --> runtime.osp_kernel_sv._sv_on_complete { JacRuntime, _request_context }
+    runtime --> runtime.osp_graph_sv._mem_or_ctx { JacRuntime }
+    runtime --> runtime.osp_kernel_sv._sv_on_complete { JacRuntime }
     runtime --> runtime.prepared.execute_module { JacRuntime as Jac }
     runtime --> runtime.prepared.load_prepared_module { JacRuntime as Jac }
-    runtime --> runtime.semantic.fetch_mtir { JacRuntime }
     runtime --> runtime.source_app.main { JacRuntime as Jac }
     runtime --> scale.admin.admin_portal { JacRuntime as Jac }
     runtime --> scale.memory.context.JScaleExecutionContext.init { JacRuntime }
@@ -10718,16 +11734,13 @@ graph import runtime {
         EnumInfo,
         FieldInfo,
         FunctionInfo,
-        MTIR,
         MethodInfo,
         ParamInfo,
-        fetch_mtir,
         mk_dict,
         mk_list
     }
     semantic --> byllm.types | runtime.runtime { Info }
     semantic --> byllm.visit_routing { ClassInfo }
-    semantic --> byllm.visit_routing._class_info { fetch_mtir }
     type semantic --> compiler.driver.program { Info }
     type semantic --> compiler.driver.progstate { Info }
     semantic --> compiler.passes.mtir_gen_pass {
@@ -10739,13 +11752,9 @@ graph import runtime {
         ParamInfo,
         mk_dict,
         mk_list,
-        mk_tuple,
         type_to_str
     }
-    semantic --> runtime.constructs { MTIR, MTRuntime }
     type semantic --> runtime.prepared { Info }
-    semantic --> runtime.runtime.JacLLM.by._decorator._wrapped_caller { fetch_mtir }
-    semantic --> runtime.runtime.JacLLM.get_mtir { fetch_mtir }
     sized --> compiler.tests.test_fixed_width_equivalence { SIZED_TYPES }
     sized --> data.serializer.Serializer._declared_of { SIZED_TYPES }
     sized --> data.serializer.Serializer._serialize_value { json_wire_form }
@@ -10769,6 +11778,16 @@ graph import runtime {
     }
     archetype --> runtime.graph_utils.collect_node_connections { AccessLevel }
     runtime --> runtime.graph_utils.collect_node_connections { JacRuntimeInterface }
+    graph_utils --> compiler.backends.native.static_link.load_outline_atomics {
+        triple_arch
+    }
+    graph_utils --> compiler.backends.native.static_link.resolve_floor_dir {
+        triple_arch
+    }
+    portability --> compiler.placement.placement_solver { supports }
+    semantic --> byllm.schema { TypeForm }
+    semantic --> byllm.tests.test_mtir_integration { TypeForm, mk_form, type_to_str }
+    semantic --> compiler.passes.mtir_gen_pass { TypeForm, mk_form }
 }
 
 graph import scale {
@@ -14348,24 +15367,15 @@ graph import toolchains {
     pins --> toolchains.apple.ensure_apple { RUBY_ARTIFACTS, RUBY_VERSION }
     pins --> toolchains.javascript { NODE_ARTIFACTS }
     pins --> toolchains.system.ensure_patchelf { PATCHELF_ARTIFACTS }
-    store --> client.targets.desktop.desktop_build._native_build_cef { InstallLock }
     store --> client.targets.mobile_target.MobileTarget.ensure_ready { offline }
-    store --> client.targets.node_tooling_common.run_manifest_install {
-        InstallLock,
-        offline
-    }
+    store --> client.targets.node_tooling_common.run_manifest_install { offline }
     store --> client.targets.react_native.build.run_eas_local_build { offline }
-    store --> client.targets.react_native.build.run_gradle_assemble {
-        InstallLock,
-        offline
-    }
+    store --> client.targets.react_native.build.run_gradle_assemble { offline }
     store --> client.targets.react_native.build.run_xcodebuild_ios { offline }
-    store --> data.pgembed.PgRuntime._download_zonky { InstallLock }
     store --> data.pgembed.PgRuntime._fetch_dist { Artifact, extract, fetch }
     store --> scale.injector.binary._fetch_verified_asset { Artifact, fetch }
-    store --> toolchains.android { InstallLock, install, offline }
+    store --> toolchains.android { install, offline }
     store --> toolchains.apple {
-        InstallLock,
         install_slot,
         offline,
         publish_install_slot,
@@ -14374,7 +15384,6 @@ graph import toolchains {
     store --> toolchains.apple.ensure_apple { install }
     store --> toolchains.c_backend {
         Artifact,
-        InstallLock,
         build_slot,
         extract,
         fetch,
@@ -14382,10 +15391,9 @@ graph import toolchains {
         publish_build_slot,
         slot_ready
     }
-    store --> toolchains.cef { Artifact, InstallLock, install }
+    store --> toolchains.cef { Artifact, install }
     store --> toolchains.desktop {
         Artifact,
-        InstallLock,
         build_slot,
         fetch,
         file_digest,

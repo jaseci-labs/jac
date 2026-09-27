@@ -42,31 +42,6 @@ def offline -> bool {
     return os.environ.get("JAC_OFFLINE", "").lower() in ["1", "true", "yes"];
 }
 
-obj InstallLock(FileLock) {
-    def __enter__ -> InstallLock {
-        start = time.monotonic();
-        announced = False;
-        while not self.acquire() {
-            if not announced {
-                console.print(
-                    f"Waiting for another build to finish using {self.path.name}",
-                    style="muted"
-                );
-                announced = True;
-            }
-            if time.monotonic() - start > 1800 {
-                raise TimeoutError(f"Timed out waiting for {self.path}");
-            }
-            time.sleep(0.1);
-        }
-        return self;
-    }
-
-    def __exit__(_exc_type: object, _exc_value: object, _traceback: object) {
-        self.release();
-    }
-}
-
 def file_digest(path: Path, algorithm: str = "sha256") -> str {
     digest = hashlib.new(algorithm);
     with path.open("rb") as source {
@@ -88,7 +63,7 @@ def fetch(
             / f"{artifact.algorithm}-{artifact.digest}";
         bucket_name = "toolchains-downloads";
     }
-    with InstallLock(destination.with_suffix(".lock")) {
+    with FileLock(destination.with_suffix(".lock")) {
         if destination.is_file()
             and file_digest(destination, artifact.algorithm) == artifact.digest {
             console.print(
@@ -217,7 +192,7 @@ def install(artifact: Artifact, required: str) -> Path {
     if Path(required).is_absolute() or ".." in Path(required).parts {
         raise ValueError("Installation marker must be a relative path");
     }
-    with InstallLock(destination.with_suffix(".lock")) {
+    with FileLock(destination.with_suffix(".lock")) {
         if (destination / required).exists() and slot_installed(destination) {
             console.print(
                 f"Using {artifact.name} {artifact.version} at {destination}",

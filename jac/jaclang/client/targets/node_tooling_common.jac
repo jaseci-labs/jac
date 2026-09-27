@@ -41,7 +41,7 @@ def _require_bundled_bun -> str {
 }
 
 def run_manifest_install(project_dir: Path) {
-    with InstallLock(project_dir / ".jac-dependencies.lock") {
+    with FileLock(project_dir / ".jac-dependencies.lock") {
         stamp = project_dir / ".jac-dependencies.sha256";
         current = _deps_current(project_dir, stamp, manifest_signature(project_dir));
         if offline() {

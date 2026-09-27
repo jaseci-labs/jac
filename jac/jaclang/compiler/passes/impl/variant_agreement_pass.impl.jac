@@ -115,7 +115,7 @@ impl VariantAgreementPass._parse_sibling(path: str) -> (Module | None) {
     }
 
     try {
-        (mod, had_error) = parse(read_file_with_encoding(path), path, prog=None);
+        (mod, had_error) = parse(active_host().read_source(path), path, prog=None);
     } except Exception {
         return None;
     }

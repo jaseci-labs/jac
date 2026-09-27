@@ -495,7 +495,7 @@ impl PgRuntime._download_zonky(major: int) -> (str | None) {
     }
 
     lock_path = Path(dist_cache_dir()) / f".{slug}-{version}.lock";
-    with InstallLock(lock_path) {
+    with FileLock(lock_path) {
         if os.path.isfile(os.path.join(bin_dir, 'postgres')) {
             return bin_dir;
         }

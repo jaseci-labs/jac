@@ -1,19 +1,8 @@
 import keyword;
 import os;
 
-walker JacAutoLintPass(TreeWalker) {
-    can enter_walk with uni.UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with uni.UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: uni.Module,
-        prog: JacProgram,
-        lint_enabled: bool = True,
+walker JacAutoLintPass(TreePass) {
+    has lint_enabled: bool = True,
         report_only: bool = False,
         main_module: (uni.Module | None) = None,
         _exclude_patterns: list[str] = [],
@@ -22,8 +11,6 @@ walker JacAutoLintPass(TreeWalker) {
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
         _base_decls_loaded: bool = False;
-
-    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def _is_file_excluded(file_path: str) -> bool;
@@ -84,6 +71,7 @@ walker JacAutoLintPass(TreeWalker) {
     can exit_bool_expr with uni.BoolExpr exit;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
     def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
+    def _reparse_signature(sig: uni.FuncSignature) -> (uni.FuncSignature | None);
     def _impl_owner_archetype(impl_node: uni.ImplDef) -> (uni.Archetype | None);
     def _base_decl_archetypes(annex_path: str) -> list[uni.Archetype];
     def _signatures_match(
@@ -153,7 +141,7 @@ walker JacAutoLintPass(TreeWalker) {
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;
     def _strip_docstrings(start: uni.UniNode) -> None;
-    def _collect_doc_nodes(`node: uni.UniNode, results: list[uni.AstDocNode]) -> None;
+    def _collect_doc_nodes(start: uni.UniNode) -> list[tuple[uni.UniNode, uni.String]];
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;

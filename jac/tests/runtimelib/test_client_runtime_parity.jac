@@ -19,9 +19,8 @@ import from pathlib { Path }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
@@ -110,7 +109,7 @@ def _signatures(path: Path) -> dict[str, list[any]] {
 That line is generated from the *declaration*, so it keeps naming every declared
 parameter even after the `impl/` body stops using one. Dropping it leaves only
 what the impl actually wrote -- which is where the behavior lives."""
-def _compiled_body(path: Path, backend: any, name: str) -> str {
+def _compiled_body(path: Path, backend: FrameworkBackend, name: str) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=str(path), options=CompileOptions(no_cgen=True));
     fatal = [
@@ -119,7 +118,7 @@ def _compiled_body(path: Path, backend: any, name: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"{path.name} failed to compile: {[str(e) for e in fatal]}";
-    js = es_to_js(run_pass(EsastGenPass, ir, prog, backend=backend).module.gen.es_ast);
+    js = es_js_with_backend(ir, prog, backend);
     start = js.find(f"function {name}(");
     assert start >= 0 , f"{path.name} emitted no `function {name}(`";
     body = [];

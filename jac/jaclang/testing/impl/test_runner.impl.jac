@@ -1038,7 +1038,6 @@ impl run_tests(
     forced_serial = str(raw_jobs).strip() == "0";
     use_pool = hasattr(os, "fork")
         and not forced_serial
-        and ((workers > 1) or bool(iso_set) or bool(ser_set))
         and (len(plan.files) > 1 or bool(iso_set) or bool(ser_set));
     if not use_pool {
         _run_plan(
@@ -1097,12 +1096,13 @@ impl resolve_jobs(requested: (str | int | None) = None) -> int {
     return _resolve_pool_jobs(requested, env_var="JAC_TEST_JOBS");
 }
 
+def _test_rss_cap_mb -> int {
+    return env_int("JAC_TEST_RECYCLE_MB", 8192);
+}
+
 impl _test_retire(served: int, rss_mb: int) -> bool {
     return _should_retire(
-        served,
-        env_int("JAC_TEST_RECYCLE", 25),
-        rss_mb,
-        env_int("JAC_TEST_RECYCLE_MB", 8192)
+        served, env_int("JAC_TEST_RECYCLE", 25), rss_mb, _test_rss_cap_mb()
     );
 }
 

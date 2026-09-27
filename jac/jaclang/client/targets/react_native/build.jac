@@ -533,7 +533,7 @@ def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
         "can take 5–10 minutes.)",
         style="muted"
     );
-    with InstallLock(Path(environment["ANDROID_HOME"]) / ".jac-sdk.lock") {
+    with FileLock(Path(environment["ANDROID_HOME"]) / ".jac-sdk.lock") {
         subprocess.run(
             cmd,
             env=environment,

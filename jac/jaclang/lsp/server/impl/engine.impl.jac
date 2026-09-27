@@ -65,7 +65,7 @@ impl _merge_app_alerts(
 
 impl Task.postinit -> None {
     self.task_id = Task._task_id;
-    self.cancel_token = threading.Event();
+    self.cancel_token = CancelToken();
     Task._task_id += 1;
 }
 
@@ -185,7 +185,7 @@ impl JacLangServer._fanout_dependents(file_uri: str) -> None {
 }
 
 impl JacLangServer.type_check_file(
-    file_uri: str, cancel_token: threading.Event | None = None
+    file_uri: str, cancel_token: (CancelToken | None) = None
 ) -> bool {
     if cancel_token and cancel_token.is_set() {
         return False;
@@ -254,7 +254,6 @@ impl JacLangServer.type_check_file(
                 use_str=main_doc.source,
                 options=CompileOptions(
                     no_cgen=True,
-                    force_target_program=True,
                     cancel_token=cancel_token,
                     target_app=app_name,
                     app_kind=app_kind,

@@ -15,7 +15,7 @@ impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
     }
-    source_path = resolve_jac_virtual_module_path(module_id);
+    source_path = active_host().jac_virtual_module_path(module_id);
     if source_path {
         self.client_manifest.imports[module_id] = source_path;
     }
@@ -111,7 +111,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         } else {
             import_key = '';
         }
-        resolved_path = resolve_relative_path(
+        (resolved_path, _lang) = active_host().resolve_module(
             import_key,
             here.loc.mod_path,
             string_spec=isinstance(first_item, uni.ModulePath)
@@ -222,7 +222,7 @@ impl EsastGenPass._partition_client_import_items(
             bridged.append(item);
         } elif verdict == ClientImportVerdict.DEAD {
             if not cross_app and isinstance(item, uni.ModuleItem) {
-                report_dead_client_import(self, nd, item);
+                report_dead_client_import(self, nd, item, self._unbound_reported);
             }
         } else {
             kept.append(item);

@@ -6,7 +6,9 @@ import from jaclang.compiler.frontend.diagnostics {
     Severity
 }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.frontend.unitree { Source, UniNode }
+import from jaclang.compiler.frontend.unitree { Module, Source, TreeWalker, UniNode }
+import from jaclang.compiler.driver.compile_options { CancelToken }
+import type from jaclang.compiler.driver.program { JacProgram }
 
 obj Alert {
     has msg: str,
@@ -55,14 +57,14 @@ obj CompileContext {
     has current_node: UniNode,
         from_pass: type,
         pass_name: str,
-        cancel_token: any = None,
+        cancel_token: (CancelToken | None) = None,
         cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
         nested_depth: int = 0,
         policy: (DiagnosticPolicy | None) = None,
-        resources: any = None;
+        program: (JacProgram | None) = None;
 
     def emit(
         diag: DiagnosticInfo,
@@ -80,5 +82,26 @@ obj CompileContext {
     def exit_node(nd: UniNode) -> None;
     def is_canceled -> bool {
         return self.cancel_requested;
+    }
+}
+
+walker CompilerPass {
+    has ctx: CompileContext,
+        module: Module;
+
+    has prog: JacProgram { getter; }
+
+    def release {}
+}
+
+type PassSchedule = list[type[CompilerPass]];
+
+walker TreePass(CompilerPass, TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
     }
 }

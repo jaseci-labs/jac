@@ -23,10 +23,18 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.roles { BodyRole, Kid }
-import from jaclang.project.modresolver { find_jac_project_root, resolve_local_module }
-import from jaclang.project.source { drop_git_ignored, read_file_with_encoding }
+import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.compiler.passes.annex_weave {
+    WovenAnnex,
+    import_form,
+    import_items,
+    import_keys,
+    relative_twin
+}
+import from jaclang.project.source { drop_git_ignored }
 
-glob ARCH_FILE_NAME: str = "arch.jac";
+glob ARCH_FILE_NAME: str = "arch.jac",
+     SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__");
 
 obj WireBinding {
     has provider: str,
@@ -74,6 +82,7 @@ obj WiringSpec {
     def wire_at_line(line: int) -> (ImportWire | None);
     def is_package_dir(name: str) -> bool;
     def project_modules -> list[str];
+    def _scan_modules(directory: str, found: list[str], seen: set[str]) -> None;
     def consumer_wires(consumer: str) -> list[ImportWire];
     def is_covered(consumer: str) -> bool;
     def is_project_module(module: str) -> bool;
@@ -89,10 +98,6 @@ obj WiringSpec {
     def rules_admitting(provider: str, consumer: str) -> list[ImportRule];
     static def admitted_names(rules: list[ImportRule]) -> (set[str] | None);
     static def pattern_text(pattern: ModulePattern) -> str;
-    static def import_form(
-        is_absorb: bool, is_typed: bool, is_comptime: bool, from_form: bool
-    ) -> str;
-
     def _wire_text(wire: ImportWire) -> list[tuple[int, int, str]];
     def _column_of(pos: int) -> int;
 }
@@ -120,7 +125,7 @@ def wiring_scope -> Iterator[None] {
 def is_arch_file(path: str) -> bool;
 def arch_file_for(path: str) -> (str | None);
 def wiring_for_path(path: str) -> (WiringSpec | None);
-def wiring_annex_for(file_path: str) -> (tuple[str, str] | None);
+def wiring_annex_for(file_path: str) -> (WovenAnnex | None);
 def wiring_digest_for(file_path: str) -> str;
 def dedupe_generated_imports(mod: Module) -> None;
 def compiled_by_seed(path: str) -> bool;
@@ -128,8 +133,3 @@ def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def scope_path_of(nd: UniNode) -> (list[str] | None);
 def scope_owners(mod: Module) -> dict[str, (Ability | ImplDef)];
 def inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None;
-def _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]];
-def _import_keys(stmt: Import) -> set[tuple[str, str, str, str]];
-def _relative_twin(
-    key: tuple[str, str, str, str], consumer: str
-) -> tuple[str, str, str, str];

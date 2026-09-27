@@ -949,10 +949,20 @@ impl EsastGenPass._build_spawn_runtime_call(
     }
 
     owner = symbol_owner_archetype(walker_sym) if walker_sym is not None else None;
-    if owner is not None and isinstance(provider_opts, es.ObjectExpression) {
-        key = endpoint_key(
-            owner.find_parent_of_type(uni.Module), "walker", owner.sym_name
-        );
+    source_module = owner.find_parent_of_type(uni.Module)
+        if owner is not None
+        else None;
+    endpoint_name = owner.sym_name if owner is not None else "";
+    walker_type = call_target.type;
+    if source_module is None and isinstance(walker_type, ClassType) {
+        scope = walker_type.shared.symbol_table;
+        if scope is not None {
+            source_module = scope.find_parent_of_type(uni.Module);
+            endpoint_name = scope.scope_name;
+        }
+    }
+    if source_module is not None and isinstance(provider_opts, es.ObjectExpression) {
+        key = endpoint_key(source_module, "walker", endpoint_name);
         provider_opts.properties.append(
             es.Property(
                 key=es.Literal(value="contract"),

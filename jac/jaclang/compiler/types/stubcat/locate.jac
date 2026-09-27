@@ -2,6 +2,12 @@ import hashlib;
 import os;
 import sys;
 
+obj CatalogOrigin {
+    has path: str,
+        offset: int = 0,
+        length: int = 0;
+}
+
 glob ENV_FILE: str = "JAC_STUBCAT_FILE",
      ENV_OFF: str = "JAC_STUBCAT_OFF",
      ENV_LEN: str = "JAC_STUBCAT_LEN",
@@ -19,7 +25,18 @@ glob ENV_FILE: str = "JAC_STUBCAT_FILE",
      ),
      DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".pyi", ".py", "PIN"),
      _DIGEST_CACHE: list[str] = [],
-     _CATALOG_CACHE: list[StubCatalog] = [];
+     _CATALOG_CACHE: list[StubCatalog] = [],
+     _OPENED_FROM: list[CatalogOrigin] = [],
+     _ORIGIN: list[CatalogOrigin] = [];
+
+def catalog_origin -> (CatalogOrigin | None) {
+    return _ORIGIN[0] if _ORIGIN else None;
+}
+
+def _opened(path: str, offset: int, length: int) {
+    _OPENED_FROM.clear();
+    _OPENED_FROM.append(CatalogOrigin(path=path, offset=offset, length=length));
+}
 
 def jaclang_pkg_dir -> str {
     import jaclang;
@@ -104,7 +121,11 @@ def dev_catalog_path(pkg_dir: str) -> str {
 
 def _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
     try {
-        return open_catalog_file(path, pkg_dir);
+        found = open_catalog_file(path, pkg_dir);
+        if found is not None {
+            _opened(path, 0, len(found.buf));
+        }
+        return found;
     } except Exception as e {
         sys.stderr.write(f"jac: ignoring unreadable stub catalog {path}: {e}\n");
         return None;
@@ -115,7 +136,11 @@ def _open_region(
     exe: str, offset: int, length: int, pkg_dir: str
 ) -> StubCatalog | None {
     try {
-        return open_catalog_region(exe, offset, length, pkg_dir);
+        found = open_catalog_region(exe, offset, length, pkg_dir);
+        if found is not None {
+            _opened(exe, offset, length);
+        }
+        return found;
     } except Exception as e {
         sys.stderr.write(f"jac: ignoring unreadable embedded stub catalog: {e}\n");
         return None;
@@ -185,6 +210,8 @@ def _publish(cat: StubCatalog | None) -> StubCatalog | None {
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
         set_active(cat);
+        _ORIGIN.clear();
+        _ORIGIN.extend(_OPENED_FROM);
     }
     return cat;
 }
@@ -229,5 +256,6 @@ def ensure_catalog -> StubCatalog | None {
 def reset_catalog_cache {
     _CATALOG_CACHE.clear();
     _DIGEST_CACHE.clear();
+    _ORIGIN.clear();
     set_active(None);
 }

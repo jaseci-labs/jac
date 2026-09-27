@@ -107,7 +107,9 @@ impl NaIRGenPass.finish with exit {
             with open(auto_ir_path, "w") as f {
                 f.write(ir_str);
             }
-            console.print(f"[native debug] IR saved to: {auto_ir_path}");
+            active_host().note(
+                f"[native debug] IR saved to: {auto_ir_path}", style="info"
+            );
         }
     }
 }

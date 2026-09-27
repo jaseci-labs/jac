@@ -216,7 +216,7 @@ def _inject_platform(host_src: str, platform_src: str) -> str {
 def _native_build_cef(
     cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
-    with InstallLock(cef_dir / ".native-build.lock") {
+    with FileLock(cef_dir / ".native-build.lock") {
         build_dir = cef_dir / ".build";
         build_dir.mkdir(parents=True, exist_ok=True);
         build_src = build_dir / build_name;
@@ -311,8 +311,8 @@ def stage_program(
     if dist_dir is None {
         return {"entry": str(entry_file.resolve())};
     }
-    import from jaclang.project.config { get_config_for_dir }
 
+    import from jaclang.project.config { get_config_for_dir }
     config = get_config_for_dir(str(project_dir));
     if config is None {
         raise RuntimeError(f"jac-desktop: no jac.toml under {project_dir}");

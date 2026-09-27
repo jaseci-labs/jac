@@ -1,9 +1,7 @@
 import from collections { deque }
 
-walker JacFormatPass {
-    has ctx: CompileContext,
-        module: uni.Module,
-        indent_size: int = 4,
+walker JacFormatPass(CompilerPass) {
+    has indent_size: int = 4,
         MAX_LINE_LENGTH: int = 88,
         _probe_cache: dict[tuple[int, int, int], bool] = {},
         _pending_suffixes: list[str] = [],
@@ -42,4 +40,45 @@ def format_module(mod: uni.Module) -> str {
         run_utility(UtilityProduct.DOC, mod, JacProgram()).module,
         JacProgram()
     ).module.gen.jac;
+}
+
+def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
+    own_path = mod.loc.mod_path;
+    saved_body = mod.body;
+    saved_kid = [mod->:Kid:->];
+    head_kid = [
+        k
+        for k in saved_kid
+        if (not k.loc.mod_path) or (k.loc.mod_path == own_path)
+    ];
+    filtered = len(head_kid) != len(saved_kid);
+
+    with mod.structure_thawed() {
+        if filtered {
+            mod._role_set(
+                BodyRole,
+                [
+                    st
+                    for st in saved_body
+                    if (not st.loc.mod_path) or (st.loc.mod_path == own_path)
+                ]
+            );
+            mod.set_kids(nodes=head_kid or [uni.EmptyToken()]);
+        }
+        try {
+            import from jaclang.compiler.driver.pipeline_runner { run_utility }
+            import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
+            run_utility(UtilityProduct.NORMALIZE, mod, JacProgram());
+            if requires_format {
+                return format_module(mod);
+            }
+            run_utility(UtilityProduct.UNPARSE, mod, JacProgram());
+            return mod.gen.jac;
+        } finally {
+            if filtered {
+                mod._role_set(BodyRole, saved_body);
+                mod.set_kids(nodes=saved_kid);
+            }
+        }
+    }
 }

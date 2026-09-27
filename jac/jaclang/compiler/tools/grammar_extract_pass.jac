@@ -131,18 +131,8 @@ obj ConditionResult {
         tokens: list[str];
 }
 
-walker GrammarExtractPass(TreeWalker) {
-    can enter_walk with uni.UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with uni.UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: uni.Module,
-        rules: list[GrammarRule] = [],
+walker GrammarExtractPass(TreePass) {
+    has rules: list[GrammarRule] = [],
         target_class: str = "Parser",
         diagnostics: list[dict[str, any]] = [],
         _parse_impls: list[tuple[str, list[uni.UniNode]]] = [],

@@ -182,8 +182,7 @@ obj CallArgSlot {
 }
 
 walker EsastGenPass(BaseAstGenPass[es.Statement]) {
-    has prog: JacProgram,
-        _ct_only_names: (set[str] | None) = None,
+    has _ct_only_names: (set[str] | None) = None,
         child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
         module_import_paths: dict[str, str] = {},
@@ -241,8 +240,6 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
             return self._jsx_processor;
         }
     }
-
-    static has HOST_PASS: bool = True;
 
     can prepare with entry;
     can enter_walk with uni.UniNode entry;
@@ -365,8 +362,11 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         default_factory: Callable[([(uni.UniNode | None)], _T)]
     ) -> _T;
 
-    def _ct_es_expr(cv: any, jac_node: uni.UniNode) -> (es.Expression | None);
-    def _ct_es_value(v: any) -> (es.Expression | None);
+    def _ct_es_expr(
+        cv: (CtValue | None), jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
+    def _ct_es_value(v: CtValue) -> (es.Expression | None);
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
@@ -475,7 +475,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _push_loop_label(nd: uni.UniNode) -> None;
     def _finish_loop(
-        nd: (uni.InForStmt | uni.IterForStmt | uni.WhileStmt), loop_stmt: es.Statement
+        nd: uni.IterForStmt | uni.InForStmt | uni.WhileStmt, loop_stmt: es.Statement
     ) -> es.Statement;
 
     def _innermost_breakable(nd: uni.CtrlStmt) -> (uni.UniNode | None);

@@ -32,7 +32,7 @@ impl py2jac(filename: str) -> int {
 
 impl jac2py(filename: str) -> int {
     if filename.endswith('.jac') {
-        code = JacProgram().compile(file_path=filename).gen.py;
+        code = generated_python(JacProgram().compile(file_path=filename).gen);
         if code {
             console.print(code, markup=False, highlight=False);
             return 0;

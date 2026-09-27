@@ -7,12 +7,11 @@ import from jaclang.compiler.driver.pipeline {
     get_analysis_sched,
     get_ir_gen_sched,
     get_boundary_analysis_sched,
-    get_py_code_gen,
-    module_pipeline,
-    CompilationPhase,
     providers_of,
     validate_schedule
 }
+import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen, module_pipeline }
+import from jaclang.compiler.driver.pipeline_types { CompilationPhase }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
 import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
@@ -116,7 +115,7 @@ test "run_schedule rejects an incoherent schedule before running any pass" {
 }
 
 test "the module pipeline declares its complete phase order" {
-    assert [step.phase for step in module_pipeline()]
+    assert module_pipeline()
         == [
             CompilationPhase.PARSE,
             CompilationPhase.IR,

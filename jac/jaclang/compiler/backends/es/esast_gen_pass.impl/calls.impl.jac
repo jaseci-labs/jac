@@ -845,6 +845,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
     }
 
     source_module = ability_node.find_parent_of_type(uni.Module);
+    assert source_module is not None;
     contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
     rpc_options = es.ObjectExpression(
         properties=[

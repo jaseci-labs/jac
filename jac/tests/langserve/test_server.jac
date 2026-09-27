@@ -1,5 +1,5 @@
 """Tests for Jac Language Server."""
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import contextlib;
 import os;

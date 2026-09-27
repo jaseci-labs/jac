@@ -4,27 +4,17 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
          "STAR_MUL": "*"
      };
 
-walker TypeCheckPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram,
-        evaluator: TypeEvaluator postinit,
+walker TypeCheckPass(TreePass) {
+    has evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
-        _lambda_depth: int = 0;
+        _lambda_depth: int = 0,
+        _restores_evaluator: bool = False,
+        _outer_pass: (CompileContext | None) = None,
+        _outer_ct_quiet: bool = False;
 
     def postinit -> None;
     can initialize with entry;
-
-    static has HOST_PASS: bool = True;
-
+    override def release -> None;
     can prepare with entry;
     can finish with exit;
     def _stamp_fixed_width -> None;

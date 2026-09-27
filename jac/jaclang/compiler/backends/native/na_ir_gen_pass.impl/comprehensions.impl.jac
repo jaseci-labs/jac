@@ -16,7 +16,8 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
         if _out_low is not None {
             if isinstance(_out_low, ir.DoubleType) {
                 _own_spec = "f64";
-            } elif isinstance(_out_low, ir.PointerType) {
+            } elif isinstance(_out_low, ir.PointerType)
+                or (self._str_desc_ty is not None and _out_low == self._str_desc_ty) {
                 _own_spec = "ptr";
             } elif self?.jacval_type and _out_low == self.jacval_type {
                 _own_spec = "jacval";

@@ -11,6 +11,7 @@ releases (balanced by retains only under managed modes) never
 double-free."""
 
 import os;
+import shutil;
 import subprocess;
 import tempfile;
 import from tests.support { jac_command, TESTS_DIR }
@@ -88,6 +89,14 @@ test "enforced walker kernel runs rc-free with the managed digest" {
         cy_out = subprocess.run([cy_bin], capture_output=True, text=True);
         assert cy_out.stdout == rc_out.stdout , (f"{cy_out.stdout} vs {rc_out.stdout}");
         none_out = subprocess.run([out_bin], capture_output=True, text=True);
+        if none_out.returncode != 0 {
+            artifacts = os.environ.get('JAC_TEST_ARTIFACTS');
+            if artifacts {
+                shutil.copytree(
+                    tmp, os.path.join(artifacts, 'walker-zero-rc'), dirs_exist_ok=True
+                );
+            }
+        }
         assert none_out.returncode == 0 , (
             f"enforced run failed ({none_out.returncode}): {none_out.stderr}"
             + f"\nstdout: {none_out.stdout}"

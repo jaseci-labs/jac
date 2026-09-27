@@ -1,7 +1,4 @@
-walker FreezeStructurePass {
-    has ctx: CompileContext,
-        module: uni.Module;
-
+walker FreezeStructurePass(CompilerPass) {
     can freeze with uni.Module entry;
 }
 

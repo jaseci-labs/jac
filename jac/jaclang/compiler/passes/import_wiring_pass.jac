@@ -1,5 +1,5 @@
 import os;
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     EmptyToken,
@@ -25,6 +25,7 @@ import from jaclang.compiler.driver.wiring {
     wiring_for_path
 }
 import from jaclang.project.source { pascal_to_snake }
+import from jaclang.compiler.passes.annex_weave { import_form }
 import from jaclang.compiler.frontend.diagnostics {
     E1141,
     E1142,
@@ -41,10 +42,7 @@ import from jaclang.compiler.frontend.diagnostics {
     W2084
 }
 
-walker ImportWiringPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker ImportWiringPass(CompilerPass) {
     can run_walk with Module entry;
     def _check_arch_module(mod: Module) -> None;
     def _check_scope(spec: WiringSpec, block: GraphImport, seen: set[int]) -> None;

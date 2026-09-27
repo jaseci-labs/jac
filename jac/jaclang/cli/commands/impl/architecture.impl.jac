@@ -117,7 +117,7 @@ def _collect_rows(spec: WiringSpec, modules: list[tuple[str, str]]) -> list[Wire
                     if provider is None or provider == module {
                         continue;
                     }
-                    form = WiringSpec.import_form(
+                    form = import_form(
                         imp.is_absorb, imp.is_typed, imp.is_comptime, True
                     );
                     bucket = payloads.setdefault((provider, form, consumer), []);
@@ -136,9 +136,7 @@ def _collect_rows(spec: WiringSpec, modules: list[tuple[str, str]]) -> list[Wire
                     }
                     continue;
                 }
-                form = WiringSpec.import_form(
-                    imp.is_absorb, imp.is_typed, imp.is_comptime, False
-                );
+                form = import_form(imp.is_absorb, imp.is_typed, imp.is_comptime, False);
                 for item in imp.items {
                     if not isinstance(item, ModulePath) {
                         continue;
@@ -485,7 +483,7 @@ def _render_json(spec: WiringSpec) -> str {
         {
             "provider": wire.provider_path,
             "consumers": list(wire.consumer_paths),
-            "form": WiringSpec.import_form(
+            "form": import_form(
                 wire.is_absorb, wire.is_typed, wire.is_comptime, not wire.is_module_form
             ),
             "names": (

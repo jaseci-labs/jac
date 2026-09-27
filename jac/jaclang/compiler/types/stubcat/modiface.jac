@@ -1,44 +1,3 @@
-import hashlib;
-
-glob IFACE_HASH_LEN: int = 64;
-
-class IncoherentInterface(RuntimeError) {
-    has mod_path: str,
-        orphans: list[str];
-
-    def init(self: IncoherentInterface, mod_path: str, orphans: list[str]) {
-        RuntimeError.__init__(
-            self,
-            f"interface of {mod_path} references {len(orphans)} class scope(s) "
-            "with no live module: "
-                + ", ".join(orphans)
-        );
-        self.mod_path = mod_path;
-        self.orphans = list(orphans);
-    }
-}
-
-def build_module_iface(
-    mod: Module,
-    evaluator: any,
-    pkg_dir: str,
-    path_mapper: Callable[[str], str] | None = None
-) -> bytes {
-    writer = CatalogWriter(
-        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
-    );
-    dotted = mod.name or "";
-    writer.add_module(mod, dotted);
-    writer.force_all();
-    key = mod.loc.mod_path if mod.loc else dotted;
-    body = writer.emit(writer.rel_of(key), {});
-    if writer.orphans {
-        raise IncoherentInterface(key, writer.orphans);
-    }
-    digest = hashlib.sha256(body).hexdigest();
-    return digest.encode("utf-8") + body;
-}
-
 def read_iface_hash(section: (bytes | None)) -> (str | None) {
     if section is None or len(section) <= IFACE_HASH_LEN {
         return None;
@@ -53,7 +12,7 @@ def read_iface_hash(section: (bytes | None)) -> (str | None) {
 def open_module_iface(
     section: bytes,
     pkg_dir: str,
-    resolver: any = None,
+    resolver: (CatalogResolver | None) = None,
     path_mapper: Callable[[str], str] | None = None
 ) -> (StubCatalog | None) {
     if len(section) <= IFACE_HASH_LEN {

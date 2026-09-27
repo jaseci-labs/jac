@@ -18,9 +18,8 @@ glob PyPositioned: TypeAlias = py_ast.stmt
          | py_ast.SetComp
          | py_ast.GeneratorExp;
 
-walker PyastBuildPass {
-    has ctx: CompileContext,
-        module: UniNode,
+walker PyastBuildPass(CompilerPass) {
+    has module: UniNode,
         mod_path: str postinit,
         orig_src: Source postinit,
         _source_lines: list[str] postinit,
@@ -166,4 +165,12 @@ walker PyastBuildPass {
     def proc_type_var_tuple(nd: py_ast.TypeVarTuple) {}
     def convert_to_doc(string: String) -> None;
     def aug_op_map(tok_dict: dict[str, str], op: Token) -> str;
+}
+
+def build_python_module(py_mod: PythonModuleAst) -> Module {
+    walk = PyastBuildPass(module=py_mod, ctx=new_context(PyastBuildPass, py_mod));
+    walk_pass(walk);
+    built = walk.module;
+    assert isinstance(built, Module);
+    return built;
 }

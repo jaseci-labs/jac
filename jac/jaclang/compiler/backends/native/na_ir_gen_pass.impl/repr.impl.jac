@@ -844,7 +844,8 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
         (5, "set"),
         (6, "obj"),
         (7, "bool"),
-        (8, "none")
+        (8, "none"),
+        (JACVAL_ELLIPSIS_TAG, "ellipsis")
     ];
     for (_t, _label) in _cases {
         _hit_bb = fn.append_basic_block(f"jv.{_label}");
@@ -875,6 +876,8 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
             bh.ret(bh.call(_bool_fn, [payload], name="rp.jv.bool"));
         } elif _label == "none" {
             _ret_const(bh, "None", "none");
+        } elif _label == "ellipsis" {
+            _ret_const(bh, "Ellipsis", "ellipsis");
         } elif _label == "list" {
             _ret_const(bh, "[...]", "list");
         } elif _label in ("dict", "set") {
@@ -937,7 +940,8 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
         (5, "set"),
         (6, "obj"),
         (7, "bool"),
-        (8, "none")
+        (8, "none"),
+        (JACVAL_ELLIPSIS_TAG, "ellipsis")
     ];
     for (_t, _label) in _cases {
         _hit_bb = fn.append_basic_block(f"sjv.{_label}");
@@ -967,6 +971,8 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
             bh.ret(bh.call(_bool_fn, [payload], name="sj.bool"));
         } elif _label == "none" {
             _ret_const(bh, "None", "none");
+        } elif _label == "ellipsis" {
+            _ret_const(bh, "Ellipsis", "ellipsis");
         } elif _label == "list" {
             _ret_const(bh, "[...]", "list");
         } elif _label in ("dict", "set") {

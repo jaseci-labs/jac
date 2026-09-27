@@ -1,8 +1,4 @@
 import from enum { Enum }
-import from typing { TypeAlias }
-
-glob SymId: TypeAlias = int,
-     DataflowTransfer: TypeAlias = Callable[[UniCFGNode, set[SymId]], set[SymId]];
 
 enum AccessKind {
     ASSIGN_TARGET = "assign_target",
@@ -34,11 +30,8 @@ obj BorrowMeta {
     }
 }
 
-walker OwnershipCheckPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module,
-        owned_decl: dict[SymId, Name] = {},
+walker OwnershipCheckPass(CompilerPass) {
+    has owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
@@ -62,8 +55,6 @@ walker OwnershipCheckPass {
         receiver_modes: dict[int, OwnershipKind] = {},
         receiver_probe: set[int] = set(),
         arch_view_syms: set[SymId] = set();
-
-    static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
@@ -99,7 +90,7 @@ walker OwnershipCheckPass {
     def _view_call_owner(call: FuncCall) -> (SymId | None);
     def _emit_view_diagnostics -> None;
     def _is_c_view(expr: (UniNode | None)) -> bool;
-    def _mentions_c_view(t: object, depth: int = 0) -> bool;
+    def _mentions_c_view(t: (TypeBase | None), depth: int = 0) -> bool;
     def _c_view_escape(site: UniNode, what: str) -> None;
     def _emit_c_view_diagnostics -> None;
     def _nogc_str_elem_ok(expr: Expr | None, idx_ctx: bool = False) -> bool;
@@ -147,6 +138,7 @@ walker OwnershipCheckPass {
     def _emit_managed_borrow_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
     def _raise_type_name(nd: RaiseStmt) -> (str | None);
     def _handled_by_enclosing_try(nd: UniNode, exc: str, stop: UniNode) -> bool;
+    def _raised_class_names(site: UniNode, exc: str, seen: set[int]) -> set[str];
     def _callee_ability(call: FuncCall) -> (Ability | None);
     def _local_raises(ab: UniNode) -> set[str];
     def _emit_raises_diagnostics -> None;

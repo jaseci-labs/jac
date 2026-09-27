@@ -7,7 +7,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
         return binding.type;
     }
     item_name = node_.name.value;
-
+    import from jaclang.compiler.frontend.host { active_host }
     import_node = node_.parent_of_type(Import);
     assert import_node.from_loc is not None;
 
@@ -37,17 +37,15 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     path_str = str(path);
 
                     if (not path_str.endswith((".jac", ".py", ".pyi")))
-                        or is_untyped_third_party_module(path_str) {
+                        or active_host().is_untyped_third_party(path_str) {
                         mod_type = ModuleType(
                             mod_name=binding.sym_name,
                             file_uri=path,
                             symbol_table=None,
                             is_external=True,
                         );
-                        import from jaclang.project.modresolver {
-                            sibling_declaration_file
-                        }
-                        sibling_dts = sibling_declaration_file(path_str);
+                        import from jaclang.compiler.frontend.host { active_host }
+                        sibling_dts = active_host().sibling_declaration(path_str);
                         if sibling_dts {
                             if declared
                                 := self._ts_declared_type_from_file(
@@ -305,6 +303,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             offset = len(path_list) - len(path_parts);
         }
         for (idx, npath) in enumerate(path_parts) {
+            part: Expr = npath;
             mod_path = path_list[idx + offset];
             if idx == len(path_parts) - 1
                 and self._imports_own_module(node_, mod_path) {
@@ -314,7 +313,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             if mod_path in self._module_type_cache {
                 resolved_for_cache = str(Path(mod_path).resolve());
                 if self.program.is_hub_entry_fresh(resolved_for_cache) {
-                    npath.type = self._module_type_cache[mod_path];
+                    part.type = self._module_type_cache[mod_path];
                     if isinstance(npath, Name) {
                         npath._sym_category = SymbolType.MODULE;
                     }
@@ -337,13 +336,13 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                         symbol_table=None,
                         is_external=True,
                     );
-                    npath.type = mod_type;
+                    part.type = mod_type;
                     if isinstance(npath, Name) {
                         npath._sym_category = SymbolType.MODULE;
                     }
-                    return npath.type;
+                    return part.type;
                 }
-                npath.type = UnknownType(is_diagnosed=True);
+                part.type = UnknownType(is_diagnosed=True);
                 declared = self._declared_missing_dependency(node_)
                     if self.program is not None
                         and self.program.options is not None
@@ -358,7 +357,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 } else {
                     self.emit_diag(W1100, npath);
                 }
-                return npath.type;
+                return part.type;
             }
 
             if Path(mod_path).is_dir() {
@@ -382,20 +381,20 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                     file_uri=pkg_dir.resolve(),
                     symbol_table=pkg_sym_tab,
                 );
-                npath.type = pkg_type;
+                part.type = pkg_type;
                 self._module_type_cache[mod_path] = pkg_type;
                 continue;
             }
 
             if (not mod_path.endswith((".jac", ".py", ".pyi")))
-                or is_untyped_third_party_module(mod_path) {
+                or active_host().is_untyped_third_party(mod_path) {
                 mod_type = ModuleType(
                     mod_name=npath.value,
                     file_uri=Path(mod_path).resolve(),
                     symbol_table=None,
                     is_external=True,
                 );
-                npath.type = mod_type;
+                part.type = mod_type;
                 if isinstance(npath, Name) {
                     npath._sym_category = SymbolType.MODULE;
                 }
@@ -413,7 +412,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 file_uri=Path(mod_path).resolve(),
                 symbol_table=mod,
             );
-            npath.type = mod_type;
+            part.type = mod_type;
             if isinstance(npath, Name) {
                 npath._sym_category = SymbolType.MODULE;
             }
@@ -462,7 +461,7 @@ impl TypeEvaluator._resolve_submodule_attr(
                     return cached;
                 }
             }
-            if is_untyped_third_party_module(path_str) {
+            if active_host().is_untyped_third_party(path_str) {
                 return ModuleType(
                     mod_name=attr_name,
                     file_uri=path,
@@ -564,6 +563,11 @@ impl TypeEvaluator.resolve_to_definition_symbol(symbol: Symbol) -> Symbol {
     cur = symbol;
     while id(cur) not in visited {
         visited.add(id(cur));
+        origin = cur.imported_from;
+        if origin is not None {
+            cur = origin;
+            continue;
+        }
         provider = cur.provider;
         if provider is not None {
             target = provider.definition();
@@ -623,30 +627,19 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
         return None;
     }
 
-    try {
-        cfg = get_config_for_path(Path(mod.loc.mod_path));
-    } except Exception {
-        return None;
-    }
-    if cfg is None {
+    fallback_app = (
+        self.program.options.target_app or ""
+            if self.program is not None and self.program.options is not None
+            else ""
+    );
+    names = active_host().declared_dependencies(mod.loc.mod_path, fallback_app);
+    if names is None {
         return None;
     }
     def norm(name: str) -> str {
         return name.strip().lower().replace("-", "_").replace(".", "_");
     }
     wanted = norm(str(node_.path[0].value));
-    names: list[str] = [*cfg.dependencies, *cfg.dev_dependencies];
-    owner = cfg.app_for_path(str(Path(mod.loc.mod_path).resolve()));
-    app_name = owner.name if owner is not None else "";
-    if not app_name and self.program is not None and self.program.options is not None {
-        app_name = self.program.options.target_app or "";
-    }
-    if app_name and app_name in cfg.apps {
-        try {
-            app_cfg = cfg.effective_for_app(app_name);
-            names.extend([*app_cfg.dependencies, *app_cfg.dev_dependencies]);
-        } except Exception {}
-    }
     for declared in names {
         if norm(str(declared)) == wanted {
             return str(declared);

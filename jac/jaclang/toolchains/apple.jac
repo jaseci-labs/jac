@@ -33,7 +33,7 @@ def ensure_apple -> dict[str, str] {
     env["GEM_HOME"] = str(home);
     env["GEM_PATH"] = str(home);
     env["PATH"] = str(home / "bin") + os.pathsep + env.get("PATH", "");
-    with InstallLock(home.with_suffix(".lock")) {
+    with FileLock(home.with_suffix(".lock")) {
         if not ((home / "bin" / "pod").is_file() and slot_installed(home)) {
             if offline() {
                 raise RuntimeError(
