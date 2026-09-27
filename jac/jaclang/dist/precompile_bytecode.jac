@@ -711,6 +711,8 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
     for d in seed_dirs {
         seed_sources.extend(Path(d).rglob("*.jac"));
     }
+    import time;
+    spent: dict[str, float] = {"jac0": 0.0, "compile": 0.0, "iface": 0.0};
     for jac_file in sorted(seed_sources) {
         if ext_registry.is_annex(str(jac_file)) {
             continue;
@@ -732,12 +734,15 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
                     (Path(impl_path).read_text(encoding="utf-8"), impl_path)
                 );
             }
+            t0 = time.monotonic();
             py_source = jac0_compile(
                 jac_file.read_text(encoding="utf-8"),
                 str(jac_file),
                 impl_sources=impl_sources or None
             );
+            t1 = time.monotonic();
             code = compile(py_source, str(jac_file), "exec");
+            t2 = time.monotonic();
             bc = patch_co_filenames_bytes(
                 marshal.dumps(code), str(pkg_dir), PRECOMPILE_SENTINEL
             );
@@ -745,6 +750,10 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
                 program.iface_registry().ensure(str(jac_file));
                 extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
             }
+            t3 = time.monotonic();
+            spent["jac0"] += t1 - t0;
+            spent["compile"] += t2 - t1;
+            spent["iface"] += t3 - t2;
             jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
             jir_path = out_dir / jir_rel;
             jir_path.parent.mkdir(parents=True, exist_ok=True);
@@ -754,6 +763,10 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
             failed += 1;
         }
     }
+    sys.stderr.write(
+        f"  [precompile] bootstrap units: jac0 {spent['jac0']:.1f}s, compile "
+        f"{spent['compile']:.1f}s, interface {spent['iface']:.1f}s\n"
+    );
     return failed;
 }
 
