@@ -4,6 +4,7 @@ Source decoding stays outside the scanner. An optional refill callback supplies
 decoded lines for streaming tokenization; parsing uses an existing source string.
 """
 
+import from jaclang.runtime.python.cpython_api { _PyToken_ThreeChars }
 import from jaclang.compiler.frontend.python.token_model {
     ENDMARKER,
     NAME,

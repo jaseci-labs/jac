@@ -3,6 +3,25 @@
 Recovered algorithms are checked against pinned CPython 3.14.6, with real
 transcendentals supplied by libm. See ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyBool_FromLong,
+    PyComplex_FromDoubles,
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble,
+    PyFloat_AsDouble,
+    PyFloat_FromDouble,
+    PyNumber_TrueDivide,
+    PyObject,
+    _Py_c_abs,
+    jacpy_clear_errno,
+    jacpy_complex_value,
+    jacpy_error_is,
+    jacpy_error_pending,
+    jacpy_math_errno,
+    jacpy_release
+}
 import from jaclang.runtime.python.modules.numeric {
     asinh,
     atan2,
@@ -29,20 +48,7 @@ import from jaclang.runtime.python.capi {
     required,
     checked,
     object_error,
-    object_tuple,
-    jacpy_complex_value,
-    jacpy_complex_real,
-    jacpy_complex_imag,
-    jacpy_complex,
-    jacpy_number_as_double,
-    jacpy_float,
-    jacpy_boolean,
-    jacpy_error_pending,
-    jacpy_release,
-    jacpy_truediv,
-    jacpy_error_is,
-    jacpy_clear_errno,
-    jacpy_math_errno
+    object_tuple
 }
 
 obj complex_parts {
@@ -1225,18 +1231,19 @@ def:priv rectangular(r: float, phi: float) -> complex_parts {
     return complex_parts(re, im);
 }
 
-
-def:priv input_complex(value: u64) -> complex_parts {
+def:priv input_complex(value: ptr[PyObject]) -> complex_parts {
     handle = required(jacpy_complex_value(value));
     try {
-        return complex_parts(jacpy_complex_real(handle), jacpy_complex_imag(handle));
+        return complex_parts(
+            PyComplex_RealAsDouble(handle), PyComplex_ImagAsDouble(handle)
+        );
     } finally {
         jacpy_release(handle);
     }
 }
 
-def:priv input_float(value: u64) -> float {
-    result = jacpy_number_as_double(value);
+def:priv input_float(value: ptr[PyObject]) -> float {
+    result = PyFloat_AsDouble(value);
     if jacpy_error_pending() != 0 {
         raise boundary_failure();
     }
@@ -1294,22 +1301,22 @@ def:priv unary(operation: int, z: complex_parts) -> tuple[float, float, int] {
     return (result[0] / _M_LN10, result[1] / _M_LN10, result[2]);
 }
 
-def:pub jacpy_cmath_unary(operation: i64, value: u64) -> u64 {
+def:pub jacpy_cmath_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
     try {
         z = input_complex(value);
         if operation == 15 {
             jacpy_clear_errno();
             angle_value = atan2(z.imag, z.real);
             _check_errno(int(jacpy_math_errno()));
-            return jacpy_float(angle_value);
+            return PyFloat_FromDouble(angle_value);
         }
         if operation == 16 {
             (radius, error) = _c_abs(z.real, z.imag);
             _check_errno(error);
-            angle: u64 = 0;
-            radius_object = required(jacpy_float(radius));
+            angle: ptr[PyObject] = NULL;
+            radius_object = required(PyFloat_FromDouble(radius));
             try {
-                angle = required(jacpy_float(atan2(z.imag, z.real)));
+                angle = required(PyFloat_FromDouble(atan2(z.imag, z.real)));
                 return object_tuple([radius_object, angle]);
             } finally {
                 jacpy_release(radius_object);
@@ -1317,34 +1324,34 @@ def:pub jacpy_cmath_unary(operation: i64, value: u64) -> u64 {
             }
         }
         if operation == 17 {
-            return jacpy_boolean(i64(isfinite(z.real) and isfinite(z.imag)));
+            return PyBool_FromLong(i64(isfinite(z.real) and isfinite(z.imag)));
         }
         if operation == 18 {
-            return jacpy_boolean(i64(isinf(z.real) or isinf(z.imag)));
+            return PyBool_FromLong(i64(isinf(z.real) or isinf(z.imag)));
         }
         if operation == 19 {
-            return jacpy_boolean(i64(isnan(z.real) or isnan(z.imag)));
+            return PyBool_FromLong(i64(isnan(z.real) or isnan(z.imag)));
         }
         result = unary(int(operation), z);
         _check_errno(result[2]);
-        return jacpy_complex(result[0], result[1]);
+        return PyComplex_FromDoubles(result[0], result[1]);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def:pub jacpy_cmath_log(value: u64, base: u64) -> u64 {
+def:pub jacpy_cmath_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] {
     try {
         z = input_complex(value);
         result = _c_log(z);
         if base != 0 {
             divisor = _c_log(input_complex(base));
             _check_errno(divisor[2]);
-            numerator = required(jacpy_complex(result[0], result[1]));
-            denominator: u64 = 0;
+            numerator = required(PyComplex_FromDoubles(result[0], result[1]));
+            denominator: ptr[PyObject] = NULL;
             try {
-                denominator = required(jacpy_complex(divisor[0], divisor[1]));
-                quotient = jacpy_truediv(numerator, denominator);
+                denominator = required(PyComplex_FromDoubles(divisor[0], divisor[1]));
+                quotient = PyNumber_TrueDivide(numerator, denominator);
                 if quotient == 0 and jacpy_error_is("ZeroDivisionError") != 0 {
                     _check_errno(_EDOM);
                 }
@@ -1355,33 +1362,38 @@ def:pub jacpy_cmath_log(value: u64, base: u64) -> u64 {
             }
         }
         _check_errno(result[2]);
-        return jacpy_complex(result[0], result[1]);
+        return PyComplex_FromDoubles(result[0], result[1]);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def:pub jacpy_cmath_rect(radius: u64, angle: u64) -> u64 {
+def:pub jacpy_cmath_rect(radius: ptr[PyObject], angle: ptr[PyObject]) -> ptr[PyObject] {
     try {
         r = input_float(radius);
         phi = input_float(angle);
         result = rectangular(r, phi);
-        return jacpy_complex(result.real, result.imag);
+        return PyComplex_FromDoubles(result.real, result.imag);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
 def:pub jacpy_cmath_isclose(
-    left: u64, right: u64, relative: u64, absolute: u64
-) -> u64 {
+    left: ptr[PyObject],
+    right: ptr[PyObject],
+    relative: ptr[PyObject],
+    absolute: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         a = input_complex(left);
         b = input_complex(right);
         relative_tolerance = input_float(relative) if relative != 0 else 1e-9;
         absolute_tolerance = input_float(absolute) if absolute != 0 else 0.0;
-        return jacpy_boolean(i64(close(a, b, relative_tolerance, absolute_tolerance)));
+        return PyBool_FromLong(
+            i64(close(a, b, relative_tolerance, absolute_tolerance))
+        );
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }

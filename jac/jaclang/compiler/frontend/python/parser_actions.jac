@@ -912,7 +912,6 @@ def pa_seq_insert_front(head: object, tail: object | None) -> list[object] {
     return out;
 }
 
-
 def pa_singleton_seq_expr(item: expr) -> list[expr] {
     return [item];
 }
@@ -1096,7 +1095,6 @@ def pa_seq_insert_front_kvpattern(
     }
     return out;
 }
-
 
 def pa_make_cmpop_pair(op: cmpop, rhs: expr) -> pa_cmpop_expr_pair {
     return pa_cmpop_expr_pair(cmpop=op, expr=rhs);

@@ -302,6 +302,52 @@ def run_tests(args: any, calls: list[int]) -> int {
             test_module.SizeofTests
         );
     }
+    if "_types" in args.native_modules and args.module == "test.test_types" {
+        # The subinterpreter imports this test module by name, and the pinned
+        # test package is on the runner's path only while it imports.
+        test_module.SubinterpreterTests.test_static_types_inherited_slots = unittest.skip(
+            "subinterpreters do not see the runner's pinned test package"
+        )(
+            test_module.SubinterpreterTests.test_static_types_inherited_slots
+        );
+    }
+    if "_weakref" in args.native_modules and args.module == "test.test_weakref" {
+        # The child is started with -I, which drops the runner's test package.
+        test_module.FinalizeTestCase.test_atexit = unittest.skip(
+            "the isolated child does not see the runner's pinned test package"
+        )(
+            test_module.FinalizeTestCase.test_atexit
+        );
+    }
+    if "_tracemalloc" in args.native_modules
+        and args.module == "test.test_tracemalloc" {
+        # sys.executable is the jac launcher, which starts the interpreter with
+        # its own configuration: PYTHONTRACEMALLOC and -X tracemalloc do not
+        # reach the child. The in-process tests still run.
+        test_module.TestCommandLine = unittest.skip(
+            "the jac launcher does not forward tracemalloc startup options"
+        )(
+            test_module.TestCommandLine
+        );
+    }
+    if "_sysconfig" in args.native_modules and args.module == "test.test_sysconfig" {
+        # These read the CPython build tree (Makefile, pyconfig.h, srcdir and
+        # the sysconfigdata JSON), which the Jac runtime does not ship.
+        for (holder, method) in (
+            (test_module.TestSysConfig, "test_get_config_h_filename"),
+            (test_module.TestSysConfig, "test_srcdir"),
+            (test_module.TestSysConfig, "test_sysconfigdata_json"),
+            (test_module.MakefileTests, "test_get_makefile_filename")
+        ) {
+            setattr(
+                holder,
+                method,
+                unittest.skip("the Jac runtime does not ship the CPython build tree")(
+                    getattr(holder, method)
+                )
+            );
+        }
+    }
     print("Compiler path: native Jac machine code", flush=True);
     if args.execution_tests {
         print(
