@@ -148,9 +148,9 @@ glob:priv sha224_type = sha2_type("_sha2.SHA224Type", False),
      sha512_type = sha2_type("_sha2.SHA512Type", True);
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    SHA256Type_token.bind(sha256_type.handle);
+    SHA256Type_token.handle = sha256_type.handle;
     SHA256Type_token.share(sha224_type.handle);
-    SHA512Type_token.bind(sha512_type.handle);
+    SHA512Type_token.handle = sha512_type.handle;
     SHA512Type_token.share(sha384_type.handle);
     if not add_state_owned(module, 0, "SHA224Type", sha224_type.create(module))
         or not add_state_owned(module, 1, "SHA256Type", sha256_type.create(module))

@@ -119,10 +119,6 @@ The ports so far needed these, each worked around in C or by a pattern:
 4. **Exporting data symbols.** A static `PyTypeObject` is a C variable other C
    code takes the address of.
 5. **Varargs calls.**
-6. **Native emitter: assigning a field of a glob imported from another
-   module** fails with `'IntType' object has no attribute 'is_opaque'`. Calling
-   a method of the same object that assigns the field lowers correctly
-   (`ClassToken.bind`).
 
 Gaps 1 to 4 block the object model and the evaluator.
 

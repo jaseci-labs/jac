@@ -71,7 +71,7 @@ glob:priv md5_type = TypeDefinition(
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    MD5Type_token.bind(md5_type.handle);
+    MD5Type_token.handle = md5_type.handle;
     if not add_state_owned(module, 0, "MD5Type", md5_type.create(module))
         or PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {
         return i32(-1);

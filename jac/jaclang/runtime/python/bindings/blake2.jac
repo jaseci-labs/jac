@@ -131,7 +131,7 @@ def:priv add_blake2_type(
 }
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    Blake2_token.bind(blake2b_type.handle);
+    Blake2_token.handle = blake2b_type.handle;
     Blake2_token.share(blake2s_type.handle);
     if PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0
         or not add_blake2_type(

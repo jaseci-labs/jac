@@ -71,7 +71,7 @@ glob:priv sha1_type = TypeDefinition(
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    SHA1Type_token.bind(sha1_type.handle);
+    SHA1Type_token.handle = sha1_type.handle;
     if not add_state_owned(module, 0, "SHA1Type", sha1_type.create(module))
         or PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {
         return i32(-1);

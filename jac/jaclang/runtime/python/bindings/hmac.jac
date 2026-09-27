@@ -52,7 +52,7 @@ glob:priv hmac_type = TypeDefinition(
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    HMAC_token.bind(hmac_type.handle);
+    HMAC_token.handle = hmac_type.handle;
     if not add_state_owned(
         module,
         UNKNOWN_HASH_ERROR,

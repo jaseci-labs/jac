@@ -134,7 +134,7 @@ glob:priv sha3_types: list[TypeDefinition] = [
      ];
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    SHA3_token.bind(sha3_types[0].handle);
+    SHA3_token.handle = sha3_types[0].handle;
     for index in range(1, len(sha3_types)) {
         SHA3_token.share(sha3_types[index].handle);
     }

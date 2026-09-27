@@ -260,13 +260,6 @@ obj ClassToken {
     has handle: ptr = ptr(),
         shared: list[ptr] = [];
 
-    # Bindings set the token through these methods: assigning the field of an
-    # imported glob directly miscompiles in the native emitter (IntType has
-    # no is_opaque, #9596), while a method of the object lowers correctly.
-    def bind(handle: ptr) {
-        self.handle = handle;
-    }
-
     def share(handle: ptr) {
         if handle not in self.shared {
             self.shared.append(handle);
