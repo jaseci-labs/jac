@@ -44,10 +44,7 @@ glob FIXTURES = os.path.join(
 """Native IR only, with nothing cached, in the given program."""
 def cold_ir_opts -> CompileOptions {
     return CompileOptions(
-        force_codespace='native',
-        force_target_program=True,
-        skip_native_engine=True,
-        no_ir_cache=True
+        force_codespace='native', skip_native_engine=True, no_ir_cache=True
     );
 }
 

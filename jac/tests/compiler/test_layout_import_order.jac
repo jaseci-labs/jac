@@ -3,7 +3,7 @@
 import from jaclang.compiler.frontend.parser.frontend { parse }
 import from jaclang.compiler.passes.layout_pass {
     ArchetypeLayout,
-    FieldInfo,
+    FieldLayout,
     LayoutRegistry,
     MethodSlot,
     adopt_imported_bases
@@ -58,7 +58,7 @@ test "partial imported MROs still adopt fields in ancestor order" {
             arch_type="obj",
             parents=[parent] if parent else [],
             mro=mro,
-            fields=[FieldInfo(name=field, index=0, type_tag="int", owner=name)],
+            fields=[FieldLayout(name=field, index=0, type_tag="int", owner=name)],
             field_index={field: 0}
         );
         reg.mro_order[name] = mro;

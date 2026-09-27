@@ -15,7 +15,7 @@ though walker execution raises.
 """
 
 import from jaclang.compiler.passes.execution { run_walker }
-import from jaclang.compiler.passes.context { CompileContext, DiagnosticPolicy }
+import from jaclang.compiler.passes.context { CompilerPass, DiagnosticPolicy }
 
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.pass_driver { deliver_alerts, run_pass }
@@ -42,13 +42,8 @@ glob PROBE_ERR = DiagnosticInfo(
      );
 
 """A pass that emits and observes the program ledger mid-run."""
-walker ProbeEmitPass {
-    has ctx: CompileContext,
-        module: uni.Module;
-
-    static has HOST_PASS: bool = True;
-    has prog: JacProgram,
-        mid_run_prog_errors: int = -1,
+walker ProbeEmitPass(CompilerPass) {
+    has mid_run_prog_errors: int = -1,
         mid_run_prog_warnings: int = -1,
         mid_run_local_errors: int = -1,
         emit_results: list[bool] = [];
@@ -64,10 +59,7 @@ walker ProbeEmitPass {
 }
 
 """A pass that dies through `CompileContext.ice` after recording one alert."""
-walker ProbeIcePass {
-    has ctx: CompileContext,
-        module: uni.Module;
-
+walker ProbeIcePass(CompilerPass) {
     can run_walk with uni.Module entry {
         raise RuntimeError(self.ctx.ice("probe detonation"));
     }

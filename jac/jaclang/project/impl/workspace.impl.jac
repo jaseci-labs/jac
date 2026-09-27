@@ -1,40 +1,3 @@
-impl AppSpec.effective_route -> str {
-    return self.route or f"/api/{self.name}";
-}
-
-impl WorkspaceSpec.app(name: str) -> (AppSpec | None) {
-    return self.apps.get(name);
-}
-
-impl WorkspaceSpec.app_for_path(abs_path: str) -> (AppSpec | None) {
-    if not abs_path {
-        return None;
-    }
-    resolved = _real(abs_path);
-    for app in self.apps.values() {
-        if resolved == _real(app.`entry) {
-            return app;
-        }
-    }
-    return None;
-}
-
-impl WorkspaceSpec.serving_apps -> list[AppSpec] {
-    return [
-        a
-        for a in self.apps.values()
-        if a.has_server
-    ];
-}
-
-impl WorkspaceSpec.module_dot_path(abs_path: str) -> str {
-    if not abs_path {
-        return '';
-    }
-    import from jaclang.project.placement { module_dot_path }
-    return module_dot_path(abs_path, self.project_root);
-}
-
 impl _real(path: str) -> str {
     absolute = os.path.abspath(path);
     scope = _resolution.get();
@@ -206,10 +169,14 @@ impl _build_workspace(
     if not default_app and len(apps) == 1 {
         default_app = next(iter(apps));
     }
+    for app in apps.values() {
+        app.real_entry = _real(app.`entry) if app.`entry else '';
+        app.fact_digest = _fact_digest(app, root_dir);
+    }
     h = hashlib.sha256();
     h.update(
         json.dumps(
-            [explicit, default_app, [app_fact_digest(a) for a in apps.values()]],
+            [explicit, default_app, [a.fact_digest for a in apps.values()]],
             sort_keys=True
         ).encode()
     );
@@ -260,26 +227,19 @@ impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
 
 impl app_for_path(path: str) -> (AppSpec | None) {
     ws = workspace_for_path(path);
-    return ws.app_for_path(path) if ws is not None else None;
+    return ws.app_at(_real(path)) if (ws is not None and path) else None;
 }
 
-impl app_fact_digest(app: (AppSpec | None)) -> str {
-    if app is None {
-        return '';
-    }
-    anchor = os.path.dirname(app.`entry) if app.`entry else '';
-    ws_root = (find_jac_project_root(anchor) if anchor else None) or '';
-
-    def _rel(path: str, base: str) -> str {
+impl _fact_digest(app: AppSpec, ws_root: str) -> str {
+    def _rel(path: str) -> str {
         if not path {
             return '';
         }
-        if base {
-            try {
-                return os.path.relpath(path, base).replace(os.sep, '/');
-            } except ValueError {}
+        try {
+            return os.path.relpath(path, ws_root).replace(os.sep, '/');
+        } except ValueError {
+            return os.path.normpath(path).replace(os.sep, '/');
         }
-        return os.path.normpath(path).replace(os.sep, '/');
     }
     h = hashlib.sha256();
     h.update(
@@ -287,7 +247,7 @@ impl app_fact_digest(app: (AppSpec | None)) -> str {
             [
                 app.name,
                 app.kind,
-                _rel(app.`entry, ws_root),
+                _rel(app.`entry),
                 app.effective_route(),
                 app.platform,
                 sorted(app.pins.items()),

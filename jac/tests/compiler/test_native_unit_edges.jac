@@ -21,7 +21,7 @@ import from jaclang.compiler.driver.jir {
     read_sections,
     write_module_cache
 }
-import from jaclang.compiler.frontend.codeinfo { resolve_native_unit_ref }
+import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
 import from jaclang.compiler.backends.native.link_plan {
     LinkPlanError,
     LinkUnit,

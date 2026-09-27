@@ -1,8 +1,9 @@
 """Native iteration consumes types recorded for whole binding patterns."""
+import from tests.support { unit_symbol }
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, unit_symbol }
+import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { InnerCompr, InForStmt, TupleVal }
@@ -19,10 +20,7 @@ test "tuple iteration targets retain analysis types and execute natively" {
             "iteration_facts.jac"
         ),
         options=CompileOptions(
-            force_codespace="native",
-            force_target_program=True,
-            need_full_ast=True,
-            no_ir_cache=True
+            force_codespace="native", need_full_ast=True, no_ir_cache=True
         )
     );
     assert not program.errors_had , str(program.errors_had);

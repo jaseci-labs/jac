@@ -56,8 +56,8 @@ def _extract_version_tuple(expr: Expr) -> tuple[int, int] | None {
 }
 
 def evaluate_version_condition(condition: Expr) -> bool | None {
-    import sys;
     import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
 
     cond = condition;
@@ -92,25 +92,29 @@ def evaluate_version_condition(condition: Expr) -> bool | None {
         return None;
     }
 
-    current = (sys.version_info.major, sys.version_info.minor);
+    host = active_host().host_platform();
+    (major, minor) = target;
+    order = host.python_major - major
+        if host.python_major != major
+        else host.python_minor - minor;
     op_str = cond.ops[0].value;
     if op_str in (">=", "GtE") {
-        return current >= target;
+        return order >= 0;
     }
     if op_str in (">", "Gt") {
-        return current > target;
+        return order > 0;
     }
     if op_str in ("<=", "LtE") {
-        return current <= target;
+        return order <= 0;
     }
     if op_str in ("<", "Lt") {
-        return current < target;
+        return order < 0;
     }
     if op_str in ("==", "Eq") {
-        return current == target;
+        return order == 0;
     }
     if op_str in ("!=", "NotEq") {
-        return current != target;
+        return order != 0;
     }
     return None;
 }
