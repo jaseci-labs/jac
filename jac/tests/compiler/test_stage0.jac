@@ -675,3 +675,56 @@ test "stage 0 pinned to HEAD builds this tree's kernel and the checkout accepts 
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "a snapshot is digested under its own compiler_inputs.txt, not this tree's" {
+    import from jaclang.compiler.driver.jir { compiler_source_digest }
+    import from jaclang.bootstrap_manifest { NATIVE_LOWERED_PATHS }
+    tmp = tempfile.mkdtemp(prefix="jac_stage0_rules_");
+    try {
+        pkg = os.path.join(tmp, "jaclang");
+        for rel in NATIVE_LOWERED_PATHS {
+            os.makedirs(os.path.join(pkg, rel));
+        }
+        for rel in (
+            "core/a.jac",
+            "core/native/b.jac",
+            "compiler/c.jac",
+            "client/d.jac"
+        ) {
+            os.makedirs(os.path.dirname(os.path.join(pkg, rel)), exist_ok=True);
+            with open(os.path.join(pkg, rel), "w") as f {
+                f.write(f"glob NAME: str = '{rel}';\n");
+            }
+        }
+        with open(os.path.join(pkg, "compiler_inputs.txt"), "w") as f {
+            f.write("# a snapshot's own declaration\ncore\n!core/native\n");
+        }
+        # The snapshot declares core/ with core/native as a roster: its digest
+        # covers the manifest and the two core files, whatever this tree
+        # declares (this tree lists compiler/ and client/ files; the snapshot
+        # does not).
+        digest = compiler_source_digest(pkg);
+        assert digest.startswith("3:") , digest;
+        # A roster input is digested by path: editing it keeps the digest.
+        with open(os.path.join(pkg, "core/native/b.jac"), "w") as f {
+            f.write("glob NAME: str = 'edited';\n");
+        }
+        assert compiler_source_digest(pkg) == digest;
+        # A declared input is digested by content.
+        with open(os.path.join(pkg, "core/a.jac"), "w") as f {
+            f.write("glob NAME: str = 'edited';\n");
+        }
+        assert compiler_source_digest(pkg) != digest;
+        # Files outside the snapshot's declaration never count.
+        with open(os.path.join(pkg, "compiler/c.jac"), "w") as f {
+            f.write("glob NAME: str = 'edited too';\n");
+        }
+        after = compiler_source_digest(pkg);
+        with open(os.path.join(pkg, "compiler/c.jac"), "w") as f {
+            f.write("glob NAME: str = 'again';\n");
+        }
+        assert compiler_source_digest(pkg) == after;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

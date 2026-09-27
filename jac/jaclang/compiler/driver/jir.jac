@@ -12,10 +12,12 @@ import from jaclang.compiler.frontend.codeinfo {
 }
 import from jaclang.bootstrap_manifest {
     COMPILER_DIGEST_ROOTS,
+    COMPILER_DIGEST_ROSTER,
     COMPILER_IDENTITY_NAME,
     NATIVE_LOWERED_PATHS,
     is_native_lowered,
-    is_roster_input
+    is_roster_input,
+    read_input_rules
 }
 
 glob MAGIC = b"JIR\x00",
@@ -399,13 +401,23 @@ glob COMPILER_DIGEST_ROSTER_MARK: str = "roster",
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
+def compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
+    manifest = os.path.join(str(pkg_dir), "compiler_inputs.txt");
+    try {
+        return read_input_rules(manifest);
+    } except OSError {
+        return (COMPILER_DIGEST_ROOTS, COMPILER_DIGEST_ROSTER);
+    }
+}
+
 def compiler_source_files(pkg_dir: str) -> list[str] {
     base = str(Path(pkg_dir));
     rels: list[str] = [];
     if os.path.isfile(os.path.join(base, "compiler_inputs.txt")) {
         rels.append("compiler_inputs.txt");
     }
-    for `entry in COMPILER_DIGEST_ROOTS {
+    (roots, _roster) = compiler_input_rules(base);
+    for `entry in roots {
         target = os.path.join(base, `entry.replace("/", os.sep));
         if os.path.isfile(target) {
             rels.append(`entry);
@@ -476,7 +488,8 @@ def declared_compiler_inputs(pkg_dir: str, recorded: dict[str, str]) -> list[str
 }
 
 def resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) -> str {
-    if is_roster_input(rel) {
+    (_roots, roster) = compiler_input_rules(pkg_dir);
+    if is_roster_input(rel, roster) {
         return COMPILER_DIGEST_ROSTER_MARK;
     }
     full = os.path.join(str(pkg_dir), rel.replace("/", os.sep));
@@ -549,6 +562,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     base = str(Path(pkg_dir));
     recorded = read_compiler_identity(base);
     rels = declared_compiler_inputs(base, recorded);
+    (_roots, roster) = compiler_input_rules(base);
     manifest_path = _digest_manifest_path(base);
     entries: dict[str, any] = {};
     stored_digest = "";
@@ -564,7 +578,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     new_entries: dict[str, list[float | int | str]] = {};
     rows: list[tuple[str, str]] = [];
     for rel in rels {
-        if is_roster_input(rel) {
+        if is_roster_input(rel, roster) {
             rows.append((rel, COMPILER_DIGEST_ROSTER_MARK));
             continue;
         }
