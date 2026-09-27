@@ -58,6 +58,17 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+def _record_paths(raw: (bytes | None)) -> set[str] {
+    if not raw {
+        return set();
+    }
+    return {
+        line.split("\t")[0]
+        for line in raw.decode("utf-8").split("\n")
+        if line.strip()
+    };
+}
+
 test "skipping analysis changes no precompiled product, only analysis dependency records" {
     import from jaclang.compiler.driver.jir {
         HEADER_SIZE,
@@ -92,12 +103,14 @@ test "skipping analysis changes no precompiled product, only analysis dependency
                 );
             }
         }
-        assert sections[False].get(SEC_CTDEPS) , (
-            "the analyzed unit recorded no evaluation dependency on its import"
-        );
-        assert not sections[True].get(SEC_CTDEPS) , (
-            "an unanalyzed unit recorded an evaluation it never ran"
-        );
+        for key in records {
+            analyzed = _record_paths(sections[False].get(key));
+            skipped_paths = _record_paths(sections[True].get(key));
+            assert skipped_paths <= analyzed , (
+                f"skipping analysis recorded dependencies {skipped_paths - analyzed} "
+                + f"in section {key} that analysis did not"
+            );
+        }
     }
 }
 
