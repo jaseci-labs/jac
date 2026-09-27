@@ -18,7 +18,7 @@ import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.placement { collect_placement_rows }
+import from jaclang.compiler.placement.placement_export { collect_placement_rows }
 import from jaclang.compiler.placement.placement_pins {
     classify_bare_import,
     in_client_npm_world

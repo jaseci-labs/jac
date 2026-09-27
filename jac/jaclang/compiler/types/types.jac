@@ -1,7 +1,9 @@
 import from enum { IntEnum, auto }
 import from pathlib { Path }
+import from jaclang.compiler.frontend.constant { ParamKind }
 import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
 import type from jaclang.compiler.frontend.unitree { UniScopeNode as SymbolTable }
+import type from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.relations {
     BaseOf,
     BoundOf,
@@ -71,6 +73,7 @@ node TypeBase {
     def is_class_instance -> bool;
     def is_any_instance -> bool;
     def is_any_type -> bool;
+    def as_class -> (ClassType | None);
 }
 
 node UnknownType(TypeBase) {
@@ -162,8 +165,9 @@ node ClassDetailsShared {
         _derived_special_types: (dict[str, ClassType] | None) = None,
         ct_params: (list[str] | None) = None,
         _mro_cache: (list[ClassType] | None) = None,
+        _native_name: (tuple[SymbolTable, str] | None) = None,
         _acc_cache: (dict[str, any] | None) = None,
-        _mro_sig: (tuple[tuple[int, int | str], ...] | None) = None,
+        _mro_sig: (list[tuple[int, str]] | None) = None,
         _provisional: bool = False,
         _heal_stamp: int = 0;
 
@@ -221,7 +225,7 @@ node ClassDetailsShared {
 }
 
 node ClassDetailsPrivate {
-    has ct_args: (dict[str, any] | None) = None,
+    has ct_args: (dict[str, CtValue] | None) = None,
         alias_name: (str | None) = None,
         literal_value: (str | int | bool | None) = None,
         distinct_key: (str | None) = None,
@@ -236,7 +240,7 @@ node ClassDetailsPrivate {
     def init(
         *,
         type_args: (list[TypeBase] | None) = None,
-        ct_args: (dict[str, any] | None) = None,
+        ct_args: (dict[str, CtValue] | None) = None,
         alias_name: (str | None) = None,
         literal_value: (str | int | bool | None) = None,
         distinct_key: (str | None) = None
@@ -269,6 +273,7 @@ node ClassType(TypeBase) {
         member: str, r_overloaded: list[Symbol] | None = None
     ) -> (Symbol | None);
 
+    override def as_class -> (ClassType | None);
     def is_builtin(class_name: (str | list[str] | None) = None) -> bool;
     def is_data_class -> bool;
     def is_namedtuple -> bool;
@@ -283,16 +288,6 @@ node ClassType(TypeBase) {
     def get_literal_value -> (str | int | bool | None);
 }
 
-class ParamKind(IntEnum) {
-    with entry {
-        POSONLY = 0;
-        NORMAL = 1;
-        VARARG = 2;
-        KWONLY = 3;
-        KWARG = 4;
-    }
-}
-
 enum FunctionTypeFlags(IntEnum) {
     Null = 0,
     GradualCallableForm = 1 << 0,
@@ -300,6 +295,7 @@ enum FunctionTypeFlags(IntEnum) {
     ClassMethod = 1 << 2,
     SynthesizedMethod = 1 << 3,
     Generator = 1 << 4,
+    UnboundMethod = 1 << 5,
 }
 
 node Parameter {

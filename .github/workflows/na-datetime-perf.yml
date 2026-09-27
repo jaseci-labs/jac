@@ -1,0 +1,70 @@
+name: na-datetime perf
+
+on:
+  push:
+    branches: [na-datetime]
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Build the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+        with:
+          need-build-inputs: "true"
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Ensure the LLVMPY shim is present
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
+            exit 0
+          fi
+          zig build fetch-llvm --summary all
+          zig build jacllvm --summary all
+
+      - name: Materialize typeshed + vendored runtimes
+        working-directory: jac
+        env:
+          JACPYTHON: "1"
+        run: |
+          zig build fetch-typeshed --summary all
+          zig build vendor-musl --summary all
+          zig build vendor-musl-linux-aarch64 --summary all
+          zig build vendor-wasm-libc --summary all
+
+      - name: Smoke the binary
+        run: |
+          "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" --version
+
+      - name: Bench datetime methods (python backend baseline)
+        run: |
+          set -o pipefail
+          "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" run -b python scripts/bench_na_datetime.jac 2>&1 | tee bench_py.log
+
+      - name: Bench datetime methods (native backend)
+        run: |
+          set -o pipefail
+          "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" run -b native scripts/bench_na_datetime.jac 2>&1 | tee bench_na.log
+
+      - name: Upload bench logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-logs
+          path: |
+            bench_py.log
+            bench_na.log

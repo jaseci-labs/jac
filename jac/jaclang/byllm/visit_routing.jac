@@ -9,9 +9,9 @@ import from jaclang.runtime.archetype { Anchor, Archetype, ObjectSpatialFunction
 
 
 def _class_info(arch: object) -> (ClassInfo | None) {
-    import from jaclang.runtime.semantic { fetch_mtir }
+    import from jaclang { JacRuntime }
     try {
-        info = fetch_mtir(type(arch));
+        info = JacRuntime.fetch_mtir(type(arch));
         return info if isinstance(info, ClassInfo) else None;
     } except Exception {
         return None;

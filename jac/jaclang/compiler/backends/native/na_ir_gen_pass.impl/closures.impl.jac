@@ -91,6 +91,24 @@ impl NaIRGenPass._closure_sig_struct(
     return (name, st, fnty_env);
 }
 
+impl NaIRGenPass._wrap_fn_as_closure_value(val: ir.Value) -> ir.Value {
+    """A bare function stored into a container slot becomes an owned
+    {fn, env=null} closure box, because a Callable is read and called back
+    as a closure pair. Any other value is returned unchanged.""";
+    fnty: (ir.FunctionType | None) = None;
+    if isinstance(val.type, ir.FunctionType) {
+        fnty = val.type;
+    } elif isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.FunctionType) {
+        fnty = val.type.pointee;
+    }
+    if fnty is None {
+        return val;
+    }
+    (_, sig_st, _) = self._closure_sig_struct(fnty);
+    return self._coerce_type(val, sig_st.as_pointer());
+}
+
 impl NaIRGenPass._closure_struct_of(val_type: ir.Type) -> (str | None) {
     if not isinstance(val_type, ir.PointerType) {
         return None;
@@ -371,4 +389,74 @@ impl NaIRGenPass._codegen_closure_call(
         self._emit_rc_release_simple(clos_val, op="ccall_target", loc="");
     }
     return result;
+}
+
+impl NaIRGenPass._emit_bound_method_value(
+    receiver: ir.Value, type_name: str, method_name: str
+) -> (ir.Value | None) {
+    func = self._resolve_method(type_name, method_name);
+    struct_t = self.struct_types.get(type_name);
+    if func is None or struct_t is None {
+        return None;
+    }
+    if self._is_static_method_func(func) {
+        return self._wrap_fn_as_closure_value(func);
+    }
+    if not isinstance(receiver.type, ir.PointerType) {
+        return None;
+    }
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    fnty = func.function_type;
+    declared_fnty = ir.FunctionType(fnty.return_type, list(fnty.args)[1:]);
+    (sig_name, _sig_st, fnty_env) = self._closure_sig_struct(declared_fnty);
+    thunk_key = f"__jac_bound.{type_name}.{method_name}";
+    thunk: any = self.closure_thunks.get(thunk_key);
+    if thunk is None {
+        thunk = ir.Function(self.llvm_module, fnty_env, name=thunk_key);
+        thunk.linkage = "private";
+        thunk.args[-1].name = "self_env";
+        saved_builder = self._builder;
+        self._builder = ir.IRBuilder(thunk.append_basic_block("entry"));
+        recv = self.builder.bitcast(
+            thunk.args[-1], struct_t.as_pointer(), name="bound.self"
+        );
+        call_args: list[ir.Value] = [recv] + list(thunk.args)[:-1];
+        result: (ir.Value | None) = None;
+        if self._arch_has_vtable(type_name) {
+            result = self._codegen_virtual_call(
+                recv, method_name, call_args, type_name
+            );
+        }
+        if result is None {
+            coerced = [
+                self._coerce_type(a, func.args[i].type)
+                for (i, a) in enumerate(call_args)
+            ];
+            result = self.builder.call(func, coerced, name="bound.call");
+        }
+        if isinstance(fnty_env.return_type, ir.VoidType) {
+            self.builder.ret_void();
+        } else {
+            self.builder.ret(self._coerce_type(result, fnty_env.return_type));
+        }
+        self._builder = saved_builder;
+        self.closure_thunks[thunk_key] = thunk;
+    }
+    clos = self._alloc_iter_struct(sig_name);
+    fn_slot = self.builder.gep(
+        clos, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bound.fn.slot"
+    );
+    self.builder.store(self.builder.ptrtoint(thunk, i64, name="bound.fn"), fn_slot);
+    env_slot = self.builder.gep(
+        clos, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bound.env.slot"
+    );
+    self._emit_rc_retain(receiver, op="bound_method", loc="");
+    self.builder.store(self.builder.bitcast(receiver, i8p, name="bound.env"), env_slot);
+    self._mark_owned(clos);
+    return clos;
 }

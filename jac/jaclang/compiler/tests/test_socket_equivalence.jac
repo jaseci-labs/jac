@@ -20,6 +20,7 @@ hard failure. ES/JS opts out (no socket floor).
 """
 
 import os;
+import socket as pysocket;
 import threading;
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from jaclang.compiler.tests.xbackend_equiv {
@@ -87,6 +88,7 @@ test "socket TCP client over the libc floor (sv<->na congruent)" {
         # Native libc socket floor: same status, and the SAME exact total bytes
         # (identical server reply read by a hand-rolled recv drain).
         (eng, _) = compile_native("prim_socket.jac");
+        assert _call_na_int(eng, "socket_ipv6_family_na") == int(pysocket.AF_INET6);
         assert _call_na_int(eng, "socket_status_na") == py["status"] , "status";
         assert _call_na_int(eng, "socket_total_na") == py["total"] , "total bytes";
 

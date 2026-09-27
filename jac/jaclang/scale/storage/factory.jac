@@ -1,5 +1,5 @@
 import os;
-import from jaclang.data.storage { Storage }
+import from jaclang.data.storage.storage { Storage }
 import from jaclang.project.config { get_config }
 import from jaclang.scale.config.firebase_env {
     JAC_STORAGE_FIREBASE_PROJECT_ID_ENV,

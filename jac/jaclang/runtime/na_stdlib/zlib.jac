@@ -1,13 +1,15 @@
 import from _zlib_native {
+    ZInflateResult,
+    Z_OK,
+    Z_STREAM_END,
+    Z_MEM_ERROR,
     z_compress2,
-    z_uncompress,
     z_compress_bound,
     z_crc32,
-    z_adler32
+    z_adler32,
+    z_inflate_all,
+    z_inflate_bound
 }
-
-glob Z_OK: int = 0,
-     Z_BUF_ERROR: int = -5;
 
 
 def:pub crc32(data: bytes, value: int = 0) -> int {
@@ -42,30 +44,29 @@ def:pub decompress(data: bytes | bytearray) -> bytes {
         source = data;
     }
     source_len: int = len(source);
-    if source_len == 0 {
-        return b"";
-    }
-    cap: int = source_len * 4;
-    if cap < 256 {
-        cap = 256;
-    }
 
-    ceiling: int = (source_len * 1024) + 67108864;
-    while True {
-        dest = b"\x00" * cap;
-        dest_len = cap.to_bytes(8, "little");
-        rc: int = z_uncompress(dest, dest_len, source, source_len);
-        if rc == Z_OK {
-            return dest[0:int.from_bytes(dest_len, "little")];
-        }
-        if rc == Z_BUF_ERROR and cap < ceiling {
-            cap = cap * 2;
-            continue;
-        }
+    cap: int = source_len * 4;
+    if cap < 8192 {
+        cap = 8192;
+    }
+    ceiling: int = z_inflate_bound(source_len, 67108864);
+    res: ZInflateResult = z_inflate_all(source, 0, source_len, 15, cap, ceiling);
+    if res.status == Z_STREAM_END {
+        return res.data;
+    }
+    if res.status == Z_MEM_ERROR {
+        raise MemoryError("zlib.decompress: allocation failed");
+    }
+    if not res.init_ok {
         raise ValueError(
-            "zlib.decompress: invalid or truncated stream (libz error code "
-                + str(rc)
+            "zlib.decompress: inflate init failed (libz error code "
+                + str(res.status)
                 + ")"
         );
     }
+    raise ValueError(
+        "zlib.decompress: invalid or truncated stream (libz error code "
+            + str(res.status)
+            + ")"
+    );
 }
