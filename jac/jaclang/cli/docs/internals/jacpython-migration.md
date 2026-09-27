@@ -50,6 +50,20 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
 when `native_api.jac` does not import a listed `PyInit`. `smoke.py` and the CI
 compatibility step read the same registry.
 
+A module over a library that CPython vendors and builds itself names the
+library's archive as its linker flag: `_md5` lists
+`Modules/_hacl/libHacl_Hash_MD5.a`. A registry entry has no C source, so no
+makesetup rule depends on the archive; `build.sh` makes every such target
+before linking the interpreter. The Jac module declares the library's
+functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
+Code that only exists on some architectures goes in a `<name>.<arch>.jac`
+variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`).
+
+A Jac module can also define interpreter functions under their C names: the
+atexit port defines `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini`
+as `def:pub`, which `pylifecycle.c` and `pystate.c` call. `gen_capi.jac` does
+not declare a name a JacPython source defines.
+
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
 optional groups; the generated file lists them and the module binding parses
@@ -69,7 +83,9 @@ express the operation:
 | varargs (`Py_BuildValue`, `PyErr_Format`, `PyObject_CallMethod`) | Jac clib calls are fixed-arity | helpers that fix the format |
 | struct fields of object layouts (`tp_richcompare`, `ob_alloc`, weakref lists) | layout differs between builds | helpers |
 | pointer arithmetic (`p + n`, `end - start`) | `ptr[T]` has no arithmetic | `jacpy_offset`, `jacpy_distance` |
-| calling a C function pointer | Jac can pass named callbacks to C but not call a `ptr` | kept in the owning C file (atexit's lifecycle hooks) |
+| calling a C function pointer | Jac can pass named callbacks to C but not call a `ptr` | a trampoline helper (`jacpy_atexit_call` runs atexit's `PyUnstable_AtExit` callbacks) |
+| returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
+| CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
 
 `object_api.c`, `compiler_runtime.c` and `binding_api.c` hold only these. They
@@ -99,7 +115,7 @@ The ports so far needed these, each worked around in C or by a pattern:
 2. **Reading through a pointer without copying.** `p.view(1)[0]` copies a
    struct; there is no `p.field` on `ptr[T]`.
 3. **Calling a function pointer.** `atexit` stores C callbacks and later calls
-   them.
+   them; a C trampoline (`jacpy_atexit_call`) makes the call.
 4. **Exporting data symbols.** A static `PyTypeObject` is a C variable other C
    code takes the address of.
 5. **Varargs calls.**
