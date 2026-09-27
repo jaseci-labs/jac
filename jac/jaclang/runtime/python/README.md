@@ -87,8 +87,13 @@ The compatibility runner excludes the upstream deque test that hard-codes that
 C layout; the runtime smoke checks allocation growth and reclamation instead.
 
 `modules/math.jac` and `modules/cmath.jac` share the platform libm interface in
-`modules/numeric.jac`. Integer algorithms use retained CPython integer operations;
-there is no second arbitrary-precision runtime for these modules. Accurate
+`modules/numeric.jac`. The libm functions that Zig's compiler-rt also defines
+(log, log2, log10, exp, exp2, sin, cos, tan, fma) go through `jacpy_libm_*`
+helpers in `bootstrap/python/object_api.c`, because a Mach-O link otherwise binds
+them to compiler-rt's copies instead of libSystem's. As in CPython, `gamma` and
+`lgamma` use their own Lanczos evaluation rather than libm. Integer algorithms
+use retained CPython integer operations; there is no second arbitrary-precision
+runtime for these modules. Accurate
 summation, vector norms, and dot products use native error-free transforms.
 
 `modules/statistics.jac` evaluates Wichura's AS241 inverse normal CDF over the

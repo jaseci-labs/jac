@@ -342,6 +342,62 @@ void jacpy_native_float_store(double value, void *address, int64_t size) {
 void jacpy_clear_errno(void) { errno = 0; }
 int64_t jacpy_math_errno(void) { return errno == EDOM ? 1 : errno == ERANGE ? 2 : 0; }
 
+/* The platform libm functions whose results the math modules pass on. Zig's
+ * compiler-rt is a single object that also defines weak, hidden copies of
+ * log, log2, log10, exp, exp2, sin, cos, tan and fma. A Mach-O link pulls
+ * that object in for other builtins, and its copies then bind every call in
+ * the image ahead of libSystem's: its log2 misreads subnormal inputs and its
+ * fma drops the sign of a result that underflows to zero. CPython's math
+ * module is a shared extension there and reaches libSystem, so darwin looks
+ * the functions up by name in libSystem. Elsewhere the plain call reaches the
+ * C library already. Exactly rounded functions (sqrt, fabs, floor, ceil,
+ * fmod) have one correct result and are called directly. */
+#ifdef __APPLE__
+#include <dlfcn.h>
+#include <pthread.h>
+static struct {
+    double (*log)(double);
+    double (*log2)(double);
+    double (*log10)(double);
+    double (*exp)(double);
+    double (*exp2)(double);
+    double (*sin)(double);
+    double (*cos)(double);
+    double (*tan)(double);
+    double (*fma)(double, double, double);
+} jacpy_libm;
+static pthread_once_t jacpy_libm_once = PTHREAD_ONCE_INIT;
+static void *jacpy_libm_find(void *system, const char *name, void *fallback) {
+    void *found = system ? dlsym(system, name) : NULL;
+    return found ? found : fallback;
+}
+static void jacpy_libm_resolve(void) {
+    void *system = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY | RTLD_NOLOAD);
+    jacpy_libm.log = (double (*)(double))jacpy_libm_find(system, "log", (void *)log);
+    jacpy_libm.log2 = (double (*)(double))jacpy_libm_find(system, "log2", (void *)log2);
+    jacpy_libm.log10 = (double (*)(double))jacpy_libm_find(system, "log10", (void *)log10);
+    jacpy_libm.exp = (double (*)(double))jacpy_libm_find(system, "exp", (void *)exp);
+    jacpy_libm.exp2 = (double (*)(double))jacpy_libm_find(system, "exp2", (void *)exp2);
+    jacpy_libm.sin = (double (*)(double))jacpy_libm_find(system, "sin", (void *)sin);
+    jacpy_libm.cos = (double (*)(double))jacpy_libm_find(system, "cos", (void *)cos);
+    jacpy_libm.tan = (double (*)(double))jacpy_libm_find(system, "tan", (void *)tan);
+    jacpy_libm.fma = (double (*)(double, double, double))jacpy_libm_find(
+        system, "fma", (void *)fma);
+}
+#define JACPY_LIBM(name) (pthread_once(&jacpy_libm_once, jacpy_libm_resolve), jacpy_libm.name)
+#else
+#define JACPY_LIBM(name) name
+#endif
+double jacpy_libm_log(double value) { return JACPY_LIBM(log)(value); }
+double jacpy_libm_log2(double value) { return JACPY_LIBM(log2)(value); }
+double jacpy_libm_log10(double value) { return JACPY_LIBM(log10)(value); }
+double jacpy_libm_exp(double value) { return JACPY_LIBM(exp)(value); }
+double jacpy_libm_exp2(double value) { return JACPY_LIBM(exp2)(value); }
+double jacpy_libm_sin(double value) { return JACPY_LIBM(sin)(value); }
+double jacpy_libm_cos(double value) { return JACPY_LIBM(cos)(value); }
+double jacpy_libm_tan(double value) { return JACPY_LIBM(tan)(value); }
+double jacpy_libm_fma(double x, double y, double z) { return JACPY_LIBM(fma)(x, y, z); }
+
 void jacpy_set_key_error(PyObject *key) {
     PyObject *args = PyTuple_Pack(1, key);
     if (args) { PyErr_SetObject(PyExc_KeyError, args); Py_DECREF(args); }

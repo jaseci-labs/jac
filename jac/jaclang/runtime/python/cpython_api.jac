@@ -414,9 +414,17 @@ import from c {
         handle: ptr[PyObject]
     ) -> i64;  def jacpy_is_type(value: ptr[PyObject]) -> i64;  def jacpy_is_unicode(
         a: ptr[PyObject]
-    ) -> i64;  def jacpy_less(left: ptr[PyObject], right: ptr[PyObject]) -> i64;  def jacpy_libm_parts(
-        value: f64, integral: i64
-    ) -> ptr[PyObject];  def jacpy_list_append_owned(
+    ) -> i64;  def jacpy_less(left: ptr[PyObject], right: ptr[PyObject]) -> i64;  def jacpy_libm_cos(
+        value: f64
+    ) -> f64;  def jacpy_libm_exp(value: f64) -> f64;  def jacpy_libm_exp2(
+        value: f64
+    ) -> f64;  def jacpy_libm_fma(x: f64, y: f64, z: f64) -> f64;  def jacpy_libm_log(
+        value: f64
+    ) -> f64;  def jacpy_libm_log10(value: f64) -> f64;  def jacpy_libm_log2(
+        value: f64
+    ) -> f64;  def jacpy_libm_parts(value: f64, integral: i64) -> ptr[PyObject];  def jacpy_libm_sin(
+        value: f64
+    ) -> f64;  def jacpy_libm_tan(value: f64) -> f64;  def jacpy_list_append_owned(
         target: ptr[PyObject], value: ptr[PyObject]
     ) -> i64;  def jacpy_list_delete(
         handle: ptr[PyObject], start: i64, end: i64
