@@ -512,11 +512,7 @@ def verdict_from_dict(raw: dict[str, any]) -> NativeVerdict {
         demoted=bool(raw.get("demoted", False)),
         code=str(raw.get("code", "")),
         detail=str(raw.get("detail", "")),
-        deps=[
-            [str(row[0]), str(row[1])]
-            for row in raw.get("deps", [])
-            if isinstance(row, list) and len(row) == 2
-        ]
+        deps=json_str_pairs(raw.get("deps"))
     );
 }
 
@@ -585,6 +581,19 @@ def json_str_list(value: object) -> list[str] {
     if isinstance(value, list) {
         for item in value {
             out.append(str(item));
+        }
+    }
+    return out;
+}
+
+def json_str_pairs(value: object) -> list[list[str]] {
+    out: list[list[str]] = [];
+    if isinstance(value, list) {
+        for item in value {
+            pair = json_str_list(item);
+            if len(pair) == 2 {
+                out.append(pair);
+            }
         }
     }
     return out;
