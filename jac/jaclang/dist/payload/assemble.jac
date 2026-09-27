@@ -81,6 +81,7 @@ def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool;
+def cached_stubcat(pkg_dir: str) -> str;
 def precompile(
     py: str,
     python_dir: str,
