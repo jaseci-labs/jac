@@ -156,7 +156,11 @@ jobs:
         if: steps.stage0.outputs.stage0 != 'self'
         uses: actions/cache/restore@v4
         with:
-          path: ${{ steps.stage0.outputs.cache_home }}/jir/modules
+          path: |
+            ${{ steps.stage0.outputs.cache_home }}/jir/modules
+            ${{ steps.stage0.outputs.cache_home }}/jir/stage0-kernel/out
+            ${{ steps.stage0.outputs.cache_home }}/jir/stubcat
+            ${{ steps.stage0.outputs.cache_home }}/jir/bootstrap
           key: stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
           restore-keys: |
             stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-
@@ -171,7 +175,8 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "$STAGE0_COMMIT"
-          mkdir -p "$STAGE0_CACHE/jir/modules"
+          mkdir -p "$STAGE0_CACHE/jir/modules" "$STAGE0_CACHE/jir/stage0-kernel/out" \
+            "$STAGE0_CACHE/jir/stubcat" "$STAGE0_CACHE/jir/bootstrap"
           touch "$RUNNER_TEMP/stage0.before"
           {
             echo "JAC_CACHE_HOME=$STAGE0_CACHE"
@@ -199,7 +204,8 @@ jobs:
           set -euo pipefail
           src=false; units=false
           [ -f "$STAGE0_CACHE/stage0/$STAGE0_COMMIT/.stage0.json" ] && src=true
-          if [ -n "$(find "$STAGE0_CACHE/jir/modules" -newer "$RUNNER_TEMP/stage0.before" -type f -print -quit)" ]; then
+          if [ -n "$(find "$STAGE0_CACHE/jir/modules" "$STAGE0_CACHE/jir/stage0-kernel/out" \
+            "$STAGE0_CACHE/jir/stubcat" "$STAGE0_CACHE/jir/bootstrap" -newer "$RUNNER_TEMP/stage0.before" -type f -print -quit)" ]; then
             units=true
           fi
           echo "src=$src" >> "$GITHUB_OUTPUT"
@@ -223,7 +229,11 @@ jobs:
           steps.stage0-made.outputs.units == 'true'
         uses: actions/cache/save@v4
         with:
-          path: ${{ steps.stage0.outputs.cache_home }}/jir/modules
+          path: |
+            ${{ steps.stage0.outputs.cache_home }}/jir/modules
+            ${{ steps.stage0.outputs.cache_home }}/jir/stage0-kernel/out
+            ${{ steps.stage0.outputs.cache_home }}/jir/stubcat
+            ${{ steps.stage0.outputs.cache_home }}/jir/bootstrap
           key: stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
 
       - name: Set up Zig 0.16.0

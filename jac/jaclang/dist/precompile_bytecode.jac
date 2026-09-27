@@ -1283,22 +1283,66 @@ def seal_native(
     };
 }
 
+def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
+    import shutil;
+    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
+    work = get_jir_cache_dir() / "stage0-kernel";
+    target = work / "target" / pkg_path.name;
+    if target.exists() {
+        shutil.rmtree(target);
+    }
+    shutil.copytree(
+        pkg_path,
+        target,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(
+            "__pycache__",
+            "_precompiled",
+            "_bun",
+            "*.so",
+            "*.so.*",
+            "*.dylib",
+            "*.dll",
+            ".jac"
+        )
+    );
+    out = work / "out" / artifact_name;
+    out.parent.mkdir(parents=True, exist_ok=True);
+    return (target, out);
+}
+
 def seal_stage0_kernel(
     pkg_path: Path, artifact_path: Path, artifact_rel: str
 ) -> (dict[str, any] | None) {
+    import shutil;
     import from jaclang.compiler.backends.native.kernel_resolve {
+        LAYOUT_SIDECAR_SUFFIX,
         SEALED_LINK_MODE,
         STAGE0_BUILDER,
         read_sidecar
     }
     import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
     import from jaclang.compiler.backends.native.stage0_build { build_kernel_by_pin }
-    if not build_kernel_by_pin(
-        str(artifact_path),
-        spec=running_kernel_target(str(pkg_path)),
-        link_mode=SEALED_LINK_MODE
-    ) {
-        return None;
+    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
+    import from jaclang.jac0core.cache_paths { FileLock }
+    lock_path = get_jir_cache_dir() / "stage0-kernel.lock";
+    lock_path.parent.mkdir(parents=True, exist_ok=True);
+    lock = FileLock(str(lock_path), timeout=7200.0);
+    lock.acquire();
+    try {
+        (target, out) = _stage0_kernel_workdir(pkg_path, artifact_path.name);
+        if not build_kernel_by_pin(
+            str(out),
+            spec=running_kernel_target(str(target)),
+            link_mode=SEALED_LINK_MODE
+        ) {
+            return None;
+        }
+        for suffix in ("", LAYOUT_SIDECAR_SUFFIX) {
+            shutil.copyfile(str(out) + suffix, str(artifact_path) + suffix);
+        }
+    } finally {
+        lock.release();
     }
     sidecar = read_sidecar(str(artifact_path));
     if sidecar is None {
