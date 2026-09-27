@@ -44,7 +44,7 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
          "import sys\n"
          "import _jac_finder; _jac_finder.install()\n"
          "from jaclang.compiler.types.stubcat.build import main\n"
-         "sys.exit(main(sys.argv[1:]))\n"
+         "sys.exit(main(sys.argv[1:] + ['--cache']))\n"
      );
 
 obj MkPayloadOpts {
