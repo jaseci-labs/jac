@@ -1511,6 +1511,9 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
 impl NaIRGenPass._register_imported_globals(
     nd: uni.GlobalVars, source_path: str = ""
 ) -> None {
+    if bool(nd.access and nd.access.tag.name == Tok.KW_PRIV) {
+        return;
+    }
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
