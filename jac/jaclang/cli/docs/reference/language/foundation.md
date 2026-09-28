@@ -362,7 +362,7 @@ walker Example {
 }
 ```
 
-To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+To match every node regardless of type, trigger on the ambient `Node` base: `can traverse with Node entry { ... }`. A bare `can start with entry { ... }` in a walker runs once, when the walk starts (and `with exit` once when it ends).
 
 ### 6. `report` vs `return`
 

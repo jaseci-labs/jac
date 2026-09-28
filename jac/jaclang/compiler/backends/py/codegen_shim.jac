@@ -4,6 +4,7 @@ import struct;
 import sys;
 import types;
 import from collections.abc { Callable }
+import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 
 import from jaclang.compiler.backends.py.codegen_ir {
     CirContainer,
@@ -401,4 +402,14 @@ def compile_ir(ir_bytes: bytes, python_compiler: any = None) -> CirResult {
         );
     }
     return CirResult(modules=modules, diags=diags);
+}
+
+def generated_python(gen: CodeGenTarget) -> str {
+    if gen.py_text is None {
+        if not gen.py_ast {
+            return "";
+        }
+        gen.py_text = ast.unparse(gen.py_ast[0]);
+    }
+    return gen.py_text;
 }

@@ -1,3 +1,5 @@
+import from jaclang.runtime.python.cpython_api { NULL, PyObject }
+
 """Circular storage shared by native Python queues and deques.
 
 Slots contain owned CPython handles. Push/pop transfer ownership without calling
@@ -5,12 +7,12 @@ Python, so callers can publish complete mutations before releasing references.
 Borrowing and replacement also leave ownership decisions to the caller.
 """
 obj object_ring {
-    has slots: list[u64] = [u64(0) for _ in range(8)],
+    has slots: list[ptr[PyObject]] = [NULL for _ in range(8)],
         head: int = 0,
         count: int = 0;
 
     def resize(capacity: int) {
-        slots = [u64(0) for _ in range(capacity)];
+        slots = [NULL for _ in range(capacity)];
         for i in range(self.count) {
             slots[i] = self.borrow(i);
         }
@@ -18,18 +20,18 @@ obj object_ring {
         self.head = 0;
     }
 
-    def borrow(index: int) -> u64 {
+    def borrow(index: int) -> ptr[PyObject] {
         return self.slots[(self.head + index) % len(self.slots)];
     }
 
-    def exchange(index: int, value: u64) -> u64 {
+    def exchange(index: int, value: ptr[PyObject]) -> ptr[PyObject] {
         slot = (self.head + index) % len(self.slots);
         previous = self.slots[slot];
         self.slots[slot] = value;
         return previous;
     }
 
-    def push(value: u64, left: bool = False) {
+    def push(value: ptr[PyObject], left: bool = False) {
         if self.count == len(self.slots) {
             self.resize(len(self.slots) * 2);
         }
@@ -42,10 +44,10 @@ obj object_ring {
         self.count += 1;
     }
 
-    def pop(left: bool = False) -> u64 {
+    def pop(left: bool = False) -> ptr[PyObject] {
         index = self.head if left else (self.head + self.count - 1) % len(self.slots);
         value = self.slots[index];
-        self.slots[index] = u64(0);
+        self.slots[index] = NULL;
         if left {
             self.head = (self.head + 1) % len(self.slots);
         }

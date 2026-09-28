@@ -5,13 +5,23 @@ import os;
 import sys;
 import from jaclang.compiler.driver.compile_options {
     CompileOptions,
-    NATIVE_LINK_MODE_BITCODE
+    NATIVE_LINK_MODE_BITCODE,
+    NATIVE_LINK_MODE_OBJECTS
 }
+import type from jaclang.compiler.kernel_target { KernelTarget }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.backends.native.link_plan { LinkPlan }
 
 glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      STUBCAT_BUILDING_ENV: str = "JAC_STUBCAT_BUILDING",
      KERNEL_OFF_VALUES: tuple[str, ...] = ("none", "off", "disabled", "0"),
-     LAYOUT_SIDECAR_SUFFIX: str = ".layout.json";
+     LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
+     STAGE0_BUILDER: str = "stage0",
+     KERNEL_DEV_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
+     SEALED_LINK_MODE: str = NATIVE_LINK_MODE_BITCODE,
+     PR_KIT_LINK_ENV: str = "JAC_PR_KIT_KERNEL_LINK",
+     PR_KIT_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
+     PR_KIT_EVENT: str = "pull_request";
 
 obj ResolvedKernel {
     has lib_path: str,
@@ -68,6 +78,46 @@ def _from_explicit(path: str) -> ResolvedKernel {
     );
 }
 
+def seal_link_mode -> str {
+    requested = os.environ.get(PR_KIT_LINK_ENV, "").strip().lower();
+    if requested in ("", SEALED_LINK_MODE) {
+        return SEALED_LINK_MODE;
+    }
+    if requested != PR_KIT_LINK_MODE {
+        raise ValueError(
+            f"{PR_KIT_LINK_ENV}={requested!r}: expected {PR_KIT_LINK_MODE} or "
+            f"{SEALED_LINK_MODE}"
+        );
+    }
+    event = os.environ.get("GITHUB_EVENT_NAME", "");
+    if os.environ.get("GITHUB_ACTIONS") != "true" or event != PR_KIT_EVENT {
+        raise RuntimeError(
+            f"{PR_KIT_LINK_ENV}={PR_KIT_LINK_MODE} is honored only in a "
+            f"{PR_KIT_EVENT} CI build (this is {event or 'not a CI build'}); a "
+            f"shipped kernel is a {SEALED_LINK_MODE} link"
+        );
+    }
+    return PR_KIT_LINK_MODE;
+}
+
+def sealed_link_refusal(record: dict[str, any], sidecar: dict[str, any]) -> str {
+    mode = str(record.get("mode", SEALED_LINK_MODE));
+    linked = str(sidecar.get("link_mode", SEALED_LINK_MODE));
+    if linked != mode {
+        return f"the manifest records a {mode} link but the sidecar a {linked} link";
+    }
+    if mode == SEALED_LINK_MODE {
+        return "";
+    }
+    if mode == PR_KIT_LINK_MODE and record.get("kit") == PR_KIT_EVENT {
+        return "";
+    }
+    return (
+        f"a {mode} link ships only in a {PR_KIT_EVENT} CI kit; a sealed image "
+        f"carries a {SEALED_LINK_MODE} link"
+    );
+}
+
 def _from_sealed_image -> (ResolvedKernel | None) {
     import from jaclang.jac0core { sealed }
     image = sealed._jaclang_image();
@@ -98,6 +148,10 @@ def _from_sealed_image -> (ResolvedKernel | None) {
             f"sealed kernel {lib_path} does not match its manifest sha256"
         );
     }
+    refusal = sealed_link_refusal(record, sidecar);
+    if refusal {
+        raise KernelUnavailable(f"sealed kernel {lib_path}: {refusal}");
+    }
     if str(sidecar.get("plan_digest", "")) != str(record.get("plan_digest", "")) {
         raise KernelUnavailable(
             f"sealed kernel {lib_path}: sidecar plan digest disagrees with the manifest"
@@ -113,7 +167,7 @@ def _from_sealed_image -> (ResolvedKernel | None) {
 
 def _toolchain_available -> bool {
     try {
-        import from jaclang.compiler.driver.pipeline { native_pipeline_available }
+        import from jaclang.compiler.driver.toolchain { native_pipeline_available }
         (ok, _why) = native_pipeline_available();
         return bool(ok);
     } except Exception {
@@ -128,10 +182,9 @@ def kernel_options -> CompileOptions {
     return CompileOptions(
         aot_mode=True,
         native_require=[],
-        native_link_mode="objects",
+        native_link_mode=KERNEL_DEV_LINK_MODE,
         na_debug=False,
         default_codespace="native",
-        force_target_program=True,
         native_unit=True,
         skip_native_engine=True,
         native_target="",
@@ -151,27 +204,25 @@ def kernel_options -> CompileOptions {
     );
 }
 
-def kernel_plan(prog: any = None, mode: str = "") -> any {
+def kernel_plan(
+    prog: (JacProgram | None) = None,
+    mode: str = "",
+    target: (KernelTarget | None) = None
+) -> LinkPlan {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.native_scope { kernel_root_path }
     import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     program = prog if prog is not None else JacProgram();
     options = kernel_options();
-    return build_link_plan(
-        program, [kernel_root_path()], options, mode=mode, native_unit=True
-    );
+    root_path = target.root_module_path() if target is not None else kernel_root_path();
+    return build_link_plan(program, [root_path], options, mode=mode, native_unit=True);
 }
 
-def build_kernel(dst: str, prog: any = None, log: any = None) -> any {
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        link_artifact
-    }
-    with _StoreParserSpan() {
-        plan = kernel_plan(prog, mode=NATIVE_LINK_MODE_BITCODE);
-        os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
-        return link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
-    }
+def build_kernel(
+    dst: str, prog: any = None, log: any = None, link_mode: str = KERNEL_DEV_LINK_MODE
+) -> any {
+    import from jaclang.compiler.backends.native.kernel_stage0 { link_kernel }
+    return link_kernel(dst, prog=prog, log=log, link_mode=link_mode);
 }
 
 class _StoreParserSpan {
@@ -268,9 +319,19 @@ def _unit_sources_match(
     }
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
     options = kernel_options();
-    if str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
-        or str(sidecar.get("codegen_identity", "")) != options.base_codegen_identity()
-        or str(sidecar.get("triple", "")) != options.effective_triple()
+    if sidecar.get("builder") == STAGE0_BUILDER {
+        import from jaclang.compiler.backends.native.stage0_pin {
+            stage0_sidecar_matches
+        }
+        if not stage0_sidecar_matches(sidecar) {
+            return False;
+        }
+    } elif str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
+        or str(sidecar.get("codegen_identity", ""))
+            != options.base_codegen_identity() {
+        return False;
+    }
+    if str(sidecar.get("triple", "")) != options.effective_triple()
         or str(sidecar.get("python", ""))
             != f"{sys.version_info.major}.{sys.version_info.minor}" {
         return False;
@@ -433,11 +494,16 @@ def _derive_in_tree(lib_path: str) -> (ResolvedKernel | None) {
         if found is not None {
             return found;
         }
-        import from jaclang.compiler.driver.pass_driver { setup_progress }
+        import from jaclang.compiler.driver.setup_progress { setup_progress }
         setup_progress.on_kernel_build(lib_path);
         tmp = f"{lib_path}.{os.getpid()}.tmp";
+        import from jaclang.compiler.backends.native.stage0_build {
+            build_kernel_by_pin
+        }
         try {
-            _build_kernel_in_child(tmp);
+            if not build_kernel_by_pin(tmp) {
+                _build_kernel_in_child(tmp);
+            }
             _publish_kernel(tmp, lib_path);
         } finally {
             for leftover in (tmp, tmp + LAYOUT_SIDECAR_SUFFIX) {

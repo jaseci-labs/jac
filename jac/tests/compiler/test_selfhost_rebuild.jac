@@ -111,12 +111,14 @@ test "a cold compiler rebuild ingests each dependency about once and collects on
     (compiled, payload, peak_mb) = _cold_rebuild();
     runs = payload["runs"];
     events = payload["events"];
-    symtab = runs.get("SymTabBuildPass", 0);
+    # The compiled count names Jac bytecode modules. Stub trees belong to
+    # individual import sessions and have their own ingestion counter.
+    stub_ingest = events.get("stub_ingest", 0);
+    symtab = runs.get("SymTabBuildPass", 0) - stub_ingest;
     assert symtab <= SYMTAB_PER_MODULE * compiled , (
-        f"dependencies were re-ingested: {symtab} symbol-table runs for {compiled} "
+        f"dependencies were re-ingested: {symtab} Jac symbol-table runs for {compiled} "
         f"modules (bound {SYMTAB_PER_MODULE} per module; events: {events})"
     );
-    # Automatic generation-2 GC is unrelated to the compiler release budget.
     collections = int(payload["collections"]);
     assert collections <= compiled // COLLECT_EVERY + COLLECT_SLACK , (
         f"explicit collection ran {collections} times for {compiled} modules; the budget "

@@ -22,7 +22,7 @@ python_tree() {
     if [ "$1" = cpython ]; then
       # Matches build_python.buildKey's host-mode exclusions. Jac sources and
       # native bridge edits cannot invalidate the ordinary CPython SDK.
-      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c)$/'
+      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c|jacpython-modules.txt)$/'
     else
       cat
     fi
@@ -64,3 +64,10 @@ tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
   jac/jaclang/client/bun_installer.jac jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers
+# The kernel's stage-0 compiler as the committed pin names it: a pinned commit,
+# or "self" when this checkout's compiler builds its own kernel (also when the
+# pin is absent). Read from HEAD like every key above, never the work tree.
+stage0_pin=$(git show HEAD:jac/bootstrap/stage0.json 2>/dev/null || true)
+stage0=$(printf '%s' "$stage0_pin" | tr -d ' \t\r\n' |
+  sed -n 's/.*"commit":"\([0-9a-f]\{40,64\}\)".*/\1/p')
+printf 'stage0=%s\n' "${stage0:-self}"

@@ -246,7 +246,7 @@ test "wasm and its import manifest follow the client bundle output directory" {
             );
             compiler = builder._get_compiler();
             with patch(
-                "jaclang.compiler.driver.pipeline.build_wasm", return_value=wasm
+                "jaclang.compiler.driver.pipeline_runner.build_wasm", return_value=wasm
             ) {
                 assert compiler._emit_wasm_module(project / "arena.jac");
             }

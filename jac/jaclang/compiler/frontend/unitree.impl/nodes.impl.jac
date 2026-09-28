@@ -362,14 +362,17 @@ impl UniNode.set_kids(nodes: Sequence[UniNode], pos_update: bool = True) -> UniN
 
 impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     self._assert_thawed();
-    roles: list[type] = [];
+    roles: list[type[Role]] = [];
     for e in [edge self->:Role:->] {
-        if getattr(e, "__jac__").target.archetype is old and `type(e) not in roles {
+        if `type(e) not in roles {
             roles.append(`type(e));
         }
     }
     for role in roles {
         targets = [self->:role:->];
+        if not any(t is old for t in targets) {
+            continue;
+        }
         del [edge self->:role:->];
         for t in targets {
             self._attach(new if t is old else t, role);
@@ -377,12 +380,6 @@ impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     }
     self.set_kids([new if k is old else k for k in [self->:Kid:->]], pos_update=False);
     return self;
-}
-
-impl UniNode.detached_copy -> UniNode {
-    import copy;
-
-    return copy.deepcopy(self);
 }
 
 impl UniNode.__deepcopy__(memo: dict[int, object]) -> UniNode {
@@ -501,10 +498,6 @@ impl UniNode.in_native_context -> bool {
     return self.codespace() == CodeContext.NATIVE;
 }
 
-impl Module.absorb_annex_body(stmts: Sequence[UniNode]) -> None {
-    self.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
-}
-
 impl Module.record_comptime_dependency(path: str, body: bool = False) -> None {
     import os;
     if not path {
@@ -619,6 +612,9 @@ impl Symbol.binding_kind.getter -> BindingKind {
         }
         if cur._binding_kind is not None {
             return cur._binding_kind;
+        }
+        if cur.imported_from is not None {
+            continue;
         }
         if item is None {
             return binding_kind_of_decl(decl);
@@ -832,6 +828,7 @@ impl UniScopeNode.insert(
     collision = self.names_in_scope[nd.sym_name].defn[-1]
         if (single and (nd.sym_name in self.names_in_scope))
         else None;
+    origin = nd.sym if imported else None;
     symbol = nd.name_spec.create_symbol(
         access=access_spec
             if isinstance(access_spec, SymbolAccess)
@@ -839,6 +836,10 @@ impl UniScopeNode.insert(
         parent_tab=self,
         imported=imported
     );
+    if origin is not None {
+        symbol.provider = origin.provider;
+        symbol.imported_from = origin;
+    }
     current = self.names_in_scope;
     if (nd.sym_name in current) {
         self +>:ScopeOverload:+> symbol;
@@ -1459,8 +1460,8 @@ impl Module.annexable_by.getter -> (str | None) {
     if self.stub_only {
         return None;
     }
-    import from jaclang.compiler.driver.bccache { discover_base_file }
-    return discover_base_file(self.loc.mod_path);
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().base_file(self.loc.mod_path);
 }
 
 impl ProgramModule.postinit -> None {
@@ -1603,23 +1604,23 @@ impl Import.is_jac.getter -> bool {
 }
 
 impl Import.__jac_detected.getter -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
     if self.from_loc {
-        if is_jac(self.from_loc.resolve_relative_path()) {
+        target = self.from_loc.resolve_relative_path();
+        if host.path_facts(target).is_jac {
             return True;
         }
-        if os.path.isdir(self.from_loc.resolve_relative_path()) {
-            for init_name in INIT_FILES {
-                if os.path.exists(
-                    os.path.join(self.from_loc.resolve_relative_path(), init_name)
-                ) {
-                    return True;
-                }
+        if os.path.isdir(target) {
+            if host.package_init(target) is not None {
+                return True;
             }
             for i in self.items {
                 if (
                     isinstance(i, ModuleItem)
-                    and is_jac(self.from_loc.resolve_relative_path(i.name.value))
+                    and host.path_facts(
+                        self.from_loc.resolve_relative_path(i.name.value)
+                    ).is_jac
                 ) {
                     return True;
                 }
@@ -1627,8 +1628,10 @@ impl Import.__jac_detected.getter -> bool {
         }
     }
     return `any(
-        (isinstance(i, ModulePath) and is_jac(i.resolve_relative_path()))
-        for i in self.items
+        (
+            isinstance(i, ModulePath)
+            and host.path_facts(i.resolve_relative_path()).is_jac
+        ) for i in self.items
     );
 }
 
@@ -1727,17 +1730,19 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
-    import from jaclang.project.modresolver { resolve_relative_path }
+    import from jaclang.compiler.frontend.host { active_host }
     bundled = self.native_bundled_path();
     if bundled is not None {
         return bundled;
     }
     spv = self.string_path_value;
     if spv is not None {
-        return resolve_relative_path(spv, self.loc.mod_path, string_spec=True);
+        return active_host().resolve_module(spv, self.loc.mod_path, string_spec=True)[
+            0
+        ];
     }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    return resolve_relative_path(target, self.loc.mod_path);
+    return active_host().resolve_module(target, self.loc.mod_path)[0];
 }
 
 impl ModulePath.native_bundled_path -> (str | None) {
@@ -2231,18 +2236,23 @@ impl Ability.method_owner.getter -> Archetype | Enum | None {
     }
 
     if found is None {
-        nodew = self.parent;
-        while isinstance(nodew, (IfStmt, ElseStmt, ModuleCode)) {
-            nodew = nodew.parent;
-        }
-        if nodew is not self.parent and isinstance(nodew, (Archetype, Enum)) {
+        owner = self.class_body_owner;
+        if owner is not None and owner is not self.parent {
             mod = self.find_parent_of_type(Module);
             if mod is not None and mod.is_raised_from_py {
-                return nodew;
+                return owner;
             }
         }
     }
     return found;
+}
+
+impl Ability.class_body_owner.getter -> Archetype | Enum | None {
+    nodew = self.parent;
+    while isinstance(nodew, (IfStmt, ElseStmt, ModuleCode)) {
+        nodew = nodew.parent;
+    }
+    return nodew if isinstance(nodew, (Archetype, Enum)) else None;
 }
 
 impl Ability.is_genai_ability.getter -> bool {
@@ -3304,14 +3314,11 @@ impl Literal.lit_value.getter -> int | str | float | bool | None | type | object
 }
 
 impl BuiltinType.lit_value.getter -> type {
-    if (self.value not in Literal.type_map) {
+    tval = Literal.type_map.get(self.value);
+    if tval is None {
         raise TypeError(f"ICE: {self.value} is not a callable builtin");
     }
-    tval = Literal.type_map[self.value];
-    if isinstance(tval, type) {
-        return tval;
-    }
-    raise TypeError(f"ICE: {self.value} is not a callable builtin");
+    return tval;
 }
 
 impl Float.lit_value.getter -> float {
@@ -3319,7 +3326,7 @@ impl Float.lit_value.getter -> float {
 }
 
 impl Int.lit_value.getter -> int {
-    return int(self.value, 0);
+    return int_literal_value(self.value);
 }
 
 impl String.lit_value.getter -> str | bytes {
@@ -3434,11 +3441,15 @@ impl Source.init(source: str, mod_path: str) -> None {
 
 impl Source.hash.getter -> str {
     if not self._hash {
-        h = 0xCBF29CE484222325;
+        hi = 0xCBF29CE4;
+        lo = 0x84222325;
         for b in self.value.encode() {
-            h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF;
+            lo = lo ^ b;
+            low = lo * 0x1B3;
+            hi = (hi * 0x1B3 + (low >> 32) + ((lo << 8) & 0xFFFFFFFF)) & 0xFFFFFFFF;
+            lo = low & 0xFFFFFFFF;
         }
-        self._hash = f"{h:016x}";
+        self._hash = f"{hi:08x}{lo:08x}";
     }
     return self._hash;
 }
@@ -3697,6 +3708,11 @@ impl import_chain_of(sym: Symbol) -> list[Symbol] {
         }
         seen.add(id(cur));
         chain.append(cur);
+        origin = cur.imported_from;
+        if origin is not None {
+            cur = origin;
+            continue;
+        }
         decl = cur.decl;
         if not isinstance(decl.parent, ModuleItem) {
             return chain;

@@ -1,5 +1,6 @@
 import io;
 import os;
+import sys;
 import tarfile;
 
 import from compression.zstd { CompressionParameter, compress, decompress }
@@ -257,7 +258,33 @@ impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts)
     }
 }
 
+impl cached_stubcat(pkg_dir: str) -> str {
+    try {
+        import jaclang.compiler.types.stubcat.locate as locate;
+        saved = list(locate._DIGEST_CACHE);
+        locate._DIGEST_CACHE.clear();
+        try {
+            return locate.dev_catalog_path(pkg_dir);
+        } finally {
+            locate._DIGEST_CACHE.clear();
+            locate._DIGEST_CACHE.extend(saved);
+        }
+    } except Exception {
+        return "";
+    }
+}
+
 impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
+    cached = cached_stubcat(os.path.join(site, "jaclang"));
+    if cached and file_exists(cached) {
+        copy_file(cached, out);
+        log(
+            f"==> reused the stub catalog for this type system ({os.path.basename(
+                cached
+            )})"
+        );
+        return True;
+    }
     log("==> building the stub catalog (pre-resolved typeshed types)");
     boot = os.path.join(site, "stubcat_boot.py");
     write_text(boot, STUBCAT_BOOT_SRC);
@@ -302,6 +329,8 @@ impl precompile(
     debug_src: bool,
     skip_stubcat: bool = False
 ) {
+    import time;
+    compile_start = time.monotonic();
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
     if not file_exists(pc) {
         return;
@@ -336,7 +365,10 @@ impl precompile(
         );
     }
     delete_file(result);
-    log("   _precompiled: compile pass ran to completion");
+    log(
+        f"   _precompiled: compile pass completed in {time.monotonic()
+            - compile_start:.1f}s"
+    );
 
     if not seal {
         return;
@@ -346,6 +378,7 @@ impl precompile(
         fin.append("--debug-src");
     }
     log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
+    finalize_start = time.monotonic();
     if not run_child(fin, env, True) {
         die("mkpayload: seal-finalize failed (see log above).");
     }
@@ -355,7 +388,8 @@ impl precompile(
         );
     }
     log(
-        "   sealed: MANIFEST.json present; payload boots from JIR (sources ship for tracebacks, never compiled)."
+        f"   sealed in {time.monotonic()
+            - finalize_start:.1f}s: MANIFEST.json present; payload boots from JIR."
     );
 }
 
@@ -367,7 +401,7 @@ impl stage_python_bin(python_dir: str, stage: str) {
     dst = os.path.join(bin_dst, bare);
     copy_file(py, dst);
     os.chmod(dst, 0o755);
-    strip_best_effort(dst);
+    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else None);
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
 }
 

@@ -54,7 +54,8 @@ obj OspWalkScope {
         sidx: int = 0,
         frames: (list[OspFrame] | None) = None,
         cur_a: any = None,
-        cur_b: any = None;
+        cur_b: any = None,
+        held: list[int] = [];
 }
 
 obj OspRuntime {
@@ -148,7 +149,10 @@ def _dequeue(scope: OspWalkScope) -> (int | None) {
 }
 
 obj OspEngine {
-    has stack: list[OspWalkScope];
+    has stack: list[OspWalkScope],
+        pin_refs: bool = False,
+        acquired: list[int] = [],
+        released: list[int] = [];
 
     def scope_of(wlk: any) -> (OspWalkScope | None) {
         i = len(self.stack) - 1;
@@ -187,6 +191,10 @@ obj OspEngine {
         }
         if not filtered {
             return False;
+        }
+        if self.pin_refs {
+            self.acquired.extend(filtered);
+            scope.held.extend(filtered);
         }
         if insert_loc == -1 {
             scope.next.extend(filtered);
@@ -258,7 +266,8 @@ obj OspEngine {
             front=[],
             ignores=[],
             reports=[],
-            nested=(len(self.stack) > 0)
+            nested=(len(self.stack) > 0),
+            held=[]
         );
         scope.frames = [];
         self.stack.append(scope);
@@ -267,6 +276,10 @@ obj OspEngine {
 
     def finish(scope: OspWalkScope, ok: bool, rt: OspRuntime) {
         self.stack.pop();
+        if scope.held {
+            self.released.extend(scope.held);
+            scope.held = [];
+        }
         if scope.nested and self.stack {
             outer: OspWalkScope = self.stack[-1];
             for r in scope.reports {
@@ -658,6 +671,26 @@ def _current_scope -> (OspWalkScope | None) {
 
 def osp_visit(targets: list[int], insert_loc: int = -1) -> bool {
     return DEFAULT.`visit(targets, insert_loc);
+}
+
+def osp_kernel_pin_refs {
+    DEFAULT.pin_refs = True;
+}
+
+def osp_kernel_pending -> int {
+    return len(DEFAULT.acquired) + len(DEFAULT.released);
+}
+
+def osp_take_acquired -> list[int] {
+    out = DEFAULT.acquired;
+    DEFAULT.acquired = [];
+    return out;
+}
+
+def osp_take_released -> list[int] {
+    out = DEFAULT.released;
+    DEFAULT.released = [];
+    return out;
 }
 
 def osp_forget(target: int) {

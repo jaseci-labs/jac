@@ -10,37 +10,28 @@
  * boundary -- a separately built native unit calls them -- so export them. */
 #pragma GCC visibility push(default)
 
-#define OBJECT(h) ((PyObject *)(uintptr_t)(h))
-#define HANDLE(p) ((uint64_t)(uintptr_t)(p))
 
-int64_t jacpy_object_size(uint64_t handle) {
-    return PySequence_Size(OBJECT(handle));
-}
-int64_t jacpy_ssize(uint64_t handle) { return PyLong_AsSsize_t(OBJECT(handle)); }
-uint64_t jacpy_sequence_slot(uint64_t handle) {
-    PyTypeObject *type = Py_TYPE(OBJECT(handle));
+void *jacpy_sequence_slot(PyObject *handle) {
+    PyTypeObject *type = Py_TYPE(handle);
     if (type->tp_as_sequence && type->tp_as_sequence->sq_item)
-        return (uint64_t)(uintptr_t)type->tp_as_sequence->sq_item;
+        return type->tp_as_sequence->sq_item;
     PyErr_Format(PyExc_TypeError,
         type->tp_as_mapping && type->tp_as_mapping->mp_subscript
             ? "%.200s is not a sequence"
             : "'%.200s' object does not support indexing", type->tp_name);
-    return 0;
+    return NULL;
 }
-uint64_t jacpy_slot_item(uint64_t slot, uint64_t handle, int64_t index) {
-    return HANDLE(((ssizeargfunc)(uintptr_t)slot)(OBJECT(handle), (Py_ssize_t)index));
+PyObject *jacpy_slot_item(void *slot, PyObject *handle, int64_t index) {
+    return ((ssizeargfunc)(uintptr_t)slot)(handle, (Py_ssize_t)index);
 }
-uint64_t jacpy_call_one(uint64_t callable, uint64_t argument) {
-    return HANDLE(PyObject_CallOneArg(OBJECT(callable), OBJECT(argument)));
+int64_t jacpy_less(PyObject *left, PyObject *right) {
+    return PyObject_RichCompareBool(left, right, Py_LT);
 }
-int64_t jacpy_less(uint64_t left, uint64_t right) {
-    return PyObject_RichCompareBool(OBJECT(left), OBJECT(right), Py_LT);
-}
-int64_t jacpy_insert(uint64_t handle, int64_t index, uint64_t value) {
-    if (PyList_CheckExact(OBJECT(handle)))
-        return PyList_Insert(OBJECT(handle), (Py_ssize_t)index, OBJECT(value));
-    PyObject *result = PyObject_CallMethod(OBJECT(handle), "insert", "nO",
-                                         (Py_ssize_t)index, OBJECT(value));
+int64_t jacpy_insert(PyObject *handle, int64_t index, PyObject *value) {
+    if (PyList_CheckExact(handle))
+        return PyList_Insert(handle, (Py_ssize_t)index, value);
+    PyObject *result = PyObject_CallMethod(handle, "insert", "nO",
+                                         (Py_ssize_t)index, value);
     if (!result) return -1;
     Py_DECREF(result);
     return 0;
@@ -49,43 +40,35 @@ int64_t jacpy_recursion_enter(const char *context) {
     /* Unlike most CPython status APIs this may return positive on failure. */
     return Py_EnterRecursiveCall(context) ? -1 : 0;
 }
-void jacpy_recursion_leave(void) { Py_LeaveRecursiveCall(); }
 
-uint64_t jacpy_retain(uint64_t handle) { return HANDLE(Py_NewRef(OBJECT(handle))); }
-uint64_t jacpy_list_item(uint64_t handle, int64_t index) {
-    return HANDLE(PyList_GetItemRef(OBJECT(handle), (Py_ssize_t)index));
-}
-int64_t jacpy_list_size(uint64_t handle) { return PyList_GET_SIZE(OBJECT(handle)); }
-int64_t jacpy_list_append(uint64_t handle, uint64_t value) {
-    return PyList_Append(OBJECT(handle), OBJECT(value));
-}
-int64_t jacpy_list_delete(uint64_t handle, int64_t start, int64_t end) {
-    return PyList_SetSlice(OBJECT(handle), (Py_ssize_t)start, (Py_ssize_t)end, NULL);
+int64_t jacpy_list_size(PyObject *handle) { return PyList_GET_SIZE(handle); }
+int64_t jacpy_list_delete(PyObject *handle, int64_t start, int64_t end) {
+    return PyList_SetSlice(handle, (Py_ssize_t)start, (Py_ssize_t)end, NULL);
 }
 /* Exchange transfers the slot's reference to the caller; it cannot invoke a
  * finalizer while a native caller is still adjusting its container. */
-uint64_t jacpy_list_exchange(uint64_t handle, int64_t index, uint64_t value) {
-    PyObject *old = PyList_GetItem(OBJECT(handle), (Py_ssize_t)index);
-    if (!old) return 0;
-    PyList_SET_ITEM(OBJECT(handle), index, Py_NewRef(OBJECT(value)));
-    return HANDLE(old);
+PyObject *jacpy_list_exchange(PyObject *handle, int64_t index, PyObject *value) {
+    PyObject *old = PyList_GetItem(handle, (Py_ssize_t)index);
+    if (!old) return NULL;
+    PyList_SET_ITEM(handle, index, Py_NewRef(value));
+    return old;
 }
-void jacpy_list_swap(uint64_t handle, int64_t left, int64_t right) {
-    PyObject *a = PyList_GET_ITEM(OBJECT(handle), left);
-    PyObject *b = PyList_GET_ITEM(OBJECT(handle), right);
-    PyList_SET_ITEM(OBJECT(handle), left, b);
-    PyList_SET_ITEM(OBJECT(handle), right, a);
+void jacpy_list_swap(PyObject *handle, int64_t left, int64_t right) {
+    PyObject *a = PyList_GET_ITEM(handle, left);
+    PyObject *b = PyList_GET_ITEM(handle, right);
+    PyList_SET_ITEM(handle, left, b);
+    PyList_SET_ITEM(handle, right, a);
 }
 
-uint64_t jacpy_comparison_slot(uint64_t handle) {
-    return (uint64_t)(uintptr_t)Py_TYPE(OBJECT(handle))->tp_richcompare;
+void *jacpy_comparison_slot(PyObject *handle) {
+    return Py_TYPE(handle)->tp_richcompare;
 }
-int64_t jacpy_same_type(uint64_t left, uint64_t right) {
-    return Py_TYPE(OBJECT(left)) == Py_TYPE(OBJECT(right));
+int64_t jacpy_same_type(PyObject *left, PyObject *right) {
+    return Py_TYPE(left) == Py_TYPE(right);
 }
 /* -2 preserves NotImplemented so Jac can disable a cached fast comparison. */
-int64_t jacpy_slot_less(uint64_t slot, uint64_t left, uint64_t right) {
-    PyObject *result = ((richcmpfunc)(uintptr_t)slot)(OBJECT(left), OBJECT(right), Py_LT);
+int64_t jacpy_slot_less(void *slot, PyObject *left, PyObject *right) {
+    PyObject *result = ((richcmpfunc)(uintptr_t)slot)(left, right, Py_LT);
     if (!result) return -1;
     int comparison = result == Py_NotImplemented ? -2 : PyObject_IsTrue(result);
     Py_DECREF(result);
@@ -97,40 +80,37 @@ int64_t jacpy_slot_less(uint64_t slot, uint64_t left, uint64_t right) {
 #include "internal/pycore_pylifecycle.h"
 #include <unistd.h>
 
-int64_t jacpy_is_long(uint64_t handle) { return PyLong_Check(OBJECT(handle)); }
-uint64_t jacpy_long_absolute(uint64_t handle) {
-    return HANDLE(PyLong_Type.tp_as_number->nb_absolute(OBJECT(handle)));
+int64_t jacpy_is_long(PyObject *handle) { return PyLong_Check(handle); }
+PyObject *jacpy_long_absolute(PyObject *handle) {
+    return PyLong_Type.tp_as_number->nb_absolute(handle);
 }
-uint64_t jacpy_hash_unsigned(uint64_t handle) {
-    Py_hash_t value = PyObject_Hash(OBJECT(handle));
-    return value == -1 ? 0 : HANDLE(PyLong_FromSize_t((size_t)value));
+PyObject *jacpy_hash_unsigned(PyObject *handle) {
+    Py_hash_t value = PyObject_Hash(handle);
+    return value == -1 ? NULL : PyLong_FromSize_t((size_t)value);
 }
-int64_t jacpy_long_bits(uint64_t handle) { return _PyLong_NumBits(OBJECT(handle)); }
-uint64_t jacpy_long_bytes(uint64_t handle, int64_t size) {
+PyObject *jacpy_long_bytes(PyObject *handle, int64_t size) {
     PyObject *result = PyBytes_FromStringAndSize(NULL, size);
-    if (!result) return 0;
-    if (_PyLong_AsByteArray((PyLongObject *)OBJECT(handle),
+    if (!result) return NULL;
+    if (_PyLong_AsByteArray((PyLongObject *)handle,
             (unsigned char *)PyBytes_AS_STRING(result), size, 1, 0, 1) < 0) {
         Py_DECREF(result);
-        return 0;
+        return NULL;
     }
-    return HANDLE(result);
+    return result;
 }
-uint64_t jacpy_long_from_bytes(uint64_t handle) {
-    return HANDLE(_PyLong_FromByteArray((const unsigned char *)PyBytes_AS_STRING(OBJECT(handle)),
-                                      PyBytes_GET_SIZE(OBJECT(handle)), 1, 0));
+PyObject *jacpy_long_from_bytes(PyObject *handle) {
+    return _PyLong_FromByteArray((const unsigned char *)PyBytes_AS_STRING(handle),
+                                      PyBytes_GET_SIZE(handle), 1, 0);
 }
-uint64_t jacpy_unsigned_long(uint64_t handle) { return PyLong_AsUnsignedLong(OBJECT(handle)); }
-uint64_t jacpy_entropy(int64_t size) {
+PyObject *jacpy_entropy(int64_t size) {
     PyObject *result = PyBytes_FromStringAndSize(NULL, size);
-    if (!result) return 0;
+    if (!result) return NULL;
     if (_PyOS_URandomNonblock(PyBytes_AS_STRING(result), size) < 0) {
         Py_DECREF(result);
-        return 0;
+        return NULL;
     }
-    return HANDLE(result);
+    return result;
 }
-void jacpy_clear_error(void) { PyErr_Clear(); }
 int64_t jacpy_wall_time(void) {
     PyTime_t value;
     return PyTime_Time(&value) < 0 ? -1 : value;
@@ -140,26 +120,24 @@ int64_t jacpy_monotonic_time(void) {
     return PyTime_Monotonic(&value) < 0 ? -1 : value;
 }
 int64_t jacpy_process_id(void) { return getpid(); }
-int64_t jacpy_is_tuple(uint64_t handle) { return PyTuple_Check(OBJECT(handle)); }
-int64_t jacpy_tuple_size(uint64_t handle) { return PyTuple_Size(OBJECT(handle)); }
-uint64_t jacpy_tuple_new(int64_t size) { return HANDLE(PyTuple_New(size)); }
-uint64_t jacpy_tuple_item(uint64_t handle, int64_t index) {
-    return HANDLE(Py_XNewRef(PyTuple_GetItem(OBJECT(handle), index)));
+int64_t jacpy_is_tuple(PyObject *handle) { return PyTuple_Check(handle); }
+PyObject *jacpy_tuple_item(PyObject *handle, int64_t index) {
+    return Py_XNewRef(PyTuple_GetItem(handle, index));
 }
-int64_t jacpy_tuple_set_owned(uint64_t handle, int64_t index, uint64_t value) {
+int64_t jacpy_tuple_set_owned(PyObject *handle, int64_t index, PyObject *value) {
     if (!value) return -1;
-    return PyTuple_SetItem(OBJECT(handle), index, OBJECT(value));
+    return PyTuple_SetItem(handle, index, value);
 }
 
 /* Argument converters keep an exported buffer alive through argument parsing
  * and the native call. This preserves resize guards and callback ordering. */
-int jacpy_binary_buffer(PyObject *value, void *output) {
+static int jacpy_binary_buffer(PyObject *value, void *output) {
     Py_buffer *view = output;
     if (!value) { PyBuffer_Release(view); return 1; }
     if (PyObject_GetBuffer(value, view, PyBUF_SIMPLE) < 0) return 0;
     return Py_CLEANUP_SUPPORTED;
 }
-int jacpy_ascii_buffer(PyObject *value, void *output) {
+static int jacpy_ascii_buffer(PyObject *value, void *output) {
     Py_buffer *view = output;
     if (!value) { PyBuffer_Release(view); return 1; }
     if (PyUnicode_Check(value)) {
@@ -176,234 +154,138 @@ int jacpy_ascii_buffer(PyObject *value, void *output) {
     }
     return Py_CLEANUP_SUPPORTED;
 }
-uint64_t jacpy_buffer_bytes(const Py_buffer *view) {
+PyObject *jacpy_buffer_bytes(const Py_buffer *view) {
     if (PyBytes_CheckExact(view->obj) && view->buf == PyBytes_AS_STRING(view->obj)
-        && view->len == PyBytes_GET_SIZE(view->obj)) return HANDLE(Py_NewRef(view->obj));
-    return HANDLE(PyBytes_FromStringAndSize(view->buf, view->len));
+        && view->len == PyBytes_GET_SIZE(view->obj)) return Py_NewRef(view->obj);
+    return PyBytes_FromStringAndSize(view->buf, view->len);
 }
-uint64_t jacpy_buffer_acquire(uint64_t value, int64_t ascii) {
+Py_buffer *jacpy_buffer_acquire(PyObject *value, int64_t ascii) {
     Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
-    if (!view) { PyErr_NoMemory(); return 0; }
-    int ok = ascii ? jacpy_ascii_buffer(OBJECT(value), view)
-                   : jacpy_binary_buffer(OBJECT(value), view);
-    if (!ok) { PyMem_Free(view); return 0; }
-    return HANDLE(view);
+    if (!view) { PyErr_NoMemory(); return NULL; }
+    int ok = ascii ? jacpy_ascii_buffer(value, view)
+                   : jacpy_binary_buffer(value, view);
+    if (!ok) { PyMem_Free(view); return NULL; }
+    return view;
 }
-uint64_t jacpy_buffer_acquire_writable(uint64_t value) {
+Py_buffer *jacpy_buffer_acquire_writable(PyObject *value) {
     Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
-    if (!view) { PyErr_NoMemory(); return 0; }
-    if (!PyArg_Parse(OBJECT(value), "w*", view)) { PyMem_Free(view); return 0; }
-    return HANDLE(view);
+    if (!view) { PyErr_NoMemory(); return NULL; }
+    if (!PyArg_Parse(value, "w*", view)) { PyMem_Free(view); return NULL; }
+    return view;
 }
-uint64_t jacpy_buffer_owner(uint64_t value) {
-    return value ? HANDLE(((Py_buffer *)(uintptr_t)value)->obj) : 0;
+PyObject *jacpy_buffer_owner(Py_buffer *value) {
+    return value ? ((value)->obj) : 0;
 }
-int64_t jacpy_number_ssize(uint64_t value, const char *overflow) {
+int64_t jacpy_number_ssize(PyObject *value, const char *overflow) {
     extern PyObject *jacpy_exception_type(const char *);
-    return PyNumber_AsSsize_t(OBJECT(value), jacpy_exception_type(overflow));
+    return PyNumber_AsSsize_t(value, jacpy_exception_type(overflow));
 }
-void jacpy_buffer_release(uint64_t value) {
+void jacpy_buffer_release(Py_buffer *value) {
     if (!value) return;
-    Py_buffer *view = (Py_buffer *)(uintptr_t)value;
+    Py_buffer *view = value;
     PyBuffer_Release(view);
     PyMem_Free(view);
 }
-uint64_t jacpy_buffer_address(uint64_t value) {
-    return HANDLE(((Py_buffer *)(uintptr_t)value)->buf);
+void *jacpy_buffer_address(Py_buffer *value) {
+    return (value)->buf;
 }
-int64_t jacpy_buffer_length(uint64_t value) {
-    return ((Py_buffer *)(uintptr_t)value)->len;
+int64_t jacpy_buffer_length(Py_buffer *value) {
+    return (value)->len;
 }
-int64_t jacpy_buffer_dimensions(uint64_t value) {
-    return ((Py_buffer *)(uintptr_t)value)->ndim;
+int64_t jacpy_buffer_dimensions(Py_buffer *value) {
+    return (value)->ndim;
 }
-int64_t jacpy_buffer_supported(uint64_t value) { return PyObject_CheckBuffer(OBJECT(value)); }
-int64_t jacpy_unicode_ascii(uint64_t value) { return PyUnicode_IS_ASCII(OBJECT(value)); }
-uint64_t jacpy_unsigned_mask(uint64_t value) { return PyLong_AsUnsignedLongMask(OBJECT(value)); }
-int64_t jacpy_unicode_read(uint64_t value, int64_t index) { return PyUnicode_ReadChar(OBJECT(value), index); }
-void jacpy_set_exception(uint64_t type, const char *message, int64_t size) {
+int64_t jacpy_unicode_ascii(PyObject *value) { return PyUnicode_IS_ASCII(value); }
+void jacpy_set_exception(PyObject *type, const char *message, int64_t size) {
     PyObject *text = PyUnicode_DecodeUTF8(message, size, "surrogatepass");
-    if (text) { PyErr_SetObject(OBJECT(type), text); Py_DECREF(text); }
+    if (text) { PyErr_SetObject(type, text); Py_DECREF(text); }
 }
 
-/* Generic numeric and object protocol operations. */
-#define BINARY_OBJECT(name, api) \
-    uint64_t jacpy_##name(uint64_t a, uint64_t b) { return HANDLE(api(OBJECT(a), OBJECT(b))); }
-#define UNARY_OBJECT(name, api) \
-    uint64_t jacpy_##name(uint64_t a) { return HANDLE(api(OBJECT(a))); }
-BINARY_OBJECT(add, PyNumber_Add)
-BINARY_OBJECT(sub, PyNumber_Subtract)
-BINARY_OBJECT(mul, PyNumber_Multiply)
-BINARY_OBJECT(matmul, PyNumber_MatrixMultiply)
-BINARY_OBJECT(floordiv, PyNumber_FloorDivide)
-BINARY_OBJECT(truediv, PyNumber_TrueDivide)
-BINARY_OBJECT(mod, PyNumber_Remainder)
-BINARY_OBJECT(lshift, PyNumber_Lshift)
-BINARY_OBJECT(rshift, PyNumber_Rshift)
-BINARY_OBJECT(and_, PyNumber_And)
-BINARY_OBJECT(xor, PyNumber_Xor)
-BINARY_OBJECT(or_, PyNumber_Or)
-BINARY_OBJECT(iadd, PyNumber_InPlaceAdd)
-BINARY_OBJECT(isub, PyNumber_InPlaceSubtract)
-BINARY_OBJECT(imul, PyNumber_InPlaceMultiply)
-BINARY_OBJECT(imatmul, PyNumber_InPlaceMatrixMultiply)
-BINARY_OBJECT(ifloordiv, PyNumber_InPlaceFloorDivide)
-BINARY_OBJECT(itruediv, PyNumber_InPlaceTrueDivide)
-BINARY_OBJECT(imod, PyNumber_InPlaceRemainder)
-BINARY_OBJECT(ilshift, PyNumber_InPlaceLshift)
-BINARY_OBJECT(irshift, PyNumber_InPlaceRshift)
-BINARY_OBJECT(iand, PyNumber_InPlaceAnd)
-BINARY_OBJECT(ixor, PyNumber_InPlaceXor)
-BINARY_OBJECT(ior, PyNumber_InPlaceOr)
-BINARY_OBJECT(concat, PySequence_Concat)
-BINARY_OBJECT(iconcat, PySequence_InPlaceConcat)
-BINARY_OBJECT(getitem, PyObject_GetItem)
-UNARY_OBJECT(neg, PyNumber_Negative)
-UNARY_OBJECT(pos, PyNumber_Positive)
-UNARY_OBJECT(abs, PyNumber_Absolute)
-UNARY_OBJECT(invert, PyNumber_Invert)
-UNARY_OBJECT(index, PyNumber_Index)
-
-#undef BINARY_OBJECT
-#undef UNARY_OBJECT
-uint64_t jacpy_power(uint64_t a, uint64_t b, int64_t inplace) {
-    return HANDLE(inplace ? PyNumber_InPlacePower(OBJECT(a), OBJECT(b), Py_None)
-                          : PyNumber_Power(OBJECT(a), OBJECT(b), Py_None));
+PyObject *jacpy_power(PyObject *a, PyObject *b, int64_t inplace) {
+    return inplace ? PyNumber_InPlacePower(a, b, Py_None)
+                          : PyNumber_Power(a, b, Py_None);
 }
-uint64_t jacpy_boolean(int64_t value) { return HANDLE(PyBool_FromLong(value)); }
-int64_t jacpy_is_none(uint64_t a) { return OBJECT(a) == Py_None; }
-uint64_t jacpy_compare(uint64_t a, uint64_t b, int64_t operation) {
-    return HANDLE(PyObject_RichCompare(OBJECT(a), OBJECT(b), (int)operation));
-}
-int64_t jacpy_contains(uint64_t a, uint64_t b) { return PySequence_Contains(OBJECT(a), OBJECT(b)); }
-int64_t jacpy_sequence_index(uint64_t a, uint64_t b) { return PySequence_Index(OBJECT(a), OBJECT(b)); }
-int64_t jacpy_sequence_count(uint64_t a, uint64_t b) { return PySequence_Count(OBJECT(a), OBJECT(b)); }
-int64_t jacpy_length_hint(uint64_t a, int64_t fallback) { return PyObject_LengthHint(OBJECT(a), fallback); }
-int64_t jacpy_setitem(uint64_t a, uint64_t b, uint64_t value) { return PyObject_SetItem(OBJECT(a), OBJECT(b), OBJECT(value)); }
-int64_t jacpy_delitem(uint64_t a, uint64_t b) { return PyObject_DelItem(OBJECT(a), OBJECT(b)); }
-uint64_t jacpy_getattr(uint64_t a, uint64_t name) { return HANDLE(PyObject_GetAttr(OBJECT(a), OBJECT(name))); }
-uint64_t jacpy_call(uint64_t callable, uint64_t args, uint64_t kwargs) {
-    return HANDLE(PyObject_Call(OBJECT(callable), OBJECT(args), OBJECT(kwargs)));
-}
-uint64_t jacpy_tuple_slice(uint64_t a, int64_t start, int64_t end) { return HANDLE(PyTuple_GetSlice(OBJECT(a), start, end)); }
-int64_t jacpy_is_unicode(uint64_t a) { return PyUnicode_Check(OBJECT(a)); }
-uint64_t jacpy_repr(uint64_t a) { return HANDLE(PyObject_Repr(OBJECT(a))); }
-int64_t jacpy_repr_enter(uint64_t a) { return Py_ReprEnter(OBJECT(a)); }
-void jacpy_repr_leave(uint64_t a) { Py_ReprLeave(OBJECT(a)); }
-uint64_t jacpy_unicode_split(uint64_t a, uint64_t sep) { return HANDLE(PyUnicode_Split(OBJECT(a), OBJECT(sep), -1)); }
-uint64_t jacpy_unicode_join(uint64_t sep, uint64_t items) { return HANDLE(PyUnicode_Join(OBJECT(sep), OBJECT(items))); }
-int64_t jacpy_dict_size(uint64_t a) { return a ? PyDict_Size(OBJECT(a)) : 0; }
-uint64_t jacpy_import_attr(const char *module, const char *name) { return HANDLE(PyImport_ImportModuleAttrString(module, name)); }
-uint64_t jacpy_dict_entry(uint64_t a, int64_t position) {
+int64_t jacpy_is_none(PyObject *a) { return a == Py_None; }
+int64_t jacpy_is_unicode(PyObject *a) { return PyUnicode_Check(a); }
+PyObject *jacpy_unicode_split(PyObject *a, PyObject *sep) { return PyUnicode_Split(a, sep, -1); }
+int64_t jacpy_dict_size(PyObject *a) { return a ? PyDict_Size(a) : 0; }
+PyObject *jacpy_dict_entry(PyObject *a, int64_t position) {
     Py_ssize_t pos = position;
     PyObject *key, *value;
-    if (!PyDict_Next(OBJECT(a), &pos, &key, &value)) return 0;
-    return HANDLE(Py_BuildValue("nOO", pos, key, value));
+    if (!PyDict_Next(a, &pos, &key, &value)) return NULL;
+    return Py_BuildValue("nOO", pos, key, value);
 }
 #include <openssl/crypto.h>
-int64_t jacpy_crypto_compare(uint64_t a, uint64_t b, int64_t size) {
-    return CRYPTO_memcmp((const void *)(uintptr_t)a, (const void *)(uintptr_t)b, size);
+int64_t jacpy_crypto_compare(const void *a, const void *b, int64_t size) {
+    return CRYPTO_memcmp(a, b, size);
 }
 
 /* Portable CPython wait primitives. Queue policy stays in Jac; only the wait
  * releases the GIL, and it restores it before touching any native state. */
 #include "internal/pycore_time.h"
-uint64_t jacpy_lock_new(void) {
+void *jacpy_lock_new(void) {
     PyThread_type_lock lock = PyThread_allocate_lock();
-    if (!lock) { PyErr_NoMemory(); return 0; }
+    if (!lock) { PyErr_NoMemory(); return NULL; }
     PyThread_acquire_lock(lock, WAIT_LOCK);
-    return (uint64_t)(uintptr_t)lock;
+    return lock;
 }
-void jacpy_lock_free(uint64_t handle) {
-    PyThread_type_lock lock = (PyThread_type_lock)(uintptr_t)handle;
+void jacpy_lock_free(void *handle) {
+    PyThread_type_lock lock = handle;
     PyThread_acquire_lock(lock, NOWAIT_LOCK);
     PyThread_release_lock(lock);
     PyThread_free_lock(lock);
 }
-void jacpy_lock_notify(uint64_t handle) { PyThread_release_lock((PyThread_type_lock)(uintptr_t)handle); }
-int64_t jacpy_lock_wait(uint64_t handle, int64_t timeout_ns) {
+int64_t jacpy_lock_wait(void *handle, int64_t timeout_ns) {
     PyTime_t timeout_us = timeout_ns < 0 ? -1 : _PyTime_AsMicroseconds(timeout_ns, _PyTime_ROUND_CEILING);
     PyLockStatus status;
     Py_BEGIN_ALLOW_THREADS
-    status = PyThread_acquire_lock_timed((PyThread_type_lock)(uintptr_t)handle, timeout_us, 1);
+    status = PyThread_acquire_lock_timed(handle, timeout_us, 1);
     Py_END_ALLOW_THREADS
     return status == PY_LOCK_ACQUIRED ? 1 : (status == PY_LOCK_INTR ? -1 : 0);
 }
-int64_t jacpy_pending_calls(void) { return Py_MakePendingCalls(); }
-int64_t jacpy_timeout_ns(uint64_t value) {
+int64_t jacpy_timeout_ns(PyObject *value) {
     PyTime_t timeout;
-    if (_PyTime_FromSecondsObject(&timeout, OBJECT(value), _PyTime_ROUND_CEILING) < 0) return -1;
+    if (_PyTime_FromSecondsObject(&timeout, value, _PyTime_ROUND_CEILING) < 0) return -1;
     return timeout;
 }
-int64_t jacpy_deadline(int64_t timeout) { return _PyDeadline_Init(timeout); }
-int64_t jacpy_deadline_remaining(int64_t deadline) { return _PyDeadline_Get(deadline); }
-void jacpy_set_none_exception(uint64_t kind) { PyErr_SetNone(OBJECT(kind)); }
 
 /* Unicode builders and exact container operations used by native serializers. */
-uint64_t jacpy_writer_new(void) { return (uint64_t)(uintptr_t)PyUnicodeWriter_Create(0); }
-void jacpy_writer_discard(uint64_t writer) { PyUnicodeWriter_Discard((PyUnicodeWriter *)(uintptr_t)writer); }
-uint64_t jacpy_writer_finish(uint64_t writer) { return HANDLE(PyUnicodeWriter_Finish((PyUnicodeWriter *)(uintptr_t)writer)); }
-int64_t jacpy_writer_char(uint64_t writer, int64_t value) { return PyUnicodeWriter_WriteChar((PyUnicodeWriter *)(uintptr_t)writer, (Py_UCS4)value); }
-int64_t jacpy_writer_text(uint64_t writer, uint64_t text) { return PyUnicodeWriter_WriteStr((PyUnicodeWriter *)(uintptr_t)writer, OBJECT(text)); }
-int64_t jacpy_writer_slice(uint64_t writer, uint64_t text, int64_t start, int64_t end) { return PyUnicodeWriter_WriteSubstring((PyUnicodeWriter *)(uintptr_t)writer, OBJECT(text), start, end); }
-int64_t jacpy_writer_ascii(uint64_t writer, const char *text, int64_t size) { return PyUnicodeWriter_WriteASCII((PyUnicodeWriter *)(uintptr_t)writer, text, size); }
-int64_t jacpy_unicode_size(uint64_t text) { return PyUnicode_GET_LENGTH(OBJECT(text)); }
-int64_t jacpy_unicode_char(uint64_t text, int64_t index) { return PyUnicode_ReadChar(OBJECT(text), index); }
-uint64_t jacpy_unicode_from_ordinal(int64_t point) { return HANDLE(PyUnicode_FromOrdinal((int)point)); }
-uint64_t jacpy_unicode_decode_bytes(uint64_t value, const char *encoding) { return HANDLE(PyUnicode_FromEncodedObject(OBJECT(value), encoding, "strict")); }
-uint64_t jacpy_unicode_slice(uint64_t text, int64_t start, int64_t end) { return HANDLE(PyUnicode_Substring(OBJECT(text), start, end)); }
-uint64_t jacpy_dict_default(uint64_t dictionary, uint64_t key, uint64_t value) {
+PyUnicodeWriter *jacpy_writer_new(void) { return PyUnicodeWriter_Create(0); }
+int64_t jacpy_unicode_size(PyObject *text) { return PyUnicode_GET_LENGTH(text); }
+PyObject *jacpy_unicode_decode_bytes(PyObject *value, const char *encoding) { return PyUnicode_FromEncodedObject(value, encoding, "strict"); }
+PyObject *jacpy_dict_default(PyObject *dictionary, PyObject *key, PyObject *value) {
     PyObject *result;
-    return PyDict_SetDefaultRef(OBJECT(dictionary), OBJECT(key), OBJECT(value), &result) < 0 ? 0 : HANDLE(result);
+    return PyDict_SetDefaultRef(dictionary, key, value, &result) < 0 ? NULL : result;
 }
-int64_t jacpy_dict_set(uint64_t dictionary, uint64_t key, uint64_t value) { return PyDict_SetItem(OBJECT(dictionary), OBJECT(key), OBJECT(value)); }
 extern PyObject *jacpy_exception_type(const char *);
-void jacpy_raise_value(const char *kind, uint64_t value) {
+void jacpy_raise_value(const char *kind, PyObject *value) {
     PyObject *type = jacpy_exception_type(kind);
-    if (type) PyErr_SetObject(type, OBJECT(value));
+    if (type) PyErr_SetObject(type, value);
 }
-void jacpy_set_object_exception(uint64_t kind, uint64_t value) { PyErr_SetObject(OBJECT(kind), OBJECT(value)); }
-int64_t jacpy_is_bool(uint64_t value) { return PyBool_Check(OBJECT(value)); }
-int64_t jacpy_is_float(uint64_t value) { return PyFloat_Check(OBJECT(value)); }
-int64_t jacpy_is_dict(uint64_t value) { return PyDict_Check(OBJECT(value)); }
-int64_t jacpy_is_exact_dict(uint64_t value) { return PyDict_CheckExact(OBJECT(value)); }
-uint64_t jacpy_long_repr(uint64_t value) { return HANDLE(PyLong_Type.tp_repr(OBJECT(value))); }
-uint64_t jacpy_float_repr(uint64_t value) { return HANDLE(PyFloat_Type.tp_repr(OBJECT(value))); }
-uint64_t jacpy_identity(uint64_t value) { return HANDLE(PyLong_FromVoidPtr(OBJECT(value))); }
-uint64_t jacpy_type_name(uint64_t value) { return HANDLE(PyUnicode_FromString(Py_TYPE(OBJECT(value))->tp_name)); }
-uint64_t jacpy_qualified_type_name(uint64_t value) { return HANDLE(PyType_GetFullyQualifiedName(Py_TYPE(OBJECT(value)))); }
-uint64_t jacpy_error_take(void) { return HANDLE(PyErr_GetRaisedException()); }
-void jacpy_error_restore(uint64_t value) { PyErr_SetRaisedException(OBJECT(value)); }
-int64_t jacpy_exception_note(uint64_t error, uint64_t note) {
-    PyObject *result = PyObject_CallMethod(OBJECT(error), "add_note", "O", OBJECT(note));
+int64_t jacpy_is_bool(PyObject *value) { return PyBool_Check(value); }
+int64_t jacpy_is_float(PyObject *value) { return PyFloat_Check(value); }
+int64_t jacpy_is_dict(PyObject *value) { return PyDict_Check(value); }
+int64_t jacpy_is_exact_dict(PyObject *value) { return PyDict_CheckExact(value); }
+PyObject *jacpy_long_repr(PyObject *value) { return PyLong_Type.tp_repr(value); }
+PyObject *jacpy_float_repr(PyObject *value) { return PyFloat_Type.tp_repr(value); }
+PyObject *jacpy_type_name(PyObject *value) { return PyUnicode_FromString(Py_TYPE(value)->tp_name); }
+PyObject *jacpy_qualified_type_name(PyObject *value) { return PyType_GetFullyQualifiedName(Py_TYPE(value)); }
+int64_t jacpy_exception_note(PyObject *error, PyObject *note) {
+    PyObject *result = PyObject_CallMethod(error, "add_note", "O", note);
     if (!result) return -1;
     Py_DECREF(result); return 0;
 }
-uint64_t jacpy_sequence_fast(uint64_t value, const char *message) { return HANDLE(PySequence_Fast(OBJECT(value), message)); }
-int64_t jacpy_fast_size(uint64_t value) { return PySequence_Fast_GET_SIZE(OBJECT(value)); }
-uint64_t jacpy_fast_item(uint64_t value, int64_t index) { return HANDLE(Py_NewRef(PySequence_Fast_GET_ITEM(OBJECT(value), index))); }
-uint64_t jacpy_mapping_items(uint64_t value) { return HANDLE(PyMapping_Items(OBJECT(value))); }
-int64_t jacpy_list_sort(uint64_t value) { return PyList_Sort(OBJECT(value)); }
-int64_t jacpy_dict_remove(uint64_t dictionary, uint64_t key) { return PyDict_DelItem(OBJECT(dictionary), OBJECT(key)); }
-uint64_t jacpy_unicode_concat(uint64_t left, uint64_t right) { return HANDLE(PyUnicode_Concat(OBJECT(left), OBJECT(right))); }
-uint64_t jacpy_sequence_repeat(uint64_t value, int64_t count) { return HANDLE(PySequence_Repeat(OBJECT(value), count)); }
+int64_t jacpy_fast_size(PyObject *value) { return PySequence_Fast_GET_SIZE(value); }
+PyObject *jacpy_fast_item(PyObject *value, int64_t index) { return Py_NewRef(PySequence_Fast_GET_ITEM(value, index)); }
 
 /* Protocol primitives shared by native streaming and container modules. */
-int64_t jacpy_is_exact_long(uint64_t value) { return PyLong_CheckExact(OBJECT(value)); }
-int64_t jacpy_type_check(uint64_t value, uint64_t type) { return PyObject_TypeCheck(OBJECT(value), (PyTypeObject *)OBJECT(type)); }
-int64_t jacpy_long_as_int32(uint64_t value) { return PyLong_AsInt(OBJECT(value)); }
-uint64_t jacpy_getattr_string(uint64_t value, const char *name) { return HANDLE(PyObject_GetAttrString(OBJECT(value), name)); }
-uint64_t jacpy_dict_get(uint64_t dictionary, uint64_t key) {
+int64_t jacpy_is_exact_long(PyObject *value) { return PyLong_CheckExact(value); }
+int64_t jacpy_type_check(PyObject *value, PyObject *type) { return PyObject_TypeCheck(value, (PyTypeObject *)type); }
+PyObject *jacpy_dict_get(PyObject *dictionary, PyObject *key) {
     PyObject *value;
-    return PyDict_GetItemRef(OBJECT(dictionary), OBJECT(key), &value) < 0 ? 0 : HANDLE(value);
+    return PyDict_GetItemRef(dictionary, key, &value) < 0 ? NULL : value;
 }
-uint64_t jacpy_dict_keys(uint64_t dictionary) { return HANDLE(PyDict_Keys(OBJECT(dictionary))); }
-int64_t jacpy_dict_pop_discard(uint64_t dictionary, uint64_t key) { return PyDict_Pop(OBJECT(dictionary), OBJECT(key), NULL); }
-uint64_t jacpy_iter(uint64_t value) { return HANDLE(PyObject_GetIter(OBJECT(value))); }
-uint64_t jacpy_iter_next(uint64_t value) { return HANDLE(PyIter_Next(OBJECT(value))); }
-uint64_t jacpy_number_float(uint64_t value) { return HANDLE(PyNumber_Float(OBJECT(value))); }
-int64_t jacpy_number_check(uint64_t value) { return PyNumber_Check(OBJECT(value)); }
-uint64_t jacpy_object_str(uint64_t value) { return HANDLE(PyObject_Str(OBJECT(value))); }
+int64_t jacpy_dict_pop_discard(PyObject *dictionary, PyObject *key) { return PyDict_Pop(dictionary, key, NULL); }
 
 /* Memory and numeric representation primitives, shared by binary layouts. */
 int64_t jacpy_native_size(int64_t kind, int64_t alignment) {
@@ -417,167 +299,137 @@ int64_t jacpy_native_size(int64_t kind, int64_t alignment) {
 #undef SIZE_CASE
 }
 int64_t jacpy_native_little_endian(void) { uint16_t value = 1; return *(unsigned char *)&value; }
-int64_t jacpy_memory_byte(uint64_t address, int64_t offset) { return ((unsigned char *)(uintptr_t)address)[offset]; }
-void jacpy_memory_set(uint64_t address, int64_t offset, int64_t value) { ((unsigned char *)(uintptr_t)address)[offset] = (unsigned char)value; }
-void jacpy_memory_zero(uint64_t address, int64_t size) { memset((void *)(uintptr_t)address, 0, (size_t)size); }
-void jacpy_memory_copy(uint64_t target, uint64_t source, int64_t size) { memcpy((void *)(uintptr_t)target, (void *)(uintptr_t)source, (size_t)size); }
-void jacpy_memory_move(uint64_t target, uint64_t source, int64_t size) { memmove((void *)(uintptr_t)target, (void *)(uintptr_t)source, (size_t)size); }
-uint64_t jacpy_bytearray_new(int64_t size) { return HANDLE(PyByteArray_FromStringAndSize(NULL, size)); }
-int64_t jacpy_bytearray_resize(uint64_t value, int64_t size) { return PyByteArray_Resize(OBJECT(value), size); }
-int64_t jacpy_bytearray_memory(uint64_t value) { return PyByteArray_Type.tp_basicsize + ((PyByteArrayObject *)OBJECT(value))->ob_alloc; }
+int64_t jacpy_memory_byte(void *address, int64_t offset) { return ((unsigned char *)address)[offset]; }
+void jacpy_memory_set(void *address, int64_t offset, int64_t value) { ((unsigned char *)address)[offset] = (unsigned char)value; }
+void jacpy_memory_zero(void *address, int64_t size) { memset(address, 0, (size_t)size); }
+void jacpy_memory_copy(void *target, void *source, int64_t size) { memcpy(target, source, (size_t)size); }
+void jacpy_memory_move(void *target, void *source, int64_t size) { memmove(target, source, (size_t)size); }
+PyObject *jacpy_bytearray_new(int64_t size) { return PyByteArray_FromStringAndSize(NULL, size); }
+int64_t jacpy_bytearray_memory(PyObject *value) { return PyByteArray_Type.tp_basicsize + ((PyByteArrayObject *)value)->ob_alloc; }
 uint64_t jacpy_float32_bits(double value) { float number = (float)value; uint32_t bits; memcpy(&bits, &number, sizeof(bits)); return bits; }
-uint64_t jacpy_bytes_from_memory(uint64_t address, int64_t size) { return HANDLE(PyBytes_FromStringAndSize((const char *)(uintptr_t)address, size)); }
-int64_t jacpy_is_bytes(uint64_t value) { return PyBytes_Check(OBJECT(value)); }
-int64_t jacpy_is_bytearray(uint64_t value) { return PyByteArray_Check(OBJECT(value)); }
-uint64_t jacpy_bytes_address(uint64_t value) { return (uint64_t)(uintptr_t)(PyBytes_Check(OBJECT(value)) ? PyBytes_AS_STRING(OBJECT(value)) : PyByteArray_AS_STRING(OBJECT(value))); }
-int64_t jacpy_bytes_length(uint64_t value) { return PyBytes_Check(OBJECT(value)) ? PyBytes_GET_SIZE(OBJECT(value)) : PyByteArray_GET_SIZE(OBJECT(value)); }
+PyObject *jacpy_bytes_from_memory(const void *address, int64_t size) { return PyBytes_FromStringAndSize(address, size); }
+int64_t jacpy_is_bytes(PyObject *value) { return PyBytes_Check(value); }
+int64_t jacpy_is_bytearray(PyObject *value) { return PyByteArray_Check(value); }
+void *jacpy_bytes_address(PyObject *value) { return (PyBytes_Check(value) ? PyBytes_AS_STRING(value) : PyByteArray_AS_STRING(value)); }
+int64_t jacpy_bytes_length(PyObject *value) { return PyBytes_Check(value) ? PyBytes_GET_SIZE(value) : PyByteArray_GET_SIZE(value); }
 /* Jac passes a bytes argument as its payload address; these copy a whole
  * payload across the boundary instead of one element per call. */
-void jacpy_bytes_copy_to(uint64_t value, char *target, int64_t size) { memcpy(target, (const char *)(uintptr_t)jacpy_bytes_address(value), (size_t)size); }
-uint64_t jacpy_bytes_from_data(const char *data, int64_t size) { return HANDLE(PyBytes_FromStringAndSize(data, size)); }
-int64_t jacpy_index_check(uint64_t value) { return PyIndex_Check(OBJECT(value)); }
-uint64_t jacpy_long_pointer(uint64_t value) { return (uint64_t)(uintptr_t)PyLong_AsVoidPtr(OBJECT(value)); }
-uint64_t jacpy_uint(uint64_t value) { return HANDLE(PyLong_FromUnsignedLongLong(value)); }
-uint64_t jacpy_long_u64(uint64_t value) { return PyLong_AsUnsignedLongLong(OBJECT(value)); }
-uint64_t jacpy_float(double value) { return HANDLE(PyFloat_FromDouble(value)); }
-uint64_t jacpy_complex_value(uint64_t value) {
-    Py_complex number = PyComplex_AsCComplex(OBJECT(value));
-    if (PyErr_Occurred()) return 0;
-    return HANDLE(PyComplex_FromCComplex(number));
+void jacpy_bytes_copy_to(PyObject *value, char *target, int64_t size) { memcpy(target, jacpy_bytes_address(value), (size_t)size); }
+PyObject *jacpy_complex_value(PyObject *value) {
+    Py_complex number = PyComplex_AsCComplex(value);
+    if (PyErr_Occurred()) return NULL;
+    return PyComplex_FromCComplex(number);
 }
-double jacpy_complex_real(uint64_t value) { return PyComplex_RealAsDouble(OBJECT(value)); }
-double jacpy_complex_imag(uint64_t value) { return PyComplex_ImagAsDouble(OBJECT(value)); }
-uint64_t jacpy_complex(double real, double imaginary) { return HANDLE(PyComplex_FromDoubles(real, imaginary)); }
-int64_t jacpy_float_pack(double value, uint64_t address, int64_t size, int64_t little) {
-    char *target = (char *)(uintptr_t)address;
+int64_t jacpy_float_pack(double value, void *address, int64_t size, int64_t little) {
+    char *target = address;
     if (size == 2) return PyFloat_Pack2(value, target, (int)little);
     if (size == 4) return PyFloat_Pack4(value, target, (int)little);
     return PyFloat_Pack8(value, target, (int)little);
 }
-double jacpy_float_unpack(uint64_t address, int64_t size, int64_t little) {
-    const char *source = (const char *)(uintptr_t)address;
+double jacpy_float_unpack(const void *address, int64_t size, int64_t little) {
+    const char *source = address;
     if (size == 2) return PyFloat_Unpack2(source, (int)little);
     if (size == 4) return PyFloat_Unpack4(source, (int)little);
     return PyFloat_Unpack8(source, (int)little);
 }
-void jacpy_native_float_store(double value, uint64_t address, int64_t size) {
-    if (size == 4) { float number = (float)value; memcpy((void *)(uintptr_t)address, &number, sizeof(number)); }
-    else memcpy((void *)(uintptr_t)address, &value, sizeof(value));
+void jacpy_native_float_store(double value, void *address, int64_t size) {
+    if (size == 4) { float number = (float)value; memcpy(address, &number, sizeof(number)); }
+    else memcpy(address, &value, sizeof(value));
 }
 
-void jacpy_dict_clear(uint64_t value) { PyDict_Clear(OBJECT(value)); }
 
-double jacpy_number_as_double(uint64_t value) { return PyFloat_AsDouble(OBJECT(value)); }
 
 void jacpy_clear_errno(void) { errno = 0; }
 int64_t jacpy_math_errno(void) { return errno == EDOM ? 1 : errno == ERANGE ? 2 : 0; }
 
-int64_t jacpy_compare_bool(uint64_t a, uint64_t b, int64_t operation) {
-    return PyObject_RichCompareBool(OBJECT(a), OBJECT(b), (int)operation);
-}
-void jacpy_set_key_error(uint64_t key) {
-    PyObject *args = PyTuple_Pack(1, OBJECT(key));
+void jacpy_set_key_error(PyObject *key) {
+    PyObject *args = PyTuple_Pack(1, key);
     if (args) { PyErr_SetObject(PyExc_KeyError, args); Py_DECREF(args); }
 }
 
-uint64_t jacpy_dict_repr(uint64_t value) { return HANDLE(PyDict_Type.tp_repr(OBJECT(value))); }
+PyObject *jacpy_dict_repr(PyObject *value) { return PyDict_Type.tp_repr(value); }
 
-uint64_t jacpy_sequence_list(uint64_t value) { return HANDLE(PySequence_List(OBJECT(value))); }
 
-int64_t jacpy_long_sign(uint64_t value) {
-    PyLongObject *integer = (PyLongObject *)OBJECT(value);
+int64_t jacpy_long_sign(PyObject *value) {
+    PyLongObject *integer = (PyLongObject *)value;
     return _PyLong_IsNegative(integer) ? -1 : _PyLong_IsZero(integer) ? 0 : 1;
 }
-uint64_t jacpy_long_gcd(uint64_t a, uint64_t b) { return HANDLE(_PyLong_GCD(OBJECT(a), OBJECT(b))); }
-uint64_t jacpy_long_shift(uint64_t value, int64_t count, int64_t left) {
-    return HANDLE(left ? _PyLong_Lshift(OBJECT(value), count) : _PyLong_Rshift(OBJECT(value), count));
+PyObject *jacpy_long_shift(PyObject *value, int64_t count, int64_t left) {
+    return left ? _PyLong_Lshift(value, count) : _PyLong_Rshift(value, count);
 }
 
-uint64_t jacpy_special_noargs(uint64_t value, const char *name) {
+PyObject *jacpy_special_noargs(PyObject *value, const char *name) {
     PyObject *key=PyUnicode_InternFromString(name);
-    if(!key) return 0;
-    PyObject *method=_PyObject_LookupSpecial(OBJECT(value),key); Py_DECREF(key);
-    if(!method) return 0;
-    PyObject *result=PyObject_CallNoArgs(method); Py_DECREF(method); return HANDLE(result);
+    if(!key) return NULL;
+    PyObject *method=_PyObject_LookupSpecial(value,key); Py_DECREF(key);
+    if(!method) return NULL;
+    PyObject *result=PyObject_CallNoArgs(method); Py_DECREF(method); return result;
 }
-uint64_t jacpy_long_from_double(double value) { return HANDLE(PyLong_FromDouble(value)); }
-uint64_t jacpy_libm_parts(double value, int64_t integral) {
-    if(integral) { double whole; double fraction=modf(value,&whole); return HANDLE(Py_BuildValue("dd",fraction,whole)); }
-    int exponent=0; double fraction=frexp(value,&exponent); return HANDLE(Py_BuildValue("di",fraction,exponent));
+PyObject *jacpy_libm_parts(double value, int64_t integral) {
+    if(integral) { double whole; double fraction=modf(value,&whole); return Py_BuildValue("dd",fraction,whole); }
+    int exponent=0; double fraction=frexp(value,&exponent); return Py_BuildValue("di",fraction,exponent);
 }
 uint64_t jacpy_float_bits(double value) { uint64_t bits; memcpy(&bits,&value,sizeof(bits)); return bits; }
 double jacpy_float_from_bits(uint64_t bits) { double value; memcpy(&value,&bits,sizeof(value)); return value; }
-uint64_t jacpy_long_frexp(uint64_t value) {
-    int64_t exponent; double fraction=_PyLong_Frexp((PyLongObject *)OBJECT(value),&exponent);
-    return PyErr_Occurred() ? 0 : HANDLE(Py_BuildValue("dL",fraction,(long long)exponent));
+PyObject *jacpy_long_frexp(PyObject *value) {
+    int64_t exponent; double fraction=_PyLong_Frexp((PyLongObject *)value,&exponent);
+    return PyErr_Occurred() ? NULL : Py_BuildValue("dL",fraction,(long long)exponent);
 }
 
-double jacpy_long_double(uint64_t value) { return PyLong_AsDouble(OBJECT(value)); }
 
-uint64_t jacpy_sequence_tuple(uint64_t value) { return HANDLE(PySequence_Tuple(OBJECT(value))); }
-int64_t jacpy_is_exact_float(uint64_t value) { return PyFloat_CheckExact(OBJECT(value)); }
+int64_t jacpy_is_exact_float(PyObject *value) { return PyFloat_CheckExact(value); }
 
-int64_t jacpy_long_fits_i64(uint64_t value) { int overflow; (void)PyLong_AsLongLongAndOverflow(OBJECT(value),&overflow); return overflow == 0; }
+int64_t jacpy_long_fits_i64(PyObject *value) { int overflow; (void)PyLong_AsLongLongAndOverflow(value,&overflow); return overflow == 0; }
 
 /* Retained object primitives used by native callable and cache policies. */
-uint64_t jacpy_call_two(uint64_t callable, uint64_t a, uint64_t b) {
-    PyObject *args[] = {OBJECT(a), OBJECT(b)};
-    return HANDLE(PyObject_Vectorcall(OBJECT(callable), args, 2, NULL));
+PyObject *jacpy_call_two(PyObject *callable, PyObject *a, PyObject *b) {
+    PyObject *args[] = {a, b};
+    return PyObject_Vectorcall(callable, args, 2, NULL);
 }
-uint64_t jacpy_object_type(uint64_t value) { return HANDLE(Py_NewRef(Py_TYPE(OBJECT(value)))); }
-int64_t jacpy_callable(uint64_t value) { return PyCallable_Check(OBJECT(value)); }
-int64_t jacpy_is_exact_unicode(uint64_t value) { return PyUnicode_CheckExact(OBJECT(value)); }
-int64_t jacpy_is_exact_tuple(uint64_t value) { return PyTuple_CheckExact(OBJECT(value)); }
-int64_t jacpy_object_hash(uint64_t value) { return PyObject_Hash(OBJECT(value)); }
-uint64_t jacpy_dict_copy(uint64_t value) { return HANDLE(PyDict_Copy(OBJECT(value))); }
-int64_t jacpy_dict_update(uint64_t target, uint64_t source) { return PyDict_Update(OBJECT(target), OBJECT(source)); }
-uint64_t jacpy_ordered_dict_new(void) { return HANDLE(PyObject_CallNoArgs((PyObject *)&PyODict_Type)); }
+PyObject *jacpy_object_type(PyObject *value) { return Py_NewRef(Py_TYPE(value)); }
+int64_t jacpy_is_exact_unicode(PyObject *value) { return PyUnicode_CheckExact(value); }
+int64_t jacpy_is_exact_tuple(PyObject *value) { return PyTuple_CheckExact(value); }
+int64_t jacpy_is_exact_list(PyObject *value) { return PyList_CheckExact(value); }
+PyObject *jacpy_ordered_dict_new(void) { return PyObject_CallNoArgs((PyObject *)&PyODict_Type); }
 
-int64_t jacpy_tuple_unique(uint64_t value) { return Py_REFCNT(OBJECT(value)) == 1; }
+int64_t jacpy_tuple_unique(PyObject *value) { return Py_REFCNT(value) == 1; }
 /* Exchange is valid only after the native caller has established exclusive
  * ownership. It returns the old reference without invoking a finalizer. */
-uint64_t jacpy_tuple_exchange(uint64_t value, int64_t index, uint64_t item) {
-    PyObject *tuple=OBJECT(value), *old=PyTuple_GET_ITEM(tuple,index);
-    PyTuple_SET_ITEM(tuple,index,Py_NewRef(OBJECT(item)));
+PyObject *jacpy_tuple_exchange(PyObject *value, int64_t index, PyObject *item) {
+    PyObject *tuple=value, *old=PyTuple_GET_ITEM(tuple,index);
+    PyTuple_SET_ITEM(tuple,index,Py_NewRef(item));
     if(!PyObject_GC_IsTracked(tuple)) PyObject_GC_Track(tuple);
-    return HANDLE(old);
+    return old;
 }
 
 /* Retained object primitives used by native wire protocols. */
-uint64_t jacpy_number_long(uint64_t value) { return HANDLE(PyNumber_Long(OBJECT(value))); }
-uint64_t jacpy_long_signed_bytes(uint64_t value, int64_t size) {
+PyObject *jacpy_long_signed_bytes(PyObject *value, int64_t size) {
     PyObject *result = PyBytes_FromStringAndSize(NULL, size);
-    if (!result) return 0;
-    if (_PyLong_AsByteArray((PyLongObject *)OBJECT(value), (unsigned char *)PyBytes_AS_STRING(result), size, 1, 1, 1) < 0) {
-        Py_DECREF(result); return 0;
+    if (!result) return NULL;
+    if (_PyLong_AsByteArray((PyLongObject *)value, (unsigned char *)PyBytes_AS_STRING(result), size, 1, 1, 1) < 0) {
+        Py_DECREF(result); return NULL;
     }
-    return HANDLE(result);
+    return result;
 }
-uint64_t jacpy_long_from_signed_bytes(uint64_t value) {
-    return HANDLE(_PyLong_FromByteArray((const unsigned char *)PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), 1, 1));
+PyObject *jacpy_long_from_signed_bytes(PyObject *value) {
+    return _PyLong_FromByteArray((const unsigned char *)PyBytes_AS_STRING(value), PyBytes_GET_SIZE(value), 1, 1);
 }
-uint64_t jacpy_bytes_decode(uint64_t value, const char *encoding, const char *errors) {
-    return HANDLE(PyUnicode_Decode(PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), encoding, errors));
+PyObject *jacpy_bytes_decode(PyObject *value, const char *encoding, const char *errors) {
+    return PyUnicode_Decode(PyBytes_AS_STRING(value), PyBytes_GET_SIZE(value), encoding, errors);
 }
-uint64_t jacpy_unicode_encode(uint64_t value, const char *encoding, const char *errors) { return HANDLE(PyUnicode_AsEncodedString(OBJECT(value), encoding, errors)); }
-uint64_t jacpy_optional_attr(uint64_t value, const char *name) { PyObject *result = NULL; return PyObject_GetOptionalAttrString(OBJECT(value), name, &result) < 0 ? 0 : HANDLE(result); }
-int64_t jacpy_setattr(uint64_t value, uint64_t name, uint64_t item) { return PyObject_SetAttr(OBJECT(value), OBJECT(name), OBJECT(item)); }
-uint64_t jacpy_import_object(uint64_t name) { return HANDLE(PyImport_Import(OBJECT(name))); }
-uint64_t jacpy_type_new(uint64_t type, uint64_t args, uint64_t kwargs) {
-    if (!PyType_Check(OBJECT(type))) { PyErr_SetString(PyExc_TypeError, "NEWOBJ class argument must be a type"); return 0; }
-    if (!PyTuple_Check(OBJECT(args))) { PyErr_SetString(PyExc_TypeError, "NEWOBJ args argument must be a tuple"); return 0; }
-    if (kwargs && !PyDict_Check(OBJECT(kwargs))) { PyErr_SetString(PyExc_TypeError, "NEWOBJ_EX kwargs argument must be a dict"); return 0; }
-    PyTypeObject *cls = (PyTypeObject *)OBJECT(type);
-    if (!cls->tp_new) { PyErr_SetString(PyExc_TypeError, "NEWOBJ class has no __new__"); return 0; }
-    return HANDLE(cls->tp_new(cls, OBJECT(args), OBJECT(kwargs)));
+PyObject *jacpy_optional_attr(PyObject *value, const char *name) { PyObject *result = NULL; return PyObject_GetOptionalAttrString(value, name, &result) < 0 ? NULL : result; }
+PyObject *jacpy_type_new(PyObject *type, PyObject *args, PyObject *kwargs) {
+    if (!PyType_Check(type)) { PyErr_SetString(PyExc_TypeError, "NEWOBJ class argument must be a type"); return NULL; }
+    if (!PyTuple_Check(args)) { PyErr_SetString(PyExc_TypeError, "NEWOBJ args argument must be a tuple"); return NULL; }
+    if (kwargs && !PyDict_Check(kwargs)) { PyErr_SetString(PyExc_TypeError, "NEWOBJ_EX kwargs argument must be a dict"); return NULL; }
+    PyTypeObject *cls = (PyTypeObject *)type;
+    if (!cls->tp_new) { PyErr_SetString(PyExc_TypeError, "NEWOBJ class has no __new__"); return NULL; }
+    return cls->tp_new(cls, args, kwargs);
 }
 
-uint64_t jacpy_set_new(uint64_t iterable, int64_t frozen) { return HANDLE(frozen ? PyFrozenSet_New(OBJECT(iterable)) : PySet_New(OBJECT(iterable))); }
-int64_t jacpy_set_add(uint64_t set, uint64_t value) { return PySet_Add(OBJECT(set), OBJECT(value)); }
-uint64_t jacpy_memoryview(uint64_t value) { return HANDLE(PyMemoryView_FromObject(OBJECT(value))); }
-int64_t jacpy_is_type(uint64_t value) { return PyType_Check(OBJECT(value)); }
-uint64_t jacpy_float_from_text(uint64_t value) { return HANDLE(PyFloat_FromString(OBJECT(value))); }
-uint64_t jacpy_bytes_unescape(uint64_t value) { return HANDLE(PyBytes_DecodeEscape(PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), "strict", 0, NULL)); }
+PyObject *jacpy_set_new(PyObject *iterable, int64_t frozen) { return frozen ? PyFrozenSet_New(iterable) : PySet_New(iterable); }
+int64_t jacpy_is_type(PyObject *value) { return PyType_Check(value); }
+PyObject *jacpy_bytes_unescape(PyObject *value) { return PyBytes_DecodeEscape(PyBytes_AS_STRING(value), PyBytes_GET_SIZE(value), "strict", 0, NULL); }
 
 /* Exact built-in categories: subclasses use their object protocols instead. */
 static PyTypeObject *const builtin_types[] = {
@@ -586,45 +438,37 @@ static PyTypeObject *const builtin_types[] = {
     &PyFrozenSet_Type, &PyByteArray_Type, &PyType_Type, &PyFunction_Type,
     &PyPickleBuffer_Type
 };
-int64_t jacpy_builtin_kind(uint64_t value) {
-    PyObject *object = OBJECT(value);
+int64_t jacpy_builtin_kind(PyObject *value) {
+    PyObject *object = value;
     if (object == Py_None) return 0;
     for (size_t i = 1; i < sizeof(builtin_types) / sizeof(*builtin_types); ++i)
         if (Py_TYPE(object) == builtin_types[i]) return (int64_t)i;
     return 15;
 }
-uint64_t jacpy_builtin_type(int64_t kind) {
-    if (kind == 0) return HANDLE(Py_NewRef((PyObject *)Py_TYPE(Py_None)));
+PyObject *jacpy_builtin_type(int64_t kind) {
+    if (kind == 0) return Py_NewRef((PyObject *)Py_TYPE(Py_None));
     if (kind < 0 || (uint64_t)kind >= sizeof(builtin_types) / sizeof(*builtin_types)) {
-        PyErr_SetString(PyExc_SystemError, "invalid built-in type category"); return 0;
+        PyErr_SetString(PyExc_SystemError, "invalid built-in type category"); return NULL;
     }
-    return HANDLE(Py_NewRef((PyObject *)builtin_types[kind]));
-}
-uint64_t jacpy_generic_getattr(uint64_t object, uint64_t name) {
-    return HANDLE(PyObject_GenericGetAttr(OBJECT(object), OBJECT(name)));
-}
-int32_t jacpy_generic_setattr(uint64_t object, uint64_t name, uint64_t value) {
-    return PyObject_GenericSetAttr(OBJECT(object), OBJECT(name), OBJECT(value));
+    return Py_NewRef((PyObject *)builtin_types[kind]);
 }
 
-int64_t jacpy_is_not_implemented(uint64_t value) { return OBJECT(value) == Py_NotImplemented; }
+int64_t jacpy_is_not_implemented(PyObject *value) { return value == Py_NotImplemented; }
 
-int64_t jacpy_audit_pickle_find(uint64_t module, uint64_t name) { return PySys_Audit("pickle.find_class", "OO", OBJECT(module), OBJECT(name)); }
+int64_t jacpy_audit_pickle_find(PyObject *module, PyObject *name) { return PySys_Audit("pickle.find_class", "OO", module, name); }
 
-uint64_t jacpy_mapping_optional_item(uint64_t mapping, uint64_t key) { PyObject *result = NULL; return PyMapping_GetOptionalItem(OBJECT(mapping), OBJECT(key), &result) < 0 ? 0 : HANDLE(result); }
+PyObject *jacpy_mapping_optional_item(PyObject *mapping, PyObject *key) { PyObject *result = NULL; return PyMapping_GetOptionalItem(mapping, key, &result) < 0 ? NULL : result; }
 
-int64_t jacpy_is_iterator(uint64_t value) { return PyIter_Check(OBJECT(value)); }
 
-uint64_t jacpy_not_implemented(void) { return HANDLE(Py_NewRef(Py_NotImplemented)); }
-uint64_t jacpy_ellipsis(void) { return HANDLE(Py_NewRef(Py_Ellipsis)); }
+PyObject *jacpy_not_implemented(void) { return Py_NewRef(Py_NotImplemented); }
+PyObject *jacpy_ellipsis(void) { return Py_NewRef(Py_Ellipsis); }
 
-void jacpy_exception_context(uint64_t error, uint64_t cause) { PyException_SetContext(OBJECT(error), Py_NewRef(OBJECT(cause))); }
+void jacpy_exception_context(PyObject *error, PyObject *cause) { PyException_SetContext(error, Py_NewRef(cause)); }
 
-uint64_t jacpy_dict_items(uint64_t value) { return HANDLE(PyDict_Items(OBJECT(value))); }
-uint64_t jacpy_unicode_intern(uint64_t value) { PyObject *result=Py_NewRef(OBJECT(value)); PyUnicode_InternInPlace(&result); return HANDLE(result); }
+PyObject *jacpy_unicode_intern(PyObject *value) { PyObject *result=Py_NewRef(value); PyUnicode_InternInPlace(&result); return result; }
 
-int64_t jacpy_dict_memory(uint64_t value) {
-    PyObject *size = PyObject_CallMethod(OBJECT(value), "__sizeof__", NULL);
+int64_t jacpy_dict_memory(PyObject *value) {
+    PyObject *size = PyObject_CallMethod(value, "__sizeof__", NULL);
     if (!size) return -1;
     Py_ssize_t result = PyLong_AsSsize_t(size);
     Py_DECREF(size);
@@ -632,26 +476,147 @@ int64_t jacpy_dict_memory(uint64_t value) {
 }
 
 /* General value conversion and interpreter services for native bindings. */
-int64_t jacpy_is_slice(uint64_t value) { return PySlice_Check(OBJECT(value)); }
-typedef struct { int64_t start, stop, step, count, valid; } JacSliceBounds;
-JacSliceBounds jacpy_slice_unpack(uint64_t value) {
-    JacSliceBounds result = {0};
+int64_t jacpy_is_slice(PyObject *value) { return PySlice_Check(value); }
+int64_t jacpy_is_code(PyObject *value) { return PyCode_Check(value); }
+typedef struct { int64_t start, stop, step, count, valid; } SliceBounds;
+SliceBounds jacpy_slice_unpack(PyObject *value) {
+    SliceBounds result = {0};
     Py_ssize_t start, stop, step;
-    if (PySlice_Unpack(OBJECT(value), &start, &stop, &step) == 0)
-        result = (JacSliceBounds){start, stop, step, 0, 1};
+    if (PySlice_Unpack(value, &start, &stop, &step) == 0)
+        result = (SliceBounds){start, stop, step, 0, 1};
     return result;
 }
-JacSliceBounds jacpy_slice_adjust(int64_t length, JacSliceBounds bounds) {
+SliceBounds jacpy_slice_adjust(int64_t length, SliceBounds bounds) {
     Py_ssize_t start = bounds.start, stop = bounds.stop;
     bounds.count = PySlice_AdjustIndices(length, &start, &stop, bounds.step);
     bounds.start = start; bounds.stop = stop;
     return bounds;
 }
-int64_t jacpy_audit(const char *event, uint64_t arguments) { return PySys_AuditTuple(event, OBJECT(arguments)); }
 int64_t jacpy_warn(const char *category, const char *message, int64_t stacklevel) {
     extern PyObject *jacpy_exception_type(const char *);
     return PyErr_WarnEx(jacpy_exception_type(category), message, stacklevel);
 }
-uint64_t jacpy_builtins(void) { return HANDLE(Py_NewRef(PyEval_GetBuiltins())); }
-int64_t jacpy_type_subtype(uint64_t type, uint64_t base) { return PyType_IsSubtype((PyTypeObject *)OBJECT(type), (PyTypeObject *)OBJECT(base)); }
+PyObject *jacpy_builtins(void) { return Py_NewRef(PyEval_GetBuiltins()); }
 #pragma GCC visibility pop
+
+/* A NUL-terminated string that C owns (a libc record field, an environment
+ * entry), decoded with the filesystem encoding; NULL becomes None. */
+PyObject *jacpy_fs_text(const void *text) {
+    return text ? PyUnicode_DecodeFSDefault(text) : Py_NewRef(Py_None);
+}
+
+/* Struct sequence types need a field array that outlives the type, as the
+ * static arrays of C modules do. Fields are "name\tdoc" lines. The
+ * descriptor is intentionally never freed: the type may be shared by
+ * interpreters and lives for the process. */
+PyObject *jacpy_struct_sequence_type(const char *name, const char *doc,
+                                     const char *fields, int64_t visible) {
+    size_t count = 1;
+    for (const char *c = fields; *c; c++) count += *c == '\n';
+    char *names = strdup(fields);
+    char *owned_name = strdup(name), *owned_doc = strdup(doc);
+    PyStructSequence_Field *table = calloc(count + 1, sizeof(*table));
+    PyStructSequence_Desc *desc = calloc(1, sizeof(*desc));
+    if (!names || !owned_name || !owned_doc || !table || !desc) {
+        free(names); free(owned_name); free(owned_doc); free(table); free(desc);
+        return PyErr_NoMemory();
+    }
+    size_t index = 0;
+    for (char *line = strtok(names, "\n"); line; line = strtok(NULL, "\n")) {
+        char *tab = strchr(line, '\t');
+        if (tab) *tab = '\0';
+        table[index++] = (PyStructSequence_Field){line, tab && tab[1] ? tab + 1 : NULL};
+    }
+    *desc = (PyStructSequence_Desc){owned_name, *owned_doc ? owned_doc : NULL, table, (int)visible};
+    return (PyObject *)PyStructSequence_NewType(desc);
+}
+
+/* Interpreter objects that C defines as data symbols (static types and
+ * singletons) or as interpreter state, looked up by their C name. Borrowed;
+ * NULL with no exception set for an unknown name. */
+#include "internal/pycore_descrobject.h"
+#include "internal/pycore_namespace.h"
+#include "internal/pycore_unionobject.h"
+#include "internal/pycore_typevarobject.h"
+#include "internal/pycore_interp.h"
+#include "internal/pycore_pystate.h"
+PyObject *jacpy_runtime_object(const char *name) {
+    static const struct { const char *name; PyObject *value; } objects[] = {
+#define OBJECT_ENTRY(symbol) {#symbol, (PyObject *)&symbol}
+        OBJECT_ENTRY(PyAsyncGen_Type), OBJECT_ENTRY(PyCFunction_Type), OBJECT_ENTRY(PyCapsule_Type),
+        OBJECT_ENTRY(PyCell_Type), OBJECT_ENTRY(PyClassMethodDescr_Type), OBJECT_ENTRY(PyCode_Type),
+        OBJECT_ENTRY(PyCoro_Type), OBJECT_ENTRY(PyEllipsis_Type), OBJECT_ENTRY(PyFrame_Type),
+        OBJECT_ENTRY(PyFunction_Type), OBJECT_ENTRY(PyGen_Type), OBJECT_ENTRY(Py_GenericAliasType),
+        OBJECT_ENTRY(PyGetSetDescr_Type), OBJECT_ENTRY(PyDictProxy_Type), OBJECT_ENTRY(PyMemberDescr_Type),
+        OBJECT_ENTRY(PyMethodDescr_Type), OBJECT_ENTRY(PyMethod_Type), OBJECT_ENTRY(_PyMethodWrapper_Type),
+        OBJECT_ENTRY(PyModule_Type), OBJECT_ENTRY(_PyNone_Type), OBJECT_ENTRY(_PyNotImplemented_Type),
+        OBJECT_ENTRY(_PyNamespace_Type), OBJECT_ENTRY(PyTraceBack_Type), OBJECT_ENTRY(_PyUnion_Type),
+        OBJECT_ENTRY(PyWrapperDescr_Type), OBJECT_ENTRY(_PyTypeAlias_Type), OBJECT_ENTRY(_Py_NoDefaultStruct),
+        OBJECT_ENTRY(_PyWeakref_RefType), OBJECT_ENTRY(_PyWeakref_ProxyType), OBJECT_ENTRY(_PyWeakref_CallableProxyType),
+#undef OBJECT_ENTRY
+    };
+    for (size_t i = 0; i < sizeof(objects) / sizeof(*objects); i++)
+        if (strcmp(objects[i].name, name) == 0) return objects[i].value;
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+#define CACHED(field) if (strcmp(name, #field) == 0) return (PyObject *)interp->cached_objects.field
+    CACHED(typevar_type); CACHED(typevartuple_type); CACHED(paramspec_type);
+    CACHED(paramspecargs_type); CACHED(paramspeckwargs_type); CACHED(generic_type);
+#undef CACHED
+    return NULL;
+}
+
+/* Weak references hang off an object-layout list that only C can walk. */
+#include "internal/pycore_weakref.h"
+#include "internal/pycore_dict.h"
+PyObject *jacpy_weakref_list(PyObject *object) {
+    PyObject *result = PyList_New(0);
+    if (result == NULL || !_PyType_SUPPORTS_WEAKREFS(Py_TYPE(object))) return result;
+    LOCK_WEAKREFS(object);
+    PyWeakReference *current = *(PyWeakReference **)_PyObject_GET_WEAKREFS_LISTPTR(object);
+    while (current != NULL) {
+        PyObject *item = (PyObject *)current;
+        if (_Py_TryIncref(item)) {
+            int failed = PyList_Append(result, item);
+            Py_DECREF(item);
+            if (failed) { UNLOCK_WEAKREFS(object); Py_DECREF(result); return NULL; }
+        }
+        current = current->wr_next;
+    }
+    UNLOCK_WEAKREFS(object);
+    return result;
+}
+static int dead_weakref(PyObject *value, void *unused) {
+    if (!PyWeakref_Check(value)) {
+        PyErr_SetString(PyExc_TypeError, "not a weakref");
+        return -1;
+    }
+    return _PyWeakref_IS_DEAD(value);
+}
+int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {
+    return _PyDict_DelItemIf(dictionary, key, dead_weakref, NULL);
+}
+
+/* Pointer arithmetic for C-owned buffers. ptr[T] in Jac has no arithmetic,
+ * so offsets into a block and distances between cursors come from here. */
+void *jacpy_offset(void *address, int64_t offset) { return (char *)address + offset; }
+int64_t jacpy_distance(const void *end, const void *start) { return (const char *)end - (const char *)start; }
+
+/* syslog(3) is variadic; the module always logs one preformatted message. */
+#include <syslog.h>
+void jacpy_syslog(int32_t priority, const char *message) { syslog(priority, "%s", message); }
+
+/* errno is a thread-local macro; read it through a function. */
+int64_t jacpy_errno(void) { return errno; }
+
+/* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and
+ * similar unsigned C types: -1 on error, 1 when the value needs more than
+ * eight bytes, 0 when it fits. */
+int64_t jacpy_long_u64_checked(PyObject *value, uint64_t *out) {
+    Py_ssize_t bytes = PyLong_AsNativeBytes(value, out, sizeof(*out),
+        Py_ASNATIVEBYTES_NATIVE_ENDIAN | Py_ASNATIVEBYTES_UNSIGNED_BUFFER);
+    if (bytes < 0) return -1;
+    return bytes > (Py_ssize_t)sizeof(*out);
+}
+
+/* The address an int denotes, as struct's 'P' format packs it. */
+uint64_t jacpy_long_address(PyObject *value) { return (uint64_t)(uintptr_t)PyLong_AsVoidPtr(value); }
