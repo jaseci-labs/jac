@@ -52,6 +52,7 @@ errno           test.test_errno
 syslog          test.test_syslog
 resource        test.test_resource
 atexit          test.test_atexit
+time            test.test_time,test.test_strftime
 _md5            test.test_hashlib                       Modules/_hacl/libHacl_Hash_MD5.a
 _sha1           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA1.a
 _sha2           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA2.a

@@ -33,10 +33,19 @@ glob OUTPUT: Path = RUNTIME / "modules",
          r"\bPyModule_AddIntMacro\(\s*\w+\s*,\s*(\w+)\s*\)",
          r"\bINS\(\s*(\w+)\s*\)",
          r"\badd_errcode\(\s*\"(\w+)\"",
-         r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*\1\s*\)"
+         r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*\1\s*\)",
+         r"\bADD_INT\(\s*(\w+)\s*\)"
      ],
+     # Constants published under a name other than their macro's
+     # (select's KQ_FILTER_READ is EVFILT_READ): (published, macro) groups.
+     ALIAS_PATTERNS: list[str] = [
+         r"\bADD_INT_CONST\(\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)",
+         r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)"
+     ],
+     # The macro each aliased published name reads.
+     MACROS: dict[str, str] = {},
      # Parameter names of the macro definitions themselves.
-     MACRO_PARAMETERS: set[str] = {"value", "macro", "c", "name"},
+     MACRO_PARAMETERS: set[str] = {"value", "macro", "c", "name", "VAL"},
      # The C source each module's constants come from, and the system headers
      # that define them. Each include is guarded by __has_include, so one list
      # serves every platform.
@@ -98,7 +107,10 @@ glob OUTPUT: Path = RUNTIME / "modules",
          "time": ("Modules/timemodule.c", ["time.h", "sys/time.h"])
      },
      # Values the C module uses internally rather than publishing with a macro.
-     EXTRA: dict[str, list[str]] = {"resource": ["RLIM_INFINITY", "RLIM_NLIMITS"]};
+     EXTRA: dict[str, list[str]] = {
+         "resource": ["RLIM_INFINITY", "RLIM_NLIMITS"],
+         "time": ["CLOCKS_PER_SEC", "TIMER_ABSTIME"]
+     };
 
 def names_in(source: str) -> list[str] {
     found: list[str] = [];
@@ -108,6 +120,17 @@ def names_in(source: str) -> list[str] {
                 name = hit.group(1);
                 if name not in found and name not in MACRO_PARAMETERS {
                     found.append(name);
+                }
+            }
+        }
+        for pattern in ALIAS_PATTERNS {
+            for hit in re.finditer(pattern, line) {
+                name = hit.group(1);
+                if name not in found and hit.group(2) not in MACRO_PARAMETERS {
+                    found.append(name);
+                    if hit.group(2) != name {
+                        MACROS[name] = hit.group(2);
+                    }
                 }
             }
         }
@@ -132,27 +155,31 @@ def extract(
 ) -> dict[str, int] {
     lines = ["#define _GNU_SOURCE 1", "#define _DARWIN_C_SOURCE 1"] + includes;
     for name in names {
+        macro = MACROS.get(name, name);
         lines += [
-            f"#ifdef {name}",
-            f"const long long __jac_const_{name} = (long long)({name});",
+            f"#ifdef {macro}",
+            f"const long long __jac_const_{name} = (long long)({macro});",
             "#endif"
         ];
     }
+    # The assembly goes to a file: `zig cc` treats `-o -` as a file named "-".
     with tempfile.TemporaryDirectory() as scratch {
         probe = Path(scratch) / "constants.c";
+        assembly = Path(scratch) / "constants.s";
         probe.write_text("\n".join(lines) + "\n");
         result = subprocess.run(
-            compiler + ["-S", "-O0", "-o", "-", str(probe)],
+            compiler + ["-S", "-O0", "-o", str(assembly), str(probe)],
             capture_output=True,
             text=True
         );
-    }
-    if result.returncode != 0 {
-        sys.exit(result.stderr);
+        if result.returncode != 0 {
+            sys.exit(result.stderr);
+        }
+        listing = assembly.read_text();
     }
     values: dict[str, int] = {};
     current: str | None = None;
-    for line in result.stdout.splitlines() {
+    for line in listing.splitlines() {
         line = line.strip();
         label = re.match(r"^_?__jac_const_(\w+):", line);
         if label {

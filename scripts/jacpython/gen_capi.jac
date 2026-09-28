@@ -82,6 +82,11 @@ glob OPAQUE: list[str] = [
              "obj Py_buffer { has buf: ptr, owner: ptr[PyObject], length: i64, itemsize: i64, "
              + "readonly: i32, ndim: i32, format_: ptr[u8], shape: ptr[i64], strides: ptr[i64], "
              + "suboffsets: ptr[i64], internal: ptr; }"
+         ),
+         "_PyTimeFraction": "obj _PyTimeFraction { has numer: i64 = 0, denom: i64 = 0; }",
+         "_Py_clock_info_t": (
+             "obj _Py_clock_info_t { has implementation: ptr[u8] = ptr[u8](), "
+             + "monotonic: i32 = 0, adjustable: i32 = 0, resolution: f64 = 0.0; }"
          )
      },
      # C-layout records of interpreter internals a JacPython source walks.
@@ -97,6 +102,16 @@ glob OPAQUE: list[str] = [
          "Py_None": "_Py_NoneStruct",
          "Py_NotImplemented": "_Py_NotImplementedStruct",
          "Py_Ellipsis": "_Py_EllipsisObject"
+     },
+     # Records a caller builds in Jac and lends for the call: a pointer
+     # parameter to one is a borrow (`&T` when const, else `&mut T`).
+     BORROWED: set[str] = {"_PyTimeFraction", "_Py_clock_info_t"},
+     # C library records whose layout differs between platforms. They are
+     # declared by per-OS variant modules, imported from there, and borrowed.
+     PLATFORM_RECORDS: dict[str, str] = {
+         "timespec": "jaclang.runtime.python.modules.time_records",
+         "timeval": "jaclang.runtime.python.modules.time_records",
+         "tm": "jaclang.runtime.python.modules.time_records"
      },
      SCALARS: dict[str, str] = {
          "int": "i32",
@@ -127,6 +142,9 @@ glob OPAQUE: list[str] = [
          "intptr_t": "i64",
          "uintptr_t": "u64",
          "PyTime_t": "i64",
+         "time_t": "i64",
+         "_PyTime_round_t": "i32",
+         "wchar_t": "i32",
          "Py_UCS4": "u32",
          "Py_UCS1": "u8",
          "Py_UCS2": "u16",
@@ -153,7 +171,11 @@ glob OPAQUE: list[str] = [
      },
      # `const char *` parameters that read memory the caller holds as a raw
      # address (a HACL* digest buffer), not a Jac value; they take `ptr`.
-     ADDRESS_PARAMETERS: dict[str, set[int]] = {"_Py_strhex": {0}},
+     ADDRESS_PARAMETERS: dict[str, set[int]] = {
+         "_Py_strhex": {0},
+         "PyUnicode_DecodeLocale": {0},
+         "PyUnicode_DecodeLocaleAndSize": {0}
+     },
      # Pointer out-parameters the Jac side writes through `&mut`.
      OUT_POINTERS: dict[str, str] = {
          "PyObject **": "&mut ptr[PyObject]",
@@ -162,6 +184,8 @@ glob OPAQUE: list[str] = [
          "double *": "&mut f64",
          "int64_t *": "&mut i64",
          "PyTime_t *": "&mut i64",
+         "time_t *": "&mut i64",
+         "long *": "&mut i64",
          "size_t *": "&mut u64",
          "uint64_t *": "&mut u64"
      },
@@ -300,6 +324,14 @@ def data_type(ctype: str) -> str | None {
 
 def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     base = ctype.replace("const ", "").replace(" const", "").strip();
+    record = re.match(r"^(?:struct )?(\w+) \*$", base);
+    if record
+        and (record.group(1) in BORROWED or record.group(1) in PLATFORM_RECORDS) {
+        if index is None {
+            return None;
+        }
+        return ("&" if "const" in ctype else "&mut ") + record.group(1);
+    }
     if base in STRUCT_NAMES or base in STRUCTS or base in INTERNAL_STRUCTS {
         return base;
     }
@@ -468,7 +500,9 @@ def render(
                 break;
             }
             pname = pname or f"arg{index}";
-            if pname in KEYWORDS {
+            # A parameter named like a type (pytime's `struct tm *tm`) would
+            # shadow it.
+            if pname in KEYWORDS or pname in PLATFORM_RECORDS or pname in STRUCTS {
                 pname = pname + "_";
             }
             rendered.append(f"{pname}: {jtype}");
@@ -497,6 +531,18 @@ def render(
         lines.append(f"    glob {', '.join(globs)};");
     }
     lines.append("}");
+    # Platform records a declaration borrows come from their variant modules.
+    declared = "\n".join(lines);
+    for module in sorted(set(PLATFORM_RECORDS.values()), reverse=True) {
+        records = sorted(
+            n
+            for (n, m) in PLATFORM_RECORDS.items()
+            if m == module and re.search(rf"&(?:mut )?{n}\b", declared)
+        );
+        if records {
+            lines.insert(5, f"import from {module} {{ {', '.join(records)} }}");
+        }
+    }
     lines += ["", "glob NULL: ptr[PyObject] = ptr[PyObject]();"];
     for name in sorted(macros) {
         lines.append(

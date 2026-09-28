@@ -65,7 +65,8 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
          "uid_t": "u32",
          "gid_t": "u32",
          "dev_t": "u64",
-         "mode_t": "u32"
+         "mode_t": "u32",
+         "clockid_t": "i32"
      },
      BUILTIN_TYPES: dict[str, tuple[str, str]] = {
          "&PyUnicode_Type": ("jacpy_is_unicode", "str"),

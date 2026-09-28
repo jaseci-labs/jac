@@ -574,8 +574,9 @@ int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {
 #include <syslog.h>
 void jacpy_syslog(int32_t priority, const char *message) { syslog(priority, "%s", message); }
 
-/* errno is a thread-local macro; read it through a function. */
+/* errno is a thread-local macro; read and write it through functions. */
 int64_t jacpy_errno(void) { return errno; }
+void jacpy_set_errno(int64_t value) { errno = (int)value; }
 
 /* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and
  * similar unsigned C types: -1 on error, 1 when the value needs more than

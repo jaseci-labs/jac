@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 65 C files / 117,547 lines; 44 headers / 16,784 lines.
-#   Total: 109 files / 134,331 source lines.
+#   Excluded: 66 C files / 119,945 lines; 45 headers / 16,858 lines.
+#   Total: 111 files / 136,803 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -560,7 +560,7 @@ Modules/clinic/socketmodule.c.h
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
 Modules/clinic/termios.c.h
-Modules/clinic/timemodule.c.h
+# Modules/clinic/timemodule.c.h  # removed: 74 source lines
 Modules/clinic/unicodedata.c.h
 # Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
 # Modules/cmathmodule.c  # removed: 1,315 source lines
@@ -602,7 +602,7 @@ Modules/socketmodule.h
 # Modules/symtablemodule.c  # removed: 130 source lines
 # Modules/syslogmodule.c  # removed: 469 source lines
 Modules/termios.c
-Modules/timemodule.c
+# Modules/timemodule.c  # removed: 2,398 source lines
 Modules/unicodedata.c
 Modules/unicodedata_db.h
 Modules/unicodename_db.h

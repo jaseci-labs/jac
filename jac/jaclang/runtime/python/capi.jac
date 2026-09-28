@@ -25,6 +25,21 @@ enum builtin_kind {
 }
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_bytes_copy_to,
+    jacpy_bytes_from_memory,
+    jacpy_bytes_length,
+    jacpy_exception_note,
+    jacpy_qualified_type_name,
+    jacpy_release,
+    jacpy_set_exception,
+    jacpy_text,
+    jacpy_tuple_set_owned,
+    jacpy_type_name,
+    jacpy_unicode_decode_bytes,
+    jacpy_utf8,
+    jacpy_writer_new,
+    Py_NewRef,
+    Py_TYPE,
     PyBool_Type,
     PyByteArray_Type,
     PyBytes_FromStringAndSize,
@@ -37,6 +52,7 @@ import from jaclang.runtime.python.cpython_api {
     PyFunction_Type,
     PyList_Type,
     PyLong_Type,
+    _PyNone_Type,
     PyObject,
     PyObject_Repr,
     PyPickleBuffer_Type,
@@ -44,22 +60,8 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_Type,
     PyType_Type,
-    PyUnicodeWriter,
     PyUnicode_Type,
-    Py_NewRef,
-    Py_TYPE,
-    _PyNone_Type,
-    jacpy_bytes_copy_to,
-    jacpy_bytes_length,
-    jacpy_exception_note,
-    jacpy_qualified_type_name,
-    jacpy_release,
-    jacpy_set_exception,
-    jacpy_text,
-    jacpy_tuple_set_owned,
-    jacpy_type_name,
-    jacpy_utf8,
-    jacpy_writer_new
+    PyUnicodeWriter
 }
 import from c {
     def jac_heap_size(address: u64) -> i64;  def jac_list_heap_size(
@@ -234,4 +236,31 @@ def new_writer -> ptr[PyUnicodeWriter] {
         raise boundary_failure();
     }
     return writer;
+}
+
+# The length of a NUL-terminated C string, reading at most `limit` bytes
+# when `limit` is not negative (strnlen()).
+def c_string_length(address: ptr[u8], limit: int = -1) -> int {
+    length = 0;
+    while limit < 0 or length < limit {
+        if (address + length).view(1)[0] == 0 {
+            break;
+        }
+        length += 1;
+    }
+    return length;
+}
+
+# A C string as a new str decoded as strict UTF-8, as PyUnicode_FromString()
+# does; `limit` caps the bytes read, as strncpy() into a fixed buffer would.
+def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
+    payload = jacpy_bytes_from_memory(
+        ptr(address), i64(c_string_length(address, limit))
+    );
+    if not payload {
+        return payload;
+    }
+    text = jacpy_unicode_decode_bytes(payload, "utf-8");
+    jacpy_release(payload);
+    return text;
 }

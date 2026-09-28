@@ -20,3 +20,4 @@ _sha2
 _sha3
 _blake2
 _hmac
+time
