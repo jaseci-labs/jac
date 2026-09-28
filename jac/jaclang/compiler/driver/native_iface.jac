@@ -240,7 +240,7 @@ def native_layout_from_dict(raw: any) -> NativeModuleLayout {
     return layout;
 }
 
-glob NIFACE_FORMAT: int = 3,
+glob NIFACE_FORMAT: int = 4,
      NIFACE_HASH_LEN: int = 64,
      EXPORT_FUNCTION: str = "function",
      EXPORT_METHOD: str = "method",
@@ -289,80 +289,17 @@ obj NativeExport {
     }
 }
 
-obj NativeValueSchema {
-    has code: str,
-        class_name: str = "",
-        element: (NativeValueSchema | None) = None,
-        data_offset: int = 0,
-        key_offset: int = 0,
-        order_offset: int = 0;
-
-    def to_dict -> dict[str, any] {
-        out: dict[str, any] = {"code": self.code};
-        if self.code == "obj" {
-            out["class"] = self.class_name;
-        } elif self.code in ("list", "dict", "set") {
-            if self.element is not None {
-                out["element"] = self.element.to_dict();
-            }
-            if self.code != "set" {
-                out["data_offset"] = self.data_offset;
-            }
-            if self.code != "list" {
-                out["key_offset"] = self.key_offset;
-                out["order_offset"] = self.order_offset;
-            }
-        }
-        return out;
-    }
-
-    static def from_dict(d: dict[str, any]) -> NativeValueSchema {
-        child = d.get("element");
-        return NativeValueSchema(
-            code=str(d["code"]),
-            class_name=str(d.get("class", "")),
-            element=(
-                NativeValueSchema.from_dict(child) if isinstance(child, dict) else None
-            ),
-            data_offset=int(d.get("data_offset", 0)),
-            key_offset=int(d.get("key_offset", 0)),
-            order_offset=int(d.get("order_offset", 0))
-        );
-    }
-}
-
 obj NativeFieldSlot {
     has index: int,
-        offset: int,
-        code: str,
-        aux: str = "",
-        schema: (NativeValueSchema | None) = None;
+        offset: int;
 
-    def to_dict -> dict[str, any] {
-        out: dict[str, any] = {
-            "index": self.index,
-            "offset": self.offset,
-            "code": self.code,
-            "aux": self.aux
-        };
-        if self.schema is not None {
-            out["schema"] = self.schema.to_dict();
-        }
-        return out;
+    def to_dict -> dict[str, int] {
+        return {"index": self.index, "offset": self.offset};
     }
 
     static def from_dict(d: dict[str, any]) -> NativeFieldSlot {
-        schema = d.get("schema");
         return NativeFieldSlot(
-            index=int(d.get("index", -1)),
-            offset=int(d.get("offset", -1)),
-            code=str(d.get("code", "opaque")),
-            aux=str(d.get("aux", "")),
-            schema=(
-                NativeValueSchema.from_dict(schema)
-                    if isinstance(schema, dict)
-                    else None
-            )
+            index=int(d.get("index", -1)), offset=int(d.get("offset", -1))
         );
     }
 }
@@ -374,8 +311,7 @@ obj NativeClassLayout {
         tag_offset: int = -1,
         fields: dict[str, NativeFieldSlot] = {},
         bases: list[str] = [],
-        vtable: list[str] = [],
-        is_node: bool = False;
+        vtable: list[str] = [];
 
     def to_dict -> dict[str, any] {
         return {
@@ -385,8 +321,7 @@ obj NativeClassLayout {
             "tag_offset": self.tag_offset,
             "fields": {k: v.to_dict() for (k, v) in self.fields.items()},
             "bases": list(self.bases),
-            "vtable": list(self.vtable),
-            "is_node": self.is_node
+            "vtable": list(self.vtable)
         };
     }
 
@@ -401,8 +336,7 @@ obj NativeClassLayout {
                 for (k, v) in (d.get("fields") or {}).items()
             },
             bases=[str(x) for x in d.get("bases", [])],
-            vtable=[str(x) for x in d.get("vtable", [])],
-            is_node=bool(d.get("is_node", False))
+            vtable=[str(x) for x in d.get("vtable", [])]
         );
     }
 }
@@ -596,8 +530,7 @@ obj NativeIface {
                 "tag_offset": lay.tag_offset,
                 "fields": {k: v.to_dict() for (k, v) in lay.fields.items()},
                 "bases": list(lay.bases),
-                "vtable": list(lay.vtable),
-                "is_node": lay.is_node
+                "vtable": list(lay.vtable)
             } for (name, lay) in sorted(self.classes.items())
         };
     }

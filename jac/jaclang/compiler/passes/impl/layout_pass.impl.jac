@@ -918,10 +918,8 @@ impl LayoutPass._is_layout_compatible_type(
                                 return False;
                             }
                         }
-                    } else {
-                        if not self._is_layout_compatible_type(elem, arch_map) {
-                            return False;
-                        }
+                    } elif not self._is_layout_compatible_type(elem, arch_map) {
+                        return False;
                     }
                 }
             }
@@ -934,15 +932,4 @@ impl LayoutPass._is_layout_compatible_type(
 
 impl LayoutPass.run_walk with Module entry {
     self.module = self._run_impl(here);
-}
-
-impl FieldLayout.semantic_type.getter -> TypeBase | None {
-    declaration = self.decl_node;
-    if isinstance(declaration, AstTypedVarNode) {
-        return declaration.type;
-    }
-    if isinstance(declaration, TypeParam) {
-        return declaration.name.type;
-    }
-    return None;
 }
