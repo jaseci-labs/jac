@@ -186,12 +186,12 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.BW_OR_EQ: "op_ior",
          Tok.BW_AND_EQ: "op_iand",
          Tok.BW_XOR_EQ: "op_ixor"
-     },
-     LiteralValue = str | bool | int | float | None;
+     };
 
-glob VIEW_ACC: str = "__jac_view_kids";
+type LiteralValue = str | bool | int | float | None;
 
-glob ES_STMT_DISPLAY: dict[str, str] = {
+glob VIEW_ACC: str = "__jac_view_kids",
+     ES_STMT_DISPLAY: dict[str, str] = {
          'DeleteStmt': "'del' statement",
          'MatchStmt': "'match' statement",
          'WithStmt': "'with' statement",

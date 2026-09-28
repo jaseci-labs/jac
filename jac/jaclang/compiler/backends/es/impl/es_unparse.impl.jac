@@ -46,11 +46,17 @@ impl _segment_name(nd: es.Node) -> str {
 }
 
 impl _offset_to_pos(line_starts: list[int], offset: int) -> tuple[int, int] {
-    import bisect;
-    row = bisect.bisect_right(line_starts, offset) - 1;
-    if (row < 0) {
-        row = 0;
+    low = 0;
+    high = len(line_starts);
+    while low < high {
+        mid = (low + high) // 2;
+        if line_starts[mid] <= offset {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
     }
+    row = max(low - 1, 0);
     return (row + 1, offset - line_starts[row]);
 }
 
@@ -438,8 +444,12 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
     if nd.raw {
         return nd.raw;
     }
-    if isinstance(nd.value, str) {
-        escaped = nd.value.replace('\\', '\\\\').replace('"', '\\"').replace(
+    value = nd.value;
+    if value is None {
+        return 'null';
+    }
+    if isinstance(value, str) {
+        escaped = value.replace('\\', '\\\\').replace('"', '\\"').replace(
             '\n', '\\n'
         ).replace(
             '\r', '\\r'
@@ -447,13 +457,14 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
             '\t', '\\t'
         );
         return f'"{escaped}"';
-    } elif (nd.value is None) {
-        return 'null';
-    } elif isinstance(nd.value, bool) {
-        return 'true' if nd.value else 'false';
-    } else {
-        return str(nd.value);
     }
+    if isinstance(value, bool) {
+        return 'true' if value else 'false';
+    }
+    if isinstance(value, int) {
+        return str(value);
+    }
+    return str(value);
 }
 
 impl JSCodeGenerator.gen_private_identifier(nd: es.PrivateIdentifier) -> str {

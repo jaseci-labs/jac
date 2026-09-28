@@ -1463,11 +1463,6 @@ class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     def emit_unsafe_html(
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-
-    def static_names(self: ESBuiltinEmitter) -> list[str];
-    def dispatch_static(
-        self: ESBuiltinEmitter, name: str, ctx: ESEmitCtx, args: list[str]
-    ) -> (str | None);
 }
 
 def es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None) {

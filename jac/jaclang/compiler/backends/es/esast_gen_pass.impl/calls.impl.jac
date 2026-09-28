@@ -1155,8 +1155,11 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
         here.gen.es_ast = server_call;
         return;
     }
-    callee = here.target.gen.es_ast
-        or self.sync_loc(es.Identifier(name='func'), jac_node=here.target);
+    callee: es.Expression = cast(
+        es.Expression,
+        here.target.gen.es_ast
+            or self.sync_loc(es.Identifier(name='func'), jac_node=here.target)
+    );
 
     if (
         isinstance(callee, es.MemberExpression)
@@ -1196,13 +1199,15 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                 } else {
                     _result = _emitter.dispatch_static(_method_name, _ctx, _args_strs);
                 }
-                if _result is not None and "_jac." in str(_result) {
-                    self.needs_jac_runtime = True;
+                if _result is not None {
+                    if "_jac." in _result {
+                        self.needs_jac_runtime = True;
+                    }
+                    here.gen.es_ast = self.sync_loc(
+                        es.RawCode(code=_result), jac_node=here
+                    );
+                    return;
                 }
-                here.gen.es_ast = self.sync_loc(
-                    es.RawCode(code=_result), jac_node=here
-                );
-                return;
             }
         }
 
@@ -1313,16 +1318,13 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
     field_args = self._field_constructor_args(here, args, props);
     if field_args is not None {
         here.gen.es_ast = self.sync_loc(
-            es.NewExpression(
-                callee=cast(es.Expression, callee), arguments=[field_args]
-            ),
-            jac_node=here
+            es.NewExpression(callee=callee, arguments=[field_args]), jac_node=here
         );
         return;
     }
 
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=here);
-    callee_expr = cast(es.Expression, callee);
+    callee_expr = callee;
     call_args: list[(es.Expression | es.SpreadElement)] = args;
     (spread_arg, spread_read_source) = self._make_kwargs_spread_context(props, here);
     use_kwargs_temp = spread_read_source is not None;

@@ -86,12 +86,12 @@ obj EachChild {
         jac_node: (uni.UniNode | None);
 }
 
-glob ViewChild = TextChild
-         | DynamicChild
-         | ElementChild
-         | SlotChild
-         | IfChild
-         | EachChild;
+type ViewChild = TextChild
+    | DynamicChild
+    | ElementChild
+    | SlotChild
+    | IfChild
+    | EachChild;
 
 obj ViewElement {
     has tag: (HostTag | ComponentTag | FragmentTag | DynamicTag),
