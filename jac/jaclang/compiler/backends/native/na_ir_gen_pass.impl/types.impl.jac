@@ -29,7 +29,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         }
         return None;
     }
-    # `Final[T]` qualifies a binding, not its storage: it lowers as T.
+
     if isinstance(t, _ClassType)
         and t._shared is not None
         and t.shared.class_name == "Final"

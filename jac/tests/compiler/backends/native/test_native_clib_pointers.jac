@@ -19,7 +19,12 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { assert_native_identity, compile_native_ir }
+import from tests.support {
+    assert_native_identity,
+    compile_native_ir,
+    native_build,
+    native_run
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -405,6 +410,8 @@ def plain(fmt: ptr[u8], *args: VaList) -> None {}
 def call_it -> None { plain(ptr[u8](), [1, 2]); }
 ''';
     assert checker_codes(code) == ["E1157", "E1157"];
+}
+
 test "C data definitions use Final constants and structs another module declares" {
     decls = '''import from "CLIB_POINTERS_LIBRARY" {
     obj CpVec3 { has x: f32, y: f32, z: f32; }
@@ -458,4 +465,115 @@ import from "CLIB_POINTERS_LIBRARY" {
 }
 ''';
     assert checker_codes(code) == ["E1155"];
+}
+
+glob C_DEFINITION_LIBRARY: str = '''#include <stdint.h>
+typedef struct { int32_t a; double b; } CdPair;
+typedef struct { int64_t a, b, c; } CdTriple;
+double cd_call_pair(CdPair (*make)(int32_t, double), int32_t a, double b) {
+    CdPair p = make(a, b);
+    return p.a + p.b;
+}
+int64_t cd_call_triple(CdTriple (*make)(int64_t), int64_t base) {
+    CdTriple t = make(base);
+    return t.a + t.b + t.c;
+}
+int64_t cd_call_sum(int64_t (*sum)(CdTriple, int32_t), int64_t base) {
+    CdTriple t = {base, base * 2, base * 3};
+    return sum(t, 100);
+}
+''',
+     C_DEFINITION_PROGRAM: str = '''import from "CD_LIBRARY" {
+    obj CdPair { has a: i32, b: f64; }
+    obj CdTriple { has a: i64, b: i64, c: i64; }
+    def cd_call_pair(make: Callable[[i32, f64], CdPair], a: i32, b: f64) -> f64;
+    def cd_call_triple(make: Callable[[i64], CdTriple], base: i64) -> i64;
+    def cd_call_sum(sum: Callable[[CdTriple, i32], i64], base: i64) -> i64;
+    def jac_make_pair(a: i32, b: f64) -> CdPair {
+        return CdPair(a=a, b=b * 2.0);
+    }
+    def jac_make_triple(base: i64) -> CdTriple {
+        return CdTriple(a=base, b=base + 1, c=base + 2);
+    }
+    def jac_sum_triple(t: CdTriple, extra: i32) -> i64 {
+        return t.a + t.b + t.c + i64(extra);
+    }
+}
+with entry {
+    print("pair", cd_call_pair(jac_make_pair, i32(3), 1.25));
+    print("triple", cd_call_triple(jac_make_triple, 10));
+    print("sum", cd_call_sum(jac_sum_triple, 5));
+    print("direct", jac_sum_triple(CdTriple(a=1, b=2, c=3), i32(4)));
+}
+''';
+
+test "a function a C library block defines has its C name and the C ABI" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        library = str(Path(directory) / "libcdef.so");
+        source = Path(directory) / "cdef.c";
+        source.write_text(C_DEFINITION_LIBRARY);
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", "-O1", str(source), "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        program = Path(directory) / "cdef.jac";
+        program.write_text(C_DEFINITION_PROGRAM.replace("CD_LIBRARY", library));
+        for memory in ("nogc", "rc", "managed") {
+            binary = str(Path(directory) / f"cdef.{memory}");
+            native_build(str(program), binary, memory=memory);
+            lines = native_run(binary).splitlines();
+            for expected in ["pair 5.5", "triple 33", "sum 130", "direct 10"] {
+                assert expected in lines , f"{memory}: missing {expected!r} in {lines}";
+            }
+        }
+    }
+}
+
+test "C function definitions agree across backends and C variadic definitions keep their C name" {
+    code = '''import from c {
+    def abs(v: i32) -> i32;
+    def jac_twice(v: i32) -> i32 {
+        return abs(v) * i32(2);
+    }
+    def jac_sum_ints(count: i32, *args: VaList) -> i64 {
+        total: i64 = 0;
+        for i in range(int(count)) {
+            total += args.arg(i64);
+        }
+        return total;
+    }
+}
+with entry {
+    print("twice", jac_twice(i32(-21)));
+    print("variadic", jac_sum_ints(i32(3), i64(1), i64(20), i64(300)));
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "cdef_scalar.jac");
+        Path(path).write_text(code);
+        out = assert_native_identity(path);
+    }
+    assert "twice 42" in out.splitlines() , out;
+    assert "variadic 321" in out.splitlines() , out;
+}
+
+test "C function definitions take and return C data" {
+    code = DECLS
+        + '''
+import from "CLIB_POINTERS_LIBRARY" {
+    def takes_text(s: str) -> i32 { return i32(0); }
+    def borrows(v: &mut i32) -> None { print(v); }
+    def packs(*values: int) -> None { print(values); }
+    def variadic_struct(v: CpVec3, *args: VaList) -> None { print(v.x); }
+    def returns_list -> list[int] { return []; }
+}
+''';
+    assert checker_codes(code) == ["E1158", "E1158", "E1158", "E1158", "E1158"];
 }

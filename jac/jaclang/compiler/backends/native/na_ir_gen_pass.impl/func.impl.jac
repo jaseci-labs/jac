@@ -41,7 +41,7 @@ impl NaIRGenPass._nogc_owned_param(p: uni.ParamVar) -> bool {
 }
 
 impl NaIRGenPass._maybe_declare_ability(
-    nd: uni.ElementStmt, imp_layout: any = None
+    nd: uni.ElementStmt, imp_layout: any = None, symbol: (str | None) = None
 ) -> None {
     if not isinstance(nd, uni.Ability) {
         return;
@@ -140,7 +140,11 @@ impl NaIRGenPass._maybe_declare_ability(
         _def_m = nd.find_parent_of_type(uni.Module);
         _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
         func = ir.Function(
-            self.llvm_module, fnty, name=self._symbol_for(name, _def_m, _is_pub)
+            self.llvm_module,
+            fnty,
+            name=symbol
+                if symbol is not None
+                else self._symbol_for(name, _def_m, _is_pub)
         );
     }
 
@@ -357,9 +361,6 @@ impl NaIRGenPass._record_ret_facts(
     }
 }
 
-# C functions that return twice, as clang knows them by name (setjmp and
-# vfork families). LLVM then keeps the caller's frame valid for the second
-# return and never inlines the caller, which a vfork() child relies on.
 glob RETURNS_TWICE_EXTERNS: frozenset[str] = frozenset(
          {
              "setjmp",
@@ -372,7 +373,7 @@ glob RETURNS_TWICE_EXTERNS: frozenset[str] = frozenset(
          }
      );
 
-def _mark_returns_twice(name: str, func: ir.Function) -> None {
+def _mark_returns_twice(name: str, func: ir.Function) {
     if name in RETURNS_TWICE_EXTERNS and "returns_twice" not in func.attributes {
         func.attributes.add("returns_twice");
     }
@@ -410,7 +411,9 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                 _fdecl["params"],
                 _fdecl["ret"],
                 _abi_triple,
-                force=_c_ret_ptr or any(bool(_ci) for _ci in _c_args)
+                force=_c_ret_ptr
+                    or any(bool(_ci) for _ci in _c_args)
+                    or name in self._clib_definitions
             );
         }
     }

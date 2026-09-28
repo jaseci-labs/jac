@@ -1185,6 +1185,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " parameters.",
          blocks_codegen=True
      ),
+     E1158 = _err(
+         "E1158",
+         Category.TYPE,
+         "C function definition '{name}' {reason}",
+         help="A `def` with a body in a C library import defines a C function"
+         " under that exact symbol with the C calling convention, so C code and"
+         " other modules call it as they call any C function. Its parameters and"
+         " result are C data: sized scalars, `int`, `float`, `bool`, `ptr`,"
+         " foreign structs by value and named-function callbacks, with no `&`"
+         " borrows. A C variadic definition (`*args: VaList`) passes its fixed"
+         " parameters as scalars or pointers only.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
@@ -2236,11 +2249,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5051",
          Category.CODEGEN,
          "Formatter displaced {count} comment(s) to end of file -- refusing to save (use 'jac format' to inspect)"
-     ),
-     E5060 = _err(
-         "E5060",
-         Category.CODEGEN,
-         "C library import declaration '{name}' must not have a body"
      ),
      E5090 = _err(
          "E5090",

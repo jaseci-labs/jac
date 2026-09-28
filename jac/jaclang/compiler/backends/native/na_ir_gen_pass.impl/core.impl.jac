@@ -1,3 +1,4 @@
+import from jaclang.compiler.c_interop { c_variadic_param }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
     if `entry.is_float {
@@ -135,6 +136,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._register_imported_struct_types();
     self._declare_pending_clib_globals();
     self._declare_pending_clib_abilities();
+    self._declare_clib_definitions();
     self._register_globals(self.module);
     self._register_entry_globals(self.module);
 
@@ -156,6 +158,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._codegen_test(stmt);
         }
     }
+    self._emit_clib_definitions();
     self._emit_clib_data_inits();
     self._propagate_seam_demotions();
     _unclaimed = False;
@@ -1800,8 +1803,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
 
         self._clib_detect_vtable_structs();
 
-        # Declared once every module's foreign structs are registered: a C
-        # data symbol's type can be a struct another module declares.
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.GlobalVars) {
                 for assign in decl.assignments {
@@ -1820,8 +1821,19 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
 
                 _is_empty_list = isinstance(decl.body, list) and not decl.body;
                 if decl.body is not None and not _is_empty_list {
-                    self.emit(E5060, name=fn_name);
-                    continue;
+                    if module is not self.module {
+                        self._pending_clib_abilities.append(decl);
+                        if fn_name {
+                            self.clib_extern_names.add(fn_name);
+                        }
+                        continue;
+                    }
+                    if fn_name {
+                        self._clib_definitions[fn_name] = decl;
+                    }
+                    if c_variadic_param(decl.signature) is not None {
+                        continue;
+                    }
                 }
                 self._pending_clib_abilities.append(decl);
                 if fn_name {

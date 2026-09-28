@@ -2369,6 +2369,10 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
                 }
             }
         } elif isinstance(decl, Ability)
+            and isinstance(decl.signature, FuncSignature)
+            and decl.body {
+            self._check_c_function_def(decl);
+        } elif isinstance(decl, Ability)
             and isinstance(decl.signature, FuncSignature) {
             for param in decl.signature.get_parameters() {
                 tag = param.type_tag.tag if param.type_tag else None;
@@ -2629,6 +2633,74 @@ impl TypeCheckPass._foreign_struct_contains(
         }
     }
     return False;
+}
+
+impl TypeCheckPass._check_c_function_def(nd: Ability) -> None {
+    import from jaclang.compiler.c_interop { c_variadic_param, foreign_struct_of_type }
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    sig = nd.signature;
+    if not isinstance(sig, FuncSignature) {
+        return;
+    }
+    name = nd.name_ref.sym_name if nd.name_ref else "";
+    variadic = c_variadic_param(sig);
+    for param in sig.get_parameters() {
+        if param is variadic {
+            continue;
+        }
+        pname = param.name.value if param.name else "";
+        if param.is_vararg or param.is_kwargs {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"packs '{pname}', which C cannot pass; a C variadic parameter is `*{pname}: VaList`"
+            );
+            continue;
+        }
+        if param.type_tag is not None and is_borrow_kind(param.type_tag.ownership) {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"borrows '{pname}'; take its address as a `ptr[T]`"
+            );
+            continue;
+        }
+        ptype = self._c_instance_of(param.type_tag.tag if param.type_tag else None);
+        if not self._c_plain_data(ptype, allow_callable=True) {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"takes '{pname}' of type {ptype}, which is not C data"
+            );
+        } elif variadic is not None
+            and (
+                foreign_struct_of_type(ptype) is not None
+                or (isinstance(ptype, ClassType) and ptype.is_builtin("bool"))
+            ) {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"is variadic and passes '{pname}' of type {ptype} by value; take a scalar or `ptr`"
+            );
+        }
+    }
+    ret = sig.return_type;
+    if ret is None or isinstance(ret, Null) {
+        return;
+    }
+    rtype = self._c_instance_of(ret);
+    if not self._c_plain_data(rtype, allow_callable=True) {
+        self.ctx.emit(
+            E1158,
+            node_override=ret,
+            name=name,
+            reason=f"returns {rtype}, which is not C data"
+        );
+    }
 }
 
 impl TypeCheckPass._check_c_variadic_def(nd: Ability) -> None {

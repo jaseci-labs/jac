@@ -29,6 +29,12 @@ impl NaIRGenPass._clib_coerce_callback(
         );
         return ir.Constant(c_fn_ty, None);
     }
+    if isinstance(val, ir.Function) and val.name.endswith(".jac") {
+        c_definition = self._clib_exports.get(val.name[:-len(".jac")]);
+        if c_definition is not None {
+            return self.builder.bitcast(c_definition, c_fn_ty, name="clibcb.cdef");
+        }
+    }
     if isinstance(val, ir.Function) {
         if val.function_type == c_fn_ty.pointee {
             return self.builder.bitcast(val, c_fn_ty, name="clibcb.direct");

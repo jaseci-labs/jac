@@ -335,8 +335,18 @@ the block opens with a declaration keyword, populates `Import.clib_decls`,
 and stamps `CodeContext.NATIVE`. A logical name (`raylib`) is mapped to
 `libraylib.so` / `.dylib` / `raylib.dll` per target triple, and the runpath
 is emitted as ELF `DT_RUNPATH=$ORIGIN` (or Mach-O `@loader_path`). A `str`
-parameter lowers to `i8*`. A clib declaration with a *body* is an error
-(`E5060`).
+parameter lowers to `i8*`.
+
+The block is the C boundary in both directions. A declaration without a body
+or initializer names something C defines; with one, Jac defines it under that
+exact symbol. `glob name: T = value;` is C-layout data built from a C constant
+initializer, and `def name(...) -> R { ... }` is a C function with the C
+calling convention: callers in the same module call the Jac body directly,
+while C code and other modules reach it through a generated C-ABI entry point
+that unpacks struct-by-value arguments and returns (register pieces, `byval`
+memory, `sret`) with the same classification the call side uses. A C variadic
+definition (`*args: VaList`) is emitted directly under the C name, since its
+fixed parameters are scalars or pointers.
 
 ### The three-layer ABI implementation
 

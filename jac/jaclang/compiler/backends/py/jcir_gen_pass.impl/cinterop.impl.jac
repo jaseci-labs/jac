@@ -48,7 +48,8 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
             }
             structs.append({"name": decl.name.value, "fields": fields});
         } elif isinstance(decl, Ability)
-            and isinstance(decl.signature, FuncSignature) {
+            and isinstance(decl.signature, FuncSignature)
+            and not decl.body {
             params: list[list[any]] = [];
             for p in decl.signature.get_parameters() {
                 if p.is_vararg or p.is_kwargs {
@@ -141,6 +142,16 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
         );
     }
     for decl in imp.clib_decls or [] {
+        if isinstance(decl, Ability) and decl.body {
+            out.extend(
+                [
+                    item
+                    for item in self.outs(decl)
+                    if isinstance(item, CgNode)
+                ]
+            );
+            continue;
+        }
         if not isinstance(decl, GlobalVars) {
             continue;
         }

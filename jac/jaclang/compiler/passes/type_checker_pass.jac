@@ -157,6 +157,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1155,
     E1156,
     E1157,
+    E1158,
     E1036,
     W1036,
     W1037,
@@ -210,6 +211,7 @@ walker TypeCheckPass(TreePass) {
     def _check_c_type_use(ann_node: (UniNode | None)) -> None;
     def _check_c_global_use(nd: Name) -> None;
     def _check_c_variadic_def(nd: Ability) -> None;
+    def _check_c_function_def(nd: Ability) -> None;
     def _check_c_variadic_args(nd: FuncCall) -> None;
     def _check_c_global_decl(assign: Assignment) -> None;
     def _c_const_problem(expr: Expr, ctype: (TypeBase | None)) -> (str | None);

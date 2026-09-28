@@ -44,7 +44,6 @@ import from jaclang.compiler.frontend.constant {
 import from jaclang.compiler.frontend.diagnostics {
     DiagnosticInfo,
     E5026,
-    E5060,
     E5088,
     E5089,
     E5090,
@@ -259,6 +258,8 @@ walker NaIRGenPass(CompilerPass) {
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
         clib_globals: dict[str, tuple[ir.GlobalVariable, any]] = {},
+        _clib_definitions: dict[str, uni.Ability] = {},
+        _clib_exports: dict[str, ir.Function] = {},
         _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
         _c_strings: dict[str, ir.GlobalVariable] = {},
         _foreign_modules: list[uni.Module] = [],
@@ -1258,6 +1259,9 @@ walker NaIRGenPass(CompilerPass) {
     def _process_clib_imports(module: uni.Module) -> None;
     def _declare_pending_clib_globals -> None;
     def _declare_pending_clib_abilities -> None;
+    def _declare_clib_definitions -> None;
+    def _emit_clib_definitions -> None;
+    def _emit_clib_export_thunk(name: str) -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type, pointee_names: dict[(ir.Type, str)]) -> str;
     def _layout_pointee_names -> dict[(ir.Type, str)];
@@ -1562,7 +1566,10 @@ walker NaIRGenPass(CompilerPass) {
     def _ensure_fmt_kernel -> bool;
     def _get_fmt_kernel_fn(name: str) -> (ir.Function | None);
     def _forward_declare_functions(module: uni.Module) -> None;
-    def _maybe_declare_ability(nd: uni.ElementStmt, imp_layout: any = None) -> None;
+    def _maybe_declare_ability(
+        nd: uni.ElementStmt, imp_layout: any = None, symbol: (str | None) = None
+    ) -> None;
+
     def _imported_string_adapter(
         func: ir.Function, local_type: ir.FunctionType
     ) -> ir.Function;
