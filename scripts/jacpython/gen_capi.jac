@@ -52,7 +52,6 @@ glob OPAQUE: list[str] = [
          "PyInterpreterState",
          "PyUnicodeWriter",
          "PyModuleDef",
-         "PyMethodDef",
          "PyType_Spec",
          "PyCompilerFlags",
          "PyBytesWriter"
@@ -79,6 +78,10 @@ glob OPAQUE: list[str] = [
      # Field names differ from C where C's are Jac keywords; layout is by position.
      STRUCTS: dict[str, str] = {
          "Py_complex": "obj Py_complex { has real: f64, imag: f64; }",
+         "PyMethodDef": (
+             "obj PyMethodDef { has ml_name: ptr[u8], ml_meth: ptr, ml_flags: i32, "
+             + "ml_doc: ptr[u8]; }"
+         ),
          "Py_buffer": (
              "obj Py_buffer { has buf: ptr, owner: ptr[PyObject], length: i64, itemsize: i64, "
              + "readonly: i32, ndim: i32, format_: ptr[u8], shape: ptr[i64], strides: ptr[i64], "
@@ -159,7 +162,12 @@ glob OPAQUE: list[str] = [
          "double": "f64",
          "float": "f32"
      },
-     POINTER_TYPEDEFS: dict[str, str] = {"PyThread_type_lock": "ptr"},
+     # Pointer typedefs passed through opaquely; a function pointer typedef
+     # here can be passed NULL but not a Jac callback.
+     POINTER_TYPEDEFS: dict[str, str] = {
+         "PyThread_type_lock": "ptr",
+         "Py_tracefunc": "ptr"
+     },
      # A `const char *` parameter is a NUL-terminated C string (Jac `str`) unless
      # the function reads a sized payload; those take raw memory as `bytes`.
      PAYLOAD_PARAMETERS: dict[str, set[int]] = {

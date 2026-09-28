@@ -1,11 +1,13 @@
 """Shared ownership and cycle-collector visibility for Python reference fields."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_release,
+    jacpy_tuple_set_owned,
     NULL,
     PyObject,
-    PyTuple_New,
-    jacpy_release,
-    jacpy_tuple_set_owned
+    PyObject_Call,
+    PyObject_GetAttrString,
+    PyTuple_New
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.module { visit_reference }
@@ -56,5 +58,25 @@ def owned_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
             return NULL;
         }
     }
+    return result;
+}
+
+# target.name(*arguments), as PyObject_CallMethod does with a fixed format.
+# The arguments are owned references, consumed on every path.
+def call_method(
+    target: ptr[PyObject], name: str, arguments: list[ptr[PyObject]]
+) -> ptr[PyObject] {
+    packed = owned_tuple(arguments);
+    if not packed {
+        return NULL;
+    }
+    method = PyObject_GetAttrString(target, name);
+    if not method {
+        jacpy_release(packed);
+        return NULL;
+    }
+    result = PyObject_Call(method, packed, NULL);
+    jacpy_release(method);
+    jacpy_release(packed);
     return result;
 }

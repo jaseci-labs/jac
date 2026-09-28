@@ -400,7 +400,7 @@ Modules/_io/stringio.c
 Modules/_io/textio.c
 # Modules/_json.c  # removed: 1,974 source lines
 Modules/_localemodule.c
-Modules/_lsprof.c
+# Modules/_lsprof.c  # removed: 1,146 source lines
 Modules/_lzmamodule.c
 Modules/_math.h
 Modules/_multiprocessing/clinic/multiprocessing.c.h
@@ -516,7 +516,7 @@ Modules/clinic/_elementtree.c.h
 Modules/clinic/_hashopenssl.c.h
 # Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
 Modules/clinic/_localemodule.c.h
-Modules/clinic/_lsprof.c.h
+# Modules/clinic/_lsprof.c.h  # removed: 479 source lines
 Modules/clinic/_lzmamodule.c.h
 # Modules/clinic/_opcode.c.h  # removed: 779 source lines
 # Modules/clinic/_operator.c.h  # removed: 1,510 source lines

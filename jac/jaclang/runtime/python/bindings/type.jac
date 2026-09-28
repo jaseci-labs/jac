@@ -1,6 +1,14 @@
 """Native declarations for Python heap types and their C ABI callbacks."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyObject, Py_buffer }
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    Py_buffer,
+    Py_TYPE,
+    PyMem_Free,
+    PyMem_Malloc,
+    PyObject,
+    PyType_GetSlot
+}
 import from jaclang.runtime.python.bindings.module { MethodDefinition, install_methods }
 
 enum TypeFlags {
@@ -14,7 +22,7 @@ enum TypeFlags {
     SEQUENCE = 32
 }
 
-enum TypeSlot { INIT = 60, NEW = 65 }
+enum TypeSlot { DESCR_GET = 54, INIT = 60, NEW = 65 }
 
 import from c {
     obj TypeHooks {
@@ -202,4 +210,32 @@ import from c {
 
 import from c {
     def jacpy_binding_type_matches(type: ptr[PyObject], definition: ptr) -> i64;
+}
+
+import from c {
+    # A cell holding a tp_descr_get slot, so the slot can be called.
+    obj DescriptorGetSlot {
+        has call:
+            Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0;
+    }
+}
+
+# type(descriptor)->tp_descr_get(descriptor, instance, owner), called directly
+# as C code calls the slot. A new reference, or NULL with the exception set;
+# NULL with no exception when the type has no __get__.
+def descriptor_get(
+    descriptor: ptr[PyObject], instance: ptr[PyObject], owner: ptr[PyObject]
+) -> ptr[PyObject] {
+    slot = PyType_GetSlot(Py_TYPE(descriptor), i32(TypeSlot.DESCR_GET.value));
+    if not slot {
+        return NULL;
+    }
+    cell = ptr[u64](PyMem_Malloc(8));
+    if not cell {
+        return NULL;
+    }
+    cell.view(1)[0] = u64(int(slot));
+    result = ptr[DescriptorGetSlot](cell).view(1)[0].call(descriptor, instance, owner);
+    PyMem_Free(cell);
+    return result;
 }

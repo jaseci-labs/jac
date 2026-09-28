@@ -26,3 +26,4 @@ mmap,
 fcntl,
 termios,
 _posixsubprocess,
+_lsprof

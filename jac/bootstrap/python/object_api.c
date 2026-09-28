@@ -512,6 +512,15 @@ PyObject *jacpy_fs_text(const void *text) {
     return text ? PyUnicode_DecodeFSDefault(text) : Py_NewRef(Py_None);
 }
 
+/* A NUL-terminated UTF-8 string that C owns (a PyMethodDef name), decoded as
+ * PyUnicode_FromFormat's %s decodes it: invalid bytes are replaced. */
+PyObject *jacpy_c_text(const void *text) { return PyUnicode_FromFormat("%s", (const char *)text); }
+
+/* PyCFunctionObject fields, which only its object layout holds; borrowed. */
+PyMethodDef *jacpy_cfunction_method(PyObject *function) { return ((PyCFunctionObject *)function)->m_ml; }
+PyObject *jacpy_cfunction_self(PyObject *function) { return ((PyCFunctionObject *)function)->m_self; }
+PyObject *jacpy_cfunction_module(PyObject *function) { return ((PyCFunctionObject *)function)->m_module; }
+
 /* Struct sequence types need a field array that outlives the type, as the
  * static arrays of C modules do. Fields are "name\tdoc" lines. The
  * descriptor is intentionally never freed: the type may be shared by

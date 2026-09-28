@@ -65,3 +65,4 @@ fcntl           test.test_fcntl
 termios         test.test_termios,test.test_tty
 _posixsubprocess test.test_subprocess
 _uuid           test.test_uuid
+_lsprof         test.test_cprofile,test.test_profile
