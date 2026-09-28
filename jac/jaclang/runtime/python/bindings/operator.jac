@@ -2,6 +2,9 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_BufferError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyObject,
     PyObject_CheckBuffer,
     PyTuple_Size,
@@ -50,9 +53,6 @@ import from jaclang.runtime.python.capi {
     type_name,
     text_object,
     boundary_failure
-}
-import from c {
-    def jacpy_binding_vector_item(arguments: ptr, index: i64) -> ptr[PyObject];
 }
 import from jaclang.runtime.python.modules.operator {
     jacpy_operator_neg,
@@ -549,7 +549,7 @@ def:priv call_call(
     module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyTuple_Size(args) == 0 {
-        object_error("TypeError", "call expected at least 1 argument, got 0");
+        object_error(PyExc_TypeError, "call expected at least 1 argument, got 0");
         return NULL;
     }
     return jacpy_operator_call(args, kwargs);
@@ -562,14 +562,14 @@ def:priv digest_bound(args: BoundArguments) -> ptr[PyObject] {
     if ascii {
         if jacpy_unicode_ascii(a) == 0 or jacpy_unicode_ascii(b) == 0 {
             object_error(
-                "TypeError",
+                PyExc_TypeError,
                 "comparing strings with non-ASCII characters is not supported"
             );
             return NULL;
         }
     } elif PyObject_CheckBuffer(a) == 0 and PyObject_CheckBuffer(b) == 0 {
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             f"unsupported operand types(s) or combination of types: '{type_name(a)[:100]}' and '{type_name(
                 b
             )[:100]}'"
@@ -582,14 +582,14 @@ def:priv digest_bound(args: BoundArguments) -> ptr[PyObject] {
         return NULL;
     }
     if av.dimensions() > 1 {
-        object_error("BufferError", "Buffer must be single dimension");
+        object_error(PyExc_BufferError, "Buffer must be single dimension");
         return NULL;
     }
     if not bv.acquire(b, ascii) {
         return NULL;
     }
     if bv.dimensions() > 1 {
-        object_error("BufferError", "Buffer must be single dimension");
+        object_error(PyExc_BufferError, "Buffer must be single dimension");
         return NULL;
     }
     return jacpy_operator_digest(av.address(), bv.address(), av.size(), bv.size());
@@ -612,7 +612,7 @@ def:priv accessor_state(
             return state;
         }
     }
-    object_error("SystemError", "native accessor state is unavailable");
+    object_error(PyExc_SystemError, "native accessor state is unavailable");
     return None;
 }
 
@@ -625,13 +625,14 @@ def:priv accessor_create(
 ) -> ptr[PyObject] {
     if kind != 2 and jacpy_dict_size(kwargs) != 0 {
         object_error(
-            "TypeError", f"{type_name(type, True)}() takes no keyword arguments"
+            PyExc_TypeError, f"{type_name(type, True)}() takes no keyword arguments"
         );
         return NULL;
     }
     if PyTuple_Size(args) < 1 {
         object_error(
-            "TypeError", f"{type_name(type, True)} expected at least 1 argument, got 0"
+            PyExc_TypeError,
+            f"{type_name(type, True)} expected at least 1 argument, got 0"
         );
         return NULL;
     }
@@ -662,14 +663,14 @@ def:priv accessor_vector(
 ) -> ptr[PyObject] {
     if names != 0 and PyTuple_Size(names) != 0 {
         object_error(
-            "TypeError", f"{type_name(instance)}() takes no keyword arguments"
+            PyExc_TypeError, f"{type_name(instance)}() takes no keyword arguments"
         );
         return NULL;
     }
     size = PyVectorcall_NARGS(count);
     if size != 1 {
         object_error(
-            "TypeError", f"{type_name(instance)} expected 1 argument, got {size}"
+            PyExc_TypeError, f"{type_name(instance)} expected 1 argument, got {size}"
         );
         return NULL;
     }
@@ -679,7 +680,7 @@ def:priv accessor_vector(
     }
     return jacpy_operator_apply(
         state.kind,
-        jacpy_binding_vector_item(args, 0),
+        ptr[ptr[PyObject]](int(args)).view(1)[0],
         state.references[0],
         state.references[1]
     );

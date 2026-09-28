@@ -1,9 +1,10 @@
 """Decode Python source values using native encoding detection."""
 
 import from jaclang.runtime.python.cpython_api {
+    PyErr_ExceptionMatches,
+    PyExc_UnicodeError,
     PyObject,
     jacpy_decode,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_release,
     jacpy_source_bytes,
@@ -34,7 +35,7 @@ def decode_source_value(source: ptr[PyObject]) -> str {
             # Detection inspects compiler-owned bytes; decoding is a retained codec operation.
             encoding = source_encoding(read_buffer(raw));
             decoded = jacpy_decode(raw, encoding);
-            if decoded == 0 and jacpy_error_is("UnicodeError") != 0 {
+            if decoded == 0 and PyErr_ExceptionMatches(PyExc_UnicodeError) != 0 {
                 raise syntax_failure(
                     "(unicode error) " + take_error_text(), filename="<string>"
                 );

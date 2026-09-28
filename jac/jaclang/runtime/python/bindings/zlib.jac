@@ -262,7 +262,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             decompressor_type.create(module)
         )
         or not add_state_owned(
-            module, ZLIB_ERROR, "error", jacpy_binding_exception("zlib.error", "", "")
+            module, ZLIB_ERROR, "error", jacpy_binding_exception("zlib.error", NULL, "")
         ) {
         return i32(-1);
     }

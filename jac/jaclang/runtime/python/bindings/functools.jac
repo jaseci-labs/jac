@@ -2,10 +2,15 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyBaseObject_Type,
     PyCallable_Check,
+    PyExc_AttributeError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyIndex_Check,
     PyMethod_New,
     PyObject,
+    PyObject_CallNoArgs,
     PyObject_GenericGetDict,
     PyObject_GenericSetDict,
     PyObject_GetAttrString,
@@ -17,12 +22,11 @@ import from jaclang.runtime.python.cpython_api {
     Py_GenericAlias,
     Py_LeaveRecursiveCall,
     Py_NewRef,
+    Py_None,
+    Py_NotImplemented,
     Py_TYPE,
     jacpy_dict_size,
     jacpy_error_pending,
-    jacpy_is_none,
-    jacpy_none,
-    jacpy_not_implemented,
     jacpy_recursion_enter,
     jacpy_release,
     jacpy_tuple_item,
@@ -38,7 +42,7 @@ import from jaclang.runtime.python.bindings.module {
     jacpy_binding_state_get,
     jacpy_binding_state_set,
     add_owned,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -50,8 +54,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_allocate,
     jacpy_binding_dict_present,
     jacpy_binding_dict_peek,
-    jacpy_binding_dict_replace,
-    jacpy_binding_marker
+    jacpy_binding_dict_replace
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.payload {
@@ -97,7 +100,7 @@ obj PartialState(NativeState) {
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for i in range(4) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_partial_field(self.native, i64(i)), visitor, context
             );
             if status != 0 {
@@ -121,7 +124,7 @@ obj LruState(NativeState) {
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for i in range(7) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_lru_field(self.native, i64(i)), visitor, context
             );
             if status != 0 {
@@ -151,7 +154,7 @@ def:priv partial_value(instance: ptr[PyObject]) -> (PartialState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native partial state is unavailable");
+    object_error(PyExc_SystemError, "native partial state is unavailable");
     return None;
 }
 
@@ -162,7 +165,7 @@ def:priv lru_value(instance: ptr[PyObject]) -> (LruState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native cache state is unavailable");
+    object_error(PyExc_SystemError, "native cache state is unavailable");
     return None;
 }
 
@@ -175,7 +178,7 @@ def:priv reference_value(
             return state;
         }
     }
-    object_error("SystemError", "native callable references are unavailable");
+    object_error(PyExc_SystemError, "native callable references are unavailable");
     return None;
 }
 
@@ -194,7 +197,7 @@ def:priv allocate(
 def:priv bind(
     instance: ptr[PyObject], object: ptr[PyObject], type: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if object == 0 or jacpy_is_none(object) != 0 {
+    if object == 0 or object == Py_None {
         return Py_NewRef(instance);
     }
     return PyMethod_New(instance, object);
@@ -205,7 +208,7 @@ def:priv partial_create(
 ) -> ptr[PyObject] {
     count = PyTuple_Size(args);
     if count < 1 {
-        object_error("TypeError", "type 'partial' takes at least one argument");
+        object_error(PyExc_TypeError, "type 'partial' takes at least one argument");
         return NULL;
     }
     # Own every input before allocation or another user callback can collect it.
@@ -215,7 +218,7 @@ def:priv partial_create(
         return NULL;
     }
     if PyCallable_Check(function) == 0 {
-        object_error("TypeError", "the first argument must be callable");
+        object_error(PyExc_TypeError, "the first argument must be callable");
         return NULL;
     }
     module = module_for(type);
@@ -286,7 +289,7 @@ def:priv partial_field(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
         return NULL;
     }
     field = jacpy_partial_field(state.native, i64(context));
-    return Py_NewRef(field) if field != 0 else jacpy_none();
+    return Py_NewRef(field) if field != 0 else Py_NewRef(Py_None);
 }
 
 def:priv partial_reduce(
@@ -304,11 +307,13 @@ def:priv partial_reduce(
     for i in range(3) {
         field = jacpy_partial_field(state.native, i64(i));
         jacpy_tuple_set_owned(
-            saved, i64(i), Py_NewRef(field) if field != 0 else jacpy_none()
+            saved, i64(i), Py_NewRef(field) if field != 0 else Py_NewRef(Py_None)
         );
     }
     dictionary = jacpy_binding_dict_peek(instance);
-    jacpy_tuple_set_owned(saved, 3, dictionary if dictionary != 0 else jacpy_none());
+    jacpy_tuple_set_owned(
+        saved, 3, dictionary if dictionary != 0 else Py_NewRef(Py_None)
+    );
     jacpy_tuple_set_owned(held.references[1], 0, Py_NewRef(state.native.function));
     jacpy_tuple_set_owned(held.references[0], 0, Py_NewRef(Py_TYPE(instance)));
     jacpy_tuple_set_owned(held.references[0], 1, Py_NewRef(held.references[1]));
@@ -328,10 +333,10 @@ def:priv partial_setstate(
         return NULL;
     }
     status = jacpy_binding_dict_replace(
-        instance, NULL if jacpy_is_none(dictionary) != 0 else dictionary
+        instance, NULL if dictionary == Py_None else dictionary
     );
     jacpy_release(dictionary);
-    return jacpy_none() if status == 0 else NULL;
+    return Py_NewRef(Py_None) if status == 0 else NULL;
 }
 
 # __dict__ accessors for the property table, whose closure is an integer tag.
@@ -373,7 +378,7 @@ def:priv key_compare(
     instance: ptr[PyObject], other: ptr[PyObject], operation: i32
 ) -> ptr[PyObject] {
     if Py_TYPE(instance) != Py_TYPE(other) {
-        object_error("TypeError", "other argument must be K instance");
+        object_error(PyExc_TypeError, "other argument must be K instance");
         return NULL;
     }
     left = reference_value(instance, key_type);
@@ -382,7 +387,7 @@ def:priv key_compare(
         return NULL;
     }
     if left.references[1] == 0 or right.references[1] == 0 {
-        object_error("AttributeError", "object");
+        object_error(PyExc_AttributeError, "object");
         return NULL;
     }
     return jacpy_cmp_key(
@@ -396,7 +401,7 @@ def:priv key_object(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
         return NULL;
     }
     value = state.references[1];
-    return Py_NewRef(value) if value != 0 else jacpy_none();
+    return Py_NewRef(value) if value != 0 else Py_NewRef(Py_None);
 }
 
 def:priv key_set_object(
@@ -435,7 +440,7 @@ def:priv hashed_compare(
     instance: ptr[PyObject], other: ptr[PyObject], operation: i32
 ) -> ptr[PyObject] {
     if Py_TYPE(instance) != Py_TYPE(other) {
-        return jacpy_not_implemented();
+        return Py_NewRef(Py_NotImplemented);
     }
     left = reference_value(instance, hashed_type);
     right = reference_value(other, hashed_type);
@@ -453,13 +458,13 @@ glob:priv lru_signature = CallSignature(
 
 def:priv lru_create_bound(args: BoundArguments) -> ptr[PyObject] {
     if PyCallable_Check(args.values[0]) == 0 {
-        object_error("TypeError", "the first argument must be callable");
+        object_error(PyExc_TypeError, "the first argument must be callable");
         return NULL;
     }
     maximum: i64 = -1;
-    if jacpy_is_none(args.values[1]) == 0 {
+    if args.values[1] != Py_None {
         if PyIndex_Check(args.values[1]) == 0 {
-            object_error("TypeError", "maxsize should be integer or None");
+            object_error(PyExc_TypeError, "maxsize should be integer or None");
             return NULL;
         }
         value = index_value(args.values[1]);
@@ -522,7 +527,7 @@ def:priv lru_cache_clear(
     if state is None {
         return NULL;
     }
-    return jacpy_none() if jacpy_lru_clear(state.native) == 0 else NULL;
+    return Py_NewRef(Py_None) if jacpy_lru_clear(state.native) == 0 else NULL;
 }
 
 def:priv lru_cache_info(
@@ -547,7 +552,7 @@ def:priv placeholder_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyTuple_Size(args) != 0 or (kwargs != 0 and jacpy_dict_size(kwargs) != 0) {
-        object_error("TypeError", "Placeholder takes no arguments");
+        object_error(PyExc_TypeError, "Placeholder takes no arguments");
         return NULL;
     }
     module = module_for(type);
@@ -845,7 +850,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     }
     jacpy_binding_state_set(module, 5, placeholder);
     jacpy_release(placeholder);
-    marker = jacpy_binding_marker();
+    marker = PyObject_CallNoArgs(addressof(PyBaseObject_Type));
     if marker == 0 {
         return i32(-1);
     }

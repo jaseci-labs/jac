@@ -4,12 +4,17 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyDict_Clear,
     PyDict_New,
+    PyExc_IndexError,
+    PyExc_RuntimeError,
+    PyExc_TypeError,
     PyLong_FromLongLong,
+    PyNumber_AsSsize_t,
     PyObject,
     PyTuple_GetSlice,
     PyTuple_Size,
     PyUnicode_AsEncodedString,
     Py_NewRef,
+    Py_None,
     Py_TYPE,
     jacpy_buffer_new,
     jacpy_bytes_address,
@@ -18,8 +23,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_error_pending,
     jacpy_is_bytes,
     jacpy_is_unicode,
-    jacpy_none,
-    jacpy_number_ssize,
     jacpy_release,
     jacpy_set_exception,
     jacpy_tuple_item
@@ -33,7 +36,7 @@ import from jaclang.runtime.python.bindings.module {
     jacpy_binding_exception,
     jacpy_binding_state_get,
     jacpy_binding_state_set,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -108,13 +111,13 @@ obj UnpackState(NativeState) {
     }
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        status = jacpy_binding_visit(self.owner, visitor, context);
+        status = visit_reference(self.owner, visitor, context);
         if status != 0 {
             return status;
         }
         buffer = self.buffer;
         if buffer is not None {
-            return jacpy_binding_visit(buffer.owner(), visitor, context);
+            return visit_reference(buffer.owner(), visitor, context);
         }
         return i32(0);
     }
@@ -131,7 +134,7 @@ def:priv state_for(instance: ptr[PyObject]) -> (StructState | None) {
             return state;
         }
     }
-    object_error("RuntimeError", "Struct object is not initialized");
+    object_error(PyExc_RuntimeError, "Struct object is not initialized");
     return None;
 }
 
@@ -162,7 +165,7 @@ def:priv initialize_bound(args: BoundArguments) -> ptr[PyObject] {
         format = Py_NewRef(source);
     } else {
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             f"Struct() argument 1 must be a str or bytes object, not {type_name(source)[:200]}"
         );
         return NULL;
@@ -182,7 +185,7 @@ def:priv initialize_bound(args: BoundArguments) -> ptr[PyObject] {
     if jacpy_binding_native_set(args.context, struct_type.handle, state) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv initialize(
@@ -311,7 +314,7 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     offset_object = jacpy_tuple_item(args, 1);
-    offset = jacpy_number_ssize(offset_object, "IndexError");
+    offset = PyNumber_AsSsize_t(offset_object, PyExc_IndexError);
     jacpy_release(offset_object);
     if jacpy_error_pending() != 0 {
         return NULL;
@@ -324,7 +327,7 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if jacpy_struct_pack(plan, args, 2, buffer.address() + offset, error) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 glob:priv unpack_signature = CallSignature("unpack", ["buffer"], 1, 1, 1),
@@ -376,7 +379,7 @@ def:priv unpack_from_bound(args: BoundArguments) -> ptr[PyObject] {
     if not buffer.acquire(args.values[0]) {
         return NULL;
     }
-    offset = jacpy_number_ssize(args.values[1], "IndexError")
+    offset = PyNumber_AsSsize_t(args.values[1], PyExc_IndexError)
         if args.values[1] != 0
         else i64(0);
     if jacpy_error_pending() != 0 {
@@ -607,7 +610,7 @@ def:priv module_call(
     module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject], operation: int
 ) -> ptr[PyObject] {
     if PyTuple_Size(args) == 0 {
-        object_error("TypeError", "missing format argument");
+        object_error(PyExc_TypeError, "missing format argument");
         return NULL;
     }
     format = jacpy_tuple_item(args, 0);
@@ -680,12 +683,12 @@ def:priv module_clearcache(
     module: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     PyDict_Clear(jacpy_binding_state_get(module, 3));
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_state_owned(
-        module, 0, "error", jacpy_binding_exception("struct.error", "", "")
+        module, 0, "error", jacpy_binding_exception("struct.error", NULL, "")
     ) {
         return i32(-1);
     }

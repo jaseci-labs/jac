@@ -2,6 +2,8 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyLong_AsInt,
     PyLong_AsUnsignedLongMask,
     PyObject,
@@ -67,19 +69,19 @@ def:priv convert(
                 return NULL;
             }
             if size != 1 {
-                object_error("ValueError", "sep must be length 1.");
+                object_error(PyExc_ValueError, "sep must be length 1.");
                 return NULL;
             }
             if jacpy_is_unicode(separator) != 0 {
                 option = PyUnicode_ReadChar(separator, 0);
                 if option > 255 {
-                    object_error("ValueError", "sep must be ASCII.");
+                    object_error(PyExc_ValueError, "sep must be ASCII.");
                     return NULL;
                 }
             } elif jacpy_is_bytes(separator) != 0 {
                 option = jacpy_buffer_byte(separator, 0);
             } else {
-                object_error("TypeError", "sep must be str or bytes.");
+                object_error(PyExc_TypeError, "sep must be str or bytes.");
                 return NULL;
             }
         }
@@ -245,12 +247,18 @@ def:priv crc32_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_state_owned(
-        module, 0, "Error", jacpy_binding_exception("binascii.Error", "ValueError", "")
+        module,
+        0,
+        "Error",
+        jacpy_binding_exception("binascii.Error", PyExc_ValueError, "")
     ) {
         return i32(-1);
     }
     if not add_state_owned(
-        module, 1, "Incomplete", jacpy_binding_exception("binascii.Incomplete", "", "")
+        module,
+        1,
+        "Incomplete",
+        jacpy_binding_exception("binascii.Incomplete", NULL, "")
     ) {
         return i32(-1);
     }

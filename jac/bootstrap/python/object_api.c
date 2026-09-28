@@ -21,9 +21,6 @@ void *jacpy_sequence_slot(PyObject *handle) {
             : "'%.200s' object does not support indexing", type->tp_name);
     return NULL;
 }
-PyObject *jacpy_slot_item(void *slot, PyObject *handle, int64_t index) {
-    return ((ssizeargfunc)(uintptr_t)slot)(handle, (Py_ssize_t)index);
-}
 int64_t jacpy_less(PyObject *left, PyObject *right) {
     return PyObject_RichCompareBool(left, right, Py_LT);
 }
@@ -65,14 +62,6 @@ void *jacpy_comparison_slot(PyObject *handle) {
 }
 int64_t jacpy_same_type(PyObject *left, PyObject *right) {
     return Py_TYPE(left) == Py_TYPE(right);
-}
-/* -2 preserves NotImplemented so Jac can disable a cached fast comparison. */
-int64_t jacpy_slot_less(void *slot, PyObject *left, PyObject *right) {
-    PyObject *result = ((richcmpfunc)(uintptr_t)slot)(left, right, Py_LT);
-    if (!result) return -1;
-    int comparison = result == Py_NotImplemented ? -2 : PyObject_IsTrue(result);
-    Py_DECREF(result);
-    return comparison;
 }
 
 #include "internal/pycore_long.h"
@@ -173,27 +162,11 @@ Py_buffer *jacpy_buffer_acquire_writable(PyObject *value) {
     if (!PyArg_Parse(value, "w*", view)) { PyMem_Free(view); return NULL; }
     return view;
 }
-PyObject *jacpy_buffer_owner(Py_buffer *value) {
-    return value ? ((value)->obj) : 0;
-}
-int64_t jacpy_number_ssize(PyObject *value, const char *overflow) {
-    extern PyObject *jacpy_exception_type(const char *);
-    return PyNumber_AsSsize_t(value, jacpy_exception_type(overflow));
-}
 void jacpy_buffer_release(Py_buffer *value) {
     if (!value) return;
     Py_buffer *view = value;
     PyBuffer_Release(view);
     PyMem_Free(view);
-}
-void *jacpy_buffer_address(Py_buffer *value) {
-    return (value)->buf;
-}
-int64_t jacpy_buffer_length(Py_buffer *value) {
-    return (value)->len;
-}
-int64_t jacpy_buffer_dimensions(Py_buffer *value) {
-    return (value)->ndim;
 }
 int64_t jacpy_unicode_ascii(PyObject *value) { return PyUnicode_IS_ASCII(value); }
 void jacpy_set_exception(PyObject *type, const char *message, int64_t size) {
@@ -205,7 +178,6 @@ PyObject *jacpy_power(PyObject *a, PyObject *b, int64_t inplace) {
     return inplace ? PyNumber_InPlacePower(a, b, Py_None)
                           : PyNumber_Power(a, b, Py_None);
 }
-int64_t jacpy_is_none(PyObject *a) { return a == Py_None; }
 int64_t jacpy_is_unicode(PyObject *a) { return PyUnicode_Check(a); }
 PyObject *jacpy_unicode_split(PyObject *a, PyObject *sep) { return PyUnicode_Split(a, sep, -1); }
 int64_t jacpy_dict_size(PyObject *a) { return a ? PyDict_Size(a) : 0; }
@@ -257,11 +229,6 @@ PyObject *jacpy_dict_default(PyObject *dictionary, PyObject *key, PyObject *valu
     PyObject *result;
     return PyDict_SetDefaultRef(dictionary, key, value, &result) < 0 ? NULL : result;
 }
-extern PyObject *jacpy_exception_type(const char *);
-void jacpy_raise_value(const char *kind, PyObject *value) {
-    PyObject *type = jacpy_exception_type(kind);
-    if (type) PyErr_SetObject(type, value);
-}
 int64_t jacpy_is_bool(PyObject *value) { return PyBool_Check(value); }
 int64_t jacpy_is_float(PyObject *value) { return PyFloat_Check(value); }
 int64_t jacpy_is_dict(PyObject *value) { return PyDict_Check(value); }
@@ -299,8 +266,6 @@ int64_t jacpy_native_size(int64_t kind, int64_t alignment) {
 #undef SIZE_CASE
 }
 int64_t jacpy_native_little_endian(void) { uint16_t value = 1; return *(unsigned char *)&value; }
-int64_t jacpy_memory_byte(void *address, int64_t offset) { return ((unsigned char *)address)[offset]; }
-void jacpy_memory_set(void *address, int64_t offset, int64_t value) { ((unsigned char *)address)[offset] = (unsigned char)value; }
 void jacpy_memory_zero(void *address, int64_t size) { memset(address, 0, (size_t)size); }
 void jacpy_memory_copy(void *target, void *source, int64_t size) { memcpy(target, source, (size_t)size); }
 void jacpy_memory_move(void *target, void *source, int64_t size) { memmove(target, source, (size_t)size); }
@@ -446,7 +411,6 @@ PyObject *jacpy_object_type(PyObject *value) { return Py_NewRef(Py_TYPE(value));
 int64_t jacpy_is_exact_unicode(PyObject *value) { return PyUnicode_CheckExact(value); }
 int64_t jacpy_is_exact_tuple(PyObject *value) { return PyTuple_CheckExact(value); }
 int64_t jacpy_is_exact_list(PyObject *value) { return PyList_CheckExact(value); }
-PyObject *jacpy_ordered_dict_new(void) { return PyObject_CallNoArgs((PyObject *)&PyODict_Type); }
 
 int64_t jacpy_tuple_unique(PyObject *value) { return Py_REFCNT(value) == 1; }
 /* Exchange is valid only after the native caller has established exclusive
@@ -487,37 +451,13 @@ PyObject *jacpy_set_new(PyObject *iterable, int64_t frozen) { return frozen ? Py
 int64_t jacpy_is_type(PyObject *value) { return PyType_Check(value); }
 PyObject *jacpy_bytes_unescape(PyObject *value) { return PyBytes_DecodeEscape(PyBytes_AS_STRING(value), PyBytes_GET_SIZE(value), "strict", 0, NULL); }
 
-/* Exact built-in categories: subclasses use their object protocols instead. */
-static PyTypeObject *const builtin_types[] = {
-    NULL, &PyBool_Type, &PyLong_Type, &PyFloat_Type, &PyBytes_Type,
-    &PyUnicode_Type, &PyTuple_Type, &PyList_Type, &PyDict_Type, &PySet_Type,
-    &PyFrozenSet_Type, &PyByteArray_Type, &PyType_Type, &PyFunction_Type,
-    &PyPickleBuffer_Type
-};
-int64_t jacpy_builtin_kind(PyObject *value) {
-    PyObject *object = value;
-    if (object == Py_None) return 0;
-    for (size_t i = 1; i < sizeof(builtin_types) / sizeof(*builtin_types); ++i)
-        if (Py_TYPE(object) == builtin_types[i]) return (int64_t)i;
-    return 15;
-}
-PyObject *jacpy_builtin_type(int64_t kind) {
-    if (kind == 0) return Py_NewRef((PyObject *)Py_TYPE(Py_None));
-    if (kind < 0 || (uint64_t)kind >= sizeof(builtin_types) / sizeof(*builtin_types)) {
-        PyErr_SetString(PyExc_SystemError, "invalid built-in type category"); return NULL;
-    }
-    return Py_NewRef((PyObject *)builtin_types[kind]);
-}
 
-int64_t jacpy_is_not_implemented(PyObject *value) { return value == Py_NotImplemented; }
 
 int64_t jacpy_audit_pickle_find(PyObject *module, PyObject *name) { return PySys_Audit("pickle.find_class", "OO", module, name); }
 
 PyObject *jacpy_mapping_optional_item(PyObject *mapping, PyObject *key) { PyObject *result = NULL; return PyMapping_GetOptionalItem(mapping, key, &result) < 0 ? NULL : result; }
 
 
-PyObject *jacpy_not_implemented(void) { return Py_NewRef(Py_NotImplemented); }
-PyObject *jacpy_ellipsis(void) { return Py_NewRef(Py_Ellipsis); }
 
 void jacpy_exception_context(PyObject *error, PyObject *cause) { PyException_SetContext(error, Py_NewRef(cause)); }
 
@@ -547,10 +487,6 @@ SliceBounds jacpy_slice_adjust(int64_t length, SliceBounds bounds) {
     bounds.count = PySlice_AdjustIndices(length, &start, &stop, bounds.step);
     bounds.start = start; bounds.stop = stop;
     return bounds;
-}
-int64_t jacpy_warn(const char *category, const char *message, int64_t stacklevel) {
-    extern PyObject *jacpy_exception_type(const char *);
-    return PyErr_WarnEx(jacpy_exception_type(category), message, stacklevel);
 }
 PyObject *jacpy_builtins(void) { return Py_NewRef(PyEval_GetBuiltins()); }
 #pragma GCC visibility pop
@@ -587,38 +523,20 @@ PyObject *jacpy_struct_sequence_type(const char *name, const char *doc,
     return (PyObject *)PyStructSequence_NewType(desc);
 }
 
-/* Interpreter objects that C defines as data symbols (static types and
- * singletons) or as interpreter state, looked up by their C name. Borrowed;
- * NULL with no exception set for an unknown name. */
-#include "internal/pycore_descrobject.h"
-#include "internal/pycore_namespace.h"
-#include "internal/pycore_unionobject.h"
-#include "internal/pycore_typevarobject.h"
+/* The interpreter's typing types (TypeVar, ParamSpec, Generic, ...) are
+ * interpreter-state fields, not data symbols. This is the run of
+ * interp->cached_objects from generic_type on, in declaration order. */
 #include "internal/pycore_interp.h"
 #include "internal/pycore_pystate.h"
-PyObject *jacpy_runtime_object(const char *name) {
-    static const struct { const char *name; PyObject *value; } objects[] = {
-#define OBJECT_ENTRY(symbol) {#symbol, (PyObject *)&symbol}
-        OBJECT_ENTRY(PyAsyncGen_Type), OBJECT_ENTRY(PyCFunction_Type), OBJECT_ENTRY(PyCapsule_Type),
-        OBJECT_ENTRY(PyCell_Type), OBJECT_ENTRY(PyClassMethodDescr_Type), OBJECT_ENTRY(PyCode_Type),
-        OBJECT_ENTRY(PyCoro_Type), OBJECT_ENTRY(PyEllipsis_Type), OBJECT_ENTRY(PyFrame_Type),
-        OBJECT_ENTRY(PyFunction_Type), OBJECT_ENTRY(PyGen_Type), OBJECT_ENTRY(Py_GenericAliasType),
-        OBJECT_ENTRY(PyGetSetDescr_Type), OBJECT_ENTRY(PyDictProxy_Type), OBJECT_ENTRY(PyMemberDescr_Type),
-        OBJECT_ENTRY(PyMethodDescr_Type), OBJECT_ENTRY(PyMethod_Type), OBJECT_ENTRY(_PyMethodWrapper_Type),
-        OBJECT_ENTRY(PyModule_Type), OBJECT_ENTRY(_PyNone_Type), OBJECT_ENTRY(_PyNotImplemented_Type),
-        OBJECT_ENTRY(_PyNamespace_Type), OBJECT_ENTRY(PyTraceBack_Type), OBJECT_ENTRY(_PyUnion_Type),
-        OBJECT_ENTRY(PyWrapperDescr_Type), OBJECT_ENTRY(_PyTypeAlias_Type), OBJECT_ENTRY(_Py_NoDefaultStruct),
-        OBJECT_ENTRY(_PyWeakref_RefType), OBJECT_ENTRY(_PyWeakref_ProxyType), OBJECT_ENTRY(_PyWeakref_CallableProxyType),
-#undef OBJECT_ENTRY
-    };
-    for (size_t i = 0; i < sizeof(objects) / sizeof(*objects); i++)
-        if (strcmp(objects[i].name, name) == 0) return objects[i].value;
-    PyInterpreterState *interp = _PyInterpreterState_GET();
-#define CACHED(field) if (strcmp(name, #field) == 0) return (PyObject *)interp->cached_objects.field
-    CACHED(typevar_type); CACHED(typevartuple_type); CACHED(paramspec_type);
-    CACHED(paramspecargs_type); CACHED(paramspeckwargs_type); CACHED(generic_type);
-#undef CACHED
-    return NULL;
+#define JACPY_TYPING_SLOT(field, index) \
+    _Static_assert(offsetof(struct _Py_interp_cached_objects, field) \
+        == offsetof(struct _Py_interp_cached_objects, generic_type) + (index) * sizeof(PyObject *), #field);
+JACPY_TYPING_SLOT(typevar_type, 1) JACPY_TYPING_SLOT(typevartuple_type, 2)
+JACPY_TYPING_SLOT(paramspec_type, 3) JACPY_TYPING_SLOT(paramspecargs_type, 4)
+JACPY_TYPING_SLOT(paramspeckwargs_type, 5)
+#undef JACPY_TYPING_SLOT
+PyObject **jacpy_typing_types(void) {
+    return (PyObject **)&_PyInterpreterState_GET()->cached_objects.generic_type;
 }
 
 /* Weak references hang off an object-layout list that only C can walk. */

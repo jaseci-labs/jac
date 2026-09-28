@@ -2,16 +2,18 @@
 
 The interpreter keeps both callback lists in PyInterpreterState: the Python
 callbacks as a list of (func, args, kwargs) tuples, newest first, and the C
-callbacks of PyUnstable_AtExit as a linked list. Those fields are an object
-layout, and a C callback is a function pointer, so their accesses and the call
-are the jacpy_atexit_* helpers of compiler_runtime.c, which also keeps
-_PyAtExit_Init (it returns PyStatus by value). The interpreter calls the other
-hooks here by their C names.
+callbacks of PyUnstable_AtExit as a linked list of atexit_callback records.
+The two list heads are interpreter-state fields (the C one guarded by a lock
+macro), so the jacpy_atexit_* helpers of compiler_runtime.c reach them, and
+_PyAtExit_Init stays C because it returns PyStatus by value. The records
+themselves are C-layout structs walked and called here. The interpreter calls
+the other hooks by their C names.
 """
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyCallable_Check,
+    PyExc_TypeError,
     PyInterpreterState,
     PyInterpreterState_Get,
     PyList_Clear,
@@ -21,6 +23,7 @@ import from jaclang.runtime.python.cpython_api {
     PyList_SetSlice,
     PyList_Size,
     PyLong_FromSsize_t,
+    PyMem_Free,
     PyObject,
     PyObject_Call,
     PyObject_RichCompareBool,
@@ -29,12 +32,11 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_Size,
     Py_NewRef,
-    jacpy_atexit_call,
+    Py_None,
     jacpy_atexit_callbacks,
     jacpy_atexit_detach,
     jacpy_atexit_push,
     jacpy_atexit_release_callbacks,
-    jacpy_is_none,
     jacpy_release,
     jacpy_tuple_set_owned,
     jacpy_unraisable
@@ -66,9 +68,7 @@ def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
         func = PyTuple_GetItem(item, 0);
         args = PyTuple_GetItem(item, 1);
         kwargs = PyTuple_GetItem(item, 2);
-        result = PyObject_Call(
-            func, args, NULL if jacpy_is_none(kwargs) != 0 else kwargs
-        );
+        result = PyObject_Call(func, args, NULL if kwargs == Py_None else kwargs);
         if not result {
             jacpy_unraisable("Exception ignored in atexit callback", func);
         } else {
@@ -95,7 +95,11 @@ def:pub _PyAtExit_Fini(interp: ptr[PyInterpreterState]) {
     jacpy_atexit_release_callbacks(interp);
     callback = jacpy_atexit_detach(interp);
     while callback {
-        callback = jacpy_atexit_call(callback);
+        record = callback.view(1)[0];
+        # Freed before the call, as CPython does: the record is not needed after.
+        PyMem_Free(callback);
+        record.func(record.data);
+        callback = record.next;
     }
 }
 
@@ -109,12 +113,12 @@ def atexit_register(
 ) -> ptr[PyObject] {
     count = PyTuple_Size(args);
     if count == 0 {
-        object_error("TypeError", "register() takes at least 1 argument (0 given)");
+        object_error(PyExc_TypeError, "register() takes at least 1 argument (0 given)");
         return NULL;
     }
     func = PyTuple_GetItem(args, 0);
     if PyCallable_Check(func) == 0 {
-        object_error("TypeError", "the first argument must be callable");
+        object_error(PyExc_TypeError, "the first argument must be callable");
         return NULL;
     }
     func_args = PyTuple_GetSlice(args, 1, count);

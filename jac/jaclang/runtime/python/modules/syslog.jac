@@ -9,6 +9,7 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Clear,
     PyErr_Occurred,
+    PyExc_RuntimeError,
     PyInterpreterState_Get,
     PyInterpreterState_Main,
     PyList_GetItem,
@@ -103,7 +104,7 @@ def syslog_openlog_impl(
     module: ptr[PyObject], ident: ptr[PyObject], logopt: i64, facility: i64
 ) -> ptr[PyObject] {
     if not is_main_interpreter() {
-        object_error("RuntimeError", "subinterpreter can't use syslog.openlog()");
+        object_error(PyExc_RuntimeError, "subinterpreter can't use syslog.openlog()");
         return NULL;
     }
     name = NULL;
@@ -149,7 +150,7 @@ def syslog_syslog_impl(
     if not log_open {
         if not is_main_interpreter() {
             object_error(
-                "RuntimeError",
+                PyExc_RuntimeError,
                 "subinterpreter can't use syslog.syslog() until the syslog is opened by the main interpreter"
             );
             return NULL;
@@ -170,7 +171,7 @@ def syslog_syslog_impl(
 
 def syslog_closelog_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if not is_main_interpreter() {
-        object_error("RuntimeError", "subinterpreter can't use syslog.closelog()");
+        object_error(PyExc_RuntimeError, "subinterpreter can't use syslog.closelog()");
         return NULL;
     }
     if not audit("syslog.closelog", []) {

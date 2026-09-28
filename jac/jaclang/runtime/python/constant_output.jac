@@ -10,11 +10,11 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PySlice_New,
     PyTuple_New,
+    Py_Ellipsis,
     Py_NewRef,
+    Py_None,
     jacpy_code_new,
-    jacpy_ellipsis,
     jacpy_long_from_bytes,
-    jacpy_none,
     jacpy_release,
     jacpy_set_new,
     jacpy_tuple_set_owned
@@ -63,10 +63,10 @@ obj constant_writer {
 
     def write(constant: PyObj) -> ptr[PyObject] {
         if isinstance(constant, PyNoneType) {
-            return required(jacpy_none());
+            return required(Py_NewRef(Py_None));
         }
         if isinstance(constant, PyEllipsis) {
-            return required(jacpy_ellipsis());
+            return required(Py_NewRef(Py_Ellipsis));
         }
         if isinstance(constant, PyBool) {
             return required(PyBool_FromLong(i64(constant.val)));

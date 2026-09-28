@@ -8,7 +8,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_set_owned
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
+import from jaclang.runtime.python.bindings.module { visit_reference }
 
 obj ReferenceState(NativeState) {
     has references: list[ptr[PyObject]];
@@ -23,7 +23,7 @@ obj ReferenceState(NativeState) {
 
     def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for value in self.references {
-            result = jacpy_binding_visit(value, visitor, context);
+            result = visit_reference(value, visitor, context);
             if result != 0 {
                 return result;
             }

@@ -1,6 +1,10 @@
 """The pwd module: generated clinic tables plus the struct_passwd type."""
 
-import from jaclang.runtime.python.cpython_api { PyObject, jacpy_struct_sequence_type }
+import from jaclang.runtime.python.cpython_api {
+    PyExc_ImportError,
+    PyObject,
+    jacpy_struct_sequence_type
+}
 import from jaclang.runtime.python.modules.user_records { PLATFORM }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.module {
@@ -13,7 +17,8 @@ import from jaclang.runtime.python.bindings.clinic.pwd { module_methods }
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
-            "ImportError", "pwd has no user_records.<os>.jac for this target platform"
+            PyExc_ImportError,
+            "pwd has no user_records.<os>.jac for this target platform"
         );
         return i32(-1);
     }

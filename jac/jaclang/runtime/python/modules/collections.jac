@@ -8,6 +8,10 @@ see ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBool_FromLong,
+    PyExc_IndexError,
+    PyExc_MemoryError,
+    PyExc_RuntimeError,
+    PyExc_ValueError,
     PyIter_Next,
     PyLong_FromLongLong,
     PyNumber_Add,
@@ -20,12 +24,12 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_List,
     PyTuple_New,
     Py_NewRef,
+    Py_None,
     Py_ReprEnter,
     Py_ReprLeave,
     jacpy_dict_default,
     jacpy_dict_repr,
     jacpy_error_pending,
-    jacpy_is_none,
     jacpy_release,
     jacpy_set_key_error,
     jacpy_tuple_set_owned
@@ -115,7 +119,7 @@ def:pub jacpy_deque_append(state: deque_state, value: ptr[PyObject], left: i64) 
 
 def:pub jacpy_deque_pop(state: deque_state, left: i64) -> ptr[PyObject] {
     if state.items.count == 0 {
-        object_error("IndexError", "pop from an empty deque");
+        object_error(PyExc_IndexError, "pop from an empty deque");
         return NULL;
     }
     result = state.items.pop(left != 0);
@@ -159,7 +163,7 @@ def:pub jacpy_deque_extend(
 
 def:pub jacpy_deque_item(state: deque_state, index: i64) -> ptr[PyObject] {
     if index < 0 or index >= i64(state.items.count) {
-        object_error("IndexError", "deque index out of range");
+        object_error(PyExc_IndexError, "deque index out of range");
         return NULL;
     }
     return Py_NewRef(state.items.borrow(int(index)));
@@ -169,7 +173,7 @@ def:pub jacpy_deque_assign(
     state: deque_state, index: i64, value: ptr[PyObject]
 ) -> i64 {
     if index < 0 or index >= i64(state.items.count) {
-        object_error("IndexError", "deque index out of range");
+        object_error(PyExc_IndexError, "deque index out of range");
         return -1;
     }
     i = int(index);
@@ -232,7 +236,7 @@ def:pub jacpy_deque_insert(
     state: deque_state, index: i64, value: ptr[PyObject]
 ) -> i64 {
     if state.maxlen >= 0 and i64(state.items.count) >= state.maxlen {
-        object_error("IndexError", "deque already at its maximum size");
+        object_error(PyExc_IndexError, "deque already at its maximum size");
         return -1;
     }
     at = index;
@@ -282,7 +286,7 @@ def:pub jacpy_deque_search(
         }
         if state.version != version {
             object_error(
-                "IndexError" if mode == 3 else "RuntimeError",
+                PyExc_IndexError if mode == 3 else PyExc_RuntimeError,
                 "deque mutated during iteration"
             );
             return -1;
@@ -296,7 +300,7 @@ def:pub jacpy_deque_search(
     }
     if mode >= 2 {
         object_error(
-            "ValueError",
+            PyExc_ValueError,
             "deque.remove(x): x not in deque"
                 if mode == 3
                 else "deque.index(x): x not in deque"
@@ -322,7 +326,7 @@ def:pub jacpy_deque_cursor(
 def:pub jacpy_deque_next(cursor: deque_cursor) -> ptr[PyObject] {
     if cursor.version != cursor.state.version {
         cursor.remaining = 0;
-        object_error("RuntimeError", "deque mutated during iteration");
+        object_error(PyExc_RuntimeError, "deque mutated during iteration");
         return NULL;
     }
     if cursor.remaining == 0 {
@@ -424,7 +428,7 @@ def:pub jacpy_deque_repeat(state: deque_state, repetitions: i64) -> i64 {
         return 0;
     }
     if repetitions > i64(9223372036854775807) // i64(size) {
-        object_error("MemoryError", "");
+        object_error(PyExc_MemoryError, "");
         return -1;
     }
     total = repetitions * i64(size);
@@ -474,7 +478,7 @@ def:pub jacpy_deque_repr(state: deque_state, owner: ptr[PyObject]) -> ptr[PyObje
 def:pub jacpy_default_missing(
     mapping: ptr[PyObject], factory: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if factory == 0 or jacpy_is_none(factory) != 0 {
+    if factory == 0 or factory == Py_None {
         jacpy_set_key_error(key);
         return NULL;
     }

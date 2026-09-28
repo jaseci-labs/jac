@@ -10,6 +10,8 @@ x86-64 CPUs that can run them the vectorized ones of blake2_simd.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_NoMemory,
+    PyExc_OverflowError,
+    PyExc_ValueError,
     PyLong_FromLong,
     PyMem_Free,
     PyMem_Malloc,
@@ -204,7 +206,9 @@ def:priv parameter_bytes(
     jacpy_memory_zero(block, i64(capacity));
     if bool(view.view) and view.size() > 0 {
         if view.size() > i64(capacity) {
-            object_error("ValueError", f"maximum {kind} length is {capacity} bytes");
+            object_error(
+                PyExc_ValueError, f"maximum {kind} length is {capacity} bytes"
+            );
             return False;
         }
         jacpy_memory_copy(block, view.address(), view.size());
@@ -234,7 +238,7 @@ def:priv blake2_new(
     if digest_size <= 0 or digest_size > out_bytes {
         name = "Blake2b" if blake2b else "Blake2s";
         object_error(
-            "ValueError",
+            PyExc_ValueError,
             f"digest_size for {name} must be between 1 and {out_bytes} bytes, here it is {digest_size}"
         );
         return NULL;
@@ -278,7 +282,7 @@ def:priv blake2_new(
     key_bytes = HACL_HASH_BLAKE2B_KEY_BYTES if blake2b else HACL_HASH_BLAKE2S_KEY_BYTES;
     key_length = key.size() if bool(key.view) else 0;
     if key_length > i64(key_bytes) {
-        object_error("ValueError", f"maximum key length is {key_bytes} bytes");
+        object_error(PyExc_ValueError, f"maximum key length is {key_bytes} bytes");
         PyMem_Free(blocks);
         return NULL;
     }
@@ -343,27 +347,29 @@ def:priv check_tree(
     out_bytes: i32
 ) -> bool {
     if fanout < 0 or fanout > 255 {
-        object_error("ValueError", "fanout must be between 0 and 255");
+        object_error(PyExc_ValueError, "fanout must be between 0 and 255");
         return False;
     }
     if depth <= 0 or depth > 255 {
-        object_error("ValueError", "depth must be between 1 and 255");
+        object_error(PyExc_ValueError, "depth must be between 1 and 255");
         return False;
     }
     if leaf_size > u64(0xFFFFFFFF) {
-        object_error("OverflowError", "leaf_size is too large");
+        object_error(PyExc_OverflowError, "leaf_size is too large");
         return False;
     }
     if not blake2b and node_offset > u64(0xFFFFFFFFFFFF) {
-        object_error("OverflowError", "node_offset is too large");
+        object_error(PyExc_OverflowError, "node_offset is too large");
         return False;
     }
     if node_depth < 0 or node_depth > 255 {
-        object_error("ValueError", "node_depth must be between 0 and 255");
+        object_error(PyExc_ValueError, "node_depth must be between 0 and 255");
         return False;
     }
     if inner_size < 0 or inner_size > out_bytes {
-        object_error("ValueError", f"inner_size must be between 0 and is {out_bytes}");
+        object_error(
+            PyExc_ValueError, f"inner_size must be between 0 and is {out_bytes}"
+        );
         return False;
     }
     return True;

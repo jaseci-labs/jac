@@ -6,11 +6,13 @@ and quoting. Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyUnicodeWriter,
     PyBool_FromLong,
     PyDict_Keys,
     PyDict_SetItem,
     PyErr_Clear,
+    PyErr_ExceptionMatches,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyIter_Next,
     PyList_Append,
     PyLong_AsInt,
@@ -24,20 +26,19 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetIter,
     PyObject_IsTrue,
     PyObject_Str,
+    PyUnicodeWriter,
     PyUnicodeWriter_Discard,
     PyUnicodeWriter_Finish,
     PyUnicodeWriter_WriteChar,
     PyUnicode_ReadChar,
     Py_NewRef,
+    Py_None,
     jacpy_dict_get,
     jacpy_dict_pop_discard,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_is_exact_long,
-    jacpy_is_none,
     jacpy_is_unicode,
     jacpy_list_new,
-    jacpy_none,
     jacpy_release,
     jacpy_set_exception,
     jacpy_tuple_item,
@@ -66,7 +67,7 @@ obj CsvConfig(NativeState) {
     }
 }
 
-def:priv fail(kind: str, message: str) {
+def:priv fail(kind: ptr[PyObject], message: str) {
     object_error(kind, message);
     raise boundary_failure();
 }
@@ -88,7 +89,7 @@ def:priv dialect_char(
     if value == 0 {
         return fallback;
     }
-    if optional and jacpy_is_none(value) != 0 {
+    if optional and value == Py_None {
         return -1;
     }
     expected = "\""
@@ -97,11 +98,11 @@ def:priv dialect_char(
         + (" or None" if optional else "")
         + ", not ";
     if jacpy_is_unicode(value) == 0 {
-        fail("TypeError", expected + type_name(value, True));
+        fail(PyExc_TypeError, expected + type_name(value, True));
     }
     size = int(jacpy_unicode_size(value));
     if size != 1 {
-        fail("TypeError", expected + "a string of length " + str(size));
+        fail(PyExc_TypeError, expected + "a string of length " + str(size));
     }
     return int(PyUnicode_ReadChar(value, 0));
 }
@@ -119,11 +120,11 @@ def:priv valid_character(
     name: str, character: int, space: bool, terminator: ptr[PyObject]
 ) {
     if character == 10 or character == 13 or (character == 32 and not space) {
-        fail("ValueError", "bad " + name + " value");
+        fail(PyExc_ValueError, "bad " + name + " value");
     }
     for i in range(int(jacpy_unicode_size(terminator))) {
         if int(PyUnicode_ReadChar(terminator, i64(i))) == character {
-            fail("ValueError", "bad " + name + " or lineterminator value");
+            fail(PyExc_ValueError, "bad " + name + " or lineterminator value");
         }
     }
 }
@@ -194,7 +195,7 @@ def:pub jacpy_csv_dialect(
             values[3] = terminator;
         } elif jacpy_is_unicode(terminator) == 0 {
             fail(
-                "TypeError",
+                PyExc_TypeError,
                 "\"lineterminator\" must be a string, not "
                     + type_name(terminator, True)
             );
@@ -204,7 +205,7 @@ def:pub jacpy_csv_dialect(
         if values[5] != 0 {
             if jacpy_is_exact_long(values[5]) == 0 {
                 fail(
-                    "TypeError",
+                    PyExc_TypeError,
                     "\"quoting\" must be an integer, not " + type_name(values[5], True)
                 );
             }
@@ -214,13 +215,13 @@ def:pub jacpy_csv_dialect(
         skipspace = dialect_bool(values[6], False);
         strict = dialect_bool(values[7], False);
         if quoting < 0 or quoting > 5 {
-            fail("TypeError", "bad \"quoting\" value");
+            fail(PyExc_TypeError, "bad \"quoting\" value");
         }
-        if values[4] != 0 and jacpy_is_none(values[4]) != 0 and values[5] == 0 {
+        if values[4] != 0 and values[4] == Py_None and values[5] == 0 {
             quoting = 3;
         }
         if quoting != 3 and quotechar == -1 {
-            fail("TypeError", "quotechar must be set if quoting enabled");
+            fail(PyExc_TypeError, "quotechar must be set if quoting enabled");
         }
         valid_character("delimiter", delimiter, True, terminator);
         valid_character("escapechar", escapechar, not skipspace, terminator);
@@ -231,7 +232,8 @@ def:pub jacpy_csv_dialect(
             for j in range(i + 1, 3) {
                 if chars[i] == chars[j] and chars[i] != -1 {
                     fail(
-                        "ValueError", "bad " + labels[i] + " or " + labels[j] + " value"
+                        PyExc_ValueError,
+                        "bad " + labels[i] + " or " + labels[j] + " value"
                     );
                 }
             }
@@ -345,7 +347,7 @@ obj csv_reader {
             if self.unquoted
                 and len(self.field) == 0
                 and (dialect.quoting == 4 or dialect.quoting == 5) {
-                value = jacpy_none();
+                value = Py_NewRef(Py_None);
             } else {
                 value = unicode_field(self.field);
                 if self.unquoted
@@ -645,7 +647,7 @@ obj csv_writer {
     ) -> ptr[PyObject] {
         iterator = PyObject_GetIter(value);
         if iterator == 0 {
-            if jacpy_error_is("TypeError") != 0 {
+            if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
                 csv_error(error, "iterable expected, not " + type_name(value)[:200]);
             }
             raise boundary_failure();
@@ -665,8 +667,8 @@ obj csv_writer {
                     quoted = dialect.quoting == 1
                         or (dialect.quoting == 2 and PyNumber_Check(field) == 0)
                         or (dialect.quoting == 4 and jacpy_is_unicode(field) != 0)
-                        or (dialect.quoting == 5 and jacpy_is_none(field) == 0);
-                    null_field = jacpy_is_none(field) != 0;
+                        or (dialect.quoting == 5 and field != Py_None);
+                    null_field = field == Py_None;
                     if jacpy_is_unicode(field) != 0 {
                         self.append(field, quoted, dialect, error);
                     } elif null_field {
@@ -743,7 +745,7 @@ def:pub jacpy_csv_write(
         } finally {
             jacpy_release(iterator);
         }
-        return jacpy_none();
+        return Py_NewRef(Py_None);
     } except boundary_failure {
         return NULL;
     }
@@ -777,7 +779,7 @@ def:pub jacpy_csv_registry(
                 csv_error(error, "unknown dialect");
             }
         }
-        return jacpy_none();
+        return Py_NewRef(Py_None);
     } except boundary_failure {
         return NULL;
     }

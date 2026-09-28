@@ -13,6 +13,8 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Clear,
     PyDict_SetItem,
     PyErr_Clear,
+    PyErr_ExceptionMatches,
+    PyExc_OverflowError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyIndex_Check,
@@ -34,7 +36,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_complex_value,
     jacpy_dict_get,
     jacpy_dict_size,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_float_pack,
     jacpy_float_unpack,
@@ -42,9 +43,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_bytes,
     jacpy_is_long,
     jacpy_long_address,
-    jacpy_memory_byte,
     jacpy_memory_copy,
-    jacpy_memory_set,
     jacpy_memory_zero,
     jacpy_native_float_store,
     jacpy_native_little_endian,
@@ -65,7 +64,9 @@ import from jaclang.runtime.python.capi {
     checked,
     object_error,
     jac_heap_size,
-    jac_list_heap_size
+    jac_list_heap_size,
+    memory_byte,
+    memory_set
 }
 
 obj format_field {
@@ -153,13 +154,13 @@ def:pub jacpy_struct_compile(
         data = jacpy_bytes_address(format);
         length = int(jacpy_bytes_length(format));
         for j in range(length) {
-            if jacpy_memory_byte(data, i64(j)) == 0 {
+            if memory_byte(data, i64(j)) == 0 {
                 struct_error(error, "embedded null character");
             }
         }
         index = 0;
         if length > 0 {
-            prefix = int(jacpy_memory_byte(data, 0));
+            prefix = int(memory_byte(data, 0));
             if prefix == 64
                 or prefix == 61
                 or prefix == 60
@@ -176,7 +177,7 @@ def:pub jacpy_struct_compile(
         }
         limit = 9223372036854775807;
         while index < length {
-            code = int(jacpy_memory_byte(data, i64(index)));
+            code = int(memory_byte(data, i64(index)));
             index += 1;
             if code == 32 or (code >= 9 and code <= 13) {
                 continue;
@@ -195,7 +196,7 @@ def:pub jacpy_struct_compile(
                             error, "repeat count given without format specifier"
                         );
                     }
-                    code = int(jacpy_memory_byte(data, i64(index)));
+                    code = int(memory_byte(data, i64(index)));
                     index += 1;
                 }
             }
@@ -258,7 +259,7 @@ def:priv integer_bits(
     try {
         if code == 80 {
             result = jacpy_long_address(number);
-            if jacpy_error_is("OverflowError") != 0 {
+            if PyErr_ExceptionMatches(PyExc_OverflowError) != 0 {
                 struct_error(error, "int too large to convert");
             }
             pending();
@@ -288,7 +289,7 @@ def:priv integer_bits(
             invalid = result > maximum;
         }
         if jacpy_error_pending() != 0 {
-            if jacpy_error_is("OverflowError") == 0 {
+            if PyErr_ExceptionMatches(PyExc_OverflowError) == 0 {
                 raise boundary_failure();
             }
             invalid = True;
@@ -331,7 +332,7 @@ def:priv pack_field(
                 return;
             }
             length = min(length, size - 1);
-            jacpy_memory_set(address, 0, i64(min(length, 255)));
+            memory_set(address, 0, i64(min(length, 255)));
             address += 1;
         } else {
             length = min(length, size);
@@ -349,7 +350,7 @@ def:priv pack_field(
     if code == 63 {
         truth = PyObject_IsTrue(value);
         checked(truth);
-        jacpy_memory_set(address, 0, truth);
+        memory_set(address, 0, truth);
         return;
     }
     if code == 101 or code == 102 or code == 100 {
@@ -442,14 +443,14 @@ def:priv unpack_field(
     if code == 112 {
         length = 0;
         if size != 0 {
-            length = min(int(jacpy_memory_byte(address, 0)), size - 1);
+            length = min(int(memory_byte(address, 0)), size - 1);
         }
         return required(
             jacpy_bytes_from_memory(address + (1 if size != 0 else 0), i64(length))
         );
     }
     if code == 63 {
-        return required(PyBool_FromLong(i64(jacpy_memory_byte(address, 0) != 0)));
+        return required(PyBool_FromLong(i64(memory_byte(address, 0) != 0)));
     }
     if code == 101 or code == 102 or code == 100 {
         number = jacpy_float_unpack(address, i64(size), i64(plan.little));

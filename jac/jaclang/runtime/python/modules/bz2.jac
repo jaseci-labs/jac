@@ -11,6 +11,12 @@ import from jaclang.runtime.python.cpython_api {
     PyErr_NoMemory,
     PyEval_RestoreThread,
     PyEval_SaveThread,
+    PyExc_EOFError,
+    PyExc_MemoryError,
+    PyExc_OSError,
+    PyExc_RuntimeError,
+    PyExc_SystemError,
+    PyExc_ValueError,
     PyMem_Free,
     PyMem_Malloc,
     PyMem_RawFree,
@@ -107,29 +113,29 @@ def:priv catch_bz2_error(status: i32) -> bool {
         return False;
     }
     if status == BZ_CONFIG_ERROR {
-        object_error("SystemError", "libbzip2 was not compiled correctly");
+        object_error(PyExc_SystemError, "libbzip2 was not compiled correctly");
     } elif status == BZ_PARAM_ERROR {
         object_error(
-            "ValueError", "Internal error - invalid parameters passed to libbzip2"
+            PyExc_ValueError, "Internal error - invalid parameters passed to libbzip2"
         );
     } elif status == BZ_MEM_ERROR {
         PyErr_NoMemory();
     } elif status == BZ_DATA_ERROR or status == BZ_DATA_ERROR_MAGIC {
-        object_error("OSError", "Invalid data stream");
+        object_error(PyExc_OSError, "Invalid data stream");
     } elif status == BZ_IO_ERROR {
-        object_error("OSError", "Unknown I/O error");
+        object_error(PyExc_OSError, "Unknown I/O error");
     } elif status == BZ_UNEXPECTED_EOF {
         object_error(
-            "EOFError",
+            PyExc_EOFError,
             "Compressed file ended before the logical end-of-stream was detected"
         );
     } elif status == BZ_SEQUENCE_ERROR {
         object_error(
-            "RuntimeError",
+            PyExc_RuntimeError,
             "Internal error - Invalid sequence of commands sent to libbzip2"
         );
     } else {
-        object_error("OSError", f"Unrecognized error from libbzip2: {status}");
+        object_error(PyExc_OSError, f"Unrecognized error from libbzip2: {status}");
     }
     return True;
 }
@@ -218,7 +224,7 @@ def:priv compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
             return state;
         }
     }
-    object_error("SystemError", "BZ2Compressor state is unavailable");
+    object_error(PyExc_SystemError, "BZ2Compressor state is unavailable");
     return None;
 }
 
@@ -232,7 +238,7 @@ def _bz2_BZ2Compressor_compress_impl(
     lock_acquire(state.lock);
     result = NULL;
     if state.flushed {
-        object_error("ValueError", "Compressor has been flushed");
+        object_error(PyExc_ValueError, "Compressor has been flushed");
     } else {
         result = compress(state, data.address(), data.size(), BZ_RUN);
     }
@@ -248,7 +254,7 @@ def _bz2_BZ2Compressor_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     lock_acquire(state.lock);
     result = NULL;
     if state.flushed {
-        object_error("ValueError", "Repeated call to flush()");
+        object_error(PyExc_ValueError, "Repeated call to flush()");
     } else {
         state.flushed = True;
         result = compress(state, ptr(), 0, BZ_FINISH);
@@ -259,7 +265,7 @@ def _bz2_BZ2Compressor_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
 
 def _bz2_BZ2Compressor_impl(type: ptr[PyObject], compresslevel: i32) -> ptr[PyObject] {
     if not (1 <= compresslevel and compresslevel <= 9) {
-        object_error("ValueError", "compresslevel must be between 1 and 9");
+        object_error(PyExc_ValueError, "compresslevel must be between 1 and 9");
         return NULL;
     }
     instance = jacpy_binding_allocate(type);
@@ -269,7 +275,7 @@ def _bz2_BZ2Compressor_impl(type: ptr[PyObject], compresslevel: i32) -> ptr[PyOb
     lock = PyThread_allocate_lock();
     if not lock {
         jacpy_release(instance);
-        object_error("MemoryError", "Unable to allocate lock");
+        object_error(PyExc_MemoryError, "Unable to allocate lock");
         return NULL;
     }
     state = CompressorState(
@@ -319,7 +325,7 @@ def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
             return state;
         }
     }
-    object_error("SystemError", "BZ2Decompressor state is unavailable");
+    object_error(PyExc_SystemError, "BZ2Decompressor state is unavailable");
     return None;
 }
 
@@ -463,9 +469,11 @@ def _bz2_BZ2Decompressor_decompress_impl(
     lock_acquire(state.lock);
     result = NULL;
     if state.eof {
-        object_error("EOFError", "End of stream already reached");
+        object_error(PyExc_EOFError, "End of stream already reached");
     } elif state.bzerror != 0 {
-        object_error("ValueError", "Decompressor is unusable after a previous error");
+        object_error(
+            PyExc_ValueError, "Decompressor is unusable after a previous error"
+        );
     } else {
         result = decompress(state, data.address(), data.size(), max_length);
     }
@@ -481,7 +489,7 @@ def _bz2_BZ2Decompressor_impl(type: ptr[PyObject]) -> ptr[PyObject] {
     lock = PyThread_allocate_lock();
     if not lock {
         jacpy_release(instance);
-        object_error("MemoryError", "Unable to allocate lock");
+        object_error(PyExc_MemoryError, "Unable to allocate lock");
         return NULL;
     }
     state = DecompressorState(

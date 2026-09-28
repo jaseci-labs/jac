@@ -6,6 +6,8 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBool_FromLong,
+    PyExc_RuntimeError,
+    PyExc_TypeError,
     PyImport_ImportModuleAttrString,
     PyList_GetItemRef,
     PyLong_AsLongLong,
@@ -59,16 +61,15 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_Size,
     PyUnicode_Join,
     Py_NewRef,
+    Py_None,
     Py_ReprEnter,
     Py_ReprLeave,
     jacpy_crypto_compare,
     jacpy_dict_entry,
     jacpy_dict_size,
     jacpy_error_pending,
-    jacpy_is_none,
     jacpy_is_unicode,
     jacpy_list_size,
-    jacpy_none,
     jacpy_power,
     jacpy_release,
     jacpy_text,
@@ -99,7 +100,7 @@ def:pub jacpy_operator_prepare(kind: i64, args: ptr[PyObject]) -> ptr[PyObject] 
             name = required(jacpy_tuple_item(args, 0));
             try {
                 if jacpy_is_unicode(name) == 0 {
-                    object_error("TypeError", "method name must be a string");
+                    object_error(PyExc_TypeError, "method name must be a string");
                     return NULL;
                 }
             } finally {
@@ -114,7 +115,9 @@ def:pub jacpy_operator_prepare(kind: i64, args: ptr[PyObject]) -> ptr[PyObject] 
                 name = required(jacpy_tuple_item(args, i64(i)));
                 try {
                     if jacpy_is_unicode(name) == 0 {
-                        object_error("TypeError", "attribute name must be a string");
+                        object_error(
+                            PyExc_TypeError, "attribute name must be a string"
+                        );
                         raise boundary_failure();
                     }
                     path = required(jacpy_unicode_split(name, separator));
@@ -297,7 +300,8 @@ def:pub jacpy_operator_repr(
                 }
                 if seen != expected {
                     object_error(
-                        "RuntimeError", "keywords dict changed size during iteration"
+                        PyExc_RuntimeError,
+                        "keywords dict changed size during iteration"
                     );
                     raise boundary_failure();
                 }
@@ -538,11 +542,11 @@ def:pub jacpy_operator_is_not(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObjec
 }
 
 def:pub jacpy_operator_is_none(a: ptr[PyObject]) -> ptr[PyObject] {
-    return PyBool_FromLong(jacpy_is_none(a));
+    return PyBool_FromLong(i64(a == Py_None));
 }
 
 def:pub jacpy_operator_is_not_none(a: ptr[PyObject]) -> ptr[PyObject] {
-    return PyBool_FromLong(1 - jacpy_is_none(a));
+    return PyBool_FromLong(i64(a != Py_None));
 }
 
 def:pub jacpy_operator_pow(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
@@ -581,14 +585,14 @@ def:pub jacpy_operator_setitem(
     if PyObject_SetItem(a, b, value) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:pub jacpy_operator_delitem(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     if PyObject_DelItem(a, b) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:pub jacpy_operator_call(

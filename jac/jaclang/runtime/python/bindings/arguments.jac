@@ -3,6 +3,7 @@
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyDict_Items,
+    PyExc_TypeError,
     PyList_GetItemRef,
     PyLong_AsSsize_t,
     PyNumber_Index,
@@ -38,7 +39,7 @@ obj BoundArguments {
 }
 
 def invalid(message: str) -> bool {
-    object_error("TypeError", message);
+    object_error(PyExc_TypeError, message);
     return False;
 }
 
@@ -168,7 +169,9 @@ def invoke_one(
 
 def character_value(value: ptr[PyObject], context: str) -> (i64 | None) {
     if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
-        object_error("TypeError", f"{context}() argument must be a unicode character");
+        object_error(
+            PyExc_TypeError, f"{context}() argument must be a unicode character"
+        );
         return None;
     }
     return PyUnicode_ReadChar(value, 0);

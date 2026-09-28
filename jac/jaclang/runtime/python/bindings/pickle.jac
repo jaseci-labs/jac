@@ -6,6 +6,11 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_New,
     PyDict_SetItem,
     PyErr_Clear,
+    PyErr_ExceptionMatches,
+    PyExc_AttributeError,
+    PyExc_RuntimeError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyImport_ImportModuleAttrString,
     PyLong_AsInt,
     PyLong_AsLongLong,
@@ -18,13 +23,10 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetAttrString,
     PyObject_IsTrue,
     Py_NewRef,
+    Py_None,
     Py_TYPE,
-    jacpy_builtin_type,
-    jacpy_error_is,
     jacpy_error_pending,
-    jacpy_is_none,
     jacpy_is_unicode,
-    jacpy_none,
     jacpy_optional_attr,
     jacpy_release,
     jacpy_set_exception
@@ -38,9 +40,8 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     jacpy_binding_state_get,
     jacpy_binding_state_set,
-    jacpy_binding_visit,
-    jacpy_binding_exception,
-    jacpy_binding_exception_with_base
+    visit_reference,
+    jacpy_binding_exception
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -71,6 +72,7 @@ import from jaclang.runtime.python.bindings.arguments {
 }
 import from jaclang.runtime.python.capi {
     builtin_kind,
+    builtin_type,
     text_value,
     text_object,
     object_error,
@@ -128,7 +130,7 @@ obj CodecState(ReferenceState) {
 
     def enter -> bool {
         if self.busy {
-            object_error("RuntimeError", "pickle object is already in use");
+            object_error(PyExc_RuntimeError, "pickle object is already in use");
             return False;
         }
         self.busy = True;
@@ -145,7 +147,7 @@ obj PicklerState(CodecState) {
             return result;
         }
         for index in range(8) {
-            result = jacpy_binding_visit(
+            result = visit_reference(
                 jacpy_pickler_field(self.native, i64(index)), visitor, context
             );
             if result != 0 {
@@ -174,7 +176,7 @@ obj UnpicklerState(CodecState) {
             return result;
         }
         for index in range(int(jacpy_unpickler_field_count(self.native))) {
-            result = jacpy_binding_visit(
+            result = visit_reference(
                 jacpy_unpickler_field(self.native, i64(index)), visitor, context
             );
             if result != 0 {
@@ -223,7 +225,7 @@ def:priv state_for(instance: ptr[PyObject]) -> (CodecState | None) {
             return state;
         }
     }
-    object_error("RuntimeError", "uninitialized native pickle object");
+    object_error(PyExc_RuntimeError, "uninitialized native pickle object");
     return None;
 }
 
@@ -307,7 +309,9 @@ def:priv set_attribute(
     return PyObject_GenericSetAttr(instance, name, value);
 }
 
-def:priv fail(message: str, category: str = "TypeError") -> ptr[PyObject] {
+def:priv fail(
+    message: str, category: ptr[PyObject] = PyExc_TypeError
+) -> ptr[PyObject] {
     object_error(category, message);
     return NULL;
 }
@@ -350,7 +354,7 @@ def:priv text_argument(value: ptr[PyObject], default_value: str) -> ptr[PyObject
     }
     text = text_value(value);
     if "\0" in text {
-        return fail("embedded null character", "ValueError");
+        return fail("embedded null character", PyExc_ValueError);
     }
     return text_object(text);
 }
@@ -364,7 +368,7 @@ def:priv initialize_pickler(
             return i32(-1);
         }
         version: i64 = 5;
-        if bound.values[1] != 0 and jacpy_is_none(bound.values[1]) == 0 {
+        if bound.values[1] != 0 and bound.values[1] != Py_None {
             version = PyLong_AsLongLong(bound.values[1]);
             if version == -1 and jacpy_error_pending() != 0 {
                 return i32(-1);
@@ -378,15 +382,15 @@ def:priv initialize_pickler(
             return i32(-1);
         }
         if version > 5 {
-            fail("pickle protocol must be <= 5", "ValueError");
+            fail("pickle protocol must be <= 5", PyExc_ValueError);
             return i32(-1);
         }
         callback = bound.values[3];
-        if callback != 0 and jacpy_is_none(callback) != 0 {
+        if callback != 0 and callback == Py_None {
             callback = NULL;
         }
         if callback != 0 and version < 5 {
-            fail("buffer_callback needs protocol >= 5", "ValueError");
+            fail("buffer_callback needs protocol >= 5", PyExc_ValueError);
             return i32(-1);
         }
         state = state_for(instance);
@@ -401,7 +405,7 @@ def:priv initialize_pickler(
             }
             held.references[0] = PyObject_GetAttrString(bound.values[0], "write");
             if held.references[0] == 0 {
-                if jacpy_error_is("AttributeError") != 0 {
+                if PyErr_ExceptionMatches(PyExc_AttributeError) != 0 {
                     PyErr_Clear();
                     fail("file must have a 'write' attribute");
                 }
@@ -467,7 +471,7 @@ def:priv initialize_unpickler(
                 return i32(-1);
             }
             buffers = bound.values[4];
-            if buffers != 0 and jacpy_is_none(buffers) != 0 {
+            if buffers != 0 and buffers == Py_None {
                 buffers = NULL;
             }
             result = jacpy_unpickler_init(
@@ -536,7 +540,7 @@ def:priv dump(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
             state.fast
         )
             == 0 {
-            return jacpy_none();
+            return Py_NewRef(Py_None);
         }
         return NULL;
     } except boundary_failure {
@@ -576,7 +580,7 @@ def:priv load(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 def:priv persistent_id(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv persistent_load(
@@ -629,7 +633,7 @@ def:priv memo_owner(instance: ptr[PyObject]) -> ptr[PyObject] {
             return state.references[0];
         }
     }
-    object_error("RuntimeError", "uninitialized pickle memo proxy");
+    object_error(PyExc_RuntimeError, "uninitialized pickle memo proxy");
     return NULL;
 }
 
@@ -656,11 +660,11 @@ def:priv memo_clear(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
     state = state_for(owner);
     if isinstance(state, PicklerState) {
         jacpy_pickler_memo_clear(state.native);
-        return jacpy_none();
+        return Py_NewRef(Py_None);
     }
     if isinstance(state, UnpicklerState) {
         jacpy_unpickler_memo_clear(state.native);
-        return jacpy_none();
+        return Py_NewRef(Py_None);
     }
     return NULL;
 }
@@ -675,10 +679,7 @@ def:priv memo_reduce(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyOb
         return NULL;
     }
     return owned_tuple(
-        [
-            jacpy_builtin_type(i64(builtin_kind.DICT.value)),
-            Py_NewRef(held.references[1])
-        ]
+        [builtin_type(builtin_kind.DICT), Py_NewRef(held.references[1])]
     );
 }
 
@@ -738,7 +739,7 @@ def:priv clear_memo(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     jacpy_pickler_memo_clear(state.native);
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv integer_get(instance: ptr[PyObject], field: u64) -> ptr[PyObject] {
@@ -776,7 +777,7 @@ def:priv dispatch_get(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
         return NULL;
     }
     if state.references[1] == 0 {
-        return fail("dispatch_table", "AttributeError");
+        return fail("dispatch_table", PyExc_AttributeError);
     }
     return Py_NewRef(state.references[1]);
 }
@@ -790,7 +791,7 @@ def:priv dispatch_set(
     }
     previous = state.references[1];
     if value == 0 and previous == 0 {
-        fail("dispatch_table", "AttributeError");
+        fail("dispatch_table", PyExc_AttributeError);
         return i32(-1);
     }
     state.references[1] = Py_NewRef(value) if value != 0 else NULL;
@@ -852,10 +853,10 @@ def:priv write_value(
 
 def:priv dump_bound(args: BoundArguments) -> ptr[PyObject] {
     if args.values[2] == 0 {
-        args.values[2] = jacpy_none();
+        args.values[2] = Py_NewRef(Py_None);
     }
     if args.values[4] == 0 {
-        args.values[4] = jacpy_none();
+        args.values[4] = Py_NewRef(Py_None);
     }
     fix = flag(args.values[3]);
     if fix < 0 {
@@ -873,10 +874,10 @@ def:priv dump_bound(args: BoundArguments) -> ptr[PyObject] {
 
 def:priv dumps_bound(args: BoundArguments) -> ptr[PyObject] {
     if args.values[1] == 0 {
-        args.values[1] = jacpy_none();
+        args.values[1] = Py_NewRef(Py_None);
     }
     if args.values[3] == 0 {
-        args.values[3] = jacpy_none();
+        args.values[3] = Py_NewRef(Py_None);
     }
     fix = flag(args.values[2]);
     if fix < 0 {
@@ -947,7 +948,7 @@ def:priv loads_bound(args: BoundArguments) -> ptr[PyObject] {
     held.references[0] = required(text_argument(args.values[2], "ASCII"));
     held.references[1] = required(text_argument(args.values[3], "strict"));
     if args.values[4] == 0 {
-        args.values[4] = jacpy_none();
+        args.values[4] = Py_NewRef(Py_None);
     }
     held.references[2] = required(
         PyObject_CallOneArg(
@@ -1099,7 +1100,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         module,
         Slot.ERROR.value,
         "PickleError",
-        jacpy_binding_exception("_pickle.PickleError", "", "")
+        jacpy_binding_exception("_pickle.PickleError", NULL, "")
     ) {
         return i32(-1);
     }
@@ -1108,13 +1109,13 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         module,
         Slot.PICKLING_ERROR.value,
         "PicklingError",
-        jacpy_binding_exception_with_base("_pickle.PicklingError", error, "")
+        jacpy_binding_exception("_pickle.PicklingError", error, "")
     )
         or not add_state_owned(
             module,
             Slot.UNPICKLING_ERROR.value,
             "UnpicklingError",
-            jacpy_binding_exception_with_base("_pickle.UnpicklingError", error, "")
+            jacpy_binding_exception("_pickle.UnpicklingError", error, "")
         )
         or not add_state_owned(
             module, Slot.PICKLER.value, "Pickler", pickler_type.create(module)
@@ -1139,9 +1140,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             PyImport_ImportModuleAttrString("copyreg", "dispatch_table")
         )
         or not add_owned(
-            module,
-            "PickleBuffer",
-            jacpy_builtin_type(i64(builtin_kind.PICKLE_BUFFER.value))
+            module, "PickleBuffer", builtin_type(builtin_kind.PICKLE_BUFFER)
         ) {
         return i32(-1);
     }

@@ -3,14 +3,16 @@
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBool_FromLong,
+    PyExc_SystemError,
     PyLong_FromLongLong,
     PyObject,
     PyObject_IsTrue,
     PyType_GetSlot,
     Py_GenericAlias,
+    Py_NewRef,
+    Py_None,
     Py_TYPE,
     jacpy_lock_new,
-    jacpy_none,
     jacpy_release
 }
 import from jaclang.runtime.python.bindings.module {
@@ -59,7 +61,7 @@ def:priv state_of(instance: ptr[PyObject]) -> (queue_state | None) {
             return state;
         }
     }
-    object_error("SystemError", "native SimpleQueue state is unavailable");
+    object_error(PyExc_SystemError, "native SimpleQueue state is unavailable");
     return None;
 }
 
@@ -127,7 +129,7 @@ def:priv put_bound(args: BoundArguments) -> ptr[PyObject] {
         return NULL;
     }
     jacpy_queue_put(state, args.values[0]);
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv put_call(
@@ -165,7 +167,7 @@ def:priv get_bound(args: BoundArguments) -> ptr[PyObject] {
         }
     }
     if args.values[1] == 0 {
-        args.values[1] = jacpy_none();
+        args.values[1] = Py_NewRef(Py_None);
     }
     return get_item(args.context, block, args.values[1]);
 }
@@ -179,7 +181,7 @@ def:priv get_call(
 def:priv get_nowait_call(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    timeout = jacpy_none();
+    timeout = Py_NewRef(Py_None);
     result = get_item(instance, 0, timeout);
     jacpy_release(timeout);
     return result;
@@ -260,7 +262,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         1,
         "Empty",
         jacpy_binding_exception(
-            "_queue.Empty", "", "Exception raised by Queue.get(block=0)/get_nowait()."
+            "_queue.Empty", NULL, "Exception raised by Queue.get(block=0)/get_nowait()."
         )
     ) {
         return i32(-1);

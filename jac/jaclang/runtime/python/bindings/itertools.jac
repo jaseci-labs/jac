@@ -3,8 +3,14 @@
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Clear,
+    PyExc_OverflowError,
+    PyExc_RuntimeError,
+    PyExc_SystemError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyLong_AsSsize_t,
     PyLong_FromLongLong,
+    PyNumber_AsSsize_t,
     PyNumber_Check,
     PyObject,
     PyObject_IsTrue,
@@ -12,15 +18,13 @@ import from jaclang.runtime.python.cpython_api {
     PyType_GetSlot,
     Py_GenericAlias,
     Py_NewRef,
+    Py_None,
     Py_TYPE,
     jacpy_dict_get,
     jacpy_dict_size,
     jacpy_error_pending,
     jacpy_is_list,
-    jacpy_is_none,
     jacpy_list_size,
-    jacpy_none,
-    jacpy_number_ssize,
     jacpy_release,
     jacpy_tuple_item,
     jacpy_type_check
@@ -32,7 +36,7 @@ import from jaclang.runtime.python.bindings.module {
     MethodDefinition,
     add_state_owned,
     jacpy_binding_state_get,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -141,7 +145,7 @@ obj PipelineState(NativeState) {
 
     override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for index in range(7) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_pipeline_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -165,7 +169,7 @@ obj CombinationState(NativeState) {
 
     override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for index in range(2) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_combinatorial_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -189,7 +193,7 @@ obj GroupState(NativeState) {
 
     override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for index in range(5) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_group_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -213,7 +217,7 @@ obj BlockState(NativeState) {
 
     override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for index in range(int(jacpy_tee_block_count(self.native))) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_tee_block_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -236,9 +240,7 @@ obj CursorState(NativeState) {
     has native: tee_cursor;
 
     override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        return jacpy_binding_visit(
-            jacpy_tee_cursor_field(self.native), visitor, context
-        );
+        return visit_reference(jacpy_tee_cursor_field(self.native), visitor, context);
     }
 
     override def clear {
@@ -262,7 +264,7 @@ def:priv kind_for(type: ptr[PyObject]) -> int {
             return index;
         }
     }
-    object_error("SystemError", "unknown native iterator type");
+    object_error(PyExc_SystemError, "unknown native iterator type");
     return -1;
 }
 
@@ -273,7 +275,7 @@ def:priv state_for(instance: ptr[PyObject]) -> (NativeState | None) {
     }
     handle = types[kind].handle;
     if jacpy_binding_native_present(instance, handle) == 0 {
-        object_error("RuntimeError", "uninitialized native iterator");
+        object_error(PyExc_RuntimeError, "uninitialized native iterator");
         return None;
     }
     return jacpy_binding_native_get(instance, handle);
@@ -309,7 +311,7 @@ def:priv no_keywords(type: ptr[PyObject], kind: int, kwargs: ptr[PyObject]) -> b
             != PyType_GetSlot(base, i32(TypeSlot.INIT.value)) {
         return True;
     }
-    object_error("TypeError", f"{type_name(type)}() takes no keyword arguments");
+    object_error(PyExc_TypeError, f"{type_name(type)}() takes no keyword arguments");
     return False;
 }
 
@@ -436,7 +438,9 @@ def:priv chain_from(type: ptr[PyObject], source: ptr[PyObject]) -> ptr[PyObject]
     return pipeline_create(type, Kind.CHAIN.value, source);
 }
 
-def:priv fail(message: str, category: str = "TypeError") -> ptr[PyObject] {
+def:priv fail(
+    message: str, category: ptr[PyObject] = PyExc_TypeError
+) -> ptr[PyObject] {
     object_error(category, message);
     return NULL;
 }
@@ -489,7 +493,7 @@ def:priv create_iterator(
             return NULL;
         }
         if bound.values[1] == 0 {
-            bound.values[1] = jacpy_none();
+            bound.values[1] = Py_NewRef(Py_None);
         }
         state = GroupState(group_state(make_group=make_group));
         if jacpy_group_init(state.native, bound.values[0], bound.values[1]) < 0 {
@@ -513,7 +517,7 @@ def:priv create_iterator(
                 }
             }
             if width < 0 {
-                return fail("repeat argument cannot be negative", "ValueError");
+                return fail("repeat argument cannot be negative", PyExc_ValueError);
             }
         } else {
             bound = bind(
@@ -533,13 +537,13 @@ def:priv create_iterator(
             r = bound.values[1];
             if kind == Kind.PERMUTATIONS.value {
                 width = -1;
-                if r != 0 and jacpy_is_none(r) == 0 {
+                if r != 0 and r != Py_None {
                     width = PyLong_AsSsize_t(r);
                     if width == -1 and jacpy_error_pending() != 0 {
                         return NULL;
                     }
                     if width < 0 {
-                        return fail("r must be non-negative", "ValueError");
+                        return fail("r must be non-negative", PyExc_ValueError);
                     }
                 }
             } else {
@@ -549,7 +553,7 @@ def:priv create_iterator(
                 }
                 width = converted;
                 if width < 0 {
-                    return fail("r must be non-negative", "ValueError");
+                    return fail("r must be non-negative", PyExc_ValueError);
                 }
             }
         }
@@ -582,10 +586,10 @@ def:priv create_iterator(
             return NULL;
         }
         if bound.values[1] == 0 {
-            bound.values[1] = jacpy_none();
+            bound.values[1] = Py_NewRef(Py_None);
         }
         if bound.values[2] == 0 {
-            bound.values[2] = jacpy_none();
+            bound.values[2] = Py_NewRef(Py_None);
         }
         source = bound.values[0];
         function = bound.values[1];
@@ -603,7 +607,7 @@ def:priv create_iterator(
         }
         step = converted;
         if step < 1 {
-            return fail("n must be at least one", "ValueError");
+            return fail("n must be at least one", PyExc_ValueError);
         }
         source = bound.values[0];
         if bound.values[2] != 0 {
@@ -649,7 +653,7 @@ def:priv create_iterator(
         source = args;
     } elif kind == Kind.ZIP_LONGEST.value {
         source = args;
-        held.references[0] = jacpy_none();
+        held.references[0] = Py_NewRef(Py_None);
         function = held.references[0];
         if kwargs != 0 and jacpy_dict_size(kwargs) != 0 {
             held.references[1] = keyword(kwargs, "fillvalue");
@@ -678,35 +682,36 @@ def:priv create_iterator(
             b = a;
             a = NULL;
         }
-        if a != 0 and jacpy_is_none(a) == 0 {
-            first = jacpy_number_ssize(a, "OverflowError");
+        if a != 0 and a != Py_None {
+            first = PyNumber_AsSsize_t(a, PyExc_OverflowError);
         }
         if first == -1 and jacpy_error_pending() != 0 {
             PyErr_Clear();
         }
-        if jacpy_is_none(b) == 0 {
-            stop = jacpy_number_ssize(b, "OverflowError");
+        if b != Py_None {
+            stop = PyNumber_AsSsize_t(b, PyExc_OverflowError);
             if stop == -1 {
                 PyErr_Clear();
                 return fail(
                     "Stop argument for islice() must be None or an integer: 0 <= x <= sys.maxsize.",
-                    "ValueError"
+                    PyExc_ValueError
                 );
             }
         }
         if first < 0 or stop < -1 {
             return fail(
                 "Indices for islice() must be None or an integer: 0 <= x <= sys.maxsize.",
-                "ValueError"
+                PyExc_ValueError
             );
         }
-        if c != 0 and jacpy_is_none(c) == 0 {
-            step = jacpy_number_ssize(c, "OverflowError");
+        if c != 0 and c != Py_None {
+            step = PyNumber_AsSsize_t(c, PyExc_OverflowError);
         }
         if step < 1 {
             PyErr_Clear();
             return fail(
-                "Step for islice() must be a positive integer or None.", "ValueError"
+                "Step for islice() must be a positive integer or None.",
+                PyExc_ValueError
             );
         }
     } elif kind == Kind.COMPRESS.value {
@@ -858,11 +863,11 @@ def:priv data_bound(args: BoundArguments) -> ptr[PyObject] {
     if jacpy_is_list(values) == 0 {
         return fail("_tee_dataobject() argument 2 must be list");
     }
-    if jacpy_is_none(next) == 0 {
+    if next != Py_None {
         if jacpy_list_size(values) != 57
             or Py_TYPE(next)
                 != jacpy_binding_state_get(module, i64(Kind.TEE_DATA.value)) {
-            return fail("Invalid arguments", "ValueError");
+            return fail("Invalid arguments", PyExc_ValueError);
         }
     } else {
         next = NULL;
@@ -917,7 +922,7 @@ def:priv tee_call_bound(args: BoundArguments) -> ptr[PyObject] {
         count = converted;
     }
     if count < 0 {
-        return fail("n must be >= 0", "ValueError");
+        return fail("n must be >= 0", PyExc_ValueError);
     }
     return jacpy_tee_split(
         tee_bindings,

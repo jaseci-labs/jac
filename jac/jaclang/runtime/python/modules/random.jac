@@ -8,6 +8,9 @@ Matsumoto and Takuji Nishimura. See the Mersenne Twister notice in
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Clear,
+    PyExc_MemoryError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyLong_AsLongLong,
     PyLong_AsUnsignedLong,
     PyLong_FromLongLong,
@@ -201,11 +204,11 @@ def:pub jacpy_random_getstate(state: mt19937) -> ptr[PyObject] {
 
 def:pub jacpy_random_setstate(state: mt19937, value: ptr[PyObject]) -> i64 {
     if jacpy_is_tuple(value) == 0 {
-        object_error("TypeError", "state vector must be a tuple");
+        object_error(PyExc_TypeError, "state vector must be a tuple");
         return -1;
     }
     if PyTuple_Size(value) != 625 {
-        object_error("ValueError", "state vector is the wrong size");
+        object_error(PyExc_ValueError, "state vector is the wrong size");
         return -1;
     }
     words: list[u32] = [];
@@ -231,7 +234,7 @@ def:pub jacpy_random_setstate(state: mt19937, value: ptr[PyObject]) -> i64 {
         return -1;
     }
     if index < 0 or index > 624 {
-        object_error("ValueError", "invalid state");
+        object_error(PyExc_ValueError, "invalid state");
         return -1;
     }
     state.words = words;
@@ -248,7 +251,7 @@ def:pub jacpy_random_bits(state: mt19937, bits: u64) -> ptr[PyObject] {
     }
     count = (bits - 1) // 32 + 1;
     if count > u64(0x7fffffffffffffff) // 4 {
-        object_error("MemoryError", "");
+        object_error(PyExc_MemoryError, "");
         return NULL;
     }
     data = jacpy_buffer_new(i64(count * 4));

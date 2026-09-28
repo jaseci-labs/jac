@@ -3,10 +3,11 @@
 import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyObject,
+    Py_NewRef,
+    Py_None,
     jacpy_ast_new,
     jacpy_list_append_owned,
     jacpy_list_new,
-    jacpy_none,
     jacpy_release,
     jacpy_set_owned,
     jacpy_text
@@ -166,19 +167,19 @@ def ast_write_text(value: str) -> ptr[PyObject] {
 def ast_write_optional_text(value: str | None) -> ptr[PyObject] {
     return ast_write_text(value)
         if value is not None
-        else ast_output_checked(jacpy_none());
+        else ast_output_checked(Py_NewRef(Py_None));
 }
 
 def ast_write_optional_int(value: int | None) -> ptr[PyObject] {
     return ast_output_checked(PyLong_FromLongLong(i64(value)))
         if value is not None
-        else ast_output_checked(jacpy_none());
+        else ast_output_checked(Py_NewRef(Py_None));
 }
 
 def ast_write_optional_node(value: ast_node | None) -> ptr[PyObject] {
     return ast_write_node(value)
         if value is not None
-        else ast_output_checked(jacpy_none());
+        else ast_output_checked(Py_NewRef(Py_None));
 }
 
 def ast_write_constant(value: PyObj) -> ptr[PyObject] {

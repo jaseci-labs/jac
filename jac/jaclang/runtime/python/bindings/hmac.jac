@@ -1,7 +1,11 @@
 """The _hmac module: the HMAC type, UnknownHashError and the one-shot functions
 over the generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api { PyModule_AddIntConstant, PyObject }
+import from jaclang.runtime.python.cpython_api {
+    PyExc_ValueError,
+    PyModule_AddIntConstant,
+    PyObject
+}
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
@@ -57,7 +61,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         module,
         UNKNOWN_HASH_ERROR,
         "UnknownHashError",
-        jacpy_binding_exception("_hmac.UnknownHashError", "ValueError", "")
+        jacpy_binding_exception("_hmac.UnknownHashError", PyExc_ValueError, "")
     )
         or not add_state_owned(module, HMAC_TYPE, "HMAC", hmac_type.create(module))
         or PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {

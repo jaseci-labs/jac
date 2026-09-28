@@ -7,6 +7,7 @@ See ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_SystemError,
     PyLong_FromLongLong,
     PyObject,
     _Py_strhex_bytes_with_sep,
@@ -744,7 +745,7 @@ def:pub jacpy_binascii_convert(
         } elif operation == 7 {
             result = b2a_qp(data, option != 0, second != 0, third != 0);
         } else {
-            object_error("SystemError", "unknown binary codec operation");
+            object_error(PyExc_SystemError, "unknown binary codec operation");
             return NULL;
         }
         return write_buffer(bytes(result));

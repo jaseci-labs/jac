@@ -25,20 +25,36 @@ enum builtin_kind {
 }
 
 import from jaclang.runtime.python.cpython_api {
+    PyBool_Type,
+    PyByteArray_Type,
     PyBytes_FromStringAndSize,
+    PyBytes_Type,
+    PyDict_Type,
     PyErr_GetRaisedException,
     PyErr_SetRaisedException,
+    PyFloat_Type,
+    PyFrozenSet_Type,
+    PyFunction_Type,
+    PyList_Type,
+    PyLong_Type,
     PyObject,
     PyObject_Repr,
+    PyPickleBuffer_Type,
+    PySet_Type,
     PyTuple_New,
+    PyTuple_Type,
+    PyType_Type,
     PyUnicodeWriter,
+    PyUnicode_Type,
     Py_NewRef,
+    Py_TYPE,
+    _PyNone_Type,
     jacpy_bytes_copy_to,
     jacpy_bytes_length,
     jacpy_exception_note,
     jacpy_qualified_type_name,
-    jacpy_raise_error,
     jacpy_release,
+    jacpy_set_exception,
     jacpy_text,
     jacpy_tuple_set_owned,
     jacpy_type_name,
@@ -51,8 +67,55 @@ import from c {
     ) -> i64;
 }
 
-def object_error(kind: str, message: str) {
-    jacpy_raise_error(kind, message, i64(len(message.encode("utf-8"))));
+# The exact type of each builtin_kind, in value order; NONE is NoneType.
+glob:priv BUILTIN_TYPES: list[ptr[PyObject]] = [
+         addressof(_PyNone_Type),
+         addressof(PyBool_Type),
+         addressof(PyLong_Type),
+         addressof(PyFloat_Type),
+         addressof(PyBytes_Type),
+         addressof(PyUnicode_Type),
+         addressof(PyTuple_Type),
+         addressof(PyList_Type),
+         addressof(PyDict_Type),
+         addressof(PySet_Type),
+         addressof(PyFrozenSet_Type),
+         addressof(PyByteArray_Type),
+         addressof(PyType_Type),
+         addressof(PyFunction_Type),
+         addressof(PyPickleBuffer_Type)
+     ];
+
+"""The builtin_kind value of a value's exact type; OTHER for a subclass or any
+other type."""
+def builtin_kind_of(value: ptr[PyObject]) -> int {
+    exact = Py_TYPE(value);
+    for kind in range(len(BUILTIN_TYPES)) {
+        if BUILTIN_TYPES[kind] == exact {
+            return kind;
+        }
+    }
+    return builtin_kind.OTHER.value;
+}
+
+"""The exact type of a builtin_kind other than OTHER, as a new reference."""
+def builtin_type(kind: builtin_kind) -> ptr[PyObject] {
+    return Py_NewRef(BUILTIN_TYPES[kind.value]);
+}
+
+# Raise `kind` (an exception type such as PyExc_ValueError) with a text message.
+def object_error(kind: ptr[PyObject], message: str) {
+    jacpy_set_exception(kind, message, i64(len(message.encode("utf-8"))));
+}
+
+# The byte at `address + offset` of C memory.
+def memory_byte(address: ptr, offset: i64) -> i64 {
+    return i64(ptr[u8](int(address) + int(offset)).view(1)[0]);
+}
+
+# Store the low byte of `value` at `address + offset` of C memory.
+def memory_set(address: ptr, offset: i64, value: i64) {
+    ptr[u8](int(address) + int(offset)).view(1)[0] = u8(value & 255);
 }
 
 # The payload of a retained bytes-like value, copied into Jac storage.

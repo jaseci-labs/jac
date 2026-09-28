@@ -16,6 +16,12 @@ import from jaclang.runtime.python.cpython_api {
     PyErr_SetString,
     PyEval_RestoreThread,
     PyEval_SaveThread,
+    PyExc_EOFError,
+    PyExc_MemoryError,
+    PyExc_OverflowError,
+    PyExc_SystemError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyLong_FromUnsignedLong,
     PyMem_Free,
     PyMem_Malloc,
@@ -34,8 +40,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_TYPE,
     _PyBytes_Resize,
     jacpy_buffer_acquire,
-    jacpy_buffer_address,
-    jacpy_buffer_length,
     jacpy_buffer_new,
     jacpy_buffer_release,
     jacpy_fs_text,
@@ -47,7 +51,7 @@ import from jaclang.runtime.python.capi { object_error, text_value }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.module {
     jacpy_binding_state_get,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
 import from jaclang.runtime.python.bindings.payload {
@@ -262,7 +266,9 @@ def:priv window_grow(
     buffer: BlocksOutputBuffer, window: Window, zst: &mut Pinned[z_stream]
 ) -> bool {
     if zst.value.avail_out != 0 {
-        object_error("SystemError", "*avail_out != 0 in OutputBuffer_WindowGrow().");
+        object_error(
+            PyExc_SystemError, "*avail_out != 0 in OutputBuffer_WindowGrow()."
+        );
         return False;
     }
     if window.left > 0 {
@@ -308,7 +314,7 @@ def zlib_compress_impl(
         &mut zst, level, DEFLATED, wbits, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY
     );
     if err == Z_MEM_ERROR {
-        object_error("MemoryError", "Out of memory while compressing data");
+        object_error(PyExc_MemoryError, "Out of memory while compressing data");
     } elif err == Z_STREAM_ERROR {
         zlib_error_message(module, "Bad compression level");
     } elif err != Z_OK {
@@ -356,7 +362,7 @@ def zlib_decompress_impl(
     module: ptr[PyObject], data: BufferArgument, wbits: i32, bufsize: i64
 ) -> ptr[PyObject] {
     if bufsize < 0 {
-        object_error("ValueError", "bufsize must be non-negative");
+        object_error(PyExc_ValueError, "bufsize must be non-negative");
         return NULL;
     }
     size = 1 if bufsize == 0 else bufsize;
@@ -371,7 +377,7 @@ def zlib_decompress_impl(
     remains = data.size();
     err = inflate_init(&mut zst, wbits);
     if err == Z_MEM_ERROR {
-        object_error("MemoryError", "Out of memory while decompressing data");
+        object_error(PyExc_MemoryError, "Out of memory while decompressing data");
         buffer.discard();
         return NULL;
     } elif err != Z_OK {
@@ -394,7 +400,9 @@ def zlib_decompress_impl(
             PyEval_RestoreThread(thread);
             if err == Z_MEM_ERROR {
                 inflateEnd(&mut zst);
-                object_error("MemoryError", "Out of memory while decompressing data");
+                object_error(
+                    PyExc_MemoryError, "Out of memory while decompressing data"
+                );
                 buffer.discard();
                 return NULL;
             }
@@ -439,7 +447,7 @@ obj ZlibStream(NativeState) {
         lock: ptr = ptr();
 
     def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return jacpy_binding_visit(self.zdict, visitor, context);
+        return visit_reference(self.zdict, visitor, context);
     }
 
     def clear {
@@ -491,7 +499,7 @@ def:priv new_stream_object(
     lock = PyThread_allocate_lock();
     if not lock {
         jacpy_release(instance);
-        object_error("MemoryError", "Unable to allocate lock");
+        object_error(PyExc_MemoryError, "Unable to allocate lock");
         return (NULL, None);
     }
     stream = ZlibStream(
@@ -517,7 +525,7 @@ def:priv stream_of(instance: ptr[PyObject], token: ClassToken) -> ZlibStream | N
             return state;
         }
     }
-    object_error("SystemError", "zlib stream state is unavailable");
+    object_error(PyExc_SystemError, "zlib stream state is unavailable");
     return None;
 }
 
@@ -531,7 +539,9 @@ def zlib_compressobj_impl(
     zdict: BufferArgument
 ) -> ptr[PyObject] {
     if bool(zdict.view) and zdict.size() > UINT_MAX {
-        object_error("OverflowError", "zdict length does not fit in an unsigned int");
+        object_error(
+            PyExc_OverflowError, "zdict length does not fit in an unsigned int"
+        );
         return NULL;
     }
     (instance, stream) = new_stream_object(module, COMPRESS_TYPE, Compress_token, True);
@@ -549,13 +559,13 @@ def zlib_compressobj_impl(
             return instance;
         }
         object_error(
-            "ValueError",
+            PyExc_ValueError,
             "Invalid dictionary" if err == Z_STREAM_ERROR else "deflateSetDictionary()"
         );
     } elif err == Z_MEM_ERROR {
-        object_error("MemoryError", "Can't allocate memory for compression object");
+        object_error(PyExc_MemoryError, "Can't allocate memory for compression object");
     } elif err == Z_STREAM_ERROR {
-        object_error("ValueError", "Invalid initialization option");
+        object_error(PyExc_ValueError, "Invalid initialization option");
     } else {
         zlib_error(
             module, stream.zst.value.msg, err, "while creating compression object"
@@ -573,7 +583,9 @@ def:priv set_inflate_zdict(
         return False;
     }
     if view.size() > UINT_MAX {
-        object_error("OverflowError", "zdict length does not fit in an unsigned int");
+        object_error(
+            PyExc_OverflowError, "zdict length does not fit in an unsigned int"
+        );
         return False;
     }
     err = inflateSetDictionary(zst, view.address(), u32(view.size()));
@@ -588,7 +600,9 @@ def zlib_decompressobj_impl(
     module: ptr[PyObject], wbits: i32, zdict: ptr[PyObject]
 ) -> ptr[PyObject] {
     if zdict and PyObject_CheckBuffer(zdict) == 0 {
-        object_error("TypeError", "zdict argument must support the buffer protocol");
+        object_error(
+            PyExc_TypeError, "zdict argument must support the buffer protocol"
+        );
         return NULL;
     }
     (instance, stream) = new_stream_object(
@@ -612,9 +626,11 @@ def zlib_decompressobj_impl(
         return instance;
     }
     if err == Z_STREAM_ERROR {
-        object_error("ValueError", "Invalid initialization option");
+        object_error(PyExc_ValueError, "Invalid initialization option");
     } elif err == Z_MEM_ERROR {
-        object_error("MemoryError", "Can't allocate memory for decompression object");
+        object_error(
+            PyExc_MemoryError, "Can't allocate memory for decompression object"
+        );
     } else {
         zlib_error(
             module, stream.zst.value.msg, err, "while creating decompression object"
@@ -716,7 +732,7 @@ def zlib_Decompress_decompress_impl(
         return NULL;
     }
     if max_length < 0 {
-        object_error("ValueError", "max_length must be non-negative");
+        object_error(PyExc_ValueError, "max_length must be non-negative");
         return NULL;
     }
     limit = -1 if max_length == 0 else max_length;
@@ -869,9 +885,9 @@ def:priv copy_stream(
         return instance;
     }
     if err == Z_STREAM_ERROR {
-        object_error("ValueError", "Inconsistent stream state");
+        object_error(PyExc_ValueError, "Inconsistent stream state");
     } elif err == Z_MEM_ERROR {
-        object_error("MemoryError", f"Can't allocate memory for {kind} object");
+        object_error(PyExc_MemoryError, f"Can't allocate memory for {kind} object");
     } else {
         zlib_error(module, stream.zst.value.msg, err, f"while copying {kind} object");
     }
@@ -928,7 +944,7 @@ def zlib_Decompress_flush_impl(
         return NULL;
     }
     if length <= 0 {
-        object_error("ValueError", "length must be greater than zero");
+        object_error(PyExc_ValueError, "length must be greater than zero");
         return NULL;
     }
     stream.enter();
@@ -1008,7 +1024,7 @@ obj ZlibDecompressorState(NativeState) {
         needs_input: bool = True;
 
     def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return jacpy_binding_visit(self.zdict, visitor, context);
+        return visit_reference(self.zdict, visitor, context);
     }
 
     def clear {
@@ -1036,7 +1052,7 @@ def:priv decompressor_of(instance: ptr[PyObject]) -> ZlibDecompressorState | Non
             return state;
         }
     }
-    object_error("SystemError", "zlib decompressor state is unavailable");
+    object_error(PyExc_SystemError, "zlib decompressor state is unavailable");
     return None;
 }
 
@@ -1061,7 +1077,7 @@ def zlib_decompressor_new(
     state.lock = PyThread_allocate_lock();
     if not state.lock {
         jacpy_release(instance);
-        object_error("MemoryError", "Unable to allocate lock");
+        object_error(PyExc_MemoryError, "Unable to allocate lock");
         return NULL;
     }
     if jacpy_binding_native_set(instance, ZlibDecompressor_token.handle, state) < 0 {
@@ -1080,9 +1096,11 @@ def zlib_decompressor_new(
         return instance;
     }
     if err == Z_STREAM_ERROR {
-        object_error("ValueError", "Invalid initialization option");
+        object_error(PyExc_ValueError, "Invalid initialization option");
     } elif err == Z_MEM_ERROR {
-        object_error("MemoryError", "Can't allocate memory for decompression object");
+        object_error(
+            PyExc_MemoryError, "Can't allocate memory for decompression object"
+        );
     } else {
         zlib_error(
             module, state.zst.value.msg, err, "while creating decompression object"
@@ -1142,7 +1160,7 @@ def:priv decompress_buf(
             (result, size) = arrange_output(state, result, size, limit);
             if size == -1 {
                 object_error(
-                    "MemoryError", "Insufficient memory for buffer allocation"
+                    PyExc_MemoryError, "Insufficient memory for buffer allocation"
                 );
                 jacpy_release(result);
                 return NULL;
@@ -1289,7 +1307,7 @@ def zlib_ZlibDecompressor_decompress_impl(
     }
     result = NULL;
     if state.eof {
-        object_error("EOFError", "End of stream already reached");
+        object_error(PyExc_EOFError, "End of stream already reached");
     } else {
         result = decompress_input(
             state,

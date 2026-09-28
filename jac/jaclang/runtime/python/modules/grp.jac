@@ -11,6 +11,8 @@ import from jaclang.runtime.python.cpython_api {
     PyErr_Occurred,
     PyEval_RestoreThread,
     PyEval_SaveThread,
+    PyExc_KeyError,
+    PyExc_ValueError,
     PyList_Append,
     PyList_New,
     PyLong_FromLong,
@@ -152,7 +154,7 @@ def grp_getgrgid_impl(module: ptr[PyObject], id_: ptr[PyObject]) -> ptr[PyObject
         number = _PyLong_FromGid(gid);
         if number {
             object_error(
-                "KeyError", f"getgrgid(): gid not found: {repr_value(number)}"
+                PyExc_KeyError, f"getgrgid(): gid not found: {repr_value(number)}"
             );
             jacpy_release(number);
         }
@@ -170,7 +172,7 @@ def without_null(encoded: ptr[PyObject]) -> bool {
     found = PySequence_Contains(encoded, zero);
     jacpy_release(zero);
     if found > 0 {
-        object_error("ValueError", "embedded null byte");
+        object_error(PyExc_ValueError, "embedded null byte");
     }
     return found == 0;
 }
@@ -194,7 +196,9 @@ def grp_getgrnam_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObjec
         } elif nomem {
             PyErr_NoMemory();
         } else {
-            object_error("KeyError", f"getgrnam(): name not found: {repr_value(name)}");
+            object_error(
+                PyExc_KeyError, f"getgrnam(): name not found: {repr_value(name)}"
+            );
         }
         PyMem_RawFree(buffer);
     }

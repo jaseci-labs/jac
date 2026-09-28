@@ -3,11 +3,24 @@ or zero with the Python exception set."""
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_IndentationError,
+    PyExc_MemoryError,
+    PyExc_NotImplementedError,
+    PyExc_OverflowError,
+    PyExc_RecursionError,
+    PyExc_RuntimeError,
+    PyExc_SyntaxError,
+    PyExc_SystemError,
+    PyExc_TabError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyLong_FromLongLong,
     PyObject,
     PyTuple_New,
+    Py_NewRef,
+    Py_None,
+    _PyExc_IncompleteInputError,
     jacpy_error_pending,
-    jacpy_none,
     jacpy_raise_compiler_error,
     jacpy_release,
     jacpy_source_kind,
@@ -81,6 +94,7 @@ import from jaclang.runtime.python.objects { PyObj, PyCode, PyError, PyInt }
 import from jaclang.runtime.python.capi {
     boundary_failure,
     checked,
+    object_error,
     required,
     text_object,
     text_value
@@ -147,6 +161,36 @@ def respond(request: native_request) -> ptr[PyObject] {
     return NULL;
 }
 
+"""The exception type a compiler diagnostic names; NULL for an unknown kind."""
+def:priv failure_type(kind: str) -> ptr[PyObject] {
+    if kind == "SyntaxError" {
+        return PyExc_SyntaxError;
+    } elif kind == "IndentationError" {
+        return PyExc_IndentationError;
+    } elif kind == "TabError" {
+        return PyExc_TabError;
+    } elif kind == "_IncompleteInputError" {
+        return addressof(_PyExc_IncompleteInputError);
+    } elif kind == "ValueError" {
+        return PyExc_ValueError;
+    } elif kind == "TypeError" {
+        return PyExc_TypeError;
+    } elif kind == "OverflowError" {
+        return PyExc_OverflowError;
+    } elif kind == "RecursionError" {
+        return PyExc_RecursionError;
+    } elif kind == "RuntimeError" {
+        return PyExc_RuntimeError;
+    } elif kind == "NotImplementedError" {
+        return PyExc_NotImplementedError;
+    } elif kind == "MemoryError" {
+        return PyExc_MemoryError;
+    } elif kind == "SystemError" {
+        return PyExc_SystemError;
+    }
+    return NULL;
+}
+
 def raise_failure(request: native_request, error: syntax_failure) {
     try {
         message = text_object(error.msg);
@@ -156,7 +200,14 @@ def raise_failure(request: native_request, error: syntax_failure) {
                 location = failure_location(request.filename, error);
             }
             try {
-                jacpy_raise_compiler_error(error.kind, message, location);
+                kind = failure_type(error.kind);
+                if kind == 0 {
+                    object_error(
+                        PyExc_SystemError, "unknown native diagnostic " + error.kind
+                    );
+                } else {
+                    jacpy_raise_compiler_error(kind, message, location);
+                }
             } finally {
                 jacpy_release(location);
             }
@@ -187,7 +238,7 @@ def failure_location(filename: str, error: syntax_failure) -> ptr[PyObject] {
                 3,
                 text_object(error.text)
                     if error.text is not None
-                    else required(jacpy_none())
+                    else required(Py_NewRef(Py_None))
             )
         );
         checked(

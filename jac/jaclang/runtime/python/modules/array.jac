@@ -10,6 +10,13 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBool_FromLong,
     PyByteArray_Resize,
+    PyExc_BufferError,
+    PyExc_EOFError,
+    PyExc_IndexError,
+    PyExc_MemoryError,
+    PyExc_OverflowError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyIter_Next,
@@ -93,7 +100,7 @@ def:pub jacpy_array_init(state: array_state, code: i64) -> i64 {
     kind = "bBhHiIlLqQfd".find(letter);
     if kind < 0 and letter not in "uw" {
         object_error(
-            "ValueError",
+            PyExc_ValueError,
             "bad typecode (must be b, B, u, h, H, i, I, l, L, q, Q, f, d or w)"
         );
         return -1;
@@ -152,7 +159,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
     letter = chr(state.code);
     if letter in "uw" {
         if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
-            object_error("TypeError", "array item must be unicode character");
+            object_error(PyExc_TypeError, "array item must be unicode character");
             raise boundary_failure();
         }
         return u64(PyUnicode_ReadChar(value, 0));
@@ -173,7 +180,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
             if state.itemsize < 8 {
                 limit = i64(1) << i64(state.itemsize * 8 - 1);
                 if actual < -limit or actual >= limit {
-                    object_error("OverflowError", "signed integer is out of range");
+                    object_error(PyExc_OverflowError, "signed integer is out of range");
                     raise boundary_failure();
                 }
             }
@@ -182,7 +189,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
         bits = PyLong_AsUnsignedLongLong(number);
         pending();
         if state.itemsize < 8 and bits >= (u64(1) << i64(state.itemsize * 8)) {
-            object_error("OverflowError", "unsigned integer is out of range");
+            object_error(PyExc_OverflowError, "unsigned integer is out of range");
             raise boundary_failure();
         }
         return bits;
@@ -202,7 +209,7 @@ def:priv decode(state: array_state, index: i64) -> ptr[PyObject] {
     bits = read_bits(address, state.itemsize, state.little);
     if letter in "uw" {
         if bits > u64(1114111) {
-            object_error("ValueError", "character out of range [U+0000; U+10ffff]");
+            object_error(PyExc_ValueError, "character out of range [U+0000; U+10ffff]");
             raise boundary_failure();
         }
         return required(PyUnicode_FromOrdinal(i32(bits)));
@@ -215,11 +222,13 @@ def:priv resize(state: array_state, length: i64) {
         return;
     }
     if state.exports != 0 {
-        object_error("BufferError", "cannot resize an array that is exporting buffers");
+        object_error(
+            PyExc_BufferError, "cannot resize an array that is exporting buffers"
+        );
         raise boundary_failure();
     }
     if length < 0 or length > i64(9223372036854775807) // i64(state.itemsize) {
-        object_error("MemoryError", "");
+        object_error(PyExc_MemoryError, "");
         raise boundary_failure();
     }
     if length > state.capacity or length == 0 {
@@ -238,7 +247,7 @@ def:priv resize(state: array_state, length: i64) {
 def:pub jacpy_array_item(state: array_state, index: i64) -> ptr[PyObject] {
     try {
         if index < 0 or index >= state.length {
-            object_error("IndexError", "array index out of range");
+            object_error(PyExc_IndexError, "array index out of range");
             return NULL;
         }
         return decode(state, index);
@@ -253,7 +262,7 @@ def:pub jacpy_array_assign(
     try {
         bits = encode(state, value);
         if index < 0 or index >= state.length {
-            object_error("IndexError", "array assignment index out of range");
+            object_error(PyExc_IndexError, "array assignment index out of range");
             return -1;
         }
         write_bits(
@@ -360,12 +369,12 @@ def:pub jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i6
     try {
         width = i64(state.itemsize);
         if size % width != 0 {
-            object_error("ValueError", "bytes length not a multiple of item size");
+            object_error(PyExc_ValueError, "bytes length not a multiple of item size");
             return -1;
         }
         old_length = state.length;
         if size // width > i64(9223372036854775807) - old_length {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         resize(state, old_length + size // width);
@@ -440,12 +449,12 @@ def:pub jacpy_array_assign_slice(
     snapshot: ptr[PyObject] = NULL;
     try {
         if state.code != source.code {
-            object_error("TypeError", "bad argument type for built-in operation");
+            object_error(PyExc_TypeError, "bad argument type for built-in operation");
             return -1;
         }
         if step != 1 and count != source.length {
             object_error(
-                "ValueError",
+                PyExc_ValueError,
                 "attempt to assign array of size "
                     + str(source.length)
                     + " to extended slice of size "
@@ -457,13 +466,13 @@ def:pub jacpy_array_assign_slice(
         old_length = state.length;
         width = i64(state.itemsize);
         if source_length > i64(9223372036854775807) - (old_length - count) {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         new_length = old_length - count + source_length;
         if new_length != old_length and state.exports != 0 {
             object_error(
-                "BufferError", "cannot resize an array that is exporting buffers"
+                PyExc_BufferError, "cannot resize an array that is exporting buffers"
             );
             return -1;
         }
@@ -514,7 +523,7 @@ def:pub jacpy_array_delete(
         }
         if state.exports != 0 {
             object_error(
-                "BufferError", "cannot resize an array that is exporting buffers"
+                PyExc_BufferError, "cannot resize an array that is exporting buffers"
             );
             return -1;
         }
@@ -558,7 +567,7 @@ def:pub jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject] {
             index += state.length;
         }
         if index < 0 or index >= state.length {
-            object_error("IndexError", "pop index out of range");
+            object_error(PyExc_IndexError, "pop index out of range");
             return NULL;
         }
         value = decode(state, index);
@@ -583,7 +592,7 @@ def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64 {
             return 0;
         }
         if times > i64(9223372036854775807) // old_length {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         resize(state, old_length * times);
@@ -652,7 +661,7 @@ def:pub jacpy_array_search(
             index += 1;
         }
         if mode == 1 or mode == 2 {
-            object_error("ValueError", "array.index(x): x not in array");
+            object_error(PyExc_ValueError, "array.index(x): x not in array");
             return -1;
         }
         return found;
@@ -704,7 +713,8 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
     try {
         if chr(state.code) not in "uw" {
             object_error(
-                "ValueError", "tounicode() may only be called on unicode type arrays"
+                PyExc_ValueError,
+                "tounicode() may only be called on unicode type arrays"
             );
             return NULL;
         }
@@ -722,7 +732,7 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
 def:pub jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64 {
     if chr(state.code) not in "uw" {
         object_error(
-            "ValueError", "fromunicode() may only be called on unicode type arrays"
+            PyExc_ValueError, "fromunicode() may only be called on unicode type arrays"
         );
         return -1;
     }
@@ -809,11 +819,11 @@ def:pub jacpy_array_fromfile(
     data: ptr[PyObject] = NULL;
     try {
         if count < 0 {
-            object_error("ValueError", "negative count");
+            object_error(PyExc_ValueError, "negative count");
             return -1;
         }
         if count > i64(9223372036854775807) // i64(state.itemsize) {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         expected = count * i64(state.itemsize);
@@ -821,13 +831,13 @@ def:pub jacpy_array_fromfile(
         method = required(PyObject_GetAttrString(file, "read"));
         data = required(PyObject_CallOneArg(method, size));
         if jacpy_is_bytes(data) == 0 {
-            object_error("TypeError", "read() didn't return bytes");
+            object_error(PyExc_TypeError, "read() didn't return bytes");
             return -1;
         }
         actual = jacpy_bytes_length(data);
         checked(jacpy_array_frombytes(state, jacpy_bytes_address(data), actual));
         if actual != expected {
-            object_error("EOFError", "read() didn't return enough bytes");
+            object_error(PyExc_EOFError, "read() didn't return enough bytes");
             return -1;
         }
         return 0;
@@ -965,7 +975,7 @@ def:priv decode_pickle(
     try {
         if format < 0 or format > 21 {
             object_error(
-                "ValueError", "third argument must be a valid machine format code"
+                PyExc_ValueError, "third argument must be a valid machine format code"
             );
             return NULL;
         }
@@ -986,7 +996,7 @@ def:priv decode_pickle(
                             if format < 16
                             else 8 if format < 18 else 4 if format < 20 else 8;
         if size % i64(width) != 0 {
-            object_error("ValueError", "string length not a multiple of item size");
+            object_error(PyExc_ValueError, "string length not a multiple of item size");
             return NULL;
         }
         little = format % 2 == 0;

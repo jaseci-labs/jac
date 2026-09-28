@@ -2,6 +2,12 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyErr_WarnEx,
+    PyExc_DeprecationWarning,
+    PyExc_IndexError,
+    PyExc_RuntimeError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyImport_ImportModuleAttrString,
     PyIndex_Check,
     PyLong_AsInt,
@@ -9,6 +15,7 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyLong_FromUnsignedLongLong,
     PyLong_FromVoidPtr,
+    PyNumber_AsSsize_t,
     PyObject,
     PyObject_Call,
     PyObject_CallOneArg,
@@ -20,6 +27,8 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicode_FromOrdinal,
     Py_GenericAlias,
     Py_NewRef,
+    Py_None,
+    Py_NotImplemented,
     Py_TYPE,
     Py_buffer,
     SliceBounds,
@@ -34,15 +43,11 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_slice,
     jacpy_is_type,
     jacpy_is_unicode,
-    jacpy_none,
-    jacpy_not_implemented,
-    jacpy_number_ssize,
     jacpy_optional_attr,
     jacpy_release,
     jacpy_slice_adjust,
     jacpy_slice_unpack,
-    jacpy_type_check,
-    jacpy_warn
+    jacpy_type_check
 }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -53,7 +58,7 @@ import from jaclang.runtime.python.bindings.module {
     add_owned,
     jacpy_binding_state_get,
     jacpy_binding_state_set,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -153,7 +158,7 @@ obj ArrayState(NativeState) {
     }
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        return jacpy_binding_visit(jacpy_array_field(self.native), visitor, context);
+        return visit_reference(jacpy_array_field(self.native), visitor, context);
     }
 
     def drop {
@@ -169,9 +174,7 @@ obj ArrayIteratorState(NativeState) {
     }
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        return jacpy_binding_visit(
-            jacpy_array_cursor_owner(self.native), visitor, context
-        );
+        return visit_reference(jacpy_array_cursor_owner(self.native), visitor, context);
     }
 
     def drop {
@@ -190,7 +193,7 @@ def:priv state_for(instance: ptr[PyObject]) -> (ArrayState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native array state is unavailable");
+    object_error(PyExc_SystemError, "native array state is unavailable");
     return None;
 }
 
@@ -201,7 +204,7 @@ def:priv iterator_state(instance: ptr[PyObject]) -> (ArrayIteratorState | None) 
             return state;
         }
     }
-    object_error("SystemError", "native array iterator state is unavailable");
+    object_error(PyExc_SystemError, "native array iterator state is unavailable");
     return None;
 }
 
@@ -220,7 +223,7 @@ def:priv allocate(type: ptr[PyObject], code: i64) -> ptr[PyObject] {
 }
 
 def:priv done(status: i64) -> ptr[PyObject] {
-    return jacpy_none() if status >= 0 else NULL;
+    return Py_NewRef(Py_None) if status >= 0 else NULL;
 }
 
 def:priv append_buffer(state: array_state, value: ptr[PyObject]) -> i64 {
@@ -245,7 +248,7 @@ def:priv create_bound(args: BoundArguments) -> ptr[PyObject] {
     audit = owned_tuple(
         [
             Py_NewRef(args.values[0]),
-            Py_NewRef(initial) if initial != 0 else jacpy_none()
+            Py_NewRef(initial) if initial != 0 else Py_NewRef(Py_None)
         ]
     );
     if audit == 0 {
@@ -257,8 +260,8 @@ def:priv create_bound(args: BoundArguments) -> ptr[PyObject] {
         return NULL;
     }
     if code == 117
-        and jacpy_warn(
-            "DeprecationWarning",
+        and PyErr_WarnEx(
+            PyExc_DeprecationWarning,
             "The 'u' type code is deprecated and will be removed in Python 3.16",
             1
         )
@@ -284,7 +287,7 @@ def:priv create_bound(args: BoundArguments) -> ptr[PyObject] {
         ) {
         source = "str" if jacpy_is_unicode(initial) != 0 else "unicode array";
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             f"cannot use a {source} to initialize an array with typecode '{chr(
                 int(code)
             )}'"
@@ -330,7 +333,7 @@ def:priv create(
     if PyType_GetSlot(type, i32(TypeSlot.INIT.value))
         == PyType_GetSlot(base, i32(TypeSlot.INIT.value)) {
         if kwargs != 0 and jacpy_dict_size(kwargs) != 0 {
-            object_error("TypeError", "array.array() takes no keyword arguments");
+            object_error(PyExc_TypeError, "array.array() takes no keyword arguments");
             return NULL;
         }
         return invoke(array_signature, args, NULL, create_bound, type);
@@ -355,7 +358,7 @@ def:priv assign_item(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) 
         return i32(-1);
     }
     if index < 0 or index >= state.native.length {
-        object_error("IndexError", "array assignment index out of range");
+        object_error(PyExc_IndexError, "array assignment index out of range");
         return i32(-1);
     }
     return i32(
@@ -367,7 +370,7 @@ def:priv assign_item(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) 
 
 def:priv subscript(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
     if PyIndex_Check(key) != 0 {
-        index = jacpy_number_ssize(key, "IndexError");
+        index = PyNumber_AsSsize_t(key, PyExc_IndexError);
         if jacpy_error_pending() != 0 {
             return NULL;
         }
@@ -405,7 +408,7 @@ def:priv subscript(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject]
         }
         return result;
     }
-    object_error("TypeError", "array indices must be integers or slices");
+    object_error(PyExc_TypeError, "array indices must be integers or slices");
     return NULL;
 }
 
@@ -413,7 +416,7 @@ def:priv assign_subscript(
     instance: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if PyIndex_Check(key) != 0 {
-        index = jacpy_number_ssize(key, "IndexError");
+        index = PyNumber_AsSsize_t(key, PyExc_IndexError);
         if jacpy_error_pending() != 0 {
             return i32(-1);
         }
@@ -438,7 +441,7 @@ def:priv assign_subscript(
             );
         }
         if jacpy_binding_matches(value, array_type.handle) == 0 {
-            object_error("TypeError", "can only assign array to array slice");
+            object_error(PyExc_TypeError, "can only assign array to array slice");
             return i32(-1);
         }
         other = state_for(value);
@@ -451,7 +454,7 @@ def:priv assign_subscript(
             )
         );
     }
-    object_error("TypeError", "array indices must be integers or slices");
+    object_error(PyExc_TypeError, "array indices must be integers or slices");
     return i32(-1);
 }
 
@@ -459,7 +462,7 @@ def:priv inplace_concat(
     instance: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_binding_matches(value, array_type.handle) == 0 {
-        object_error("TypeError", "can only extend array with array");
+        object_error(PyExc_TypeError, "can only extend array with array");
         return NULL;
     }
     state = state_for(instance);
@@ -532,7 +535,7 @@ def:priv compare(
     instance: ptr[PyObject], other: ptr[PyObject], operation: i32
 ) -> ptr[PyObject] {
     if jacpy_binding_matches(other, array_type.handle) == 0 {
-        return jacpy_not_implemented();
+        return Py_NewRef(Py_NotImplemented);
     }
     left = state_for(instance);
     right = state_for(other);
@@ -643,7 +646,7 @@ def:priv frombytes(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObjec
 
 def:priv fromlist(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_list(value) == 0 {
-        object_error("TypeError", "arg must be list");
+        object_error(PyExc_TypeError, "arg must be list");
         return NULL;
     }
     state = state_for(instance);
@@ -654,7 +657,7 @@ def:priv fromlist(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject
 
 def:priv fromunicode(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(value) == 0 {
-        object_error("TypeError", "fromunicode() argument must be str");
+        object_error(PyExc_TypeError, "fromunicode() argument must be str");
         return NULL;
     }
     state = state_for(instance);
@@ -745,7 +748,7 @@ def:priv release_buffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
 
 def:priv reduce(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_long(value) == 0 {
-        object_error("TypeError", "__reduce_ex__ argument should be an integer");
+        object_error(PyExc_TypeError, "__reduce_ex__ argument should be an integer");
         return NULL;
     }
     protocol = PyLong_AsSsize_t(value);
@@ -767,7 +770,7 @@ def:priv reduce(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] 
         if jacpy_error_pending() != 0 {
             return NULL;
         }
-        held.references[1] = jacpy_none();
+        held.references[1] = Py_NewRef(Py_None);
     }
     state = state_for(instance);
     if state is None {
@@ -795,11 +798,11 @@ def:priv reconstruct_bound(args: BoundArguments) -> ptr[PyObject] {
     if jacpy_is_type(args.values[0]) == 0
         or PyType_IsSubtype(args.values[0], jacpy_binding_state_get(args.context, 0))
             == 0 {
-        object_error("TypeError", "first argument must be an array subtype");
+        object_error(PyExc_TypeError, "first argument must be an array subtype");
         return NULL;
     }
     if jacpy_is_bytes(args.values[3]) == 0 {
-        object_error("TypeError", "fourth argument should be bytes");
+        object_error(PyExc_TypeError, "fourth argument should be bytes");
         return NULL;
     }
     return jacpy_array_reconstruct_object(args.values[0], code, format, args.values[3]);
@@ -849,7 +852,7 @@ def:priv iterator_setstate(
         return NULL;
     }
     jacpy_array_cursor_set(state.native, index);
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv iterator_reduce(
@@ -861,7 +864,7 @@ def:priv iterator_reduce(
     }
     held.references[2] = jacpy_dict_get(held.references[0], held.references[1]);
     if held.references[2] == 0 {
-        object_error("RuntimeError", "missing builtin iter");
+        object_error(PyExc_RuntimeError, "missing builtin iter");
         return NULL;
     }
     state = iterator_state(instance);
@@ -950,7 +953,7 @@ def:priv reverse(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     jacpy_array_reverse(state.native, 0);
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv byteswap(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
@@ -959,7 +962,7 @@ def:priv byteswap(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObjec
         return NULL;
     }
     jacpy_array_reverse(state.native, 1);
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv array_traverse(

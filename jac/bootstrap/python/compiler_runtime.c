@@ -16,39 +16,6 @@
  * boundary -- a separately built native unit calls them -- so export them. */
 #pragma GCC visibility push(default)
 
-
-/* Exception identity belongs to the retained runtime, not the caller's
- * mutable builtins dictionary. Shared by compiler and extension boundaries. */
-PyObject *jacpy_exception_type(const char *name) {
-#define EXCEPTION(kind) if (strcmp(name, #kind) == 0) return PyExc_##kind
-    EXCEPTION(BaseException); EXCEPTION(Exception); EXCEPTION(BaseExceptionGroup);
-    EXCEPTION(StopAsyncIteration); EXCEPTION(StopIteration); EXCEPTION(GeneratorExit);
-    EXCEPTION(ArithmeticError); EXCEPTION(LookupError); EXCEPTION(AssertionError);
-    EXCEPTION(AttributeError); EXCEPTION(BufferError); EXCEPTION(EOFError);
-    EXCEPTION(FloatingPointError); EXCEPTION(OSError); EXCEPTION(ImportError);
-    EXCEPTION(ModuleNotFoundError); EXCEPTION(IndexError); EXCEPTION(KeyError);
-    EXCEPTION(KeyboardInterrupt); EXCEPTION(MemoryError); EXCEPTION(NameError);
-    EXCEPTION(OverflowError); EXCEPTION(RuntimeError); EXCEPTION(RecursionError);
-    EXCEPTION(NotImplementedError); EXCEPTION(SyntaxError); EXCEPTION(IndentationError);
-    EXCEPTION(TabError); EXCEPTION(ReferenceError); EXCEPTION(SystemError);
-    EXCEPTION(SystemExit); EXCEPTION(TypeError); EXCEPTION(UnboundLocalError);
-    EXCEPTION(UnicodeError); EXCEPTION(UnicodeEncodeError); EXCEPTION(UnicodeDecodeError);
-    EXCEPTION(UnicodeTranslateError); EXCEPTION(ValueError); EXCEPTION(ZeroDivisionError);
-    EXCEPTION(BlockingIOError); EXCEPTION(BrokenPipeError); EXCEPTION(ChildProcessError);
-    EXCEPTION(ConnectionError); EXCEPTION(ConnectionAbortedError); EXCEPTION(ConnectionRefusedError);
-    EXCEPTION(ConnectionResetError); EXCEPTION(FileExistsError); EXCEPTION(FileNotFoundError);
-    EXCEPTION(InterruptedError); EXCEPTION(IsADirectoryError); EXCEPTION(NotADirectoryError);
-    EXCEPTION(PermissionError); EXCEPTION(ProcessLookupError); EXCEPTION(TimeoutError);
-    EXCEPTION(EnvironmentError); EXCEPTION(IOError); EXCEPTION(Warning);
-    EXCEPTION(UserWarning); EXCEPTION(DeprecationWarning); EXCEPTION(PendingDeprecationWarning);
-    EXCEPTION(SyntaxWarning); EXCEPTION(RuntimeWarning); EXCEPTION(FutureWarning);
-    EXCEPTION(ImportWarning); EXCEPTION(UnicodeWarning); EXCEPTION(BytesWarning);
-    EXCEPTION(EncodingWarning); EXCEPTION(ResourceWarning);
-#undef EXCEPTION
-    if (strcmp(name, "_IncompleteInputError") == 0) return PyExc_IncompleteInputError;
-    return NULL;
-}
-
 /* Values returned by this boundary are owned PyBytes handles. Callers hold
  * the GIL, copy the UTF-8 payload into Jac-owned storage, and release them. */
 static PyObject *utf8_result(PyObject *value) {
@@ -241,7 +208,6 @@ int64_t jacpy_list_append_owned(PyObject *target, PyObject *value) {
     Py_DECREF(item);
     return status;
 }
-PyObject *jacpy_none(void) { return Py_NewRef(Py_None); }
 PyObject *jacpy_text(const char *value, int64_t size) {
     return PyUnicode_DecodeUTF8(value, size, "surrogatepass");
 }
@@ -314,22 +280,13 @@ PyObject *jacpy_take_error_text(void) {
 }
 /* Compiler failures keep CPython's argument shape: SyntaxError subclasses take
  * (message, (filename, lineno, offset, text, end_lineno, end_offset)). */
-void jacpy_raise_compiler_error(const char *kind, PyObject *message, PyObject *location) {
-    PyObject *type = jacpy_exception_type(kind);
-    if (type == NULL) {
-        PyErr_Format(PyExc_SystemError, "unknown native diagnostic %s", kind);
-        return;
-    }
+void jacpy_raise_compiler_error(PyObject *type, PyObject *message, PyObject *location) {
     if (location != 0 && PyObject_IsSubclass(type, PyExc_SyntaxError) > 0) {
         PyObject *args = PyTuple_Pack(2, message, location);
         if (args != NULL) { PyErr_SetObject(type, args); Py_DECREF(args); }
         return;
     }
     PyErr_SetObject(type, message);
-}
-int64_t jacpy_error_is(const char *name) {
-    PyObject *type = jacpy_exception_type(name);
-    return type != NULL && PyErr_ExceptionMatches(type);
 }
 
 #include <structmember.h>
@@ -458,23 +415,17 @@ PyObject *jacpy_fd_line(int64_t fd) {
     PyObject *result=PyBytes_FromObject(line); Py_DECREF(line);
     return result;
 }
-void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
-    PyObject *type=jacpy_exception_type(kind);
-    if (type == NULL) type=PyExc_SystemError;
-    PyObject *text=PyUnicode_DecodeUTF8(message,size,"surrogatepass");
-    if (text) { PyErr_SetObject(type,text); Py_DECREF(text); }
-}
 
 /* Initialize Jac native module storage before CPython starts importing. */
 extern void __jac_shared_init(void);
 __attribute__((constructor)) static void jacpy_initialize(void) { __jac_shared_init(); }
 #pragma GCC visibility pop
 
-/* atexit keeps both of its callback lists in PyInterpreterState, an object
- * layout only C addresses, and the C callbacks of PyUnstable_AtExit are
- * function pointers, which Jac cannot call. modules/atexit.jac implements the
- * module and the interpreter hooks over these; _PyAtExit_Init stays here
- * because it returns PyStatus by value. */
+/* atexit keeps the heads of both of its callback lists in PyInterpreterState,
+ * an object layout only C addresses, and the C list is guarded by a lock
+ * macro. modules/atexit.jac implements the module and the interpreter hooks
+ * over these accessors and walks and calls the atexit_callback records itself;
+ * _PyAtExit_Init stays here because it returns PyStatus by value. */
 #include "internal/pycore_atexit.h"
 #include "internal/pycore_initconfig.h"
 #include "internal/pycore_interp.h"
@@ -502,19 +453,9 @@ int32_t jacpy_atexit_push(PyInterpreterState *interp, void *func, void *data) {
     _PyAtExit_UnlockCallbacks(state);
     return 0;
 }
-/* Detach the C callbacks, newest first; _PyAtExit_Fini walks them with
- * jacpy_atexit_call, the trampoline that frees one and calls it. */
-void *jacpy_atexit_detach(PyInterpreterState *interp) {
+/* Detach the C callbacks, newest first, for _PyAtExit_Fini to run. */
+atexit_callback *jacpy_atexit_detach(PyInterpreterState *interp) {
     atexit_callback *first = interp->atexit.ll_callbacks;
     interp->atexit.ll_callbacks = NULL;
     return first;
-}
-void *jacpy_atexit_call(void *node) {
-    atexit_callback *callback = node;
-    atexit_callback *next = callback->next;
-    atexit_datacallbackfunc exitfunc = callback->func;
-    void *data = callback->data;
-    PyMem_Free(callback);
-    exitfunc(data);
-    return next;
 }

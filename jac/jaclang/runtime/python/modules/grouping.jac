@@ -14,7 +14,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_RichCompareBool,
     PyTuple_New,
     Py_NewRef,
-    jacpy_is_none,
+    Py_None,
     jacpy_release,
     jacpy_tuple_set_owned
 }
@@ -37,7 +37,7 @@ def:pub jacpy_group_init(
     if state.source == 0 {
         return -1;
     }
-    if jacpy_is_none(function) == 0 {
+    if function != Py_None {
         state.function = Py_NewRef(function);
     }
     return 0;

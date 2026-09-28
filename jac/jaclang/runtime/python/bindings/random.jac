@@ -2,17 +2,20 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_SystemError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyFloat_FromDouble,
     PyLong_AsUnsignedLongLong,
     PyNumber_Index,
     PyObject,
     PyType_GetSlot,
+    Py_NewRef,
+    Py_None,
     Py_TYPE,
     jacpy_dict_size,
     jacpy_error_pending,
-    jacpy_is_none,
     jacpy_long_sign,
-    jacpy_none,
     jacpy_release
 }
 import from jaclang.runtime.python.bindings.module {
@@ -60,7 +63,7 @@ def:priv state_of(instance: ptr[PyObject]) -> (mt19937 | None) {
             return state;
         }
     }
-    object_error("SystemError", "native Random state is unavailable");
+    object_error(PyExc_SystemError, "native Random state is unavailable");
     return None;
 }
 
@@ -99,7 +102,7 @@ def:priv initialize(
             == PyType_GetSlot(base, i32(TypeSlot.NEW.value));
     jacpy_release(base);
     if reject_keywords and kwargs != 0 and jacpy_dict_size(kwargs) != 0 {
-        object_error("TypeError", "Random() takes no keyword arguments");
+        object_error(PyExc_TypeError, "Random() takes no keyword arguments");
         return i32(-1);
     }
     bound = BoundArguments([NULL]);
@@ -112,9 +115,7 @@ def:priv initialize(
     }
     seed = bound.values[0];
     return i32(
-        jacpy_random_seed(
-            state, NULL if seed == 0 or jacpy_is_none(seed) != 0 else seed
-        )
+        jacpy_random_seed(state, NULL if seed == 0 or seed == Py_None else seed)
     );
 }
 
@@ -124,11 +125,10 @@ def:priv seed_bound(args: BoundArguments) -> ptr[PyObject] {
         return NULL;
     }
     seed = args.values[0];
-    if jacpy_random_seed(state, NULL if seed == 0 or jacpy_is_none(seed) != 0 else seed)
-        < 0 {
+    if jacpy_random_seed(state, NULL if seed == 0 or seed == Py_None else seed) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv seed_call(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
@@ -158,7 +158,7 @@ def:priv setstate_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyO
     if state is None or jacpy_random_setstate(state, value) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:priv bits_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
@@ -168,7 +168,7 @@ def:priv bits_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObjec
     }
     if jacpy_long_sign(index) < 0 {
         jacpy_release(index);
-        object_error("ValueError", "number of bits must be non-negative");
+        object_error(PyExc_ValueError, "number of bits must be non-negative");
         return NULL;
     }
     bits = PyLong_AsUnsignedLongLong(index);

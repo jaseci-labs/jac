@@ -14,11 +14,15 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_New,
     PyDict_SetItem,
     PyDict_Update,
+    PyErr_ExceptionMatches,
+    PyExc_TypeError,
     PyIter_Next,
     PyLong_AsLongLong,
     PyLong_FromLongLong,
+    PyODict_Type,
     PyObject,
     PyObject_Call,
+    PyObject_CallNoArgs,
     PyObject_CallOneArg,
     PyObject_GetAttrString,
     PyObject_GetIter,
@@ -30,24 +34,21 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_Size,
     Py_NewRef,
+    Py_None,
     Py_ReprEnter,
     Py_ReprLeave,
     jacpy_call_two,
     jacpy_dict_entry,
     jacpy_dict_get,
     jacpy_dict_size,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_is_dict,
     jacpy_is_exact_dict,
     jacpy_is_exact_long,
     jacpy_is_exact_tuple,
     jacpy_is_exact_unicode,
-    jacpy_is_none,
     jacpy_is_tuple,
-    jacpy_none,
     jacpy_object_type,
-    jacpy_ordered_dict_new,
     jacpy_release,
     jacpy_tuple_item,
     jacpy_tuple_set_owned
@@ -69,8 +70,8 @@ def:pub jacpy_reduce(
 ) -> ptr[PyObject] {
     iterator = PyObject_GetIter(iterable);
     if iterator == 0 {
-        if jacpy_error_is("TypeError") != 0 {
-            object_error("TypeError", "reduce() arg 2 must support iteration");
+        if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
+            object_error(PyExc_TypeError, "reduce() arg 2 must support iteration");
         }
         return NULL;
     }
@@ -81,7 +82,7 @@ def:pub jacpy_reduce(
         if accumulator == 0 {
             if jacpy_error_pending() == 0 {
                 object_error(
-                    "TypeError", "reduce() of empty iterable with no initial value"
+                    PyExc_TypeError, "reduce() of empty iterable with no initial value"
                 );
             }
             return NULL;
@@ -185,7 +186,7 @@ def:priv merge_args(
     }
     if calling and n < holes {
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             "missing positional arguments in 'partial' call; expected at least "
                 + str(holes)
                 + ", got "
@@ -230,7 +231,7 @@ def:priv validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]) {
         invalid = last == placeholder;
         jacpy_release(last);
         if invalid {
-            object_error("TypeError", "trailing Placeholders are not allowed");
+            object_error(PyExc_TypeError, "trailing Placeholders are not allowed");
             raise boundary_failure();
         }
     }
@@ -267,7 +268,7 @@ def:pub jacpy_partial_init(
                 pair = NULL;
                 if invalid {
                     object_error(
-                        "TypeError",
+                        PyExc_TypeError,
                         "Placeholder cannot be passed as a keyword argument"
                     );
                     raise boundary_failure();
@@ -335,7 +336,7 @@ def:pub jacpy_partial_restore(
     dictionary: ptr[PyObject] = NULL;
     try {
         if jacpy_is_tuple(saved) == 0 or PyTuple_Size(saved) != 4 {
-            object_error("TypeError", "invalid partial state");
+            object_error(PyExc_TypeError, "invalid partial state");
             raise boundary_failure();
         }
         fn = required(jacpy_tuple_item(saved, 0));
@@ -344,9 +345,9 @@ def:pub jacpy_partial_restore(
         dictionary = required(jacpy_tuple_item(saved, 3));
         if PyCallable_Check(fn) == 0
             or jacpy_is_tuple(args) == 0
-            or (jacpy_is_none(kw) == 0 and jacpy_is_dict(kw) == 0)
-            or (jacpy_is_none(dictionary) == 0 and jacpy_is_dict(dictionary) == 0) {
-            object_error("TypeError", "invalid partial state");
+            or (kw != Py_None and jacpy_is_dict(kw) == 0)
+            or (dictionary != Py_None and jacpy_is_dict(dictionary) == 0) {
+            object_error(PyExc_TypeError, "invalid partial state");
             raise boundary_failure();
         }
         validate_tail(args, state.placeholder);
@@ -355,7 +356,7 @@ def:pub jacpy_partial_restore(
             jacpy_release(args);
             args = normalized;
         }
-        if jacpy_is_none(kw) != 0 {
+        if kw == Py_None {
             normalized_kw = required(PyDict_New());
             jacpy_release(kw);
             kw = normalized_kw;
@@ -535,7 +536,9 @@ def:pub jacpy_lru_init(
     state.typed = typed != 0;
     try {
         state.cache = required(
-            jacpy_ordered_dict_new() if maximum > 0 else PyDict_New()
+            PyObject_CallNoArgs(addressof(PyODict_Type))
+                if maximum > 0
+                else PyDict_New()
         );
         if maximum > 0 {
             state.move = required(PyObject_GetAttrString(state.cache, "move_to_end"));
@@ -770,7 +773,7 @@ def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
                 args,
                 2,
                 required(
-                    jacpy_none()
+                    Py_NewRef(Py_None)
                         if state.maximum < 0
                         else PyLong_FromLongLong(state.maximum)
                 )

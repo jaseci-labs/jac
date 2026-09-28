@@ -171,7 +171,7 @@ import from c {
         object: ptr[PyObject]
     ) -> i64;  def jacpy_binding_dict_peek(object: ptr[PyObject]) -> ptr[PyObject];  def jacpy_binding_dict_replace(
         object: ptr[PyObject], dictionary: ptr[PyObject]
-    ) -> i64;  def jacpy_binding_marker -> ptr[PyObject];
+    ) -> i64;
 }
 
 import from c {

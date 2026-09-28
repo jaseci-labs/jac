@@ -7,6 +7,7 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_ValueError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyObject,
@@ -90,7 +91,7 @@ def:priv polynomial(coefficients: list[float], value: float) -> float {
 }
 
 def:priv undefined -> ptr[PyObject] {
-    object_error("ValueError", "inv_cdf undefined for these parameters");
+    object_error(PyExc_ValueError, "inv_cdf undefined for these parameters");
     return NULL;
 }
 

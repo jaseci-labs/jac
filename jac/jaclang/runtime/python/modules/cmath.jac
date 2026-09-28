@@ -10,6 +10,10 @@ import from jaclang.runtime.python.cpython_api {
     PyComplex_FromDoubles,
     PyComplex_ImagAsDouble,
     PyComplex_RealAsDouble,
+    PyErr_ExceptionMatches,
+    PyExc_OverflowError,
+    PyExc_ValueError,
+    PyExc_ZeroDivisionError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyNumber_TrueDivide,
@@ -17,7 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     _Py_c_abs,
     jacpy_clear_errno,
     jacpy_complex_value,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_math_errno,
     jacpy_release
@@ -860,11 +863,11 @@ glob _INF: float = float("inf"),
 
 def:priv _check_errno(err: int) {
     if err == _EDOM {
-        object_error("ValueError", "math domain error");
+        object_error(PyExc_ValueError, "math domain error");
         raise boundary_failure();
     }
     if err == _ERANGE {
-        object_error("OverflowError", "math range error");
+        object_error(PyExc_OverflowError, "math range error");
         raise boundary_failure();
     }
 }
@@ -1182,7 +1185,7 @@ def:priv close(
     a: complex_parts, b: complex_parts, rel_tol: float = 1e-09, abs_tol: float = 0.0
 ) -> bool {
     if rel_tol < 0.0 or abs_tol < 0.0 {
-        object_error("ValueError", "tolerances must be non-negative");
+        object_error(PyExc_ValueError, "tolerances must be non-negative");
         raise boundary_failure();
     }
     if a.real == b.real and a.imag == b.imag {
@@ -1217,7 +1220,7 @@ def:priv rectangular(r: float, phi: float) -> complex_parts {
         }
         # errno = EDOM if r is a nonzero number and phi is infinite
         if r != 0.0 and not isnan(r) and isinf(phi) {
-            object_error("ValueError", "math domain error");
+            object_error(PyExc_ValueError, "math domain error");
             raise boundary_failure();
         }
     } elif phi == 0.0 {
@@ -1352,7 +1355,8 @@ def:pub jacpy_cmath_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObje
             try {
                 denominator = required(PyComplex_FromDoubles(divisor[0], divisor[1]));
                 quotient = PyNumber_TrueDivide(numerator, denominator);
-                if quotient == 0 and jacpy_error_is("ZeroDivisionError") != 0 {
+                if quotient == 0
+                    and PyErr_ExceptionMatches(PyExc_ZeroDivisionError) != 0 {
                     _check_errno(_EDOM);
                 }
                 return required(quotient);

@@ -6,6 +6,8 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Copy,
     PyDict_New,
     PyDict_SetItem,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyList_GetItemRef,
     PyLong_AsLongLong,
     PyLong_FromLongLong,
@@ -255,7 +257,7 @@ def:pub jacpy_unpickler_memo_clear(state: unpickle_state) {
 def memo_copy(value: ptr[PyObject], pickler: bool) -> ptr[PyObject] {
     if jacpy_is_dict(value) == 0 {
         builtin_stream_error(
-            "TypeError", "'memo' attribute must be a memo proxy or dict"
+            PyExc_TypeError, "'memo' attribute must be a memo proxy or dict"
         );
     }
     result = required(PyDict_New());
@@ -275,7 +277,7 @@ def memo_copy(value: ptr[PyObject], pickler: bool) -> ptr[PyObject] {
                 if pickler {
                     if jacpy_is_tuple(val) == 0 or PyTuple_Size(val) != 2 {
                         builtin_stream_error(
-                            "TypeError", "'memo' values must be 2-item tuples"
+                            PyExc_TypeError, "'memo' values must be 2-item tuples"
                         );
                     }
                     index = required(jacpy_tuple_item(val, 0));
@@ -293,7 +295,7 @@ def memo_copy(value: ptr[PyObject], pickler: bool) -> ptr[PyObject] {
                     }
                     if number < 0 {
                         builtin_stream_error(
-                            "ValueError", "memo key must be positive integers."
+                            PyExc_ValueError, "memo key must be positive integers."
                         );
                     }
                     index = required(PyLong_FromLongLong(number));

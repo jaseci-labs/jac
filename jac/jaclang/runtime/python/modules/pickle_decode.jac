@@ -11,6 +11,11 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Items,
     PyDict_New,
     PyDict_SetItem,
+    PyErr_ExceptionMatches,
+    PyExc_OverflowError,
+    PyExc_TypeError,
+    PyExc_UnicodeDecodeError,
+    PyExc_ValueError,
     PyFloat_FromDouble,
     PyFloat_FromString,
     PyImport_ImportModuleAttrString,
@@ -31,6 +36,7 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_Size,
     Py_NewRef,
+    Py_None,
     jacpy_bytearray_new,
     jacpy_bytes_address,
     jacpy_bytes_decode,
@@ -39,22 +45,18 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_bytes_unescape,
     jacpy_dict_get,
     jacpy_dict_size,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_float_unpack,
     jacpy_is_dict,
     jacpy_is_exact_unicode,
     jacpy_is_list,
-    jacpy_is_none,
     jacpy_is_tuple,
     jacpy_is_type,
     jacpy_is_unicode,
     jacpy_list_new,
     jacpy_list_size,
     jacpy_long_from_signed_bytes,
-    jacpy_memory_byte,
     jacpy_memory_copy,
-    jacpy_none,
     jacpy_optional_attr,
     jacpy_release,
     jacpy_set_new,
@@ -75,7 +77,8 @@ import from jaclang.runtime.python.capi {
     required,
     checked,
     boundary_failure,
-    object_tuple
+    object_tuple,
+    memory_byte
 }
 
 obj unpickle_state {
@@ -164,7 +167,7 @@ obj unpickle_state {
 
     def remember(index: i64) {
         if index < 0 {
-            builtin_stream_error("ValueError", "negative PUT argument");
+            builtin_stream_error(PyExc_ValueError, "negative PUT argument");
         }
         value = self.top();
         key = required(PyLong_FromLongLong(index));
@@ -387,7 +390,7 @@ obj unpickle_state {
                     dictionary = required(jacpy_tuple_item(state, 0));
                     slots = required(jacpy_tuple_item(state, 1));
                 }
-                if jacpy_is_none(dictionary) == 0 {
+                if dictionary != Py_None {
                     if jacpy_is_dict(dictionary) == 0 {
                         self.fail("state is not a dictionary");
                     }
@@ -398,7 +401,7 @@ obj unpickle_state {
                         jacpy_release(destination);
                     }
                 }
-                if slots != 0 and jacpy_is_none(slots) == 0 {
+                if slots != 0 and slots != Py_None {
                     if jacpy_is_dict(slots) == 0 {
                         self.fail("slot state is not a dictionary");
                     }
@@ -442,11 +445,13 @@ obj unpickle_state {
                     raise boundary_failure();
                 }
                 builtin_stream_error(
-                    "ValueError", "unregistered extension code " + str(code)
+                    PyExc_ValueError, "unregistered extension code " + str(code)
                 );
             }
             if jacpy_is_tuple(registered) == 0 or PyTuple_Size(registered) != 2 {
-                builtin_stream_error("ValueError", "invalid extension registry entry");
+                builtin_stream_error(
+                    PyExc_ValueError, "invalid extension registry entry"
+                );
             }
             module = required(jacpy_tuple_item(registered, 0));
             name: ptr[PyObject] = NULL;
@@ -494,7 +499,7 @@ obj unpickle_state {
                 self.protocol = int(self.stream.integer(1));
                 if self.protocol > 5 {
                     builtin_stream_error(
-                        "ValueError",
+                        PyExc_ValueError,
                         "unsupported pickle protocol: " + str(self.protocol)
                     );
                 }
@@ -516,7 +521,7 @@ obj unpickle_state {
             } elif op == opcode.DUP.value {
                 self.push(Py_NewRef(self.top()));
             } elif op == opcode.NONE.value {
-                self.push(jacpy_none());
+                self.push(Py_NewRef(Py_None));
             } elif op == opcode.NEWTRUE.value or op == opcode.NEWFALSE.value {
                 self.push(PyBool_FromLong(1 if op == opcode.NEWTRUE.value else 0));
             } elif op == opcode.BININT.value {
@@ -534,12 +539,12 @@ obj unpickle_state {
                     address = jacpy_bytes_address(raw);
                     if op == opcode.INT.value
                         and size == 2
-                        and jacpy_memory_byte(address, 0) == 48
-                        and jacpy_memory_byte(address, 1) in [48, 49] {
-                        self.push(PyBool_FromLong(jacpy_memory_byte(address, 1) - 48));
+                        and memory_byte(address, 0) == 48
+                        and memory_byte(address, 1) in [48, 49] {
+                        self.push(PyBool_FromLong(memory_byte(address, 1) - 48));
                     } elif op == opcode.LONG.value
                         and size > 0
-                        and jacpy_memory_byte(address, size - 1) == 76 {
+                        and memory_byte(address, size - 1) == 76 {
                         trimmed = required(jacpy_bytes_from_memory(address, size - 1));
                         try {
                             self.push(PyNumber_Long(trimmed));
@@ -616,7 +621,8 @@ obj unpickle_state {
                 if byte_count > 9223372036854775807
                     or (op == opcode.BINSTRING.value and byte_count > 2147483647) {
                     builtin_stream_error(
-                        "OverflowError", "pickle byte count exceeds system's maximum"
+                        PyExc_OverflowError,
+                        "pickle byte count exceeds system's maximum"
                     );
                 }
                 raw = self.stream.exact(i64(byte_count));
@@ -734,7 +740,7 @@ obj unpickle_state {
                     if op == opcode.REDUCE.value {
                         if jacpy_is_tuple(args) == 0 {
                             builtin_stream_error(
-                                "TypeError", "REDUCE argument must be a tuple"
+                                PyExc_TypeError, "REDUCE argument must be a tuple"
                             );
                         }
                         self.push(PyObject_Call(callable, args, NULL));
@@ -757,7 +763,7 @@ obj unpickle_state {
                             self.line_without_newline(), "ASCII", "strict"
                         );
                 } except boundary_failure {
-                    if jacpy_error_is("UnicodeDecodeError") != 0 {
+                    if PyErr_ExceptionMatches(PyExc_UnicodeDecodeError) != 0 {
                         self.fail("persistent IDs in protocol 0 must be ASCII strings");
                     }
                     raise boundary_failure();
@@ -776,9 +782,8 @@ obj unpickle_state {
                     size = jacpy_bytes_length(raw);
                     address = jacpy_bytes_address(raw);
                     if size < 2
-                        or jacpy_memory_byte(address, 0) not in [34, 39]
-                        or jacpy_memory_byte(address, size - 1)
-                            != jacpy_memory_byte(address, 0) {
+                        or memory_byte(address, 0) not in [34, 39]
+                        or memory_byte(address, size - 1) != memory_byte(address, 0) {
                         self.fail("the STRING opcode argument must be quoted");
                     }
                     inner = required(jacpy_bytes_from_memory(address + 1, size - 2));

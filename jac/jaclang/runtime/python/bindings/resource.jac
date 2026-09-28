@@ -1,11 +1,12 @@
 """The resource module: generated clinic tables, struct_rusage and the constants."""
 
 import from jaclang.runtime.python.cpython_api {
+    PyExc_ImportError,
+    PyExc_OSError,
     PyLong_FromLong,
     PyModule_AddIntConstant,
     PyModule_AddObjectRef,
     PyObject,
-    jacpy_exception_type,
     jacpy_struct_sequence_type
 }
 import from jaclang.runtime.python.capi { object_error }
@@ -28,12 +29,12 @@ glob:priv INTERNAL: list[str] = ["RLIM_INFINITY", "RLIM_NLIMITS"];
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" or len(CONSTANTS) == 0 {
         object_error(
-            "ImportError",
+            PyExc_ImportError,
             "resource has no resource_records/resource_constants for this target platform"
         );
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "error", jacpy_exception_type("OSError")) < 0 {
+    if PyModule_AddObjectRef(module, "error", PyExc_OSError) < 0 {
         return i32(-1);
     }
     usage = jacpy_struct_sequence_type(

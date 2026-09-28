@@ -11,6 +11,9 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBool_FromLong,
     PyErr_Occurred,
+    PyExc_OverflowError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyIndex_Check,
@@ -28,9 +31,9 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyObject_IsTrue,
     Py_GetConstantBorrowed,
+    Py_None,
     Py_TYPE,
     jacpy_is_float,
-    jacpy_is_none,
     jacpy_is_unicode,
     jacpy_release,
     jacpy_unsigned_converter
@@ -52,8 +55,8 @@ def argument_label(argname: str, position: int) -> str {
 }
 
 def bad_argument(fname: str, label: str, expected: str, value: ptr[PyObject]) {
-    shown = "None" if jacpy_is_none(value) != 0 else type_name(value);
-    object_error("TypeError", f"{fname}() {label} must be {expected}, not {shown}");
+    shown = "None" if value == Py_None else type_name(value);
+    object_error(PyExc_TypeError, f"{fname}() {label} must be {expected}, not {shown}");
     raise boundary_failure();
 }
 
@@ -100,12 +103,13 @@ def convert_ssize(value: ptr[PyObject]) -> i64 {
 
 # Py_ssize_t(accept={int, NoneType}): None keeps the C default.
 def convert_optional_ssize(value: ptr[PyObject], fallback: i64) -> i64 {
-    if jacpy_is_none(value) != 0 {
+    if value == Py_None {
         return fallback;
     }
     if PyIndex_Check(value) == 0 {
         object_error(
-            "TypeError", f"argument should be integer or None, not '{type_name(value)}'"
+            PyExc_TypeError,
+            f"argument should be integer or None, not '{type_name(value)}'"
         );
         raise boundary_failure();
     }
@@ -156,11 +160,11 @@ def convert_unsigned_bounded(
     }
     wide = convert_long(value);
     if wide < 0 {
-        object_error("OverflowError", f"{kind} is less than minimum");
+        object_error(PyExc_OverflowError, f"{kind} is less than minimum");
         raise boundary_failure();
     }
     if u64(wide) > limit {
-        object_error("OverflowError", f"{kind} is greater than maximum");
+        object_error(PyExc_OverflowError, f"{kind} is greater than maximum");
         raise boundary_failure();
     }
     return u64(wide);
@@ -189,7 +193,7 @@ def convert_bool(value: ptr[PyObject]) -> bool {
 # bool(accept={int}): the argument is read as a C int, so non-integers fail.
 def convert_bool_int(value: ptr[PyObject]) -> bool {
     if jacpy_is_float(value) != 0 {
-        object_error("TypeError", "integer argument expected, got float");
+        object_error(PyExc_TypeError, "integer argument expected, got float");
         raise boundary_failure();
     }
     return convert_int(value) != 0;
@@ -206,7 +210,7 @@ def convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
     convert_unicode(value, fname, label);
     text = text_value(value);
     if "\x00" in text {
-        object_error("ValueError", "embedded null character");
+        object_error(PyExc_ValueError, "embedded null character");
         raise boundary_failure();
     }
     return text;
@@ -214,7 +218,7 @@ def convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
 
 # str(accept={str, NoneType}): None is passed through as the absent value.
 def convert_optional_str(value: ptr[PyObject], fname: str, label: str) -> (str | None) {
-    if jacpy_is_none(value) != 0 {
+    if value == Py_None {
         return None;
     }
     return convert_str(value, fname, label);
@@ -299,7 +303,8 @@ def defining_class_of_type(
 
 def missing_argument(fname: str, name: str, position: int) {
     object_error(
-        "TypeError", f"{fname}() missing required argument '{name}' (pos {position})"
+        PyExc_TypeError,
+        f"{fname}() missing required argument '{name}' (pos {position})"
     );
     raise boundary_failure();
 }

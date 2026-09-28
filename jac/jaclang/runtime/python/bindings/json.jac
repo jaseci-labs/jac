@@ -3,12 +3,15 @@
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBool_FromLong,
+    PyExc_AttributeError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyObject,
     PyObject_GetAttrString,
     PyObject_IsTrue,
     Py_NewRef,
+    Py_None,
     jacpy_is_dict,
-    jacpy_is_none,
     jacpy_is_unicode,
     jacpy_release
 }
@@ -85,7 +88,7 @@ def:priv check_string(value: ptr[PyObject]) -> bool {
         return True;
     }
     object_error(
-        "TypeError", f"first argument must be a string, not {type_name(value)[:80]}"
+        PyExc_TypeError, f"first argument must be a string, not {type_name(value)[:80]}"
     );
     return False;
 }
@@ -141,7 +144,7 @@ def:priv scanner_state(instance: ptr[PyObject]) -> (JsonScannerState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native JSON scanner state is unavailable");
+    object_error(PyExc_SystemError, "native JSON scanner state is unavailable");
     return None;
 }
 
@@ -152,7 +155,7 @@ def:priv encoder_state(instance: ptr[PyObject]) -> (JsonEncoderState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native JSON encoder state is unavailable");
+    object_error(PyExc_SystemError, "native JSON encoder state is unavailable");
     return None;
 }
 
@@ -220,7 +223,7 @@ def:priv encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
     for i in [4, 5] {
         if jacpy_is_unicode(args.values[i]) == 0 {
             object_error(
-                "TypeError",
+                PyExc_TypeError,
                 f"make_encoder() argument {i + 1} must be str, not {type_name(
                     args.values[i]
                 )}"
@@ -236,9 +239,9 @@ def:priv encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
         }
         flags |= flag << i64(i);
     }
-    if jacpy_is_none(args.values[0]) == 0 and jacpy_is_dict(args.values[0]) == 0 {
+    if args.values[0] != Py_None and jacpy_is_dict(args.values[0]) == 0 {
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             f"make_encoder() argument 1 must be dict or None, not {type_name(
                 args.values[0]
             )}"
@@ -336,7 +339,7 @@ def:priv scanner_property(instance: ptr[PyObject], context: u64) -> ptr[PyObject
     }
     value = state.references[int(context) - 1];
     if value == 0 {
-        object_error("AttributeError", scanner_names[int(context) - 1]);
+        object_error(PyExc_AttributeError, scanner_names[int(context) - 1]);
         return NULL;
     }
     return Py_NewRef(value);
@@ -352,7 +355,7 @@ def:priv encoder_property(instance: ptr[PyObject], context: u64) -> ptr[PyObject
     }
     value = state.references[int(context)];
     if value == 0 {
-        object_error("AttributeError", encoder_names[int(context)]);
+        object_error(PyExc_AttributeError, encoder_names[int(context)]);
         return NULL;
     }
     return Py_NewRef(value);

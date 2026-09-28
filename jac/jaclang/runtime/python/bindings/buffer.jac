@@ -20,7 +20,10 @@ obj BufferArgument {
     }
 
     def owner -> ptr[PyObject] {
-        return jacpy_buffer_owner(self.view);
+        if not self.view {
+            return NULL;
+        }
+        return self.view.view(1)[0].owner;
     }
 
     def close {
@@ -30,15 +33,15 @@ obj BufferArgument {
     }
 
     def address -> ptr {
-        return jacpy_buffer_address(self.view);
+        return self.view.view(1)[0].buf;
     }
 
     def size -> i64 {
-        return jacpy_buffer_length(self.view);
+        return self.view.view(1)[0].length;
     }
 
     def dimensions -> i64 {
-        return jacpy_buffer_dimensions(self.view);
+        return i64(self.view.view(1)[0].ndim);
     }
 
     def drop {
@@ -47,15 +50,12 @@ obj BufferArgument {
 }
 
 import from jaclang.runtime.python.cpython_api {
+    NULL,
     PyObject,
     Py_buffer,
     jacpy_buffer_acquire,
     jacpy_buffer_acquire_writable,
-    jacpy_buffer_address,
     jacpy_buffer_bytes,
-    jacpy_buffer_dimensions,
-    jacpy_buffer_length,
-    jacpy_buffer_owner,
     jacpy_buffer_release
 }
 import from c {

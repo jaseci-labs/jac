@@ -9,14 +9,15 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_SetNone,
+    PyExc_ValueError,
     PyObject,
     PyThread_release_lock,
     Py_MakePendingCalls,
     Py_NewRef,
+    Py_None,
     _PyDeadline_Get,
     _PyDeadline_Init,
     jacpy_error_pending,
-    jacpy_is_none,
     jacpy_lock_free,
     jacpy_lock_wait,
     jacpy_release,
@@ -24,7 +25,7 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
+import from jaclang.runtime.python.bindings.module { visit_reference }
 
 import from jaclang.runtime.python.modules.object_ring { object_ring }
 
@@ -40,7 +41,7 @@ obj queue_state(NativeState) {
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for i in range(self.items.count) {
-            result = jacpy_binding_visit(self.items.borrow(i), visitor, context);
+            result = visit_reference(self.items.borrow(i), visitor, context);
             if result != 0 {
                 return result;
             }
@@ -92,13 +93,13 @@ def:pub jacpy_queue_get(
     state: queue_state, empty: ptr[PyObject], block: i64, timeout: ptr[PyObject]
 ) -> ptr[PyObject] {
     deadline: i64 = 0;
-    if block != 0 and jacpy_is_none(timeout) == 0 {
+    if block != 0 and timeout != Py_None {
         nanoseconds = jacpy_timeout_ns(timeout);
         if jacpy_error_pending() != 0 {
             return NULL;
         }
         if nanoseconds < 0 {
-            object_error("ValueError", "'timeout' must be a non-negative number");
+            object_error(PyExc_ValueError, "'timeout' must be a non-negative number");
             return NULL;
         }
         deadline = _PyDeadline_Init(nanoseconds);

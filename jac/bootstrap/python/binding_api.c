@@ -112,12 +112,8 @@ void jacpy_binding_state_set(PyObject *module, int64_t index, PyObject *value) {
     JacModuleState *state = PyModule_GetState((module));
     Py_XSETREF(state->references[index], Py_XNewRef((PyObject *)(value)));
 }
-int32_t jacpy_binding_visit(PyObject *value, visitproc visitor, void *context) {
-    return value ? ((visitproc)(visitor))((value), (context)) : 0;
-}
-PyObject *jacpy_binding_exception(const char *name, const char *base, const char *doc) {
-    extern PyObject *jacpy_exception_type(const char *);
-    return (PyErr_NewExceptionWithDoc(name, *doc ? doc : NULL, *base ? jacpy_exception_type(base) : NULL, NULL));
+PyObject *jacpy_binding_exception(const char *name, PyObject *base, const char *doc) {
+    return PyErr_NewExceptionWithDoc(name, *doc ? doc : NULL, base, NULL);
 }
 
 /* Type callbacks use explicit C ABI records, just like module callbacks.
@@ -354,9 +350,6 @@ int64_t jacpy_binding_native_present(PyObject *object, void *definition) {
     return slot && *slot;
 }
 
-PyObject *jacpy_binding_vector_item(PyObject *const *arguments, int64_t index) {
-    return (((PyObject *const *)(arguments))[index]);
-}
 
 /* Dictionary and descriptor primitives keep CPython's object layout opaque.
  * Relative dictionary slots preserve lazy allocation, including the distinction
@@ -366,7 +359,7 @@ int32_t jacpy_binding_dict_visit(PyObject *object, void *definition,
     JacTypeSpec *spec = (definition);
     if (!spec->instance_dict) return 0;
     PyObject **dict = _PyObject_GetDictPtr((object));
-    return dict ? jacpy_binding_visit((*dict), visitor, context) : 0;
+    return dict && *dict ? visitor(*dict, context) : 0;
 }
 void jacpy_binding_dict_clear(PyObject *object, void *definition) {
     JacTypeSpec *spec = (definition);
@@ -388,7 +381,6 @@ int64_t jacpy_binding_dict_replace(PyObject *object, PyObject *dictionary) {
     Py_XSETREF(*dict, Py_XNewRef((PyObject *)(dictionary)));
     return 0;
 }
-PyObject *jacpy_binding_marker(void) { return (PyObject_CallNoArgs((PyObject *)&PyBaseObject_Type)); }
 
 /* Invoke inherited opaque built-in slots without duplicating their layouts. */
 int64_t jacpy_binding_type_matches(PyObject *type, void *definition) {
@@ -469,6 +461,3 @@ void jacpy_binding_dealloc_guard(PyObject *object, void (*entry)(PyObject *),
     Py_TRASHCAN_END
 }
 
-PyObject *jacpy_binding_exception_with_base(const char *name, PyObject *base, const char *doc) {
-    return (PyErr_NewExceptionWithDoc(name, *doc ? doc : NULL, (base), NULL));
-}

@@ -7,23 +7,55 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_ValueError,
     PyLong_FromLongLong,
     PyObject,
     PyObject_CallOneArg,
+    PyObject_IsTrue,
     PySequence_Size,
     Py_LeaveRecursiveCall,
+    Py_NewRef,
+    Py_None,
+    Py_NotImplemented,
     jacpy_comparison_slot,
     jacpy_insert,
     jacpy_less,
-    jacpy_none,
     jacpy_recursion_enter,
     jacpy_release,
     jacpy_same_type,
-    jacpy_sequence_slot,
-    jacpy_slot_item,
-    jacpy_slot_less
+    jacpy_sequence_slot
 }
 import from jaclang.runtime.python.capi { object_error }
+
+# The type slots bisect calls directly: sq_item (ssizeargfunc) and
+# tp_richcompare (richcmpfunc).
+import from c {
+    obj SequenceItemSlot {
+        has call: Callable[[ptr[PyObject], i64], ptr[PyObject]] = 0;
+    }  obj RichCompareSlot {
+        has call: Callable[[ptr[PyObject], ptr[PyObject], i32], ptr[PyObject]] = 0;
+    }
+}
+
+glob:priv PY_LT: i32 = 0;
+
+"""left < right through a type's tp_richcompare: 1, 0, -1 on error, or -2
+when the slot returns NotImplemented, so the caller falls back to the full
+comparison protocol."""
+def:priv slot_less(
+    compare: RichCompareSlot, left: ptr[PyObject], right: ptr[PyObject]
+) -> i64 {
+    result = compare.call(left, right, PY_LT);
+    if result == 0 {
+        return -1;
+    }
+    comparison = i64(-2);
+    if result != Py_NotImplemented {
+        comparison = i64(PyObject_IsTrue(result));
+    }
+    jacpy_release(result);
+    return comparison;
+}
 
 def bisect_index(
     sequence: ptr[PyObject],
@@ -34,7 +66,7 @@ def bisect_index(
     right: bool
 ) -> i64 {
     if low < 0 {
-        object_error("ValueError", "lo must be non-negative");
+        object_error(PyExc_ValueError, "lo must be non-negative");
         return -1;
     }
     if high == -1 {
@@ -43,20 +75,24 @@ def bisect_index(
             return -1;
         }
     }
+    item_slot = SequenceItemSlot();
     slot = jacpy_sequence_slot(sequence);
     if slot == 0 {
         return -1;
     }
+    item_slot.call = int(slot);
     context = " in _bisect.bisect_right" if right else " in _bisect.bisect_left";
     if jacpy_recursion_enter(context) != 0 {
         return -1;
     }
     compare = jacpy_comparison_slot(item);
+    compare_slot = RichCompareSlot();
+    compare_slot.call = int(compare);
     try {
         while low < high {
             # Unsigned addition avoids overflow for valid ssize_t bounds.
             middle = i64((u64(low) + u64(high)) // u64(2));
-            value = jacpy_slot_item(slot, sequence, middle);
+            value = item_slot.call(sequence, middle);
             if value == 0 {
                 return -1;
             }
@@ -72,7 +108,7 @@ def bisect_index(
             other = value if right else item;
             comparison = i64(-2);
             if compare != 0 and jacpy_same_type(item, value) != 0 {
-                comparison = jacpy_slot_less(compare, left, other);
+                comparison = slot_less(compare_slot, left, other);
                 if comparison == -2 {
                     compare = ptr();
                 }
@@ -125,5 +161,5 @@ def:pub jacpy_bisect(
     if jacpy_insert(sequence, index, item) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }

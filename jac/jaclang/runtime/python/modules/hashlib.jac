@@ -15,6 +15,9 @@ import from jaclang.runtime.python.cpython_api {
     PyErr_NoMemory,
     PyEval_RestoreThread,
     PyEval_SaveThread,
+    PyExc_BufferError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyMem_Free,
     PyMem_Malloc,
     PyObject,
@@ -103,7 +106,7 @@ def data_argument(
         return (0, NULL);
     }
     object_error(
-        "TypeError",
+        PyExc_TypeError,
         "'data' and 'string' are mutually exclusive and support for 'string' keyword parameter is slated for removal in a future version."
     );
     return (-1, NULL);
@@ -113,11 +116,11 @@ def data_argument(
 with the error set."""
 def hash_buffer(value: ptr[PyObject]) -> BufferArgument | None {
     if jacpy_is_unicode(value) != 0 {
-        object_error("TypeError", "Strings must be encoded before hashing");
+        object_error(PyExc_TypeError, "Strings must be encoded before hashing");
         return None;
     }
     if PyObject_CheckBuffer(value) == 0 {
-        object_error("TypeError", "object supporting the buffer API required");
+        object_error(PyExc_TypeError, "object supporting the buffer API required");
         return None;
     }
     view = BufferArgument();
@@ -125,7 +128,7 @@ def hash_buffer(value: ptr[PyObject]) -> BufferArgument | None {
         return None;
     }
     if view.dimensions() > 1 {
-        object_error("BufferError", "Buffer must be single dimension");
+        object_error(PyExc_BufferError, "Buffer must be single dimension");
         view.close();
         return None;
     }
@@ -153,7 +156,7 @@ def hash_state_of(instance: ptr[PyObject], token: ClassToken) -> NativeState | N
     if jacpy_binding_native_present(instance, definition) != 0 {
         return jacpy_binding_native_get(instance, definition);
     }
-    object_error("SystemError", "hash object state is unavailable");
+    object_error(PyExc_SystemError, "hash object state is unavailable");
     return None;
 }
 

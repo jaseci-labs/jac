@@ -1,6 +1,6 @@
 """Python bisection signatures and initialization, compiled into JacPython."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyObject, jacpy_is_none }
+import from jaclang.runtime.python.cpython_api { NULL, PyObject, Py_None }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -33,7 +33,7 @@ def:priv search(args: BoundArguments, right: i64, insert: i64) -> ptr[PyObject] 
         }
         low = value;
     }
-    if args.values[3] != 0 and jacpy_is_none(args.values[3]) == 0 {
+    if args.values[3] != 0 and args.values[3] != Py_None {
         value = index_value(args.values[3]);
         if value is None {
             return NULL;
@@ -41,7 +41,7 @@ def:priv search(args: BoundArguments, right: i64, insert: i64) -> ptr[PyObject] 
         high = value;
     }
     key = args.values[4];
-    if key != 0 and jacpy_is_none(key) != 0 {
+    if key != 0 and key == Py_None {
         key = NULL;
     }
     return jacpy_bisect(args.values[0], args.values[1], low, high, key, right, insert);

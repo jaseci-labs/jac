@@ -5,6 +5,9 @@ import from jaclang.runtime.python.cpython_api {
     PyCallable_Check,
     PyDict_New,
     PyDict_SetItem,
+    PyExc_AttributeError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyLong_AsLongLong,
     PyLong_AsSsize_t,
     PyLong_FromLongLong,
@@ -14,11 +17,11 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyUnicode_FromOrdinal,
     Py_NewRef,
+    Py_None,
     Py_TYPE,
     jacpy_error_pending,
     jacpy_is_exact_long,
     jacpy_is_unicode,
-    jacpy_none,
     jacpy_optional_attr,
     jacpy_release,
     jacpy_text,
@@ -35,7 +38,7 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     jacpy_binding_exception,
     jacpy_binding_state_get,
-    jacpy_binding_visit,
+    visit_reference,
     jacpy_binding_module_native_get,
     jacpy_binding_module_native_set,
     jacpy_binding_module_native_present
@@ -90,9 +93,7 @@ obj CsvReaderState(ReferenceState) {
         if status != 0 {
             return status;
         }
-        return jacpy_binding_visit(
-            jacpy_csv_reader_fields(self.native), visitor, context
-        );
+        return visit_reference(jacpy_csv_reader_fields(self.native), visitor, context);
     }
 }
 
@@ -111,7 +112,7 @@ def:priv config_for(module: ptr[PyObject]) -> (CsvConfig | None) {
             return state;
         }
     }
-    object_error("SystemError", "native CSV configuration is unavailable");
+    object_error(PyExc_SystemError, "native CSV configuration is unavailable");
     return None;
 }
 
@@ -132,7 +133,7 @@ def:priv reader_state(instance: ptr[PyObject]) -> (CsvReaderState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native CSV reader state is unavailable");
+    object_error(PyExc_SystemError, "native CSV reader state is unavailable");
     return None;
 }
 
@@ -143,7 +144,7 @@ def:priv writer_state(instance: ptr[PyObject]) -> (CsvWriterState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native CSV writer state is unavailable");
+    object_error(PyExc_SystemError, "native CSV writer state is unavailable");
     return None;
 }
 
@@ -217,7 +218,7 @@ def:priv dialect_create(
 def:priv dialect_option(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     settings = dialect_options(instance);
     if settings == 0 {
-        return jacpy_none();
+        return Py_NewRef(Py_None);
     }
     value = jacpy_tuple_item(settings, i64(context));
     if value == 0 {
@@ -229,13 +230,17 @@ def:priv dialect_option(instance: ptr[PyObject], context: u64) -> ptr[PyObject] 
         if jacpy_error_pending() != 0 {
             return NULL;
         }
-        return jacpy_none() if character < 0 else PyUnicode_FromOrdinal(i32(character));
+        return Py_NewRef(Py_None)
+            if character < 0
+            else PyUnicode_FromOrdinal(i32(character));
     }
     return value;
 }
 
 def:priv dialect_reduce(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    object_error("TypeError", f"cannot pickle '{type_name(instance)[:100]}' instances");
+    object_error(
+        PyExc_TypeError, f"cannot pickle '{type_name(instance)[:100]}' instances"
+    );
     return NULL;
 }
 
@@ -331,7 +336,7 @@ def:priv reader_dialect(instance: ptr[PyObject], context: u64) -> ptr[PyObject] 
         return NULL;
     }
     if state.references[0] == 0 {
-        object_error("AttributeError", "dialect");
+        object_error(PyExc_AttributeError, "dialect");
         return NULL;
     }
     return Py_NewRef(state.references[0]);
@@ -354,7 +359,7 @@ def:priv writer_create_bound(args: BoundArguments) -> ptr[PyObject] {
     }
     if state.references[1] == 0 or PyCallable_Check(state.references[1]) == 0 {
         jacpy_release(instance);
-        object_error("TypeError", "argument 1 must have a \"write\" method");
+        object_error(PyExc_TypeError, "argument 1 must have a \"write\" method");
         return NULL;
     }
     state.references[0] = call_dialect(args.context, args.values[1], args.keywords);
@@ -406,7 +411,7 @@ def:priv writer_dialect(instance: ptr[PyObject], context: u64) -> ptr[PyObject] 
         return NULL;
     }
     if state.references[0] == 0 {
-        object_error("AttributeError", "dialect");
+        object_error(PyExc_AttributeError, "dialect");
         return NULL;
     }
     return Py_NewRef(state.references[0]);
@@ -426,7 +431,7 @@ def:priv registry(
 
 def:priv register_bound(args: BoundArguments) -> ptr[PyObject] {
     if jacpy_is_unicode(args.values[0]) == 0 {
-        object_error("TypeError", "dialect name must be a string");
+        object_error(PyExc_TypeError, "dialect name must be a string");
         return NULL;
     }
     dialect = call_dialect(args.context, args.values[1], args.keywords);
@@ -480,7 +485,7 @@ def:priv limit_bound(args: BoundArguments) -> ptr[PyObject] {
     old = config.limit;
     if args.values[0] != 0 {
         if jacpy_is_exact_long(args.values[0]) == 0 {
-            object_error("TypeError", "limit must be an integer");
+            object_error(PyExc_TypeError, "limit must be an integer");
             return NULL;
         }
         value = PyLong_AsSsize_t(args.values[0]);
@@ -642,7 +647,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     config = CsvConfig();
     jacpy_binding_module_native_set(module, config);
     if not add_state_owned(
-        module, 0, "Error", jacpy_binding_exception("_csv.Error", "", "")
+        module, 0, "Error", jacpy_binding_exception("_csv.Error", NULL, "")
     ) {
         return i32(-1);
     }

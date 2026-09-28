@@ -34,10 +34,8 @@ import from c {
         module: ptr[PyObject], index: i64
     ) -> ptr[PyObject];  def jacpy_binding_state_set(
         module: ptr[PyObject], index: i64, value: ptr[PyObject]
-    );  def jacpy_binding_visit(
-        value: ptr[PyObject], visitor: ptr, context: ptr
-    ) -> i32;  def jacpy_binding_exception(
-        name: str, base: str, doc: str
+    );  def jacpy_binding_exception(
+        name: str, base: ptr[PyObject], doc: str
     ) -> ptr[PyObject];
 }
 
@@ -49,6 +47,23 @@ import from c {
     ) -> i64;
 }
 
+import from c {
+    obj VisitProc {
+        has call: Callable[[ptr[PyObject], ptr], i32] = 0;
+    }
+}
+
+"""Py_VISIT: pass one reference to a tp_traverse visitor (a C visitproc),
+skipping NULL."""
+def visit_reference(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    if value == 0 {
+        return i32(0);
+    }
+    proc = VisitProc();
+    proc.call = int(visitor);
+    return proc.call(value, context);
+}
+
 def traverse_state(module: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     if jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
@@ -58,7 +73,7 @@ def traverse_state(module: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
         }
     }
     for index in range(int(jacpy_binding_state_count(module))) {
-        result = jacpy_binding_visit(
+        result = visit_reference(
             jacpy_binding_state_get(module, i64(index)), visitor, context
         );
         if result != 0 {
@@ -168,10 +183,4 @@ def add_owned(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
     result = PyModule_AddObjectRef(module, name, value);
     jacpy_release(value);
     return result == 0;
-}
-
-import from c {
-    def jacpy_binding_exception_with_base(
-        name: str, base: ptr[PyObject], doc: str
-    ) -> ptr[PyObject];
 }

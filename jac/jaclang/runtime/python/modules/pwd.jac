@@ -8,9 +8,13 @@ that doubles on ERANGE, as the C module does.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBytes_AsString,
+    PyErr_ExceptionMatches,
     PyErr_NoMemory,
     PyEval_RestoreThread,
     PyEval_SaveThread,
+    PyExc_KeyError,
+    PyExc_OverflowError,
+    PyExc_ValueError,
     PyList_Append,
     PyList_New,
     PyLong_FromLong,
@@ -23,7 +27,6 @@ import from jaclang.runtime.python.cpython_api {
     PyThreadState,
     PyUnicode_EncodeFSDefault,
     PyUnicode_FromString,
-    jacpy_error_is,
     jacpy_fs_text,
     jacpy_release
 }
@@ -121,8 +124,8 @@ def:priv lookup(
 def pwd_getpwuid_impl(module: ptr[PyObject], uidobj: ptr[PyObject]) -> ptr[PyObject] {
     uid = u32(0);
     if _Py_Uid_Converter(uidobj, &mut uid) == 0 {
-        if jacpy_error_is("OverflowError") != 0 {
-            object_error("KeyError", "getpwuid(): uid not found");
+        if PyErr_ExceptionMatches(PyExc_OverflowError) != 0 {
+            object_error(PyExc_KeyError, "getpwuid(): uid not found");
         }
         return NULL;
     }
@@ -137,7 +140,7 @@ def pwd_getpwuid_impl(module: ptr[PyObject], uidobj: ptr[PyObject]) -> ptr[PyObj
         number = _PyLong_FromUid(uid);
         if number {
             object_error(
-                "KeyError", f"getpwuid(): uid not found: {repr_value(number)}"
+                PyExc_KeyError, f"getpwuid(): uid not found: {repr_value(number)}"
             );
             jacpy_release(number);
         }
@@ -155,7 +158,7 @@ def without_null(encoded: ptr[PyObject]) -> bool {
     found = PySequence_Contains(encoded, zero);
     jacpy_release(zero);
     if found > 0 {
-        object_error("ValueError", "embedded null byte");
+        object_error(PyExc_ValueError, "embedded null byte");
     }
     return found == 0;
 }
@@ -179,7 +182,9 @@ def pwd_getpwnam_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObjec
         } elif nomem {
             PyErr_NoMemory();
         } else {
-            object_error("KeyError", f"getpwnam(): name not found: {repr_value(name)}");
+            object_error(
+                PyExc_KeyError, f"getpwnam(): name not found: {repr_value(name)}"
+            );
         }
         PyMem_RawFree(buffer);
     }

@@ -8,11 +8,15 @@ sources use, so a Jac port reads like the C it replaces:
     jac run scripts/jacpython/gen_capi.jac            # rewrite the file
     jac run scripts/jacpython/gen_capi.jac --check    # fail on drift
 
-Only exported functions are declared. Macros, static inline helpers and data
-symbols (PyExc_*, Py*_Type, Py_None) have no linkable function; capi.jac
-expresses the macros through exported functions and compiler_runtime.c
-exposes the data symbols. A use of a name that is not declared here is an
-ordinary unresolved-name error from `jac check`.
+Exported functions and data symbols are declared. A PyAPI_DATA variable (or
+an internal header's `extern` one) becomes a `glob` of the clib block: an
+object pointer such as `PyExc_TypeError` is read in place as ptr[PyObject],
+and a C object such as `PyLong_Type` is declared with the opaque PyObject type
+and used by address, `addressof(PyLong_Type)`. `Py_None`, `Py_NotImplemented`
+and `Py_Ellipsis`, macros for such an address, are globs of it. Other macros
+and static inline helpers have no linkable symbol; capi.jac expresses them
+through exported functions and the C helpers. A use of a name that is not
+declared here is an ordinary unresolved-name error from `jac check`.
 """
 import argparse;
 import re;
@@ -79,6 +83,20 @@ glob OPAQUE: list[str] = [
              + "readonly: i32, ndim: i32, format_: ptr[u8], shape: ptr[i64], strides: ptr[i64], "
              + "suboffsets: ptr[i64], internal: ptr; }"
          )
+     },
+     # C-layout records of interpreter internals a JacPython source walks.
+     INTERNAL_STRUCTS: dict[str, str] = {
+         "atexit_callback": (
+             "obj atexit_callback { has func: Callable[[ptr], None], data: ptr, "
+             + "next: ptr[atexit_callback]; }"
+         )
+     },
+     # Macros that name the address of a C object; each is a glob of that
+     # address beside NULL, so Jac reads `value == Py_None` as C does.
+     ADDRESS_MACROS: dict[str, str] = {
+         "Py_None": "_Py_NoneStruct",
+         "Py_NotImplemented": "_Py_NotImplementedStruct",
+         "Py_Ellipsis": "_Py_EllipsisObject"
      },
      SCALARS: dict[str, str] = {
          "int": "i32",
@@ -178,6 +196,8 @@ glob OPAQUE: list[str] = [
      ),
      API_FUNC: str = r"PyAPI_FUNC\(((?:[^()]|\([^()]*\))*)\)\s*([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)",
      INTERNAL_EXTERN: str = r"^[ \t]*extern[ \t]+((?:const[ \t]+)?[A-Za-z_]\w*(?:[ \t]+\w+)*[ \t\*]*?)[ \t]*\**?\b([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)\s*;",
+     API_DATA: str = r"PyAPI_DATA\(([^()]*)\)\s*([A-Za-z_]\w*)\s*;",
+     INTERNAL_DATA: str = r"^[ \t]*extern[ \t]+((?:const[ \t]+)?[A-Za-z_]\w*[ \t\*]*?)[ \t]*\b([A-Za-z_]\w*)[ \t]*;",
      HELPER_DEF: str = r"^(?!static)((?:const )?\w+(?: \w+)*\s*\**)\s*(jacpy_\w+)\(([^)]*)\)\s*\{",
      # Typedef structs of the C helpers whose fields are all scalars.
      STRUCT_NAMES: dict[str, list[tuple[str, str]]] = {},
@@ -211,13 +231,18 @@ def parameters(raw: str) -> list[tuple[str, str]] {
     return params;
 }
 
+# Header text without comments or line continuations.
+def plain(text: str) -> str {
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S);
+    return re.sub(r"//[^\n]*", " ", text).replace("\\\n", " ");
+}
+
 def declarations(
     texts: dict[str, str]
 ) -> dict[str, tuple[str, list[tuple[str, str]]]] {
     functions: dict[str, tuple[str, list[tuple[str, str]]]] = {};
     for path in sorted(texts) {
-        text = re.sub(r"/\*.*?\*/", " ", texts[path], flags=re.S);
-        text = re.sub(r"//[^\n]*", " ", text).replace("\\\n", " ");
+        text = plain(texts[path]);
         found = list(re.finditer(API_FUNC, text, re.S));
         # Internal headers also declare plain `extern` functions. jacpython.o
         # links into libpython itself, so they resolve like exported ones.
@@ -241,9 +266,41 @@ def declarations(
     return functions;
 }
 
+# C types of the data symbols: PyAPI_DATA variables and, from the internal
+# headers, plain `extern` variables (libpython resolves both for jacpython.o).
+def data_declarations(texts: dict[str, str]) -> dict[str, str] {
+    variables: dict[str, str] = {};
+    for path in sorted(texts) {
+        text = plain(texts[path]);
+        found = list(re.finditer(API_DATA, text));
+        if path.startswith("Include/internal/") {
+            found += list(re.finditer(INTERNAL_DATA, text, re.M));
+        }
+        for hit in found {
+            if hit.group(2) not in variables {
+                variables[hit.group(2)] = normal(hit.group(1));
+            }
+        }
+    }
+    return variables;
+}
+
+# A data symbol's Jac type: an object pointer is read in place; a C object
+# (a static type or singleton) is the opaque PyObject, used by address.
+def data_type(ctype: str) -> str | None {
+    base = ctype.replace("const ", "").strip();
+    if base in ("PyObject *", "PyTypeObject *") {
+        return "ptr[PyObject]";
+    }
+    if base in OBJECT_LAYOUTS or base == "PyObject" {
+        return "PyObject";
+    }
+    return SCALARS.get(base);
+}
+
 def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     base = ctype.replace("const ", "").replace(" const", "").strip();
-    if base in STRUCT_NAMES or base in STRUCTS {
+    if base in STRUCT_NAMES or base in STRUCTS or base in INTERNAL_STRUCTS {
         return base;
     }
     if base == "void" {
@@ -270,6 +327,9 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     if base == "void *" {
         return "ptr";
     }
+    if base in ("PyObject * *", "PyObject **") and index is None {
+        return "ptr[ptr[PyObject]]";
+    }
     if ctype in OUT_POINTERS or base in OUT_POINTERS {
         if index is None {
             return None;
@@ -282,15 +342,12 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         if pointee in OBJECT_LAYOUTS {
             return "ptr[PyObject]";
         }
-        if pointee in OPAQUE or pointee in STRUCTS {
+        if pointee in OPAQUE or pointee in STRUCTS or pointee in INTERNAL_STRUCTS {
             return f"ptr[{pointee}]";
         }
         if pointee in SCALARS {
             return f"ptr[{SCALARS[pointee]}]";
         }
-    }
-    if base in ("PyObject * *", "PyObject **") and index is None {
-        return "ptr[ptr[PyObject]]";
     }
     return None;
 }
@@ -342,7 +399,7 @@ def helpers -> tuple[
     return (functions, structs);
 }
 
-def used_names(functions: dict[str, tuple[str, list[tuple[str, str]]]]) -> set[str] {
+def used_names(known: set[str]) -> set[str] {
     names: set[str] = set();
     # Functions a JacPython source defines under their C names (the interpreter
     # hooks of atexit) are provided, not called through a declaration.
@@ -368,7 +425,7 @@ def used_names(functions: dict[str, tuple[str, list[tuple[str, str]]]]) -> set[s
     return {
         name
         for name in names
-        if name in functions and name not in defined
+        if name in known and name not in defined
     };
 }
 
@@ -376,18 +433,23 @@ def render(
     functions: dict[str, tuple[str, list[tuple[str, str]]]],
     names: set[str],
     version: str,
-    structs: dict[str, list[tuple[str, str]]]
+    structs: dict[str, list[tuple[str, str]]],
+    variables: dict[str, str],
+    data_names: set[str],
+    macros: set[str]
 ) -> str {
     lines = [
         '"""CPython C API declarations for native Jac modules.',
         "",
         f"Generated by scripts/jacpython/gen_capi.jac from CPython {version} headers;",
-        "do not edit. Only functions the JacPython sources call are declared.",
+        "do not edit. Only the functions and data symbols the JacPython sources use",
+        "are declared.",
         '"""',
         "import from c {"
     ];
     lines += [f"    obj {name};" for name in OPAQUE];
     lines += [f"    {STRUCTS[name]}" for name in sorted(STRUCTS)];
+    lines += [f"    {INTERNAL_STRUCTS[name]}" for name in sorted(INTERNAL_STRUCTS)];
     for (name, fields) in sorted(structs.items()) {
         body = ", ".join(f"{field}: {SCALARS[kind]}" for (kind, field) in fields);
         lines.append(f"    obj {name} {{ has {body}; }}");
@@ -422,11 +484,28 @@ def render(
         tail = "" if returned == "None" else f" -> {returned}";
         lines.append(f"    def {name}({', '.join(rendered)}){tail};");
     }
+    globs: list[str] = [];
+    for name in sorted(data_names) {
+        jtype = data_type(variables[name]);
+        if jtype is None {
+            failures.append(f"{name}: data {variables[name]}");
+            continue;
+        }
+        globs.append(f"{name}: {jtype}");
+    }
+    if globs {
+        lines.append(f"    glob {', '.join(globs)};");
+    }
     lines.append("}");
     lines += ["", "glob NULL: ptr[PyObject] = ptr[PyObject]();"];
+    for name in sorted(macros) {
+        lines.append(
+            f"glob {name}: ptr[PyObject] = addressof({ADDRESS_MACROS[name]});"
+        );
+    }
     if failures {
         sys.exit(
-            "No Jac mapping for these called functions (add a C helper or a mapping):\n  "
+            "No Jac mapping for these used symbols (add a C helper or a mapping):\n  "
                 + "\n  ".join(failures)
         );
     }
@@ -437,26 +516,47 @@ with entry:__main__ {
     parser = argparse.ArgumentParser(description="Generate cpython_api.jac");
     parser.add_argument("--check", action="store_true");
     args = parser.parse_args();
-    functions = declarations(
-        {
-            path: text
-            for (path, text) in archive_texts(("Include/", )).items()
-            if path.endswith(".h")
-        }
-    );
+    headers = {
+        path: text
+        for (path, text) in archive_texts(("Include/", )).items()
+        if path.endswith(".h")
+    };
+    functions = declarations(headers);
+    variables = data_declarations(headers);
     found = helpers();
     defined = found[0];
     structs = found[1];
     STRUCT_NAMES.update(structs);
     functions.update(defined);
-    names = used_names(functions);
+    used = used_names(set(functions) | set(variables) | set(ADDRESS_MACROS));
+    names = {
+        name
+        for name in used
+        if name in functions
+    };
+    macros = {
+        name
+        for name in used
+        if name in ADDRESS_MACROS
+    };
+    data_names = {
+        name
+        for name in used
+        if name in variables
+    }
+        | {ADDRESS_MACROS[name] for name in macros};
     unused = sorted(set(defined) - names);
     if unused {
         print(
             "C helpers no JacPython source uses:", ", ".join(unused), file=sys.stderr
         );
     }
-    text = format_jac(render(functions, names, pin()["version"], structs), OUTPUT);
+    text = format_jac(
+        render(
+            functions, names, pin()["version"], structs, variables, data_names, macros
+        ),
+        OUTPUT
+    );
     if not write_or_check(OUTPUT, text, args.check, "scripts/jacpython/gen_capi.jac") {
         sys.exit(1);
     }

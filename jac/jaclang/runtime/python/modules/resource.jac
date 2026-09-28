@@ -8,6 +8,9 @@ constants from resource_constants.<os>.jac.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_SetFromErrno,
+    PyExc_OSError,
+    PyExc_OverflowError,
+    PyExc_ValueError,
     PyFloat_FromDouble,
     PyLong_FromLong,
     PyLong_FromUnsignedLongLong,
@@ -22,7 +25,6 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_Size,
     Py_NewRef,
     jacpy_errno,
-    jacpy_exception_type,
     jacpy_long_u64_checked,
     jacpy_release
 }
@@ -57,7 +59,7 @@ def:priv seconds(value: timeval) -> f64 {
 }
 
 def:priv os_error -> ptr[PyObject] {
-    PyErr_SetFromErrno(jacpy_exception_type("OSError"));
+    PyErr_SetFromErrno(PyExc_OSError);
     return NULL;
 }
 
@@ -65,7 +67,7 @@ def resource_getrusage_impl(module: ptr[PyObject], who: i32) -> ptr[PyObject] {
     usage = rusage();
     if getrusage(who, &mut usage) == -1 {
         if jacpy_errno() == EINVAL {
-            object_error("ValueError", "invalid who parameter");
+            object_error(PyExc_ValueError, "invalid who parameter");
             return NULL;
         }
         return os_error();
@@ -121,11 +123,13 @@ def:priv py2rlim(value: ptr[PyObject]) -> tuple[bool, u64] {
         return (False, u64(0));
     }
     if negative and (number != u64.wrap(RLIM_INFINITY) or status > 0) {
-        object_error("ValueError", "Cannot convert negative int");
+        object_error(PyExc_ValueError, "Cannot convert negative int");
         return (False, u64(0));
     }
     if status > 0 {
-        object_error("OverflowError", "Python int too large to convert to C rlim_t");
+        object_error(
+            PyExc_OverflowError, "Python int too large to convert to C rlim_t"
+        );
         return (False, u64(0));
     }
     return (True, number);
@@ -138,7 +142,7 @@ def:priv py2rlimit(limits: ptr[PyObject], out: &mut rlimit) -> bool {
     }
     ok = False;
     if PyTuple_Size(pair) != 2 {
-        object_error("ValueError", "expected a tuple of 2 integers");
+        object_error(PyExc_ValueError, "expected a tuple of 2 integers");
     } else {
         (current_ok, current) = py2rlim(PyTuple_GetItem(pair, 0));
         if current_ok {
@@ -180,7 +184,7 @@ def:priv rlimit2py(limit: rlimit) -> ptr[PyObject] {
 
 def:priv valid_resource(resource: i32) -> bool {
     if resource < 0 or i64(resource) >= RLIM_NLIMITS {
-        object_error("ValueError", "invalid resource specified");
+        object_error(PyExc_ValueError, "invalid resource specified");
         return False;
     }
     return True;
@@ -224,9 +228,9 @@ def resource_setrlimit_impl(
     if setrlimit(resource, &mut limit) == -1 {
         error = jacpy_errno();
         if error == EINVAL {
-            object_error("ValueError", "current limit exceeds maximum limit");
+            object_error(PyExc_ValueError, "current limit exceeds maximum limit");
         } elif error == EPERM {
-            object_error("ValueError", "not allowed to raise maximum limit");
+            object_error(PyExc_ValueError, "not allowed to raise maximum limit");
         } else {
             return os_error();
         }
@@ -261,7 +265,7 @@ def resource_prlimit_impl(
     }
     if status == -1 {
         if jacpy_errno() == EINVAL {
-            object_error("ValueError", "current limit exceeds maximum limit");
+            object_error(PyExc_ValueError, "current limit exceeds maximum limit");
             return NULL;
         }
         return os_error();
