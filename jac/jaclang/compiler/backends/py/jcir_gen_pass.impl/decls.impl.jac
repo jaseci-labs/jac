@@ -633,7 +633,7 @@ impl JcirGenPass.exit_param_var with ParamVar exit {
 }
 
 impl JcirGenPass.exit_arch_has with ArchHas exit {
-    vars_py = self._flatten_ast_list([self.outs(v) for v in here.vars]);
+    vars_py = flatten_ast_list([self.outs(v) for v in here.vars]);
     if here.doc {
         doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
         self.set_out(here, [doc] + vars_py);

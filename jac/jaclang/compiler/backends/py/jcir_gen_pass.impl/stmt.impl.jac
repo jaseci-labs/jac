@@ -267,7 +267,7 @@ impl JcirGenPass.exit_open_stmt with OpenStmt exit {
         ],
         jac_node=here
     );
-    body_stmts: list[CgItem] = self._flatten_ast_list(
+    body_stmts: list[CgItem] = flatten_ast_list(
         [self.outs(item) for item in here.body]
     );
     if not body_stmts {

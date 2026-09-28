@@ -22,7 +22,11 @@ import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlot }
-import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
+import from jaclang.compiler.backends.common.ast_gen_base {
+    flatten_ast_list,
+    merge_module_bodies
+}
+import from jaclang.compiler.passes.context { TreePass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
 import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
@@ -243,9 +247,8 @@ obj CallArgSlot {
         value: (es.Expression | es.SpreadElement | None);
 }
 
-walker EsastGenPass(BaseAstGenPass[es.Statement]) {
+walker EsastGenPass(TreePass) {
     has _ct_only_names: (set[str] | None) = None,
-        child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
         module_import_paths: dict[str, str] = {},
         exports: list[es.ExportNamedDeclaration] = [],
@@ -257,6 +260,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
         component_export_names: set[str] = set(),
+        shared_arch_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         match_seq: int = 0,

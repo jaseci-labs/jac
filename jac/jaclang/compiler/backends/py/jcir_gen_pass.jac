@@ -148,7 +148,11 @@ import from jaclang.compiler.backends.py.jcir_facts {
     JCIR_BUILTIN_NAMES,
     jcir_is_test_path
 }
-import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
+import from jaclang.compiler.backends.common.ast_gen_base {
+    flatten_ast_list,
+    merge_module_bodies
+}
+import from jaclang.compiler.passes.context { TreePass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.diagnostics {
     E5001,
@@ -340,7 +344,7 @@ def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes {
     return w.to_bytes();
 }
 
-walker JcirGenPass(BaseAstGenPass[CgItem]) {
+walker JcirGenPass(TreePass) {
     has already_added: list[str] = [],
         _ct_only_names: (set[str] | None) = None,
         jaclib_imports: set[str] postinit,

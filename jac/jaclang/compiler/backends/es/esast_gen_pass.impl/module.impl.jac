@@ -133,7 +133,7 @@ impl EsastGenPass.exit_module with uni.Module exit {
         body.extend(hoisted);
     }
 
-    merged_body = self._merge_module_bodies(here);
+    merged_body = merge_module_bodies(here);
     client_items: list[es.Statement | list[es.Statement] | None] = [];
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];
     for stmt in merged_body {
@@ -150,7 +150,7 @@ impl EsastGenPass.exit_module with uni.Module exit {
         }
     }
     target_body = client_items or fallback_items;
-    body.extend(self._flatten_ast_list(target_body));
+    body.extend(flatten_ast_list(target_body));
 
     if self.needs_osp_graph or self.needs_osp_kernel {
         import from jaclang.compiler.backends.es.jac_runtime_js {

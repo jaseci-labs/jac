@@ -518,7 +518,6 @@ impl EsastGenPass.prepare with entry {
         }
         self.module.client_viols_reported = True;
     }
-    self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
     self.component_export_names = set();
 
@@ -527,7 +526,7 @@ impl EsastGenPass.prepare with entry {
     );
 
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-    self.shared_arch_names: set[str] = {
+    self.shared_arch_names = {
         a.name.value
         for a in ModuleFacts.shared_archetypes_for_context(
             self.module, CodeContext.CLIENT
