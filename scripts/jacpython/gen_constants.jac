@@ -121,7 +121,11 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "Modules/_localemodule.c",
              ["locale.h", "langinfo.h", "libintl.h"]
          ),
-         "time": ("Modules/timemodule.c", ["time.h", "sys/time.h"])
+         "time": ("Modules/timemodule.c", ["time.h", "sys/time.h"]),
+         "_multiprocessing": (
+             "Modules/_multiprocessing/semaphore.c",
+             ["fcntl.h", "semaphore.h", "limits.h"]
+         )
      },
      # Names a module's portable Jac code reads on every platform, declared as
      # 0 (and left out of CONSTANTS) where the headers do not define them.
@@ -157,7 +161,8 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "SIGSTOP",
              "SA_SIGINFO",
              "NSIG"
-         ]
+         ],
+         "_multiprocessing": ["O_CREAT", "O_EXCL", "SEM_VALUE_MAX"]
      },
      # Aliases the C module defines itself when the headers have only one
      # spelling: {name: other}, emitted as `#define name other` when only

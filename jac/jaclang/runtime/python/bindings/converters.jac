@@ -135,7 +135,11 @@ def convert_unsigned_long(
         if PyIndex_Check(value) == 0 {
             bad_argument(fname, label, "int", value);
         }
-        return PyLong_AsUnsignedLongMask(value);
+        masked = PyLong_AsUnsignedLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
+        }
+        return masked;
     }
     result: u64 = 0;
     if jacpy_unsigned_converter(value, &mut result, 0) == 0 {
@@ -151,7 +155,11 @@ def convert_unsigned_long_long(
         if PyIndex_Check(value) == 0 {
             bad_argument(fname, label, "int", value);
         }
-        return PyLong_AsUnsignedLongLongMask(value);
+        masked = PyLong_AsUnsignedLongLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
+        }
+        return masked;
     }
     result: u64 = 0;
     if jacpy_unsigned_converter(value, &mut result, 1) == 0 {

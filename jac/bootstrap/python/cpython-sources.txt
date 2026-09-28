@@ -403,13 +403,13 @@ Modules/_localemodule.c
 # Modules/_lsprof.c  # removed: 1,146 source lines
 Modules/_lzmamodule.c
 Modules/_math.h
-Modules/_multiprocessing/clinic/multiprocessing.c.h
+# Modules/_multiprocessing/clinic/multiprocessing.c.h  # removed: 167 source lines
 Modules/_multiprocessing/clinic/posixshmem.c.h
-Modules/_multiprocessing/clinic/semaphore.c.h
-Modules/_multiprocessing/multiprocessing.c
-Modules/_multiprocessing/multiprocessing.h
+# Modules/_multiprocessing/clinic/semaphore.c.h  # removed: 585 source lines
+# Modules/_multiprocessing/multiprocessing.c  # removed: 296 source lines
+# Modules/_multiprocessing/multiprocessing.h  # removed: 104 source lines
 Modules/_multiprocessing/posixshmem.c
-Modules/_multiprocessing/semaphore.c
+# Modules/_multiprocessing/semaphore.c  # removed: 805 source lines
 # Modules/_opcode.c  # removed: 451 source lines
 # Modules/_operator.c  # removed: 2,032 source lines
 # Modules/_pickle.c  # removed: 8,179 source lines

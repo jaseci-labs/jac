@@ -27,3 +27,4 @@ fcntl,
 termios,
 _posixsubprocess,
 _lsprof
+_multiprocessing

@@ -125,6 +125,52 @@ def jac_string(text: str) -> str {
 
 obj Unsupported(Exception) {}
 
+# Preprocessor symbols only Windows defines. JacPython builds for Linux and
+# macOS, so a clinic function whose #if needs one is not generated.
+glob WINDOWS_SYMBOLS: set[str] = {"MS_WINDOWS", "MS_WINDOWS_DESKTOP", "MS_WINDOWS_APP"},
+     # The #if condition each clinic function was rendered under, by id().
+     CONDITIONS: dict[int, str] = {};
+
+def:priv windows_symbol(name: str) -> str {
+    return "False" if name in WINDOWS_SYMBOLS else "True";
+}
+
+def:priv tested_symbol(hit: any) -> str {
+    return windows_symbol(hit.group(1) or hit.group(2));
+}
+
+def:priv condition_word(hit: any) -> str {
+    name: str = hit.group(0);
+    return name
+        if name in ("True", "False", "and", "or", "not")
+        else windows_symbol(name);
+}
+
+# Whether a clinic #if condition holds on the POSIX targets: Windows symbols
+# are undefined and every other feature test is taken as defined, since the
+# module binding decides what a platform actually offers.
+def posix_condition(condition: str) -> bool {
+    if not condition {
+        return True;
+    }
+    # A comparison (SIZEOF_WCHAR_T == 4) is not evaluated; only a Windows
+    # symbol in it decides.
+    if re.search(r"[<>=]", condition) {
+        return not any(name in condition for name in WINDOWS_SYMBOLS);
+    }
+    expression = re.sub(
+        r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", tested_symbol, condition
+    );
+    expression = expression.replace("&&", " and ").replace("||", " or ");
+    expression = re.sub(r"!(?!=)", " not ", expression);
+    expression = re.sub(r"\b[A-Za-z_]\w*\b", condition_word, expression);
+    try {
+        return bool(eval(expression, {}, {}));
+    } except Exception {
+        return True;
+    }
+}
+
 def class_name(value: any) -> str {
     return value.__class__.__name__;
 }
@@ -151,11 +197,26 @@ def module_sources(tree: Path, module: str) -> list[Path] {
     sys.exit(f"{module} is not built by Modules/Setup.stdlib.in or Setup.bootstrap.in");
 }
 
+# Wrap CLanguage.render_function to record each function's #if condition.
+def:priv recording_render(render: any) -> any {
+    def recording(language: any, clinic: any, f: any) -> any {
+        CONDITIONS[id(f)] = language.cpp.condition();
+        return render(language, clinic, f);
+    }
+    setattr(recording, "records_conditions", True);
+    return recording;
+}
+
 # (class or None, clinic function) for every clinic input block of `sources`.
 def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
     sys.path.insert(0, str(tree / "Tools/clinic"));
     app = importlib.import_module("libclinic.app");
     clanguage = importlib.import_module("libclinic.clanguage");
+    # Clinic knows a block's preprocessor state only while it renders it.
+    render = clanguage.CLanguage.render_function;
+    if not getattr(render, "records_conditions", False) {
+        clanguage.CLanguage.render_function = recording_render(render);
+    }
     found: list[tuple[any, any]] = [];
     for source in sources {
         text = source.read_text();
@@ -202,7 +263,9 @@ def jac_ctype(ctype: str) -> str {
     if base in ("int", "_Bool", "bool") {
         return "bool";
     }
-    return re.sub(r"\W", "_", base.replace(" *", "")).strip("_");
+    # A C typedef (SEM_HANDLE) names nothing in Jac: the converter's own
+    # return type types the variable.
+    return "";
 }
 
 obj Emitter {
@@ -218,6 +281,7 @@ obj Emitter {
         hooks: list[str] = [],
         tokens: set[str] = set(),
         skipped: list[str] = [],
+        windows_only: list[str] = [],
         class_docs: dict[str, str] = {};
 
     def use(name: str) -> str {
@@ -386,7 +450,9 @@ obj Emitter {
             if accept_names - {"str", "NoneType"} or getattr(conv, "encoding", "") {
                 raise Unsupported(f"str(accept={sorted(accept_names)})");
             }
-            if "NoneType" in accept_names {
+            # Clinic keeps str's accept set only as the format unit it picks.
+            if "NoneType" in accept_names
+                or getattr(conv, "format_unit", "").startswith("z") {
                 return (
                     "str | None",
                     self.use("convert_optional_str") + f"(value, {where})",
@@ -528,6 +594,9 @@ obj Emitter {
             expr = converted[1];
             checks = converted[2];
             if p.is_optional() {
+                if not jtype {
+                    raise Unsupported("optional module converter");
+                }
                 fallback = self.default_value(p, jtype);
                 if jtype == "BufferArgument" {
                     body.append(f"{var} = BufferArgument();");
@@ -542,7 +611,9 @@ obj Emitter {
             } else {
                 body.append(f"value = {slot};");
                 body += checks;
-                body.append(f"{var}: {jtype} = {expr};");
+                body.append(
+                    f"{var}: {jtype} = {expr};" if jtype else f"{var} = {expr};"
+                );
             }
             call_args.append(var);
         }
@@ -655,6 +726,10 @@ obj Emitter {
             f"{', '.join(source_names)}; do not edit. The _impl functions live in",
             f"{MODULES}.{self.name}."
         ];
+        if self.windows_only {
+            head += ["", "Windows only, so not generated:"];
+            head += [f"    {item}" for item in self.windows_only];
+        }
         if self.skipped {
             head += [
                 "",
@@ -731,6 +806,10 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];
+        if not posix_condition(CONDITIONS.get(id(f), "")) {
+            emitter.windows_only.append(f.full_name);
+            continue;
+        }
         try {
             if f.kind.name in ("GETTER", "SETTER") {
                 emitter.accessor(cls, f);

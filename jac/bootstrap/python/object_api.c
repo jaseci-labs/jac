@@ -633,6 +633,15 @@ int32_t jacpy_closedir(void *directory) { return closedir((DIR *)directory); }
 /* _PyInterpreterState_GetFinalizing() is static inline. */
 int64_t jacpy_interpreter_finalizing(void) { return _PyInterpreterState_GetFinalizing(_PyInterpreterState_GET()) != NULL; }
 
+/* sem_open(3) is variadic: the mode and initial value follow O_CREAT. A
+ * fixed-arity form; arguments a call without O_CREAT passes are ignored, as
+ * the C library ignores them. */
+#include <fcntl.h>
+#include <semaphore.h>
+void *jacpy_sem_open(const char *name, int64_t flags, int64_t mode, int64_t value) {
+    return (void *)sem_open(name, (int)flags, (mode_t)mode, (unsigned int)value);
+}
+
 /* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and
  * similar unsigned C types: -1 on error, 1 when the value needs more than
  * eight bytes, 0 when it fits. */
