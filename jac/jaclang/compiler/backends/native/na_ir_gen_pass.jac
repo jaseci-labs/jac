@@ -937,6 +937,19 @@ walker NaIRGenPass(CompilerPass) {
     def _foreign_store_bytes(slot: ir.Value, value: ir.Value, sname: str) -> None;
     def _pinned_value_slot(box: ir.Value) -> ir.Value;
     def _codegen_c_interop_call(nd: uni.FuncCall) -> tuple[bool, (ir.Value | None)];
+    def _c_ptr_elem_llvm(ptr_type: any) -> (ir.Type | None);
+    def _c_ptr_step(
+        addr: ir.Value, delta: ir.Value, ptr_type: any, backward: bool
+    ) -> ir.Value;
+
+    def _codegen_c_ptr_arith(
+        nd: uni.BinaryExpr, op: str
+    ) -> tuple[bool, (ir.Value | None)];
+
+    def _c_ptr_aug(
+        current: ir.Value, rhs: ir.Value, aug_op: str, target_type: any
+    ) -> tuple[bool, (ir.Value | None)];
+
     def _codegen_pin(arg: uni.Expr) -> (ir.Value | None);
     def _c_release_temp(val: ir.Value) -> None;
     def _clib_param_info(p: uni.ParamVar) -> dict[str, any];
@@ -2630,7 +2643,8 @@ walker NaIRGenPass(CompilerPass) {
         aug_op: str,
         rhs_node: (uni.Expr | None) = None,
         unsigned: bool = False,
-        checked: bool = False
+        checked: bool = False,
+        target_type: any = None
     ) -> (ir.Value | None);
 
     def _try_flow_for_parallel(nd: uni.InForStmt) -> bool;

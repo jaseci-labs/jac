@@ -68,8 +68,14 @@ class JacPtr {
             self._addr = 0;
         } elif isinstance(address, JacPtr) {
             self._addr = address._addr;
+        } elif isinstance(address, int) and not isinstance(address, bool) {
+            self._addr = address & 0xFFFFFFFFFFFFFFFF;
         } else {
-            raise TypeError(f"ptr() expects a pointer, not '{type(address).__name__}'");
+            raise TypeError(
+                f"ptr() expects a pointer or an integer address, not '{type(
+                    address
+                ).__name__}'"
+            );
         }
     }
 
@@ -102,6 +108,30 @@ class JacPtr {
             raise ValueError("cannot view elements of a null pointer");
         }
         return JacPtrView(self._addr, n, elem);
+    }
+
+    def _stride(self: JacPtr) -> int {
+        cls: any = type(self);
+        elem = cls._jac_elem;
+        if elem is None or (isinstance(elem, `type) and issubclass(elem, JacCOpaque)) {
+            return 1;
+        }
+        return ctypes.sizeof(_elem_ctype(elem));
+    }
+
+    def __add__(self: JacPtr, n: int) -> JacPtr {
+        return type(self)(self._addr + int(n) * self._stride());
+    }
+
+    def __sub__(self: JacPtr, other: any) -> any {
+        if isinstance(other, JacPtr) {
+            return (self._addr - other._addr) // self._stride();
+        }
+        return type(self)(self._addr - int(other) * self._stride());
+    }
+
+    def __int__(self: JacPtr) -> int {
+        return self._addr;
     }
 
     def __eq__(self: JacPtr, other: any) -> bool {

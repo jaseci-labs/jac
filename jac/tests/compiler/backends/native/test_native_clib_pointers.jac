@@ -127,7 +127,14 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "counter 21",
         "counter 15",
         "renderer 2 8",
-        "list 3 4.0"
+        "list 3 4.0",
+        "step 2.0 2.0",
+        "distance 2 -2",
+        "aug True 2.0",
+        "bytes 24",
+        "address True 24",
+        "void step True",
+        "byte 15"
     ];
     lines = out.splitlines();
     for line in expected {

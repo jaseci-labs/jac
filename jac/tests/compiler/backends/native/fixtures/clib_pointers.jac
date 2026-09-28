@@ -218,6 +218,27 @@ def renderer_demo {
     cp_batch_set_active(None);
 }
 
+"""C pointer arithmetic: element steps, distances and integer addresses."""
+def arithmetic_demo {
+    pts = cp_points_new(i32(4));
+    third = pts + 2;
+    print("step", third.view(1)[0].x, (third - 1).view(1)[0].y);
+    print("distance", third - pts, pts - third);
+    cursor = pts;
+    cursor += 3;
+    cursor -= 1;
+    print("aug", cursor == third, cursor.view(1)[0].x);
+    print("bytes", ptr[u8](third) - ptr[u8](pts));
+    address = int(third);
+    print("address", ptr[CpVec3](address) == third, address - int(pts));
+    erased = ptr(pts);
+    print("void step", int(erased + 24) == address);
+    cp_points_free(pts);
+    buf = cp_buffer_new(i32(6));
+    print("byte", (buf + 5).view(1)[0]);
+    cp_buffer_free(buf);
+}
+
 """A struct holding a pointer that C fills in."""
 def pointer_field_demo {
     pl = CpPointList();
@@ -238,4 +259,5 @@ with entry {
     counter_demo();
     renderer_demo();
     pointer_field_demo();
+    arithmetic_demo();
 }

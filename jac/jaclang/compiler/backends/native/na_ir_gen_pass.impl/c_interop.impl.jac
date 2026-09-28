@@ -285,6 +285,7 @@ impl NaIRGenPass._c_interop_store(
             value,
             nd.aug_op.value,
             nd.value,
+            target_type=target.type,
             unsigned=self._is_unsigned_node(target),
             checked=self._is_sized_node(target) or self._is_sized_node(nd.value)
         );
@@ -628,4 +629,65 @@ impl NaIRGenPass._clib_pointer_arg(val: ir.Value) -> ir.Value {
         return b.bitcast(val, i8p, name="clib.addr");
     }
     return self._clib_reinterpret(val, i8p, name="clib.addr");
+}
+
+impl NaIRGenPass._c_ptr_elem_llvm(ptr_type: any) -> (ir.Type | None) {
+    info = self._c_elem_info(c_type_arg(ptr_type));
+    if info is None {
+        return None;
+    }
+    elem = info[0];
+    if isinstance(elem, ir.IdentifiedStructType) and elem.is_opaque {
+        return None;
+    }
+    return elem;
+}
+
+impl NaIRGenPass._c_ptr_step(
+    addr: ir.Value, delta: ir.Value, ptr_type: any, backward: bool
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    b = self.builder;
+    count = self._coerce_type(delta, i64);
+    if backward {
+        count = b.neg(count, name="c.ptr.back");
+    }
+    elem = self._c_ptr_elem_llvm(ptr_type) or ir.IntType(8);
+    typed = b.inttoptr(addr, elem.as_pointer(), name="c.ptr.typed");
+    return b.ptrtoint(b.gep(typed, [count], name="c.ptr.step"), i64, name="c.ptr");
+}
+
+impl NaIRGenPass._codegen_c_ptr_arith(
+    nd: uni.BinaryExpr, op: str
+) -> tuple[bool, (ir.Value | None)] {
+    if op not in (Tok.PLUS, Tok.MINUS) or not is_ptr_type(nd.left?.type) {
+        return (False, None);
+    }
+    left = self._codegen_expr(nd.left);
+    right = self._codegen_expr(nd.right);
+    if left is None or right is None {
+        return (True, None);
+    }
+    if not (op == Tok.MINUS and is_ptr_type(nd.right?.type)) {
+        return (True, self._c_ptr_step(left, right, nd.left.type, op == Tok.MINUS));
+    }
+    b = self.builder;
+    span = b.sub(left, right, name="c.ptr.span");
+    elem = self._c_ptr_elem_llvm(nd.left.type);
+    if elem is None {
+        return (True, span);
+    }
+    return (True, b.sdiv(span, self._sizeof_llvm(elem), name="c.ptr.dist"));
+}
+
+impl NaIRGenPass._c_ptr_aug(
+    current: ir.Value, rhs: ir.Value, aug_op: str, target_type: any
+) -> tuple[bool, (ir.Value | None)] {
+    if not is_ptr_type(target_type) {
+        return (False, None);
+    }
+    if aug_op not in ("+=", "-=") {
+        return (True, None);
+    }
+    return (True, self._c_ptr_step(current, rhs, target_type, aug_op == "-="));
 }

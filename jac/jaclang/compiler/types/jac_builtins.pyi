@@ -15,7 +15,7 @@
 # builtin.__all__ for that purpose. This file is NOT used by codegen.
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Generic, NoReturn, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, NoReturn, Protocol, TypeVar, overload
 
 _NewT = TypeVar("_NewT")
 
@@ -184,19 +184,28 @@ def region_of(__x: object) -> Region | None: ...
 # ── C interop ──────────────────────────────────────────────────────
 # `ptr[T]` is a non-owning address of C memory holding T (a sized scalar, a
 # foreign struct, or an opaque C type); bare `ptr` is `void*`. It is plain
-# data: it can be compared, null-tested and passed back to C, never
-# dereferenced, offset or freed from Jac. `ptr[T](p)` retypes an address.
+# data: it can be compared, null-tested, offset and passed back to C, read and
+# written only through `view`, and never freed from Jac. `ptr[T](p)` retypes
+# an address and `ptr[T](n)` makes one from an integer address. Arithmetic
+# follows C: `p + n` and `p - n` step n elements of T (bytes when T is bare or
+# opaque), `p - q` is the distance in elements, and `int(p)` is the address.
 _PtrT = TypeVar("_PtrT", covariant=True)
 _ViewT = TypeVar("_ViewT")
 _PinT = TypeVar("_PinT")
 
 class ptr(Generic[_PtrT]):
     # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address.
-    def __init__(self, address: ptr[object] = ...) -> None: ...
+    def __init__(self, address: ptr[object] | int = ...) -> None: ...
     def is_null(self) -> bool: ...
     # A borrowed, bounds-checked window of `n` elements starting at the
     # address. It is a local view: it may not outlive its scope.
     def view(self, n: int) -> PtrView[_PtrT]: ...
+    def __add__(self, n: int) -> ptr[_PtrT]: ...
+    @overload
+    def __sub__(self, other: ptr[object]) -> int: ...
+    @overload
+    def __sub__(self, n: int) -> ptr[_PtrT]: ...
+    def __int__(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...
     def __ne__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...

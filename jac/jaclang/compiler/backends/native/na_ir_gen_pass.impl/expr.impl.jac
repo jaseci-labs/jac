@@ -724,6 +724,10 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if op == Tok.KW_SPAWN {
         return self._codegen_spawn(nd);
     }
+    (is_ptr_arith, ptr_result) = self._codegen_c_ptr_arith(nd, op);
+    if is_ptr_arith {
+        return ptr_result;
+    }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
     if left is None or right is None {

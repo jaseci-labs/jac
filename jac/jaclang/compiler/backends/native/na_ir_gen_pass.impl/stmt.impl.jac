@@ -1712,8 +1712,13 @@ impl NaIRGenPass._apply_scalar_aug_op(
     aug_op: str,
     rhs_node: (uni.Expr | None) = None,
     unsigned: bool = False,
-    checked: bool = False
+    checked: bool = False,
+    target_type: any = None
 ) -> (ir.Value | None) {
+    (is_ptr_aug, stepped) = self._c_ptr_aug(current, rhs, aug_op, target_type);
+    if is_ptr_aug {
+        return stepped;
+    }
     current = self._str_norm(current);
     rhs = self._str_norm(rhs);
     if not isinstance(current.type, (ir.IntType, ir.DoubleType, ir.FloatType)) {
@@ -1997,6 +2002,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                             value,
                                             nd.aug_op.value,
                                             nd.value,
+                                            target_type=target_expr.type,
                                             checked=self._is_sized_node(target_expr)
                                                 or self._is_sized_node(nd.value)
                                         );
@@ -2040,6 +2046,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                             value,
                                             nd.aug_op.value,
                                             nd.value,
+                                            target_type=target_expr.type,
                                             checked=self._is_sized_node(target_expr)
                                                 or self._is_sized_node(nd.value)
                                         );
@@ -2165,6 +2172,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value,
                         aug_op_val,
                         nd.value,
+                        target_type=target_expr.type,
                         unsigned=self._is_unsigned_node(target_expr),
                         checked=self._is_sized_node(target_expr)
                             or self._is_sized_node(nd.value)
