@@ -72,6 +72,7 @@ import from jaclang.runtime.python.bindings.hmac { PyInit__hmac }
 import from jaclang.runtime.python.bindings.fcntl { PyInit_fcntl }
 import from jaclang.runtime.python.bindings.termios { PyInit_termios }
 import from jaclang.runtime.python.bindings.posixsubprocess { PyInit__posixsubprocess }
+import from jaclang.runtime.python.bindings.uuid { PyInit__uuid }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

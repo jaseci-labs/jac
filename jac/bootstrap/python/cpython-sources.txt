@@ -466,7 +466,7 @@ Modules/_threadmodule.c
 # Modules/_tracemalloc.c  # removed: 228 source lines
 # Modules/_typesmodule.c  # removed: 72 source lines
 # Modules/_typingmodule.c  # removed: 99 source lines
-Modules/_uuidmodule.c
+# Modules/_uuidmodule.c  # removed: 154 source lines
 # Modules/_weakref.c  # removed: 187 source lines
 Modules/_zoneinfo.c
 Modules/_zstd/_zstdmodule.c
