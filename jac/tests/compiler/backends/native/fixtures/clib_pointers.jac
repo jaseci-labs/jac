@@ -45,7 +45,7 @@ import from "CLIB_POINTERS_LIBRARY" {
         db: ptr[CpDb]
     ) -> None;  def cp_batch_set_active(batch: &mut Pinned[CpBatch] | None) -> None;  def cp_batch_is_active -> bool;  def cp_batch_draw(
         v: i32
-    ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_pointlist_fill(
+    ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_maybe_count(out: &mut i64 | None) -> i32;  def cp_pointlist_fill(
         pl: &mut CpPointList, n: i32
     ) -> None;  def cp_global_read -> i32;  glob cp_global_count: i32,
          cp_global_flag: bool,
@@ -232,6 +232,14 @@ def counter_demo {
     cp_counter_retain(None);
 }
 
+"""An optional scalar out-parameter: None passes NULL."""
+def optional_out_demo {
+    count: i64 = i64(0);
+    print("optional none", cp_maybe_count(None));
+    written = cp_maybe_count(&mut count);
+    print("optional out", written, count);
+}
+
 """A pin owned by a Jac object, registered from a method."""
 def renderer_demo {
     renderer = Renderer(batch=pin(CpBatch()));
@@ -323,6 +331,7 @@ with entry {
     db_demo();
     batch_demo();
     counter_demo();
+    optional_out_demo();
     renderer_demo();
     pointer_field_demo();
     arithmetic_demo();

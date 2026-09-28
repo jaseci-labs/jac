@@ -507,7 +507,12 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
     }
     if is_ptr_type(ptype) {
         if borrowed {
-            return {"borrow": "scalar", "elem": ptype, "llt": ir.IntType(64)};
+            return {
+                "borrow": "scalar",
+                "elem": ptype,
+                "llt": ir.IntType(64),
+                "optional": optional
+            };
         }
         return {"cptr": True, "optional": optional};
     }
@@ -521,7 +526,7 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
     if llt is None {
         return {};
     }
-    return {"borrow": "scalar", "elem": ptype, "llt": llt};
+    return {"borrow": "scalar", "elem": ptype, "llt": llt, "optional": optional};
 }
 
 impl NaIRGenPass._clib_ret_is_cptr(sig: uni.FuncSignature) -> bool {

@@ -131,6 +131,8 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "inactive False -1",
         "counter 21",
         "counter 15",
+        "optional none 0",
+        "optional out 1 7",
         "renderer 2 8",
         "list 3 4.0",
         "step 2.0 2.0",

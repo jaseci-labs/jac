@@ -128,6 +128,13 @@ static int32_t *retained_counter = NULL;
 void cp_counter_retain(int32_t *counter) { retained_counter = counter; }
 void cp_counter_tick(void) { if (retained_counter) *retained_counter += 10; }
 
+/* An optional scalar out-parameter: written only when the caller passes one. */
+int32_t cp_maybe_count(int64_t *out) {
+    if (!out) return 0;
+    *out = 7;
+    return 1;
+}
+
 typedef struct { int32_t count; CpVec3 *items; } CpPointList;
 
 void cp_pointlist_fill(CpPointList *pl, int32_t n) {
