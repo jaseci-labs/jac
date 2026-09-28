@@ -199,6 +199,36 @@ obj ModuleDefinition {
     }
 }
 
+# Method records for callables created at run time with a bound `self`
+# (PyCFunction_NewEx), outside any module or type table. Like a static
+# PyMethodDef, the records live for the process lifetime.
+import from c {
+    def jacpy_binding_functions(count: i64) -> ptr;  def jacpy_binding_functions_discard(
+        handle: ptr
+    );  def jacpy_binding_function(
+        handle: ptr, index: i64, receiver: ptr[PyObject], module: ptr[PyObject]
+    ) -> ptr[PyObject];
+}
+
+obj FunctionTable {
+    has handle: ptr = NULL;
+
+    def init(methods: list[MethodDefinition]) {
+        self.handle = jacpy_binding_functions(i64(len(methods)));
+        if self.handle and not install_methods(self.handle, methods) {
+            jacpy_binding_functions_discard(self.handle);
+            self.handle = ptr();
+        }
+    }
+
+    # A new builtin function for methods[index] with `receiver` as its self.
+    def bind(
+        index: int, receiver: ptr[PyObject], module: ptr[PyObject] = NULL
+    ) -> ptr[PyObject] {
+        return jacpy_binding_function(self.handle, i64(index), receiver, module);
+    }
+}
+
 def add_state_owned(
     module: ptr[PyObject], index: int, name: str, value: ptr[PyObject]
 ) -> bool {

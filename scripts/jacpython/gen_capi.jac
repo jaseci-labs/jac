@@ -95,6 +95,21 @@ glob OPAQUE: list[str] = [
          "_Py_clock_info_t": (
              "obj _Py_clock_info_t { has implementation: ptr[u8] = ptr[u8](), "
              + "monotonic: i32 = 0, adjustable: i32 = 0, resolution: f64 = 0.0; }"
+         ),
+         # <locale.h> struct lconv. glibc and macOS agree up to n_sign_posn;
+         # the trailing int_* fields, which no port reads, follow macOS order.
+         # The char fields are read as bytes; their signedness follows the
+         # target's CHAR_MAX.
+         "lconv": (
+             "obj lconv { has decimal_point: ptr[u8], thousands_sep: ptr[u8], "
+             + "grouping: ptr[u8], int_curr_symbol: ptr[u8], currency_symbol: ptr[u8], "
+             + "mon_decimal_point: ptr[u8], mon_thousands_sep: ptr[u8], "
+             + "mon_grouping: ptr[u8], positive_sign: ptr[u8], negative_sign: ptr[u8], "
+             + "int_frac_digits: u8, frac_digits: u8, p_cs_precedes: u8, "
+             + "p_sep_by_space: u8, n_cs_precedes: u8, n_sep_by_space: u8, "
+             + "p_sign_posn: u8, n_sign_posn: u8, int_p_cs_precedes: u8, "
+             + "int_n_cs_precedes: u8, int_p_sep_by_space: u8, int_n_sep_by_space: u8, "
+             + "int_p_sign_posn: u8, int_n_sign_posn: u8; }"
          )
      },
      # C-layout records of interpreter internals a JacPython source walks.
@@ -160,7 +175,9 @@ glob OPAQUE: list[str] = [
          "uid_t": "u32",
          "gid_t": "u32",
          "double": "f64",
-         "float": "f32"
+         "float": "f32",
+         # 32-bit on every JacPython target (glibc and macOS).
+         "wchar_t": "i32"
      },
      # Pointer typedefs passed through opaquely; a function pointer typedef
      # here can be passed NULL but not a Jac callback.
@@ -182,23 +199,60 @@ glob OPAQUE: list[str] = [
          "PyLong_FromNativeBytes": {0},
          "PyFloat_Unpack2": {0},
          "PyFloat_Unpack4": {0},
-         "PyFloat_Unpack8": {0},
-         "PyBytes_DecodeEscape": {0}
+         "PyFloat_Unpack8": {0}
      },
      # Pointer parameters that take memory the caller holds as a raw address
-     # (a HACL* digest buffer, a path read after fork(), an optional out-flag
-     # passed as NULL), not a Jac value; they take `ptr`.
+     # (a HACL* digest buffer, a Py_buffer, a path read after fork(), an
+     # optional out-flag passed as NULL), not a Jac value; they take `ptr`.
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
          "_Py_strhex": {0},
          "_PyBytes_Find": {0, 2},
          "_PyBytes_ReverseFind": {0, 2},
-         "PyUnicode_DecodeLocale": {0},
+         "_PyMem_Strdup": {0},
+         "PyBytes_DecodeEscape": {0},
          "PyMember_GetOne": {0},
          "PyMember_SetOne": {0},
+         "PyUnicode_DecodeASCII": {0},
+         "PyUnicode_DecodeCharmap": {0},
+         "PyUnicode_DecodeLatin1": {0},
+         "PyUnicode_DecodeLocale": {0},
          "PyUnicode_DecodeLocaleAndSize": {0},
+         "PyUnicode_DecodeUTF7Stateful": {0},
+         "PyUnicode_DecodeUTF8Stateful": {0},
+         "PyUnicode_DecodeUTF16Stateful": {0},
+         "PyUnicode_DecodeUTF32Stateful": {0},
+         "_PyUnicode_DecodeRawUnicodeEscapeStateful": {0},
+         "_PyUnicode_DecodeUnicodeEscapeStateful": {0},
          "_Py_open_noraise": {0},
          "jacpy_opendir": {0},
          "_Py_set_inheritable_async_safe": {2}
+     },
+     # Pointer parameters that accept NULL. A `const char *` (an `errors` or
+     # `encoding` name, where NULL selects the default) takes the C string
+     # address `ptr[u8]` that clinic's nullable str converter produces; an
+     # out-pointer takes `&mut T | None`, so None passes NULL.
+     NULLABLE_PARAMETERS: dict[str, set[int]] = {
+         "PyBytes_DecodeEscape": {2, 4},
+         "PyCodec_Decode": {1, 2},
+         "PyCodec_Encode": {1, 2},
+         "PyUnicode_AsWideCharString": {1},
+         "PyUnicode_DecodeASCII": {2},
+         "PyUnicode_DecodeCharmap": {3},
+         "PyUnicode_DecodeLocale": {1},
+         "PyUnicode_DecodeLatin1": {2},
+         "PyUnicode_DecodeUTF7Stateful": {2, 3},
+         "PyUnicode_DecodeUTF8Stateful": {2, 3},
+         "PyUnicode_DecodeUTF16Stateful": {2, 4},
+         "PyUnicode_DecodeUTF32Stateful": {2, 4},
+         "_PyUnicode_AsASCIIString": {1},
+         "_PyUnicode_AsLatin1String": {1},
+         "_PyUnicode_AsUTF8String": {1},
+         "_PyUnicode_DecodeRawUnicodeEscapeStateful": {2, 3},
+         "_PyUnicode_DecodeUnicodeEscapeStateful": {2, 3},
+         "_PyUnicode_EncodeCharmap": {2},
+         "_PyUnicode_EncodeUTF7": {3},
+         "_PyUnicode_EncodeUTF16": {1},
+         "_PyUnicode_EncodeUTF32": {1}
      },
      # `void *` out-parameters of converters whose C type the function fixes.
      TYPED_OUT_PARAMETERS: dict[str, dict[int, str]] = {
@@ -207,7 +261,8 @@ glob OPAQUE: list[str] = [
          "_PyLong_UInt16_Converter": {1: "&mut u16"},
          "_PyLong_UInt32_Converter": {1: "&mut u32"}
      },
-     # `void *` converter results that are PyObject ** (PyArg "O&" converters).
+     # `void *` parameters of a PyArg converter (`int conv(PyObject *, void *)`)
+     # that receive the converted object.
      OBJECT_OUT_PARAMETERS: dict[str, set[int]] = {"PyUnicode_FSConverter": {1}},
      # Pointer out-parameters the Jac side writes through `&mut`.
      OUT_POINTERS: dict[str, str] = {
@@ -371,6 +426,7 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         }
         return ("&" if "const" in ctype else "&mut ") + record.group(1);
     }
+    base = base.removeprefix("struct ");
     if base in STRUCT_NAMES or base in STRUCTS or base in INTERNAL_STRUCTS {
         return base;
     }
@@ -391,8 +447,9 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
             return "&mut ptr[PyObject]";
         }
     }
+    nullable = index is not None and index in NULLABLE_PARAMETERS.get(function, set());
     if base == "char *" {
-        if index is None {
+        if index is None or nullable {
             return "ptr[u8]";
         }
         if index in PAYLOAD_PARAMETERS.get(function, set()) or "const" not in ctype {
@@ -410,7 +467,8 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         if index is None {
             return None;
         }
-        return OUT_POINTERS.get(ctype, OUT_POINTERS.get(base));
+        out = OUT_POINTERS.get(ctype, OUT_POINTERS.get(base));
+        return f"{out} | None" if nullable else out;
     }
     hit = re.match(r"^(\w+) \*$", base);
     if hit {

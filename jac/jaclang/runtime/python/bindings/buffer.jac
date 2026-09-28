@@ -9,6 +9,13 @@ obj BufferArgument {
         return bool(self.view);
     }
 
+    # A str is read as its UTF-8 bytes, as clinic's Py_buffer(accept={str, buffer}).
+    def acquire_text(value: ptr[PyObject]) -> bool {
+        self.close();
+        self.view = jacpy_buffer_acquire(value, 2);
+        return bool(self.view);
+    }
+
     def bytes -> ptr[PyObject] {
         return jacpy_buffer_bytes(self.view);
     }

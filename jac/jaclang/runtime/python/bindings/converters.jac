@@ -42,7 +42,8 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_Index,
     PyObject,
     PyObject_AsFileDescriptor,
-    PyObject_IsTrue
+    PyObject_IsTrue,
+    PyUnicode_AsUTF8AndSize
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.type {
@@ -287,6 +288,45 @@ def convert_optional_str(value: ptr[PyObject], fname: str, label: str) -> (str |
         return None;
     }
     return convert_str(value, fname, label);
+}
+
+# A str that may be NULL keeps C's `const char *`: the argument's UTF-8, owned
+# by the argument, or NULL for None where None is accepted.
+def convert_cstr(
+    value: ptr[PyObject], fname: str, label: str, accept_none: bool
+) -> ptr[u8] {
+    if accept_none and value == Py_None {
+        return ptr[u8]();
+    }
+    if jacpy_is_unicode(value) == 0 {
+        bad_argument(fname, label, "str or None" if accept_none else "str", value);
+    }
+    size: i64 = 0;
+    text = PyUnicode_AsUTF8AndSize(value, &mut size);
+    if not text {
+        raise boundary_failure();
+    }
+    if size > 0 {
+        chars = text.view(int(size));
+        for index in range(int(size)) {
+            if chars[index] == 0 {
+                object_error(PyExc_ValueError, "embedded null character");
+                raise boundary_failure();
+            }
+        }
+    }
+    return text;
+}
+
+# Py_buffer(accept={str, buffer}): a str is read as its UTF-8 bytes.
+def convert_text_buffer(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument {
+    view = BufferArgument();
+    if not view.acquire_text(value) {
+        raise boundary_failure();
+    }
+    return view;
 }
 
 def convert_buffer(value: ptr[PyObject], fname: str, label: str) -> BufferArgument {

@@ -127,9 +127,7 @@ obj Unsupported(Exception) {}
 
 # Preprocessor symbols only Windows defines. JacPython builds for Linux and
 # macOS, so a clinic function whose #if needs one is not generated.
-glob WINDOWS_SYMBOLS: set[str] = {"MS_WINDOWS", "MS_WINDOWS_DESKTOP", "MS_WINDOWS_APP"},
-     # The #if condition each clinic function was rendered under, by id().
-     CONDITIONS: dict[int, str] = {};
+glob WINDOWS_SYMBOLS: set[str] = {"MS_WINDOWS", "MS_WINDOWS_DESKTOP", "MS_WINDOWS_APP"};
 
 def:priv windows_symbol(name: str) -> str {
     return "False" if name in WINDOWS_SYMBOLS else "True";
@@ -197,14 +195,14 @@ def module_sources(tree: Path, module: str) -> list[Path] {
     sys.exit(f"{module} is not built by Modules/Setup.stdlib.in or Setup.bootstrap.in");
 }
 
-# Wrap CLanguage.render_function to record each function's #if condition.
-def:priv recording_render(render: any) -> any {
-    def recording(language: any, clinic: any, f: any) -> any {
-        CONDITIONS[id(f)] = language.cpp.condition();
-        return render(language, clinic, f);
-    }
-    setattr(recording, "records_conditions", True);
-    return recording;
+# The preprocessor condition each clinic function is compiled under, by full
+# name, as Tools/clinic sees it while rendering the block ("" when none).
+glob CONDITIONS: dict[str, str] = {};
+
+# JacPython builds only POSIX targets, where a function compiled only under a
+# Windows condition does not exist.
+def windows_only(condition: str) -> bool {
+    return not posix_condition(condition);
 }
 
 # (class or None, clinic function) for every clinic input block of `sources`.
@@ -212,22 +210,26 @@ def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
     sys.path.insert(0, str(tree / "Tools/clinic"));
     app = importlib.import_module("libclinic.app");
     clanguage = importlib.import_module("libclinic.clanguage");
-    # Clinic knows a block's preprocessor state only while it renders it.
-    render = clanguage.CLanguage.render_function;
-    if not getattr(render, "records_conditions", False) {
-        clanguage.CLanguage.render_function = recording_render(render);
-    }
+    function_type = importlib.import_module("libclinic.function").Function;
     found: list[tuple[any, any]] = [];
     for source in sources {
         text = source.read_text();
         if "[clinic input]" not in text {
             continue;
         }
+        language = clanguage.CLanguage(str(source));
+        render = language.render;
+        def record_conditions(clinic: any, signatures: any) -> any {
+            for signature in signatures {
+                if isinstance(signature, function_type) {
+                    CONDITIONS[signature.full_name] = language.cpp.condition();
+                }
+            }
+            return render(clinic, signatures);
+        }
+        language.render = record_conditions;
         clinic = app.Clinic(
-            clanguage.CLanguage(str(source)),
-            filename=str(source),
-            verify=False,
-            limited_capi=False
+            language, filename=str(source), verify=False, limited_capi=False
         );
         clinic.parse(text);
         # Classes declared without a module prefix (md5's `class MD5Type`)
@@ -281,7 +283,7 @@ obj Emitter {
         hooks: list[str] = [],
         tokens: set[str] = set(),
         skipped: list[str] = [],
-        windows_only: list[str] = [],
+        windows: list[str] = [],
         class_docs: dict[str, str] = {};
 
     def use(name: str) -> str {
@@ -301,6 +303,9 @@ obj Emitter {
     def default_value(p: any, jtype: str) -> str {
         c_default = getattr(p.converter, "c_default", "");
         py_default = p.default;
+        if jtype == "ptr[u8]" and (c_default == "NULL" or py_default is None) {
+            return "ptr[u8]()";
+        }
         if c_default in (None, "") {
             if py_default is None {
                 return "NULL" if jtype == "ptr[PyObject]" else "None";
@@ -360,7 +365,10 @@ obj Emitter {
         conv = p.converter;
         kind = class_name(conv).removesuffix("_converter");
         shown = p.name if p.kind.name != "POSITIONAL_ONLY" else "";
-        label = self.use("argument_label") + f"({jac_string(shown)}, {position})";
+        # Position 0 is clinic's METH_O argument, named only "argument".
+        label = jac_string("argument")
+            if position == 0
+            else self.use("argument_label") + f"({jac_string(shown)}, {position})";
         where = f"{jac_string(fname)}, {label}";
         accept_names = accepted(conv);
         # Clinic records bitwise=True only as the mask format unit it selects.
@@ -446,16 +454,20 @@ obj Emitter {
         if kind == "float" {
             return ("f32", self.use("convert_float") + "(value)", []);
         }
+        # Tools/clinic keeps a str or Py_buffer converter's accepted types only
+        # as the getargs format unit it selects.
+        unit = getattr(conv, "format_unit", "");
         if kind == "str" {
-            if accept_names - {"str", "NoneType"} or getattr(conv, "encoding", "") {
-                raise Unsupported(f"str(accept={sorted(accept_names)})");
+            if unit not in ("s", "z") or getattr(conv, "encoding", "") {
+                raise Unsupported(f"str converter '{unit}'");
             }
-            # Clinic keeps str's accept set only as the format unit it picks.
-            if "NoneType" in accept_names
-                or getattr(conv, "format_unit", "").startswith("z") {
+            accepts_none = unit == "z";
+            # A str that may be NULL (None accepted, or a NULL C default) stays
+            # C's `const char *`: the argument's UTF-8, NULL when absent.
+            if accepts_none or getattr(conv, "c_default", "") == "NULL" {
                 return (
-                    "str | None",
-                    self.use("convert_optional_str") + f"(value, {where})",
+                    "ptr[u8]",
+                    self.use("convert_cstr") + f"(value, {where}, {accepts_none})",
                     []
                 );
             }
@@ -469,21 +481,17 @@ obj Emitter {
             );
         }
         if kind == "Py_buffer" {
-            if "rwbuffer" in accept_names {
-                return (
-                    "BufferArgument",
-                    self.use("convert_writable_buffer") + f"(value, {where})",
-                    []
-                );
-            }
-            if accept_names - {"buffer"} {
-                raise Unsupported(f"Py_buffer(accept={sorted(accept_names)})");
-            }
-            return (
-                "BufferArgument",
-                self.use("convert_buffer") + f"(value, {where})",
-                []
+            converter = {
+                "y*": "convert_buffer",
+                "s*": "convert_text_buffer",
+                "w*": "convert_writable_buffer"
+            }.get(
+                unit
             );
+            if converter is None {
+                raise Unsupported(f"Py_buffer converter '{unit}'");
+            }
+            return ("BufferArgument", self.use(converter) + f"(value, {where})", []);
         }
         # A module-defined converter, supplied by the module's Jac file.
         named = getattr(conv, "converter", "");
@@ -541,6 +549,12 @@ obj Emitter {
             );
             call_args.append("cls");
         }
+        # Tools/clinic's use_meth_o(): one required positional-only argument.
+        meth_o = len(params) == 1
+            and params[0].kind.name == "POSITIONAL_ONLY"
+            and not params[0].is_optional()
+            and not uses_class
+            and kind not in ("METHOD_NEW", "METHOD_INIT");
         positional_only = sum(
             1
             for p in params
@@ -589,7 +603,7 @@ obj Emitter {
                 call_args.append(var);
                 continue;
             }
-            converted = self.convert(fname, p, position);
+            converted = self.convert(fname, p, 0 if meth_o else position);
             jtype = converted[0];
             expr = converted[1];
             checks = converted[2];
@@ -639,6 +653,11 @@ obj Emitter {
         self.lines += ["    " + line for line in body];
         self.lines.append("}");
         doc = f.docstring or "";
+        # A signature-only docstring ends with the blank line the
+        # __text_signature__ getter expects, as Tools/clinic writes it.
+        if doc.split("\n")[-1] == "--" {
+            doc += "\n\n";
+        }
         if kind in ("METHOD_NEW", "METHOD_INIT") and cls is not None {
             self.class_docs[cls.name] = doc;
         }
@@ -726,16 +745,16 @@ obj Emitter {
             f"{', '.join(source_names)}; do not edit. The _impl functions live in",
             f"{MODULES}.{self.name}."
         ];
-        if self.windows_only {
-            head += ["", "Windows only, so not generated:"];
-            head += [f"    {item}" for item in self.windows_only];
-        }
         if self.skipped {
             head += [
                 "",
                 "Bound by hand in the module binding (no generic Jac converter):"
             ];
             head += [f"    {item}" for item in self.skipped];
+        }
+        if self.windows {
+            head += ["", "Compiled only on Windows, so absent here:"];
+            head += [f"    {item}" for item in self.windows];
         }
         head.append('"""');
         imports = [
@@ -806,8 +825,8 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];
-        if not posix_condition(CONDITIONS.get(id(f), "")) {
-            emitter.windows_only.append(f.full_name);
+        if windows_only(CONDITIONS.get(f.full_name, "")) {
+            emitter.windows.append(f.full_name);
             continue;
         }
         try {

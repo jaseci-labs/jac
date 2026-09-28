@@ -61,7 +61,8 @@ void *jacpy_binding_module(const char *name, const char *doc, int64_t count,
     spec->definition = initial;
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
     spec->definition.m_name = spec->table.name;
-    spec->definition.m_doc = spec->table.doc;
+    /* An empty doc is C's NULL m_doc: the module's __doc__ is None. */
+    spec->definition.m_doc = spec->table.doc && *spec->table.doc ? spec->table.doc : NULL;
     spec->definition.m_size = sizeof(JacModuleState) + state_count * sizeof(PyObject *);
     spec->definition.m_traverse = (traverseproc)hooks.traverse;
     spec->definition.m_clear = (inquiry)hooks.clear;
@@ -71,7 +72,7 @@ void *jacpy_binding_module(const char *name, const char *doc, int64_t count,
     spec->slots[0] = (PyModuleDef_Slot){Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED};
     spec->slots[1] = (PyModuleDef_Slot){Py_mod_gil, Py_MOD_GIL_USED};
     if (hooks.execute) spec->slots[2] = (PyModuleDef_Slot){Py_mod_exec, (void *)hooks.execute};
-    if (!spec->definition.m_name || !spec->definition.m_doc) {
+    if (!spec->table.name || !spec->table.doc) {
         jacpy_binding_discard((spec));
         return 0;
     }
@@ -97,6 +98,37 @@ PyObject *jacpy_binding_init(void *handle) {
     return (PyModuleDef_Init(&spec->definition));
 }
 
+
+/* Method records for callables made at run time (PyCFunction_NewEx), outside
+ * any module or type table; they live for the process lifetime. */
+typedef struct {
+    JacMethodTable table;
+    PyMethodDef methods[];
+} JacFunctionSpec;
+
+void jacpy_binding_functions_discard(void *handle) {
+    JacFunctionSpec *spec = (handle);
+    if (!spec) return;
+    discard_methods(&spec->table);
+    free(spec);
+}
+
+void *jacpy_binding_functions(int64_t count) {
+    JacFunctionSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
+    if (!spec) return 0;
+    spec->table = (JacMethodTable){strdup(""), strdup(""), spec->methods};
+    if (!spec->table.name || !spec->table.doc) {
+        jacpy_binding_functions_discard(spec);
+        return 0;
+    }
+    return spec;
+}
+
+PyObject *jacpy_binding_function(void *handle, int64_t index, PyObject *self, PyObject *module) {
+    if (!handle) return PyErr_NoMemory();
+    JacFunctionSpec *spec = (handle);
+    return PyCFunction_NewEx(&spec->methods[index], self, module);
+}
 
 /* Interpreter-local references. The Jac declaration controls their count,
  * meaning, initialization, traversal, and clearing. Get borrows; set retains. */

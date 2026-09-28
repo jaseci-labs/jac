@@ -40,7 +40,8 @@ glob OUTPUT: Path = RUNTIME / "modules",
          r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*\1\s*\)",
          r"\bADD_INT\(\s*(\w+)\s*\)",
          # A static {"NAME", NAME} table (termios), possibly cast to long.
-         r"\{\s*\"(\w+)\"\s*,\s*(?:\(long\)\s*)?\1\s*\}"
+         r"\{\s*\"(\w+)\"\s*,\s*(?:\(long\)\s*)?\1\s*\}",
+         r"\bLANGINFO\(\s*(\w+)\s*,"
      ],
      # Constants published under a name other than their macro's
      # (select's KQ_FILTER_READ is EVFILT_READ): (published, macro) groups.
@@ -51,7 +52,7 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # The macro each aliased published name reads.
      MACROS: dict[str, str] = {},
      # Parameter names of the macro definitions themselves.
-     MACRO_PARAMETERS: set[str] = {"value", "macro", "c", "name", "VAL"},
+     MACRO_PARAMETERS: set[str] = {"value", "macro", "c", "name", "VAL", "X"},
      # The C source each module's constants come from, and the system headers
      # that define them. Each include is guarded by __has_include, so one list
      # serves every platform.
@@ -169,10 +170,16 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # `other` is defined.
      ALIASES: dict[str, dict[str, str]] = {
          "termios": {"VSWTC": "VSWTCH", "VSWTCH": "VSWTC"}
-     };
+     },
+     # Names whose value is not fixed per OS, which the binding reads from the
+     # target instead: CHAR_MAX follows the ABI's char signedness (unsigned on
+     # Linux aarch64, signed on x86_64 and Apple arm64).
+     EXCLUDED: dict[str, list[str]] = {"_locale": ["CHAR_MAX"]};
 
 def names_in(source: str) -> list[str] {
     found: list[str] = [];
+    # A commented-out entry (_locale's YESSTR and NOSTR) is not published.
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.S);
     for line in source.splitlines() {
         for pattern in PATTERNS {
             for hit in re.finditer(pattern, line) {
@@ -352,7 +359,11 @@ with entry:__main__ {
     if source_file not in texts {
         sys.exit(f"{source_file} is not in the pinned archive");
     }
-    names = names_in(texts[source_file]);
+    names = [
+        n
+        for n in names_in(texts[source_file])
+        if n not in EXCLUDED.get(args.module, [])
+    ];
     names += [
         n
         for n in EXTRA.get(args.module, [])

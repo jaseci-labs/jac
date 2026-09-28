@@ -143,31 +143,31 @@ glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getrusage",
              MethodCallbacks(keywords=resource_getrusage_call),
-             "getrusage($module, who, /)\n--",
+             "getrusage($module, who, /)\n--\n\n",
              3
          ),
          MethodDefinition(
              "getrlimit",
              MethodCallbacks(keywords=resource_getrlimit_call),
-             "getrlimit($module, resource, /)\n--",
+             "getrlimit($module, resource, /)\n--\n\n",
              3
          ),
          MethodDefinition(
              "setrlimit",
              MethodCallbacks(keywords=resource_setrlimit_call),
-             "setrlimit($module, resource, limits, /)\n--",
+             "setrlimit($module, resource, limits, /)\n--\n\n",
              3
          ),
          MethodDefinition(
              "prlimit",
              MethodCallbacks(keywords=resource_prlimit_call),
-             "prlimit($module, pid, resource, limits=None, /)\n--",
+             "prlimit($module, pid, resource, limits=None, /)\n--\n\n",
              3
          ),
          MethodDefinition(
              "getpagesize",
              MethodCallbacks(keywords=resource_getpagesize_call),
-             "getpagesize($module, /)\n--",
+             "getpagesize($module, /)\n--\n\n",
              3
          ),
 

@@ -143,16 +143,25 @@ static int jacpy_ascii_buffer(PyObject *value, void *output) {
     }
     return Py_CLEANUP_SUPPORTED;
 }
+/* Py_buffer(accept={str, buffer}): a str lends its UTF-8 encoding. */
+static int jacpy_text_buffer(PyObject *value, Py_buffer *view) {
+    if (!PyUnicode_Check(value)) return PyObject_GetBuffer(value, view, PyBUF_SIMPLE) == 0;
+    Py_ssize_t size;
+    const char *data = PyUnicode_AsUTF8AndSize(value, &size);
+    return data && PyBuffer_FillInfo(view, value, (void *)data, size, 1, PyBUF_SIMPLE) == 0;
+}
 PyObject *jacpy_buffer_bytes(const Py_buffer *view) {
     if (PyBytes_CheckExact(view->obj) && view->buf == PyBytes_AS_STRING(view->obj)
         && view->len == PyBytes_GET_SIZE(view->obj)) return Py_NewRef(view->obj);
     return PyBytes_FromStringAndSize(view->buf, view->len);
 }
-Py_buffer *jacpy_buffer_acquire(PyObject *value, int64_t ascii) {
+/* kind: 0 any buffer, 1 buffer or ASCII str, 2 buffer or str (UTF-8). */
+Py_buffer *jacpy_buffer_acquire(PyObject *value, int64_t kind) {
     Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
     if (!view) { PyErr_NoMemory(); return NULL; }
-    int ok = ascii ? jacpy_ascii_buffer(value, view)
-                   : jacpy_binary_buffer(value, view);
+    int ok = kind == 2 ? jacpy_text_buffer(value, view)
+           : kind == 1 ? jacpy_ascii_buffer(value, view)
+                       : jacpy_binary_buffer(value, view);
     if (!ok) { PyMem_Free(view); return NULL; }
     return view;
 }
