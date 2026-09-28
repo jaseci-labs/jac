@@ -13,6 +13,7 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
              "Pinned",
              "pin",
              "addressof",
+             "VaList",
              "_jac_clib_bind",
              "_jac_c_copy",
              "_jac_c_cell",

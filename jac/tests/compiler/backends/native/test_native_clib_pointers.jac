@@ -336,3 +336,73 @@ with entry {
     assert "plain -7|1099511627776|1.5|200|-3|jac" in out.splitlines() , out;
     assert "varargs -7|1099511627776|lit|2.50|1.5|200|-3|jac" in out.splitlines() , out;
 }
+
+test "a C variadic function Jac defines reads each argument by its C type" {
+    code = '''import from c {
+    def vsnprintf(buf: ptr[u8], n: i64, fmt: ptr[u8], ap: VaList) -> i32;
+    def malloc(n: i64) -> ptr[u8];
+    def free(p: ptr[u8]) -> None;
+}
+def sum_mixed(count: i32, *args: VaList) -> f64 {
+    total = 0.0;
+    for i in range(int(count)) {
+        if i % 2 == 0 {
+            total += float(args.arg(i64));
+        } else {
+            total += args.arg(f64);
+        }
+    }
+    return total;
+}
+def narrow(count: i32, *args: VaList) -> str {
+    out = "";
+    for i in range(int(count)) {
+        out += f"{args.arg(i8)},";
+    }
+    return out + f"{args.arg(bool)}";
+}
+def format_into(buf: ptr[u8], n: i64, fmt: ptr[u8], *args: VaList) -> i32 {
+    return vsnprintf(buf, n, fmt, args);
+}
+with entry {
+    print("mixed", sum_mixed(i32(4), i64(1), 2.5, i64(3), 4.25));
+    print(
+        "spill",
+        sum_mixed(
+            i32(20), i64(1), 1.5, i64(2), 2.5, i64(3), 3.5, i64(4), 4.5, i64(5), 5.5,
+            i64(6), 6.5, i64(7), 7.5, i64(8), 8.5, i64(9), 9.5, i64(10), 10.5
+        )
+    );
+    print("narrow", narrow(i32(3), i8(-1), i8(2), i8(-3), True));
+    buf = malloc(64);
+    written = format_into(buf, 64, ptr[u8]("%s=%d/%.2f"), "key", i32(-5), 1.5);
+    view = buf.view(int(written));
+    print("forward", "".join([chr(int(view[i])) for i in range(int(written))]));
+    free(buf);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "variadic_def.jac");
+        Path(path).write_text(code);
+        out = assert_native_identity(path);
+    }
+    lines = out.splitlines();
+    for line in [
+        "mixed 10.75",
+        "spill 115.0",
+        "narrow -1,2,-3,True",
+        "forward key=-5/1.50"
+    ] {
+        assert line in lines , f"missing {line!r} in:\n{out}";
+    }
+}
+
+test "C variadic functions reject keyword parameters and non-C arguments" {
+    code = DECLS
+        + '''
+def keyed(fmt: ptr[u8], *args: VaList, flag: bool = False) -> None {}
+def plain(fmt: ptr[u8], *args: VaList) -> None {}
+def call_it -> None { plain(ptr[u8](), [1, 2]); }
+''';
+    assert checker_codes(code) == ["E1157", "E1157"];
+}

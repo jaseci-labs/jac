@@ -1,3 +1,4 @@
+import from jaclang.compiler.c_interop { c_variadic_param }
 impl JcirGenPass._get_sem_decorator(nd: UniNode) -> (CgNode | None) {
     semstr: str = '';
     inner_semstr: dict[(str, str)] = {};
@@ -355,6 +356,28 @@ impl JcirGenPass.exit_ability with Ability exit {
     }
     if body_hoists {
         body = [*body_hoists, *body];
+    }
+    va_param = c_variadic_param(here.signature);
+    if va_param is not None {
+        va_name = va_param.name.value;
+        body = [
+            self.nod(
+                'Assign',
+                ['targets', 'value'],
+                [
+                    [
+                        self.nod(
+                            'Name', ['id', 'ctx'], [va_name, self.nod('Store', [], [])]
+                        )
+                    ],
+                    self.call_node(
+                        self.builtin_name('VaList'), [self.name_load(va_name)], []
+                    )
+                ],
+                jac_node=va_param
+            ),
+            *body
+        ];
     }
     body = self._scope_cleanup_body(here, body);
     directive_stmts = self.scope_directive_stmts(

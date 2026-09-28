@@ -225,6 +225,7 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
     here.chunks_recv_type = _chunks_receiver_type(here);
 
     here.callee_decl = ability_of_symbol(resolve_expr_symbol(here.target));
+    self._check_c_variadic_args(here);
 
     if (
         here.callee_decl is not None
@@ -924,6 +925,7 @@ impl TypeCheckPass.enter_ability with Ability entry {
 impl TypeCheckPass.exit_ability with Ability exit {
     import from jaclang.compiler.frontend.constant { OwnershipKind }
     self.evaluator.validate_typevar_variance(here);
+    self._check_c_variadic_def(here);
 
     self._check_intrinsic_collision(here);
 
@@ -2627,6 +2629,53 @@ impl TypeCheckPass._foreign_struct_contains(
         }
     }
     return False;
+}
+
+impl TypeCheckPass._check_c_variadic_def(nd: Ability) -> None {
+    import from jaclang.compiler.c_interop { c_variadic_param }
+    sig = nd.signature;
+    if c_variadic_param(sig) is None or not isinstance(sig, FuncSignature) {
+        return;
+    }
+    if sig.kwonlyargs or sig.kwargs is not None {
+        self.ctx.emit(
+            E1157,
+            node_override=sig,
+            what=f"function '{nd.name_ref.sym_name
+                if nd.name_ref
+                else ''}' cannot also take keyword-only or ** parameters"
+        );
+    }
+}
+
+impl TypeCheckPass._check_c_variadic_args(nd: FuncCall) -> None {
+    import from jaclang.compiler.c_interop { c_variadic_param }
+    callee = nd.callee_decl;
+    sig = callee.signature if callee is not None else None;
+    if not isinstance(sig, FuncSignature) or sig.varargs is None {
+        return;
+    }
+    if c_variadic_param(sig) is None and nd.call_kind != "clib" {
+        return;
+    }
+    fixed = len(sig.posonly_params) + len(sig.params or []);
+    for arg in list(nd.params or [])[fixed:] {
+        if not isinstance(arg, Expr) {
+            continue;
+        }
+        arg_type = self.evaluator._convert_to_instance(
+            self.evaluator.get_type_of_expression(arg)
+        );
+        text = isinstance(arg_type, ClassType)
+            and arg_type.is_builtin(["str", "bytes", "bytearray"]);
+        if not text and not self._c_plain_data(arg_type) {
+            self.ctx.emit(
+                E1157,
+                node_override=arg,
+                what=f"argument needs a C scalar, ptr, str or bytes, not {arg_type}"
+            );
+        }
+    }
 }
 
 impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {

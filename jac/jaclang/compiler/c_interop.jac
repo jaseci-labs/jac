@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Expr,
     GlobalVars,
     Import,
+    ParamVar,
     Symbol,
     UnaryExpr,
     resolved_decl_of,
@@ -14,7 +15,7 @@ import from jaclang.compiler.frontend.unitree {
 
 import type from jaclang.compiler.types.types { ClassType, TypeBase }
 
-glob C_BUILTIN_GENERICS: tuple[str, ...] = ("ptr", "PtrView", "Pinned");
+glob C_BUILTIN_TYPES: tuple[str, ...] = ("ptr", "PtrView", "Pinned", "VaList");
 
 def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
     if nd is None {
@@ -71,10 +72,10 @@ def opaque_c_of_type(t: (TypeBase | None)) -> (Archetype | None) {
 
 def c_builtin_kind(t: (TypeBase | None)) -> str {
     cls = _class_of(t);
-    if cls is None or cls.shared.class_name not in C_BUILTIN_GENERICS {
+    if cls is None or cls.shared.class_name not in C_BUILTIN_TYPES {
         return "";
     }
-    if cls.is_builtin(list(C_BUILTIN_GENERICS)) {
+    if cls.is_builtin(list(C_BUILTIN_TYPES)) {
         return cls.shared.class_name;
     }
     return "";
@@ -90,6 +91,20 @@ def is_ptr_view_type(t: (TypeBase | None)) -> bool {
 
 def is_pinned_type(t: (TypeBase | None)) -> bool {
     return c_builtin_kind(t) == "Pinned";
+}
+
+def is_va_list_type(t: (TypeBase | None)) -> bool {
+    return c_builtin_kind(t) == "VaList";
+}
+
+def c_variadic_param(sig: (UniNode | None)) -> (ParamVar | None) {
+    import from jaclang.compiler.frontend.unitree { FuncSignature }
+    if not isinstance(sig, FuncSignature) or sig.varargs is None {
+        return None;
+    }
+    tag = sig.varargs.type_tag.tag if sig.varargs.type_tag else None;
+    tag_type = tag.type if tag is not None else None;
+    return sig.varargs if is_va_list_type(tag_type) else None;
 }
 
 def c_type_arg(t: (TypeBase | None)) -> (TypeBase | None) {
@@ -194,7 +209,7 @@ def is_builtin_addressof_call(call: (UniNode | None)) -> bool {
 }
 
 def is_c_value_type(t: (TypeBase | None)) -> bool {
-    return c_builtin_kind(t) in ("ptr", "PtrView");
+    return c_builtin_kind(t) in ("ptr", "PtrView", "VaList");
 }
 
 def c_call_borrows_args(call: (UniNode | None)) -> bool {
@@ -241,6 +256,9 @@ def c_type_spec(
             return ["array", c_type_spec(elem, None)];
         }
         kind = c_builtin_kind(t);
+        if kind == "VaList" {
+            return ["va_list"];
+        }
         if kind == "ptr" {
             arg = c_type_arg(t);
             return ["ptr", None if arg is None else c_type_spec(arg, None)];
@@ -315,16 +333,19 @@ def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
 }
 
 def c_string_literal(expr: (UniNode | None)) -> (str | None) {
-    import from jaclang.compiler.frontend.unitree { MultiString, String }
-    parts = expr.strings if isinstance(expr, MultiString) else [expr];
-    text = "";
-    for part in parts {
-        if not isinstance(part, String) or not isinstance(part.lit_value, str) {
-            return None;
-        }
-        text += part.lit_value;
+    import from jaclang.compiler.frontend.unitree {
+        FString,
+        MultiString,
+        literal_string_value
     }
-    return text;
+    if expr is None
+        or (
+            isinstance(expr, MultiString)
+            and any(isinstance(part, FString) for part in expr.strings)
+        ) {
+        return None;
+    }
+    return literal_string_value(expr);
 }
 
 def c_scalar_constant(expr: (UniNode | None)) -> tuple[bool, any] {

@@ -50,6 +50,7 @@ __all__ = [
     "Pinned",
     "pin",
     "addressof",
+    "VaList",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -225,6 +226,15 @@ class Pinned(Generic[_PinT]):
     value: _PinT
 
 def pin(value: _PinT) -> Pinned[_PinT]: ...
+
+# A C `va_list`. `def f(fmt: ptr[u8], *args: VaList)` is a C variadic
+# function, and a `VaList` parameter receives a C `va_list`; `args.arg(T)`
+# reads the next argument as the C type T (a sized scalar or a `ptr`), and a
+# `VaList` passes on to a C function that takes a `va_list`.
+_VaT = TypeVar("_VaT")
+
+class VaList:
+    def arg(self, kind: type[_VaT]) -> _VaT: ...
 
 # The address of a C data symbol (`glob name: T;` in a C library import); a
 # C array symbol (`list[T]`) yields the address of its first element.

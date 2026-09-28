@@ -451,6 +451,9 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         if param.type_tag {
             param_type_cls = self.get_type_of_expression(param.type_tag.tag);
             param_type = self._convert_to_instance(param_type_cls);
+            if param.is_vararg and is_va_list_type(param_type) {
+                param_type = AnyType();
+            }
         }
 
         is_cls_param = (

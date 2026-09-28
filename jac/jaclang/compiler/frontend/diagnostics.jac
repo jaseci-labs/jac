@@ -1174,6 +1174,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " buffer instead.",
          blocks_codegen=True
      ),
+     E1157 = _err(
+         "E1157",
+         Category.TYPE,
+         "C variadic {what}",
+         help="A C variadic function (`*args: VaList`, or a C library function"
+         " with `*args`) passes each extra argument by C's default promotions, so"
+         " an extra argument is a sized scalar, `int`, `float`, `bool`, a `ptr`,"
+         " `str` or `bytes`, and the function has no keyword-only or `**`"
+         " parameters.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

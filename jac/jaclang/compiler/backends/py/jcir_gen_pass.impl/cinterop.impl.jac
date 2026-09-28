@@ -209,7 +209,11 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
 }
 
 impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
-    import from jaclang.compiler.c_interop { c_type_spec, is_builtin_pin_call }
+    import from jaclang.compiler.c_interop {
+        c_type_spec,
+        c_variadic_param,
+        is_builtin_pin_call
+    }
     if is_builtin_pin_call(nd) {
         args = [
             p
@@ -221,6 +225,16 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
             spec = c_type_spec(args[0].type, None);
             call.get('args').append(self.const_of(json.dumps(spec)));
         }
+        return;
+    }
+    callee = nd.callee_decl;
+    callee_sig = callee.signature if isinstance(callee, Ability) else None;
+    if isinstance(callee_sig, FuncSignature)
+        and nd.call_kind != "clib"
+        and c_variadic_param(callee_sig) is not None {
+        self._c_vararg_rewrite(
+            nd, len(callee_sig.posonly_params) + len(callee_sig.params or [])
+        );
         return;
     }
     if nd.call_kind != "clib" or not isinstance(nd.callee_decl, Ability) {

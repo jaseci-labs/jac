@@ -352,6 +352,87 @@ def _spec_scalar_elem(spec: any) -> (str | None) {
     return None;
 }
 
+class JacVaList {
+    def init(self: JacVaList, values: any) {
+        self._values = list(values);
+        self._next = 0;
+        self._keep: list[any] = [];
+    }
+
+    def arg(self: JacVaList, kind: any) -> any {
+        if self._next >= len(self._values) {
+            raise IndexError("VaList.arg() read past the last variadic argument");
+        }
+        raw = self._values[self._next];
+        self._next += 1;
+        value = raw.value if isinstance(raw, ctypes._SimpleCData) else raw;
+        if isinstance(kind, `type) and issubclass(kind, JacPtr) {
+            return kind(value or 0);
+        }
+        return kind(value);
+    }
+
+    def to_c(self: JacVaList) -> any {
+        import platform;
+        rest = self._values[self._next:];
+        slots = (ctypes.c_uint64 * max(len(rest), 1))();
+        for (i, raw) in enumerate(rest) {
+            if isinstance(raw, ctypes.c_double) {
+                slots[i] = ctypes.c_uint64.from_buffer(
+                    ctypes.c_double(raw.value)
+                ).value;
+            } elif isinstance(raw, ctypes.c_char_p) {
+                self._keep.append(raw);
+                slots[i] = ctypes.cast(raw, ctypes.c_void_p).value or 0;
+            } else {
+                value = raw.value if isinstance(raw, ctypes._SimpleCData) else raw;
+                slots[i] = int(value or 0) & 0xFFFFFFFFFFFFFFFF;
+            }
+        }
+        self._keep.append(slots);
+        machine = platform.machine().lower();
+        address = ctypes.addressof(slots);
+        if sys.platform == "darwin"
+            and machine in ("arm64", "aarch64")
+            or sys.platform == "win32" {
+            return ctypes.c_void_p(address);
+        }
+        state: any = None;
+        if machine in ("x86_64", "amd64") {
+            state = _SysVVaList(48, 176, address, None);
+        } elif machine in ("arm64", "aarch64") {
+            state = _AapcsVaList(address, None, None, 0, 0);
+        } else {
+            raise TypeError(f"a VaList cannot pass to C on {machine}");
+        }
+        self._keep.append(state);
+        return ctypes.c_void_p(ctypes.addressof(state));
+    }
+}
+
+class _SysVVaList(ctypes.Structure) {
+    with entry {
+        _fields_: any = [
+            ("gp_offset", ctypes.c_uint32),
+            ("fp_offset", ctypes.c_uint32),
+            ("overflow_arg_area", ctypes.c_void_p),
+            ("reg_save_area", ctypes.c_void_p)
+        ];
+    }
+}
+
+class _AapcsVaList(ctypes.Structure) {
+    with entry {
+        _fields_: any = [
+            ("stack", ctypes.c_void_p),
+            ("gr_top", ctypes.c_void_p),
+            ("vr_top", ctypes.c_void_p),
+            ("gr_offs", ctypes.c_int32),
+            ("vr_offs", ctypes.c_int32)
+        ];
+    }
+}
+
 def c_vararg(value: any, spec_json: str) -> any {
     spec = json.loads(spec_json);
     kind = spec[0];
@@ -619,6 +700,9 @@ class CFunction {
 
     def _to_c(self: CFunction, spec: list[any], value: any, keep: list[any]) -> any {
         kind = spec[0];
+        if kind == "va_list" {
+            return value.to_c();
+        }
         if kind == "opt" {
             return None if value is None else self._to_c(spec[1], value, keep);
         }

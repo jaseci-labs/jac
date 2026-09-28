@@ -1,4 +1,5 @@
 import from jaclang.compiler.backends.native.abi { classify_foreign_fn }
+import from jaclang.compiler.c_interop { c_variadic_param }
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
@@ -62,9 +63,15 @@ impl NaIRGenPass._maybe_declare_ability(
     _sig_mark = len(self.ctx.errors_had);
     _saved_sig_kind = self._sig_decl_kind;
     self._sig_decl_kind = "signature type";
+    va_param = c_variadic_param(sig);
+    c_params = [
+        p
+        for p in sig.get_parameters()
+        if p is not va_param
+    ];
 
     param_types: list[ir.Type] = [];
-    for p in sig.get_parameters() {
+    for p in c_params {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
         );
@@ -82,7 +89,7 @@ impl NaIRGenPass._maybe_declare_ability(
     }
     self._sig_decl_kind = _saved_sig_kind;
 
-    local_type = ir.FunctionType(ret_type, param_types);
+    local_type = ir.FunctionType(ret_type, param_types, var_arg=va_param is not None);
     imported = imp_layout.functions.get(name) if imp_layout is not None else None;
     if imported is not None and imp_layout.str_headerless != self._nogc_headerless() {
         kind = "jacstr2" if imp_layout.str_headerless else "jacstr3";
@@ -103,7 +110,7 @@ impl NaIRGenPass._maybe_declare_ability(
             ret_type = carrier;
         }
     }
-    fnty = ir.FunctionType(ret_type, param_types);
+    fnty = ir.FunctionType(ret_type, param_types, var_arg=va_param is not None);
 
     _dec_names: list[str] = [];
     if nd.decorators
@@ -137,10 +144,10 @@ impl NaIRGenPass._maybe_declare_ability(
         );
     }
 
-    for (i, p) in enumerate(sig.get_parameters()) {
+    for (i, p) in enumerate(c_params) {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
-    self._apply_ownership_param_attrs(func, sig.get_parameters(), 0);
+    self._apply_ownership_param_attrs(func, c_params, 0);
     self._record_linked_decl(func, nd);
     if fnty != local_type {
         func = self._imported_string_adapter(func, local_type);
@@ -577,8 +584,16 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
 
         sig = nd.signature;
         assert isinstance(sig, uni.FuncSignature) , "a declared function has a function signature";
+        va_param = c_variadic_param(sig);
         for (i, p) in enumerate(sig.get_parameters()) {
             param_name = p.name.value if p.name else f"arg{i}";
+            if p is va_param {
+                started = self._c_va_start(p);
+                if started is not None {
+                    self._bind_function_parameter(param_name, started);
+                }
+                continue;
+            }
             arg_val = func.args[i];
             borrowed = not self._nogc_owned_param(p);
             self._bind_function_parameter(
