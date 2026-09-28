@@ -1135,11 +1135,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "C data symbol '{name}' {reason}",
          help="`glob name: T;` in a C library import declares a variable C"
-         " defines. A symbol of C plain data (a sized scalar, `int`, `float`,"
-         " `bool` or a `ptr`) reads and writes the C variable in place. A symbol"
-         " of a foreign struct or an opaque C type is a C object Jac handles only"
-         " by address: `addressof(name)` is its `ptr[T]`. The declaration has no"
-         " initializer, since C owns the storage.",
+         " defines, and `glob name: T = value;` defines one: Jac provides the"
+         " C-layout storage under that symbol name. A symbol of C plain data (a"
+         " sized scalar, `int`, `float`, `bool` or a `ptr`) reads and writes the"
+         " variable in place. A symbol of a foreign struct or an opaque C type is"
+         " a C object Jac handles only by address: `addressof(name)` is its"
+         " `ptr[T]`. An opaque C type has no layout, so Jac cannot define one.",
          blocks_codegen=True
      ),
      E1154 = _err(
@@ -1150,6 +1151,27 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " as `glob name: T;` in a C library import. A Jac value has no stable C"
          " address: lend C the address of Jac storage through a `&T` / `&mut T`"
          " parameter, or keep one alive with `pin(value)`.",
+         blocks_codegen=True
+     ),
+     E1155 = _err(
+         "E1155",
+         Category.TYPE,
+         "C data definition '{name}' {reason}",
+         help="A C data symbol Jac defines is laid out at link time, so its"
+         " initializer is a C constant: a literal, `None`, `ptr[T]()`, an integer"
+         " address, `ptr[u8](\"text\")`, `addressof(symbol)`, a named function"
+         " for a callback field, or a constructor of a foreign struct whose"
+         " arguments are all of these.",
+         blocks_codegen=True
+     ),
+     E1156 = _err(
+         "E1156",
+         Category.TYPE,
+         "A C string pointer is made from a string literal of bytes, not {what}",
+         help="`ptr[u8](\"text\")` (or `ptr[i8]`) is the address of an immortal,"
+         " NUL-terminated copy of the literal, like a C string literal. A string"
+         " computed at run time has no fixed C address: encode it and lend C a"
+         " buffer instead.",
          blocks_codegen=True
      ),
      E1301 = _err(

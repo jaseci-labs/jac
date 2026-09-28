@@ -2428,25 +2428,129 @@ impl TypeCheckPass._check_c_global_decl(assign: Assignment) -> None {
     if not isinstance(target, Name) {
         return;
     }
-    if assign.value is not None {
-        self.ctx.emit(
-            E1153,
-            node_override=assign,
-            name=target.sym_name,
-            reason="has an initializer, but C owns its storage"
-        );
-        return;
-    }
     tag = assign.type_tag.tag if assign.type_tag else None;
     ctype = self._c_instance_of(tag);
-    if not self._c_plain_data(ctype) and self._opaque_member(ctype) is None {
+    opaque = self._opaque_member(ctype);
+    if not self._c_plain_data(ctype) and opaque is None {
         self.ctx.emit(
             E1153,
             node_override=assign,
             name=target.sym_name,
             reason=f"has type {ctype}, which is not C data"
         );
+        return;
     }
+    if assign.value is None {
+        return;
+    }
+    if opaque is not None {
+        self.ctx.emit(
+            E1153,
+            node_override=assign,
+            name=target.sym_name,
+            reason=f"has opaque type {opaque.name.value}, which has no layout for Jac to define"
+        );
+        return;
+    }
+    problem = self._c_const_problem(assign.value, ctype);
+    if problem is not None {
+        self.ctx.emit(
+            E1155, node_override=assign.value, name=target.sym_name, reason=problem
+        );
+    }
+}
+
+impl TypeCheckPass._c_const_problem(
+    expr: Expr, ctype: (TypeBase | None)
+) -> (str | None) {
+    import from jaclang.compiler.c_interop {
+        c_scalar_constant,
+        c_string_literal,
+        foreign_struct_of_type,
+        is_builtin_addressof_call,
+        is_ptr_type
+    }
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if isinstance(expr, Null) {
+        return None;
+    }
+    arch = foreign_struct_of_type(ctype);
+    if arch is not None {
+        if not isinstance(expr, FuncCall)
+            or foreign_struct_of_type(expr.type) is not arch {
+            return f"initializes a {arch.name.value} with something other than its constructor";
+        }
+        fields = list(arch.get_has_vars());
+        for (i, param) in enumerate(expr.params or []) {
+            field: (HasVar | None) = None;
+            value: Expr = param;
+            if isinstance(param, KWPair) {
+                value = param.value;
+                field = next(
+                    (
+                        f
+                        for f in fields
+                        if isinstance(param.key, Name)
+                            and f.name.sym_name == param.key.sym_name
+                    ),
+                    None
+                );
+            } elif i < len(fields) {
+                field = fields[i];
+            }
+            if field is None {
+                continue;
+            }
+            tag = field.type_tag.tag if field.type_tag else None;
+            problem = self._c_const_problem(value, self._c_instance_of(tag));
+            if problem is not None {
+                return problem;
+            }
+        }
+        return None;
+    }
+    if isinstance(ctype, FunctionType) {
+        decl = expr.sym.decl
+            if isinstance(expr, Name) and expr.sym is not None
+            else None;
+        if decl is not None and isinstance(decl.name_of, Ability) {
+            return None;
+        }
+        return "sets a callback field to something other than a named function";
+    }
+    if is_ptr_type(ctype) {
+        if isinstance(expr, FuncCall) {
+            if is_builtin_addressof_call(expr) {
+                return None;
+            }
+            params = list(expr.params or []);
+            callee_type = expr.target.type;
+            if is_ptr_type(callee_type)
+                and callee_type is not None
+                and not callee_type.is_instance()
+                and (
+                    not params
+                    or (
+                        len(params) == 1
+                        and (
+                            c_string_literal(params[0]) is not None
+                            or c_scalar_constant(params[0])[0]
+                        )
+                    )
+                ) {
+                return None;
+            }
+        } elif c_scalar_constant(expr)[0] {
+            return None;
+        }
+        return "sets a pointer to something other than a C constant address";
+    }
+    if c_scalar_constant(expr)[0] {
+        return None;
+    }
+    return "is not a compile-time constant";
 }
 
 impl TypeCheckPass._check_c_global_use(nd: Name) -> None {
@@ -2499,6 +2603,7 @@ impl TypeCheckPass._foreign_struct_contains(
 
 impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
+        c_string_literal,
         c_type_arg,
         clib_global_of_symbol,
         is_builtin_addressof_call,
@@ -2511,6 +2616,29 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
         and callee.is_instantiable_class()
         and (arch := opaque_c_of_type(callee)) is not None {
         self.ctx.emit(E1151, node_override=nd, name=arch.name.value, use="constructed");
+        return;
+    }
+    if is_ptr_type(callee)
+        and isinstance(callee, ClassType)
+        and not callee.is_instance()
+        and len(nd.params or []) == 1 {
+        text = (nd.params or [])[0];
+        text_type = self.evaluator.get_type_of_expression(text)
+            if isinstance(text, Expr)
+            else None;
+        if isinstance(text_type, ClassType) and text_type.is_builtin("str") {
+            elem = c_type_arg(callee);
+            elem_name = elem.shared.class_name if isinstance(elem, ClassType) else "";
+            if c_string_literal(text) is None {
+                self.ctx.emit(E1156, node_override=text, what="a computed string");
+            } elif elem_name not in ("u8", "i8") {
+                self.ctx.emit(
+                    E1156,
+                    node_override=text,
+                    what=f"a pointer to {elem_name or 'untyped memory'}"
+                );
+            }
+        }
         return;
     }
     if is_builtin_addressof_call(nd) {

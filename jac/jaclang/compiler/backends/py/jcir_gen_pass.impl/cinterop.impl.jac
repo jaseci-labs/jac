@@ -140,6 +140,57 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
             )
         );
     }
+    for decl in imp.clib_decls or [] {
+        if not isinstance(decl, GlobalVars) {
+            continue;
+        }
+        for assign in decl.assignments {
+            target = assign.target[0] if assign.target else None;
+            if not isinstance(target, Name) or assign.value is None {
+                continue;
+            }
+            thunk = self.nod(
+                'Lambda',
+                ['args', 'body'],
+                [
+                    self.nod(
+                        'arguments',
+                        [
+                            'posonlyargs',
+                            'args',
+                            'kwonlyargs',
+                            'kw_defaults',
+                            'defaults'
+                        ],
+                        [[], [], [], [], []]
+                    ),
+                    self.val(assign.value)
+                ]
+            );
+            out.append(
+                self.nod(
+                    'Expr',
+                    ['value'],
+                    [
+                        self.call_node(
+                            self.nod(
+                                'Attribute',
+                                ['value', 'attr', 'ctx'],
+                                [
+                                    self.name_load(target.sym_name),
+                                    'define',
+                                    self.nod('Load', [], [])
+                                ]
+                            ),
+                            [thunk],
+                            []
+                        )
+                    ],
+                    jac_node=assign
+                )
+            );
+        }
+    }
     return out;
 }
 

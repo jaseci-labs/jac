@@ -21,9 +21,19 @@ def _scalar_ctypes -> dict[str, any] {
 
 glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),
      _LIBS: dict[str, any] = {},
+     _C_STRINGS: dict[str, any] = {},
      _VIEW_RANGE: str = "PtrView index out of range";
 
 class JacCOpaque {}
+
+def _c_string(text: str) -> any {
+    buffer = _C_STRINGS.get(text);
+    if buffer is None {
+        buffer = ctypes.create_string_buffer(text.encode("utf-8"));
+        _C_STRINGS[text] = buffer;
+    }
+    return buffer;
+}
 
 class JacCStruct(ctypes.Structure) {
     def init(self: JacCStruct, *args: any, **kwargs: any) {
@@ -70,6 +80,8 @@ class JacPtr {
             self._addr = address._addr;
         } elif isinstance(address, int) and not isinstance(address, bool) {
             self._addr = address & 0xFFFFFFFFFFFFFFFF;
+        } elif isinstance(address, str) {
+            self._addr = ctypes.addressof(_c_string(address));
         } else {
             raise TypeError(
                 f"ptr() expects a pointer or an integer address, not '{type(
@@ -652,9 +664,17 @@ class CGlobal {
         self._spec = spec;
         self._scope = scope;
         self._slot: any = None;
+        self._init: any = None;
+    }
+
+    def define(self: CGlobal, initializer: any) {
+        self._init = initializer;
     }
 
     def _cell(self: CGlobal) -> any {
+        if self._slot is None and self._init is not None {
+            self._slot = self._defined_slot(self._init());
+        }
         if self._slot is None {
             kind = self._spec[0];
             ctype: any = ctypes.c_uint8;
@@ -668,6 +688,17 @@ class CGlobal {
             self._slot = ctype.in_dll(self._lib, self._name);
         }
         return self._slot;
+    }
+
+    def _defined_slot(self: CGlobal, value: any) -> any {
+        kind = self._spec[0];
+        if kind == "struct" {
+            return value;
+        }
+        if kind == "ptr" {
+            return ctypes.c_void_p(value._addr if isinstance(value, JacPtr) else value);
+        }
+        return _SCALAR_CTYPES[self._spec[1]](value);
     }
 
     def _check_plain(self: CGlobal) {

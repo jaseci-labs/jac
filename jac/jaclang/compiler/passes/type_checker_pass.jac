@@ -10,6 +10,7 @@ import from jaclang.compiler.frontend.unitree {
     Assignment,
     AstSymbolNode,
     AtomTrailer,
+    AtomUnit,
     BinaryExpr,
     BuiltinType,
     CodeBlockStmt,
@@ -53,6 +54,7 @@ import from jaclang.compiler.frontend.unitree {
     ReturnStmt,
     Slice,
     SpecialVarRef,
+    String,
     Symbol,
     SubTag,
     Token,
@@ -152,6 +154,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E1152,
     E1153,
     E1154,
+    E1155,
+    E1156,
     E1036,
     W1036,
     W1037,
@@ -205,6 +209,7 @@ walker TypeCheckPass(TreePass) {
     def _check_c_type_use(ann_node: (UniNode | None)) -> None;
     def _check_c_global_use(nd: Name) -> None;
     def _check_c_global_decl(assign: Assignment) -> None;
+    def _c_const_problem(expr: Expr, ctype: (TypeBase | None)) -> (str | None);
     def _check_c_interop_import(imp: Import) -> None;
     def _foreign_struct_contains(t: (TypeBase | None), target: Archetype) -> bool;
     def _check_c_interop_call(nd: FuncCall) -> None;

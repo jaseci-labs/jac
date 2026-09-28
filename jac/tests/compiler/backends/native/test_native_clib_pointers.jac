@@ -140,7 +140,9 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "global object True 2.0",
         "global place 9.0",
         "global address 40",
-        "global flag False"
+        "global flag False",
+        "defined 18 6 5.0",
+        "defined scalar 100 5"
     ];
     lines = out.splitlines();
     for line in expected {
@@ -263,16 +265,21 @@ test "C data symbols are declared without a value and C objects are used by addr
     code = DECLS
         + '''
 import from "CLIB_POINTERS_LIBRARY" {
-    glob cp_global_count: i32 = 3;
+    glob cp_global_count: i32 = cp_global_read();
     glob cp_global_name: str;
     glob cp_global_origin: CpVec3;
     glob cp_global_db: CpDb;
+    glob cp_defined_db: CpDb = cp_global_db;
+    def cp_global_read -> i32;
 }
 def use_object -> CpVec3 { return cp_global_origin; }
 def use_opaque -> ptr[CpDb] { return addressof(cp_global_db); }
 def not_symbol(v: i32) -> ptr[i32] { return addressof(v); }
+def computed(name: str) -> ptr[u8] { return ptr[u8](name); }
+def wide -> ptr[i32] { return ptr[i32]("text"); }
 ''';
-    assert checker_codes(code) == ["E1153", "E1153", "E1153", "E1154"];
+    assert checker_codes(code)
+        == ["E1155", "E1153", "E1153", "E1153", "E1154", "E1156", "E1156"];
 }
 
 test "C data symbols imported from another module stay C variables" {

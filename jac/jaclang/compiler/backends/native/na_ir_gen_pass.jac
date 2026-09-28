@@ -258,6 +258,8 @@ walker NaIRGenPass(CompilerPass) {
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
         clib_globals: dict[str, tuple[ir.GlobalVariable, any]] = {},
+        _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
+        _c_strings: dict[str, ir.GlobalVariable] = {},
         _foreign_modules: list[uni.Module] = [],
         _foreign_structs: (dict[str, list[tuple[str, str | None]]] | None) = None,
         _foreign_model_nmods: int = -1,
@@ -947,10 +949,20 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.BinaryExpr, op: str
     ) -> tuple[bool, (ir.Value | None)];
 
-    def _declare_clib_global(assign: uni.Assignment, lib: (str | None)) -> None;
+    def _declare_clib_global(
+        assign: uni.Assignment, lib: (str | None), owner: uni.Module
+    ) -> None;
+
+    def _emit_clib_data_inits -> None;
+    def _c_string_global(text: str) -> ir.GlobalVariable;
+    def _c_const_init(
+        expr: uni.Expr, ctype: any, llt: ir.Type
+    ) -> (ir.Constant | None);
+    def _c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | None);
+    def _c_const_address(expr: uni.Expr) -> (ir.Constant | None);
+    def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);
     def _clib_global_of(nd: uni.Name) -> (tuple[ir.GlobalVariable, any] | None);
     def _c_global_store(target: uni.Name, value: ir.Value, nd: uni.Assignment) -> None;
-
     def _c_ptr_aug(
         current: ir.Value, rhs: ir.Value, aug_op: str, target_type: any
     ) -> tuple[bool, (ir.Value | None)];

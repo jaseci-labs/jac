@@ -187,7 +187,9 @@ def region_of(__x: object) -> Region | None: ...
 # foreign struct, or an opaque C type); bare `ptr` is `void*`. It is plain
 # data: it can be compared, null-tested, offset and passed back to C, read and
 # written only through `view`, and never freed from Jac. `ptr[T](p)` retypes
-# an address and `ptr[T](n)` makes one from an integer address. Arithmetic
+# an address, `ptr[T](n)` makes one from an integer address and
+# `ptr[u8]("text")` is the address of an immortal NUL-terminated copy of a
+# string literal, like a C string literal. Arithmetic
 # follows C: `p + n` and `p - n` step n elements of T (bytes when T is bare or
 # opaque), `p - q` is the distance in elements, and `int(p)` is the address.
 _PtrT = TypeVar("_PtrT", covariant=True)
@@ -196,7 +198,7 @@ _PinT = TypeVar("_PinT")
 
 class ptr(Generic[_PtrT]):
     # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address.
-    def __init__(self, address: ptr[object] | int = ...) -> None: ...
+    def __init__(self, address: ptr[object] | int | str = ...) -> None: ...
     def is_null(self) -> bool: ...
     # A borrowed, bounds-checked window of `n` elements starting at the
     # address. It is a local view: it may not outlive its scope.

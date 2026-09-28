@@ -1,5 +1,7 @@
 import from jaclang.compiler.c_interop {
     c_builtin_kind,
+    c_scalar_constant,
+    c_string_literal,
     c_type_arg,
     clib_global_of_symbol,
     is_builtin_addressof_call,
@@ -371,6 +373,10 @@ impl NaIRGenPass._codegen_c_interop_call(
             );
             return (True, None);
         }
+        text = c_string_literal(params[0]);
+        if text is not None {
+            return (True, self._c_string_global(text).ptrtoint(i64) as ir.Value);
+        }
         return (True, self._codegen_expr(params[0]));
     }
     if isinstance(nd.target, uni.Name)
@@ -708,7 +714,7 @@ impl NaIRGenPass._c_ptr_aug(
 }
 
 impl NaIRGenPass._declare_clib_global(
-    assign: uni.Assignment, lib: (str | None)
+    assign: uni.Assignment, lib: (str | None), owner: uni.Module
 ) -> None {
     target = assign.target[0] if assign.target else None;
     if not isinstance(target, uni.Name) or target.sym_name in self.clib_globals {
@@ -716,17 +722,184 @@ impl NaIRGenPass._declare_clib_global(
     }
     name = target.sym_name;
     ctype = self._c_decl_type_of(assign.type_tag.tag) if assign.type_tag else None;
-    llt = self._c_scalar_llvm(ctype) or ir.IntType(8);
+    sname = self._foreign_struct_name_of_type(ctype);
+    llt = self._c_scalar_llvm(ctype);
+    if llt is None {
+        llt = self.struct_types[sname] if sname is not None else ir.IntType(8);
+    }
     gv = self.llvm_module.globals.get(name);
     if not isinstance(gv, ir.GlobalVariable) {
         gv = ir.GlobalVariable(self.llvm_module, llt, name=name);
         gv.linkage = "external";
+    }
+    if assign.value is not None and owner is self.module {
+        decl = assign.parent;
+        private = isinstance(decl, uni.GlobalVars)
+            and decl.access is not None
+            and decl.access.tag.name == Tok.KW_PRIV;
+        gv.linkage = "internal" if private else "";
+        gv.initializer = ir.Constant(llt, None);
+        self._clib_data_inits.append((gv, assign.value, ctype));
+        if not private {
+            self._record_export(name, name, "global", True);
+            if self.module?.gen and name not in self.module.gen._exported_symbols {
+                self.module.gen._exported_symbols.append(name);
+            }
+        }
     }
     self.clib_globals[name] = (gv, ctype);
     if lib is not None {
         self._clib_symbol_lib[name] = lib;
     }
     self.has_native_code = True;
+}
+
+impl NaIRGenPass._emit_clib_data_inits -> None {
+    pending = self._clib_data_inits;
+    self._clib_data_inits = [];
+    for (gv, value, ctype) in pending {
+        initializer = self._c_const_init(value, ctype, gv.value_type);
+        if initializer is None {
+            self.ctx.emit(
+                E5092,
+                node_override=value,
+                kind="C data definition",
+                name=gv.name,
+                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, and constructors of foreign structs made of these."
+            );
+            continue;
+        }
+        gv.initializer = initializer;
+    }
+}
+
+impl NaIRGenPass._c_string_global(text: str) -> ir.GlobalVariable {
+    found = self._c_strings.get(text);
+    if found is not None {
+        return found;
+    }
+    data = (text + "\0").encode("utf-8");
+    array_type = ir.ArrayType(ir.IntType(8), len(data));
+    gv = ir.GlobalVariable(
+        self.llvm_module, array_type, name=f".cstr.{len(self._c_strings)}"
+    );
+    gv.linkage = "private";
+    gv.global_constant = True;
+    gv.initializer = ir.Constant(array_type, bytearray(data));
+    self._c_strings[text] = gv;
+    return gv;
+}
+
+impl NaIRGenPass._c_const_init(
+    expr: uni.Expr, ctype: any, llt: ir.Type
+) -> (ir.Constant | None) {
+    while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+        expr = expr.value;
+    }
+    if isinstance(expr, uni.Null) {
+        return ir.Constant(llt, None);
+    }
+    sname = self._foreign_struct_name_of_type(ctype);
+    if sname is not None {
+        return self._c_const_struct(expr, sname);
+    }
+    if isinstance(llt, ir.PointerType) and isinstance(llt.pointee, ir.FunctionType) {
+        target = self.func_symtab.get(expr.sym_name)
+            if isinstance(expr, uni.Name)
+            else None;
+        if not isinstance(target, ir.Function) {
+            return None;
+        }
+        if target.function_type != llt.pointee {
+            target = self._emit_clib_c_trampoline(target, llt);
+        }
+        return target.bitcast(llt) as ir.Constant;
+    }
+    if is_ptr_type(ctype) {
+        return self._c_const_address(expr);
+    }
+    return self._c_const_scalar(expr, llt);
+}
+
+impl NaIRGenPass._c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None) {
+    (ok, value) = c_scalar_constant(expr);
+    if not ok or not isinstance(value, (bool, int, float)) {
+        return None;
+    }
+    if isinstance(llt, ir.IntType) {
+        return ir.Constant(llt, int(value));
+    }
+    return ir.Constant(llt, float(value));
+}
+
+impl NaIRGenPass._c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | None) {
+    if not isinstance(expr, uni.FuncCall) {
+        return None;
+    }
+    arch = foreign_struct_of_type(expr.type);
+    if arch is None or arch.name is None or arch.name.value != sname {
+        return None;
+    }
+    fields: list[uni.HasVar] = arch.get_has_vars();
+    given: dict[str, uni.Expr] = {};
+    for (i, param) in enumerate(expr.params or []) {
+        if isinstance(param, uni.KWPair) {
+            if isinstance(param.key, uni.Name) {
+                given[param.key.sym_name] = param.value;
+            }
+        } elif i < len(fields) {
+            given[fields[i].name.sym_name] = param;
+        }
+    }
+    struct_type = self.struct_types[sname];
+    values: list[ir.Constant] = [];
+    for (i, field) in enumerate(fields) {
+        elem = struct_type.elements[i];
+        arg = given.get(field.name.sym_name);
+        if arg is None {
+            values.append(ir.Constant(elem, None));
+            continue;
+        }
+        tag = field.type_tag.tag if field.type_tag else None;
+        ftype = self._c_decl_type_of(tag) if tag is not None else None;
+        value = self._c_const_init(arg, ftype, elem);
+        if value is None {
+            return None;
+        }
+        values.append(value);
+    }
+    return ir.Constant(struct_type, values);
+}
+
+impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
+    i64 = ir.IntType(64);
+    if isinstance(expr, uni.FuncCall) {
+        params = list(expr.params or []);
+        if is_builtin_addressof_call(expr) {
+            symbol = params[0] if len(params) == 1 else None;
+            found = self.clib_globals.get(symbol.sym_name)
+                if isinstance(symbol, uni.Name)
+                    and clib_global_of_symbol(symbol.sym) is not None
+                else None;
+            return found[0].ptrtoint(i64) as ir.Constant if found is not None else None;
+        }
+        callee_type = expr.target.type;
+        if is_ptr_type(callee_type)
+            and callee_type is not None
+            and not callee_type.is_instance() {
+            if not params {
+                return ir.Constant(i64, 0);
+            }
+            arg = params[0];
+            text = c_string_literal(arg) if len(params) == 1 else None;
+            if text is not None {
+                return self._c_string_global(text).ptrtoint(i64) as ir.Constant;
+            }
+            return self._c_const_scalar(arg, i64) if len(params) == 1 else None;
+        }
+        return None;
+    }
+    return self._c_const_scalar(expr, i64);
 }
 
 impl NaIRGenPass._clib_global_of(

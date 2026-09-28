@@ -140,3 +140,13 @@ bool cp_global_flag = true;
 CpVec3 cp_global_origin = {1.0f, 2.0f, 3.0f};
 CpVec3 *cp_global_origin_ref = &cp_global_origin;
 int32_t cp_global_read(void) { return cp_global_count; }
+
+typedef struct {
+    int32_t count;
+    int32_t (*scale)(int32_t);
+    const char *label;
+    CpVec3 *origin;
+} CpRecipe;
+
+int32_t cp_recipe_run(const CpRecipe *r, int32_t v) { return r->scale(v) + r->count; }
+int32_t cp_label_len(const char *s) { return (int32_t)strlen(s); }

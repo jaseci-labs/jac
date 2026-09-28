@@ -155,6 +155,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._codegen_test(stmt);
         }
     }
+    self._emit_clib_data_inits();
     self._propagate_seam_demotions();
     _unclaimed = False;
     for (_ck, _cviols) in self._capability_demotions.items() {
@@ -1800,7 +1801,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.GlobalVars) {
                 for assign in decl.assignments {
-                    self._declare_clib_global(assign, _cur_lib);
+                    self._declare_clib_global(assign, _cur_lib, module);
                 }
             }
         }

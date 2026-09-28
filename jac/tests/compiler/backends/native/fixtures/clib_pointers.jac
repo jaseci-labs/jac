@@ -50,7 +50,23 @@ import from "CLIB_POINTERS_LIBRARY" {
     ) -> None;  def cp_global_read -> i32;  glob cp_global_count: i32,
          cp_global_flag: bool,
          cp_global_origin: CpVec3,
-         cp_global_origin_ref: ptr[CpVec3];
+         cp_global_origin_ref: ptr[CpVec3]; obj CpRecipe {
+        has count: i32,
+            scale: Callable[[i32], i32],
+            label: ptr[u8],
+            origin: ptr[CpVec3];
+    }  def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;  def cp_label_len(
+        s: ptr[u8]
+    ) -> i32;  glob cp_jac_origin: CpVec3 = CpVec3(
+             x=f32(4.0), y=f32(5.0), z=f32(6.0)
+         ),
+         cp_jac_recipe: CpRecipe = CpRecipe(
+             count=i32(3),
+             scale=triple,
+             label=ptr[u8]("recipe"),
+             origin=addressof(cp_jac_origin)
+         ),
+         cp_jac_limit: i64 = 99;
 }
 
 obj Session {
@@ -259,6 +275,24 @@ def globals_demo {
     print("global flag", cp_global_flag);
 }
 
+def triple(v: i32) -> i32 {
+    return v * i32(3);
+}
+
+"""C data Jac defines: C-layout storage with a constant initializer."""
+def definitions_demo {
+    recipe = addressof(cp_jac_recipe);
+    fields = recipe.view(1)[0];
+    print(
+        "defined",
+        cp_recipe_run(recipe, i32(5)),
+        cp_label_len(fields.label),
+        fields.origin.view(1)[0].y
+    );
+    cp_jac_limit += 1;
+    print("defined scalar", cp_jac_limit, cp_label_len(ptr[u8]("hello")));
+}
+
 """A struct holding a pointer that C fills in."""
 def pointer_field_demo {
     pl = CpPointList();
@@ -281,4 +315,5 @@ with entry {
     pointer_field_demo();
     arithmetic_demo();
     globals_demo();
+    definitions_demo();
 }

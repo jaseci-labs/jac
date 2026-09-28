@@ -299,3 +299,29 @@ def clib_global_assignment(decl: (UniNode | None)) -> (Assignment | None) {
 def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
     return clib_global_assignment(resolved_decl_of(sym)) if sym is not None else None;
 }
+
+def c_string_literal(expr: (UniNode | None)) -> (str | None) {
+    import from jaclang.compiler.frontend.unitree { MultiString, String }
+    parts = expr.strings if isinstance(expr, MultiString) else [expr];
+    text = "";
+    for part in parts {
+        if not isinstance(part, String) or not isinstance(part.lit_value, str) {
+            return None;
+        }
+        text += part.lit_value;
+    }
+    return text;
+}
+
+def c_scalar_constant(expr: (UniNode | None)) -> tuple[bool, any] {
+    import from jaclang.compiler.frontend.unitree { FuncCall, Name }
+    import from jaclang.compiler.frontend.const_fold { fold_const }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if isinstance(expr, FuncCall)
+        and isinstance(expr.target, Name)
+        and JAC_TYPE_REGISTRY.is_numeric(expr.target.value)
+        and len(expr.params or []) == 1 {
+        return c_scalar_constant((expr.params or [])[0]);
+    }
+    return fold_const(expr);
+}
