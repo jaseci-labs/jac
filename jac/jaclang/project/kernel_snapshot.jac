@@ -52,6 +52,7 @@ obj ClosureScan {
         scratch: (JacProgram | None) = None,
         scope: list[str] = [],
         seen: set[str] = set(),
+        package_edges: set[str] = set(),
         learned: set[str] = set(),
         queue: list[str] = [];
 
@@ -67,6 +68,17 @@ obj ClosureScan {
             }
             self.seen.add(path);
             self.scan_module(path);
+        }
+        edges_scanned: set[str] = set();
+        pending = sorted(self.package_edges);
+        while pending and len(edges_scanned) < SCAN_LIMIT {
+            package_path = pending.pop();
+            if package_path in edges_scanned {
+                continue;
+            }
+            edges_scanned.add(package_path);
+            self.scan_module(package_path);
+            pending.extend(sorted(self.package_edges - edges_scanned));
         }
     }
 
@@ -195,6 +207,9 @@ obj ClosureScan {
         }
         self.learn_path(path);
         if not self.in_scope(path) {
+            if is_compiler_source_path(path) and not path.endswith(".pyi") {
+                self.package_edges.add(os.path.realpath(path));
+            }
             return;
         }
         if path.endswith(".jac") or path.endswith(".py") {
@@ -314,9 +329,13 @@ def interface_dependencies(iface: PythonInterface) -> list[str] {
 }
 
 def interface_wanted(path: str) -> bool {
-    return path.endswith(".py")
-        and os.path.isfile(path)
-        and not is_compiler_source_path(path);
+    if not os.path.isfile(path) {
+        return False;
+    }
+    if is_compiler_source_path(path) {
+        return path.endswith(".py") or path.endswith(".jac");
+    }
+    return path.endswith(".py");
 }
 
 def file_stamp(path: str) -> str {
@@ -450,6 +469,16 @@ def snapshot_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
+    return snapshot_closure(host, program, path, options, source).learner.inputs;
+}
+
+def snapshot_closure(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
+) -> ClosureScan {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
     import from jaclang.compiler.types.stubcat.locate { catalog_origin }
@@ -507,7 +536,7 @@ def snapshot_inputs(
         install_host(previous);
     }
     inputs.scanned_modules = len(scan.seen);
-    return inputs;
+    return scan;
 }
 
 def kernel_analysis_inputs(
@@ -517,7 +546,8 @@ def kernel_analysis_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
-    inputs = snapshot_inputs(host, program, path, options, source);
+    scan = snapshot_closure(host, program, path, options, source);
+    inputs = scan.learner.inputs;
     for ws in list(inputs.workspaces.values()) {
         for name in ws.apps {
             if name not in inputs.check_settings {
@@ -530,9 +560,10 @@ def kernel_analysis_inputs(
         for (p, untyped) in inputs.untyped.items()
         if not untyped
     ];
-    inputs.python_ifaces = python_interfaces(local, options);
+    wanted = local + sorted(scan.package_edges);
+    inputs.python_ifaces = python_interfaces(wanted, options);
     served = {iface.path for iface in inputs.python_ifaces};
-    learn_facts(host, inputs, program, options, path, sorted(served - set(local)));
+    learn_facts(host, inputs, program, options, path, sorted(served - set(wanted)));
     return inputs;
 }
 
