@@ -24,12 +24,12 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_cfunction_self,
     jacpy_is_unicode,
     jacpy_release,
-    jacpy_runtime_object,
     jacpy_type_check,
     jacpy_unraisable,
     NULL,
     Py_NewRef,
     Py_TYPE,
+    PyCFunction_Type,
     PyErr_Clear,
     PyErr_GetRaisedException,
     PyErr_SetRaisedException,
@@ -44,7 +44,9 @@ import from jaclang.runtime.python.cpython_api {
     PyList_New,
     PyLong_FromLong,
     PyMethodDef,
+    PyMethodDescr_Type,
     PyModule_GetNameObject,
+    PyModule_Type,
     PyObject,
     PyObject_CallNoArgs,
     PyObject_GetAttrString,
@@ -71,7 +73,7 @@ import from jaclang.runtime.python.capi {
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.module {
     jacpy_binding_state_get,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type {
     descriptor_get,
@@ -306,7 +308,7 @@ obj ProfilerState(NativeState) {
         missing: ptr[PyObject] = NULL;
 
     def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return jacpy_binding_visit(self.external_timer, visitor, context);
+        return visit_reference(self.external_timer, visitor, context);
     }
 
     def clear {
@@ -414,7 +416,7 @@ def:priv call_timer(state: ProfilerState) -> int {
 }
 
 def:priv is_cfunction(value: ptr[PyObject]) -> bool {
-    return jacpy_type_check(value, jacpy_runtime_object("PyCFunction_Type")) != 0;
+    return jacpy_type_check(value, addressof(PyCFunction_Type)) != 0;
 }
 
 # The UTF-8 name of a built-in's PyMethodDef, as %s formats it.
@@ -454,7 +456,7 @@ def:priv describe_cfunction(
         if module {
             if jacpy_is_unicode(module) != 0 {
                 modname = Py_NewRef(module);
-            } elif jacpy_type_check(module, jacpy_runtime_object("PyModule_Type"))
+            } elif jacpy_type_check(module, addressof(PyModule_Type))
                 != 0 {
                 modname = PyModule_GetNameObject(module);
                 if not modname {
@@ -853,7 +855,7 @@ def:priv get_cfunc_from_callable(
     if is_cfunction(callable) {
         return Py_NewRef(callable);
     }
-    if Py_TYPE(callable) == jacpy_runtime_object("PyMethodDescr_Type") {
+    if Py_TYPE(callable) == addressof(PyMethodDescr_Type) {
         # For backwards compatibility a method descriptor is reported as the
         # built-in method it binds; skip it when there is no argument.
         if self_arg == missing {
