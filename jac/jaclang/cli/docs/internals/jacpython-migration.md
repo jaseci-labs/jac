@@ -111,7 +111,7 @@ C-layout Jac structs, so fields are read directly.
 
 ## Language gaps
 
-The ports so far needed these. Gaps 1 to 4 are closed in the language; use
+The ports so far needed these. Gaps 1 to 5 are closed in the language; use
 the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
@@ -139,11 +139,15 @@ the Jac form, not a C helper:
    `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
    `addressof(table)` is its first element.
 
+5. **Varargs.** A call to a variadic C function passes each extra argument
+   with C's default promotions. `def PyErr_Format(exception: ptr[PyObject],
+   format: ptr[u8], *args: VaList)` defines a C variadic function, a
+   `VaList` parameter receives a C `va_list` (`PyErr_FormatV`),
+   `args.arg(T)` reads the next argument as the C type T, and a `VaList`
+   passes on to a C function that takes a `va_list`.
+
 Still open:
 
-5. **Varargs.** Calling a variadic C function passes only the fixed
-   arguments on the C-ABI path, and Jac cannot define one (`PyErr_Format`,
-   `Py_BuildValue`).
 6. **Structs by value across an exported function.** A `def:pub` taking or
    returning a C struct by value (`PyStatus` in the interpreter
    initialization code) still uses Jac's own convention.
