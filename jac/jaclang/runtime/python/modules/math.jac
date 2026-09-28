@@ -70,8 +70,6 @@ import from jaclang.runtime.python.modules.numeric {
     exp2,
     expm1,
     fabs,
-    tgamma,
-    lgamma,
     log1p,
     sin,
     sinh,
@@ -80,6 +78,7 @@ import from jaclang.runtime.python.modules.numeric {
     tanh,
     ceil,
     floor,
+    round,
     log,
     log10,
     log2,
@@ -477,6 +476,200 @@ def:priv logarithm(value: ptr[PyObject], base: int) -> float {
     return log(x);
 }
 
+# CPython's gamma and lgamma do not use the platform libm, whose tgamma and
+# lgamma differ in accuracy across platforms (gh-70309). They evaluate the
+# Lanczos approximation with N=13 and g=6.024680040776729583740234375 as a
+# rational function, and use the reflection formula for negative arguments.
+glob:priv pi: float = 3.141592653589793238462643383279502884197,
+     logpi: float = 1.144729885849400174143427351353058711647,
+     lanczos_g: float = 6.024680040776729583740234375,
+     lanczos_g_minus_half: float = 5.524680040776729583740234375,
+     lanczos_num_coeffs: list[float] = [
+         23531376880.410759688572007674451636754734846804940,
+         42919803642.649098768957899047001988850926355848959,
+         35711959237.355668049440185451547166705960488635843,
+         17921034426.037209699919755754458931112671403265390,
+         6039542586.3520280050642916443072979210699388420708,
+         1439720407.3117216736632230727949123939715485786772,
+         248874557.86205415651146038641322942321632125127801,
+         31426415.585400194380614231628318205362874684987640,
+         2876370.6289353724412254090516208496135991145378768,
+         186056.26539522349504029498971604569928220784236328,
+         8071.6720023658162106380029022722506138218516325024,
+         210.82427775157934587250973392071336271166969580291,
+         2.5066282746310002701649081771338373386264310793408
+     ],
+     lanczos_den_coeffs: list[float] = [
+         0.0,
+         39916800.0,
+         120543840.0,
+         150917976.0,
+         105258076.0,
+         45995730.0,
+         13339535.0,
+         2637558.0,
+         357423.0,
+         32670.0,
+         1925.0,
+         66.0,
+         1.0
+     ],
+     gamma_integral: list[float] = [
+         1.0,
+         1.0,
+         2.0,
+         6.0,
+         24.0,
+         120.0,
+         720.0,
+         5040.0,
+         40320.0,
+         362880.0,
+         3628800.0,
+         39916800.0,
+         479001600.0,
+         6227020800.0,
+         87178291200.0,
+         1307674368000.0,
+         20922789888000.0,
+         355687428096000.0,
+         6402373705728000.0,
+         121645100408832000.0,
+         2432902008176640000.0,
+         51090942171709440000.0,
+         1124000727777607680000.0
+     ];
+
+"""sin(pi*x) for finite x, exact at integers and accurate near them."""
+def:priv m_sinpi(x: float) -> float {
+    y = fmod(fabs(x), 2.0);
+    n = int(round(2.0 * y));
+    r: float = 0.0;
+    if n == 0 {
+        r = sin(pi * y);
+    } elif n == 1 {
+        r = cos(pi * (y - 0.5));
+    } elif n == 2 {
+        r = sin(pi * (1.0 - y));
+    } elif n == 3 {
+        r = -cos(pi * (y - 1.5));
+    } else {
+        r = sin(pi * (y - 2.0));
+    }
+    return copysign(1.0, x) * r;
+}
+
+"""Lanczos' sum L_g(x) for positive x, in 1/x above 5.0 to avoid overflow."""
+def:priv lanczos_sum(x: float) -> float {
+    num = 0.0;
+    den = 0.0;
+    if x < 5.0 {
+        for i in range(12, -1, -1) {
+            num = num * x + lanczos_num_coeffs[i];
+            den = den * x + lanczos_den_coeffs[i];
+        }
+    } else {
+        for i in range(13) {
+            num = num / x + lanczos_num_coeffs[i];
+            den = den / x + lanczos_den_coeffs[i];
+        }
+    }
+    return num / den;
+}
+
+"""CPython's m_tgamma. Returns the result and the errno it sets (1 EDOM,
+2 ERANGE, 0 none); the Lanczos step is corrected by the rounding error of
+x+g-0.5 as CPython's comment derives."""
+def:priv m_tgamma(x: float) -> tuple[float, int] {
+    if not isfinite(x) {
+        if isnan(x) or x > 0.0 {
+            return (x, 0);
+        }
+        return (nan, 1);
+    }
+    if x == 0.0 {
+        return (copysign(infinity, x), 1);
+    }
+    if x == floor(x) {
+        if x < 0.0 {
+            return (nan, 1);
+        }
+        if x <= 23.0 {
+            return (gamma_integral[int(x) - 1], 0);
+        }
+    }
+    absx = fabs(x);
+    if absx < 1e-20 {
+        r = 1.0 / x;
+        return (r, 2 if isinf(r) else 0);
+    }
+    if absx > 200.0 {
+        if x < 0.0 {
+            return (0.0 / m_sinpi(x), 0);
+        }
+        return (infinity, 2);
+    }
+    y = absx + lanczos_g_minus_half;
+    z: float = 0.0;
+    if absx > lanczos_g_minus_half {
+        q = y - absx;
+        z = q - lanczos_g_minus_half;
+    } else {
+        q = y - lanczos_g_minus_half;
+        z = q - absx;
+    }
+    z = z * lanczos_g / y;
+    r: float = 0.0;
+    if x < 0.0 {
+        r = -pi / m_sinpi(absx) / absx * exp(y) / lanczos_sum(absx);
+        r -= z * r;
+        if absx < 140.0 {
+            r /= pow(y, absx - 0.5);
+        } else {
+            sqrtpow = pow(y, absx / 2.0 - 0.25);
+            r /= sqrtpow;
+            r /= sqrtpow;
+        }
+    } else {
+        r = lanczos_sum(absx) / exp(y);
+        r += z * r;
+        if absx < 140.0 {
+            r *= pow(y, absx - 0.5);
+        } else {
+            sqrtpow = pow(y, absx / 2.0 - 0.25);
+            r *= sqrtpow;
+            r *= sqrtpow;
+        }
+    }
+    return (r, 2 if isinf(r) else 0);
+}
+
+"""CPython's m_lgamma, log|Gamma(x)|, with m_tgamma's errno convention."""
+def:priv m_lgamma(x: float) -> tuple[float, int] {
+    if not isfinite(x) {
+        if isnan(x) {
+            return (x, 0);
+        }
+        return (infinity, 0);
+    }
+    if x == floor(x) and x <= 2.0 {
+        if x <= 0.0 {
+            return (infinity, 1);
+        }
+        return (0.0, 0);
+    }
+    absx = fabs(x);
+    if absx < 1e-20 {
+        return (-log(absx), 0);
+    }
+    r = log(lanczos_sum(absx)) - lanczos_g;
+    r += (absx - 0.5) * (log(absx + lanczos_g - 0.5) - 1.0);
+    if x < 0.0 {
+        r = logpi - log(fabs(m_sinpi(absx))) - log(absx) - r;
+    }
+    return (r, 2 if isinf(r) else 0);
+}
+
 def:pub jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] {
     try {
         numerator = logarithm(value, 0);
@@ -550,6 +743,21 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
             return required(PyFloat_FromDouble(following - x));
         }
         jacpy_clear_errno();
+        if operation == 15 or operation == 16 {
+            (gamma, gamma_error) = m_tgamma(x) if operation == 15 else m_lgamma(x);
+            if gamma_error == 0 {
+                gamma_error = int(jacpy_math_errno());
+            }
+            if gamma_error == 1 {
+                domain(operation, x);
+                return NULL;
+            }
+            if gamma_error == 2 and fabs(gamma) >= 1.5 {
+                object_error("OverflowError", "math range error");
+                return NULL;
+            }
+            return required(PyFloat_FromDouble(gamma));
+        }
         result: float = 0.0;
         if operation == 0 {
             result = acos(x);
@@ -581,10 +789,6 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
             result = expm1(x);
         } elif operation == 14 {
             result = fabs(x);
-        } elif operation == 15 {
-            result = tgamma(x);
-        } elif operation == 16 {
-            result = lgamma(x);
         } elif operation == 17 {
             result = log1p(x);
         } elif operation == 18 {
@@ -607,8 +811,6 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
             or operation == 11
             or operation == 12
             or operation == 13
-            or operation == 15
-            or operation == 16
             or operation == 19;
         if (isnan(result) and not isnan(x))
             or error == 1
@@ -617,11 +819,7 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
             return NULL;
         }
         if (isinf(result) and isfinite(x)) or (error == 2 and fabs(result) >= 1.0) {
-            if (operation == 15 or operation == 16) and x <= 0.0 and x == floor(x) {
-                domain(operation, x);
-            } else {
-                object_error("OverflowError", "math range error");
-            }
+            object_error("OverflowError", "math range error");
             return NULL;
         }
         return required(PyFloat_FromDouble(result));

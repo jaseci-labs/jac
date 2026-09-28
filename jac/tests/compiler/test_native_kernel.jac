@@ -161,6 +161,7 @@ test "kernel materialization releases every borrowed input reference" {
             == 0;
         mod = kernel.take_module();
         assert mod is not None;
+        assert mod.persistence == [] , "persistence facts are stamped after parsing";
         assert not kernel.take_diags();
         assert not kernel.take_lexdiags();
         kernel.take_comments();

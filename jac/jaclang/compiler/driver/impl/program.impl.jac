@@ -647,16 +647,28 @@ impl JacProgram.stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> N
 }
 
 impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.driver.boundary_classify { native_only_import_target }
+    import from jaclang.compiler.driver.boundary_classify {
+        import_bound_names,
+        native_only_import_target,
+        python_side_name_refs
+    }
     import os;
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     needs_native = mod.decided_codespace == 'native'
         or ModuleFacts.has_native_context_stmts(mod);
+    py_refs: (set[str] | None) = None;
     for imp in mod.get_all_sub_nodes(uni.Import) {
         target = native_only_import_target(imp, self);
-        imp.native_only_drop = needs_native
+        drop = needs_native
             and target is not None
             and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target);
+        if drop {
+            if py_refs is None {
+                py_refs = python_side_name_refs(mod);
+            }
+            drop = not any(name in py_refs for name in import_bound_names(imp));
+        }
+        imp.native_only_drop = drop;
     }
 }
 
@@ -672,6 +684,28 @@ impl JacProgram.stamp_app_facts(self: JacProgram, mod: uni.Module) -> None {
         app = ws.apps.get(opts.target_app);
     }
     mod.app = app.name if app is not None else None;
+    mod.persistence = [];
+    if mod_path {
+        import os;
+        import from jaclang.compiler.placement.placement_pins { module_dot_path }
+        if ws is not None {
+            mod.persistence = [
+                ws.persistence_namespace,
+                module_dot_path(mod_path, ws.project_root)
+            ];
+        } else {
+            entry_path = opts.entry_point or mod_path;
+            source_root = opts.project_root or os.path.dirname(entry_path);
+            if os.path.realpath(mod_path).startswith(
+                os.path.realpath(source_root) + os.sep
+            ) {
+                mod.persistence = [
+                    host.path_facts(entry_path).module_stem,
+                    module_dot_path(mod_path, source_root)
+                ];
+            }
+        }
+    }
     mod.app_root = ws.project_root if (app is not None and ws is not None) else None;
     target_kind = opts.app_kind if (opts is not None and opts.app_kind) else '';
     if app is not None {

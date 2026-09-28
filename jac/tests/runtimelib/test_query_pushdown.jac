@@ -14,6 +14,7 @@ column's shape, the index's usability, and the compiler naming it.
 """
 
 import json;
+import from jaclang.data.type_identity { storage_type, type_module }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from uuid { UUID, uuid4 }
@@ -224,7 +225,13 @@ edge PLink: any --> any {}
 
 
 def _node_row(arch: str, ancestry: list[str]) -> AnchorRow {
-    return AnchorRow(id=uuid4(), kind="NodeAnchor", arch_type=arch, ancestry=ancestry);
+    prefix = type_module(PRare) + '.';
+    return AnchorRow(
+        id=uuid4(),
+        kind="NodeAnchor",
+        arch_type=prefix + arch,
+        ancestry=[prefix + name for name in ancestry]
+    );
 }
 
 
@@ -232,11 +239,11 @@ def _edge_row(src: UUID, dst: UUID, undirected: bool = False) -> AnchorRow {
     return AnchorRow(
         id=uuid4(),
         kind="EdgeAnchor",
-        arch_type="PLink",
+        arch_type=storage_type(PLink),
         src=src,
         dst=dst,
         undirected=undirected,
-        ancestry=["PLink"]
+        ancestry=[storage_type(PLink)]
     );
 }
 
@@ -376,7 +383,7 @@ test "a typed hop matches a subtype another store registered after this one open
             q = GraphQuery([], hops=[QHop(dir=2, `edge=PLink, nd=PRare)]);
             cq = compile_query(q, 1, store);
             assert "graph_types" not in cq.sql , cq.sql;
-            assert "PRareLate" in cq.params["h1n0t"] , cq.params;
+            assert type_module(PRare) + '.PRareLate' in cq.params["h1n0t"] , cq.params;
             cq.params["origin"] = [str(hub)];
             ids = [str(r[0]) for r in store.rows(cq.sql, cq.params)];
             assert str(late.id) in ids , f"subtype registered elsewhere missed: {ids}";

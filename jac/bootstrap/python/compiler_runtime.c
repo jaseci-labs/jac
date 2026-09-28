@@ -469,3 +469,52 @@ void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
 extern void __jac_shared_init(void);
 __attribute__((constructor)) static void jacpy_initialize(void) { __jac_shared_init(); }
 #pragma GCC visibility pop
+
+/* atexit keeps both of its callback lists in PyInterpreterState, an object
+ * layout only C addresses, and the C callbacks of PyUnstable_AtExit are
+ * function pointers, which Jac cannot call. modules/atexit.jac implements the
+ * module and the interpreter hooks over these; _PyAtExit_Init stays here
+ * because it returns PyStatus by value. */
+#include "internal/pycore_atexit.h"
+#include "internal/pycore_initconfig.h"
+#include "internal/pycore_interp.h"
+PyStatus _PyAtExit_Init(PyInterpreterState *interp) {
+    struct atexit_state *state = &interp->atexit;
+    assert(state->callbacks == NULL);
+    state->callbacks = PyList_New(0);
+    if (state->callbacks == NULL) return _PyStatus_NO_MEMORY();
+    return _PyStatus_OK();
+}
+PyObject *jacpy_atexit_callbacks(PyInterpreterState *interp) { return interp->atexit.callbacks; }
+void jacpy_atexit_release_callbacks(PyInterpreterState *interp) { Py_CLEAR(interp->atexit.callbacks); }
+int32_t jacpy_atexit_push(PyInterpreterState *interp, void *func, void *data) {
+    PyThreadState *tstate = _PyThreadState_GET();
+    _Py_EnsureTstateNotNULL(tstate);
+    assert(tstate->interp == interp);
+    atexit_callback *callback = PyMem_Malloc(sizeof(atexit_callback));
+    if (callback == NULL) { PyErr_NoMemory(); return -1; }
+    callback->func = (atexit_datacallbackfunc)func;
+    callback->data = data;
+    struct atexit_state *state = &interp->atexit;
+    _PyAtExit_LockCallbacks(state);
+    callback->next = state->ll_callbacks;
+    state->ll_callbacks = callback;
+    _PyAtExit_UnlockCallbacks(state);
+    return 0;
+}
+/* Detach the C callbacks, newest first; _PyAtExit_Fini walks them with
+ * jacpy_atexit_call, the trampoline that frees one and calls it. */
+void *jacpy_atexit_detach(PyInterpreterState *interp) {
+    atexit_callback *first = interp->atexit.ll_callbacks;
+    interp->atexit.ll_callbacks = NULL;
+    return first;
+}
+void *jacpy_atexit_call(void *node) {
+    atexit_callback *callback = node;
+    atexit_callback *next = callback->next;
+    atexit_datacallbackfunc exitfunc = callback->func;
+    void *data = callback->data;
+    PyMem_Free(callback);
+    exitfunc(data);
+    return next;
+}

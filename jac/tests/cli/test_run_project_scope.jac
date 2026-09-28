@@ -33,6 +33,54 @@ def reset_config {
     config_mod._config_by_root = {};
 }
 
+test "compiler checkout utilities retain the active compiler runtime" {
+    import from unittest.mock { patch }
+    import from jaclang.runtime.runtime { JacRuntime }
+    import jaclang.compiler.driver.application as preparation;
+    with tempfile.TemporaryDirectory() as world {
+        base = Path(world);
+        (base / 'jac.toml').write_text('[dev]\njaclang_source="compiler"\n');
+        source = base / 'compiler' / 'jaclang' / 'compiler_tool_fixture.jac';
+        source.parent.mkdir(parents=True);
+        source.write_text('import from jaclang.runtime.runtime { JacRuntime }\n');
+        try {
+            with patch.object(
+                preparation,
+                'prepare_application',
+                side_effect=AssertionError('compiler utility became an application')
+            ) {
+                module = execution_cmds._load_executable(
+                    str(source), str(source.parent), False
+                );
+            }
+            assert module.JacRuntime is JacRuntime;
+        } finally {
+            reset_config();
+        }
+    }
+}
+
+test "a nested application in a compiler checkout still owns its execution" {
+    import from jaclang.runtime.prepared { application_for }
+    with tempfile.TemporaryDirectory() as world {
+        base = Path(world);
+        (base / 'jac.toml').write_text('[dev]\njaclang_source="compiler"\n');
+        app = base / 'compiler' / 'jaclang' / 'example';
+        app.mkdir(parents=True);
+        (app / 'jac.toml').write_text('[project]\nname="example"\n');
+        source = app / 'main.jac';
+        source.write_text('def answer -> int { return 42; }\n');
+        try {
+            module = execution_cmds._load_executable(str(source), str(app), False);
+            assert module.answer() == 42;
+            prepared = application_for(str(source));
+            assert prepared is not None and prepared.root == str(app);
+        } finally {
+            reset_config();
+        }
+    }
+}
+
 
 """Write *body* to *path*, creating parent directories."""
 def write(path: str, body: str) {

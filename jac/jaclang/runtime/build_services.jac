@@ -21,6 +21,13 @@ class BuildServices(Protocol) {
         default_codespace: str = ''
     ) -> PreparedApplication abst;
 
+    def prepare_dynamic_module(
+        self: BuildServices,
+        path: str,
+        program: JacProgram,
+        application: PreparedApplication
+    ) -> PreparedApplication abst;
+
     def hot_reloader(
         self: BuildServices, base_path: str, module_name: str
     ) -> HotReloader abst;

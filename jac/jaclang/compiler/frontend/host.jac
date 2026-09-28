@@ -15,7 +15,8 @@ import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 obj NativeVerdict {
     has demoted: bool = False,
         code: str = "",
-        detail: str = "";
+        detail: str = "",
+        deps: list[list[str]] = [];
 }
 
 obj CheckSettings {
