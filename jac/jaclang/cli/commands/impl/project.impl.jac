@@ -755,11 +755,41 @@ impl install(
     prefer_binary: bool = False,
     install_global: bool = False,
     scale: bool = False,
+    capability: list[str] = [],
     plan: bool = False,
     as_json: bool = False
 ) -> int {
     if plan {
         return deps(scale=scale, as_json=as_json);
+    }
+    if capability {
+        import from jaclang.project.capabilities {
+            all_capability_names,
+            capability_dists
+        }
+        known = all_capability_names();
+        unknown = [
+            name
+            for name in capability
+            if name not in known
+        ];
+        if unknown {
+            console.error(
+                f"Unknown capability: {', '.join(sorted(unknown))}.",
+                hint=f"Known capabilities: {', '.join(sorted(known))}."
+            );
+            return 1;
+        }
+        cap_specs: list[str] = [];
+        for name in capability {
+            for spec in capability_dists(name) {
+                if spec not in cap_specs {
+                    cap_specs.append(spec);
+                }
+            }
+        }
+        packages = list(packages) + cap_specs;
+        no_save = True;
     }
     if shadcn or npm {
         channel = "--shadcn" if shadcn else "--npm";
