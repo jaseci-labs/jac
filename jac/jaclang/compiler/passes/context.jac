@@ -47,12 +47,6 @@ obj DiagnosticPolicy {
     ) -> bool;
 }
 
-obj PassResult {
-    has errors_had: list[Alert] = [],
-        warnings_had: list[Alert] = [],
-        time_taken: float = 0.0;
-}
-
 obj CompileContext {
     has current_node: UniNode,
         from_pass: type,

@@ -134,7 +134,6 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/c_interop.jac",
     "compiler/native_compiler.jac",
     "compiler/jc_unit.jac",
-    "compiler/jc_materialize.jac",
     "compiler/passes/execution.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
@@ -189,7 +188,6 @@ SEED_PATHS: tuple[str, ...] = (
 # consult. Tier stamping (is_seed_source) is unaffected.
 NATIVE_ONLY_REL: tuple[str, ...] = (
     "compiler/jc_unit.jac",
-    "compiler/jc_materialize.jac",
     "dist/fused/embed.jac",
     "dist/fused/_libc.jac",
 )

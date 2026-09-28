@@ -47,7 +47,6 @@ import from jaclang.compiler.types.types { ClassDetailsShared, ClassType, TypeBa
 import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
 import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 import type from jaclang.compiler.types.ct_value { CtEnvironment }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
@@ -812,24 +811,6 @@ obj KernelHost(HostServices) {
     def is_seed_source(rel_path: str) -> bool {
         self.census.count("is_seed_source");
         return self.inputs.manifest.is_seed(rel_path);
-    }
-
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = ""
-    ) -> (tuple[Module, bool] | None) {
-        if self.kernel_only("native_parse") {
-            return None;
-        }
-        with self.delegating("native_parse") as host {
-            answer = host.native_parse(
-                source_str, file_path, program, annexes, early_context
-            );
-        }
-        return answer;
     }
 
     def drop_python_lane_products(path: str, program: JacProgram) {

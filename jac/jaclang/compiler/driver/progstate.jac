@@ -2,7 +2,7 @@ import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
-import from jaclang.compiler.passes.context { Alert, PassResult }
+import from jaclang.compiler.passes.context { Alert }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
 import type from jaclang.compiler.placement.placement { PlacementSummary }
@@ -311,11 +311,6 @@ class AnalysisLedger {
     }
 }
 
-obj PendingPassResults {
-    has module: uni.Module,
-        results: dict[str, PassResult];
-}
-
 class AnalysisCaches {
     has placement_summaries: dict[str, PlacementSummary],
         placement_work: (PlacementWork | None),
@@ -329,7 +324,6 @@ class AnalysisCaches {
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, uni.Module],
-        early_passes: dict[int, PendingPassResults],
         cache_events: dict[str, int];
 
     def init(self: AnalysisCaches) {
@@ -345,7 +339,6 @@ class AnalysisCaches {
         self.completed_passes: dict[int, set[str]] = {};
         self.product_tasks: dict[int, dict[CompilationProduct, ProductTask]] = {};
         self.task_owners: dict[int, uni.Module] = {};
-        self.early_passes: dict[int, PendingPassResults] = {};
         self.cache_events: dict[str, int] = {};
     }
 
@@ -370,38 +363,13 @@ class AnalysisCaches {
         if self.task_owners.get(key) is module {
             self.drop_tasks(key);
         }
-        pending = self.early_passes.get(key);
-        if pending is not None and pending.module is module {
-            self.early_passes.pop(key, None);
-        }
     }
 
     def reset_module_state(self: AnalysisCaches) {
         self.analyses_run.clear();
         self.placement_work = None;
-        self.early_passes.clear();
         self.product_tasks.clear();
         self.completed_passes.clear();
         self.task_owners.clear();
-    }
-
-    def record_early(
-        self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
-    ) {
-        self.early_passes[id(module)] = PendingPassResults(module, results);
-    }
-
-    def take_early(
-        self: AnalysisCaches, module: uni.Module, name: str
-    ) -> (PassResult | None) {
-        pending = self.early_passes.get(id(module));
-        if pending is None {
-            return None;
-        }
-        result = pending.results.pop(name, None);
-        if not pending.results {
-            self.early_passes.pop(id(module));
-        }
-        return result;
     }
 }

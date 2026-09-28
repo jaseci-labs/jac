@@ -376,47 +376,6 @@ impl ProjectHost.is_seed_source(rel_path: str) -> bool {
     return is_seed_source(rel_path);
 }
 
-impl ProjectHost.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = ""
-) -> (tuple[Module, bool] | None) {
-    import from jaclang.compiler.frontend.parser.frontend { finish_parse }
-    import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded();
-    if kernel is None {
-        return None;
-    }
-    kernel.prepare_early(early_context if program is not None else "");
-    for annex in annexes {
-        kernel.annex(annex);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, program
-    );
-    if program is not None {
-        results = kernel.take_pass_results();
-        if results {
-            program.analysis.record_early(module, results);
-        }
-    }
-    return (module, had_error);
-}
-
 impl ProjectHost.resolve_local_module(
     base: str, parts: list[str]
 ) -> (tuple[str, str] | None) {

@@ -5,7 +5,6 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import type from jaclang.compiler.types.ct_value { CtEnvironment }
 import type from jaclang.compiler.frontend.unitree { Module }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
@@ -208,16 +207,6 @@ obj HostServices {
 
     def is_seed_source(rel_path: str) -> bool {
         return False;
-    }
-
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = ""
-    ) -> (tuple[Module, bool] | None) {
-        return None;
     }
 
     def drop_python_lane_products(path: str, program: JacProgram) {}
