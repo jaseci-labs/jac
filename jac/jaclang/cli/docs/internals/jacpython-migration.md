@@ -42,7 +42,8 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
 5. Import `PyInit__foo` in `compiler/backends/py/jacpython/native_api.jac`,
    add the registry line, comment the C files in `cpython-sources.txt` as
    `# removed: 0 source lines`, and run `jac run scripts/jacpython_manifest.jac --write`.
-6. `JAC_NO_DEV_SOURCE=1 jac check` each new file. A single-file check reports
+6. `jac check` each new file (from the repository root, so the dev source
+   reroute checks with this tree's compiler). A single-file check reports
    native lowering failures (E5092) and native placement errors (E5090) for
    the file itself; `jac check native_api.jac` checks the closure's lowering.
 
@@ -108,8 +109,6 @@ only where Jac cannot express the operation:
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
 | struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
-| C names of Jac definitions the native backend reserves (`PyBool_FromLong`) | a `:pub` definition of a reserved name is emitted as `__jac_def_<name>` | one-line forwarders in `object_api.c` |
-| returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
 
@@ -133,7 +132,7 @@ C-layout Jac structs, so fields are read directly.
 
 ## Language gaps
 
-The ports so far needed these. Gaps 1 to 5 are closed in the language; use
+The ports so far needed these. Gaps 1 to 6 are closed in the language; use
 the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
@@ -168,11 +167,14 @@ the Jac form, not a C helper:
    `args.arg(T)` reads the next argument as the C type T, and a `VaList`
    passes on to a C function that takes a `va_list`.
 
+6. **C functions defined in Jac.** A `def` with a body in an `import from c`
+   block defines a C function under that exact symbol with the C calling
+   convention, including structs by value in either direction; C code and
+   other modules call it as any C function. CPython's API functions a port
+   defines (`PyBool_FromLong`) are written this way.
+
 Still open:
 
-6. **Structs by value across an exported function.** A `def:pub` taking or
-   returning a C struct by value (`PyStatus` in the interpreter
-   initialization code) still uses Jac's own convention.
 7. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
 
 ## Object model (`Objects/`, 143k lines)
@@ -251,13 +253,10 @@ What boolobject needed beyond the layouts:
   a foreign struct another module declares (declarations wait until every
   module's structs are registered).
 - A `:pub` definition named after a C function the native backend itself
-  declares (`NATIVE_RESERVED_C_SYMBOLS` in `codeinfo.jac`: its Python interop
-  calls `PyBool_FromLong`, `PyTuple_New`, `PyObject_IsTrue`, ...) is emitted
-  as `__jac_def_<name>`, so C callers do not reach it. `object_api.c`
-  forwards `PyBool_FromLong` to `__jac_def_PyBool_FromLong` until a clib
-  block can define a function under its exact C name, as it already defines
-  data (a `def` with a body in `import from c` is E5060 today). Every later
-  object port that defines one of those names needs the same.
+  declares (`NATIVE_RESERVED_C_SYMBOLS` in `codeinfo.jac`) is emitted as
+  `__jac_def_<name>`, so a port defines CPython's API functions in an
+  `import from c` block instead (`def PyBool_FromLong(ok: i64) ->
+  ptr[PyObject] { ... }`), which exports the exact C name with the C ABI.
 - `gen_capi.jac` reads `Name(` in string literals as a call, so a message that
   names a C function (`"PyArg_UnpackTuple() argument list is not a tuple"`)
   is split into adjacent literals.

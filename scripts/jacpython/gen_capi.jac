@@ -485,14 +485,17 @@ def used_names(known: set[str]) -> set[str] {
             if path == OUTPUT {
                 continue;
             }
-            # Comments and docstrings mention C names without calling them.
+            # Comments, docstrings and string literals mention C names
+            # without calling them.
             text = re.sub(r'"""(?:.|\n)*?"""', "", path.read_text());
             text = re.sub(r"(?m)^\s*#.*$", "", text);
+            text = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', text);
             names.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text));
             CALLED.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text));
             defined.update(
                 re.findall(
-                    r"(?m)^def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text
+                    r"(?m)^\s*def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b[^;{]*\{",
+                    text
                 )
             );
         }
@@ -584,7 +587,10 @@ def render(
             if m == module and re.search(rf"&(?:mut )?{n}\b", declared)
         );
         if records {
-            lines.insert(5, f"import from {module} {{ {', '.join(records)} }}");
+            lines.insert(
+                lines.index('"""', 1) + 1,
+                f"import from {module} {{ {', '.join(records)} }}"
+            );
         }
     }
     lines += ["", "glob NULL: ptr[PyObject] = ptr[PyObject]();"];

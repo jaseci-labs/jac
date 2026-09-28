@@ -115,9 +115,11 @@ def bool_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_InternFromString("True" if self == py_true() else "False");
 }
 
-"""Function to return a bool from a C long."""
-def:pub PyBool_FromLong(ok: i64) -> ptr[PyObject] {
-    return py_true() if ok != 0 else py_false();
+# Function to return a bool from a C long.
+import from c {
+    def PyBool_FromLong(ok: i64) -> ptr[PyObject] {
+        return py_true() if ok != 0 else py_false();
+    }
 }
 
 # We define bool_new to always return either Py_True or Py_False.
