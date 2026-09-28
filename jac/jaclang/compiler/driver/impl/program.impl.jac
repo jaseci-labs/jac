@@ -648,6 +648,8 @@ impl JacProgram.stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> N
 
 impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None {
     import from jaclang.compiler.driver.boundary_classify {
+        clib_declared_names,
+        hub_module_for_path,
         import_bound_names,
         native_only_import_target,
         python_side_name_refs
@@ -669,6 +671,19 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
             drop = not any(name in py_refs for name in import_bound_names(imp));
         }
         imp.native_only_drop = drop;
+
+        imp.python_absent_names = set();
+        if not drop and target is not None {
+            owner = hub_module_for_path(target, self);
+            if owner is not None {
+                absent = clib_declared_names(owner);
+                imp.python_absent_names = {
+                    name
+                    for name in import_bound_names(imp)
+                    if name in absent
+                };
+            }
+        }
     }
 }
 

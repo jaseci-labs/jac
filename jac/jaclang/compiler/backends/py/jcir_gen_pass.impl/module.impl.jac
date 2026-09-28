@@ -518,13 +518,26 @@ impl JcirGenPass.exit_import with Import exit {
             if here.from_loc.path
             else [];
         module_name = '.'.join(module_name_parts) if module_name_parts else None;
+        items = [
+            item
+            for item in here.items
+            if not (
+                isinstance(item, ModuleItem)
+                and (item.alias.sym_name if item.alias is not None else item.name.value)
+                    in here.python_absent_names
+            )
+        ];
+        if not items {
+            self.set_out(here, []);
+            return;
+        }
         py_nodes.append(
             self.nod(
                 'ImportFrom',
                 ['module', 'names', 'level'],
                 [
                     module_name,
-                    [i for item in here.items for i in self.outs(item)],
+                    [i for item in items for i in self.outs(item)],
                     here.from_loc.level
                 ]
             )

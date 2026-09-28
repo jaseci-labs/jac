@@ -314,6 +314,23 @@ def import_bound_names(nd: uni.Import) -> list[str] {
     return bound;
 }
 
+def clib_declared_names(mod: uni.Module) -> set[str] {
+    names: set[str] = set();
+    for stmt in mod.body {
+        if not isinstance(stmt, uni.Import) or not stmt.has_clib_decls {
+            continue;
+        }
+        for decl in stmt.clib_decls or [] {
+            if isinstance(decl, uni.Archetype) {
+                names.add(decl.name.value);
+            } elif isinstance(decl, uni.Ability) and decl.name_ref is not None {
+                names.add(decl.name_ref.sym_name);
+            }
+        }
+    }
+    return names;
+}
+
 def is_client_native_edge_import(nd: uni.Import, prog: JacProgram) -> bool {
     if nd.code_context == CodeContext.CLIENT {} elif nd.code_context
         == CodeContext.SERVER

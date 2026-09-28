@@ -51,6 +51,20 @@ glob FIXTURES = os.path.join(
      ANCHOR_MAIN = (
          "import from anchor_user { fresh_count }\n\n"
          + "with entry {\n    print(fresh_count());\n}\n"
+     ),
+     # The library also declares a C struct, which the user imports beside
+     # `Counter` though only native code could construct it.
+     STRUCT_LIB = (
+         "import from c {\n    obj Div {\n        has quot: i32,\n"
+         + "            rem: i32;\n    }  def div(num: i32, den: i32) -> Div;"
+         + "  def strlen(s: str) -> i64;\n}\n\n"
+         + "obj Counter {\n    has n: int = 0;\n\n"
+         + "    def bump(s: str) {\n        self.n += strlen(s);\n    }\n}\n"
+     ),
+     STRUCT_USER = (
+         "import from anchor_lib { Counter, Div }\n\n"
+         + "obj Holder {\n    has c: Counter = Counter();\n}\n\n"
+         + "def fresh_count -> int {\n    return Holder().c.n;\n}\n"
      );
 
 
@@ -103,11 +117,11 @@ test "the stamped verdict is the computation it replaced" {
 """Write the anchored-library project: `anchor_lib` declares a C import, so it
 is native-only; `anchor_user` is inferred native and names `Counter` in a field
 default its Python side evaluates; `main` is pinned to the server."""
-def _anchor_project(proj: str) {
+def _anchor_project(proj: str, lib: str = ANCHOR_LIB, user: str = ANCHOR_USER) {
     files = {
         "jac.toml": '[project]\nname = "anchor"\n\n[placement.pins]\nmain = "server"\n',
-        "anchor_lib.jac": ANCHOR_LIB,
-        "anchor_user.jac": ANCHOR_USER,
+        "anchor_lib.jac": lib,
+        "anchor_user.jac": user,
         "main.jac": ANCHOR_MAIN
     };
     for (name, text) in files.items() {
@@ -142,6 +156,27 @@ test "an import the python side names survives in an inferred-native module" {
     }
 }
 
+test "a kept import leaves out the C declarations the target's python side lacks" {
+    with tempfile.TemporaryDirectory() as proj {
+        _anchor_project(proj, STRUCT_LIB, STRUCT_USER);
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=os.path.join(proj, "anchor_user.jac"), options=CompileOptions()
+        );
+        imports = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if "Counter" in import_bound_names(imp)
+        ];
+        assert len(imports) == 1 , "anchor_user imports Counter and Div once";
+        assert not imports[0].native_only_drop , "the python side names Counter";
+        assert imports[0].python_absent_names == {"Div"} , (
+            f"Div is declared only in anchor_lib's C import, so the python side "
+            f"must not import it; absent {imports[0].python_absent_names!r}"
+        );
+    }
+}
+
 """Run the anchored project's server-pinned `main` from `proj_dir` and return
 its last stdout line."""
 def _run_anchor_main(proj_dir: str) -> str {
@@ -161,6 +196,14 @@ test "a python caller reaches an inferred-native module's python side" {
     with tempfile.TemporaryDirectory() as tmp {
         proj = os.path.realpath(tmp);
         _anchor_project(proj);
+        assert _run_anchor_main(proj) == "0";
+    }
+}
+
+test "a python caller loads a module importing a C struct from a native one" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _anchor_project(proj, STRUCT_LIB, STRUCT_USER);
         assert _run_anchor_main(proj) == "0";
     }
 }

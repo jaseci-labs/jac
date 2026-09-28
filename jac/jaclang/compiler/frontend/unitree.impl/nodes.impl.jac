@@ -1586,6 +1586,7 @@ impl Import.postinit -> None {
     self.jac_detected = None;
     self.boundary_facts = None;
     self.native_only_drop = False;
+    self.python_absent_names = set();
     UniNode.postinit(self);
     CodeBlockStmt.postinit(self);
     ContextAwareNode.postinit(self);
