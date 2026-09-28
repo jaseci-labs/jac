@@ -62,3 +62,4 @@ _sha3           test.test_hashlib                       Modules/_hacl/libHacl_Ha
 _blake2         test.test_hashlib                       Modules/_hacl/libHacl_Hash_BLAKE2.a
 _hmac           test.test_hmac                          Modules/_hacl/libHacl_HMAC.a
 fcntl           test.test_fcntl
+termios         test.test_termios,test.test_tty
