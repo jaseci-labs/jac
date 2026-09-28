@@ -181,6 +181,10 @@ obj KernelSession(SessionHooks) {
         return self.closure;
     }
 
+    def defers_native_codegen -> bool {
+        return self.host.fallback is None;
+    }
+
     def run_module(
         file_path: str,
         target_program: JacProgram,
@@ -277,6 +281,7 @@ obj ServedInterface {
 obj KernelHost(HostServices) {
     has inputs: KernelInputs,
         fallback: (HostServices | None) = None,
+        loader: (HostServices | None) = None,
         closure: (CompileOptions | None) = None,
         census: HostCensus = HostCensus(),
         events: list[HostEvent] = [],
@@ -384,6 +389,13 @@ obj KernelHost(HostServices) {
         self._served[resolved] = ServedInterface(catalog=catalog, module=mod);
         program.stamp_app_facts(mod);
         return mod;
+    }
+
+    def close_over(options: CompileOptions) {
+        self.closure = options;
+        if self._session is not None {
+            self._session.closure = options;
+        }
     }
 
     def record_unit(task: ModuleAnalysis) {
@@ -860,6 +872,37 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def in_compiler_tree(path: str) -> bool {
+        if self.kernel_only("in_compiler_tree") {
+            return False;
+        }
+        with self.delegating("in_compiler_tree") as host {
+            answer = host.in_compiler_tree(path);
+        }
+        return answer;
+    }
+
+    def schedule_import_failed(err: ImportError) {
+        if self.kernel_only("schedule_import_failed") {
+            return;
+        }
+        with self.delegating("schedule_import_failed") as host {
+            host.schedule_import_failed(err);
+        }
+    }
+
+    def client_osp_core_js -> str {
+        self.census.count("client_osp_core_js");
+        if self.inputs.osp_core_js {
+            return self.inputs.osp_core_js;
+        }
+        with self.missing("client_osp_core_js", "") as host {
+            answer = host.client_osp_core_js();
+        }
+        self.inputs.osp_core_js = answer;
+        return answer;
+    }
+
     def kernel_compile(
         program: JacProgram, path: str, options: CompileOptions
     ) -> (CompileReport | None) {
@@ -1103,7 +1146,10 @@ obj KernelHost(HostServices) {
     }
 
     def host_side -> HostServices {
-        return self.fallback if self.fallback is not None else self;
+        if self.fallback is not None {
+            return self.fallback;
+        }
+        return self.loader if self.loader is not None else self;
     }
 
     def default_target_triple -> str {

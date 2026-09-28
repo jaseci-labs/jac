@@ -90,12 +90,21 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
          'TypeCheckPass': PassContract((), (AnalysisFact.TYPE_OF, )),
          'VariantAgreementPass': PassContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
      },
-     _PRODUCT_SCHEDULES: dict[CompilationProduct, Callable[[], PassSchedule]] = {};
+     _PRODUCT_SCHEDULES: dict[CompilationProduct, Callable[[], PassSchedule]] = {},
+     _CODEGEN_BACKENDS: dict[str, Callable[[], PassSchedule]] = {};
 
 def register_product_schedule(
     product: CompilationProduct, schedule: Callable[[], PassSchedule]
 ) {
     _PRODUCT_SCHEDULES[product] = schedule;
+}
+
+def register_codegen_backend(name: str, schedule: Callable[[], PassSchedule]) {
+    _CODEGEN_BACKENDS[name] = schedule;
+}
+
+def codegen_backend(name: str) -> (Callable[[], PassSchedule] | None) {
+    return _CODEGEN_BACKENDS.get(name);
 }
 
 def product_pipeline(product: CompilationProduct) -> PassSchedule {

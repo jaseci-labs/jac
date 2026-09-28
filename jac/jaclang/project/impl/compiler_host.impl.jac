@@ -257,6 +257,21 @@ impl ProjectHost.kernel_compile(
     return host_kernel_compile(self, program, path, options);
 }
 
+impl ProjectHost.in_compiler_tree(path: str) -> bool {
+    import from jaclang.compiler.driver.jir { is_compiler_tree_path }
+    return is_compiler_tree_path(path);
+}
+
+impl ProjectHost.schedule_import_failed(err: ImportError) {
+    import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
+    fail_loud_on_compiler_source(err);
+}
+
+impl ProjectHost.client_osp_core_js -> str {
+    import from jaclang.compiler.backends.es.client_kernel_cache { osp_core_js }
+    return osp_core_js();
+}
+
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
         import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }

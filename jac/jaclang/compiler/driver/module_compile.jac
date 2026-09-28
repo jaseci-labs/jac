@@ -8,6 +8,7 @@ import from jaclang.compiler.driver.pipeline_types {
 }
 import from jaclang.compiler.driver.pipeline {
     _codegen_sched_loading,
+    codegen_backend,
     product_ready,
     providers_of_product,
     register_product_schedule,
@@ -17,7 +18,6 @@ import from jaclang.compiler.driver.pipeline {
 }
 import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.driver.context_passes { NativeImportFactsPass }
-import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -38,7 +38,10 @@ glob CODEGEN_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
      ),
-     NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', ),
+     NATIVE_CODEGEN_DEPS: tuple[str, ...] = (
+         'jaclang.compiler.backends.native.na_ir_gen_pass',
+
+     ),
      _native_sched_failure: dict[str, str] = {};
 
 obj ModuleCompilation {
@@ -62,7 +65,8 @@ obj ModuleCompilation {
         }
         if not (
             analysis.native or ModuleFacts.has_native_context_stmts(analysis.module)
-        ) {
+        )
+            or native_codegen() is None {
             return;
         }
         lowered = require_product(
@@ -123,7 +127,6 @@ obj ModuleCompilation {
     }
 
     def interface {
-        import from jaclang.compiler.driver.jir { is_compiler_tree_path }
         analysis = self.analysis;
         options = analysis.options;
         closure = self.session.closure_options() or options;
@@ -135,7 +138,8 @@ obj ModuleCompilation {
                 closure.no_cgen
                 and not closure.symtab_ir_only
                 and not (
-                    analysis.program.internal and is_compiler_tree_path(analysis.path)
+                    analysis.program.internal
+                    and active_host().in_compiler_tree(analysis.path)
                 )
             );
         if wants {
@@ -170,6 +174,11 @@ obj ModuleCompilation {
             return;
         }
         needs_native = analysis.native or ModuleFacts.has_native_context_stmts(module);
+        if needs_native
+            and self.session.defers_native_codegen()
+            and native_codegen() is None {
+            return;
+        }
         if needs_native
             and not product_ready(program, module, CompilationProduct.ANALYSIS)
             and not require_product(
@@ -266,11 +275,8 @@ def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
             "diagnostic; this is a compiler bug -- please report it"
         );
     }
-    from_pass: type = JcirGenPass;
-    try {
-        import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-        from_pass = NaIRGenPass;
-    } except Exception {}
+    native = native_codegen();
+    from_pass: type = native()[-1] if native is not None else JcirGenPass;
     deliver_alerts(
         [
             Alert(
@@ -369,6 +375,21 @@ def native_schedule_failure -> str {
     return _native_sched_failure.get('reason', '');
 }
 
+def native_codegen -> (Callable[[], PassSchedule] | None) {
+    found = codegen_backend("native");
+    if found is not None {
+        return found;
+    }
+    try {
+        active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
+    } except ImportError as e {
+        active_host().schedule_import_failed(e);
+        _note_native_schedule_failure(e);
+        return None;
+    }
+    return codegen_backend("native");
+}
+
 def get_bootstrap_code_gen -> PassSchedule {
     return [NativeImportFactsPass, JcirGenPass];
 }
@@ -382,17 +403,18 @@ def get_py_code_gen(
     token = _codegen_sched_loading.set(True);
     try {
         active_host().load_modules(list(CODEGEN_SCHED_DEPS));
-        import from jaclang.compiler.backends.es { EsastGenPass }
+        import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
         import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
         import from jaclang.compiler.passes.freeze_structure_pass {
             FreezeStructurePass
         }
         passes: PassSchedule = [RcFactsPass, EsastGenPass];
         if native {
-            active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
-            import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-            passes.append(NaIRGenPass);
-            _note_native_schedule_failure(None);
+            schedule = native_codegen();
+            if schedule is not None {
+                passes.extend(schedule());
+                _note_native_schedule_failure(None);
+            }
         }
         passes.extend(get_bootstrap_code_gen());
         passes.append(FreezeStructurePass);
@@ -404,7 +426,7 @@ def get_py_code_gen(
             origin='codegen schedule'
         );
     } except ImportError as e {
-        fail_loud_on_compiler_source(e);
+        active_host().schedule_import_failed(e);
         if native {
             _note_native_schedule_failure(e);
         }
@@ -419,13 +441,6 @@ def client_product_schedule -> PassSchedule {
     return [EsastGenPass];
 }
 
-def native_ir_product_schedule -> PassSchedule {
-    import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
-}
-
 with entry {
     register_product_schedule(CompilationProduct.CLIENT, client_product_schedule);
-    register_product_schedule(CompilationProduct.NATIVE_IR, native_ir_product_schedule);
 }

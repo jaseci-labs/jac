@@ -639,9 +639,12 @@ def kernel_inputs_json(
     options: CompileOptions,
     source: (str | None) = None
 ) -> str {
-    compiler: any = host.compiler_for(program);
-    compiler.ensure_stub_catalog();
-    return kernel_analysis_inputs(host, program, path, options, source).to_json();
+    host.compiler_for(program).ensure_stub_catalog();
+    inputs = kernel_analysis_inputs(host, program, path, options, source);
+    if not options.no_cgen {
+        inputs.osp_core_js = host.client_osp_core_js();
+    }
+    return inputs.to_json();
 }
 
 obj KernelEntry {

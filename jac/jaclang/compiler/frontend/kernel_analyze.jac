@@ -324,14 +324,18 @@ def run_kernel_session(
     if inputs.package_root {
         set_package_root(inputs.package_root);
     }
-    options = inputs.request.to_options();
-    host = KernelHost(inputs=inputs, closure=options if with_codegen else None);
+    host = KernelHost(inputs=inputs);
     host.census.trace = bool(os.environ.get("JAC_KERNEL_TRACE"));
     run = KernelRun(host=host, program=JacProgram());
     previous = active_host();
+    host.loader = previous;
     install_host(host);
     kernel_trace(f"{'compile' if with_codegen else 'analyze'} {path}");
     try {
+        options = inputs.request.to_options();
+        if with_codegen {
+            host.close_over(options);
+        }
         host.compile_module(run.program, path, source, options);
     } except Exception as err {
         run.status = ANALYSIS_CRASHED;

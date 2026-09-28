@@ -46,7 +46,7 @@ glob BROKEN_SRC = (
          '    return 1;\n'
          '}\n'
      ),
-     ES_BACKEND = 'jaclang.compiler.backends.es';
+     ES_BACKEND = 'jaclang.compiler.backends.es.esast_gen_pass';
 
 glob COMPILER_SRC = os.path.join(
          os.path.dirname(os.path.dirname(compiler_mod.__file__)),

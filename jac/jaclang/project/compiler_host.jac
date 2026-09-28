@@ -102,6 +102,9 @@ obj ProjectHost(HostServices) {
         program: JacProgram, path: str, options: CompileOptions
     ) -> (CompileReport | None);
 
+    def in_compiler_tree(path: str) -> bool;
+    def schedule_import_failed(err: ImportError);
+    def client_osp_core_js -> str;
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None);

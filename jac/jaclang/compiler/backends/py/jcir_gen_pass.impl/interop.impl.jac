@@ -3,7 +3,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     parts: list[str] = [];
     names: list[str] = [];
     if (manifest and manifest.bindings) {
-        import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
+        import from jaclang.runtime.constants { JAC_TO_CTYPES_STR }
         import from jaclang.compiler.frontend.codeinfo {
             native_def_symbol,
             native_symbol_name,

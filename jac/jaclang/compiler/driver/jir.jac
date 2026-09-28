@@ -343,16 +343,14 @@ def compute_content_sha256(file_path: str) -> str {
 }
 
 def _related_files(source_path: str) -> list[tuple[str, str]] {
-    import from jaclang.compiler.driver.bccache {
-        discover_annex_files,
-        discover_style_annex
-    }
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+    import from jaclang.compiler.frontend.source_layout { style_annex_of }
     src = Path(source_path).resolve();
     base_dir = src.parent;
     paths: set = set();
     paths |= set(discover_annex_files(str(src), '.impl.jac'));
     paths |= set(discover_annex_files(str(src), '.test.jac'));
-    style = discover_style_annex(str(src));
+    style = style_annex_of(str(src));
     if style is not None {
         paths.add(style);
     }

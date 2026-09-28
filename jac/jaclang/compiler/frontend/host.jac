@@ -243,6 +243,15 @@ obj HostServices {
         return None;
     }
 
+    def in_compiler_tree(path: str) -> bool {
+        return False;
+    }
+
+    def schedule_import_failed(err: ImportError) {}
+    def client_osp_core_js -> str {
+        return "";
+    }
+
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None) {

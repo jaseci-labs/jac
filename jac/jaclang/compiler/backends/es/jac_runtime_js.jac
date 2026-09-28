@@ -1938,8 +1938,8 @@ def point_jac_prelude_at(js: str, target: str = "") -> str {
 }
 
 def build_osp_core_js -> str {
-    import from jaclang.compiler.backends.es.client_kernel_cache { osp_core_js }
-    return osp_core_js();
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().client_osp_core_js();
 }
 
 def build_osp_driver_js -> str {

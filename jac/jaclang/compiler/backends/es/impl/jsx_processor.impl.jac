@@ -1,6 +1,6 @@
 impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
     self.pass_ref = pass_ref;
-    import from jaclang.compiler.backends.es { estree as es }
+    import jaclang.compiler.backends.es.estree as es;
     self.es = es;
 
     self._view_by_node: dict[int, ViewElement] = {};
