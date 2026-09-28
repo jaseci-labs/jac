@@ -491,6 +491,7 @@ walker NaIRGenPass(CompilerPass) {
         _native_module_imports: set[str] = set(),
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
+        _glob_import_sources: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
         _lowered_type_cache: dict[tuple[TypeBase, str], ir.Type] = {},

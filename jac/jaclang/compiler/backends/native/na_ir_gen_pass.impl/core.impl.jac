@@ -958,6 +958,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     processed_modules: set[str] = set();
     imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
+    self._glob_import_sources = {};
 
     entry_base = os.path.dirname(os.path.abspath(self.module.loc.mod_path))
         if (self.module?.loc)
@@ -1000,6 +1001,21 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             }
         }
         wq.append((mod_name, entry_base, None, bool(imp.is_typed)));
+        """A name this module imports from a module is bound to that module:
+        another imported module defining a global of the same name (two
+        generated constant tables both named CONSTANTS) must not supply it.""";
+        if imp.from_loc and imp.items {
+            _bound_path = resolve_native_module(mod_name, entry_base)[1];
+            if _bound_path is not None {
+                for _it in imp.items {
+                    if isinstance(_it, uni.ModuleItem) and _it.alias is None {
+                        self._glob_import_sources[_it.name.value] = os.path.realpath(
+                            _bound_path
+                        );
+                    }
+                }
+            }
+        }
     }
 
     _self_key = (
@@ -1140,6 +1156,37 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     imported_mods = self._permuted_walk_order(imported_mods);
+
+    """Keep a name's binding only where the named module defines that global
+    itself; a name it re-exports resolves by walk order as before.""";
+    _defined: dict[str, set[str]] = {};
+    for (_, _gmod) in imported_mods {
+        if _gmod?.loc and _gmod.loc.mod_path {
+            _names: set[str] = set();
+            for _st in ModuleFacts.iter_context_stmts(_gmod) {
+                if isinstance(_st, uni.GlobalVars) {
+                    for _ga in _st.assignments {
+                        for _gt in (
+                            _ga.target
+                                if isinstance(_ga.target, (list, tuple))
+                                else [_ga.target]
+                        ) {
+                            _gn = self._get_name(_gt);
+                            if _gn is not None {
+                                _names.add(_gn);
+                            }
+                        }
+                    }
+                }
+            }
+            _defined[os.path.realpath(_gmod.loc.mod_path)] = _names;
+        }
+    }
+    self._glob_import_sources = {
+        _gname: _gpath
+        for (_gname, _gpath) in self._glob_import_sources.items()
+        if _gname in _defined.get(_gpath, set())
+    };
 
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
@@ -1517,6 +1564,7 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
 impl NaIRGenPass._register_imported_globals(
     nd: uni.GlobalVars, source_path: str = ""
 ) -> None {
+    import os;
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
@@ -1524,6 +1572,12 @@ impl NaIRGenPass._register_imported_globals(
         for target in targets {
             var_name = self._get_name(target);
             if var_name is None or var_name in self.global_vars {
+                continue;
+            }
+            _bound = self._glob_import_sources.get(var_name);
+            if _bound is not None
+                and source_path
+                and os.path.realpath(source_path) != _bound {
                 continue;
             }
             var_type: ir.Type = ir.IntType(64);
