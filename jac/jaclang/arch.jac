@@ -111,6 +111,10 @@ graph import {
         COMPILER_DIGEST_ROSTER,
         read_input_rules
     }
+    jac0 --> dist.precompile_bytecode._seal_boot_unit {
+        compile_jac as jac0_compile,
+        discover_impl_files as jac0_impls
+    }
 }
 
 graph import byllm {
@@ -866,6 +870,12 @@ graph import cli {
     console --> project.compiler_host.ProjectHost.note { console }
     workpool --> dist.precompile_bytecode.prebuild_native_units { WorkPool }
     workpool --> testing.test_runner._test_rss_cap_mb { env_int }
+    workpool --> dist.precompile_bytecode.seal_bootstrap {
+        WORKER_MEM_BYTES,
+        WorkPool,
+        pool_available,
+        resolve_jobs
+    }
 }
 
 graph import cli.commands {
@@ -2748,6 +2758,15 @@ graph import compiler.backends.native {
         EXC_LINEAGE_BITS,
         EXC_LINEAGE_MIX,
         EXC_LINEAGE_SLOTS
+    }
+    kernel_resolve --> dist.precompile_bytecode._sealed_link_current {
+        SEALED_LINK_MODE,
+        _sidecar_matches_sources,
+        read_sidecar
+    }
+    kernel_resolve --> dist.precompile_bytecode.seal_stage0_kernel {
+        PR_KIT_EVENT,
+        seal_link_mode
     }
 }
 
@@ -7816,6 +7835,7 @@ graph import compiler.frontend {
     host --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass.exit_module {
         active_host
     }
+    codeinfo --> compiler.types.stubcat.build._cached_catalog { jaclang_pkg_root }
 }
 
 graph import compiler.frontend.parser {
@@ -9959,6 +9979,8 @@ graph import compiler.types.stubcat {
         IncoherentInterface,
         build_module_iface
     }
+    locate --> compiler.types.stubcat.build._cached_catalog { dev_catalog_path }
+    locate as locate --> dist.payload.assemble.cached_stubcat;
 }
 
 graph import data {

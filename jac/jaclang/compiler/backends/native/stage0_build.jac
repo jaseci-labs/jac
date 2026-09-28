@@ -387,6 +387,8 @@ def build_kernel_by_pin(
         spec or active_kernel_target() or running_kernel_target(), link_mode
     );
     spec_path = f"{dst}.target.json";
+    import time;
+    started = time.monotonic();
     try {
         (repo, prefix) = checkout_repo();
         snapshot_pkg = provision_stage0(pin, repo, prefix);
@@ -397,11 +399,17 @@ def build_kernel_by_pin(
         }
         write_kernel_target(spec, spec_path);
         before = unit_sources_before(spec);
+        provisioned = time.monotonic();
         code = run_stage0_child(snapshot_pkg, spec_path, dst);
+        built = time.monotonic();
         if code != 0 {
             return _fall_back(_child_failure(code));
         }
         restamp_stage0_sidecar(dst, pin, spec.`root, before);
+        sys.stderr.write(
+            f"  [stage0] provision + guards {provisioned - started:.1f}s, child "
+            f"{built - provisioned:.1f}s, restamp {time.monotonic() - built:.1f}s\n"
+        );
         return True;
     } except (Stage0Unavailable, OSError, tarfile.TarError) as e {
         return _fall_back(str(e));

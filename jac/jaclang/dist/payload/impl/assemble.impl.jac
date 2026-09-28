@@ -228,7 +228,33 @@ impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts)
     }
 }
 
+impl cached_stubcat(pkg_dir: str) -> str {
+    try {
+        import jaclang.compiler.types.stubcat.locate as locate;
+        saved = list(locate._DIGEST_CACHE);
+        locate._DIGEST_CACHE.clear();
+        try {
+            return locate.dev_catalog_path(pkg_dir);
+        } finally {
+            locate._DIGEST_CACHE.clear();
+            locate._DIGEST_CACHE.extend(saved);
+        }
+    } except Exception {
+        return "";
+    }
+}
+
 impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
+    cached = cached_stubcat(os.path.join(site, "jaclang"));
+    if cached and file_exists(cached) {
+        copy_file(cached, out);
+        log(
+            f"==> reused the stub catalog for this type system ({os.path.basename(
+                cached
+            )})"
+        );
+        return True;
+    }
     log("==> building the stub catalog (pre-resolved typeshed types)");
     boot = os.path.join(site, "stubcat_boot.py");
     write_text(boot, STUBCAT_BOOT_SRC);

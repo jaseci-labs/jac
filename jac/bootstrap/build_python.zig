@@ -78,6 +78,18 @@ pub fn main(init: std.process.Init) !void {
         seed.log("build-python: cached {s} ({s})", .{ platform, key[0..16] });
         return;
     }
+    const sources_stamp = try std.fs.path.join(a, &.{ dest, "build-key-sources" });
+    const reuse = if (init.environ_map.get("JAC_JACPYTHON_REUSE")) |v| std.mem.eql(u8, v, "1") else false;
+    if (mode == .jacpython and reuse and seed.fileExists(io, python)) {
+        if (try sourcesKey(io, a, platform, root, host_dest, dest)) |lowered| {
+            const recorded = Io.Dir.cwd().readFileAlloc(io, sources_stamp, a, .limited(128)) catch "";
+            if (std.mem.eql(u8, recorded, &lowered)) {
+                try runSmoke(io, python, smoke, mode);
+                seed.log("build-python: reusing {s}; the sources it was lowered from are unchanged ({s})", .{ platform, lowered[0..16] });
+                return;
+            }
+        }
+    }
     const work = try std.fmt.allocPrint(a, "{s}.work", .{dest});
     // A failed build never produces the completion stamp or replaces a good tree.
     try Io.Dir.cwd().deleteTree(io, work);
@@ -130,6 +142,11 @@ pub fn main(init: std.process.Init) !void {
     // Verify relocation before allowing a cache hit on the next invocation.
     try runSmoke(io, python, smoke, mode);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
+    if (mode == .jacpython) {
+        if (try sourcesKey(io, a, platform, root, host_dest, dest)) |lowered| {
+            try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
+        }
+    }
 }
 
 // Host and native builds consume the same pinned archive. Keep it outside the
@@ -159,6 +176,54 @@ fn sourceArchive(io: Io, a: std.mem.Allocator, cache_dir: []const u8, source: So
 
 fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, host_dest: []const u8, mode: Mode) ![64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    try hashRecipe(io, a, platform, root, mode, &hash);
+    if (mode == .jacpython) {
+        try hashCompilerTree(io, a, root, &hash);
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)));
+    }
+    var digest: [32]u8 = undefined;
+    hash.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+// A PR build may reuse the runtime main last built when the sources JacPython
+// was lowered from are unchanged, even though the compiler that lowered them
+// has moved on. The key is the same recipe, the host build, and the recorded
+// sources (paths and contents) in place of the whole compiler tree. Main keeps
+// the full key, so a runtime is never more than one main build behind.
+fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, host_dest: []const u8, dest: []const u8) !?[64]u8 {
+    const record_path = try std.fs.path.join(a, &.{ dest, "python/build/jacpython-native-sources" });
+    const record = Io.Dir.cwd().readFileAlloc(io, record_path, a, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        else => return err,
+    };
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    try hashRecipe(io, a, platform, root, .jacpython, &hash);
+    hash.update("lowered-sources");
+    var lines = std.mem.splitScalar(u8, record, '\n');
+    var count: usize = 0;
+    while (lines.next()) |raw| {
+        const rel = std.mem.trim(u8, raw, " \r\t");
+        if (rel.len == 0) continue;
+        count += 1;
+        hash.update(rel);
+        const content = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, rel }), a, .unlimited) catch |err| switch (err) {
+            error.FileNotFound => {
+                hash.update("\x00missing");
+                continue;
+            },
+            else => return err,
+        };
+        hash.update(content);
+    }
+    if (count == 0) return null;
+    hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)));
+    var digest: [32]u8 = undefined;
+    hash.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, mode: Mode, hash: *std.crypto.hash.sha2.Sha256) !void {
     hash.update(@tagName(mode));
     hash.update(platform);
     hash.update(builtin.zig_version_string);
@@ -191,42 +256,41 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             hash.update(path);
             hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .unlimited));
         }
-        try hashNativeSources(io, a, root, &hash);
-        const package_path = try std.fs.path.join(a, &.{ root, "jaclang" });
-        var package = try Io.Dir.cwd().openDir(io, package_path, .{ .iterate = true });
-        defer package.close(io);
-        const compiler_inputs = try package.readFileAlloc(io, "compiler_inputs.txt", a, .limited(16 * 1024));
-        hash.update("compiler_inputs.txt");
-        hash.update(compiler_inputs);
-        var walker = try package.walkSelectively(a);
-        defer walker.deinit();
-        var paths: std.ArrayList([]const u8) = .empty;
-        while (try walker.next(io)) |entry| {
-            if (entry.kind == .directory) {
-                if (!std.mem.startsWith(u8, entry.basename, ".") and
-                    !std.mem.eql(u8, entry.basename, "node_modules") and
-                    !std.mem.eql(u8, entry.basename, "__pycache__") and
-                    !std.mem.eql(u8, entry.basename, "tests") and
-                    !std.mem.eql(u8, entry.basename, "test") and
-                    !std.mem.eql(u8, entry.basename, "vendor")) try walker.enter(io, entry);
-            } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".jac") or std.mem.endsWith(u8, entry.path, ".py"))) {
-                if (compilerInput(compiler_inputs, entry.path)) try paths.append(a, try a.dupe(u8, entry.path));
-            }
-        }
-        std.mem.sort([]const u8, paths.items, {}, struct {
-            fn less(_: void, left: []const u8, right: []const u8) bool {
-                return std.mem.lessThan(u8, left, right);
-            }
-        }.less);
-        for (paths.items) |path| {
-            hash.update(path);
-            hash.update(try package.readFileAlloc(io, path, a, .unlimited));
-        }
-        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)));
+        try hashNativeSources(io, a, root, hash);
     }
-    var digest: [32]u8 = undefined;
-    hash.final(&digest);
-    return std.fmt.bytesToHex(digest, .lower);
+}
+
+fn hashCompilerTree(io: Io, a: std.mem.Allocator, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
+    const package_path = try std.fs.path.join(a, &.{ root, "jaclang" });
+    var package = try Io.Dir.cwd().openDir(io, package_path, .{ .iterate = true });
+    defer package.close(io);
+    const compiler_inputs = try package.readFileAlloc(io, "compiler_inputs.txt", a, .limited(16 * 1024));
+    hash.update("compiler_inputs.txt");
+    hash.update(compiler_inputs);
+    var walker = try package.walkSelectively(a);
+    defer walker.deinit();
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (try walker.next(io)) |entry| {
+        if (entry.kind == .directory) {
+            if (!std.mem.startsWith(u8, entry.basename, ".") and
+                !std.mem.eql(u8, entry.basename, "node_modules") and
+                !std.mem.eql(u8, entry.basename, "__pycache__") and
+                !std.mem.eql(u8, entry.basename, "tests") and
+                !std.mem.eql(u8, entry.basename, "test") and
+                !std.mem.eql(u8, entry.basename, "vendor")) try walker.enter(io, entry);
+        } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".jac") or std.mem.endsWith(u8, entry.path, ".py"))) {
+            if (compilerInput(compiler_inputs, entry.path)) try paths.append(a, try a.dupe(u8, entry.path));
+        }
+    }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn less(_: void, left: []const u8, right: []const u8) bool {
+            return std.mem.lessThan(u8, left, right);
+        }
+    }.less);
+    for (paths.items) |path| {
+        hash.update(path);
+        hash.update(try package.readFileAlloc(io, path, a, .unlimited));
+    }
 }
 
 fn hashNativeSources(io: Io, a: std.mem.Allocator, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
@@ -554,6 +618,54 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     const before_host_key = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+}
+
+test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
+    const io = std.testing.io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    for (inputs) |path| {
+        if (std.fs.path.dirname(path)) |parent| try tmp.dir.createDirPath(io, parent);
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
+    }
+    for (native_toolchain_inputs) |path| {
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
+    }
+    try tmp.dir.createDirPath(io, "native");
+    try tmp.dir.createDirPath(io, "jaclang/vendor/typeshed");
+    for ([_][]const u8{ "PIN", "TARBALL_SHA256" }) |name| {
+        try tmp.dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
+    }
+    try tmp.dir.createDirPath(io, "host");
+    try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
+    try tmp.dir.createDirPath(io, "jaclang/runtime/python");
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "lowered" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\nruntime\n" });
+    const root = try tmp.dir.realPathFileAlloc(io, ".", a);
+    const host = try std.fs.path.join(a, &.{ root, "host" });
+    const built = try std.fs.path.join(a, &.{ root, "built" });
+
+    // No record: nothing to reuse.
+    try std.testing.expect((try sourcesKey(io, a, hostPlatform(), root, host, built)) == null);
+    try tmp.dir.createDirPath(io, "built/python/build");
+    try tmp.dir.writeFile(io, .{ .sub_path = "built/python/build/jacpython-native-sources", .data = "jaclang/runtime/python/eval.jac\n" });
+    const lowered = (try sourcesKey(io, a, hostPlatform(), root, host, built)).?;
+    // A compiler edit outside what the runtime was lowered from keeps it...
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
+    try std.testing.expectEqual(lowered, (try sourcesKey(io, a, hostPlatform(), root, host, built)).?);
+    // ...while the full key, which main uses, still moves.
+    try std.testing.expect(!std.mem.eql(u8, &lowered, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    // An edit to a recorded source does not reuse it.
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "edited" });
+    const edited = (try sourcesKey(io, a, hostPlatform(), root, host, built)).?;
+    try std.testing.expect(!std.mem.eql(u8, &lowered, &edited));
+    // Nor does a recipe or toolchain change.
+    try tmp.dir.writeFile(io, .{ .sub_path = native_toolchain_inputs[0], .data = "new toolchain" });
+    try std.testing.expect(!std.mem.eql(u8, &edited, &(try sourcesKey(io, a, hostPlatform(), root, host, built)).?));
 }
 
 test "pinned source archives survive host builds and reject corrupt cached or fetched bytes" {

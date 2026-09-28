@@ -250,9 +250,9 @@ def:priv store(module: ptr[PyObject], slot: int, value: ptr[PyObject]) -> bool {
 }
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
-    Compress_token.bind(compress_type.handle);
-    Decompress_token.bind(decompress_type.handle);
-    ZlibDecompressor_token.bind(decompressor_type.handle);
+    Compress_token.handle = compress_type.handle;
+    Decompress_token.handle = decompress_type.handle;
+    ZlibDecompressor_token.handle = decompressor_type.handle;
     if not store(module, COMPRESS_TYPE, compress_type.create(module))
         or not store(module, DECOMPRESS_TYPE, decompress_type.create(module))
         or not add_state_owned(
