@@ -457,7 +457,9 @@ type Pattern = Identifier
     | ObjectPattern
     | AssignmentPattern
     | RestElement;
+
 type Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration;
 type ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
 
+def es_children(nd: Node) -> dict[str, any];
 def es_node_to_dict(nd: Node) -> dict[str, any];

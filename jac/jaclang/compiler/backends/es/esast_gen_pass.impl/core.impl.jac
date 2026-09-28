@@ -179,11 +179,11 @@ impl EsastGenPass._get_ast_or_default(
     if (
         isinstance(nd, uni.Expr)
         and (nd.gen.es_ast is None)
-        and (nd not in self._unlowered_reported)
+        and (id(nd) not in self._unlowered_reported)
         and self._is_client_destined(nd)
     ) {
         import from jaclang.compiler.frontend.diagnostics { E5097 }
-        self._unlowered_reported.add(nd);
+        self._unlowered_reported.add(id(nd));
         self.ctx.emit(E5097, node_override=nd, kind=nd.__class__.__name__);
     }
     fallback = default_factory(nd);
@@ -219,7 +219,7 @@ impl EsastGenPass._collect_stmt_body(
             generated is None
             and isinstance(stmt, uni.CodeBlockStmt)
             and not isinstance(stmt, uni.Import)
-            and not getattr(stmt, "is_comptime", False)
+            and not uni.is_comptime_stmt(stmt)
         ) {
             cls_name = stmt.__class__.__name__;
             self.ctx.emit(

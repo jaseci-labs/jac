@@ -81,10 +81,10 @@ def type_to_str(t: (Info | TypeForm | str | None)) -> str {
 glob INFO_GRAPH_VERSION: int = 1;
 
 obj InfoGraphWriter {
-    has nodes: list[dict[str, object]] = [],
+    has nodes: list[dict[str, any]] = [],
         index: dict[int, int] = {};
 
-    def ref(item: (Info | TypeForm | str | None)) -> object {
+    def ref(item: (Info | TypeForm | str | None)) -> any {
         if item is None or isinstance(item, str) {
             return item;
         }
@@ -94,17 +94,17 @@ obj InfoGraphWriter {
         }
         slot = len(self.nodes);
         self.index[id(item)] = slot;
-        record: dict[str, object] = {};
+        record: dict[str, any] = {};
         self.nodes.append(record);
         self.fill(record, item);
         return {"n": slot};
     }
 
-    def refs(items: Sequence[(Info | TypeForm | str | None)]) -> list[object] {
+    def refs(items: Sequence[(Info | TypeForm | str | None)]) -> list[any] {
         return [self.ref(item) for item in items];
     }
 
-    def fill(record: dict[str, object], item: (Info | TypeForm)) {
+    def fill(record: dict[str, any], item: (Info | TypeForm)) {
         if isinstance(item, TypeForm) {
             record["k"] = "form";
             record["head"] = item.head;
@@ -142,10 +142,10 @@ obj InfoGraphWriter {
 }
 
 obj InfoGraphReader {
-    has records: list[dict[str, object]],
+    has records: list[dict[str, any]],
         built: list[(Info | TypeForm)] = [];
 
-    def shell(record: dict[str, object]) -> (Info | TypeForm) {
+    def shell(record: dict[str, any]) -> (Info | TypeForm) {
         kind = str(record.get("k", "info"));
         name = str(record.get("name", ""));
         raw_semstr = record.get("semstr");
@@ -179,7 +179,7 @@ obj InfoGraphReader {
         return Info(name=name, semstr=semstr);
     }
 
-    def find(raw: object) -> (Info | TypeForm | None) {
+    def find(raw: any) -> (Info | TypeForm | None) {
         if isinstance(raw, dict) {
             slot = raw.get("n");
             if isinstance(slot, int) and 0 <= slot < len(self.built) {
@@ -189,14 +189,14 @@ obj InfoGraphReader {
         return None;
     }
 
-    def find_all(raw: object) -> list[(Info | TypeForm | None)] {
+    def find_all(raw: any) -> list[(Info | TypeForm | None)] {
         if not isinstance(raw, list) {
             return [];
         }
         return [self.find(item) for item in raw];
     }
 
-    def type_ref(raw: object) -> (ClassInfo | EnumInfo | TypeForm | str | None) {
+    def type_ref(raw: any) -> (ClassInfo | EnumInfo | TypeForm | str | None) {
         if isinstance(raw, str) {
             return raw;
         }
@@ -207,14 +207,14 @@ obj InfoGraphReader {
         return None;
     }
 
-    def type_refs(raw: object) -> list[(ClassInfo | EnumInfo | TypeForm | str | None)] {
+    def type_refs(raw: any) -> list[(ClassInfo | EnumInfo | TypeForm | str | None)] {
         if not isinstance(raw, list) {
             return [];
         }
         return [self.type_ref(item) for item in raw];
     }
 
-    def fields(raw: object) -> list[FieldInfo] {
+    def fields(raw: any) -> list[FieldInfo] {
         out: list[FieldInfo] = [];
         for found in self.find_all(raw) {
             if isinstance(found, FieldInfo) {
@@ -224,7 +224,7 @@ obj InfoGraphReader {
         return out;
     }
 
-    def classes(raw: object) -> list[ClassInfo] {
+    def classes(raw: any) -> list[ClassInfo] {
         out: list[ClassInfo] = [];
         for found in self.find_all(raw) {
             if isinstance(found, ClassInfo) {
@@ -234,7 +234,7 @@ obj InfoGraphReader {
         return out;
     }
 
-    def methods(raw: object) -> list[MethodInfo] {
+    def methods(raw: any) -> list[MethodInfo] {
         out: list[MethodInfo] = [];
         for found in self.find_all(raw) {
             if isinstance(found, MethodInfo) {
@@ -244,7 +244,7 @@ obj InfoGraphReader {
         return out;
     }
 
-    def params(raw: object) -> list[ParamInfo] {
+    def params(raw: any) -> list[ParamInfo] {
         out: list[ParamInfo] = [];
         for found in self.find_all(raw) {
             if isinstance(found, ParamInfo) {
@@ -254,7 +254,7 @@ obj InfoGraphReader {
         return out;
     }
 
-    def functions(raw: object) -> list[FunctionInfo] {
+    def functions(raw: any) -> list[FunctionInfo] {
         out: list[FunctionInfo] = [];
         for found in self.find_all(raw) {
             if isinstance(found, FunctionInfo) {
@@ -297,7 +297,7 @@ obj InfoGraphReader {
 def info_graph_to_json(entries: dict[str, Info]) -> str {
     import json;
     writer = InfoGraphWriter();
-    keyed: dict[str, object] = {};
+    keyed: dict[str, any] = {};
     for (key, info) in entries.items() {
         keyed[key] = writer.ref(info);
     }
@@ -314,7 +314,7 @@ def info_graph_from_json(text: str) -> dict[str, Info] {
     if not isinstance(raw, dict) or raw.get("version") != INFO_GRAPH_VERSION {
         return out;
     }
-    records: list[dict[str, object]] = [];
+    records: list[dict[str, any]] = [];
     raw_nodes = raw.get("nodes");
     if isinstance(raw_nodes, list) {
         for record in raw_nodes {

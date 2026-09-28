@@ -500,8 +500,9 @@ impl EsastGenPass._sv_import_item_is_type(
 }
 
 impl EsastGenPass.exit_sub_tag with uni.SubTag exit {
-    if here.tag.gen.es_ast {
-        here.gen.es_ast = here.tag.gen.es_ast;
+    tag = here.tag;
+    if isinstance(tag, uni.UniNode) and tag.gen.es_ast {
+        here.gen.es_ast = tag.gen.es_ast;
     }
 }
 
@@ -537,21 +538,16 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
         ]
     );
 
-    import re;
     referenced: set[str] = set();
-    pending: list[object] = [value_body];
+    pending: list[any] = [value_body];
     while pending {
         value = pending.pop();
         if isinstance(value, (es.Identifier, es.JsxIdentifier)) {
-            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.name));
+            referenced.update(js_identifiers(value.name));
         } elif isinstance(value, es.RawCode) {
-            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.code));
+            referenced.update(js_identifiers(value.code));
         } elif isinstance(value, es.Node) {
-            pending.extend(
-                child
-                for (key, child) in vars(value).items()
-                if key not in ("loc", "type")
-            );
+            pending.extend(es.es_children(value).values());
         } elif isinstance(value, (list, tuple)) {
             pending.extend(value);
         }

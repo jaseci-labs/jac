@@ -3752,6 +3752,28 @@ impl has_runtime_binding(sym: Symbol, space: CodeContext) -> bool {
     return kind_has_runtime_binding(sym.binding_kind, resolved_decl_of(sym), space);
 }
 
+impl is_comptime_stmt(nd: UniNode) -> bool {
+    if isinstance(nd, Ability) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, Assignment) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, IfStmt) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, InForStmt) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, AssertStmt) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, Import) {
+        return nd.is_comptime;
+    }
+    return False;
+}
+
 impl is_client_destined(nd: UniNode) -> bool {
     cur: (UniNode | None) = nd;
     while cur is not None {

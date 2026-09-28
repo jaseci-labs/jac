@@ -90,7 +90,7 @@ def interop_manifest_of(record: dict[str, any]) -> InteropManifest {
     return manifest;
 }
 
-def literal_to_json(value: object) -> dict[str, object] {
+def literal_to_json(value: any) -> dict[str, any] {
     if value is None or isinstance(value, (bool, int, float, str)) {
         return {"v": value};
     }
@@ -109,7 +109,7 @@ def literal_to_json(value: object) -> dict[str, object] {
     return {"v": str(value)};
 }
 
-def literal_from_json(raw: object) -> object {
+def literal_from_json(raw: any) -> any {
     import from jaclang.compiler.frontend.kernel_inputs { json_map }
     record = json_map(raw);
     if "b" in record {
@@ -122,7 +122,7 @@ def literal_from_json(raw: object) -> object {
         return [literal_from_json(item) for item in list(record["l"])];
     }
     if "d" in record {
-        out: dict[str, object] = {};
+        out: dict[str, any] = {};
         for pair in list(record["d"]) {
             parts = list(pair);
             if len(parts) == 2 {
@@ -134,12 +134,12 @@ def literal_from_json(raw: object) -> object {
     return record.get("v");
 }
 
-def str_list_map(value: object) -> dict[str, list[str]] {
+def str_list_map(value: any) -> dict[str, list[str]] {
     import from jaclang.compiler.frontend.kernel_inputs { json_map, json_str_list }
     return {key: json_str_list(item) for (key, item) in json_map(value).items()};
 }
 
-def manifest_record(manifest: ClientManifest) -> dict[str, object] {
+def manifest_record(manifest: ClientManifest) -> dict[str, any] {
     return {
         "exports": list(manifest.exports),
         "globals": list(manifest.globals),
@@ -161,7 +161,7 @@ def manifest_record(manifest: ClientManifest) -> dict[str, object] {
     };
 }
 
-def manifest_from_record(raw: dict[str, object]) -> ClientManifest {
+def manifest_from_record(raw: dict[str, any]) -> ClientManifest {
     import from jaclang.compiler.frontend.kernel_inputs {
         json_map,
         json_maps,
@@ -211,7 +211,7 @@ def client_artifact_json(artifact: ClientArtifact) -> str {
     );
 }
 
-def source_segment(raw: object) -> (tuple[int, int, int, int, str] | None) {
+def source_segment(raw: any) -> (tuple[int, int, int, int, str] | None) {
     if not isinstance(raw, list) or len(raw) != 5 {
         return None;
     }
@@ -327,7 +327,7 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
     return products;
 }
 
-def products_record(products: UnitProducts) -> dict[str, object] {
+def products_record(products: UnitProducts) -> dict[str, any] {
     return {
         "path": products.path,
         "jcir": base64.b64encode(products.jcir).decode("ascii"),
@@ -340,7 +340,7 @@ def products_record(products: UnitProducts) -> dict[str, object] {
     };
 }
 
-def products_from_record(raw: dict[str, object]) -> UnitProducts {
+def products_from_record(raw: dict[str, any]) -> UnitProducts {
     import from jaclang.compiler.frontend.kernel_inputs { json_str_list }
     return UnitProducts(
         path=str(raw.get("path", "")),

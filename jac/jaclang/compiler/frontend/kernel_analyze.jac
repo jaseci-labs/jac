@@ -132,7 +132,7 @@ obj AnalysisReport {
         return None;
     }
 
-    def to_dict -> dict[str, object] {
+    def to_dict -> dict[str, any] {
         return {
             "status": self.status,
             "message": self.message,

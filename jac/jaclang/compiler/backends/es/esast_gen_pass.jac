@@ -35,7 +35,8 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     FreeIdentifier,
     RUNTIME_PRELUDE_GLOBALS,
     client_ambient_globals,
-    free_identifiers
+    free_identifiers,
+    js_identifiers
 }
 import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.backends.es.js_paths {
@@ -279,7 +280,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         needs_jac_runtime: bool = False,
         needs_osp_kernel: bool = False,
         needs_osp_graph: bool = False,
-        _unlowered_reported: set = set(),
+        _unlowered_reported: set[int] = set(),
         _unbound_reported: set[str] = set(),
         _osp_var_arch_cache: (dict[str, str] | None) = None,
         _primitive_emitters: dict[str, object] = {},

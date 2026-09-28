@@ -42,7 +42,7 @@ glob CODEGEN_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.backends.native.na_ir_gen_pass',
 
      ),
-     _native_sched_failure: dict[str, str] = {};
+     _native_sched_failure: list[str] = [];
 
 obj ModuleCompilation {
     has session: SessionHooks,
@@ -363,16 +363,15 @@ def _codegen_tier_reason -> str {
     return schedule_tier_reason();
 }
 
-def _note_native_schedule_failure(err: (BaseException | None)) {
-    if err is None {
-        _native_sched_failure.pop('reason', None);
-    } else {
-        _native_sched_failure['reason'] = f"{type(err).__name__}: {err}";
+def _note_native_schedule_failure(reason: str) {
+    _native_sched_failure.clear();
+    if reason {
+        _native_sched_failure.append(reason);
     }
 }
 
 def native_schedule_failure -> str {
-    return _native_sched_failure.get('reason', '');
+    return _native_sched_failure[0] if _native_sched_failure else "";
 }
 
 def native_codegen -> (Callable[[], PassSchedule] | None) {
@@ -384,7 +383,7 @@ def native_codegen -> (Callable[[], PassSchedule] | None) {
         active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
     } except ImportError as e {
         active_host().schedule_import_failed(e);
-        _note_native_schedule_failure(e);
+        _note_native_schedule_failure(f"{type(e).__name__}: {e}");
         return None;
     }
     return codegen_backend("native");
@@ -413,7 +412,7 @@ def get_py_code_gen(
             schedule = native_codegen();
             if schedule is not None {
                 passes.extend(schedule());
-                _note_native_schedule_failure(None);
+                _note_native_schedule_failure("");
             }
         }
         passes.extend(get_bootstrap_code_gen());
@@ -428,7 +427,7 @@ def get_py_code_gen(
     } except ImportError as e {
         active_host().schedule_import_failed(e);
         if native {
-            _note_native_schedule_failure(e);
+            _note_native_schedule_failure(f"{type(e).__name__}: {e}");
         }
         return get_bootstrap_code_gen();
     } finally {

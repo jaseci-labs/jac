@@ -2954,6 +2954,8 @@ def has_runtime_binding(sym: Symbol, space: CodeContext) -> bool;
 
 def is_client_destined(nd: UniNode) -> bool;
 
+def is_comptime_stmt(nd: UniNode) -> bool;
+
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
 def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

@@ -151,6 +151,36 @@ def _loc_of(nd: es.Node) -> tuple[int, int] {
     return (loc.start.line, loc.start.column);
 }
 
+def _js_ident_start(ch: str) -> bool {
+    return (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or ch == "_"
+        or ch == "$";
+}
+
+def _js_ident_part(ch: str) -> bool {
+    return _js_ident_start(ch) or (ch >= "0" and ch <= "9");
+}
+
+impl js_identifiers(text: str) -> list[str] {
+    out: list[str] = [];
+    n = len(text);
+    i = 0;
+    while i < n {
+        if not _js_ident_start(text[i]) {
+            i += 1;
+            continue;
+        }
+        start = i;
+        i += 1;
+        while i < n and _js_ident_part(text[i]) {
+            i += 1;
+        }
+        out.append(text[start:i]);
+    }
+    return out;
+}
+
 def _word_char(ch: str) -> bool {
     return ch.isalnum() or ch == "_";
 }
@@ -231,11 +261,9 @@ def _walk(
     bind_fields = _BIND_FIELDS.get(kind, set());
     skip_fields = _SKIP_FIELDS.get(kind, set());
     ref_fields = _REF_FIELDS.get(kind, set());
-    computed = bool(getattr(nd, 'computed', False));
-    for (field, value) in vars(nd).items() {
-        if field in ('loc', 'type') {
-            continue;
-        }
+    fields = es.es_children(nd);
+    computed = bool(fields.get('computed', False));
+    for (field, value) in fields.items() {
         if (field in skip_fields) and not computed {
             continue;
         }
