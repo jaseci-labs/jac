@@ -23,10 +23,8 @@ import from jaclang.runtime.python.cpython_api {
     PyThread_free_lock,
     PyThread_release_lock,
     jacpy_buffer_new,
-    jacpy_distance,
     jacpy_memory_copy,
     jacpy_memory_move,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error }
@@ -374,13 +372,11 @@ def:priv decompress(
 ) -> ptr[PyObject] {
     in_use = False;
     if not state.bzs.value.next_in.is_null() {
-        buffer_end = jacpy_offset(state.input_buffer, state.input_buffer_size);
-        avail_now = jacpy_distance(
-            buffer_end, jacpy_offset(state.bzs.value.next_in, state.bzs_avail_in_real)
-        );
+        buffer_end = state.input_buffer + state.input_buffer_size;
+        avail_now = buffer_end - (state.bzs.value.next_in + state.bzs_avail_in_real);
         avail_total = state.input_buffer_size - state.bzs_avail_in_real;
         if avail_total < length {
-            offset = jacpy_distance(state.bzs.value.next_in, state.input_buffer);
+            offset = state.bzs.value.next_in - state.input_buffer;
             new_size = state.input_buffer_size + length - avail_now;
             grown = PyMem_Realloc(state.input_buffer, u64(new_size));
             if not grown {
@@ -389,7 +385,7 @@ def:priv decompress(
             }
             state.input_buffer = grown;
             state.input_buffer_size = new_size;
-            state.bzs.value.next_in = ptr[u8](jacpy_offset(grown, offset));
+            state.bzs.value.next_in = ptr[u8](grown + offset);
         } elif avail_now < length {
             jacpy_memory_move(
                 state.input_buffer, state.bzs.value.next_in, state.bzs_avail_in_real
@@ -397,7 +393,7 @@ def:priv decompress(
             state.bzs.value.next_in = ptr[u8](state.input_buffer);
         }
         jacpy_memory_copy(
-            jacpy_offset(state.bzs.value.next_in, state.bzs_avail_in_real), data, length
+            state.bzs.value.next_in + state.bzs_avail_in_real, data, length
         );
         state.bzs_avail_in_real += length;
         in_use = True;

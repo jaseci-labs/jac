@@ -28,7 +28,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_hacl_simd_features,
     jacpy_is_none,
     jacpy_is_unicode,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error, text_value }
@@ -247,7 +246,7 @@ def:priv hmac_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Streaming_HMAC_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Streaming_HMAC_update(hacl, cursor, u32(remaining));
 }

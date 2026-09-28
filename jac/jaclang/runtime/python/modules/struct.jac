@@ -49,7 +49,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_native_float_store,
     jacpy_native_little_endian,
     jacpy_native_size,
-    jacpy_offset,
     jacpy_release,
     jacpy_set_exception,
     jacpy_tuple_item,
@@ -333,7 +332,7 @@ def:priv pack_field(
             }
             length = min(length, size - 1);
             jacpy_memory_set(address, 0, i64(min(length, 255)));
-            address = jacpy_offset(address, 1);
+            address += 1;
         } else {
             length = min(length, size);
         }
@@ -373,9 +372,7 @@ def:priv pack_field(
             if plan.native {
                 jacpy_native_float_store(real, address, i64(component_size));
                 jacpy_native_float_store(
-                    imaginary,
-                    jacpy_offset(address, component_size),
-                    i64(component_size)
+                    imaginary, address + component_size, i64(component_size)
                 );
             } else {
                 checked(
@@ -386,7 +383,7 @@ def:priv pack_field(
                 checked(
                     jacpy_float_pack(
                         imaginary,
-                        jacpy_offset(address, component_size),
+                        address + component_size,
                         i64(component_size),
                         i64(plan.little)
                     )
@@ -418,7 +415,7 @@ def:pub jacpy_struct_pack(
                     pack_field(
                         plan,
                         field,
-                        jacpy_offset(address, field.offset + repetition * field.size),
+                        address + (field.offset + repetition * field.size),
                         value,
                         error
                     );
@@ -448,9 +445,7 @@ def:priv unpack_field(
             length = min(int(jacpy_memory_byte(address, 0)), size - 1);
         }
         return required(
-            jacpy_bytes_from_memory(
-                jacpy_offset(address, 1 if size != 0 else 0), i64(length)
-            )
+            jacpy_bytes_from_memory(address + (1 if size != 0 else 0), i64(length))
         );
     }
     if code == 63 {
@@ -466,7 +461,7 @@ def:priv unpack_field(
         real = jacpy_float_unpack(address, i64(component_size), i64(plan.little));
         pending();
         imaginary = jacpy_float_unpack(
-            jacpy_offset(address, component_size), i64(component_size), i64(plan.little)
+            address + component_size, i64(component_size), i64(plan.little)
         );
         pending();
         return required(PyComplex_FromDoubles(real, imaginary));
@@ -484,9 +479,7 @@ def:pub jacpy_struct_unpack(plan: struct_plan, address: ptr) -> ptr[PyObject] {
         for field in plan.fields {
             for repetition in range(field.count) {
                 value = unpack_field(
-                    plan,
-                    field,
-                    jacpy_offset(address, field.offset + repetition * field.size)
+                    plan, field, address + (field.offset + repetition * field.size)
                 );
                 checked(jacpy_tuple_set_owned(result, index, value));
                 index += 1;
@@ -575,9 +568,7 @@ def:pub jacpy_struct_next(cursor: unpack_cursor) -> ptr[PyObject] {
     if cursor.index == cursor.length {
         return NULL;
     }
-    result = jacpy_struct_unpack(
-        cursor.plan, jacpy_offset(cursor.address, cursor.index)
-    );
+    result = jacpy_struct_unpack(cursor.plan, cursor.address + cursor.index);
     cursor.index += cursor.plan.size;
     return result;
 }

@@ -24,7 +24,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_memory_byte,
     jacpy_memory_copy,
     jacpy_memory_set,
-    jacpy_offset,
     jacpy_release,
     jacpy_set_exception
 }
@@ -102,7 +101,7 @@ obj pickle_writer {
         checked(PyByteArray_Resize(self.buffer, current + count));
         if count != 0 {
             jacpy_memory_copy(
-                jacpy_offset(jacpy_bytes_address(self.buffer), current), address, count
+                jacpy_bytes_address(self.buffer) + current, address, count
             );
         }
     }
@@ -148,7 +147,7 @@ obj pickle_writer {
                 try {
                     address = jacpy_bytes_address(header);
                     jacpy_memory_set(address, 0, 149);
-                    write_bits(jacpy_offset(address, 1), 8, True, u64(count));
+                    write_bits(address + 1, 8, True, u64(count));
                     immutable = required(jacpy_bytes_from_memory(address, 9));
                     try {
                         self.send(immutable);
@@ -227,8 +226,7 @@ obj pickle_reader {
             } else {
                 result = required(
                     jacpy_bytes_from_memory(
-                        jacpy_offset(jacpy_bytes_address(self.frame), self.position),
-                        count
+                        jacpy_bytes_address(self.frame) + self.position, count
                     )
                 );
                 self.position += count;
@@ -289,7 +287,7 @@ obj pickle_reader {
                         self.position = i64(index) + 1;
                         return required(
                             jacpy_bytes_from_memory(
-                                jacpy_offset(address, start), self.position - start
+                                address + start, self.position - start
                             )
                         );
                     }

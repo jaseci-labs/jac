@@ -46,7 +46,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_memory_zero,
     jacpy_native_little_endian,
     jacpy_native_size,
-    jacpy_offset,
     jacpy_release,
     jacpy_unicode_decode_bytes,
     jacpy_unicode_size
@@ -193,9 +192,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
 }
 
 def:priv decode(state: array_state, index: i64) -> ptr[PyObject] {
-    address = jacpy_offset(
-        jacpy_bytes_address(state.storage), index * i64(state.itemsize)
-    );
+    address = jacpy_bytes_address(state.storage) + index * i64(state.itemsize);
     letter = chr(state.code);
     if letter in "fd" {
         number = jacpy_float_unpack(address, i64(state.itemsize), i64(state.little));
@@ -260,9 +257,7 @@ def:pub jacpy_array_assign(
             return -1;
         }
         write_bits(
-            jacpy_offset(
-                jacpy_bytes_address(state.storage), index * i64(state.itemsize)
-            ),
+            jacpy_bytes_address(state.storage) + index * i64(state.itemsize),
             state.itemsize,
             state.little,
             bits
@@ -287,13 +282,11 @@ def:pub jacpy_array_insert(
         address = jacpy_bytes_address(state.storage);
         width = i64(state.itemsize);
         jacpy_memory_move(
-            jacpy_offset(address, (index + 1) * width),
-            jacpy_offset(address, index * width),
+            address + (index + 1) * width,
+            address + index * width,
             (old_length - index) * width
         );
-        write_bits(
-            jacpy_offset(address, index * width), state.itemsize, state.little, bits
-        );
+        write_bits(address + index * width, state.itemsize, state.little, bits);
         return 0;
     } except boundary_failure {
         return -1;
@@ -378,9 +371,7 @@ def:pub jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i6
         resize(state, old_length + size // width);
         if size != 0 {
             jacpy_memory_copy(
-                jacpy_offset(jacpy_bytes_address(state.storage), old_length * width),
-                address,
-                size
+                jacpy_bytes_address(state.storage) + old_length * width, address, size
             );
         }
         return 0;
@@ -395,7 +386,7 @@ def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64) {
     if swap_bytes != 0 {
         index: i64 = 0;
         while index < state.length {
-            offset = jacpy_offset(address, index * width);
+            offset = address + index * width;
             write_bits(
                 offset,
                 state.itemsize,
@@ -407,8 +398,8 @@ def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64) {
     } else {
         index: i64 = 0;
         while index < state.length // 2 {
-            left = jacpy_offset(address, index * width);
-            right = jacpy_offset(address, (state.length - index - 1) * width);
+            left = address + index * width;
+            right = address + (state.length - index - 1) * width;
             a = read_bits(left, state.itemsize, state.little);
             b = read_bits(right, state.itemsize, state.little);
             write_bits(left, state.itemsize, state.little, b);
@@ -427,16 +418,12 @@ def:pub jacpy_array_copy(
         target = jacpy_bytes_address(out.storage);
         address = jacpy_bytes_address(source.storage);
         if step == 1 and count > 0 {
-            jacpy_memory_copy(
-                target, jacpy_offset(address, start * width), count * width
-            );
+            jacpy_memory_copy(target, address + start * width, count * width);
         } else {
             i: i64 = 0;
             while i < count {
                 jacpy_memory_copy(
-                    jacpy_offset(target, i * width),
-                    jacpy_offset(address, (start + i * step) * width),
-                    width
+                    target + i * width, address + (start + i * step) * width, width
                 );
                 i += 1;
             }
@@ -490,23 +477,19 @@ def:pub jacpy_array_assign_slice(
             tail = old_length - start - count;
             if tail > 0 {
                 jacpy_memory_move(
-                    jacpy_offset(address, (start + source_length) * width),
-                    jacpy_offset(address, (start + count) * width),
+                    address + (start + source_length) * width,
+                    address + (start + count) * width,
                     tail * width
                 );
             }
             if source_length > 0 {
-                jacpy_memory_copy(
-                    jacpy_offset(address, start * width), data, source_length * width
-                );
+                jacpy_memory_copy(address + start * width, data, source_length * width);
             }
         } else {
             i: i64 = 0;
             while i < count {
                 jacpy_memory_copy(
-                    jacpy_offset(address, (start + i * step) * width),
-                    jacpy_offset(data, i * width),
-                    width
+                    address + (start + i * step) * width, data + i * width, width
                 );
                 i += 1;
             }
@@ -554,9 +537,7 @@ def:pub jacpy_array_delete(
             } else {
                 if write != read {
                     jacpy_memory_move(
-                        jacpy_offset(address, write * width),
-                        jacpy_offset(address, read * width),
-                        width
+                        address + write * width, address + read * width, width
                     );
                 }
                 write += 1;
@@ -611,9 +592,7 @@ def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64 {
         copied = old_length;
         while copied < state.length {
             amount = min(copied, state.length - copied);
-            jacpy_memory_copy(
-                jacpy_offset(address, copied * width), address, amount * width
-            );
+            jacpy_memory_copy(address + copied * width, address, amount * width);
             copied += amount;
         }
         return 0;
@@ -876,9 +855,7 @@ def:pub jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64 {
         while offset < size {
             amount = min(i64(65536), size - offset);
             block = required(
-                jacpy_bytes_from_memory(
-                    jacpy_offset(jacpy_bytes_address(snapshot), offset), amount
-                )
+                jacpy_bytes_from_memory(jacpy_bytes_address(snapshot) + offset, amount)
             );
             method = required(PyObject_GetAttrString(file, "write"));
             result = required(PyObject_CallOneArg(method, block));
@@ -1039,15 +1016,13 @@ def:priv decode_pickle(
         while offset < size {
             if format >= 14 {
                 floating = jacpy_float_unpack(
-                    jacpy_offset(address, offset), i64(width), i64(little)
+                    address + offset, i64(width), i64(little)
                 );
                 pending();
                 value = required(PyFloat_FromDouble(floating));
             } else {
                 value = integer_from_bits(
-                    read_bits(jacpy_offset(address, offset), width, little),
-                    width,
-                    signed
+                    read_bits(address + offset, width, little), width, signed
                 );
             }
             checked(PyList_Append(values, value));

@@ -19,7 +19,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_hacl_simd_features,
     jacpy_memory_copy,
     jacpy_memory_zero,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error }
@@ -142,7 +141,7 @@ def:priv blake2b_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_Blake2b_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_Blake2b_update(hacl, cursor, u32(remaining));
 }
@@ -153,7 +152,7 @@ def:priv blake2s_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_Blake2s_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_Blake2s_update(hacl, cursor, u32(remaining));
 }
@@ -248,7 +247,7 @@ def:priv blake2_new(
         return NULL;
     }
     salt_block = blocks;
-    personal_block = jacpy_offset(blocks, i64(HACL_HASH_BLAKE2B_SALT_BYTES));
+    personal_block = blocks + HACL_HASH_BLAKE2B_SALT_BYTES;
     if not parameter_bytes(
         salt,
         salt_block,

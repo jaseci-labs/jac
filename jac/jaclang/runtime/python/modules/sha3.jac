@@ -19,7 +19,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_TYPE,
     _Py_strhex,
     jacpy_bytes_from_memory,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error }
@@ -86,7 +85,7 @@ def:priv sha3_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_SHA3_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_SHA3_update(hacl, cursor, u32(remaining));
 }

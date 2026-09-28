@@ -388,11 +388,9 @@ import from c {
         dictionary: ptr[PyObject], key: ptr[PyObject]
     ) -> i64;  def jacpy_dict_repr(value: ptr[PyObject]) -> ptr[PyObject];  def jacpy_dict_set_owned(
         dictionary: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
-    ) -> i64;  def jacpy_dict_size(a: ptr[PyObject]) -> i64;  def jacpy_distance(
-        end: ptr, start: ptr
-    ) -> i64;  def jacpy_ellipsis -> ptr[PyObject];  def jacpy_entropy(
-        size: i64
-    ) -> ptr[PyObject];  def jacpy_errno -> i64;  def jacpy_error_is(
+    ) -> i64;  def jacpy_dict_size(a: ptr[PyObject]) -> i64;  def jacpy_ellipsis -> ptr[
+        PyObject
+    ];  def jacpy_entropy(size: i64) -> ptr[PyObject];  def jacpy_errno -> i64;  def jacpy_error_is(
         name: str
     ) -> i64;  def jacpy_error_pending -> i64;  def jacpy_exception_context(
         error: ptr[PyObject], cause: ptr[PyObject]
@@ -490,9 +488,7 @@ import from c {
         source: str, size: i64
     ) -> ptr[PyObject];  def jacpy_not_implemented -> ptr[PyObject];  def jacpy_number_ssize(
         value: ptr[PyObject], overflow: str
-    ) -> i64;  def jacpy_object_type(value: ptr[PyObject]) -> ptr[PyObject];  def jacpy_offset(
-        address: ptr, offset: i64
-    ) -> ptr;  def jacpy_optional_attr(
+    ) -> i64;  def jacpy_object_type(value: ptr[PyObject]) -> ptr[PyObject];  def jacpy_optional_attr(
         value: ptr[PyObject], name: str
     ) -> ptr[PyObject];  def jacpy_optional_field(
         handle: ptr[PyObject], field: i64

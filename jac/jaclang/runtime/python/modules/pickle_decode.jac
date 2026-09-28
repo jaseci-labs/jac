@@ -55,7 +55,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_memory_byte,
     jacpy_memory_copy,
     jacpy_none,
-    jacpy_offset,
     jacpy_optional_attr,
     jacpy_release,
     jacpy_set_new,
@@ -782,9 +781,7 @@ obj unpickle_state {
                             != jacpy_memory_byte(address, 0) {
                         self.fail("the STRING opcode argument must be quoted");
                     }
-                    inner = required(
-                        jacpy_bytes_from_memory(jacpy_offset(address, 1), size - 2)
-                    );
+                    inner = required(jacpy_bytes_from_memory(address + 1, size - 2));
                     decoded: ptr[PyObject] = NULL;
                     try {
                         decoded = required(jacpy_bytes_unescape(inner));

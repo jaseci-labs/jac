@@ -20,7 +20,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_unicode,
     jacpy_none,
     jacpy_number_ssize,
-    jacpy_offset,
     jacpy_release,
     jacpy_set_exception,
     jacpy_tuple_item
@@ -322,8 +321,7 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if offset < 0 {
         return NULL;
     }
-    if jacpy_struct_pack(plan, args, 2, jacpy_offset(buffer.address(), offset), error)
-        < 0 {
+    if jacpy_struct_pack(plan, args, 2, buffer.address() + offset, error) < 0 {
         return NULL;
     }
     return jacpy_none();
@@ -390,7 +388,7 @@ def:priv unpack_from_bound(args: BoundArguments) -> ptr[PyObject] {
     if offset < 0 {
         return NULL;
     }
-    return jacpy_struct_unpack(plan, jacpy_offset(buffer.address(), offset));
+    return jacpy_struct_unpack(plan, buffer.address() + offset);
 }
 
 def:priv unpack_from(

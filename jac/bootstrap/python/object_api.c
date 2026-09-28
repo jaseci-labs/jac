@@ -652,11 +652,6 @@ int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {
     return _PyDict_DelItemIf(dictionary, key, dead_weakref, NULL);
 }
 
-/* Pointer arithmetic for C-owned buffers. ptr[T] in Jac has no arithmetic,
- * so offsets into a block and distances between cursors come from here. */
-void *jacpy_offset(void *address, int64_t offset) { return (char *)address + offset; }
-int64_t jacpy_distance(const void *end, const void *start) { return (const char *)end - (const char *)start; }
-
 /* syslog(3) is variadic; the module always logs one preformatted message. */
 #include <syslog.h>
 void jacpy_syslog(int32_t priority, const char *message) { syslog(priority, "%s", message); }

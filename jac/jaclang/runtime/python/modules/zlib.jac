@@ -38,11 +38,9 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_buffer_length,
     jacpy_buffer_new,
     jacpy_buffer_release,
-    jacpy_distance,
     jacpy_fs_text,
     jacpy_memory_copy,
     jacpy_memory_move,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error, text_value }
@@ -256,7 +254,7 @@ def:priv window_init(
     zst.value.next_out = cursor.next_out;
     zst.value.avail_out = u32(visible);
     window.left = allocated - visible;
-    window.next = ptr[u8](jacpy_offset(cursor.next_out, visible));
+    window.next = cursor.next_out + visible;
     return True;
 }
 
@@ -272,7 +270,7 @@ def:priv window_grow(
         zst.value.next_out = window.next;
         zst.value.avail_out = u32(visible);
         window.left -= visible;
-        window.next = ptr[u8](jacpy_offset(window.next, visible));
+        window.next += visible;
         return True;
     }
     return grow(buffer, zst);
@@ -674,10 +672,10 @@ def zlib_Compress_compress_impl(
 def:priv save_unconsumed(
     stream: ZlibStream, data_start: ptr, data_length: i64, err: i32
 ) -> bool {
-    data_end = jacpy_offset(data_start, data_length);
+    data_end = data_start + data_length;
     if err == Z_STREAM_END and stream.zst.value.avail_in > 0 {
         old_size = PyBytes_Size(stream.unused_data);
-        left_size = jacpy_distance(data_end, stream.zst.value.next_in);
+        left_size = data_end - stream.zst.value.next_in;
         if left_size > SSIZE_MAX - old_size {
             PyErr_NoMemory();
             return False;
@@ -688,15 +686,13 @@ def:priv save_unconsumed(
         }
         target: ptr = PyBytes_AsString(joined);
         jacpy_memory_copy(target, PyBytes_AsString(stream.unused_data), old_size);
-        jacpy_memory_copy(
-            jacpy_offset(target, old_size), stream.zst.value.next_in, left_size
-        );
+        jacpy_memory_copy(target + old_size, stream.zst.value.next_in, left_size);
         jacpy_release(stream.unused_data);
         stream.unused_data = joined;
         stream.zst.value.avail_in = 0;
     }
     if stream.zst.value.avail_in > 0 or PyBytes_Size(stream.unconsumed_tail) > 0 {
-        left_size = jacpy_distance(data_end, stream.zst.value.next_in);
+        left_size = data_end - stream.zst.value.next_in;
         tail = jacpy_buffer_new(left_size);
         if not tail {
             return False;
@@ -1109,7 +1105,7 @@ def:priv arrange_output(
             return (NULL, -1);
         }
     } else {
-        occupied = jacpy_distance(state.zst.value.next_out, PyBytes_AsString(current));
+        occupied = state.zst.value.next_out - PyBytes_AsString(current);
         if length == occupied {
             if length == limit {
                 return (current, -2);
@@ -1123,9 +1119,7 @@ def:priv arrange_output(
     }
     room = length - occupied;
     state.zst.value.avail_out = u32(room if room < UINT_MAX else UINT_MAX);
-    state.zst.value.next_out = ptr[u8](
-        jacpy_offset(PyBytes_AsString(current), occupied)
-    );
+    state.zst.value.next_out = PyBytes_AsString(current) + occupied;
     return (current, length);
 }
 
@@ -1188,9 +1182,7 @@ def:priv decompress_buf(
         return NULL;
     }
     state.avail_in_real += i64(state.zst.value.avail_in);
-    if _PyBytes_Resize(
-        &mut result, jacpy_distance(state.zst.value.next_out, PyBytes_AsString(result))
-    )
+    if _PyBytes_Resize(&mut result, state.zst.value.next_out - PyBytes_AsString(result))
         != 0 {
         return NULL;
     }
@@ -1206,13 +1198,11 @@ def:priv decompress_input(
 ) -> ptr[PyObject] {
     in_use = False;
     if not state.zst.value.next_in.is_null() {
-        buffer_end = jacpy_offset(state.input_buffer, state.input_buffer_size);
-        avail_now = jacpy_distance(
-            buffer_end, jacpy_offset(state.zst.value.next_in, state.avail_in_real)
-        );
+        buffer_end = state.input_buffer + state.input_buffer_size;
+        avail_now = buffer_end - (state.zst.value.next_in + state.avail_in_real);
         avail_total = state.input_buffer_size - state.avail_in_real;
         if avail_total < length {
-            offset = jacpy_distance(state.zst.value.next_in, state.input_buffer);
+            offset = state.zst.value.next_in - state.input_buffer;
             new_size = state.input_buffer_size + length - avail_now;
             grown = PyMem_Realloc(state.input_buffer, u64(new_size));
             if not grown {
@@ -1221,16 +1211,14 @@ def:priv decompress_input(
             }
             state.input_buffer = grown;
             state.input_buffer_size = new_size;
-            state.zst.value.next_in = ptr[u8](jacpy_offset(grown, offset));
+            state.zst.value.next_in = ptr[u8](grown + offset);
         } elif avail_now < length {
             jacpy_memory_move(
                 state.input_buffer, state.zst.value.next_in, state.avail_in_real
             );
             state.zst.value.next_in = ptr[u8](state.input_buffer);
         }
-        jacpy_memory_copy(
-            jacpy_offset(state.zst.value.next_in, state.avail_in_real), data, length
-        );
+        jacpy_memory_copy(state.zst.value.next_in + state.avail_in_real, data, length);
         state.avail_in_real += length;
         in_use = True;
     } else {
@@ -1324,7 +1312,7 @@ def zlib_adler32_impl(
     thread = release_gil() if remains > 1024 * 5 else ptr[PyThreadState]();
     while remains > UINT_MAX {
         checksum = adler32(checksum, position, u32(UINT_MAX));
-        position = jacpy_offset(position, UINT_MAX);
+        position += UINT_MAX;
         remains -= UINT_MAX;
     }
     checksum = adler32(checksum, position, u32(remains));
@@ -1341,7 +1329,7 @@ def zlib_crc32_impl(module: ptr[PyObject], data: BufferArgument, value_: u32) ->
     thread = release_gil() if remains > 1024 * 5 else ptr[PyThreadState]();
     while remains > CRC_CHUNK_SIZE {
         checksum = crc32(checksum, position, u32(CRC_CHUNK_SIZE));
-        position = jacpy_offset(position, CRC_CHUNK_SIZE);
+        position += CRC_CHUNK_SIZE;
         remains -= CRC_CHUNK_SIZE;
     }
     checksum = crc32(checksum, position, u32(remains));
