@@ -82,10 +82,19 @@ atexit port defines `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini`
 as `def:pub`, which `pylifecycle.c` and `pystate.c` call. `gen_capi.jac` does
 not declare a name a JacPython source defines.
 
-`gen_clinic.jac` skips a clinic function whose `#if` needs `MS_WINDOWS`
-(`_multiprocessing.closesocket`) and lists it in the generated file's
-docstring. A module's own converter (`SEM_HANDLE_converter`) types its variable
-by the Jac converter's return type.
+The generated glue keeps C's argument types where they matter. A `str`
+argument that may be NULL (it accepts None, or its C default is NULL, like
+`_codecs`' `errors`) stays C's `const char *`: `ptr[u8]`, NULL when absent.
+`gen_capi.jac` declares the matching C parameters in `NULLABLE_PARAMETERS`,
+where a nullable out-pointer becomes `&mut T | None` and a literal None passes
+NULL. `Py_buffer(accept={str, buffer})` reads a str as its UTF-8. A function
+clinic compiles only under `MS_WINDOWS` is left out and listed in the
+generated docstring; a function that exists only on some POSIX systems (the
+gettext functions of `_locale`) is filtered by the binding from a flag in a
+`<name>.<os>.jac` variant, as `resource.prlimit` is. A callable made at run
+time with a bound `self`, like `_abc`'s weakref callback, comes from a
+`FunctionTable` in `bindings/module.jac`. A module's own converter (`SEM_HANDLE_converter`) types its variable by the
+Jac converter's return type.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or

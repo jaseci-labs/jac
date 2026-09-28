@@ -31,3 +31,4 @@ _multiprocessing
 _posixshmem
 _abc
 _codecs
+_locale

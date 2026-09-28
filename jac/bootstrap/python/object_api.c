@@ -290,6 +290,8 @@ int64_t jacpy_native_size(int64_t kind, int64_t alignment) {
 #undef SIZE_CASE
 }
 int64_t jacpy_native_little_endian(void) { uint16_t value = 1; return *(unsigned char *)&value; }
+/* The target ABI's CHAR_MAX: 255 where char is unsigned (Linux aarch64). */
+int64_t jacpy_char_max(void) { return CHAR_MAX; }
 void jacpy_memory_zero(void *address, int64_t size) { memset(address, 0, (size_t)size); }
 void jacpy_memory_copy(void *target, void *source, int64_t size) { memcpy(target, source, (size_t)size); }
 void jacpy_memory_move(void *target, void *source, int64_t size) { memmove(target, source, (size_t)size); }
