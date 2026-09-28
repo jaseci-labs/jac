@@ -898,7 +898,10 @@ def resolve_native_module(
         if language != 'jac' or not candidate.endswith('.jac') {
             return (None, None);
         }
-        candidate = os.path.realpath(candidate);
+
+        candidate = os.path.realpath(
+            _native_variant_path(candidate[:-len('.jac')]) or candidate
+        );
         if (native_unit_compile_active() and in_native_scope_path(candidate))
             or clean in SHARED_RUNTIME_MODULES {
             return (candidate, candidate);

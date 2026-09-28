@@ -1,20 +1,21 @@
+import from jaclang.runtime.python.cpython_api {
+    PyObject,
+    jacpy_bytes_escape,
+    jacpy_error_is,
+    jacpy_float_value,
+    jacpy_normalize,
+    jacpy_parse_float,
+    jacpy_parse_long,
+    jacpy_release,
+    jacpy_take_error_text,
+    jacpy_unicode_escape,
+    jacpy_warning
+}
 import from jaclang.runtime.python.capi { read_buffer, required, boundary_failure }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
-import from c {
-    def jacpy_take_error_text -> u64;  def jacpy_error_is(name: str) -> i64;  def jacpy_parse_long(
-        source: str, size: i64
-    ) -> u64;  def jacpy_parse_float(source: str, size: i64) -> u64;  def jacpy_float_value(
-        handle: u64
-    ) -> f64;  def jacpy_normalize(source: str, size: i64) -> u64;  def jacpy_unicode_escape(
-        source: str, size: i64
-    ) -> u64;  def jacpy_bytes_escape(source: str, size: i64) -> u64;  def jacpy_release(
-        handle: u64
-    );  def jacpy_warning(message: str, filename: str, line: i64) -> i64;
-}
-
-def take_buffer(handle: u64) -> bytes {
+def take_buffer(handle: ptr[PyObject]) -> bytes {
     required(handle);
     try {
         return read_buffer(handle);

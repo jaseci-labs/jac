@@ -1,4 +1,6 @@
 """Python statistics accelerator signature and initialization."""
+
+import from jaclang.runtime.python.cpython_api { NULL, PyObject }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -17,12 +19,12 @@ glob:priv inv_cdf_signature = CallSignature(
          "_normal_dist_inv_cdf", ["p", "mu", "sigma"], 3, 3, 3
      );
 
-def:priv inv_cdf_bound(args: BoundArguments) -> u64 {
+def:priv inv_cdf_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_statistics_inv_cdf(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv inv_cdf_call(module: u64, args: u64) -> u64 {
-    return invoke(inv_cdf_signature, args, 0, inv_cdf_bound);
+def:priv inv_cdf_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(inv_cdf_signature, args, NULL, inv_cdf_bound);
 }
 
 glob:priv definition = ModuleDefinition(
@@ -38,6 +40,6 @@ glob:priv definition = ModuleDefinition(
          ]
      );
 
-def:pub PyInit__statistics -> u64 {
+def:pub PyInit__statistics -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -60,9 +60,46 @@ compiled.verify()
 machine = llvm.Target.from_triple(triple).create_target_machine(
     opt=2, reloc="pic", codemodel="small",
 )
+# Units are optimized one at a time; the merged module is where bindings,
+# algorithms and object-API calls from different units can inline. The object
+# reaches the CPython link as machine code, so ThinLTO cannot do this later.
+builder = llvm.create_pass_builder(
+    machine, llvm.create_pipeline_tuning_options(speed_level=2),
+)
+builder.getModulePassManager().run(compiled, builder)
+compiled.verify()
 object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
+
+
+def lowered_sources():
+    """Every source the object was lowered from, relative to the jac root: the
+    plan's units, their annexes and their compile-time inputs. A dependency can
+    only be added by editing one of these, so they key the object exactly."""
+    from jaclang.compiler.driver.jir import _related_files, _ct_dep_rows, _ct_row_path
+    registry = program.native_units()
+    paths = set()
+    for unit in plan.units:
+        real = os.path.realpath(unit.path)
+        paths.add(real)
+        for rel, _digest in _related_files(unit.path):
+            paths.add(os.path.realpath(os.path.join(os.path.dirname(real), rel)))
+        ent = registry.entries.get(real)
+        if ent is not None and ent.compile_deps:
+            for dep, _digest, _body in _ct_dep_rows(ent.compile_deps.decode("utf-8")):
+                paths.add(os.path.realpath(_ct_row_path(dep, ent.compile_deps_base)))
+    jac_root = os.path.realpath(str(root))
+    rels = []
+    for path in sorted(paths):
+        rel = os.path.relpath(path, jac_root)
+        if rel.startswith(".."):
+            raise RuntimeError(f"JacPython lowered a source outside the jac root: {path}")
+        rels.append(rel.replace(os.sep, "/"))
+    return rels
+
+
+(output / "sources").write_text("".join(rel + "\n" for rel in lowered_sources()))
 print("JacPython: built native compiler object; no interpreted demotions", flush=True)
 # This one-shot emitter has closed both artifact files. Let the OS reclaim its
 # compiler graph and LLVM context rather than traversing them again at Python

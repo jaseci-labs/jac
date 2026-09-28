@@ -1313,6 +1313,7 @@ impl NaIRGenPass._demote_method_if_unlowerable(
         self._get_or_declare_extern("abort", ir.VoidType(), []);
         b.call(self.extern_funcs["abort"], []);
         b.unreachable();
+        self._seam_stub_ids.add(id(func));
     }
     if not keep_func {
         self.method_funcs.pop(full_name, None);
@@ -2158,7 +2159,7 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        if not self._arch_is_walker_name(type_name) {
+        if not self._arch_is_walker_name(type_name) and not self._osp_pins_refs() {
             self._osp_make_immortal(obj_ptr);
         }
     }
@@ -3632,7 +3633,9 @@ impl NaIRGenPass._codegen_accessor_call(
     }
     _all_args: list[ir.Value] = [obj_val] + args;
     if self._arch_has_vtable(type_name) {
-        result = self._codegen_virtual_call(obj_val, slot, _all_args, type_name);
+        result = self._codegen_virtual_call(
+            obj_val, slot, _all_args, type_name, release_args=False
+        );
         if result is not None {
             return self._mark_reference_owned(result);
         }

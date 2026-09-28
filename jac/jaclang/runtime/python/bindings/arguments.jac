@@ -1,28 +1,33 @@
 """Argument ownership and signature binding shared by native Python adapters."""
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyDict_Items,
+    PyList_GetItemRef,
+    PyLong_AsSsize_t,
+    PyNumber_Index,
+    PyObject,
+    PyTuple_Size,
+    PyUnicode_ReadChar,
+    Py_NewRef,
+    jacpy_error_pending,
+    jacpy_is_unicode,
+    jacpy_list_size,
+    jacpy_release,
+    jacpy_tuple_item,
+    jacpy_unicode_size
+}
 import from jaclang.runtime.python.capi {
     boundary_failure,
     required,
     object_error,
-    text_value,
-    jacpy_release,
-    jacpy_retain,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_dict_items,
-    jacpy_list_size,
-    jacpy_list_item,
-    jacpy_is_unicode,
-    jacpy_unicode_size,
-    jacpy_unicode_char,
-    jacpy_index,
-    jacpy_error_pending
+    text_value
 }
-import from c { def jacpy_ssize(value: u64) -> i64;  }
 
 obj BoundArguments {
-    has values: list[u64],
-        context: u64 = 0,
-        keywords: u64 = 0;
+    has values: list[ptr[PyObject]],
+        context: ptr[PyObject] = NULL,
+        keywords: ptr[PyObject] = NULL;
 
     def drop {
         for value in self.values {
@@ -37,13 +42,13 @@ def invalid(message: str) -> bool {
     return False;
 }
 
-def index_value(value: u64) -> (i64 | None) {
-    index = jacpy_index(value);
+def index_value(value: ptr[PyObject]) -> (i64 | None) {
+    index = PyNumber_Index(value);
     if index == 0 {
         return None;
     }
     try {
-        result = jacpy_ssize(index);
+        result = PyLong_AsSsize_t(index);
         if result == -1 and jacpy_error_pending() != 0 {
             return None;
         }
@@ -60,8 +65,10 @@ obj CallSignature {
         positional_count: int,
         positional_only: int = 0;
 
-    def bind(result: BoundArguments, args: u64, kwargs: u64) -> bool {
-        count = int(jacpy_tuple_size(args));
+    def bind(
+        result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+    ) -> bool {
+        count = int(PyTuple_Size(args));
         if count < 0 {
             return False;
         }
@@ -74,11 +81,11 @@ obj CallSignature {
             result.values[i] = required(jacpy_tuple_item(args, i64(i)));
         }
         if kwargs != 0 {
-            items = required(jacpy_dict_items(kwargs));
+            items = required(PyDict_Items(kwargs));
             try {
                 for i in range(int(jacpy_list_size(items))) {
-                    item = required(jacpy_list_item(items, i64(i)));
-                    key: u64 = 0;
+                    item = required(PyList_GetItemRef(items, i64(i)));
+                    key: ptr[PyObject] = NULL;
                     try {
                         key = required(jacpy_tuple_item(item, 0));
                         if jacpy_is_unicode(key) == 0 {
@@ -127,40 +134,42 @@ obj CallSignature {
 
 def invoke(
     signature: CallSignature,
-    args: u64,
-    kwargs: u64,
-    implementation: Callable[[BoundArguments], u64],
-    context: u64 = 0,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0,
     forward_keywords: bool = False
-) -> u64 {
+) -> ptr[PyObject] {
     # The call frame lives outside the exception region: every exit releases
     # all converted arguments, including a failure in a nested conversion.
-    bound = BoundArguments([u64(0) for _ in signature.names], context);
+    bound = BoundArguments([NULL for _ in signature.names], context);
     if forward_keywords and kwargs != 0 {
-        bound.keywords = jacpy_retain(kwargs);
+        bound.keywords = Py_NewRef(kwargs);
     }
     try {
-        if not signature.bind(bound, args, u64(0) if forward_keywords else kwargs) {
-            return 0;
+        if not signature.bind(bound, args, NULL if forward_keywords else kwargs) {
+            return NULL;
         }
         return implementation(bound);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def invoke_one(value: u64, implementation: Callable[[u64], u64]) -> u64 {
+def invoke_one(
+    value: ptr[PyObject], implementation: Callable[[ptr[PyObject]], ptr[PyObject]]
+) -> ptr[PyObject] {
     try {
         return implementation(value);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def character_value(value: u64, context: str) -> (i64 | None) {
+def character_value(value: ptr[PyObject], context: str) -> (i64 | None) {
     if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
         object_error("TypeError", f"{context}() argument must be a unicode character");
         return None;
     }
-    return jacpy_unicode_char(value, 0);
+    return PyUnicode_ReadChar(value, 0);
 }

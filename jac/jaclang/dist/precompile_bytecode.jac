@@ -60,7 +60,20 @@ import from jaclang.jac0core.sealed {
     SEC_NOBJ as SEALED_SEC_NOBJ
 }
 
-glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
+glob RESULT_NAME: str = "PRECOMPILE_RESULT.json",
+     _PHASE_T: list[float] = [];
+
+def _phase(label: str) {
+    import time;
+    now = time.monotonic();
+    if _PHASE_T {
+        sys.stderr.write(f"  [precompile] {label}: {now - _PHASE_T[0]:.1f}s\n");
+        sys.stderr.flush();
+        _PHASE_T[0] = now;
+    } else {
+        _PHASE_T.append(now);
+    }
+}
 
 def compiler_identity -> str {
     digest = running_compiler_digest();
@@ -679,16 +692,56 @@ def _precompile_unit(
     );
 }
 
-def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
+def _seal_boot_unit(
+    jac_path: str, pkg_root: str, out_root: str, embed_src: bool
+) -> str {
     import from jaclang.jac0 {
         compile_jac as jac0_compile,
         discover_impl_files as jac0_impls
     }
-    failed = 0;
-    if pkg_dir.name != "jaclang" {
-        return failed;
+    jac_file = Path(jac_path);
+    pkg_dir = Path(pkg_root);
+    try {
+        impl_sources: list[tuple[str, str]] = [];
+        for impl_path in jac0_impls(jac_path) {
+            impl_sources.append(
+                (Path(impl_path).read_text(encoding="utf-8"), impl_path)
+            );
+        }
+        py_source = jac0_compile(
+            jac_file.read_text(encoding="utf-8"),
+            jac_path,
+            impl_sources=impl_sources or None
+        );
+        code = compile(py_source, jac_path, "exec");
+        bc = patch_co_filenames_bytes(
+            marshal.dumps(code), pkg_root, PRECOMPILE_SENTINEL
+        );
+        with precompile_unit_context(jac_path, pkg_root, collect=False) as program {
+            program.iface_registry().ensure(jac_path);
+            extra = _unit_extra(jac_path, pkg_root, embed_src);
+        }
+        jir_path = Path(out_root) / jac_file.relative_to(pkg_dir).with_suffix(".jir");
+        jir_path.parent.mkdir(parents=True, exist_ok=True);
+        jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
+        return "";
+    } except Exception as e {
+        return f"{type(e).__name__}: {e}";
     }
+}
+
+def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
+    if pkg_dir.name != "jaclang" {
+        return 0;
+    }
+    import time;
     import from jaclang.bootstrap_manifest { seed_abs_entries, is_native_only }
+    import from jaclang.cli.workpool {
+        WORKER_MEM_BYTES,
+        WorkPool,
+        pool_available,
+        resolve_jobs
+    }
     (seed_dirs, seed_files) = seed_abs_entries(str(pkg_dir));
     seed_sources: list[Path] = [
         Path(p)
@@ -698,6 +751,7 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
     for d in seed_dirs {
         seed_sources.extend(Path(d).rglob("*.jac"));
     }
+    units: list[str] = [];
     for jac_file in sorted(seed_sources) {
         if ext_registry.is_annex(str(jac_file)) {
             continue;
@@ -711,37 +765,54 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
         if is_native_only(str(jac_file.relative_to(pkg_dir)).replace(os.sep, "/")) {
             continue;
         }
-        try {
-            impl_paths = jac0_impls(str(jac_file));
-            impl_sources: list[tuple[str, str]] = [];
-            for impl_path in impl_paths {
-                impl_sources.append(
-                    (Path(impl_path).read_text(encoding="utf-8"), impl_path)
-                );
-            }
-            py_source = jac0_compile(
-                jac_file.read_text(encoding="utf-8"),
-                str(jac_file),
-                impl_sources=impl_sources or None
-            );
-            code = compile(py_source, str(jac_file), "exec");
-            bc = patch_co_filenames_bytes(
-                marshal.dumps(code), str(pkg_dir), PRECOMPILE_SENTINEL
-            );
-            with precompile_unit_context(str(jac_file), str(pkg_dir)) as program {
-                program.iface_registry().ensure(str(jac_file));
-                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
-            }
-            jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
-            jir_path = out_dir / jir_rel;
-            jir_path.parent.mkdir(parents=True, exist_ok=True);
-            jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
-        } except Exception as e {
-            console.error(f"BOOTSTRAP FAIL: {jac_file.name} - {e}");
-            failed += 1;
+        units.append(str(jac_file));
+    }
+    started = time.monotonic();
+    failures: list[str] = [];
+
+    def boot_job(request: dict[(str, any)]) -> dict[(str, any)] {
+        return {
+            "error": _seal_boot_unit(
+                str(request["path"]), str(pkg_dir), str(out_dir), embed_src
+            )
+        };
+    }
+
+    def on_record(idx: int, record: dict[(str, any)]) {
+        result = record.get("result");
+        error = str(result.get("error") or "")
+            if isinstance(result, dict)
+            else str(record.get("crash") or record.get("error") or "no result");
+        if error {
+            failures.append(f"{Path(units[idx]).name} - {error}");
         }
     }
-    return failed;
+
+    jobs = resolve_jobs(
+        None, env_var="JAC_PRECOMPILE_JOBS", worker_bytes=WORKER_MEM_BYTES
+    );
+    pool = WorkPool(
+        items=units,
+        job=boot_job,
+        on_record=on_record,
+        jobs=max(1, min(jobs, len(units))),
+        retire=_precompile_retire,
+        rss_log_env="JAC_PRECOMPILE_RSS_LOG",
+        crash_prefix="jac-precompile-crash-"
+    );
+    if units and pool_available() and jobs > 1 {
+        pool.run();
+    } elif units {
+        pool.run_inline();
+    }
+    for failure in failures {
+        console.error(f"BOOTSTRAP FAIL: {failure}");
+    }
+    sys.stderr.write(
+        f"  [precompile] bootstrap units: {len(units)} in "
+        f"{time.monotonic() - started:.1f}s with {jobs} worker(s)\n"
+    );
+    return len(failures);
 }
 
 glob PRECOMPILED_KEEP_DIRS: tuple[str, ...] = ();
@@ -969,6 +1040,7 @@ def seal_finalize(
     embed_src: bool,
     app: str = ""
 ) -> int {
+    _phase("start");
     writes = (
         FORMAT_VERSION,
         HEADER_SIZE,
@@ -1020,6 +1092,7 @@ def seal_finalize(
     }
 
     identity = compiler_identity();
+    _phase("completeness check");
     foreign: list[str] = [];
     for p in sealable_sources(str(pkg_path), app) {
         rel = Path(p).relative_to(pkg_path);
@@ -1049,7 +1122,9 @@ def seal_finalize(
     }
 
     console.print("  Freezing the bootstrap seed layer...");
+    _phase("identity check");
     boot_failed = seal_bootstrap(pkg_path, out_dir, embed_src);
+    _phase("bootstrap freeze");
     if boot_failed > 0 {
         console.error(f"Seal aborted: {boot_failed} bootstrap module(s) failed.");
         return 1;
@@ -1086,6 +1161,7 @@ def seal_finalize(
         return 1;
     }
 
+    _phase("native seal");
     payloads = collect_payloads(pkg_path);
     if payloads {
         console.print(f"  Payload files: {len(payloads)}");
@@ -1113,6 +1189,7 @@ def seal_finalize(
         app_meta,
         native_record
     );
+    _phase("payloads and manifest");
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
     return 0;
 }
@@ -1332,30 +1409,56 @@ def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Pa
     return (target, out);
 }
 
+def _sealed_link_current(out: Path) -> bool {
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        SEALED_LINK_MODE,
+        _sidecar_matches_sources,
+        read_sidecar
+    }
+    sidecar = read_sidecar(str(out));
+    if sidecar is None
+        or not out.is_file()
+        or sidecar.get("link_mode") != SEALED_LINK_MODE {
+        return False;
+    }
+    try {
+        return _sidecar_matches_sources(sidecar);
+    } except Exception {
+        return False;
+    }
+}
+
 def seal_stage0_kernel(
     pkg_path: Path, artifact_path: Path, artifact_rel: str
 ) -> (dict[str, any] | None) {
     import shutil;
     import from jaclang.compiler.backends.native.kernel_resolve {
         LAYOUT_SIDECAR_SUFFIX,
+        PR_KIT_EVENT,
         SEALED_LINK_MODE,
         STAGE0_BUILDER,
-        read_sidecar
+        read_sidecar,
+        seal_link_mode
     }
     import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
     import from jaclang.compiler.backends.native.stage0_build { build_kernel_by_pin }
     import from jaclang.compiler.driver.jir { get_jir_cache_dir }
     import from jaclang.jac0core.cache_paths { FileLock }
+    link_mode = seal_link_mode();
     lock_path = get_jir_cache_dir() / "stage0-kernel.lock";
     lock_path.parent.mkdir(parents=True, exist_ok=True);
     lock = FileLock(str(lock_path), timeout=7200.0);
     lock.acquire();
     try {
         (target, out) = _stage0_kernel_workdir(pkg_path, artifact_path.name);
+        if link_mode != SEALED_LINK_MODE and _sealed_link_current(out) {
+            console.print(
+                "  Kernel: the cached bitcode link matches these units; reusing it"
+            );
+            link_mode = SEALED_LINK_MODE;
+        }
         if not build_kernel_by_pin(
-            str(out),
-            spec=running_kernel_target(str(target)),
-            link_mode=SEALED_LINK_MODE
+            str(out), spec=running_kernel_target(str(target)), link_mode=link_mode
         ) {
             return None;
         }
@@ -1370,10 +1473,10 @@ def seal_stage0_kernel(
         raise RuntimeError("the stage-0 kernel build left no layout sidecar");
     }
     mode = str(sidecar.get("link_mode", ""));
-    if mode != SEALED_LINK_MODE {
+    if mode != link_mode {
         raise RuntimeError(
-            f"stage 0 linked the kernel in {mode or 'an unrecorded'} mode; a sealed "
-            f"kernel is a {SEALED_LINK_MODE} link"
+            f"stage 0 linked the kernel in {mode or 'an unrecorded'} mode; this "
+            f"seal asked for a {link_mode} link"
         );
     }
     stage0 = sidecar.get("stage0");
@@ -1390,10 +1493,13 @@ def seal_stage0_kernel(
         "builder": STAGE0_BUILDER,
         "stage0": dict(stage0)
     };
+    if mode != SEALED_LINK_MODE {
+        record["kit"] = PR_KIT_EVENT;
+    }
     console.print(
         f"  Native artifact: {artifact_rel} built by stage 0 "
-        f"{str(stage0.get('commit', ''))[:12]} (plan {record['plan_digest'][:12]}, "
-        f"layout {record['layout_digest'][:12]})"
+        f"{str(stage0.get('commit', ''))[:12]} ({mode} link, plan "
+        f"{record['plan_digest'][:12]}, layout {record['layout_digest'][:12]})"
     );
     return {"units": {}, "artifact": record};
 }
@@ -1517,6 +1623,14 @@ def precompile_exit(code: int) {
 }
 
 def main {
+    t0 = os.environ.get("JAC_PAYLOAD_CHILD_T0", "");
+    if t0 {
+        import time;
+        sys.stderr.write(
+            f"  [precompile] process ready in {time.time() - float(t0):.1f}s\n"
+        );
+        sys.stderr.flush();
+    }
     args = sys.argv[1:];
     seal = "--seal" in args;
     seal_compile = "--seal-compile" in args;
@@ -1640,6 +1754,7 @@ def run_precompile(
             if exclude_seed
             else find_jac_files(package_dir)
     );
+    _phase("start");
     console.print(f"  Found {len(jac_files)} .jac files");
     native_units_set: set[str] = set();
     native_only_units: list[str] = [];
@@ -1827,6 +1942,7 @@ def run_precompile(
         counts[status] = counts.get(status, 0) + 1;
     }
 
+    _phase("unit discovery");
     if use_pool and native_units_set {
         prebuild_native_units(
             sorted(native_units_set)
@@ -1835,6 +1951,7 @@ def run_precompile(
         );
     }
 
+    _phase("native prebuild");
     pool = WorkPool(
         items=list(jac_files),
         job=unit_job,
@@ -1850,6 +1967,7 @@ def run_precompile(
     } else {
         pool.run_inline();
     }
+    _phase("unit pool");
     compiled = counts["compiled"];
     reused = counts["reused"];
     failed = counts["failed"];

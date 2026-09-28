@@ -518,7 +518,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
         order_out: list[CgNode]
     ) -> tuple[list[CgNode], bool];
 
-    def _recipe_contains_root(v: any) -> bool;
+    def _recipe_ambient_names(v: any) -> list[str];
     def resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> CgNode;
     def resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem];
     def resolve_stmt_block(
