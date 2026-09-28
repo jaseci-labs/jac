@@ -15,7 +15,6 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     AutoscalerRuntimeStatus,
     AutoscalerTransition
 }
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.runtime.context.util { k8s_safe_name }
 import from jaclang.scale.models.progress {
     CallbackSink,
@@ -119,9 +118,10 @@ obj ScaleClient {
         `service` names one member of a fleet; omitted, it reads the app's own
         workload.
         """;
-        return self._autoscaler_for(app_name, namespace, target).get_runtime_status(
-            self._scale_target_name(service or app_name), namespace
-        );
+        scale_target = self._scale_target_name(service or app_name);
+        return self._autoscaler_for(
+            app_name, namespace, target, scale_target
+        ).get_runtime_status(scale_target, namespace);
     }
 
     def watch_autoscaler_transitions(
@@ -136,8 +136,15 @@ obj ScaleClient {
         One call opens a bounded number of watches for one namespace and nothing
         is shared between callers, so a consumer tracking many targets makes one
         call and fans out in its own process rather than one watch per target.
+
+        The engine is resolved from `app_name`'s own target, so a namespace whose
+        apps mix engines is watched through whatever drives that one. A KEDA
+        watch reports the namespace's KEDA scaled targets, so plain HPA workloads
+        beside them are not observed; watch them through an app that one drives.
         """;
-        return self._autoscaler_for(app_name, namespace, target).watch_scale_targets(
+        return self._autoscaler_for(
+            app_name, namespace, target, self._scale_target_name(app_name)
+        ).watch_scale_targets(
             namespace, label_selector=label_selector, timeout_seconds=timeout_seconds
         );
     }
@@ -151,10 +158,19 @@ obj ScaleClient {
         return f"{k8s_safe_name(svc_name)}-deployment";
     }
 
-    def _autoscaler_for(app_name: str, namespace: str, target: str) -> any {
-        k8s = self._lifecycle_target(app_name, namespace, target).k8s_config;
-        return AutoscalerFactory.create(
-            k8s.autoscaler_engine, k8s.to_dict(), self.logger
+    def _autoscaler_for(
+        app_name: str, namespace: str, target: str, scale_target_name: str
+    ) -> any {
+        """The engine that drives this app, resolved on the cluster not in config.
+
+        `autoscaler_engine` defaults to "hpa" on the bare spec these lifecycle
+        helpers build, so reading it here handed back the plain HPA engine for
+        every app: KEDA status degraded to a replica count with no trigger or
+        scaler field, and watching raised the base NotImplementedError because
+        only KEDA implements it.
+        """;
+        return self._lifecycle_target(app_name, namespace, target).autoscaler_for(
+            scale_target_name, namespace
         );
     }
 

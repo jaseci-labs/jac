@@ -504,6 +504,37 @@ impl KEDAAutoscaler._read_scaled_object{
     return None;
 }
 
+impl KEDAAutoscaler.scales_target{
+    """Whether KEDA drives this target, or None when that cannot be determined.
+
+    Three answers, not two. `_read_scaled_object` collapses a definitive 404 and
+    an RBAC denial into the same None, which is right for a status read that
+    then degrades to the workload's own state, and wrong for choosing an engine:
+    a read nobody was permitted to make is not evidence that a target is HPA
+    scaled. So absence and unreadability are separated here.
+    """;
+    api = self._custom_api or client.CustomObjectsApi();
+    for name in [
+        self.resource_name_for(target), self.http_scaled_object_name_for(target)
+    ] {
+        try {
+            api.get_namespaced_custom_object(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="scaledobjects",
+                name=name
+            );
+            return True;
+        } except Exception as e {
+            if getattr(e, "status", None) != 404 {
+                return None;
+            }
+        }
+    }
+    return False;
+}
+
 impl KEDAAutoscaler._read_hpa{
     """The HPA KEDA created for a ScaledObject, by the name KEDA reports.
 

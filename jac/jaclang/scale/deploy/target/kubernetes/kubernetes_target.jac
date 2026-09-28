@@ -63,6 +63,21 @@ obj KubernetesTargetBase(DeploymentTarget) {
         };
     }
 
+    """The autoscaler that drives one of this target's workloads.
+
+    Loads the cluster config before any client is built. `kube_context` reaches
+    the autoscaler's config either way, but nothing applies it to the Kubernetes
+    client, so without this the reads land on whichever cluster the process
+    happened to default to while the caller's choice is silently ignored.
+    """
+    def autoscaler_for(scale_target_name: str, namespace: str) -> any {
+        import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
+        self._load_cluster_config();
+        return AutoscalerFactory.create_for_target(
+            scale_target_name, namespace, self.k8s_config.to_dict(), self.logger
+        );
+    }
+
     def _load_cluster_config {
         kubeconfig_failed: bool = False;
         try {

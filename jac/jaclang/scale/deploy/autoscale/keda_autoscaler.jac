@@ -89,6 +89,8 @@ obj KEDAAutoscaler(Autoscaler) {
         target: str, namespace: str, autoscaler_name: (str | None) = None
     ) -> (dict[str, any] | None);
 
+    def scales_target(target: str, namespace: str) -> (bool | None);
+
     def _read_hpa(scaled_object: dict[str, any], namespace: str) -> (any | None);
     def _apply_autoscaler_view(
         status: AutoscalerRuntimeStatus

@@ -279,6 +279,53 @@ test "autoscaler factory creates hpa autoscaler for engine=None" {
     assert isinstance(autoscaler, HPAAutoscaler);
 }
 
+test "a denied ScaledObject read is not evidence of a plain HPA target" {
+    def _api(exc: any = None, found: any = None) -> any {
+        api = unittest.mock.MagicMock();
+        if exc is not None {
+            api.get_namespaced_custom_object.side_effect = exc;
+        } else {
+            api.get_namespaced_custom_object.return_value = found;
+        }
+        return api;
+    }
+    probe = "orders-deployment";
+    assert KEDAAutoscaler(
+        _custom_api=_api(found={"metadata": {"name": "orders-scaledobject"}})
+    ).scales_target(probe, "prod") is True;
+    assert KEDAAutoscaler(
+        _custom_api=_api(exc=ApiException(status=404))
+    ).scales_target(probe, "prod") is False , (
+        "both of KEDA's names returning 404 is an authoritative absence"
+    );
+    assert KEDAAutoscaler(
+        _custom_api=_api(exc=ApiException(status=403))
+    ).scales_target(probe, "prod") is None , (
+        "an RBAC denial says nothing about the engine and must not read as absence"
+    );
+    assert KEDAAutoscaler(
+        _custom_api=_api(exc=RuntimeError("connection reset by peer"))
+    ).scales_target(probe, "prod") is None , (
+        "a transport failure must not read as absence either"
+    );
+}
+
+
+test "autoscaler factory resolves the live engine from the target, not from config" {
+    cases = [(True, KEDAAutoscaler), (False, HPAAutoscaler), (None, KEDAAutoscaler)];
+    for (drives, want) in cases {
+        with unittest.mock.patch.object(
+            KEDAAutoscaler, "scales_target", return_value=drives
+        ) {
+            got = AutoscalerFactory.create_for_target("orders-deployment", "prod", {});
+            assert isinstance(got, want) , (
+                f"scales_target={drives} must resolve to {want}, got {type(got)}"
+            );
+        }
+    }
+}
+
+
 test "autoscaler factory raises for unsupported engine" {
     raised = False;
     try {
