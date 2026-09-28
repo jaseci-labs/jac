@@ -9,7 +9,6 @@ fcntl_records.<os>.jac and the command constants from fcntl_constants.<os>.jac.
 import from jaclang.runtime.python.cpython_api {
     jacpy_bytes_from_memory,
     jacpy_errno,
-    jacpy_error_is,
     jacpy_fcntl_int,
     jacpy_fcntl_pointer,
     jacpy_ioctl_int,
@@ -22,11 +21,13 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     PyErr_CheckSignals,
     PyErr_Clear,
+    PyErr_ExceptionMatches,
     PyErr_NoMemory,
     PyErr_Occurred,
     PyErr_SetFromErrno,
     PyEval_RestoreThread,
     PyEval_SaveThread,
+    PyExc_BufferError,
     PyExc_OSError,
     PyExc_OverflowError,
     PyExc_SystemError,
@@ -336,7 +337,7 @@ def fcntl_ioctl_impl(
             }
             return PyLong_FromLong(i64(ret));
         }
-        if jacpy_error_is("BufferError") == 0 {
+        if PyErr_ExceptionMatches(PyExc_BufferError) == 0 {
             return NULL;
         }
         PyErr_Clear();
