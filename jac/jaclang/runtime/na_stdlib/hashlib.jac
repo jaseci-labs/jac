@@ -97,3 +97,13 @@ def:pub sha3_256(data: bytes = b"") -> Hash {
 def:pub sha3_512(data: bytes = b"") -> Hash {
     return new("sha3_512", data);
 }
+
+
+def:pub blake2s(data: bytes = b"") -> Hash {
+    return new("blake2s", data);
+}
+
+
+def:pub blake2b(data: bytes = b"") -> Hash {
+    return new("blake2b", data);
+}
