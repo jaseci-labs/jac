@@ -138,6 +138,18 @@ Python ABI. Shared serialization error notes live in `capi.jac`, also used by
 JSON. The two upstream pickle size assertions describe retired C layouts;
 smoke checks cover native memo allocation, reclamation, and callback cycles.
 
+`modules/posixsubprocess.jac` converts every `fork_exec()` argument into C
+memory before forking: argv, envp and the executable list as char* arrays,
+the descriptors to keep, the group list, the child's messages and scratch
+buffers, all reached from one C-layout record. Between fork and exec the child
+runs only scalar and pointer arithmetic over that record and
+async-signal-safe C calls, so it allocates nothing (the user's `preexec_fn`
+aside, as in C). On Linux the child may start with `vfork()`; the native
+backend declares `vfork` `returns_twice`, as clang does, so the function that
+calls it is never inlined and its frame stays valid for the parent's return.
+Descriptor listing, `struct termios` and `struct flock` layouts are per-OS
+(`*_platform.<os>.jac`, `*_records.<os>.jac`).
+
 ## Evaluator migration validation
 
 The bytecode evaluator remains CPython's C implementation. Its replacement must

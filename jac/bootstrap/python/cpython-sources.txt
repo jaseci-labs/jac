@@ -413,7 +413,7 @@ Modules/_multiprocessing/semaphore.c
 # Modules/_opcode.c  # removed: 451 source lines
 # Modules/_operator.c  # removed: 2,032 source lines
 # Modules/_pickle.c  # removed: 8,179 source lines
-Modules/_posixsubprocess.c
+# Modules/_posixsubprocess.c  # removed: 1,357 source lines
 # Modules/_queuemodule.c  # removed: 628 source lines
 # Modules/_randommodule.c  # removed: 679 source lines
 Modules/_remote_debugging_module.c
@@ -521,7 +521,7 @@ Modules/clinic/_lzmamodule.c.h
 # Modules/clinic/_opcode.c.h  # removed: 779 source lines
 # Modules/clinic/_operator.c.h  # removed: 1,510 source lines
 # Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
-Modules/clinic/_posixsubprocess.c.h
+# Modules/clinic/_posixsubprocess.c.h  # removed: 153 source lines
 # Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
 # Modules/clinic/_randommodule.c.h  # removed: 177 source lines
 Modules/clinic/_remote_debugging_module.c.h
