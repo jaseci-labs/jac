@@ -113,7 +113,7 @@ def literal_from_json(raw: object) -> object {
     import from jaclang.compiler.frontend.kernel_inputs { json_map }
     record = json_map(raw);
     if "b" in record {
-        return base64.b64decode(str(record["b"]));
+        return base64.b64decode(str(record["b"]).encode("ascii"));
     }
     if "t" in record {
         return tuple(literal_from_json(item) for item in list(record["t"]));
@@ -344,7 +344,7 @@ def products_from_record(raw: dict[str, object]) -> UnitProducts {
     import from jaclang.compiler.frontend.kernel_inputs { json_str_list }
     return UnitProducts(
         path=str(raw.get("path", "")),
-        jcir=base64.b64decode(str(raw.get("jcir", ""))),
+        jcir=base64.b64decode(str(raw.get("jcir", "")).encode("ascii")),
         mtir=str(raw.get("mtir", "")),
         interop=str(raw.get("interop", "")),
         client=str(raw.get("client", "")),
