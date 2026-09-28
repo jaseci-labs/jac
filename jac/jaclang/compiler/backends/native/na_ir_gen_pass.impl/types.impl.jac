@@ -1602,7 +1602,9 @@ impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | Non
     if not tv_names or not isinstance(owner, ClassType) or owner._shared is None {
         return None;
     }
-    _params: list[str] = self.arch_type_params.get(owner.shared.class_name) or [];
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    _owner_key = class_type_native_name(owner) or owner.shared.class_name;
+    _params: list[str] = self.arch_type_params.get(_owner_key) or [];
     _args: list[TypeBase] = owner.private.type_args or [];
     for _tv in tv_names {
         if _tv in _params {

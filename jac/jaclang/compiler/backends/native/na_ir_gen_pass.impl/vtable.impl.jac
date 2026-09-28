@@ -734,7 +734,8 @@ impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
     if not expr.type.is_instantiable() or expr.type.is_instance() {
         return None;
     }
-    return expr.type.shared.class_name;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    return class_type_native_name(expr.type);
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {
