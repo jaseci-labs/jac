@@ -86,7 +86,7 @@ them by hand.
 
 `jacpython.o` links into libpython, so any non-static CPython symbol is
 reachable from Jac. `gen_capi.jac` declares `PyAPI_FUNC` functions, the
-`extern` functions of `Include/internal/`, and the data symbols the sources
+`extern` functions of `Include/internal/` and `Modules/posixmodule.h`, and the data symbols the sources
 use: `PyAPI_DATA` variables and the `extern` variables of the internal
 headers. An exception object is read in place
 (`object_error(PyExc_ValueError, ...)`,
@@ -98,8 +98,7 @@ only where Jac cannot express the operation:
 | C residue | Why | Where |
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
-| varargs (`Py_BuildValue`, `PyErr_Format`, `PyObject_CallMethod`) | Jac clib calls are fixed-arity | helpers that fix the format |
-| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `interp->atexit`, `interp->cached_objects`) | layout differs between builds | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
 | returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |

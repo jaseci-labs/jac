@@ -6,7 +6,10 @@ that doubles on ERANGE, as the C module does.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_fs_text,
+    jacpy_release,
     NULL,
+    _Py_Uid_Converter,
     PyBytes_AsString,
     PyErr_ExceptionMatches,
     PyErr_NoMemory,
@@ -18,6 +21,7 @@ import from jaclang.runtime.python.cpython_api {
     PyList_Append,
     PyList_New,
     PyLong_FromLong,
+    _PyLong_FromUid,
     PyMem_RawFree,
     PyMem_RawRealloc,
     PyObject,
@@ -26,9 +30,7 @@ import from jaclang.runtime.python.cpython_api {
     PyStructSequence_SetItem,
     PyThreadState,
     PyUnicode_EncodeFSDefault,
-    PyUnicode_FromString,
-    jacpy_fs_text,
-    jacpy_release
+    PyUnicode_FromString
 }
 import from jaclang.runtime.python.capi { object_error, repr_value }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
@@ -44,9 +46,7 @@ import from c {
         result: &mut ptr[passwd]
     ) -> i32;  def setpwent;  def getpwent -> ptr[passwd];  def endpwent;  def sysconf(
         name: i32
-    ) -> i64;  def _Py_Uid_Converter(value: ptr[PyObject], uid: &mut u32) -> i32;  def _PyLong_FromUid(
-        uid: u32
-    ) -> ptr[PyObject];
+    ) -> i64;
 }
 
 glob:priv ERANGE: i32 = 34,

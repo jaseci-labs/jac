@@ -5,7 +5,10 @@ struct group has the same layout on every supported C library.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_fs_text,
+    jacpy_release,
     NULL,
+    _Py_Gid_Converter,
     PyBytes_AsString,
     PyErr_NoMemory,
     PyErr_Occurred,
@@ -15,6 +18,7 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_ValueError,
     PyList_Append,
     PyList_New,
+    _PyLong_FromGid,
     PyLong_FromLong,
     PyMem_RawFree,
     PyMem_RawRealloc,
@@ -22,9 +26,7 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Contains,
     PyStructSequence_New,
     PyStructSequence_SetItem,
-    PyUnicode_EncodeFSDefault,
-    jacpy_fs_text,
-    jacpy_release
+    PyUnicode_EncodeFSDefault
 }
 import from jaclang.runtime.python.capi { object_error, repr_value }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
@@ -45,9 +47,7 @@ import from c {
         result: &mut ptr[group]
     ) -> i32;  def setgrent;  def getgrent -> ptr[group];  def endgrent;  def sysconf(
         name: i32
-    ) -> i64;  def _Py_Gid_Converter(value: ptr[PyObject], gid: &mut u32) -> i32;  def _PyLong_FromGid(
-        gid: u32
-    ) -> ptr[PyObject];
+    ) -> i64;
 }
 
 glob:priv ERANGE: i32 = 34,

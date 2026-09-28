@@ -162,6 +162,21 @@ Py_buffer *jacpy_buffer_acquire_writable(PyObject *value) {
     if (!PyArg_Parse(value, "w*", view)) { PyMem_Free(view); return NULL; }
     return view;
 }
+/* The "s*" format: a str as its UTF-8 encoding, or a C-contiguous buffer. */
+Py_buffer *jacpy_buffer_acquire_string(PyObject *value) {
+    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
+    if (!view) { PyErr_NoMemory(); return NULL; }
+    if (!PyArg_Parse(value, "s*", view)) { PyMem_Free(view); return NULL; }
+    return view;
+}
+/* PyObject_GetBuffer with the caller's PyBUF_* flags; the exporter's own
+ * exception (BufferError for a read-only object) is kept. */
+Py_buffer *jacpy_buffer_export(PyObject *value, int64_t flags) {
+    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
+    if (!view) { PyErr_NoMemory(); return NULL; }
+    if (PyObject_GetBuffer(value, view, (int)flags) < 0) { PyMem_Free(view); return NULL; }
+    return view;
+}
 void jacpy_buffer_release(Py_buffer *value) {
     if (!value) return;
     Py_buffer *view = value;
@@ -577,6 +592,37 @@ void jacpy_syslog(int32_t priority, const char *message) { syslog(priority, "%s"
 /* errno is a thread-local macro; read and write it through functions. */
 int64_t jacpy_errno(void) { return errno; }
 void jacpy_set_errno(int64_t value) { errno = (int)value; }
+
+/* fcntl(2) and ioctl(2) are variadic; the third argument is an int or a
+ * pointer, depending on the command. */
+#include <fcntl.h>
+#include <sys/ioctl.h>
+int32_t jacpy_fcntl_int(int32_t fd, int32_t command, int32_t argument) { return fcntl(fd, command, argument); }
+int32_t jacpy_fcntl_pointer(int32_t fd, int32_t command, void *argument) { return fcntl(fd, command, argument); }
+int32_t jacpy_ioctl_int(int32_t fd, uint64_t request, int32_t argument) { return ioctl(fd, (unsigned long)request, argument); }
+int32_t jacpy_ioctl_pointer(int32_t fd, uint64_t request, void *argument) { return ioctl(fd, (unsigned long)request, argument); }
+
+/* getdents64(2) through syscall(2), which is variadic; glibc before 2.30 has
+ * no wrapper. Async-signal-safe: _posixsubprocess lists /proc/self/fd with it
+ * between fork() and exec(). Other systems report ENOSYS. */
+#if defined(__linux__)
+#include <sys/syscall.h>
+int64_t jacpy_getdents64(int32_t fd, void *buffer, int64_t size) { return syscall(SYS_getdents64, fd, buffer, (size_t)size); }
+#else
+int64_t jacpy_getdents64(int32_t fd, void *buffer, int64_t size) { (void)fd; (void)buffer; (void)size; errno = ENOSYS; return -1; }
+#endif
+
+/* Directory iteration. struct dirent's layout and the opendir/readdir symbol
+ * variants differ between C libraries and macOS architectures (x86_64 binds
+ * $INODE64 versions), so both calls and the d_name field stay in C. */
+#include <dirent.h>
+void *jacpy_opendir(const char *path) { return opendir(path); }
+const char *jacpy_readdir_name(void *directory) { struct dirent *entry = readdir((DIR *)directory); return entry ? entry->d_name : NULL; }
+int32_t jacpy_dirfd(void *directory) { return dirfd((DIR *)directory); }
+int32_t jacpy_closedir(void *directory) { return closedir((DIR *)directory); }
+
+/* _PyInterpreterState_GetFinalizing() is static inline. */
+int64_t jacpy_interpreter_finalizing(void) { return _PyInterpreterState_GetFinalizing(_PyInterpreterState_GET()) != NULL; }
 
 /* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and
  * similar unsigned C types: -1 on error, 1 when the value needs more than

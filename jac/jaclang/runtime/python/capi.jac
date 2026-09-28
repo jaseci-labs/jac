@@ -58,6 +58,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_Repr,
     PyPickleBuffer_Type,
     PySet_Type,
+    PySys_AuditTuple,
     PyTuple_New,
     PyTuple_Type,
     PyType_Type,
@@ -191,6 +192,32 @@ def object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
         jacpy_tuple_set_owned(result, i64(i), Py_NewRef(values[i]));
     }
     return result;
+}
+
+# PySys_Audit(event, format, ...): the argument values are owned and released
+# here. False with the exception set when a value is missing or a hook raises.
+def audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
+    complete = True;
+    for value in values {
+        if not value {
+            complete = False;
+        }
+    }
+    status = i32(-1);
+    if complete {
+        arguments = PyTuple_New(i64(len(values)));
+        if arguments {
+            for i in range(len(values)) {
+                jacpy_tuple_set_owned(arguments, i64(i), Py_NewRef(values[i]));
+            }
+            status = PySys_AuditTuple(event, arguments);
+            jacpy_release(arguments);
+        }
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    return status >= 0;
 }
 
 def type_name(value: ptr[PyObject], qualified: bool = False) -> str {

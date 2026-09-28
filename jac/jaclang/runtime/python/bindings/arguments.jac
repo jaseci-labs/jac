@@ -1,6 +1,7 @@
 """Argument ownership and signature binding shared by native Python adapters."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_dict_size,
     jacpy_error_pending,
     jacpy_is_unicode,
     jacpy_list_size,
@@ -91,6 +92,28 @@ obj CallSignature {
         count = int(PyTuple_Size(args));
         if count < 0 {
             return False;
+        }
+        # All-positional signatures fail the way CPython's METH_NOARGS and
+        # _PyArg_CheckPositional() do.
+        if self.positional_only == len(self.names) {
+            if kwargs != 0 and jacpy_dict_size(kwargs) > 0 {
+                return invalid(f"{self.name}() takes no keyword arguments");
+            }
+            if not self.names and count > 0 {
+                return invalid(f"{self.name}() takes no arguments ({count} given)");
+            }
+            if count < self.required_count or count > self.positional_count {
+                fewer = count < self.required_count;
+                limit = self.required_count if fewer else self.positional_count;
+                qualifier = "";
+                if self.required_count != self.positional_count {
+                    qualifier = "at least " if fewer else "at most ";
+                }
+                plural = "" if limit == 1 else "s";
+                return invalid(
+                    f"{self.name} expected {qualifier}{limit} argument{plural}, got {count}"
+                );
+            }
         }
         if count > self.positional_count {
             return invalid(

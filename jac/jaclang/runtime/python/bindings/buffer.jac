@@ -19,6 +19,20 @@ obj BufferArgument {
         return bool(self.view);
     }
 
+    # The "s*" format: a str as its UTF-8 encoding or a contiguous buffer.
+    def acquire_string(value: ptr[PyObject]) -> bool {
+        self.close();
+        self.view = jacpy_buffer_acquire_string(value);
+        return bool(self.view);
+    }
+
+    # PyObject_GetBuffer with PyBUF_* flags, keeping the exporter's exception.
+    def export(value: ptr[PyObject], flags: i64) -> bool {
+        self.close();
+        self.view = jacpy_buffer_export(value, flags);
+        return bool(self.view);
+    }
+
     def owner -> ptr[PyObject] {
         if not self.view {
             return NULL;
@@ -50,13 +64,15 @@ obj BufferArgument {
 }
 
 import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyObject,
-    Py_buffer,
     jacpy_buffer_acquire,
+    jacpy_buffer_acquire_string,
     jacpy_buffer_acquire_writable,
     jacpy_buffer_bytes,
-    jacpy_buffer_release
+    jacpy_buffer_export,
+    jacpy_buffer_release,
+    NULL,
+    Py_buffer,
+    PyObject
 }
 import from c {
     obj BufferLayout {

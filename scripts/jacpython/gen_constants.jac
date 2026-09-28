@@ -38,7 +38,9 @@ glob OUTPUT: Path = RUNTIME / "modules",
          r"\bINS\(\s*(\w+)\s*\)",
          r"\badd_errcode\(\s*\"(\w+)\"",
          r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*\1\s*\)",
-         r"\bADD_INT\(\s*(\w+)\s*\)"
+         r"\bADD_INT\(\s*(\w+)\s*\)",
+         # A static {"NAME", NAME} table (termios), possibly cast to long.
+         r"\{\s*\"(\w+)\"\s*,\s*(?:\(long\)\s*)?\1\s*\}"
      ],
      # Constants published under a name other than their macro's
      # (select's KQ_FILTER_READ is EVFILT_READ): (published, macro) groups.
@@ -66,7 +68,11 @@ glob OUTPUT: Path = RUNTIME / "modules",
          "syslog": ("Modules/syslogmodule.c", ["syslog.h"]),
          "termios": (
              "Modules/termios.c",
-             ["termios.h", "sys/ioctl.h", "sys/termios.h"]
+             ["termios.h", "sys/ioctl.h", "sys/termios.h", "unistd.h"]
+         ),
+         "_posixsubprocess": (
+             "Modules/_posixsubprocess.c",
+             ["unistd.h", "fcntl.h", "errno.h", "signal.h", "limits.h", "sys/syscall.h"]
          ),
          "select": (
              "Modules/selectmodule.c",
@@ -138,7 +144,26 @@ glob OUTPUT: Path = RUNTIME / "modules",
          "resource": ["RLIM_INFINITY", "RLIM_NLIMITS"],
          "time": ["CLOCKS_PER_SEC", "TIMER_ABSTIME"],
          "select": ["FD_SETSIZE", "EPOLL_CTL_ADD", "EPOLL_CTL_MOD", "EPOLL_CTL_DEL"],
-         "mmap": ["_SC_PAGESIZE", "MS_SYNC", "F_FULLFSYNC", "MREMAP_MAYMOVE"]
+         "mmap": ["_SC_PAGESIZE", "MS_SYNC", "F_FULLFSYNC", "MREMAP_MAYMOVE"],
+         "_posixsubprocess": [
+             "O_RDONLY",
+             "ENOENT",
+             "ENOTDIR",
+             "NGROUPS_MAX",
+             "_SC_OPEN_MAX",
+             "SIG_BLOCK",
+             "SIG_SETMASK",
+             "SIGKILL",
+             "SIGSTOP",
+             "SA_SIGINFO",
+             "NSIG"
+         ]
+     },
+     # Aliases the C module defines itself when the headers have only one
+     # spelling: {name: other}, emitted as `#define name other` when only
+     # `other` is defined.
+     ALIASES: dict[str, dict[str, str]] = {
+         "termios": {"VSWTC": "VSWTCH", "VSWTCH": "VSWTC"}
      };
 
 def names_in(source: str) -> list[str] {
@@ -171,6 +196,13 @@ def includes_for(module: str) -> list[str] {
     lines: list[str] = [];
     for header in SOURCES[module][1] {
         lines += [f"#if __has_include(<{header}>)", f"#include <{header}>", "#endif"];
+    }
+    for (name, other) in ALIASES.get(module, {}).items() {
+        lines += [
+            f"#if defined({other}) && !defined({name})",
+            f"#define {name} {other}",
+            "#endif"
+        ];
     }
     return lines;
 }

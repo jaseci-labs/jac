@@ -2,7 +2,8 @@
 
 Native Jac modules call the CPython C API by its own names. This script reads
 every PyAPI_FUNC declaration from the checksum-pinned CPython archive's
-Include/ tree and emits a typed clib declaration for each function the JacPython
+Include/ tree (and Modules/posixmodule.h, which exports the uid/gid
+converters) and emits a typed clib declaration for each function the JacPython
 sources use, so a Jac port reads like the C it replaces:
 
     jac run scripts/jacpython/gen_capi.jac            # rewrite the file
@@ -153,6 +154,8 @@ glob OPAQUE: list[str] = [
          "Py_UCS4": "u32",
          "Py_UCS1": "u8",
          "Py_UCS2": "u16",
+         "uid_t": "u32",
+         "gid_t": "u32",
          "double": "f64",
          "float": "f32"
      },
@@ -174,8 +177,9 @@ glob OPAQUE: list[str] = [
          "PyFloat_Unpack8": {0},
          "PyBytes_DecodeEscape": {0}
      },
-     # `const char *` parameters that read memory the caller holds as a raw
-     # address (a HACL* digest buffer), not a Jac value; they take `ptr`.
+     # Pointer parameters that take memory the caller holds as a raw address
+     # (a HACL* digest buffer, a path read after fork(), an optional out-flag
+     # passed as NULL), not a Jac value; they take `ptr`.
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
          "_Py_strhex": {0},
          "_PyBytes_Find": {0, 2},
@@ -183,7 +187,10 @@ glob OPAQUE: list[str] = [
          "PyUnicode_DecodeLocale": {0},
          "PyMember_GetOne": {0},
          "PyMember_SetOne": {0},
-         "PyUnicode_DecodeLocaleAndSize": {0}
+         "PyUnicode_DecodeLocaleAndSize": {0},
+         "_Py_open_noraise": {0},
+         "jacpy_opendir": {0},
+         "_Py_set_inheritable_async_safe": {2}
      },
      # `void *` out-parameters of converters whose C type the function fixes.
      TYPED_OUT_PARAMETERS: dict[str, dict[int, str]] = {
@@ -192,6 +199,8 @@ glob OPAQUE: list[str] = [
          "_PyLong_UInt16_Converter": {1: "&mut u16"},
          "_PyLong_UInt32_Converter": {1: "&mut u32"}
      },
+     # `void *` converter results that are PyObject ** (PyArg "O&" converters).
+     OBJECT_OUT_PARAMETERS: dict[str, set[int]] = {"PyUnicode_FSConverter": {1}},
      # Pointer out-parameters the Jac side writes through `&mut`.
      OUT_POINTERS: dict[str, str] = {
          "PyObject **": "&mut ptr[PyObject]",
@@ -203,7 +212,9 @@ glob OPAQUE: list[str] = [
          "time_t *": "&mut i64",
          "long *": "&mut i64",
          "size_t *": "&mut u64",
-         "uint64_t *": "&mut u64"
+         "uint64_t *": "&mut u64",
+         "uid_t *": "&mut u32",
+         "gid_t *": "&mut u32"
      },
      KEYWORDS: set[str] = set(
          (
@@ -284,9 +295,10 @@ def declarations(
     for path in sorted(texts) {
         text = plain(texts[path]);
         found = list(re.finditer(API_FUNC, text, re.S));
-        # Internal headers also declare plain `extern` functions. jacpython.o
-        # links into libpython itself, so they resolve like exported ones.
-        if path.startswith("Include/internal/") {
+        # Internal headers (and posixmodule.h) also declare plain `extern`
+        # functions. jacpython.o links into libpython itself, so they resolve
+        # like exported ones.
+        if path.startswith("Include/internal/") or path == "Modules/posixmodule.h" {
             for hit in re.finditer(INTERNAL_EXTERN, text, re.M | re.S) {
                 if '"' not in hit.group(0) {
                     found.append(hit);
@@ -363,12 +375,17 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     if base in POINTER_TYPEDEFS {
         return POINTER_TYPEDEFS[base];
     }
+    if index is not None and base.endswith("*") {
+        if index in ADDRESS_PARAMETERS.get(function, set()) {
+            return "ptr";
+        }
+        if index in OBJECT_OUT_PARAMETERS.get(function, set()) {
+            return "&mut ptr[PyObject]";
+        }
+    }
     if base == "char *" {
         if index is None {
             return "ptr[u8]";
-        }
-        if index in ADDRESS_PARAMETERS.get(function, set()) {
-            return "ptr";
         }
         if index in PAYLOAD_PARAMETERS.get(function, set()) or "const" not in ctype {
             return "bytes";
@@ -583,7 +600,7 @@ with entry:__main__ {
     args = parser.parse_args();
     headers = {
         path: text
-        for (path, text) in archive_texts(("Include/", )).items()
+        for (path, text) in archive_texts(("Include/", "Modules/posixmodule.h")).items()
         if path.endswith(".h")
     };
     functions = declarations(headers);
