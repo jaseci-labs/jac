@@ -235,6 +235,9 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         for p in sig.get_parameters()
         if not (p.is_vararg or p.is_kwargs)
     ];
+    if sig.varargs is not None {
+        self._c_vararg_rewrite(nd, len(decl_params));
+    }
     borrowed: list[tuple[int, list[any]]] = [];
     for (i, p) in enumerate(decl_params) {
         if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
@@ -374,4 +377,31 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
         return False;
     }
     return not is_builtin_addressof_call(nd.parent);
+}
+
+impl JcirGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
+    import from jaclang.compiler.c_interop { c_type_spec }
+    params: list[Expr | KWPair] = list(nd.params or []);
+    call = self.outs(nd)[0] if self.outs(nd) else None;
+    if not isinstance(call, CgNode)
+        or call.cls != 'Call'
+        or any([isinstance(p, KWPair) for p in params]) {
+        return;
+    }
+    call_args = call.get('args');
+    if len(call_args) != len(params) {
+        return;
+    }
+    for i in range(fixed, len(params)) {
+        arg = params[i];
+        if not isinstance(arg, Expr) {
+            continue;
+        }
+        spec = c_type_spec(arg.type, None);
+        call_args[i] = self.call_node(
+            self.builtin_name('_jac_c_vararg'),
+            [call_args[i], self.const_of(json.dumps(spec))],
+            []
+        );
+    }
 }

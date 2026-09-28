@@ -352,6 +352,37 @@ def _spec_scalar_elem(spec: any) -> (str | None) {
     return None;
 }
 
+def c_vararg(value: any, spec_json: str) -> any {
+    spec = json.loads(spec_json);
+    kind = spec[0];
+    if kind == "ptr" {
+        return ctypes.c_void_p(value._addr if isinstance(value, JacPtr) else value);
+    }
+    if kind == "str" {
+        return ctypes.c_char_p(value.encode("utf-8"));
+    }
+    if kind == "bytes" {
+        return ctypes.c_char_p(bytes(value));
+    }
+    if kind == "s" {
+        name = spec[1];
+        ctype = _SCALAR_CTYPES[name];
+        if ctype in (ctypes.c_float, ctypes.c_double) {
+            return ctypes.c_double(value);
+        }
+        if ctypes.sizeof(ctype) < ctypes.sizeof(ctypes.c_int)
+            or ctype is ctypes.c_bool {
+            return ctypes.c_int(int(value));
+        }
+        return ctype(value);
+    }
+    raise TypeError(
+        f"a C variadic argument is a C scalar, ptr, str or bytes, not '{type(
+            value
+        ).__name__}'"
+    );
+}
+
 def c_cell(spec: str, value: any, scope: any) -> CCell {
     return CCell(_resolve_elem(json.loads(spec), scope), value);
 }

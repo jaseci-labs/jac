@@ -306,3 +306,33 @@ with entry {
     assert "imported 12 12" in out.splitlines() , out;
     assert "imported object True" in out.splitlines() , out;
 }
+
+test "C variadic arguments take the C default promotions on every path" {
+    code = '''import from c {
+    def printf(fmt: str, *args: any) -> i32;
+    def fflush(stream: i64) -> i32;
+    def snprintf(buf: ptr[u8], n: i64, fmt: ptr[u8], *args: any) -> i32;
+    def malloc(n: i64) -> ptr[u8];
+    def free(p: ptr[u8]) -> None;
+}
+with entry {
+    printf("plain %d|%lld|%.1f|%u|%d|%s\\n", i32(-7), i64(1) << 40, f32(1.5), u8(200), i8(-3), "jac");
+    fflush(0);
+    buf = malloc(128);
+    n = snprintf(
+        buf, 128, ptr[u8]("%d|%lld|%s|%.2f|%.1f|%u|%d|%s"),
+        i32(-7), i64(1) << 40, ptr[u8]("lit"), 2.5, f32(1.5), u8(200), i8(-3), "jac"
+    );
+    view = buf.view(int(n));
+    print("varargs", "".join([chr(int(view[i])) for i in range(int(n))]));
+    free(buf);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "varargs.jac");
+        Path(path).write_text(code);
+        out = assert_native_identity(path);
+    }
+    assert "plain -7|1099511627776|1.5|200|-3|jac" in out.splitlines() , out;
+    assert "varargs -7|1099511627776|lit|2.50|1.5|200|-3|jac" in out.splitlines() , out;
+}

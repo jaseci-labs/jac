@@ -940,6 +940,8 @@ walker NaIRGenPass(CompilerPass) {
     def _foreign_store_bytes(slot: ir.Value, value: ir.Value, sname: str) -> None;
     def _pinned_value_slot(box: ir.Value) -> ir.Value;
     def _codegen_c_interop_call(nd: uni.FuncCall) -> tuple[bool, (ir.Value | None)];
+    def _c_vararg(arg: uni.Expr) -> (ir.Value | None);
+    def _c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None);
     def _c_ptr_elem_llvm(ptr_type: any) -> (ir.Type | None);
     def _c_ptr_step(
         addr: ir.Value, delta: ir.Value, ptr_type: any, backward: bool
@@ -958,6 +960,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_const_init(
         expr: uni.Expr, ctype: any, llt: ir.Type
     ) -> (ir.Constant | None);
+
     def _c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | None);
     def _c_const_address(expr: uni.Expr) -> (ir.Constant | None);
     def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);

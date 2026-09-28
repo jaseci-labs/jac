@@ -186,6 +186,9 @@ impl NaIRGenPass._codegen_clib_call(
             }
         }
     }
+    for extra in args[len(param_plans):] {
+        call_args.append(extra);
+    }
     _actual_params = func.function_type.args;
     for (k, _ca) in enumerate(call_args) {
         if k < len(_actual_params) and _ca.type != _actual_params[k] {

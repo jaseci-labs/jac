@@ -2528,6 +2528,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _c = self._coerce_type(arg, func.args[i].type);
             coerced.append(_c);
             release_args.append(_c);
+        } elif _is_foreign and func.function_type.var_arg {
+            _va_node = (nd.params or [])[i] if i < len(nd.params or []) else None;
+            _va = self._c_vararg_value(arg, _va_node)
+                if isinstance(_va_node, uni.Expr)
+                else None;
+            if _va is None {
+                return None;
+            }
+            coerced.append(_va);
+            release_args.append(arg);
         } else {
             coerced.append(arg);
             release_args.append(arg);

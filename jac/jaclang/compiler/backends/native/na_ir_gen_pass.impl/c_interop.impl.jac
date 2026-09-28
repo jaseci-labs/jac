@@ -569,7 +569,9 @@ impl NaIRGenPass._codegen_clib_args(
     }
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     param_plans = plan["params"];
-    if len(params) != len(param_plans) {
+    variadic = self.clib_extern_fns[func_name].function_type.var_arg;
+    if len(params) < len(param_plans)
+        or (len(params) > len(param_plans) and not variadic) {
         return None;
     }
     for arg in params {
@@ -625,7 +627,53 @@ impl NaIRGenPass._codegen_clib_args(
         }
         out.append(self.builder.bitcast(tmp, i8p, name=f"clib.spill.arg.{i}"));
     }
+    for arg in params[len(param_plans):] {
+        extra = self._c_vararg(arg) if isinstance(arg, uni.Expr) else None;
+        if extra is None {
+            return None;
+        }
+        out.append(extra);
+    }
     return out;
+}
+
+impl NaIRGenPass._c_vararg(arg: uni.Expr) -> (ir.Value | None) {
+    val = self._codegen_expr(arg);
+    return self._c_vararg_value(val, arg) if val is not None else None;
+}
+
+impl NaIRGenPass._c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None) {
+    b = self.builder;
+    i32 = ir.IntType(32);
+    if isinstance(val.type, ir.IntType) {
+        if val.type.width >= 32 {
+            return val;
+        }
+        if val.type.width == 1 or self._is_unsigned_node(arg) {
+            return b.zext(val, i32, name="c.va.zext");
+        }
+        return b.sext(val, i32, name="c.va.sext");
+    }
+    if isinstance(val.type, ir.FloatType) {
+        return b.fpext(val, ir.DoubleType(), name="c.va.fpext");
+    }
+    if isinstance(val.type, ir.DoubleType) {
+        return val;
+    }
+    if self._type_key_of(arg) == "str" {
+        return self._membrane_str_out(b, self._str_norm(val));
+    }
+    if self._is_bytes_value(val) {
+        return self._bytes_data_ptr(val);
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C variadic argument",
+        name=str(arg.type),
+        help_text="A C variadic argument is a C scalar, `ptr`, `str` or `bytes`; a Jac object has no C representation to pass."
+    );
+    return None;
 }
 
 impl NaIRGenPass._clib_pointer_arg(val: ir.Value) -> ir.Value {
