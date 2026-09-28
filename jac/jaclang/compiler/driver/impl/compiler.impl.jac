@@ -180,7 +180,7 @@ impl JacCompiler._get_bytecode(
             and (native_artifact is None or native_artifact.native_engine is None)
             and self._wants_native_engine(full_target, actual_program) {
             self._load_native_from_cache(
-                full_target, actual_program, self._build_interop_dict(hit_mod)
+                full_target, actual_program, interop_record(hit_mod)
             );
         }
         return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
@@ -330,7 +330,6 @@ impl JacCompiler._load_native_from_cache(
     target_program: JacProgram,
     cached_interop: (dict[str, any] | None)
 ) -> None {
-    """Restore the owned native engine and its import metadata from cache.""";
     import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
     import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
@@ -353,7 +352,7 @@ impl JacCompiler._load_native_from_cache(
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
-        manifest = self._deserialize_interop_table(cached_interop);
+        manifest = interop_manifest_of(cached_interop);
         gen.interop_manifest = manifest;
         import from jaclang.runtime.native_library { SharedNativeEngine }
         if manifest.native_imports and not isinstance(engine, SharedNativeEngine) {
@@ -406,7 +405,6 @@ impl JacCompiler._restore_sections(
             );
         }
     }
-    import pickle;
     client_bytes = secs.get(SEC_CLIENT);
     if client_bytes is not None {
         restored_client = client_artifact_from_bytes(client_bytes);
@@ -417,8 +415,9 @@ impl JacCompiler._restore_sections(
     mtir_bytes = secs.get(SEC_MTIR);
     if mtir_bytes is not None {
         try {
-            mtir_map = pickle.loads(mtir_bytes);
-            actual_program.mtir_map.update(mtir_map);
+            actual_program.mtir_map.update(
+                info_graph_from_json(mtir_bytes.decode("utf-8"))
+            );
         } except Exception {}
     }
 
@@ -621,43 +620,6 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     return None;
 }
 
-impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
-    manifest = result.gen.interop_manifest;
-    if manifest is None {
-        return {};
-    }
-    interop_data: dict[str, any] = {
-        'bindings': {},
-        'clib_paths': list(result.gen._clib_paths),
-        'clib_symbol_lib': dict(result.gen._clib_symbol_lib),
-        'exported_symbols': list(result.gen._exported_symbols)
-    };
-    for (name, binding) in manifest.bindings.items() {
-        interop_data['bindings'][name] = {
-            'name': binding.name,
-            'source_context': binding.source_context.value,
-            'callers': [c.value for c in binding.callers],
-            'ret_type': binding.ret_type,
-            'param_types': binding.param_types,
-            'param_names': binding.param_names,
-            'source_module': binding.source_module,
-            'kind': binding.kind,
-            'provider_app': binding.provider_app,
-            'native_contract': binding.native_contract,
-            'endpoint_id': binding.endpoint_id
-        };
-    }
-
-    interop_data['surface'] = {
-        name: rec.to_dict() for (name, rec) in manifest.surface.items()
-    };
-    interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
-    interop_data['native_host_imports'] = dict(manifest.native_host_imports);
-    interop_data['app_edges'] = list(manifest.app_edges);
-    interop_data['provider_routes'] = dict(manifest.provider_routes);
-    return interop_data;
-}
-
 impl JacCompiler._restore_native_clibs(
     gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
 ) -> None {
@@ -668,46 +630,6 @@ impl JacCompiler._restore_native_clibs(
     gen._clib_paths.extend(cached_interop['clib_paths']);
     gen._clib_symbol_lib.update(cached_interop.get('clib_symbol_lib', {}));
     gen._exported_symbols.extend(cached_interop.get('exported_symbols', []));
-}
-
-impl JacCompiler._deserialize_interop_table(
-    cached_interop: dict[str, any]
-) -> InteropManifest {
-    import from jaclang.compiler.frontend.codeinfo {
-        InteropManifest,
-        InteropBinding,
-        InteropContext
-    }
-    manifest = InteropManifest();
-    cached_bindings: dict[str, dict[str, any]] = cached_interop.get('bindings', {});
-    for (name, data) in cached_bindings.items() {
-        binding = InteropBinding(
-            name=data['name'],
-            source_context=InteropContext(data['source_context']),
-            callers={InteropContext(c) for c in data.get('callers', [])},
-            ret_type=data.get('ret_type', 'int'),
-            param_types=data.get('param_types', []),
-            param_names=data.get('param_names', []),
-            source_module=data.get('source_module'),
-            kind=data.get('kind', 'function'),
-            provider_app=data['provider_app'],
-            native_contract=data['native_contract'],
-            endpoint_id=data['endpoint_id']
-        );
-        manifest.bindings[name] = binding;
-    }
-    import from jaclang.runtime.surface { SurfaceEntry }
-    manifest.surface.update(
-        {
-            str(name): SurfaceEntry.from_dict(str(name), dict(rec))
-            for (name, rec) in dict(cached_interop.get('surface', {}) or {}).items()
-        }
-    );
-    manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
-    manifest.native_host_imports.update(cached_interop['native_host_imports']);
-    manifest.app_edges.extend(cached_interop['app_edges']);
-    manifest.provider_routes.update(cached_interop['provider_routes']);
-    return manifest;
 }
 
 impl JacCompiler.compile(
@@ -863,47 +785,10 @@ impl JacCompiler._persist_module_cache(
         return;
     }
     try {
-        import pickle;
-        import json;
-        import zlib;
-        sections: dict[int, bytes] = {};
-        sections[SEC_BYTECODE] = cache_bc;
-        if actual_program.mtir_map {
-            sections[SEC_MTIR] = pickle.dumps(
-                actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
-            );
-        }
-
+        sections = unit_sections(unit_products(result, actual_program), cache_bc);
         registry = actual_program.native_units();
         if registry.record_module(result, actual_program.options) is not None {
             sections.update(registry.product_sections(full_target));
-        }
-        interop_dict = self._build_interop_dict(result);
-        if interop_dict {
-            sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
-        }
-        client_artifact = self.client_artifact_of(result);
-        if client_artifact is not None {
-            try {
-                sections[SEC_CLIENT] = client_artifact_bytes(client_artifact);
-            } except Exception {}
-        }
-        try {
-            import from jaclang.compiler.placement.placement { get_module_summary }
-            import from jaclang.compiler.placement.placement_export { summary_to_bytes }
-            sections[SEC_PLACEMENT] = summary_to_bytes(
-                get_module_summary(result, actual_program)
-            );
-        } except Exception {}
-        import from jaclang.compiler.driver.jir {
-            SEC_CTDEPS,
-            ct_deps_section,
-            write_module_cache
-        }
-        if result.ct_file_deps {
-            sections[SEC_CTDEPS] = ct_deps_section(
-                result.ct_file_deps, result.ct_body_deps
-            );
         }
         write_module_cache(full_target, cache_bc, extra_sections=sections);
     } except Exception {}
@@ -922,18 +807,14 @@ impl JacCompiler._persist_native_unit(
         registry = actual_program.native_units();
         registry.record_module(result, actual_program.options);
         sections = registry.product_sections(full_target);
-        interop_dict = self._build_interop_dict(result);
-        if interop_dict {
-            import json;
-            sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
+        interop = interop_record(result);
+        if interop {
+            sections[SEC_INTEROP] = json.dumps(interop).encode('utf-8');
         }
-        try {
-            import from jaclang.compiler.placement.placement { get_module_summary }
-            import from jaclang.compiler.placement.placement_export { summary_to_bytes }
-            sections[SEC_PLACEMENT] = summary_to_bytes(
-                get_module_summary(result, actual_program)
-            );
-        } except Exception {}
+        placement = placement_record(result, actual_program);
+        if placement {
+            sections[SEC_PLACEMENT] = placement.encode('utf-8');
+        }
         write_module_cache(full_target, None, extra_sections=sections);
     } except Exception as exc {
         import logging;
@@ -1094,59 +975,6 @@ impl JacCompiler.ensure_client_codegen(
     return require_product(target_program, mod, CompilationProduct.CLIENT);
 }
 
-impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) {
-    import from jaclang.compiler.frontend.codeinfo { ClientArtifact }
-    js = mod.gen.js;
-    if not js {
-        return None;
-    }
-    native_sources: list[str] = [];
-    if mod.declares_codespace(CodeContext.NATIVE) {
-        native_sources.append(mod.loc.mod_path);
-    }
-    for binding in mod.gen.interop_manifest.client_native_imports {
-        if binding.source_module {
-            native_sources.append(str(binding.source_module));
-        }
-    }
-    segments: list[tuple[int, int, int, int, str]] = [];
-    import from jaclang.compiler.backends.es.estree { Node as EsNode }
-    es_ast = mod.gen.es_ast;
-    if isinstance(es_ast, EsNode) {
-        try {
-            import from jaclang.compiler.backends.es.es_unparse { es_to_js_with_map }
-            (_, segments) = es_to_js_with_map(es_ast);
-        } except Exception {
-            segments = [];
-        }
-    }
-    manifest = mod.gen.client_manifest;
-    digests: dict[str, str] = {};
-    for dep_path in manifest.imports.values() {
-        dep = str(dep_path);
-        if not os.path.isfile(dep) {
-            continue;
-        }
-        try {
-            digests[dep] = compute_content_sha256(dep);
-        } except OSError {
-            continue;
-        }
-    }
-    import from jaclang.compiler.backends.es.backends.registry {
-        resolve_active_backend
-    }
-    return ClientArtifact(
-        js=js,
-        manifest=manifest,
-        native_import_sources=native_sources,
-        source_map=segments,
-        dep_digests=digests,
-        boundary_contracts=self._build_interop_dict(mod),
-        framework=resolve_active_backend().name()
-    );
-}
-
 impl JacCompiler._cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
     (rebuild, _no_precompile) = cache_mode();
     if rebuild {
@@ -1222,7 +1050,7 @@ impl JacCompiler._get_client_artifact(
         if not self.ensure_client_codegen(ready, actual_program) {
             return None;
         }
-        built = self.client_artifact_of(ready);
+        built = built_client_artifact(ready);
         if built is not None {
             actual_program.hub.client_artifacts[full_target] = built;
             self._persist_client_artifact(full_target, built);
@@ -1262,7 +1090,7 @@ impl JacCompiler._get_client_artifact(
     if not self.ensure_client_codegen(compiled, actual_program) {
         return None;
     }
-    built = self.client_artifact_of(compiled);
+    built = built_client_artifact(compiled);
     if built is not None {
         actual_program.hub.client_artifacts[full_target] = built;
         self._persist_module_cache(full_target, compiled, actual_program);

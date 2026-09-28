@@ -1,6 +1,7 @@
 import type from jaclang.runtime.native_library { SharedNativeEngine }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
+import json;
 import marshal;
 import os;
 import sys;
@@ -14,7 +15,9 @@ import from jaclang.compiler.driver.jir {
     SEC_NOBJ,
     SEC_PLACEMENT,
     SEC_CLIENT,
+    SEC_CTDEPS,
     FLAG_PRECOMPILED,
+    ct_deps_section,
     compute_content_sha256,
     get_module_cache_path,
     is_module_cache_valid,
@@ -30,9 +33,20 @@ import from jaclang.compiler.driver.jir {
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.frontend.codeinfo {
-    ClientArtifact,
     CodeGenTarget,
     NativeModuleLayout
+}
+import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
+import from jaclang.runtime.semantic { info_graph_from_json }
+import from jaclang.compiler.driver.unit_products {
+    UnitProducts,
+    client_artifact_from_json,
+    client_artifact_json,
+    client_artifact_of,
+    interop_manifest_of,
+    interop_record,
+    placement_record,
+    unit_products
 }
 import from jaclang.project.textio { read_file_with_encoding }
 import from jaclang.compiler.frontend.constant { CodeContext }
@@ -61,62 +75,77 @@ import from jaclang.compiler.driver.source_failures {
 }
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
-     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10),
-     CLIENT_SECTION_VERSION: int = 3;
+     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10);
+
+def client_dep_digests(manifest: ClientManifest) -> dict[str, str] {
+    digests: dict[str, str] = {};
+    for dep_path in manifest.imports.values() {
+        dep = str(dep_path);
+        if not os.path.isfile(dep) {
+            continue;
+        }
+        try {
+            digests[dep] = compute_content_sha256(dep);
+        } except OSError {
+            continue;
+        }
+    }
+    return digests;
+}
+
+def stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact {
+    artifact.dep_digests = client_dep_digests(artifact.manifest);
+    return artifact;
+}
+
+def built_client_artifact(module: uni.Module) -> (ClientArtifact | None) {
+    artifact = client_artifact_of(module);
+    return stamp_client_artifact(artifact) if artifact is not None else None;
+}
 
 def client_artifact_bytes(artifact: ClientArtifact) -> bytes {
-    import pickle;
-    return pickle.dumps(
-        (
-            CLIENT_SECTION_VERSION,
-            artifact.js,
-            artifact.manifest,
-            list(artifact.native_import_sources),
-            list(artifact.source_map),
-            dict(artifact.dep_digests),
-            artifact.framework,
-            artifact.boundary_contracts
-        ),
-        int(pickle.HIGHEST_PROTOCOL)
-    );
+    return client_artifact_json(artifact).encode("utf-8");
 }
 
 def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
-    import pickle;
-    import from jaclang.compiler.frontend.codeinfo {
-        ClientArtifact as _ClientArtifact,
-        ClientManifest
-    }
     try {
-        (
-            version,
-            js,
-            manifest,
-            native_import_sources,
-            source_map,
-            dep_digests,
-            framework,
-            boundary_contracts
-        ) = pickle.loads(raw);
-    } except Exception {
+        text = raw.decode("utf-8");
+    } except UnicodeDecodeError {
         return None;
     }
-    if version != CLIENT_SECTION_VERSION
-        or not isinstance(js, str)
-        or not isinstance(manifest, ClientManifest) {
-        return None;
+    return client_artifact_from_json(text);
+}
+
+def unit_sections(
+    products: UnitProducts, bytecode: (bytes | None)
+) -> dict[int, bytes] {
+    sections: dict[int, bytes] = {};
+    if bytecode is not None {
+        sections[SEC_BYTECODE] = bytecode;
     }
-    return _ClientArtifact(
-        js=js,
-        manifest=manifest,
-        native_import_sources=[str(s) for s in native_import_sources],
-        source_map=[tuple(seg) for seg in source_map],
-        dep_digests={
-            str(k): str(v) for (k, v) in dict[object, object](dep_digests).items()
-        },
-        framework=str(framework),
-        boundary_contracts=dict(boundary_contracts)
-    );
+    if products.mtir {
+        sections[SEC_MTIR] = products.mtir.encode("utf-8");
+    }
+    if products.interop {
+        sections[SEC_INTEROP] = products.interop.encode("utf-8");
+    }
+    if products.client {
+        artifact = client_artifact_from_json(products.client);
+        if artifact is not None {
+            sections[SEC_CLIENT] = client_artifact_bytes(
+                stamp_client_artifact(artifact)
+            );
+        }
+    }
+    if products.placement {
+        sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
+    }
+    if products.ct_file_deps {
+        sections[SEC_CTDEPS] = ct_deps_section(
+            products.ct_file_deps, products.ct_body_deps
+        );
+    }
+    return sections;
 }
 
 obj HostCompileFrame(CompileFrame) {
@@ -174,7 +203,6 @@ obj JacCompiler(SessionHooks) {
     ) -> (uni.Module | None);
 
     def ensure_client_codegen(mod: uni.Module, target_program: JacProgram) -> bool;
-    def client_artifact_of(mod: uni.Module) -> (ClientArtifact | None);
     def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
@@ -199,12 +227,10 @@ obj JacCompiler(SessionHooks) {
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None);
-    def _build_interop_dict(result: uni.Module) -> dict[str, any];
     def _restore_native_clibs(
         gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
     ) -> None;
 
-    def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def _persist_module_cache(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;

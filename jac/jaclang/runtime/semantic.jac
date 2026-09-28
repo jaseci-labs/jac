@@ -77,3 +77,262 @@ def type_to_str(t: (Info | TypeForm | str | None)) -> str {
     }
     return t.name;
 }
+
+glob INFO_GRAPH_VERSION: int = 1;
+
+obj InfoGraphWriter {
+    has nodes: list[dict[str, object]] = [],
+        index: dict[int, int] = {};
+
+    def ref(item: (Info | TypeForm | str | None)) -> object {
+        if item is None or isinstance(item, str) {
+            return item;
+        }
+        found = self.index.get(id(item));
+        if found is not None {
+            return {"n": found};
+        }
+        slot = len(self.nodes);
+        self.index[id(item)] = slot;
+        record: dict[str, object] = {};
+        self.nodes.append(record);
+        self.fill(record, item);
+        return {"n": slot};
+    }
+
+    def refs(items: Sequence[(Info | TypeForm | str | None)]) -> list[object] {
+        return [self.ref(item) for item in items];
+    }
+
+    def fill(record: dict[str, object], item: (Info | TypeForm)) {
+        if isinstance(item, TypeForm) {
+            record["k"] = "form";
+            record["head"] = item.head;
+            record["args"] = self.refs(item.args);
+            return;
+        }
+        record["name"] = item.name;
+        record["semstr"] = item.semstr;
+        if isinstance(item, ClassInfo) {
+            record["k"] = "class";
+            record["fields"] = self.refs(item.fields);
+            record["bases"] = self.refs(item.base_classes);
+            record["methods"] = self.refs(item.methods);
+        } elif isinstance(item, EnumInfo) {
+            record["k"] = "enum";
+            record["members"] = self.refs(item.members);
+        } elif isinstance(item, FunctionInfo) {
+            record["k"] = "method" if isinstance(item, MethodInfo) else "func";
+            record["params"] = self.refs(item.params or []);
+            record["returns"] = self.ref(item.return_type);
+            record["tools"] = self.refs(item.tools or []);
+            record["by_call"] = item.by_call;
+            if isinstance(item, MethodInfo) {
+                record["parent"] = self.ref(item.parent_class);
+            }
+        } elif isinstance(item, VarInfo) {
+            record["k"] = "param"
+                if isinstance(item, ParamInfo)
+                else ("field" if isinstance(item, FieldInfo) else "var");
+            record["type"] = self.ref(item.type_info);
+        } else {
+            record["k"] = "info";
+        }
+    }
+}
+
+obj InfoGraphReader {
+    has records: list[dict[str, object]],
+        built: list[(Info | TypeForm)] = [];
+
+    def shell(record: dict[str, object]) -> (Info | TypeForm) {
+        kind = str(record.get("k", "info"));
+        name = str(record.get("name", ""));
+        raw_semstr = record.get("semstr");
+        semstr = str(raw_semstr) if raw_semstr is not None else None;
+        if kind == "form" {
+            return TypeForm(head=str(record.get("head", "")));
+        }
+        if kind == "class" {
+            return ClassInfo(
+                name=name, semstr=semstr, fields=[], base_classes=[], methods=[]
+            );
+        }
+        if kind == "enum" {
+            return EnumInfo(name=name, semstr=semstr, members=[]);
+        }
+        if kind == "method" {
+            return MethodInfo(name=name, semstr=semstr);
+        }
+        if kind == "func" {
+            return FunctionInfo(name=name, semstr=semstr);
+        }
+        if kind == "param" {
+            return ParamInfo(name=name, semstr=semstr);
+        }
+        if kind == "field" {
+            return FieldInfo(name=name, semstr=semstr);
+        }
+        if kind == "var" {
+            return VarInfo(name=name, semstr=semstr);
+        }
+        return Info(name=name, semstr=semstr);
+    }
+
+    def find(raw: object) -> (Info | TypeForm | None) {
+        if isinstance(raw, dict) {
+            slot = raw.get("n");
+            if isinstance(slot, int) and 0 <= slot < len(self.built) {
+                return self.built[slot];
+            }
+        }
+        return None;
+    }
+
+    def find_all(raw: object) -> list[(Info | TypeForm | None)] {
+        if not isinstance(raw, list) {
+            return [];
+        }
+        return [self.find(item) for item in raw];
+    }
+
+    def type_ref(raw: object) -> (ClassInfo | EnumInfo | TypeForm | str | None) {
+        if isinstance(raw, str) {
+            return raw;
+        }
+        found = self.find(raw);
+        if isinstance(found, (ClassInfo, EnumInfo, TypeForm)) {
+            return found;
+        }
+        return None;
+    }
+
+    def type_refs(raw: object) -> list[(ClassInfo | EnumInfo | TypeForm | str | None)] {
+        if not isinstance(raw, list) {
+            return [];
+        }
+        return [self.type_ref(item) for item in raw];
+    }
+
+    def fields(raw: object) -> list[FieldInfo] {
+        out: list[FieldInfo] = [];
+        for found in self.find_all(raw) {
+            if isinstance(found, FieldInfo) {
+                out.append(found);
+            }
+        }
+        return out;
+    }
+
+    def classes(raw: object) -> list[ClassInfo] {
+        out: list[ClassInfo] = [];
+        for found in self.find_all(raw) {
+            if isinstance(found, ClassInfo) {
+                out.append(found);
+            }
+        }
+        return out;
+    }
+
+    def methods(raw: object) -> list[MethodInfo] {
+        out: list[MethodInfo] = [];
+        for found in self.find_all(raw) {
+            if isinstance(found, MethodInfo) {
+                out.append(found);
+            }
+        }
+        return out;
+    }
+
+    def params(raw: object) -> list[ParamInfo] {
+        out: list[ParamInfo] = [];
+        for found in self.find_all(raw) {
+            if isinstance(found, ParamInfo) {
+                out.append(found);
+            }
+        }
+        return out;
+    }
+
+    def functions(raw: object) -> list[FunctionInfo] {
+        out: list[FunctionInfo] = [];
+        for found in self.find_all(raw) {
+            if isinstance(found, FunctionInfo) {
+                out.append(found);
+            }
+        }
+        return out;
+    }
+
+    def build -> list[(Info | TypeForm)] {
+        self.built = [self.shell(record) for record in self.records];
+        for (item, record) in zip(self.built, self.records) {
+            if isinstance(item, TypeForm) {
+                item.args = self.type_refs(record.get("args"));
+            } elif isinstance(item, ClassInfo) {
+                item.fields = self.fields(record.get("fields"));
+                item.base_classes = self.classes(record.get("bases"));
+                item.methods = self.methods(record.get("methods"));
+            } elif isinstance(item, EnumInfo) {
+                item.members = self.fields(record.get("members"));
+            } elif isinstance(item, FunctionInfo) {
+                item.params = self.params(record.get("params"));
+                item.return_type = self.type_ref(record.get("returns"));
+                item.tools = self.functions(record.get("tools"));
+                item.by_call = bool(record.get("by_call", False));
+                if isinstance(item, MethodInfo) {
+                    parent = self.find(record.get("parent"));
+                    item.parent_class = parent
+                        if isinstance(parent, ClassInfo)
+                        else None;
+                }
+            } elif isinstance(item, VarInfo) {
+                item.type_info = self.type_ref(record.get("type"));
+            }
+        }
+        return self.built;
+    }
+}
+
+def info_graph_to_json(entries: dict[str, Info]) -> str {
+    import json;
+    writer = InfoGraphWriter();
+    keyed: dict[str, object] = {};
+    for (key, info) in entries.items() {
+        keyed[key] = writer.ref(info);
+    }
+    return json.dumps(
+        {"version": INFO_GRAPH_VERSION, "entries": keyed, "nodes": writer.nodes},
+        sort_keys=True
+    );
+}
+
+def info_graph_from_json(text: str) -> dict[str, Info] {
+    import json;
+    raw = json.loads(text);
+    out: dict[str, Info] = {};
+    if not isinstance(raw, dict) or raw.get("version") != INFO_GRAPH_VERSION {
+        return out;
+    }
+    records: list[dict[str, object]] = [];
+    raw_nodes = raw.get("nodes");
+    if isinstance(raw_nodes, list) {
+        for record in raw_nodes {
+            if isinstance(record, dict) {
+                records.append(record);
+            }
+        }
+    }
+    reader = InfoGraphReader(records=records);
+    reader.build();
+    raw_entries = raw.get("entries");
+    if isinstance(raw_entries, dict) {
+        for (key, ref) in raw_entries.items() {
+            found = reader.find(ref);
+            if isinstance(found, Info) {
+                out[str(key)] = found;
+            }
+        }
+    }
+    return out;
+}
