@@ -1257,6 +1257,9 @@ walker NaIRGenPass(CompilerPass) {
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
+    def _declare_clib_struct(decl: uni.Archetype) -> (str | None);
+    def _lower_clib_struct(decl: uni.Archetype) -> None;
+    def _adopt_foreign_struct(t: any) -> (str | None);
     def _process_clib_imports(module: uni.Module) -> None;
     def _declare_pending_clib_globals -> None;
     def _declare_pending_clib_abilities -> None;

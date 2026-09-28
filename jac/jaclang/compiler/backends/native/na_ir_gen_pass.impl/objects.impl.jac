@@ -533,6 +533,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
                     _cf_fnty = isinstance(var?.type, _ClibFnType);
                 } except ImportError {}
                 _nested = self._foreign_struct_name_of_type(var?.type);
+                if _nested is None and not _cf_fnty {
+                    _nested = self._adopt_foreign_struct(var?.type);
+                }
                 if _cf_fnty {
                     ftype = self._lower_clib_function_type(arch_name, fname, var.type);
                 } elif _nested is not None and _nested in self.struct_types {
