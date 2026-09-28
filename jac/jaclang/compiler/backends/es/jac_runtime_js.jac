@@ -1607,7 +1607,8 @@ def _build_types_runtime_js -> str {
     import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
     import from jaclang.compiler.backends.es.primitives_es {
         ESBuiltinEmitter,
-        ESEmitCtx
+        ESEmitCtx,
+        es_sized_cast
     }
     emitter = ESBuiltinEmitter();
     ctx = ESEmitCtx(unparser=JSCodeGenerator());
@@ -1627,7 +1628,7 @@ def _build_types_runtime_js -> str {
                 if has_emitter {
                     bodies.append(emitter.dispatch_static(name, ctx, argv));
                 } else {
-                    bodies.append(emitter.emit_sized_cast(name, argv));
+                    bodies.append(es_sized_cast(name, argv));
                 }
             } except Exception {
                 bodies.append(None);

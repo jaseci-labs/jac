@@ -473,9 +473,9 @@ reference for `na → na`.
 
 `get_py_code_gen` returns the codegen schedule. All three backends read the
 same module facts -- [`ModuleFacts`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/module_facts.jac)
-(context-tagged statements, woven annex segments, erased type declarations)
--- and the AST-emitting passes share
-[`BaseAstGenPass`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/common/ast_gen_base.jac).
+(context-tagged statements, woven annex segments and the merged module body,
+erased type declarations). The AST-emitting passes are plain tree passes that
+walk the woven body `ModuleFacts.merged_body` returns.
 **Each pass only emits nodes whose `code_context` matches its target**. A node tagged `CLIENT` is
 invisible to the Python codegen and vice versa.
 

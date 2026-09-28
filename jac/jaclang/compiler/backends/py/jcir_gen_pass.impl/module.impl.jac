@@ -154,7 +154,7 @@ impl JcirGenPass.exit_module with Module exit {
             )
         );
     }
-    merged_body = merge_module_bodies(here);
+    merged_body = ModuleFacts.merged_body(here);
     body_items: list[CgItem] = [];
     if here.doc {
         body_items.append(
@@ -214,8 +214,7 @@ impl JcirGenPass.exit_module with Module exit {
             body_items.extend(stmts);
         }
     }
-    new_body = flatten_ast_list(body_items);
-    module = self.nod('Module', ['body', 'type_ignores'], [new_body, []]);
+    module = self.nod('Module', ['body', 'type_ignores'], [body_items, []]);
     self.set_out(here, [module]);
     self._module_root = module;
     self._module_path = here.loc.mod_path;
@@ -285,10 +284,14 @@ impl JcirGenPass.exit_type_alias with TypeAlias exit {
 }
 
 impl JcirGenPass.exit_global_vars with GlobalVars exit {
-    assigns_ast = flatten_ast_list([self.outs(a) for a in here.assignments]);
+    assigns_ast: list[CgItem] = [];
+    for assignment in here.assignments {
+        assigns_ast.extend(self.outs(assignment));
+    }
     if here.doc {
         doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
-        self.set_out(here, [doc] + assigns_ast);
+        assigns_ast.insert(0, doc);
+        self.set_out(here, assigns_ast);
     } else {
         self.set_out(here, assigns_ast);
     }

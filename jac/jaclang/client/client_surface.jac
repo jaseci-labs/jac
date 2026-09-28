@@ -67,20 +67,19 @@ def _required_runtime_globals(
 def with_runtime_globals(
     js_code: str, backend: (FrameworkBackend | None) = None
 ) -> str {
-    import re;
+    import from jaclang.compiler.backends.es.free_ident_audit {
+        js_identifiers,
+        js_top_level_declarations
+    }
     (names, src) = _required_runtime_globals(backend);
-    missing = [
-        name
-        for name in names
-        if re.search(r"\b" + re.escape(name) + r"\b", js_code) is not None
-            and re.search(
-                r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+"
-                    + re.escape(name)
-                    + r"\b",
-                js_code
-            )
-                is None
-    ];
+    referenced = set(js_identifiers(js_code));
+    declared = js_top_level_declarations(js_code);
+    missing: list[str] = [];
+    for name in names {
+        if name in referenced and name not in declared {
+            missing.append(name);
+        }
+    }
     if not missing {
         return js_code;
     }

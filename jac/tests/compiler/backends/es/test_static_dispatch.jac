@@ -64,7 +64,7 @@ test "every primitive emitter interface names each of its emit methods" {
 
 test "the ES builtin emitter names its own builtins too" {
     emitter = pes.ESBuiltinEmitter();
-    expected = emit_names(pes.ESBuiltinEmitter, 3) - {"sized_cast"};
+    expected = emit_names(pes.ESBuiltinEmitter, 3);
     named = set(emitter.static_names());
     assert named == expected , sorted(named ^ expected);
 }

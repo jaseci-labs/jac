@@ -275,8 +275,13 @@ def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
             "diagnostic; this is a compiler bug -- please report it"
         );
     }
+    from_pass: type = JcirGenPass;
     native = native_codegen();
-    from_pass: type = native()[-1] if native is not None else JcirGenPass;
+    if native is not None {
+        for step in native() {
+            from_pass = step;
+        }
+    }
     deliver_alerts(
         [
             Alert(

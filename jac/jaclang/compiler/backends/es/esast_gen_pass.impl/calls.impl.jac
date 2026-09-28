@@ -1283,9 +1283,7 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
             _result = None;
             try {
                 if _sized_cast {
-                    _result = self._builtin_emitter.emit_sized_cast(
-                        _builtin_name, _args_strs
-                    );
+                    _result = es_sized_cast(_builtin_name, _args_strs);
                 } else {
                     _result = self._builtin_emitter.dispatch_static(
                         _builtin_name, _ctx, _args_strs

@@ -211,33 +211,3 @@ def collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
     }
     return rows_by_module;
 }
-
-def sealed_spaces_for(source_path: str) -> (set[str] | None) {
-    ap = os.path.abspath(source_path);
-    d = os.path.dirname(ap);
-    while True {
-        mf = os.path.join(d, "_precompiled", "MANIFEST.json");
-        if os.path.isfile(mf) {
-            break;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
-    }
-    try {
-        with open(mf, "r") as f {
-            manifest = json.load(f);
-        }
-    } except Exception {
-        return None;
-    }
-    placement: any = manifest.get("placement") or {};
-    rel = os.path.relpath(ap, d).replace(os.sep, "/");
-    spaces = placement.get(rel);
-    if spaces is None {
-        return None;
-    }
-    return set(spaces);
-}

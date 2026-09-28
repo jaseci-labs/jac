@@ -97,14 +97,26 @@ def literal_to_json(value: any) -> dict[str, any] {
     if isinstance(value, bytes) {
         return {"b": base64.b64encode(value).decode("ascii")};
     }
+    if isinstance(value, dict) {
+        pairs: list[any] = [];
+        for (key, item) in value.items() {
+            pair: list[any] = [str(key), literal_to_json(item)];
+            pairs.append(pair);
+        }
+        return {"d": pairs};
+    }
+    items: list[any] = [];
     if isinstance(value, tuple) {
-        return {"t": [literal_to_json(item) for item in value]};
+        for item in value {
+            items.append(literal_to_json(item));
+        }
+        return {"t": items};
     }
     if isinstance(value, list) {
-        return {"l": [literal_to_json(item) for item in value]};
-    }
-    if isinstance(value, dict) {
-        return {"d": [[str(k), literal_to_json(v)] for (k, v) in value.items()]};
+        for item in value {
+            items.append(literal_to_json(item));
+        }
+        return {"l": items};
     }
     return {"v": str(value)};
 }

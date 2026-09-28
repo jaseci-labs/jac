@@ -115,7 +115,6 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.passes.freeze_structure_pass"),
          NativeScopeEntry(module="jaclang.compiler.passes.osp_analysis"),
          NativeScopeEntry(module="jaclang.compiler.placement.placement_export"),
-         NativeScopeEntry(module="jaclang.compiler.backends.common.ast_gen_base"),
          NativeScopeEntry(module="jaclang.compiler.backends.common.fmt_kernel"),
          NativeScopeEntry(module="jaclang.compiler.backends.common.primitives"),
          NativeScopeEntry(module="jaclang.compiler.backends.py.codegen_ir"),

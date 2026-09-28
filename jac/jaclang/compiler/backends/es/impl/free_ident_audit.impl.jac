@@ -181,6 +181,53 @@ impl js_identifiers(text: str) -> list[str] {
     return out;
 }
 
+glob _TOP_LEVEL_DECL_KEYWORDS: set[str] = {
+         "function",
+         "const",
+         "let",
+         "var",
+         "class"
+     };
+
+def _leading_word(line: str, start: int) -> tuple[str, int] {
+    end = start;
+    while end < len(line) and _js_ident_part(line[end]) {
+        end += 1;
+    }
+    return (line[start:end], end);
+}
+
+def _skip_spaces(line: str, start: int) -> int {
+    at = start;
+    while at < len(line) and line[at].isspace() {
+        at += 1;
+    }
+    return at;
+}
+
+impl js_top_level_declarations(code: str) -> set[str] {
+    names: set[str] = set();
+    for line in code.split("\n") {
+        (word, at) = _leading_word(line, 0);
+        for prefix in ["export", "async"] {
+            if word == prefix and at < len(line) and line[at].isspace() {
+                (word, at) = _leading_word(line, _skip_spaces(line, at));
+            }
+        }
+        if word not in _TOP_LEVEL_DECL_KEYWORDS
+            or at >= len(line)
+            or not line[at].isspace() {
+            continue;
+        }
+        at = _skip_spaces(line, at);
+        if at < len(line) and _js_ident_start(line[at]) {
+            (name, _end) = _leading_word(line, at);
+            names.add(name);
+        }
+    }
+    return names;
+}
+
 def _word_char(ch: str) -> bool {
     return ch.isalnum() or ch == "_";
 }

@@ -148,10 +148,6 @@ import from jaclang.compiler.backends.py.jcir_facts {
     JCIR_BUILTIN_NAMES,
     jcir_is_test_path
 }
-import from jaclang.compiler.backends.common.ast_gen_base {
-    flatten_ast_list,
-    merge_module_bodies
-}
 import from jaclang.compiler.passes.context { TreePass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.diagnostics {

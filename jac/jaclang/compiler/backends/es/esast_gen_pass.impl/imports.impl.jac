@@ -542,14 +542,20 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
     pending: list[any] = [value_body];
     while pending {
         value = pending.pop();
-        if isinstance(value, (es.Identifier, es.JsxIdentifier)) {
+        if isinstance(value, es.Identifier) {
+            referenced.update(js_identifiers(value.name));
+        } elif isinstance(value, es.JsxIdentifier) {
             referenced.update(js_identifiers(value.name));
         } elif isinstance(value, es.RawCode) {
             referenced.update(js_identifiers(value.code));
         } elif isinstance(value, es.Node) {
-            pending.extend(es.es_children(value).values());
-        } elif isinstance(value, (list, tuple)) {
-            pending.extend(value);
+            for (_field, child) in es.es_children(value).items() {
+                pending.append(child);
+            }
+        } elif isinstance(value, list) {
+            for item in value {
+                pending.append(item);
+            }
         }
     }
     for stmt in program.body {

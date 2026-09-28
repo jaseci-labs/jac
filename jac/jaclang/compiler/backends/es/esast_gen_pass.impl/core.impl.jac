@@ -27,18 +27,26 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
         return expr.lit_value;
     }
     if isinstance(expr, uni.MultiString) {
-        parts: list[any] = [];
+        text_parts: list[str] = [];
+        byte_parts: list[bytes] = [];
         for segment in expr.strings {
-            if isinstance(segment, uni.String) {
-                parts.append(segment.lit_value);
-            } else {
+            if not isinstance(segment, uni.String) {
                 return None;
             }
+            part = segment.lit_value;
+            if isinstance(part, `bytes) {
+                byte_parts.append(part);
+            } elif isinstance(part, str) {
+                text_parts.append(part);
+            }
         }
-        if parts and isinstance(parts[0], `bytes) {
-            return b''.join(parts);
+        if byte_parts and text_parts {
+            return None;
         }
-        return ''.join(parts);
+        if byte_parts {
+            return b''.join(byte_parts);
+        }
+        return ''.join(text_parts);
     }
     if isinstance(expr, uni.ListVal) {
         values = [self._literal_value(item) for item in expr.values];

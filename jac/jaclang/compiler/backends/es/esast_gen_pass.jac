@@ -18,16 +18,16 @@ import from jaclang.compiler.types.ct_value {
     CtValue,
     int_host
 }
-import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter, ESEmitCtx }
+import from jaclang.compiler.backends.es.primitives_es {
+    ESBuiltinEmitter,
+    ESEmitCtx,
+    es_sized_cast
+}
 import from jaclang.compiler.backends.common.primitives { PrimitiveEmitter }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.types.operations { AUG_TO_BINARY_MAP }
 import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlot }
-import from jaclang.compiler.backends.common.ast_gen_base {
-    flatten_ast_list,
-    merge_module_bodies
-}
 import from jaclang.compiler.passes.context { TreePass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
@@ -277,7 +277,7 @@ walker EsastGenPass(TreePass) {
         _osp_var_arch_cache: (dict[str, str] | None) = None,
         _primitive_emitters: dict[str, PrimitiveEmitter[(str, ESEmitCtx)]] = {},
         _emitters_ready: bool = False,
-        _builtin_emitter: ESBuiltinEmitter = ESBuiltinEmitter(),
+        _builtin_emitter: PrimitiveEmitter[(str, ESEmitCtx)] = ESBuiltinEmitter(),
         _poly_methods: (set[str] | None) = None;
 
     has resolved_backend: FrameworkBackend {
