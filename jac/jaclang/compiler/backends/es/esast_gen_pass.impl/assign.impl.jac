@@ -47,17 +47,15 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             setter_arg: es.Expression;
             aug_op: (str | None) = None;
             if here.aug_op {
-                aug_tok = Tok(here.aug_op.name)
-                    if (here.aug_op.name in Tok.__members__)
-                    else None;
-                aug_to_binary: dict[Tok, str] = {
+                aug_tok: str = here.aug_op.name;
+                aug_to_binary: dict[str, str] = {
                     Tok.ADD_EQ: '+',
                     Tok.SUB_EQ: '-',
                     Tok.MUL_EQ: '*',
                     Tok.DIV_EQ: '/',
                     Tok.MOD_EQ: '%'
                 };
-                binary_op = aug_to_binary.get(aug_tok, '+') if aug_tok else '+';
+                binary_op = aug_to_binary.get(aug_tok, '+');
                 aug_op = binary_op;
 
                 setter_arg = cast(es.Expression, value_expr or es.Literal(value=0));
@@ -82,9 +80,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
     }
     if here.aug_op {
         (left, _, _) = self._convert_assignment_target(here.target[0]);
-        aug_tok = Tok(here.aug_op.name)
-            if (here.aug_op.name in Tok.__members__)
-            else None;
+        aug_tok: str = here.aug_op.name;
         right = cast(
             es.Expression,
             (
@@ -98,7 +94,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             )
         );
 
-        _aug_base = AUG_TO_BINARY_TOK.get(aug_tok) if aug_tok else None;
+        _aug_base = AUG_TO_BINARY_MAP.get(aug_tok);
         if _aug_base is not None and _aug_base in FW_BINARY_OPS {
             _fw_aug = self._fw_binary(
                 here.target[0],
@@ -121,7 +117,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
                 return;
             }
         }
-        _aug_emit_name = AUG_EMIT_MAP.get(aug_tok) if aug_tok else None;
+        _aug_emit_name = AUG_EMIT_MAP.get(aug_tok);
         if _aug_emit_name {
             _prim_result = self._try_primitive_op(
                 here.target[0], _aug_emit_name, cast(es.Expression, left), right, here
@@ -134,7 +130,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
                 return;
             }
         }
-        operator = ES_AUG_ASSIGN_OPS.get(aug_tok) if aug_tok else None;
+        operator = ES_AUG_ASSIGN_OPS.get(aug_tok);
         operator = operator or '=';
         assign_expr = self.sync_loc(
             es.AssignmentExpression(operator=operator, left=left, right=right),

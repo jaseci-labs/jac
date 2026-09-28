@@ -1170,9 +1170,11 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
         _method_name = callee.property.name;
         if _type_name {
             _emitter = self._primitive_emitters.get(_type_name);
-            _emit_fn_name = "emit_" + _method_name;
-            _emit_fn = getattr(_emitter, _emit_fn_name, None) if _emitter else None;
-            if _emit_fn {
+            _is_method = _emitter is not None
+                and _method_name in _emitter.method_names();
+            _is_static = _emitter is not None
+                and _method_name in _emitter.static_names();
+            if _emitter is not None and (_is_method or _is_static) {
                 _unparser = JSCodeGenerator();
                 _ctx = ESEmitCtx(unparser=_unparser);
                 _target_str = _unparser.generate(callee.object);
@@ -1187,12 +1189,12 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                     }
                 }
 
-                import inspect;
-                _n_params = len(inspect.signature(_emit_fn).parameters);
-                if _n_params == 2 {
-                    _result = _emit_fn(_ctx, _args_strs);
+                if _is_method {
+                    _result = _emitter.dispatch(
+                        _method_name, _ctx, _target_str, _args_strs
+                    );
                 } else {
-                    _result = _emit_fn(_ctx, _target_str, _args_strs);
+                    _result = _emitter.dispatch_static(_method_name, _ctx, _args_strs);
                 }
                 if _result is not None and "_jac." in str(_result) {
                     self.needs_jac_runtime = True;
@@ -1245,10 +1247,9 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
         import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
         import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
         _builtin_name = here.target.sym_name;
-        _emit_fn_name = "emit_" + _builtin_name;
-        _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
-        _sized_cast = _emit_fn is None and JAC_TYPE_REGISTRY.is_sized(_builtin_name);
-        if _emit_fn or _sized_cast {
+        _has_emitter = _builtin_name in self._builtin_emitter.static_names();
+        _sized_cast = not _has_emitter and JAC_TYPE_REGISTRY.is_sized(_builtin_name);
+        if _has_emitter or _sized_cast {
             _unparser = JSCodeGenerator();
             _arg_type_names: list[str] = [
                 self._expr_type_name(_p)
@@ -1281,7 +1282,9 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                         _builtin_name, _args_strs
                     );
                 } else {
-                    _result = _emit_fn(_ctx, _args_strs);
+                    _result = self._builtin_emitter.dispatch_static(
+                        _builtin_name, _ctx, _args_strs
+                    );
                 }
             } except Exception as _emit_err {
                 self.ctx.emit(

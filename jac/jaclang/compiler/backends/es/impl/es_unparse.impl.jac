@@ -22,10 +22,14 @@ impl _line_starts(code: str) -> list[int] {
 }
 
 impl _segment_name(nd: es.Node) -> str {
-    if nd.type not in ('Identifier', 'PrivateIdentifier', 'JsxIdentifier') {
-        return '';
+    text = '';
+    if isinstance(nd, es.Identifier) {
+        text = nd.name;
+    } elif isinstance(nd, es.PrivateIdentifier) {
+        text = nd.name;
+    } elif isinstance(nd, es.JsxIdentifier) {
+        text = nd.name;
     }
-    text = str(getattr(nd, 'name', '') or '');
     if (text == '') or (len(text) > 128) {
         return '';
     }
@@ -379,19 +383,38 @@ impl JSCodeGenerator.gen_function_expression(nd: es.FunctionExpression) -> str {
 }
 
 impl JSCodeGenerator.gen_property(nd: es.Property) -> str {
-    key = self.generate(nd.key);
-    value = self.generate(nd.value);
-    if nd.shorthand {
+    return _property_text(
+        self.generate(nd.key),
+        self.generate(nd.value),
+        nd.kind,
+        nd.shorthand,
+        nd.computed
+    );
+}
+
+impl JSCodeGenerator.gen_assignment_property(nd: es.AssignmentProperty) -> str {
+    return _property_text(
+        self.generate(nd.key),
+        self.generate(nd.value),
+        nd.kind,
+        nd.shorthand,
+        nd.computed
+    );
+}
+
+impl _property_text(
+    key: str, value: str, kind: str, shorthand: bool, computed: bool
+) -> str {
+    if shorthand {
         return key;
-    } elif nd.computed {
+    } elif computed {
         return f"[{key}]: {value}";
-    } elif (nd.kind == 'get') {
+    } elif kind == 'get' {
         return f"get {key}() {value}";
-    } elif (nd.kind == 'set') {
+    } elif kind == 'set' {
         return f"set {key}({value})";
-    } else {
-        return f"{key}: {value}";
     }
+    return f"{key}: {value}";
 }
 
 impl JSCodeGenerator.gen_object_expression(nd: es.ObjectExpression) -> str {
@@ -659,21 +682,18 @@ impl JSCodeGenerator.gen_program(nd: es.Program) -> str {
 }
 
 impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
-    import from jaclang.project.source { pascal_to_snake }
     if (nd is None) {
         return '';
-    }
-    method_name = f"gen_{pascal_to_snake(nd.type)}";
-    method = getattr(self, method_name, None);
-    if method is None {
-        return f"/* Unsupported node type: {nd.type} */";
     }
     kids: list[tuple[es.Node, str, list[any]]] = [];
     self._frames.append(kids);
     try {
-        result = method(nd);
+        result: (str | None) = self.dispatch(nd);
     } finally {
         self._frames.pop();
+    }
+    if result is None {
+        result = f"/* Unsupported node type: {nd.type} */";
     }
     if self._frames {
         self._frames[-1].append((nd, result, kids));
@@ -734,4 +754,212 @@ impl JSCodeGenerator.init(indent: str = '  ') -> None {
     self.indent_level = 0;
     self._frames = [];
     self._root = [];
+}
+
+impl JSCodeGenerator.dispatch(nd: es.Node) -> (str | None) {
+    if isinstance(nd, es.Identifier) {
+        return self.gen_identifier(nd);
+    }
+    if isinstance(nd, es.RawCode) {
+        return self.gen_raw_code(nd);
+    }
+    if isinstance(nd, es.PrivateIdentifier) {
+        return self.gen_private_identifier(nd);
+    }
+    if isinstance(nd, es.Literal) {
+        return self.gen_literal(nd);
+    }
+    if isinstance(nd, es.Program) {
+        return self.gen_program(nd);
+    }
+    if isinstance(nd, es.ExpressionStatement) {
+        return self.gen_expression_statement(nd);
+    }
+    if isinstance(nd, es.BlockStatement) {
+        return self.gen_block_statement(nd);
+    }
+    if isinstance(nd, es.ReturnStatement) {
+        return self.gen_return_statement(nd);
+    }
+    if isinstance(nd, es.BreakStatement) {
+        return self.gen_break_statement(nd);
+    }
+    if isinstance(nd, es.ContinueStatement) {
+        return self.gen_continue_statement(nd);
+    }
+    if isinstance(nd, es.LabeledStatement) {
+        return self.gen_labeled_statement(nd);
+    }
+    if isinstance(nd, es.IfStatement) {
+        return self.gen_if_statement(nd);
+    }
+    if isinstance(nd, es.SwitchStatement) {
+        return self.gen_switch_statement(nd);
+    }
+    if isinstance(nd, es.SwitchCase) {
+        return self.gen_switch_case(nd);
+    }
+    if isinstance(nd, es.ThrowStatement) {
+        return self.gen_throw_statement(nd);
+    }
+    if isinstance(nd, es.TryStatement) {
+        return self.gen_try_statement(nd);
+    }
+    if isinstance(nd, es.CatchClause) {
+        return self.gen_catch_clause(nd);
+    }
+    if isinstance(nd, es.WhileStatement) {
+        return self.gen_while_statement(nd);
+    }
+    if isinstance(nd, es.ForStatement) {
+        return self.gen_for_statement(nd);
+    }
+    if isinstance(nd, es.ForOfStatement) {
+        return self.gen_for_of_statement(nd);
+    }
+    if isinstance(nd, es.FunctionDeclaration) {
+        return self.gen_function_declaration(nd);
+    }
+    if isinstance(nd, es.VariableDeclaration) {
+        return self.gen_variable_declaration(nd);
+    }
+    if isinstance(nd, es.VariableDeclarator) {
+        return self.gen_variable_declarator(nd);
+    }
+    if isinstance(nd, es.ThisExpression) {
+        return self.gen_this_expression(nd);
+    }
+    if isinstance(nd, es.ArrayExpression) {
+        return self.gen_array_expression(nd);
+    }
+    if isinstance(nd, es.ObjectExpression) {
+        return self.gen_object_expression(nd);
+    }
+    if isinstance(nd, es.Property) {
+        return self.gen_property(nd);
+    }
+    if isinstance(nd, es.AssignmentProperty) {
+        return self.gen_assignment_property(nd);
+    }
+    if isinstance(nd, es.FunctionExpression) {
+        return self.gen_function_expression(nd);
+    }
+    if isinstance(nd, es.ArrowFunctionExpression) {
+        return self.gen_arrow_function_expression(nd);
+    }
+    if isinstance(nd, es.UnaryExpression) {
+        return self.gen_unary_expression(nd);
+    }
+    if isinstance(nd, es.BinaryExpression) {
+        return self.gen_binary_expression(nd);
+    }
+    if isinstance(nd, es.AssignmentExpression) {
+        return self.gen_assignment_expression(nd);
+    }
+    if isinstance(nd, es.LogicalExpression) {
+        return self.gen_logical_expression(nd);
+    }
+    if isinstance(nd, es.MemberExpression) {
+        return self.gen_member_expression(nd);
+    }
+    if isinstance(nd, es.ConditionalExpression) {
+        return self.gen_conditional_expression(nd);
+    }
+    if isinstance(nd, es.CallExpression) {
+        return self.gen_call_expression(nd);
+    }
+    if isinstance(nd, es.NewExpression) {
+        return self.gen_new_expression(nd);
+    }
+    if isinstance(nd, es.AwaitExpression) {
+        return self.gen_await_expression(nd);
+    }
+    if isinstance(nd, es.YieldExpression) {
+        return self.gen_yield_expression(nd);
+    }
+    if isinstance(nd, es.TemplateLiteral) {
+        return self.gen_template_literal(nd);
+    }
+    if isinstance(nd, es.TemplateElement) {
+        return self.gen_template_element(nd);
+    }
+    if isinstance(nd, es.SpreadElement) {
+        return self.gen_spread_element(nd);
+    }
+    if isinstance(nd, es.AssignmentPattern) {
+        return self.gen_assignment_pattern(nd);
+    }
+    if isinstance(nd, es.ArrayPattern) {
+        return self.gen_array_pattern(nd);
+    }
+    if isinstance(nd, es.ObjectPattern) {
+        return self.gen_object_pattern(nd);
+    }
+    if isinstance(nd, es.RestElement) {
+        return self.gen_rest_element(nd);
+    }
+    if isinstance(nd, es.ClassDeclaration) {
+        return self.gen_class_declaration(nd);
+    }
+    if isinstance(nd, es.ClassBody) {
+        return self.gen_class_body(nd);
+    }
+    if isinstance(nd, es.MethodDefinition) {
+        return self.gen_method_definition(nd);
+    }
+    if isinstance(nd, es.PropertyDefinition) {
+        return self.gen_property_definition(nd);
+    }
+    if isinstance(nd, es.ImportDeclaration) {
+        return self.gen_import_declaration(nd);
+    }
+    if isinstance(nd, es.ImportSpecifier) {
+        return self.gen_import_specifier(nd);
+    }
+    if isinstance(nd, es.ImportDefaultSpecifier) {
+        return self.gen_import_default_specifier(nd);
+    }
+    if isinstance(nd, es.ImportNamespaceSpecifier) {
+        return self.gen_import_namespace_specifier(nd);
+    }
+    if isinstance(nd, es.ExportNamedDeclaration) {
+        return self.gen_export_named_declaration(nd);
+    }
+    if isinstance(nd, es.ExportSpecifier) {
+        return self.gen_export_specifier(nd);
+    }
+    if isinstance(nd, es.JsxIdentifier) {
+        return self.gen_jsx_identifier(nd);
+    }
+    if isinstance(nd, es.JsxMemberExpression) {
+        return self.gen_jsx_member_expression(nd);
+    }
+    if isinstance(nd, es.JsxEmptyExpression) {
+        return self.gen_jsx_empty_expression(nd);
+    }
+    if isinstance(nd, es.JsxExpressionContainer) {
+        return self.gen_jsx_expression_container(nd);
+    }
+    if isinstance(nd, es.JsxSpreadAttribute) {
+        return self.gen_jsx_spread_attribute(nd);
+    }
+    if isinstance(nd, es.JsxAttribute) {
+        return self.gen_jsx_attribute(nd);
+    }
+    if isinstance(nd, es.JsxOpeningElement) {
+        return self.gen_jsx_opening_element(nd);
+    }
+    if isinstance(nd, es.JsxClosingElement) {
+        return self.gen_jsx_closing_element(nd);
+    }
+    if isinstance(nd, es.JsxText) {
+        return self.gen_jsx_text(nd);
+    }
+    if isinstance(nd, es.JsxElement) {
+        return self.gen_jsx_element(nd);
+    }
+    if isinstance(nd, es.JsxFragment) {
+        return self.gen_jsx_fragment(nd);
+    }
+    return None;
 }

@@ -143,8 +143,11 @@ impl EsastGenPass.exit_module with uni.Module exit {
                 and (stmt.name is not None)
                 and (stmt.name.value in self.shared_arch_names)
             );
-            if (getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT)
-                or is_shared_arch {
+            is_client = (
+                not isinstance(stmt, uni.ContextAwareNode)
+                or stmt.code_context == CodeContext.CLIENT
+            );
+            if is_client or is_shared_arch {
                 client_items.append(cast(es.Statement, stmt.gen.es_ast));
             } else {}
         }

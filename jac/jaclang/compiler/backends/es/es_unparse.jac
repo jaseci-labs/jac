@@ -11,6 +11,7 @@ obj JSCodeGenerator {
     def indent -> str;
     def build_segments(code: str) -> list[tuple[int, int, int, int, str]];
     def generate(nd: (es.Node | None)) -> str;
+    def dispatch(nd: es.Node) -> (str | None);
     def gen_program(nd: es.Program) -> str;
     def gen_expression_statement(nd: es.ExpressionStatement) -> str;
     def gen_block_statement(nd: es.BlockStatement) -> str;
@@ -42,6 +43,7 @@ obj JSCodeGenerator {
     def gen_array_expression(nd: es.ArrayExpression) -> str;
     def gen_object_expression(nd: es.ObjectExpression) -> str;
     def gen_property(nd: es.Property) -> str;
+    def gen_assignment_property(nd: es.AssignmentProperty) -> str;
     def gen_function_expression(nd: es.FunctionExpression) -> str;
     def gen_arrow_function_expression(nd: es.ArrowFunctionExpression) -> str;
     def gen_unary_expression(nd: es.UnaryExpression) -> str;
@@ -88,5 +90,8 @@ def es_to_js_with_map(
 def _line_starts(code: str) -> list[int];
 def _offset_to_pos(line_starts: list[int], offset: int) -> tuple[int, int];
 def _segment_name(nd: es.Node) -> str;
+def _property_text(
+    key: str, value: str, kind: str, shorthand: bool, computed: bool
+) -> str;
 
 def template_element_raw(text: str) -> str;

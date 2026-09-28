@@ -246,10 +246,12 @@ impl EsJsxProcessor._split_key(
     list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr]
 ] {
     import from jaclang.compiler.backends.es.view_ir { StaticAttr, DynamicAttr }
-    key_expr = None;
-    kept = [];
+    key_expr: (Expression | None) = None;
+    kept: list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr] = [];
     for a in ve.attrs {
-        if isinstance(a, (StaticAttr, DynamicAttr)) and a.name == "key" {
+        if isinstance(a, StaticAttr) and a.name == "key" {
+            key_expr = a.value;
+        } elif isinstance(a, DynamicAttr) and a.name == "key" {
             key_expr = a.value;
         } else {
             kept.append(a);

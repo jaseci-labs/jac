@@ -1,4 +1,5 @@
 import from jaclang.compiler.backends.common.primitives {
+    PrimitiveEmitter,
     IntEmitter,
     FloatEmitter,
     ComplexEmitter,
@@ -1462,4 +1463,49 @@ class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     def emit_unsafe_html(
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
+
+    def static_names(self: ESBuiltinEmitter) -> list[str];
+    def dispatch_static(
+        self: ESBuiltinEmitter, name: str, ctx: ESEmitCtx, args: list[str]
+    ) -> (str | None);
+}
+
+def es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None) {
+    if suffix == "IntEmitter" {
+        return ESIntEmitter();
+    }
+    if suffix == "FloatEmitter" {
+        return ESFloatEmitter();
+    }
+    if suffix == "ComplexEmitter" {
+        return ESComplexEmitter();
+    }
+    if suffix == "BoolEmitter" {
+        return ESBoolEmitter();
+    }
+    if suffix == "StrEmitter" {
+        return ESStrEmitter();
+    }
+    if suffix == "BytesEmitter" {
+        return ESBytesEmitter();
+    }
+    if suffix == "ListEmitter" {
+        return ESListEmitter();
+    }
+    if suffix == "DictEmitter" {
+        return ESDictEmitter();
+    }
+    if suffix == "SetEmitter" {
+        return ESSetEmitter();
+    }
+    if suffix == "FrozensetEmitter" {
+        return ESFrozensetEmitter();
+    }
+    if suffix == "TupleEmitter" {
+        return ESTupleEmitter();
+    }
+    if suffix == "RangeEmitter" {
+        return ESRangeEmitter();
+    }
+    return None;
 }

@@ -2218,3 +2218,47 @@ impl ESBuiltinEmitter.emit_bytearray(
     }
     return "new Uint8Array(" + args[0] + ")";
 }
+
+impl ESBuiltinEmitter.static_names(self: ESBuiltinEmitter) -> list[str] {
+    return super.static_names()
+        + [
+            "wrapping_add",
+            "wrapping_sub",
+            "wrapping_mul",
+            "wrapping_shl",
+            "wrapping_neg",
+            "jid",
+            "new",
+            "unsafe_html"
+        ];
+}
+
+impl ESBuiltinEmitter.dispatch_static(
+    self: ESBuiltinEmitter, name: str, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
+    if name == "wrapping_add" {
+        return self.emit_wrapping_add(ctx, args);
+    }
+    if name == "wrapping_sub" {
+        return self.emit_wrapping_sub(ctx, args);
+    }
+    if name == "wrapping_mul" {
+        return self.emit_wrapping_mul(ctx, args);
+    }
+    if name == "wrapping_shl" {
+        return self.emit_wrapping_shl(ctx, args);
+    }
+    if name == "wrapping_neg" {
+        return self.emit_wrapping_neg(ctx, args);
+    }
+    if name == "jid" {
+        return self.emit_jid(ctx, args);
+    }
+    if name == "new" {
+        return self.emit_new(ctx, args);
+    }
+    if name == "unsafe_html" {
+        return self.emit_unsafe_html(ctx, args);
+    }
+    return super.dispatch_static(name, ctx, args);
+}

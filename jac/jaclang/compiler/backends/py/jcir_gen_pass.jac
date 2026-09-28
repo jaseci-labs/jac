@@ -282,6 +282,11 @@ obj CgNode(CgItem) {
     def hasf(key: str) -> bool {
         return key in self.keys;
     }
+
+    def items(key: str) -> list[any] {
+        value: list[any] = self.get(key);
+        return value;
+    }
 }
 
 obj CgSplice(CgItem) {

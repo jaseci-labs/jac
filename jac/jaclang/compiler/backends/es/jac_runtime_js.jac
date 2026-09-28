@@ -1616,18 +1616,18 @@ def _build_types_runtime_js -> str {
         if not tok.startswith("TYP_") {
             continue;
         }
-        emit_fn = getattr(emitter, "emit_" + name, None);
-        if emit_fn is None and not JAC_TYPE_REGISTRY.is_sized(name) {
+        has_emitter = name in emitter.static_names();
+        if not has_emitter and not JAC_TYPE_REGISTRY.is_sized(name) {
             continue;
         }
 
         bodies: list[(str | None)] = [];
         for argv in ([], ["a[0]"], ["a[0]", "a[1]"]) {
             try {
-                if emit_fn is None {
-                    bodies.append(emitter.emit_sized_cast(name, argv));
+                if has_emitter {
+                    bodies.append(emitter.dispatch_static(name, ctx, argv));
                 } else {
-                    bodies.append(emit_fn(ctx, argv));
+                    bodies.append(emitter.emit_sized_cast(name, argv));
                 }
             } except Exception {
                 bodies.append(None);
