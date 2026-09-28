@@ -1,10 +1,6 @@
 import sys;
 import platform as _platform;
-import from jaclang.runtime.object_model { MISSING as _MISSING, ObjectField as _field }
-import from jaclang.runtime.object_interop {
-    fields as _record_fields,
-    is_record as _is_record
-}
+
 import from enum { Enum as _PyEnum }
 import from typing { get_type_hints as _get_type_hints }
 import from importlib { import_module as _import_module }
@@ -222,7 +218,6 @@ def embed_bytes(path: str) -> bytes {
 }
 
 def _scalar_size_align(t: any) -> (tuple[int, int] | None) {
-    import from jaclang.runtime.scalars { shape_of }
     name = t?.__name__ if isinstance(t, `type) else str(t);
     if name == "bool" {
         return (1, 1, );

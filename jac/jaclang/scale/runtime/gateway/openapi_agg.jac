@@ -1,8 +1,4 @@
 import logging;
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry
-}
 
 glob _agg_logger = logging.getLogger(__name__);
 
@@ -37,7 +33,6 @@ async def fetch_service_spec(
     service_entry: ServiceEntry, timeout: float = 5.0
 ) -> SpecFetch {
     import json;
-    import from jaclang.scale.runtime.transport.http_forward { raw_forward }
 
     headers: dict[str, str] = {};
     if service_entry.host_override {

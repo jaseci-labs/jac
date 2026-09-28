@@ -1,60 +1,5 @@
 import logging;
 import time;
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
-    KubernetesTargetBase
-}
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.models.deploy_context { DeployContext }
-import from jaclang.scale.models.resource_status { ResourceStatus, assess_workload }
-import from jaclang.scale._optdeps.kubernetes { client, ApiException }
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    ensure_namespace_exists,
-    create_k8s_secret,
-    delete_if_exists,
-    delete_k8s_secret,
-    delete_namespace,
-    get_cluster_provider,
-    namespace_is_owned,
-    privileged_pss_labels,
-    PSS_ENFORCE_LABEL,
-    _resolve_current_rs_hashes,
-    _refresh_rs_hashes
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    with_config_revision,
-    CONFIG_REVISION_ANNOTATION,
-    ManifestBuilder,
-    ScalingMode
-}
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
-import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
-    DatabaseProvisioner
-}
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.deploy.autoscale.autoscaler {
-    AutoscalerSpec,
-    Trigger,
-    TriggerAuth
-}
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.autoscale.http_activation_config {
-    apply_http_activation_for_target,
-    destroy_http_activation_for_target
-}
-import from jaclang.scale.runtime.context.service_routing {
-    resolve_interceptor_service_address
-}
-import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.injector.pvc_injector {
-    bundle_keys_from_pod_spec,
-    bundle_pvc_name
-}
-import from jaclang.scale.runtime.fleet { FleetSpec }
 
 glob logger = logging.getLogger(__name__),
      REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision",
@@ -206,7 +151,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
         app_overrides: dict[str, dict[str, any]] = {};
 
     def _gateway_cfg -> dict[str, any] {
-        import from jaclang.scale.config.config_loader { normalize_gateway_config }
         if self.gateway_config is not None {
             return normalize_gateway_config(self.gateway_config);
         }
@@ -222,7 +166,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
                 "under [scale.kubernetes] in jac.toml."
             );
         }
-        import from jaclang.scale.injector.binary { deploy_generation_refusal }
+
         refusal = deploy_generation_refusal(app_config.code_folder);
         if refusal {
             return DeploymentResult(success=False, message=refusal);
@@ -552,7 +496,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
         import time;
         import sys;
         import from kubernetes { client }
-        import from jaclang.cli.console { console }
 
         names: list[str] = [];
         app_labels: list[str] = [];
@@ -762,9 +705,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
     def _pod_failure_detail(
         core_v1: any, namespace: str, pod_name: str, pod: any = None
     ) -> str {
-        import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-            describe_pod_status
-        }
         detail = describe_pod_status(core_v1, namespace, pod_name, pod);
         term_lines: list[str] = [];
         try {
@@ -942,7 +882,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
-        import from jaclang.scale.injector.binary { resolve_pod_base_image }
         self.k8s_config.python_image = resolve_pod_base_image(
             app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
         );

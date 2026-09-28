@@ -1,6 +1,5 @@
 import from enum { StrEnum }
 import from pathlib { Path }
-import from jaclang.cache.locking { FileLock }
 
 glob SWEEP_SENTINEL: str = ".last-sweep",
      SWEEP_INTERVAL_SECONDS: float = 86400.0,

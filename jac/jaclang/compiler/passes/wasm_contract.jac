@@ -1,14 +1,3 @@
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Expr,
-    FuncCall,
-    FuncSignature,
-    Module,
-    UnaryExpr
-}
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-
 obj WasmValueContract {
     has type_name: str,
         mode: str,
@@ -76,10 +65,10 @@ def value_contract(
         ownership = expr.ownership;
         expr = expr.operand;
     }
-    import from jaclang.compiler.frontend.unparse { unparse_node }
+
     name = unparse_node(expr).strip() if expr is not None else "None";
     mode = _ownership_mode(ownership);
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     shape = JAC_TYPE_REGISTRY.shape_of(name);
     if host and name == "str" {
         return WasmValueContract(type_name=name, mode=mode, kind="cstring");
@@ -139,10 +128,6 @@ def function_contract(decl: Ability, host: bool = False) -> WasmFunctionContract
 def host_contracts(
     module: (Module | None), program: JacProgram
 ) -> dict[str, WasmFunctionContract] {
-    import from jaclang.compiler.frontend.unitree { Import }
-    import from jaclang.compiler.driver.boundary_classify {
-        symbol_linked_source_module
-    }
     visited: set[str] = set();
     todo: list[Module | None] = [module];
     contracts: dict[str, WasmFunctionContract] = {};
@@ -184,7 +169,6 @@ def host_contract_dicts(
 }
 
 def _host_type(name: str) -> str {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     shape = JAC_TYPE_REGISTRY.shape_of(name);
     if shape is not None and shape.sized {
         return "float" if shape.is_float else "int";
@@ -193,7 +177,6 @@ def _host_type(name: str) -> str {
 }
 
 def check_host_call(call: FuncCall, program: JacProgram) -> None {
-    import from jaclang.compiler.frontend.unitree { Name, ability_of_symbol }
     callee = call.target;
     if not isinstance(callee, Name) or callee.value != "bind_na_host" {
         return;
@@ -214,7 +197,7 @@ def check_host_call(call: FuncCall, program: JacProgram) -> None {
     }
     export = args[0];
     provider = ability_of_symbol(export.sym) if isinstance(export, Name) else None;
-    import from jaclang.compiler.types.types { ClassType, FunctionType }
+
     host = args[1];
     host_type = (host.narrowed_type or host.type) if isinstance(host, Expr) else None;
     if provider is None or not isinstance(host_type, ClassType) {

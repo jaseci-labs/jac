@@ -7,28 +7,6 @@ import urllib.error;
 import urllib.request;
 import zlib;
 
-import from jaclang.dist.payload.fsutil {
-    PayloadDie,
-    copy_file,
-    copy_tree,
-    delete_tree,
-    die,
-    extract_tar,
-    file_exists,
-    find_sum_line,
-    host_os_arch,
-    log,
-    make_dirs,
-    rd_u16,
-    rd_u32,
-    read_trimmed,
-    sha256_hex,
-    skip_typeshed_tests,
-    write_bytes,
-    write_text
-}
-import from jaclang.dist.payload.pins { llvm_release, pins }
-
 impl HttpSource.get(url: str) -> bytes {
     return http_get(url);
 }

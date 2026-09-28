@@ -3,7 +3,6 @@ import os;
 import shutil;
 import time;
 import from pathlib { Path }
-import from jaclang.cache.home { CACHEDIR_TAG }
 
 glob _SWEPT_ROOTS: set[str] = set();
 

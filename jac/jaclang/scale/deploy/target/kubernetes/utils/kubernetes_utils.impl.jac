@@ -1,12 +1,5 @@
 import os;
 import pathlib;
-import from jaclang.cli.console { console }
-import from jaclang.scale._optdeps.kubernetes { client }
-import from jaclang.scale.deploy.target.kubernetes.cluster_provider {
-    AWSProvider,
-    ClusterProvider,
-    LocalProvider
-}
 
 impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None {
     import shutil;

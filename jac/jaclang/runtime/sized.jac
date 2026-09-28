@@ -1,6 +1,5 @@
 import math;
 import struct;
-import from jaclang.runtime.scalars { numeric_shapes, range_of, shape_of, wrap_value }
 
 glob JS_SAFE_INT: int = (1 << 53) - 1,
      OVERFLOW_MESSAGE: str = "integer overflow",

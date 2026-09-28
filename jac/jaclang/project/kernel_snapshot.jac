@@ -1,36 +1,5 @@
 import os;
 import sys;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.host {
-    HostServices,
-    active_host,
-    install_host,
-    kernel_host_mode
-}
-import from jaclang.compiler.frontend.kernel_inputs {
-    KernelInputs,
-    ManifestSets,
-    PythonInterface,
-    request_of
-}
-import from jaclang.compiler.frontend.kernel_host { HostCensus, KernelHost }
-import from jaclang.compiler.frontend.kernel_analyze {
-    ANALYSIS_CRASHED,
-    ANALYSIS_OK,
-    AnalysisReport,
-    analysis_report,
-    run_kernel_analysis
-}
-import from jaclang.compiler.driver.module_analysis { ModuleAnalysis, analyze_module }
-import from jaclang.compiler.driver.session_compile {
-    CompileFrame,
-    SessionContext,
-    SessionHooks,
-    compile_in_session
-}
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 
 glob SCAN_LIMIT: int = 4000,
      PACKAGE_CHAIN_DEPTH: int = 8,
@@ -79,7 +48,6 @@ obj ClosureScan {
     }
 
     def scan_jac(path: str) {
-        import from jaclang.compiler.frontend.parser.frontend { parse }
         learner = self.learner;
         sources = [path];
         sources.extend(learner.annex_files(path, ".impl.jac"));
@@ -258,12 +226,6 @@ obj ClosureScan {
 }
 
 def manifest_sets -> ManifestSets {
-    import from jaclang.bootstrap_manifest {
-        NATIVE_LOWERED_PATHS,
-        NATIVE_ONLY_DIR_REL,
-        NATIVE_ONLY_REL,
-        SEED_PATHS
-    }
     return ManifestSets(
         seed_paths=list(SEED_PATHS),
         native_only_files=list(NATIVE_ONLY_REL),
@@ -275,10 +237,6 @@ def manifest_sets -> ManifestSets {
 def python_interface(
     path: str, options: CompileOptions, scratch: (JacProgram | None) = None
 ) -> (PythonInterface | None) {
-    import from jaclang.compiler.types.stubcat.writer {
-        IncoherentInterface,
-        build_module_iface
-    }
     resolved = os.path.realpath(path);
     if scratch is None {
         scratch = JacProgram();
@@ -294,8 +252,6 @@ def python_interface(
 }
 
 def interface_dependencies(iface: PythonInterface) -> list[str] {
-    import from jaclang.compiler.types.stubcat.format { MOD_EXTERNAL }
-    import from jaclang.compiler.types.stubcat.modiface { open_module_iface }
     catalog = open_module_iface(iface.data, iface.pkg_dir);
     if catalog is None {
         return [];
@@ -329,10 +285,7 @@ def file_stamp(path: str) -> str {
 
 def interface_cache_file(path: str) -> str {
     import hashlib;
-    import from jaclang.compiler.driver.jir {
-        get_jir_cache_dir,
-        running_compiler_digest
-    }
+
     key = hashlib.sha256(
         (running_compiler_digest() + "\x1f" + path).encode("utf-8")
     ).hexdigest();
@@ -449,9 +402,6 @@ def snapshot_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
-    import from jaclang.compiler.driver.bccache { host_layout_tables }
-    import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
-    import from jaclang.compiler.types.stubcat.locate { catalog_origin }
     catalog_dir = "";
     catalog_active = host.has_active_stub_catalog();
     if catalog_active {
@@ -461,7 +411,7 @@ def snapshot_inputs(
     }
     origin = catalog_origin() if catalog_active else None;
     natives = program._natives;
-    import from jaclang.compiler.frontend.host { package_root }
+
     inputs = KernelInputs(
         entry_path=path,
         package_root=package_root(),

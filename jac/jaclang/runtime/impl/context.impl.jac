@@ -2,13 +2,7 @@ import os;
 import from typing { cast }
 import from uuid { UUID }
 
-import from jaclang.runtime.archetype { NodeAnchor, Root }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.exceptions { MissingAnchorError }
-import from jaclang.runtime.memory { Memory }
-
 impl ExecutionContext.postinit -> None {
-    import from jaclang.runtime.runtime { JacRuntime }
     if self._parent is not None {
         self.mem = self._parent.mem;
         self.base_path_dir = self._parent.base_path_dir;
@@ -27,7 +21,7 @@ impl ExecutionContext.postinit -> None {
         self.mem = Memory();
         return;
     }
-    import from jaclang.server.session { Session }
+
     self.mem = Session(base_path=self.base_path_dir, target_path=self.full_target_path);
 }
 

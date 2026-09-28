@@ -1,5 +1,3 @@
-import from jaclang.project.capabilities { missing_capability_error }
-
 def require_optional(package: str, capability: str) {
     try {
         __import__(package);

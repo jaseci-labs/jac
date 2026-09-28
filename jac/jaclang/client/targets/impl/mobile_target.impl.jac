@@ -3,68 +3,11 @@ import shutil;
 import subprocess;
 import platform as platform_mod;
 import from typing { Optional }
-import from jaclang.cli.console { console }
-import from jaclang.runtime.runtime { JacRuntime as Jac }
-import from jaclang.server.watcher { FileChangeEvent }
-import from jaclang.client.targets.react_native.common {
-    DEFAULT_APP_ID,
-    DEFAULT_APP_NAME,
-    DEFAULT_APP_SLUG,
-    detect_lan_ipv4,
-    resolve_rn_project_dir
-}
-import from jaclang.client.targets.react_native.scaffold {
-    ensure_native_deps_installed,
-    write_expo_scaffold
-}
-import from jaclang.client.targets.react_native.build {
-    lint_native_incompatible_usage,
-    lint_unmapped_tags,
-    read_user_js_sources,
-    run_expo_prebuild,
-    run_gradle_assemble,
-    run_eas_local_build,
-    run_eas_update_opt_in,
-    run_xcodebuild_ios,
-    stage_native_image_assets,
-    entry_module_for,
-    stage_compiled_entry,
-    strip_css_imports,
-    write_native_entry
-}
-import from jaclang.client.config_loader { JacClientConfig }
-import from jaclang.client.targets.react_native.config {
-    _resolve_rn_android_builder,
-    _resolve_rn_eas_profile,
-    _resolve_rn_eas_update_branch,
-    _resolve_rn_eas_update_enabled,
-    _resolve_rn_eas_update_message,
-    _resolve_rn_ios_builder,
-    _resolve_rn_release
-}
-import from jaclang.client.targets.react_native.dev {
-    inject_dev_api_base_url,
-    resolve_metro_port,
-    restore_app_json,
-    rn_hmr_on_jac_changed,
-    run_expo_start,
-    setup_android_port_reverse,
-    JAC_RN_DEV_HOST_ENV
-}
-import from jaclang.client.targets.client_dev_common {
-    ensure_watchdog_common,
-    install_dev_signal_handlers,
-    resolve_port_or_next_available,
-    start_backend_server_common,
-    stop_dev_watcher,
-    terminate_dev_processes
-}
 
 impl MobileTarget.ensure_ready(
     project_dir: Path, platform: Optional[str] = None
 ) -> None {
     import time;
-    import from jaclang.toolchains.store { offline }
 
     if (platform or "").strip().lower() == "web" {
         return;
@@ -350,7 +293,6 @@ impl MobileTarget.dev(
 impl MobileTarget._compile_native_jac_modules(entry_file: Path) -> tuple[(any, Path)] {
     console.print("  Step 1: Compiling Jac modules + native runtime...", style="muted");
 
-    import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
     builder = Jac.get_client_bundle_builder();
     if not isinstance(builder, ViteClientBundleBuilder) {
         raise RuntimeError(
@@ -377,8 +319,6 @@ impl MobileTarget._compile_native_jac_modules(entry_file: Path) -> tuple[(any, P
 impl MobileTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jaclang.client.targets.react_native.common { normalize_rn_platform }
-
     rn_cfg = JacClientConfig(project_dir).get_react_native_config();
     default_plat = (
         os.environ.get("JAC_MOBILE_PLATFORM", "")

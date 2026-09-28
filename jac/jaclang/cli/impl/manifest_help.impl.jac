@@ -2,15 +2,6 @@ import os;
 import sys;
 import platform;
 
-import from jaclang.cli.command { CommandSpec }
-import from jaclang.cli.manifest {
-    GROUP_DISPLAY,
-    GROUP_ORDER,
-    TIER_ORDER,
-    TIER_SECTIONS,
-    iter_command_meta
-}
-
 glob _RESET: str = "\033[0m",
      _HEADER: str = "\033[1;34m",
      _CMD: str = "\033[32m",
@@ -20,7 +11,6 @@ glob _RESET: str = "\033[0m",
      _BOLD_CYAN: str = "\033[1;36m";
 
 impl _use_color -> bool {
-    import from jaclang.cli.console { console }
     try {
         return bool(console.use_color);
     } except Exception {

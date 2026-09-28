@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cache.policy { Policy, Retention, SweepReport, KeepMatch, TempLock }
 
 obj Bucket {
     has name: str,

@@ -1,6 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.template_registry { ProjectTemplate, template_kind_for }
 
 def load_template_from_directory(
     template_dir: Path, post_create_hook: Callable | None = None

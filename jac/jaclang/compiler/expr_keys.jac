@@ -1,28 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Assignment,
-    AtomTrailer,
-    AtomUnit,
-    BinaryExpr,
-    BoolExpr,
-    CfgExpr,
-    CompareExpr,
-    Expr,
-    FuncCall,
-    InForStmt,
-    IndexSlice,
-    Int,
-    KWPair,
-    ListVal,
-    MultiString,
-    Name,
-    String,
-    Token,
-    TupleVal,
-    UnaryExpr,
-    UniNode
-}
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-
 def int_subscript_suffix(right: IndexSlice) -> str | None {
     if (not right.is_range and len(right.slices) == 1) {
         idx = right.slices[0];
@@ -317,8 +292,6 @@ def collect_assigned_symbols(nd: UniNode) -> set[str] {
 }
 
 def type_tag_borrows(expr: (UniNode | None)) -> bool {
-    import from jaclang.compiler.frontend.unitree { SubTag, UnaryExpr }
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     if expr is None {
         return False;
     }

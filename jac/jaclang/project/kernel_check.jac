@@ -1,16 +1,5 @@
 import os;
 import sys;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.kernel_analyze {
-    AnalysisDiag,
-    AnalysisReport,
-    DiagSpan
-}
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.compiler.passes.context { Alert }
-import from jaclang.project.kernel_snapshot { kernel_analysis }
 
 glob KERNEL_ANALYZE_ENV: str = "JAC_KERNEL_ANALYZE",
      _PASS_TYPES: dict[str, type] = {};
@@ -37,7 +26,7 @@ def analysis_kernel -> any {
     if kernel_analyze_mode() == "off" {
         return None;
     }
-    import from jaclang.compiler.native_compiler { ensure_loaded }
+
     kernel = ensure_loaded();
     if kernel is None or not hasattr(kernel.lib, "jc_analyze") {
         return None;
@@ -50,7 +39,7 @@ def pass_type_named(name: str) -> type {
     if found is not None {
         return found;
     }
-    import from jaclang.compiler.passes.context { CompilerPass }
+
     for (mod_name, mod) in list(sys.modules.items()) {
         if mod is None or not mod_name.startswith("jaclang.compiler.") {
             continue;
@@ -82,7 +71,6 @@ def span_of(record: DiagSpan) -> Span {
 }
 
 def alert_of(diag: AnalysisDiag) -> Alert {
-    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
     return Alert(
         msg=diag.msg or diag.message,
         loc=span_of(diag.span),
@@ -109,7 +97,6 @@ def diag_row(diag: AnalysisDiag) -> tuple[str, str, int, int] {
 def kernel_check(
     program: JacProgram, path: str, options: CompileOptions
 ) -> KernelCheck {
-    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if is_compiler_source_path(path) {
         return KernelCheck();
     }
@@ -174,7 +161,7 @@ def parity_mismatches(
     if outcome is None {
         return [];
     }
-    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+
     out: list[str] = [];
     for (label, host_rows, kernel_rows) in (
         (

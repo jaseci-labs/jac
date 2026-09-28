@@ -222,6 +222,5 @@ class JacDesktopPluginConfig {
 }
 
 def _load_desktop_template -> dict[str, object] | None {
-    import from jaclang.client.plugin_config { _load_template }
     return _load_template("desktop");
 }

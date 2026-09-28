@@ -2,13 +2,6 @@ import hashlib;
 import importlib;
 import os;
 import from pathlib { Path }
-import from jaclang.cache.policy {
-    DAY_SECONDS,
-    Policy,
-    SWEEP_INTERVAL_SECONDS,
-    SWEEP_SENTINEL,
-    maybe_sweep_dir
-}
 
 glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
      _ENTRY_MARKER: bytes = b"JFMTCLEAN\n",

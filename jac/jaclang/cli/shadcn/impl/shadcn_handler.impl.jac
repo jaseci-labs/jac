@@ -1,7 +1,6 @@
 import re;
 import json as json_mod;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
 
 impl _read_shadcn_config(config: any) -> any {
     if config.project_root is None {

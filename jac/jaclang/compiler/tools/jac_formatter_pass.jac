@@ -1,9 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from collections { deque }
-import jaclang.compiler.tools.doc_ir as doc;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.roles { BodyRole, Kid }
-import from jaclang.compiler.frontend.diagnostics { W5050, E5051 }
 
 walker JacFormatPass(CompilerPass) {
     has indent_size: int = 4,
@@ -40,10 +35,6 @@ walker JacFormatPass(CompilerPass) {
 }
 
 def format_module(mod: uni.Module) -> str {
-    import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-    import from jaclang.compiler.driver.pipeline_runner { run_utility }
-    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
-    import from jaclang.compiler.driver.program { JacProgram }
     return run_utility(
         UtilityProduct.FORMAT,
         run_utility(UtilityProduct.DOC, mod, JacProgram()).module,
@@ -52,9 +43,6 @@ def format_module(mod: uni.Module) -> str {
 }
 
 def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
-    import from jaclang.compiler.tools.normalize_pass { NormalizePass }
-    import from jaclang.compiler.driver.program { JacProgram }
-
     own_path = mod.loc.mod_path;
     saved_body = mod.body;
     saved_kid = [mod->:Kid:->];

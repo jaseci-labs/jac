@@ -1,14 +1,6 @@
 import inspect;
 import from types { UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
-import from jaclang.server.serving.app { ServingApp }
-import from jaclang.server.serving.datatypes { HTMLResponse }
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
 
 
 glob _NAME_SCHEMAS: dict[str, dict[str, str]] = {

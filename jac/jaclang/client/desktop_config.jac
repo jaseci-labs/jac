@@ -1,6 +1,4 @@
 import from pathlib { Path }
-import from jaclang.comptime { fields, get_field }
-import from jaclang.project.plugin_config { PluginConfigBase }
 
 obj DesktopIdentity {
     has name: str,

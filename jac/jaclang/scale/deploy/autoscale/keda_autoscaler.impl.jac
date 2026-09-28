@@ -720,7 +720,7 @@ impl KEDAAutoscaler.watch_scale_targets{
     recovery relists and keeps the cache, so targets whose state did not change
     while the observer was behind stay silent and only real differences emit.
     """;
-    import from jaclang.scale._optdeps.kubernetes { watch }
+
     api = self._custom_api or client.CustomObjectsApi();
     (targets, version) = self._list_scale_targets(namespace, label_selector);
     last: dict[str, any] = {};

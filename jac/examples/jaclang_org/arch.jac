@@ -1,4 +1,4 @@
-impl import {
+graph import {
     edge CoreInternal: core.* --> core.*;
     edge AppOverCore: core.* --> web.* | mobile.* | cli.* | desktop.*;
     edge WebInternal: web.* --> web.*;
@@ -9,7 +9,7 @@ impl import {
     edge BridgeFunnel: jaclang.server.bridge --> cli.commands.*;
 }
 
-impl import cli.commands {
+graph import cli.commands {
     common --> cli.commands.docs { EXIT_OK, explain_bridge_error }
     common --> cli.commands.feed {
         EXIT_OK,
@@ -25,7 +25,7 @@ impl import cli.commands {
     score --> cli.main { run_score }
 }
 
-impl import core {
+graph import core {
     ai --> cli.commands.score | core.scoring_service { optional_review }
     ai --> core.leaderboard.scoring { CodeReview }
     async_utils --> core.jacyac.registration | core.site.docs.DocsShell { sleep }
@@ -145,7 +145,7 @@ impl import core {
     utils --> core.site.landing.Reveal | core.site.source.FloatingSource { cn }
 }
 
-impl import core.brand {
+graph import core.brand {
     font --> core.jacyac.native.JacYacMobile { useBrandFont }
     logo --> core.brand.styles { logo_xml }
     theme --> core.jacyac.native.JacYacMobile { useTheme }
@@ -175,7 +175,7 @@ impl import core.brand {
     tokens --> core.jacyac.native.theme { Colors, font_family, fonts, radii, spacing }
 }
 
-impl import core.docs {
+graph import core.docs {
     graph --> cli.commands.docs { DocsStatus, docs_status }
     graph --> core.docs.sync {
         DocVersion,
@@ -208,7 +208,7 @@ impl import core.docs {
     sync --> cli.commands.docs | web.main { docs_sync_tick }
 }
 
-impl import core.jacyac {
+graph import core.jacyac {
     format --> core.jacyac.identity { handle_of }
     format --> core.jacyac.native.components.Avatar { handle_of, initial_of }
     format --> core.jacyac.native.components.TweetCard { handle_of }
@@ -254,7 +254,7 @@ impl import core.jacyac {
     validation --> core.social_graph | core.jacyac.state { valid_post }
 }
 
-impl import core.jacyac.github {
+graph import core.jacyac.github {
     auth --> core.jacyac.github.login { begin_github, finish_github }
     auth --> core.jacyac.github.repos { github_id }
     auth --> core.jacyac.session { github_enabled }
@@ -286,7 +286,7 @@ impl import core.jacyac.github {
     repos --> desktop.main | web.main { github_repositories }
 }
 
-impl import core.jacyac.native {
+graph import core.jacyac.native {
     JacYacMobile --> core.site.landing.MobileShowcase | mobile.main { JacYacMobile }
     icon --> core.jacyac.native.JacYacMobile { Icon }
     icon --> core.jacyac.native.components.BridgeBanner { Icon }
@@ -313,7 +313,7 @@ impl import core.jacyac.native {
     theme --> core.jacyac.native.screens.ScoresScreen { makeStyles }
 }
 
-impl import core.jacyac.native.components {
+graph import core.jacyac.native.components {
     Avatar --> core.jacyac.native.components.Composer { Avatar }
     Avatar --> core.jacyac.native.components.TweetCard { Avatar }
     Avatar --> core.jacyac.native.screens.ExploreScreen { Avatar }
@@ -333,7 +333,7 @@ impl import core.jacyac.native.components {
     TweetCard --> core.jacyac.native.screens.ProfileScreen { TweetCard }
 }
 
-impl import core.jacyac.native.screens {
+graph import core.jacyac.native.screens {
     AuthScreen --> core.jacyac.native.JacYacMobile { AuthScreen }
     ChannelsScreen --> core.jacyac.native.JacYacMobile { ChannelsScreen }
     ExploreScreen --> core.jacyac.native.JacYacMobile { ExploreScreen }
@@ -342,7 +342,7 @@ impl import core.jacyac.native.screens {
     ScoresScreen --> core.jacyac.native.JacYacMobile { ScoresScreen }
 }
 
-impl import core.leaderboard {
+graph import core.leaderboard {
     board --> core.social_graph { BoardHub, OnBoard, RepoEntry }
     format --> core.site.jacyac.components.ProjectCard {
         belt_class,
@@ -356,7 +356,7 @@ impl import core.leaderboard {
     scoring --> core.social_graph { ScoreBreakdown }
 }
 
-impl import core.site.docs {
+graph import core.site.docs {
     DocsArticle --> core.site.docs.DocsShell { DocsArticle, DocsArticleSkeleton }
     DocsGraphFloat --> core.site.docs.DocsSidebar { DocsGraphFloat }
     DocsShell --> desktop.pages.docs.index | web.pages.docs.index { DocsShell }
@@ -366,7 +366,7 @@ impl import core.site.docs {
     MermaidDiagram --> core.site.docs.Markdown { MermaidDiagram }
 }
 
-impl import core.site.game {
+graph import core.site.game {
     webgl_host --> core.site.landing.WasmGame { run_game }
     arena --> core.site.game.webgl_host {
         frame,
@@ -444,7 +444,7 @@ impl import core.site.game {
     type sim --> core.site.game.webgl_host { Game }
 }
 
-impl import core.site.jacyac {
+graph import core.site.jacyac {
     GithubCallback --> desktop.pages.jacyac.github.callback { GithubCallback }
     GithubCallback --> web.pages.jacyac.github.callback { GithubCallback }
     JacYac --> desktop.pages.jacyac { JacYac }
@@ -455,7 +455,7 @@ impl import core.site.jacyac {
     JacYac --> web.pages.socialize { JacYac }
 }
 
-impl import core.site.jacyac.components {
+graph import core.site.jacyac.components {
     AuthForm --> core.site.jacyac.JacYac { AuthForm }
     ChannelsTab --> core.site.jacyac.JacYac { ChannelsTab }
     Composer --> core.site.jacyac.components.ChannelsTab { Composer }
@@ -478,7 +478,7 @@ impl import core.site.jacyac.components {
     WelcomeBanner --> core.site.jacyac.components.FeedTab { WelcomeBanner }
 }
 
-impl import core.site.landing {
+graph import core.site.landing {
     Agents --> core.site.landing.Home { Agents }
     BookSection --> core.site.landing.Home { BookSection }
     Capabilities --> core.site.landing.Home { Capabilities }
@@ -507,7 +507,7 @@ impl import core.site.landing {
     WhyJac --> core.site.landing.Home { WhyJac }
 }
 
-impl import core.site.landing.diagrams {
+graph import core.site.landing.diagrams {
     GradualBorrowDiagram --> core.site.landing.WaitWuuut { GradualBorrowDiagram }
     GradualBorrowDiagram --> core.site.landing.WhyJac { GradualBorrowDiagram }
     PolypilerDiagram --> core.site.landing.OneBinary { PolypilerDiagram }
@@ -522,13 +522,13 @@ impl import core.site.landing.diagrams {
     motion --> core.site.landing.diagrams.TopokineticDiagram { view_once }
 }
 
-impl import core.site.leaderboard {
+graph import core.site.leaderboard {
     Methodology --> core.site.jacyac.components.NinjaScores { Methodology }
     Methodology --> desktop.pages.methodology { Methodology }
     Methodology --> web.pages.methodology { Methodology }
 }
 
-impl import core.site.source {
+graph import core.site.source {
     CodeSpotlight --> core.site.landing.MobileShowcase { CodeSpotlight }
     CodeSpotlight --> core.site.landing.WaitWuuut { CodeSpotlight }
     FloatingSource --> core.site.landing.Hero { FloatingSource }
@@ -537,7 +537,7 @@ impl import core.site.source {
     SourceBrowser --> core.site.source.FloatingSource { SourceBrowser }
 }
 
-impl import core.site.ui {
+graph import core.site.ui {
     CodeBlock --> core.site.docs.Markdown { CodeLines }
     CodeBlock --> core.site.docs.MermaidDiagram { CodeLines }
     CodeBlock --> core.site.landing.Showcase { CodeBlock }
@@ -756,7 +756,7 @@ impl import core.site.ui {
     }
 }
 
-impl import core.source {
+graph import core.source {
     files --> core.site.landing.Showcase { SourceView, example_sources }
     files --> core.site.source.CodeSpotlight { SourceSpan, source_span }
     files --> core.site.source.SourceBrowser {

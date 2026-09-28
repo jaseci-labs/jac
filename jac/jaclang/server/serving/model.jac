@@ -1,4 +1,3 @@
-import from jaclang.runtime.object_interop { fields, is_record }
 import from enum { Enum }
 
 

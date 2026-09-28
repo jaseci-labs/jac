@@ -4,13 +4,10 @@ import from typing { Optional }
 impl DesktopTarget.setup(project_dir: Path) -> None {}
 
 impl DesktopTarget.engine(project_dir: Path) -> str {
-    import from jaclang.client.desktop_config { get_desktop_config }
     return get_desktop_config(project_dir).get_engine();
 }
 
 impl DesktopTarget.out_dir_for(entry_file: Path, project_dir: Path) -> Path {
-    import from jaclang.project.client_paths { client_app_dir_for }
-    import from jaclang.project.config { get_config_for_dir }
     config = get_config_for_dir(str(project_dir));
     if config is None {
         return project_dir / self.output_dir;
@@ -22,8 +19,7 @@ impl DesktopTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     import os;
-    import from jaclang.client.desktop_config { get_desktop_config }
-    import from jaclang.client.vite_bundler { API_BASE_URL_ENV_VAR }
+
     backend = get_desktop_config(project_dir).get_backend();
     prior = os.environ.get(API_BASE_URL_ENV_VAR);
     if backend != "embedded" {
@@ -45,7 +41,7 @@ impl DesktopTarget.build(
         import from jaclang.client.targets.desktop.cef_shell { cef_build }
         return cef_build(entry_file, project_dir, out_dir, web_bundle);
     }
-    import from jaclang.client.targets.desktop.webview_shell { webview_build }
+
     return webview_build(entry_file, project_dir, out_dir, web_bundle);
 }
 
@@ -58,7 +54,7 @@ impl DesktopTarget.start(
         cef_start(binary);
         return;
     }
-    import from jaclang.client.targets.desktop.webview_shell { webview_start }
+
     webview_start(binary);
 }
 
@@ -69,7 +65,7 @@ impl DesktopTarget.dev(
         import from jaclang.client.targets.desktop.cef_shell { cef_dev_unsupported }
         cef_dev_unsupported();
     }
-    import from jaclang.client.targets.desktop.webview_shell { webview_dev }
+
     webview_dev(
         entry_file,
         project_dir,

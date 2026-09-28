@@ -3,8 +3,6 @@ import sys;
 import sysconfig;
 import site;
 import from pathlib { Path }
-import from jaclang.project.config { get_config }
-import from jaclang.project.pyvenv { get_venv_site_packages }
 
 glob DESKTOP_WEBKIT_ENV: list[tuple[str, str]] = [
          ("GDK_BACKEND", "x11"),

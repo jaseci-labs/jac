@@ -1,7 +1,6 @@
 import hashlib;
 import math;
 import logging;
-import from jaclang.server.shared_store { shared_store }
 
 def consume_limit(scope: str, actor: str, limit: int, seconds: int) -> int {
     if limit <= 0 {

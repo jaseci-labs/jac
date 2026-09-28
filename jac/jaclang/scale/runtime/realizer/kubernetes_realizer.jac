@@ -1,16 +1,5 @@
 import os;
 import pathlib;
-import from jaclang.cli.console { console }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.config.project_env { load_project_env }
-import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.config.app_config { AppConfig, deployed_tree }
-import from jaclang.scale.runtime.fleet {
-    FleetSpec,
-    fleet_from_config,
-    format_fleet_lines
-}
 
 glob DELEGATED_ENV: str = "JAC_SCALE_PINNED_DEPLOY";
 
@@ -35,8 +24,7 @@ obj KubernetesRealizer {
         filename: str, target: str, enable_tls: bool, dry_run: bool
     ) -> (int | None) {
         import subprocess;
-        import from jaclang.scale.injector.binary { host_toolchain_path }
-        import from jaclang.scale.injector.bundle { release_binary_env }
+
         if dry_run or os.environ.get(DELEGATED_ENV) == "1" {
             return None;
         }
@@ -66,7 +54,7 @@ obj KubernetesRealizer {
         if self.fleet is not None {
             return self.fleet;
         }
-        import from jaclang.project.config { get_config_for_dir }
+
         cfg = get_config_for_dir(code_folder);
         if cfg is None or not cfg.is_workspace {
             return None;
@@ -105,8 +93,6 @@ obj KubernetesRealizer {
         dry_run: bool = False,
         show_yaml: bool = False
     ) -> int {
-        import from jaclang.scale.injector.binary { reset_deploy_version_cache }
-
         reset_deploy_version_cache();
 
         if not os.path.exists(filename) {
@@ -141,10 +127,7 @@ obj KubernetesRealizer {
         deployment_target = DeploymentTargetFactory.create(
             target, target_config, logger, dry_run=dry_run
         );
-        import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
-            KubernetesTargetBase
-        }
-        import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
+
         if isinstance(deployment_target, KubernetesTarget) {
             deployment_target.fleet = self.fleet;
             deployment_target.gateway_config = self.gateway_config;

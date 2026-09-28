@@ -2,8 +2,6 @@ import ast as py_ast;
 import json;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def _pkg_root -> Path {
     import jaclang;
@@ -11,7 +9,6 @@ def _pkg_root -> Path {
 }
 
 def _module_to_file(pkg_root: Path, mod: str) -> Path | None {
-    import from jaclang.project.modresolver { resolve_local_module }
     if not mod.startswith('jaclang.') {
         return None;
     }
@@ -121,7 +118,7 @@ def _compile_runtime_module(
     if path.suffix == ".py" {
         return path.read_text(encoding="utf-8");
     }
-    import from jaclang.bootstrap_manifest { is_seed_source }
+
     rel_posix = path.relative_to(pkg_root).as_posix();
     if is_seed_source(rel_posix) {
         import from jaclang.jac0 { compile_jac, discover_impl_files }
@@ -134,7 +131,7 @@ def _compile_runtime_module(
         }
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
-    import from jaclang.compiler.driver.source_products { python_source }
+
     (py_out, ir) = python_source(str(path), prog);
     if native is not None and ir is not None and ir.gen.native_engine is not None {
         import from jaclang.dist.native_product { write_native_product }
@@ -163,11 +160,7 @@ def _runtime_module_options(path: Path) -> CompileOptions {
     placement an application gives it. Placement inference over the rest of the
     package would try to lower every runtime module the application reaches, and
     almost none of them can.""";
-    import from jaclang.compiler.frontend.codeinfo {
-        is_native_by_location,
-        is_shared_runtime_module
-    }
-    import from jaclang.compiler.placement.placement_facts { SPACE_SERVER }
+
     source = str(path);
     if is_native_by_location(source) or is_shared_runtime_module(source) {
         return CompileOptions();

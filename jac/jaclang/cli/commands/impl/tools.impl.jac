@@ -1,10 +1,8 @@
 import os;
-import from jaclang.cli.console { console }
-import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 impl tool(tool: str, args: list[str] = []) -> int {
     import importlib;
-    import from jaclang.compiler.tools.lang_tools { AstTool }
+
     if tool in ("jac2py", "py2jac", "jac2js") {
         _transform = importlib.import_module("jaclang.cli.commands.transform");
         if not args {
@@ -75,8 +73,6 @@ impl dot(
     to_screen: bool = False,
     format: str = "dot"
 ) -> int {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.runtime.builtin { printgraph }
     (base, mod, jac_machine) = _proc_file(filename);
     if filename.endswith('.jac') {
         Jac.jac_import(target=mod, base_path=base, override_name='__main__');
@@ -119,7 +115,6 @@ impl dot(
 }
 
 impl lsp -> int {
-    import from jaclang.lsp.server.server { run_lang_server }
     try {
         run_lang_server();
         return 0;
@@ -130,8 +125,6 @@ impl lsp -> int {
 }
 
 impl completions(shell: str = "bash", install: bool = False) -> int {
-    import from jaclang.cli.jaccomplete { static_shellcode as shellcode }
-    import from jaclang.cli.manifest { iter_command_meta }
     code = shellcode(
         _extract_commands(iter_command_meta(include_hidden=True)),
         executable="jac",
@@ -145,7 +138,6 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
 }
 
 def _extract_commands(specs: list[CommandSpec]) -> list[dict[str, any]] {
-    import from jaclang.cli.command { ArgKind }
     commands = [];
     for spec in sorted(specs, key=lambda (s: any) { s.name; }) {
         name = spec.name;

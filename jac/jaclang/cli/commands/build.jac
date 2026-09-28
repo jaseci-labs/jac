@@ -1,7 +1,3 @@
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-
-
 comptime SPEC_BUILD: CommandSpec = CommandSpec(
          name="build",
          help="Build an app's artifact (.jab by default; type-checks first)",

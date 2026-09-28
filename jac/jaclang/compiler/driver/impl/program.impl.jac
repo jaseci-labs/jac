@@ -549,6 +549,7 @@ impl JacProgram.parse_source(
             annex_sources(file_path),
             early_context=codespace or ('' if infer_native else 'server')
         );
+        active_host().place_wired_imports(parsed);
         if (codespace == 'client') {
             _coerce_client_module(parsed);
         } elif (codespace == 'native') {

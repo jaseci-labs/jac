@@ -4,8 +4,6 @@ import functools;
 import from http.server { SimpleHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.client.vite_bundler { ViteBundler }
-import from jaclang.cli.console { console }
 
 glob _MODULE_SCRIPT_RE = re.compile(
          r'<script type="module" src="([^"]*)"></script>'

@@ -1,54 +1,6 @@
 import os;
 import sys;
 import from contextlib { contextmanager }
-import from jaclang.compiler.frontend.host {
-    active_host,
-    install_host,
-    CheckSettings,
-    HostPlatform,
-    HostServices,
-    LintSettings,
-    NativeVerdict,
-    PathFacts,
-    ProjectDefaults,
-    ProjectFacts
-}
-import from jaclang.compiler.frontend.kernel_inputs {
-    DeclaredDependencies,
-    ImportResolution,
-    KernelInputs,
-    LocalResolution,
-    KEY_SEP,
-    NpmAnswer,
-    PythonInterface,
-    local_key,
-    pair_key,
-    resolution_key
-}
-import from jaclang.compiler.frontend.source_layout {
-    annex_files_of,
-    base_file_of,
-    is_annex_path_of,
-    list_directory,
-    package_init_of,
-    path_facts_of
-}
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.compilation_context { package_owned }
-import from jaclang.compiler.driver.session_compile { SessionHooks, compile_in_session }
-import from jaclang.compiler.driver.module_analysis { ModuleAnalysis, analyze_module }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.types.stubcat.reader { StubCatalog, open_catalog_region }
-import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
-import from jaclang.compiler.types.stubcat.modiface { iface_module, open_module_iface }
-import from jaclang.compiler.types.types { ClassDetailsShared, ClassType, TypeBase }
-import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
-import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
-import type from jaclang.compiler.types.ct_value { CtEnvironment }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 
 glob _CATALOGS: dict[str, StubCatalog] = {};
 
@@ -774,7 +726,6 @@ obj KernelHost(HostServices) {
     }
 
     def wiring_file(path: str) -> (str | None) {
-        import from jaclang.compiler.driver.wiring { arch_file_for, is_arch_file }
         self.census.count("wiring_file");
         if is_arch_file(path) {
             return None;
@@ -792,17 +743,37 @@ obj KernelHost(HostServices) {
         file_path: str,
         program: (JacProgram | None),
         annexes: list[WovenAnnex],
-        early_context: str = ""
+        early_context: str = "",
+        load_kernel: bool = True
     ) -> (tuple[Module, bool] | None) {
         if self.kernel_only("native_parse") {
             return None;
         }
         with self.delegating("native_parse") as host {
             answer = host.native_parse(
-                source_str, file_path, program, annexes, early_context
+                source_str, file_path, program, annexes, early_context, load_kernel
             );
         }
         return answer;
+    }
+
+    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None) {
+        if self.kernel_only("woven_module") {
+            return None;
+        }
+        with self.delegating("woven_module") as host {
+            answer = host.woven_module(path, program);
+        }
+        return answer;
+    }
+
+    def place_wired_imports(module: Module) {
+        if self.kernel_only("place_wired_imports") {
+            return;
+        }
+        with self.delegating("place_wired_imports") as host {
+            host.place_wired_imports(module);
+        }
     }
 
     def drop_python_lane_products(path: str, program: JacProgram) {

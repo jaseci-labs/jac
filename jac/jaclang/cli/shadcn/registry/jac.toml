@@ -1,0 +1,5 @@
+# The shadcn component registry. `jac shadcn add` copies these components into
+# user projects one file at a time, so they are their own project and keep
+# their written imports instead of taking them from jaclang's arch.jac.
+[project]
+name = "jac-shadcn-registry"

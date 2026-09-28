@@ -1,8 +1,6 @@
 import os;
 import site;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, get_config }
-import from jaclang.project.pyvenv { get_venv_site_packages }
 
 
 def jac_global_prefix -> Path {

@@ -1,7 +1,7 @@
 import os;
 import logging;
 import from contextvars { ContextVar }
-import from jaclang.scale._optdeps.opentelemetry { HAS_OTEL }
+
 import type from opentelemetry.trace { Span, Tracer }
 import type from opentelemetry.sdk.trace { TracerProvider }
 import type from opentelemetry.util.types { AttributeValue }

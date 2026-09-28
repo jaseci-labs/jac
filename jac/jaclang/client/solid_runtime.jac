@@ -1,4 +1,3 @@
-import from jaclang.client.auth_contract { SignupResult }
 import from 'solid-js' {
     createSignal as solidCreateSignal,
     createMemo,
@@ -18,54 +17,6 @@ import from '@solidjs/router' {
 }
 import from '@tanstack/solid-form' { createForm }
 import from 'zod' { z }
-
-import from jaclang.client.client_runtime_core {
-    BridgeError as _BridgeError,
-    BridgeUnavailable as _BridgeUnavailable,
-    BridgeTimeout as _BridgeTimeout,
-    BridgeRejected as _BridgeRejected,
-    __bridgeErrorFor as ___bridgeErrorFor,
-    __bridgeErrorFromFetch as ___bridgeErrorFromFetch,
-    __bridgeApiBase as ___bridgeApiBase,
-    navigate as _navigate,
-    __createJacSchema as ___createJacSchema,
-    __jacSpawn as ___jacSpawn,
-    jacSpawn as _jacSpawn,
-    __jacCallFunction as ___jacCallFunction,
-    __normalizeIdentity as ___normalizeIdentity,
-    __normalizeCredential as ___normalizeCredential,
-    jacSignup as _jacSignup,
-    jacLogin as _jacLogin,
-    jacLogout as _jacLogout,
-    jacIsLoggedIn as _jacIsLoggedIn,
-    jacSsoLogin as _jacSsoLogin,
-    jacSetToken as _jacSetToken,
-    __jacClearCache as ___jacClearCache,
-    __jacDesktopBroker as ___jacDesktopBroker,
-    __jacPollBrokerSession as ___jacPollBrokerSession,
-    __jacSleep as ___jacSleep,
-    __getApiBaseUrl as ___getApiBaseUrl,
-    __getLocalStorage as ___getLocalStorage,
-    __setLocalStorage as ___setLocalStorage,
-    __removeLocalStorage as ___removeLocalStorage,
-    __getEndpointEffects as ___getEndpointEffects,
-    __getCacheState as ___getCacheState,
-    __isFresh as ___isFresh,
-    __cacheGet as ___cacheGet,
-    __cacheSet as ___cacheSet,
-    __evictOldest as ___evictOldest,
-    __doWalkerFetch as ___doWalkerFetch,
-    __doFuncFetch as ___doFuncFetch,
-    __cachedEndpointCall as ___cachedEndpointCall,
-    __invalidateEndpoint as ___invalidateEndpoint,
-    __overlaps as ___overlaps,
-    __jacReportError as ___jacReportError,
-    __jacInstallErrorHandlers as ___jacInstallErrorHandlers,
-    ErrorFallback as ___ErrorFallback,
-    errorOverlay as ___errorOverlay,
-    __jacReactErrorHandler as ___jacReactErrorHandler,
-    __unwrapFormSchema as ___unwrapFormSchema
-}
 
 glob:pub BridgeError = _BridgeError,
      BridgeUnavailable = _BridgeUnavailable,

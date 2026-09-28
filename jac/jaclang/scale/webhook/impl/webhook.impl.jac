@@ -20,7 +20,6 @@ impl WebhookUtils.generate_api_key -> str {
 impl WebhookUtils.create_api_key_token(
     api_key_id: str, user_id: str, name: str, expiry_days: int | None = None
 ) -> str {
-    import from jaclang.server.identity.config { signing_algorithm, signing_secret }
     default_expiry = int(
         get_scale_config().get_webhook_config()['api_key_expiry_days']
     );
@@ -43,7 +42,6 @@ impl WebhookUtils.create_api_key_token(
 }
 
 impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
-    import from jaclang.server.identity.config { signing_algorithm, signing_secret }
     try {
         payload = jwt_decode(
             api_key, signing_secret(), algorithms=[signing_algorithm()]

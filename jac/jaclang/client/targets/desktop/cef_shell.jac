@@ -3,28 +3,8 @@ import shutil;
 import json;
 import subprocess;
 import stat;
-import from jaclang.toolchains.cef { ensure_cef }
+
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.desktop.desktop_build {
-    stage_program,
-    _find_cef_dir,
-    _jac_bin,
-    _jac_subprocess_env,
-    _patch_host_rpath,
-    _stage_fused_runtime,
-    _bundle_runtime,
-    build_cef_dispatch,
-    build_cef_subprocess,
-}
-import from jaclang.client.targets.desktop._host_bootstrap {
-    _host_boot_py,
-    _fused_runtime_import_block
-}
-import from jaclang.client.targets.desktop._dev_launch {
-    ensure_dev_build_env,
-    desktop_app_runtime_env
-}
 
 def _is_stale(output: Path, inputs: list[Path]) -> bool {
     if not output.exists() {
@@ -182,8 +162,6 @@ def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
 def cef_build(
     entry_file: Path, project_dir: Path, out_dir: Path, web_bundle: Path
 ) -> Path {
-    import from jaclang.client.desktop_config { get_desktop_config }
-
     ensure_dev_build_env();
 
     console.print("\n🖥️  Building CEF desktop app (Chromium)", style="bold");

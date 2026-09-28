@@ -1,11 +1,3 @@
-import from jaclang.scale.models.deploy_context { DeployContext }
-import from jaclang.scale._optdeps.kubernetes { client }
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    ensure_namespace_exists
-}
-import from jaclang.scale.runtime.context.util { k8s_safe_name }
-
-
 obj DatabaseProvisioner {
     has k8s_target: any,
         logger: any = None;

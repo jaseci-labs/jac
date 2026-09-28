@@ -1,111 +1,7 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree {
-    UniNode,
-    Ability,
-    ArchBlockStmt,
-    Archetype,
-    AssertStmt,
-    Assignment,
-    AtomExpr,
-    AtomTrailer,
-    AtomUnit,
-    AwaitExpr,
-    BinaryExpr,
-    Bool,
-    BoolExpr,
-    CfgExpr,
-    CodeBlockStmt,
-    CompareExpr,
-    CtrlStmt,
-    DeleteStmt,
-    DictCompr,
-    DictVal,
-    ElementStmt,
-    Ellipsis as UniEllipsis,
-    ElseIf,
-    ElseStmt,
-    EmptyToken,
-    Enum,
-    Except,
-    Expr,
-    ExprAsItem,
-    ExprStmt,
-    FString,
-    FinallyStmt,
-    Float,
-    FormattedValue,
-    FuncCall,
-    FuncSignature,
-    GenCompr,
-    IfElseExpr,
-    IfStmt,
-    Import,
-    InForStmt,
-    IndexSlice,
-    InnerCompr,
-    Int,
-    KVPair,
-    KWPair,
-    LambdaExpr,
-    ListCompr,
-    ListVal,
-    Literal,
-    MatchArch,
-    MatchAs,
-    MatchCase,
-    MatchKVPair,
-    MatchMapping,
-    MatchOr,
-    MatchPattern,
-    MatchSequence,
-    MatchSingleton,
-    MatchStar,
-    MatchStmt,
-    MatchValue,
-    MatchWild,
-    Module,
-    ModuleCode,
-    ModuleItem,
-    ModulePath,
-    MultiString,
-    Name,
-    NameAtom,
-    Null,
-    ParamKind,
-    ParamVar,
-    PythonModuleAst,
-    RaiseStmt,
-    ReturnStmt,
-    Semi,
-    SetCompr,
-    SetVal,
-    Slice,
-    Source,
-    SpecialVarRef,
-    String,
-    SubTag,
-    Token,
-    TryStmt,
-    TupleVal,
-    UnaryExpr,
-    WhileStmt,
-    WithStmt,
-    YieldExpr
-}
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import ast as py_ast;
 import os;
 import re;
 import from typing { TypeAlias, cast }
-import from jaclang.compiler.frontend.constant { Tokens as Tok, RESERVED_IDENT_NAMES }
-import from jaclang.compiler.frontend.diagnostics { E5041, E5042 }
-
-import from jaclang.compiler.frontend.roles {
-    NameRefRole,
-    ReturnTypeRole,
-    UnpackRole,
-    ValueRole
-}
 
 glob T = TypeVar('T', bound=UniNode),
      ComprT = TypeVar('ComprT', bound=ListCompr),
@@ -272,7 +168,6 @@ walker PyastBuildPass(CompilerPass) {
 }
 
 def build_python_module(py_mod: PythonModuleAst) -> Module {
-    import from jaclang.compiler.passes.execution { new_context, walk_pass }
     walk = PyastBuildPass(module=py_mod, ctx=new_context(PyastBuildPass, py_mod));
     walk_pass(walk);
     built = walk.module;

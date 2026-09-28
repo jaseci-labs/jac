@@ -1,10 +1,7 @@
 import os;
 import sys;
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec, arg_consumes_value }
 
 def _discover_project_config(profile: str | None = None) {
-    import from jaclang.project.tomlio { MalformedJacTomlError }
-
     try {
         import from jaclang.project.config { get_config }
         import from jaclang.project.pyvenv { add_venv_to_path }
@@ -21,15 +18,11 @@ def _discover_project_config(profile: str | None = None) {
 }
 
 def _exit_on_invalid_jac_toml(exc: any) {
-    import from jaclang.cli.console { console }
-
     console.error(f"jac.toml is invalid: {exc}");
     sys.`exit(2);
 }
 
 def _exit_on_malformed_jac_toml(exc: any) {
-    import from jaclang.cli.console { console }
-
     console.error(
         f"jac.toml is malformed: {exc.original}", hint=f"File: {exc.file_path}"
     );
@@ -105,7 +98,6 @@ def _extract_script_args(meta: CommandSpec) -> list[str] {
 }
 
 def _apply_profile(meta: CommandSpec, args_dict: dict[str, any]) {
-    import from jaclang.cli.console { console }
     try {
         import from jaclang.project.config { get_config }
 
@@ -242,9 +234,6 @@ def _exit_now(code: int) -> None {
 
 
 impl run_selected_command(command_name: str) -> None {
-    import from jaclang.cli.manifest { get_command_meta }
-    import from jaclang.cli.manifest_parse { build_command_parser }
-
     meta = get_command_meta(command_name);
     if meta is None {
         sys.stderr.write(f"Unknown command: {command_name}\n");
@@ -258,10 +247,6 @@ impl run_selected_command(command_name: str) -> None {
         parser.parse_known_args(cmd_argv);
         return;
     }
-
-    import from jaclang.cli.console { console }
-    import from jaclang.cli.executor { get_executor }
-    import from jaclang.cli.loader { load_handler }
 
     script_args = _extract_script_args(meta);
     (args, unknown) = parser.parse_known_args(cmd_argv);

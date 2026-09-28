@@ -80,7 +80,6 @@ obj HttpTransport(ServiceTransport) {
         payload: dict[str, any],
         headers: dict[str, str] | None = None
     ) -> any {
-        import from jaclang.scale.runtime.rpc.rpc { service_call }
         return service_call(service, name, payload, headers=headers);
     }
 
@@ -91,7 +90,6 @@ obj HttpTransport(ServiceTransport) {
         stub_cls: any = None,
         headers: dict[str, str] | None = None
     ) -> any {
-        import from jaclang.scale.runtime.rpc.rpc { walker_call }
         return walker_call(service, name, payload, stub_cls, headers=headers);
     }
 }

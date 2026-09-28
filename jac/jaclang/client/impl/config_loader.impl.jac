@@ -1,16 +1,7 @@
-import from jaclang.project.config { JacConfig }
 import shutil;
 import os;
-import from jaclang.cli.console { console }
+
 import from pathlib { Path }
-import from jaclang.project.plugin_config { deep_merge }
-import from jaclang.client.npm_provider {
-    CORE_DEV_DEPS,
-    CORE_RUNTIME_DEPS,
-    LEGACY_META_PACKAGES,
-    OPTIONAL_RUNTIME_DEPS,
-    app_npm_deps
-}
 
 def _inject_missing(deps: dict[str, any], required: dict[str, str]) -> dict[str, any] {
     merged = dict(deps);
@@ -252,7 +243,6 @@ impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, any] {
 }
 
 impl JacClientConfig.get_assets_config(self: JacClientConfig) -> dict[str, any] {
-    import from jaclang.project.client_paths { client_assets_config }
     return client_assets_config(self.get_jac_config(), self.entry_path);
 }
 
@@ -263,7 +253,6 @@ impl JacClientConfig.get_asset_extensions(self: JacClientConfig) -> set[str] {
 impl JacClientConfig.get_assets_dir(
     self: JacClientConfig, entry_path: str = ""
 ) -> Path {
-    import from jaclang.project.client_paths { client_assets_dir }
     return client_assets_dir(
         self.get_jac_config(),
         self.project_dir or Path.cwd(),

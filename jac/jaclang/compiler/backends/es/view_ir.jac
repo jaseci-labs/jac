@@ -1,6 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.frontend.unitree as uni;
-
 obj HostTag {
     has name: str,
         jac_node: (uni.UniNode | None);

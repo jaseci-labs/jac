@@ -2,7 +2,6 @@ import dis;
 import os;
 import types;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.host { active_host }
 
 def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
     sources: set[str] = `set();

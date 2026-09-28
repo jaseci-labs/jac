@@ -1,7 +1,3 @@
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale.models.progress { EventSink, ProgressEvent }
-
-
 obj EventLogger(Logger) {
     has sink: EventSink;
 

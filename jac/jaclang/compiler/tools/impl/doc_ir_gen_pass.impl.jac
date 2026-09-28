@@ -2808,7 +2808,7 @@ impl DocIRGenPass._wrap_doc_comments(nd: uni.UniNode) -> None {
     nd.gen.doc_ir = base;
 }
 
-impl DocIRGenPass.exit_impl_import with uni.ImplImport exit {
+impl DocIRGenPass.exit_graph_import with uni.GraphImport exit {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;

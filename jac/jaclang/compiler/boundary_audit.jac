@@ -1,5 +1,4 @@
 import json;
-import type from jaclang.compiler.driver.program { JacProgram }
 
 def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, any] {
     boundaries: dict[str, dict[str, any]] = {};

@@ -1,9 +1,5 @@
 impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     import os;
-    import from jaclang.runtime.constructs { PermissionDenied }
-    import from jaclang.runtime.runtime { JacRuntime }
-    import from jaclang.server.session { Session, conninfo_from_url, promotions_for }
-    import from jaclang.server.shared_store { scale_db_url }
 
     base = JacRuntime.get_base_path_dir();
     target = JacRuntime.get_full_target_path();

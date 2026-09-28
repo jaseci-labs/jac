@@ -67,8 +67,6 @@ impl sqlstate_of(err: Exception) -> str {
 
 
 impl holds_no_data(info: ConnInfo, database: str) -> bool {
-    import from jaclang.runtime.constants { Constants as Con }
-    import from jaclang.data.pgload { connect }
     try {
         conn: any = connect(
             info.user,
@@ -135,7 +133,6 @@ impl admin_conninfo(info: ConnInfo) -> ConnInfo {
 
 
 impl connect_admin(info: ConnInfo) -> any {
-    import from jaclang.data.pgload { connect }
     admin = admin_conninfo(info);
     return connect(
         admin.user,

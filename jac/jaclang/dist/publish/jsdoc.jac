@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.unitree { Module }
-
 def jac_type_to_jsdoc(type_str: str, is_return: bool = False) -> str;
 
 def jac_type_to_ts(type_str: str, is_return: bool = False) -> str;

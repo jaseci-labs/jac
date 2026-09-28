@@ -1,5 +1,4 @@
 import from enum { StrEnum }
-import type from jaclang.server.hmr { HotReloader }
 
 enum BuildStatus(StrEnum) {
     OK = "ok",

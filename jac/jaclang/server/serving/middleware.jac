@@ -1,6 +1,3 @@
-import from jaclang.server.serving.datatypes { Request, Response }
-
-
 def cors_middleware(
     allow_origins: (list[str] | None) = None,
     allow_credentials: bool = True,

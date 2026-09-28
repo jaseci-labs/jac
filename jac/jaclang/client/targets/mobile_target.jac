@@ -1,8 +1,5 @@
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.server.watcher { FileChangeEvent }
-import from jaclang.client.targets.registry { ClientTarget }
-import from jaclang.client.targets.client_dev_common { _ClientHmrHandler }
 
 obj _RNHmrHandler(_ClientHmrHandler) {
     has rn_dir: Path,

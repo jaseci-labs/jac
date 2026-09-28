@@ -5,9 +5,6 @@ import threading;
 import from enum { StrEnum }
 import from uuid { UUID }
 
-import from jaclang.data.pgwire { PgWireError }
-import from jaclang.runtime.exceptions { WriteConflict }
-
 glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',

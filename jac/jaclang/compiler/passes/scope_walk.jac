@@ -1,7 +1,3 @@
-import from jaclang.compiler.frontend.unitree { UniScopeNode }
-import from jaclang.compiler.frontend.relations { ScopeChild }
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
-
 walker ScopeWalker {
     has seen: set[int] = set();
 

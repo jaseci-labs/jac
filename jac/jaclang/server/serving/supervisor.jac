@@ -10,9 +10,6 @@ import sys;
 import tempfile;
 import time;
 import from contextlib { contextmanager }
-import from jaclang.server.net { PORT_RETRY_LIMIT, bind_listener }
-import from jaclang.server.serving.server { EXIT_OK, EXIT_RECYCLE }
-import from jaclang.server.settings { ServeSettings }
 
 glob logger: logging.Logger = logging.getLogger(__name__),
      EXIT_BOOT_FAILED: int = 4,

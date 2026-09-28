@@ -1,9 +1,6 @@
 import os;
 import from enum { StrEnum }
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.data.store { TxnIsolation }
-import from jaclang.data.dbcatalog { DbRecord, MAINTENANCE_DB }
 
 
 enum DbAction(StrEnum) {
@@ -43,13 +40,12 @@ def _project_data_dir(explicit: str) -> str {
     if explicit {
         return str(Path(explicit).expanduser());
     }
-    import from jaclang.server.session { shared_pg_data_dir }
+
     return shared_pg_data_dir();
 }
 
 
 def _project_target(entry_file: str) -> tuple[str, (str | None)] {
-    import from jaclang.runtime.graph_utils { get_name }
     if entry_file {
         path = Path(entry_file).expanduser().resolve();
         if not path.is_file() {
@@ -79,7 +75,6 @@ def _project_target(entry_file: str) -> tuple[str, (str | None)] {
 
 
 def _project_database(entry_file: str) -> str {
-    import from jaclang.server.session { project_db_name }
     (base, target) = _project_target(entry_file);
     return project_db_name(base, target);
 }
@@ -88,9 +83,6 @@ def _project_database(entry_file: str) -> str {
 def _runtime_for(
     data_dir: str, database: str, tcp: bool = False, port: int = 5432
 ) -> any {
-    import from jaclang.data.dbcatalog { DbKind }
-    import from jaclang.data.pgembed { PgRuntime }
-    import from jaclang.server.session { scratch_owner_pid }
     owner = scratch_owner_pid();
     return PgRuntime(
         data_dir=data_dir,
@@ -105,13 +97,11 @@ def _runtime_for(
 
 
 def _catalog_runtime(data_dir: str) -> any {
-    import from jaclang.data.pgembed { PgRuntime }
     return PgRuntime(data_dir=data_dir, database=MAINTENANCE_DB);
 }
 
 
 def _open_store(rt: any) -> any {
-    import from jaclang.data.store { PgStore }
     store = PgStore(conninfo=rt.ensure());
     store.ensure_schema_once({});
     return store;
@@ -119,8 +109,6 @@ def _open_store(rt: any) -> any {
 
 
 def _open_project_store(data_dir: str, entry_file: str) -> any {
-    import from jaclang.data.store { PgStore }
-    import from jaclang.server.session { conninfo_from_url }
     url = os.environ.get('JAC_DB_URL', '');
     if not url {
         return _open_store(_runtime_for(data_dir, _project_database(entry_file)));
@@ -288,7 +276,6 @@ def _db_sql(data_dir: str, query: str, entry_file: str) -> int {
 
 
 def _db_fetch -> int {
-    import from jaclang.data.pgembed { PgRuntime, dist_cache_dir }
     bin_dir = PgRuntime(data_dir=dist_cache_dir()).fetch_dist();
     console.success(f"embedded postgres binaries ready at {bin_dir}");
     return 0;
@@ -340,7 +327,6 @@ def _db_list(data_dir: str) -> int {
 def _prune_candidates(
     rt: any, records: list[DbRecord], empty: bool
 ) -> list[PruneCandidate] {
-    import from jaclang.data.dbcatalog { holds_no_data }
     info = rt.conninfo();
     out: list[PruneCandidate] = [];
     for rec in records {
@@ -374,14 +360,7 @@ def _db_prune(data_dir: str, yes: bool, empty: bool) -> int {
     if _cluster_missing(data_dir) {
         return 0;
     }
-    import from jaclang.data.dbcatalog {
-        condemn_abandoned,
-        connect_admin,
-        drop_database,
-        drop_if_still_dead,
-        list_databases,
-        pardon_recovered
-    }
+
     rt = _catalog_runtime(data_dir);
     conn: any = connect_admin(rt.ensure());
     try {
@@ -467,7 +446,6 @@ def _db_prune(data_dir: str, yes: bool, empty: bool) -> int {
 
 
 def _db_drop(data_dir: str, database: str, yes: bool) -> int {
-    import from jaclang.data.dbcatalog { is_jac_database }
     if not database {
         console.error("usage: jac db drop <database> -y");
         return 1;

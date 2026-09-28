@@ -1,7 +1,3 @@
-import from jaclang.scale.runtime.context.service_routing {
-    KEDA_INTERCEPTOR_SERVICE_ADDRESS
-}
-
 def _http_activation_nested_schema(cluster_scoped: bool = False) -> dict[str, any] {
     """The `nested` fields shared verbatim by [scale.kubernetes.http_activation]
     and [apps.NAME.scale.http_activation] -- factored out so

@@ -1,11 +1,6 @@
-import from jaclang.compiler.backends.native.linker_common {
-    object_undefined_symbols,
-    select_ar_members
-}
-
 def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
     import os;
-    import from jaclang.runtime.graph_utils { triple_arch }
+
     want = triple_arch(triple);
 
     python_build = os.path.join(pkg_root, ".python-build");
@@ -31,7 +26,6 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
         }
     }
 
-    import from jaclang.dist.fused_binary { bundled_floor_roots }
     for floor in bundled_floor_roots(pkg_root) {
         if not os.path.isdir(floor) {
             continue;
@@ -48,7 +42,7 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
 
 def floor_lib_dir(triple: str) -> (str | None) {
     import os;
-    import from jaclang.compiler.driver.compile_options { env_floor_dir }
+
     `override = env_floor_dir();
     if `override and os.path.isdir(`override) {
         return `override;
@@ -177,7 +171,7 @@ def clib_symbol_lib_map(
 
 def musl_lib_dir(triple: str) -> (str | None) {
     import os;
-    import from jaclang.runtime.graph_utils { triple_arch }
+
     env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
     if env and os.path.isdir(env) {
         return env;
@@ -196,7 +190,7 @@ def musl_lib_dir(triple: str) -> (str | None) {
             }
         }
     }
-    import from jaclang.dist.fused_binary { bundled_floor_roots }
+
     for floor in bundled_floor_roots(pkg_root) {
         if not os.path.isdir(floor) {
             continue;
@@ -259,7 +253,7 @@ obj StaticRuntime {
 
 def load_outline_atomics(triple: str) -> (StaticRuntime | None) {
     import os;
-    import from jaclang.runtime.graph_utils { triple_arch }
+
     if triple_arch(triple) != "aarch64" or "linux" not in triple {
         return None;
     }

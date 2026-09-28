@@ -1,7 +1,6 @@
 import json;
 import os;
 import sys;
-import from jaclang.server.transport { Meta, TransportResponse }
 
 def check_endpoint_contract(
     request: any, target: any, kind: str, name: str, app: str
@@ -10,7 +9,7 @@ def check_endpoint_contract(
     if not identity {
         return None;
     }
-    import from jaclang.runtime.prepared { application_for }
+
     module = sys.modules.get(target.__module__);
     path = getattr(module, "__file__", "");
     application = application_for(path, target.__module__) if path else None;

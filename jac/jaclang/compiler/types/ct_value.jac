@@ -1,16 +1,4 @@
 import math;
-import from jaclang.compiler.types.ct_int {
-    MAX_STR_DIGITS,
-    mag_add_small,
-    mag_bit_length,
-    mag_cmp,
-    mag_decimal_digits,
-    mag_from_int,
-    mag_shl,
-    mag_to_int
-}
-import type from jaclang.compiler.frontend.unitree { Ability }
-import type from jaclang.compiler.types.types { ClassType, TypeBase }
 
 class CtNotComptime(Exception) {}
 

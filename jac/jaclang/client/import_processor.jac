@@ -1,6 +1,5 @@
 import from pathlib { Path }
 import from typing { TYPE_CHECKING }
-import from jaclang.client.client_bundle { ClientBundleError }
 
 with entry {
     if TYPE_CHECKING {

@@ -1,28 +1,6 @@
 import json;
 import logging;
 import time;
-import from jaclang.runtime.builtin { APIProtocol }
-import from jaclang.server.identity.user_manager { SYSTEM_USER }
-import from jaclang.server.server {
-    JacAPIServer,
-    JsonValue,
-    ServerExtension,
-    target_restspec
-}
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
-import from jaclang.server.transport { Meta, TransportResponse }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.webhook.webhook {
-    ApiKeyManager,
-    WebhookUtils,
-    rate_window_ok
-}
 
 glob logger: logging.Logger = logging.getLogger(__name__),
      GITHUB_SCHEME: str = 'github',

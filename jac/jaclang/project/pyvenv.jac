@@ -1,7 +1,5 @@
 import re;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.cli.console { console }
 
 
 def pip_command(python: str, args: list[str]) -> list[str] {
@@ -368,7 +366,7 @@ def get_venv_site_packages(venv_dir: Path) -> Path {
 def add_venv_to_path(config: JacConfig | None = None) -> None {
     import os;
     import sys;
-    import from jaclang.project.config { get_config }
+
     if config is None {
         config = get_config();
     }
@@ -406,7 +404,7 @@ def add_venv_to_path(config: JacConfig | None = None) -> None {
 def remove_venv_from_path(config: JacConfig | None = None) -> None {
     import os;
     import sys;
-    import from jaclang.project.config { get_config }
+
     if config is None {
         config = get_config();
     }
@@ -443,7 +441,7 @@ def remove_venv_from_path(config: JacConfig | None = None) -> None {
 
 def is_venv_in_path(config: JacConfig | None = None) -> bool {
     import sys;
-    import from jaclang.project.config { get_config }
+
     if config is None {
         config = get_config();
     }

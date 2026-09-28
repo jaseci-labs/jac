@@ -1,19 +1,17 @@
 import re;
 import json;
 import jaclang;
+
 import from pathlib { Path }
-import from jaclang.dist.publish.npm_tarball { pack_tarball }
 
 glob _api_names_cache: dict[str, set[str]] = {},
      _runtime_js_cache: dict[str, str] = {};
 
 def _runtime_source_path(framework: str = "") -> Path {
-    import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
     return Path(resolve_client_runtime_cl_path(framework));
 }
 
 impl runtime_pkg_name(framework: str = "") -> str {
-    import from jaclang.client.runtime_source { client_runtime_cl_basename }
     base = client_runtime_cl_basename(framework);
 
     if base == "client_runtime.jac" {
@@ -48,7 +46,6 @@ impl runtime_api_names(framework: str = "") -> set[str] {
 }
 
 def _compile_cl_to_js(src: Path) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
     program = JacProgram();
     prev = len(program.errors_had);
     mod = program.compile(str(src));
@@ -125,7 +122,6 @@ glob _SOLID_PEER_VERSIONS: dict[str, str] = {
      };
 
 def _peer_versions -> dict[str, str] {
-    import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS, OPTIONAL_RUNTIME_DEPS }
     return {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS, ** _SOLID_PEER_VERSIONS};
 }
 
@@ -184,10 +180,7 @@ def _relative_dep_specs(js: str) -> list[str] {
 
 def _point_at_packaged_prelude(js: str, member_rel: str) -> str {
     import posixpath;
-    import from jaclang.compiler.backends.es.jac_runtime_js {
-        JAC_PRELUDE_BASENAME,
-        JAC_PRELUDE_MODULE
-    }
+
     up = posixpath.dirname(member_rel);
     target = posixpath.normpath(
         posixpath.join(posixpath.relpath(".", up or "."), JAC_PRELUDE_BASENAME)
@@ -268,7 +261,7 @@ impl build_runtime_tarball(
 
     import posixpath;
     import jaclang;
-    import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
+
     base = Path(jaclang.__file__).parent.parent;
     entry_dir = posixpath.dirname(
         Path(resolve_client_runtime_cl_path()).relative_to(base).as_posix()
@@ -285,10 +278,7 @@ impl build_runtime_tarball(
     all_js = "\n".join([entry_js] + [dep_js for (_, dep_js) in deps]);
     peers = _runtime_peer_deps(all_js);
     pj = _runtime_package_json(version, name, peers);
-    import from jaclang.compiler.backends.es.jac_runtime_js {
-        JAC_PRELUDE_BASENAME,
-        build_jac_prelude_module
-    }
+
     members: list[tuple[str, bytes]] = [
         ("package/package.json", pj.encode("utf-8")),
         ("package/index.js", entry_js.encode("utf-8")),

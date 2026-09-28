@@ -1,5 +1,5 @@
 import hashlib;
-import type from jaclang.data.dbcatalog { DbRecord }
+
 import logging;
 import os;
 import platform;
@@ -12,8 +12,6 @@ import time;
 import urllib.request;
 import zipfile;
 import from pathlib { Path }
-import from jaclang.data.dbcatalog { DbKind }
-import from jaclang.data.store { ConnInfo }
 
 glob logger = logging.getLogger(__name__),
      PG_MAJOR = 19,

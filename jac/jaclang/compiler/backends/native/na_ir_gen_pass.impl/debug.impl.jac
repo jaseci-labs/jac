@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import os;
 import sys;
 

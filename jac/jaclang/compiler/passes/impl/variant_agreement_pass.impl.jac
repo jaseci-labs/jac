@@ -19,7 +19,7 @@ impl annotation_text(nd: (UniNode | None)) -> str {
     if nd is None {
         return '';
     }
-    import from jaclang.compiler.frontend.unparse { unparse_node }
+
     try {
         return ' '.join(unparse_node(nd).split());
     } except Exception {
@@ -113,8 +113,7 @@ impl VariantAgreementPass._parse_sibling(path: str) -> (Module | None) {
     if found is not None and not found.parse_failed {
         return found;
     }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.frontend.parser.frontend { parse }
+
     try {
         (mod, had_error) = parse(active_host().read_source(path), path, prog=None);
     } except Exception {

@@ -9,32 +9,6 @@ import sys;
 import threading;
 import from typing { Optional, Union }
 
-import from .types {
-    Position,
-    Range,
-    TextDocumentItem,
-    VersionedTextDocumentIdentifier,
-    TextDocumentContentChangeEvent_Type1,
-    TextDocumentContentChangeEvent,
-    DidOpenTextDocumentParams,
-    DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams,
-    PositionEncodingKind,
-    TextDocumentSyncKind,
-    TEXT_DOCUMENT_DID_OPEN,
-    TEXT_DOCUMENT_DID_CHANGE,
-    TEXT_DOCUMENT_DID_CLOSE,
-    Diagnostic,
-    TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
-    WINDOW_SHOW_MESSAGE,
-    WINDOW_LOG_MESSAGE,
-    INITIALIZE,
-    INITIALIZED,
-    SHUTDOWN,
-    EXIT,
-    WORKSPACE_SEMANTIC_TOKENS_REFRESH,
-    METHOD_TO_PARAMS
-}
 import from . { uris }
 
 glob logger = logging.getLogger("jaclang.lsp.protocol.server"),

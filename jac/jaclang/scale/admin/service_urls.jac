@@ -1,7 +1,5 @@
 import os;
 
-import from jaclang.scale.config.config_loader { get_scale_config }
-
 
 def service_base_url(env_var: str, svc_suffix: str, port: int) -> str {
     env = os.getenv(env_var, "").strip();

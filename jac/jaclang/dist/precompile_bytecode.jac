@@ -1,4 +1,3 @@
-import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
 import json;
 import marshal;
@@ -10,55 +9,6 @@ import zlib;
 import from contextlib { contextmanager }
 
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.jac0core { ext_registry }
-import from jaclang.compiler.driver.jir { patch_co_filenames_bytes }
-import from jaclang.compiler.driver.jir {
-    write_precompiled_jir,
-    FLAG_PRECOMPILED,
-    FLAG_BOOTSTRAP,
-    HEADER_SIZE,
-    SECTIONS_MAGIC,
-    SEC_BYTECODE,
-    SEC_MODKEY,
-    parse_header,
-    read_sections,
-    SEC_CTDEPS,
-    SEC_DEBUG_SRC,
-    NATIVE_SECTIONS,
-    SEC_NIFACE,
-    SEC_NOBJ,
-    SEC_PLACEMENT,
-    SEC_IFACE,
-    SEC_DEPS,
-    SEC_DIAG,
-    SEC_PATH_ROOT,
-    FORMAT_VERSION,
-    compute_precompile_module_key,
-    get_module_cache_path,
-    is_module_cache_valid,
-    precompiled_jir_matches_source,
-    read_section_bytes,
-    read_jir_paths,
-    read_dep_rows,
-    deps_section,
-    DepRow,
-    rebase_ct_deps_section,
-    running_compiler_digest,
-    PRECOMPILE_SENTINEL
-}
-import from jaclang.jac0core.sealed {
-    MANIFEST_NAME,
-    MANIFEST_FORMAT,
-    JIR_FORMAT_VERSION as SEALED_JIR_FORMAT_VERSION,
-    PRECOMPILE_SENTINEL as SEALED_SENTINEL,
-    HEADER_SIZE as SEALED_HEADER_SIZE,
-    SECTIONS_MAGIC as SEALED_SECTIONS_MAGIC,
-    SEC_BYTECODE as SEALED_SEC_BYTECODE,
-    SEC_DEBUG_SRC as SEALED_SEC_DEBUG_SRC,
-    SEC_NIFACE as SEALED_SEC_NIFACE,
-    SEC_NOBJ as SEALED_SEC_NOBJ
-}
 
 glob RESULT_NAME: str = "PRECOMPILE_RESULT.json",
      _PHASE_T: list[float] = [];
@@ -130,8 +80,6 @@ def _nested_project_dirs(package_dir: str) -> list[str] {
 }
 
 def find_jac_files(package_dir: str) -> list[str] {
-    import from jaclang.compiler.placement.placement_facts { native_only }
-    import from jaclang.bootstrap_manifest { is_native_lowered }
     result: list[str] = [];
     skipped: list[str] = [];
     pkg = Path(package_dir);
@@ -143,6 +91,9 @@ def find_jac_files(package_dir: str) -> list[str] {
         rel = str(rel_path);
 
         if pkg.name == "jaclang" and is_native_lowered(rel) {
+            continue;
+        }
+        if is_arch_file(str(jac_file)) {
             continue;
         }
 
@@ -179,7 +130,6 @@ def find_jac_files(package_dir: str) -> list[str] {
 }
 
 def package_native_units(package_dir: str) -> list[str] {
-    import from jaclang.compiler.placement.placement_facts { native_units_of }
     base = os.path.abspath(package_dir);
     nested = _nested_project_dirs(package_dir);
     pkg = Path(package_dir);
@@ -213,15 +163,6 @@ glob _sealable_cache: dict[tuple[str, str], list[str]] = {},
      _source_apps: dict[tuple[str, str], dict[str, str]] = {};
 
 def _application_sources(package_dir: str, app: str) -> list[str] | None {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.project.workspace { workspace_for_path }
-    import from jaclang.compiler.driver.compilation_context { bind_options }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.pipeline_runner { compile_application }
-    import from jaclang.compiler.placement.placement_facts {
-        module_spaces,
-        spaces_are_client_only
-    }
     workspace = workspace_for_path(os.path.join(package_dir, '__init__.jac'));
     if workspace is None or not workspace.explicit {
         return None;
@@ -293,7 +234,7 @@ def sealable_sources(package_dir: str, app: str = "") -> list[str] {
             return application;
         }
     }
-    import from jaclang.bootstrap_manifest { is_seed_source }
+
     base = os.path.abspath(package_dir);
     nested = _nested_project_dirs(package_dir);
     candidates = [
@@ -362,9 +303,6 @@ def placement_facts_map(package_dir: str, app: str = "") -> dict[str, list[str]]
 }
 
 def _emit_unit_diagnostics(jac_path: str, programs: list[JacProgram]) {
-    import from jaclang.compiler.driver.source_failures {
-        compiler_source_failure_details
-    }
     stashed = compiler_source_failure_details(jac_path);
     if stashed {
         stash_lines = stashed.splitlines();
@@ -413,12 +351,6 @@ def _emit_unit_diagnostics(jac_path: str, programs: list[JacProgram]) {
 glob _unit_program: list[JacProgram] = [];
 
 def _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes] {
-    import from jaclang.compiler.driver.jir {
-        SEC_NCTDEPS,
-        NativeStamp,
-        native_section_variants,
-        pack_native_variants
-    }
     out: dict[int, bytes] = {};
     try {
         cache_path = get_module_cache_path(jac_path);
@@ -532,9 +464,6 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
 glob _unit_native_program: list[any] = [];
 
 def precompile_native_unit(jac_path: str, collect: bool = True) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.cli.workpool { maybe_malloc_trim }
     if not _unit_native_program {
         _unit_native_program.append(JacProgram());
     }
@@ -559,11 +488,6 @@ def precompile_native_unit(jac_path: str, collect: bool = True) -> str {
 def precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
     compiler = program._get_compiler();
     selected = compiler.selfhost.resolve(jac_path, program);
     if compiler.selfhost.is_selfhost(selected) {
@@ -592,15 +516,6 @@ def precompile_context(
 def precompile_unit_context(
     jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
 ) -> Iterator[JacProgram] {
-    import jaclang.compiler.types.type_evaluator;
-    import jaclang.compiler.types.stubcat.modiface;
-    import jaclang.compiler.types.stubcat.writer;
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compilation_context {
-        cache_scope,
-        owner_scope_options
-    }
-    import from jaclang.cli.workpool { maybe_malloc_trim }
     if not _unit_program {
         _unit_program.append(JacProgram());
     }
@@ -695,10 +610,6 @@ def _precompile_unit(
 def _seal_boot_unit(
     jac_path: str, pkg_root: str, out_root: str, embed_src: bool
 ) -> str {
-    import from jaclang.jac0 {
-        compile_jac as jac0_compile,
-        discover_impl_files as jac0_impls
-    }
     jac_file = Path(jac_path);
     pkg_dir = Path(pkg_root);
     try {
@@ -735,13 +646,7 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
         return 0;
     }
     import time;
-    import from jaclang.bootstrap_manifest { seed_abs_entries, is_native_only }
-    import from jaclang.cli.workpool {
-        WORKER_MEM_BYTES,
-        WorkPool,
-        pool_available,
-        resolve_jobs
-    }
+
     (seed_dirs, seed_files) = seed_abs_entries(str(pkg_dir));
     seed_sources: list[Path] = [
         Path(p)
@@ -872,9 +777,6 @@ def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any]
     if not (pkg_path / "jac.toml").is_file() {
         return {};
     }
-    import from jaclang.project.config { get_config_for_path }
-    import from jaclang.project.kinds { resolve_app_kind, resolve_entry }
-    import from jaclang.server.sealed_serve { CLIENT_DIST_REL, NATIVE_DIR_REL }
 
     config = get_config_for_path(pkg_path);
     if config is None {
@@ -937,11 +839,6 @@ def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any]
 }
 
 def collect_payloads(pkg_path: Path) -> dict[str, str] {
-    import from jaclang.server.sealed_serve {
-        SERVE_MANIFEST_REL,
-        CLIENT_DIST_REL,
-        NATIVE_DIR_REL
-    }
     payloads: dict[str, str] = {};
     sm = pkg_path / SERVE_MANIFEST_REL;
     if sm.is_file() {
@@ -967,8 +864,6 @@ def collect_payloads(pkg_path: Path) -> dict[str, str] {
 def seal_runtime_closure(
     pkg_path: Path, out_dir: Path, embed_src: bool, app: str = ""
 ) -> bool {
-    import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
-    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
     base = str(pkg_path.resolve());
     sources = sealable_sources(base, app);
     pending = list(out_dir.rglob("*.jir"));
@@ -1203,10 +1098,6 @@ def native_roots(pkg_name: str, units: list[str]) -> list[str] {
 }
 
 def _stage0_builds_kernel -> bool {
-    import from jaclang.compiler.backends.native.stage0_pin {
-        Stage0PinError,
-        read_stage0_pin
-    }
     try {
         return not read_stage0_pin().is_self();
     } except (Stage0PinError, OSError) {
@@ -1215,8 +1106,6 @@ def _stage0_builds_kernel -> bool {
 }
 
 def _compiler_kernel_units -> set[str] {
-    import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
-    import from jaclang.compiler.frontend.codeinfo { kernel_unit_paths }
     linked = {os.path.realpath(p) for p in kernel_unit_paths()};
     scope = {os.path.realpath(p) for p in native_scope_paths()};
     scope.add(os.path.realpath(kernel_root_path()));
@@ -1224,9 +1113,6 @@ def _compiler_kernel_units -> set[str] {
 }
 
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     options = CompileOptions(
         aot_mode=True,
         default_codespace="native",
@@ -1239,7 +1125,7 @@ def prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
 
 def prebuild_native_units(roots: list[str]) {
     import time;
-    import from jaclang.cli.workpool { WorkPool }
+
     started = time.monotonic();
 
     def prebuild_job(request: dict[(str, any)]) -> dict[(str, any)] {
@@ -1271,7 +1157,6 @@ def prebuild_native_units(roots: list[str]) {
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None) {
-    import from jaclang.compiler.driver.toolchain { native_pipeline_available }
     units = package_native_units(str(pkg_path));
     if not units {
         return None;
@@ -1280,23 +1165,6 @@ def seal_native(
     if not toolchain_ok {
         raise RuntimeError(f"{len(units)} native unit(s) to seal but {why}");
     }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        build_link_plan,
-        link_artifact
-    }
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        SEALED_LINK_MODE,
-        kernel_lib_name
-    }
-    import from jaclang.compiler.driver.jir {
-        native_section_payload,
-        read_section_bytes as _rsb
-    }
-    import from jaclang.compiler.driver.native_iface { NativeIface }
-    import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     prog = JacProgram();
     options = CompileOptions(
@@ -1383,7 +1251,7 @@ def seal_native(
 
 def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
     import shutil;
-    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
+
     work = get_jir_cache_dir() / "stage0-kernel";
     target = work / "target" / pkg_path.name;
     if target.exists() {
@@ -1410,11 +1278,6 @@ def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Pa
 }
 
 def _sealed_link_current(out: Path) -> bool {
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        SEALED_LINK_MODE,
-        _sidecar_matches_sources,
-        read_sidecar
-    }
     sidecar = read_sidecar(str(out));
     if sidecar is None
         or not out.is_file()
@@ -1432,18 +1295,7 @@ def seal_stage0_kernel(
     pkg_path: Path, artifact_path: Path, artifact_rel: str
 ) -> (dict[str, any] | None) {
     import shutil;
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        LAYOUT_SIDECAR_SUFFIX,
-        PR_KIT_EVENT,
-        SEALED_LINK_MODE,
-        STAGE0_BUILDER,
-        read_sidecar,
-        seal_link_mode
-    }
-    import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
-    import from jaclang.compiler.backends.native.stage0_build { build_kernel_by_pin }
-    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
-    import from jaclang.jac0core.cache_paths { FileLock }
+
     link_mode = seal_link_mode();
     lock_path = get_jir_cache_dir() / "stage0-kernel.lock";
     lock_path.parent.mkdir(parents=True, exist_ok=True);
@@ -1590,13 +1442,6 @@ def write_manifest(
 }
 
 def _precompile_retire(served: int, rss_mb: int) -> bool {
-    import from jaclang.cli.workpool {
-        WORKER_MEM_BYTES,
-        env_int,
-        maybe_malloc_trim,
-        should_retire,
-        worker_rss_mb
-    }
     recycle = env_int("JAC_PRECOMPILE_RECYCLE", 0);
     cap = env_int("JAC_PRECOMPILE_RECYCLE_MB", WORKER_MEM_BYTES // (1024 * 1024));
     if should_retire(served, recycle, 0, 0) {
@@ -1697,7 +1542,6 @@ def main {
 }
 
 def is_toolchain_package(package_dir: str) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     return os.path.realpath(package_dir) == os.path.realpath(jaclang_pkg_root());
 }
 
@@ -1814,17 +1658,6 @@ def run_precompile(
         }
     }
 
-    import from jaclang.compiler.driver.jir { read_debug_source }
-    import from jaclang.cli.workpool {
-        WORKER_MEM_BYTES,
-        env_int,
-        WorkPool,
-        forced_serial,
-        jobs_setting,
-        pool_available,
-        resolve_jobs
-    }
-
     raw_jobs = jobs_setting("precompile", jobs_arg);
     worker_mb = env_int("JAC_PRECOMPILE_RECYCLE_MB", WORKER_MEM_BYTES // (1024 * 1024));
     workers = resolve_jobs(
@@ -1841,7 +1674,7 @@ def run_precompile(
     counts: dict[str, int] = {"compiled": 0, "reused": 0, "failed": 0};
 
     import gc;
-    import from jaclang.compiler.driver.compiler { COMPILE_GC_THRESHOLDS }
+
     if (
         not os.environ.get("JAC_GC_NO_COMPILE_BOOST")
         and gc.get_threshold()[0] < COMPILE_GC_THRESHOLDS[0]

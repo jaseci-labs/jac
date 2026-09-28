@@ -1,6 +1,3 @@
-import jaclang.lib.jaclib as _jaclib;
-include jaclang.lib.jaclib;
-
 glob __all__ = _jaclib.__all__;
 
 def __getattr__(name: str) -> object {

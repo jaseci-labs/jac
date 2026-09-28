@@ -1,6 +1,3 @@
-import from jaclang.project.config { JacConfig }
-import from jaclang.dist.publish.metadata { normalize_package_name }
-
 import from importlib.metadata { version as _pkg_version }
 glob _JAC_VERSION: str = _pkg_version("jaclang");
 

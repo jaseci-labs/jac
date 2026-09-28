@@ -16,7 +16,7 @@ def resolve_dev_channel(project_dir: str) -> Channel {
     if os.environ.get(BINARY_PATH_ENV, "") {
         return Channel.LOCAL;
     }
-    import from jaclang.project.config { get_config_for_path }
+
     config = get_config_for_path(Path(project_dir));
     if config is None {
         return Channel.STABLE;
@@ -32,7 +32,6 @@ def resolve_dev_channel(project_dir: str) -> Channel {
 
 
 def resolve_experimental_pr(project_dir: str) -> str {
-    import from jaclang.project.config { get_config_for_path }
     config = get_config_for_path(Path(project_dir));
     if config is None {
         return "";
@@ -46,7 +45,6 @@ def resolve_experimental_pr(project_dir: str) -> str {
 
 
 def resolve_pinned_spec(project_dir: str) -> str {
-    import from jaclang.project.config { get_config_for_path }
     config = get_config_for_path(Path(project_dir));
     if config is None {
         return "";

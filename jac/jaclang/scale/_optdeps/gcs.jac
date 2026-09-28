@@ -1,5 +1,3 @@
-import from jaclang.scale._optdeps.optional_deps { require_optional }
-
 with entry {
     try {
         import from google.cloud.storage { Client as StorageClient }

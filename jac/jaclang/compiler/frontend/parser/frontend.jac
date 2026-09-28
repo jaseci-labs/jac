@@ -153,11 +153,12 @@ def parse_woven(
     file_path: str,
     prog: (JacProgram | None),
     annexes: list[WovenAnnex],
-    early_context: str = ""
+    early_context: str = "",
+    load_kernel: bool = True
 ) -> tuple[Module, bool] {
     import from jaclang.compiler.frontend.host { active_host }
     nat = active_host().native_parse(
-        source_str, file_path, prog, annexes, early_context
+        source_str, file_path, prog, annexes, early_context, load_kernel
     );
     if nat is not None {
         return nat;

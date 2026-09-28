@@ -1,5 +1,4 @@
 import os;
-import from jaclang.scale._optdeps.optional_deps { require_optional }
 
 glob PROJECT_ENV_FILE: str = ".env",
      PROJECT_ENV_CAPABILITY: str = "env";

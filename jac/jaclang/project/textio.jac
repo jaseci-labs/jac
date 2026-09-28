@@ -89,3 +89,38 @@ def span_for_file(
         (start, stop)
     );
 }
+
+def drop_git_ignored(paths: list[str], cwd: str = "") -> list[str] {
+    import subprocess;
+    if not paths {
+        return paths;
+    }
+    try {
+        proc = subprocess.run(
+            ['git', 'check-ignore', '--stdin'],
+            input="\n".join(paths),
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=cwd or None
+        );
+    } except (OSError, ValueError) {
+        return paths;
+    }
+    if proc.returncode not in (0, 1) {
+        return paths;
+    }
+    ignored = {
+        line
+        for line in proc.stdout.splitlines()
+        if line
+    };
+    if not ignored {
+        return paths;
+    }
+    return [
+        p
+        for p in paths
+        if p not in ignored
+    ];
+}

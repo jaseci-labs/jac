@@ -1,11 +1,8 @@
-import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
-
 impl EsastGenPass._ensure_emitters -> None {
     if self._emitters_ready {
         return;
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    import jaclang.compiler.backends.es.primitives_es as _pes;
+
     self._primitive_emitters = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
@@ -27,7 +24,6 @@ impl EsastGenPass._ensure_emitters -> None {
 }
 
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: TypeBase | None) -> str {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     self._ensure_emitters();
     return primitive_type_name_of(_obj_type) or "";
 }
@@ -39,9 +35,6 @@ impl EsastGenPass._try_primitive_op(
     right_es: (es.Expression | None),
     jac_node: uni.UniNode
 ) -> (es.Expression | None) {
-    import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
-
-    import from jaclang.compiler.types.type_utils { expr_primitive_name }
     _type_name = expr_primitive_name(expr_node);
     if not _type_name {
         return None;
@@ -84,7 +77,6 @@ impl EsastGenPass._operand_str(
 }
 
 impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
-    import from jaclang.compiler.types.type_utils { expr_primitive_name }
     return expr_primitive_name(expr_node);
 }
 
@@ -627,7 +619,6 @@ impl EsastGenPass._fw_to_number(
 }
 
 impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
-    import from jaclang.runtime.scalars { shape_of }
     dst = nd.coerce_to;
     cur = nd.gen.es_ast;
     if dst is None or not isinstance(cur, es.Expression) {
@@ -692,7 +683,6 @@ impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
 impl EsastGenPass._fw_binary(
     nd: uni.Expr, op: str, left: es.Expression, right: es.Expression
 ) -> (es.Expression | None) {
-    import from jaclang.runtime.scalars { shape_of }
     name = nd.fw;
     if name is None {
         return None;

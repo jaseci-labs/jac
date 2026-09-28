@@ -7,8 +7,6 @@ impl precompile(
     jobs: str = "",
     app: str = ""
 ) -> int {
-    import from jaclang.dist.precompile_bytecode { run_precompile }
-
     run_precompile(
         source_dir,
         seal=seal,

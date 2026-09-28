@@ -1,4 +1,3 @@
-import type from jaclang.compiler.frontend.codeinfo { InteropBinding }
 glob SHARED_INIT_SYMBOL: str = "__jac_shared_init",
      ENTRY_SYMBOL: str = "jac_entry",
      WASM_INIT_SYMBOL: str = "__jac_glob_init",
@@ -289,7 +288,6 @@ def link_glue_ir(spec: GlueSpec) -> tuple[str, list[str]] {
 }
 
 def init_object_codegen {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     llvm.initialize_all_asmparsers();
@@ -298,8 +296,6 @@ def init_object_codegen {
 def bind_shared_callbacks(
     llvm_ir: str, bindings: list[InteropBinding]
 ) -> tuple[str, list[InteropBinding]] {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.backends.native.llvm.ir.types { _wrapname }
     module = llvm.parse_assembly(llvm_ir);
     assert isinstance(module, llvm.ModuleRef);
     definitions: list[str] = [];
@@ -347,7 +343,7 @@ def inject_heap_accounting(
     llvm_ir_str: str, managed: bool = False
 ) -> tuple[str, list[str]] {
     import re;
-    import from jaclang.compiler.frontend.codeinfo { HDR_TOTAL }
+
     requested = [
         name
         for name in ("jac_heap_size", "jac_list_heap_size")

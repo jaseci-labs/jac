@@ -1,11 +1,6 @@
 import json;
-import from jaclang.compiler.backends.native.wasm_host_abi { WASM_HOST_MODULE }
 
 def wasm_import_map(wasm_bytes: bytes) -> dict[str, list[str]] {
-    import from jaclang.compiler.backends.native.linker_common {
-        read_leb_name,
-        read_uleb128
-    }
     out: dict[str, list[str]] = {};
     o = 8;
     while o < len(wasm_bytes) {

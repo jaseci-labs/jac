@@ -5,7 +5,6 @@ import datetime;
 import logging;
 import math;
 import os;
-import from jaclang.runtime.builtin { ScheduleTrigger }
 
 glob _scheduler_instance: (Scheduler | None) = None,
      logger = logging.getLogger(__name__),

@@ -1,11 +1,3 @@
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl EsastGenPass.exit_assignment with uni.Assignment exit {
     if not here.target {
         here.gen.es_ast = None;

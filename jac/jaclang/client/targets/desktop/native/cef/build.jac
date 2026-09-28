@@ -1,10 +1,5 @@
 import os;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.desktop.desktop_build {
-    build_cef_dispatch,
-    build_cef_subprocess,
-}
 
 glob cef_dir = Path(os.path.abspath(__file__)).parent;
 

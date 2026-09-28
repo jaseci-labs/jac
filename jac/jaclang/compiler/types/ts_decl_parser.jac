@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.constant { BindingKind }
-
 enum TsTypeKind {
     ANY = "any",
     NEVER = "never",

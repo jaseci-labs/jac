@@ -1,5 +1,5 @@
 import platform;
-import from jaclang.cli.console { console }
+
 glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |\\__,_|\\___|\n|__/',
      JAC_DOCS_URL = 'https://www.jaclang.org/docs',
      JAC_DISCORD_URL = 'https://discord.gg/6j3QNdtcN6',

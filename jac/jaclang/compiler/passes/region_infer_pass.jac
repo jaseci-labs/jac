@@ -1,21 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    CodeBlockStmt,
-    FuncCall,
-    ImplDef,
-    Module,
-    ModuleCode,
-    Name,
-    NameAtom,
-    OpenStmt,
-    Symbol,
-    Test,
-    UniNode
-}
-
 walker RegionInferPass(CompilerPass) {
     has _use_index: (dict[int, list[NameAtom]] | None) = None;
 

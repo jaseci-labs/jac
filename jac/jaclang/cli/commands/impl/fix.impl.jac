@@ -1,6 +1,4 @@
 import os;
-import from jaclang.cli.console { console }
-import from jaclang.compiler.frontend.parser.tokens { LexToken }
 
 glob _ELEMENT_KEYWORDS: tuple[str, ...] = (
          'import',
@@ -146,7 +144,6 @@ def _collect_block_claims(
 
 
 def _strip_markers(src: str, file_path: str) -> StripResult {
-    import from jaclang.compiler.frontend.parser.lexer { tokenize }
     res = StripResult(text=src);
     try {
         (tokens, err_count) = tokenize(src, file_path);
@@ -374,7 +371,7 @@ def _append_app_table(
     toml_path: str, name: str, table: dict[str, str], dry_run: bool
 ) -> list[str] {
     import tomllib;
-    import from jaclang.project.config { _toml_append_section }
+
     text = _read_text_if_exists(toml_path);
     try {
         doc = tomllib.loads(text);
@@ -406,8 +403,7 @@ def _append_app_table(
 def _ensure_workspace(toml_path: str, dry_run: bool) -> str {
     import tomllib;
     import from pathlib { Path }
-    import from jaclang.project.config { JacConfig }
-    import from jaclang.project.template_loader { migrate_implicit_app }
+
     text = _read_text_if_exists(toml_path);
     doc = tomllib.loads(text);
     apps = doc.get('apps') if isinstance(doc, dict) else None;
@@ -484,7 +480,6 @@ def _project_entry_stem(toml_path: str) -> str {
 
 
 def _parses_clean(src: str, file_path: str) -> bool {
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
     try {
         (_mod, had_error) = rd_parse(src, file_path);
         return not had_error;
@@ -495,7 +490,6 @@ def _parses_clean(src: str, file_path: str) -> bool {
 
 
 def _format_source(src: str, file_path: str) -> (str | None) {
-    import from jaclang.compiler.driver.program { JacProgram }
     try {
         prog = JacProgram.jac_str_formatter(
             source_str=src, file_path=file_path, auto_lint=False
@@ -517,10 +511,6 @@ def _verify_claims(
     pins: dict[str, str],
     unverified: list[str]
 ) {
-    import from jaclang.compiler.placement.placement { element_display_name }
-    import from jaclang.project.placement { module_dot_path }
-    import from jaclang.project.modresolver { find_jac_project_root }
-    import from jaclang.compiler.driver.program { JacProgram }
     proj_root = find_jac_project_root(file_path);
     if not proj_root {
         unverified.append(f"{file_path} (no jac.toml found)");
@@ -577,7 +567,6 @@ obj AccessRewrite {
 }
 
 def _module_has_jsx(decl: any) -> bool {
-    import jaclang.compiler.frontend.unitree as uni;
     for sub in decl.get_all_sub_nodes(uni.UniNode) {
         if type(sub).__name__.startswith('Jsx') {
             return True;
@@ -599,7 +588,6 @@ def _returns_jsx(decl: any) -> bool {
 }
 
 def _parse_module(path: str) -> any {
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
     try {
         with open(path, 'r') as f {
             src = f.read();
@@ -612,7 +600,6 @@ def _parse_module(path: str) -> any {
 }
 
 def _plain_top_decls(mod: any) -> dict[str, any] {
-    import jaclang.compiler.frontend.unitree as uni;
     out: dict[str, any] = {};
     for item in (mod.body or []) {
         if (
@@ -627,8 +614,6 @@ def _plain_top_decls(mod: any) -> dict[str, any] {
 }
 
 def _priv_top_decls(mod: any) -> dict[str, any] {
-    import jaclang.compiler.frontend.unitree as uni;
-    import from jaclang.compiler.frontend.constant { SymbolAccess }
     out: dict[str, any] = {};
     for item in (mod.body or []) {
         if (
@@ -676,7 +661,6 @@ def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> 
 }
 
 def _imported_names(imp: any) -> list[str] {
-    import jaclang.compiler.frontend.unitree as uni;
     names: list[str] = [];
     for item in (imp.items or []) {
         if isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name) {
@@ -687,8 +671,6 @@ def _imported_names(imp: any) -> list[str] {
 }
 
 def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
-    import jaclang.compiler.frontend.unitree as uni;
-    import from jaclang.project.workspace { workspace_for_path }
     ws = workspace_for_path(proj_root);
     notes: list[str] = [];
     plan: list[AccessRewrite] = [];
@@ -1016,7 +998,6 @@ impl fix(
         }
     }
 
-    import from jaclang.project.modresolver { find_jac_project_root }
     pins_by_root: dict[str, dict[str, str]] = {};
     unverified: list[str] = [];
     if strip_only {

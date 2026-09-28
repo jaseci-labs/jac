@@ -1,7 +1,5 @@
 import json;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, PersonConfig }
-import from jaclang.dist.publish.metadata { normalize_package_name }
 
 impl npm_settings(config: JacConfig) -> dict[str, any] {
     raw = config._raw_data.get("npm", {});
@@ -30,7 +28,6 @@ impl npm_tarball_filename(config: JacConfig) -> str {
 }
 
 impl npm_dependencies(config: JacConfig) -> dict[str, str] {
-    import from jaclang.project.providers { manifest_plugin_deps }
     (result, _dev) = manifest_plugin_deps(config, "npm");
 
     npm = npm_settings(config);

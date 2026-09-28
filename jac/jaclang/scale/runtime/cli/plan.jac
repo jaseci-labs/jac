@@ -1,15 +1,4 @@
 import yaml;
-import from jaclang.cli.console { console }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ScalingMode }
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.runtime.cli.diagnostics {
-    Diagnostic,
-    PlanValidator,
-    has_errors
-}
-import from jaclang.scale.runtime.cli._narrow { dget, fget, iget, lget, pod_spec, sget }
-import from jaclang.scale.runtime.fleet { FleetSpec }
 
 
 def _diags_for(diagnostics: list[Diagnostic], service: str | None) -> list[Diagnostic] {

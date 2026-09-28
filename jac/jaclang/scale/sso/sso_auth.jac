@@ -3,22 +3,6 @@ import json;
 import secrets;
 import re;
 import from http.cookies { SimpleCookie }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.serving.datatypes { RedirectResponse }
-import from jaclang.scale.sso.provider { OAuth2CodeProvider }
-import from jaclang.scale.sso.oauth_session {
-    OAuthSession,
-    challenge_of,
-    complete_identity
-}
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.serving.datatypes { Request, Response }
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.config.firebase_env { firebase_project_id_env_hint }
-import from jaclang.scale.shared.enums { Platforms, Operations }
-import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
-import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
 
 glob logger = logging.getLogger(__name__);
 

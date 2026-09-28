@@ -1,9 +1,3 @@
-import from jaclang.scale.sso.provider {
-    OAuth2CodeProvider,
-    SSOUserInfo,
-    decode_jwt_payload_unverified
-}
-
 obj AppleSSOProvider(OAuth2CodeProvider) {
     def authorize_url -> str {
         return 'https://appleid.apple.com/auth/authorize';

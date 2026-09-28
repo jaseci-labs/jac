@@ -1,14 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.pyvenv {
-    ensure_venv,
-    get_venv_site_packages,
-    make_git_spec,
-    make_pip_spec,
-    run_pip,
-    summarize_pip_failure
-}
 
 glob VENV_DEPS_MARKER: str = ".jac-deps-hash";
 
@@ -378,7 +368,7 @@ obj PythonProvider(EcosystemProvider) {
 
     def _install_global(specs: list[str], ctx: InstallContext) -> bool {
         import subprocess;
-        import from jaclang.project.pyvenv { pip_command, pip_python, pip_env }
+
         cmd: list[str] = pip_command(
             pip_python(), ["install", "--upgrade"] + ctx.install_flags + specs
         );
@@ -667,17 +657,6 @@ def capability_dependencies(
     scale: bool = False,
     detected_intents: list[str] = []
 ) -> list[ResolvedDependency] {
-    import from jaclang.project.capabilities {
-        DEPLOY,
-        RUNTIME,
-        byllm_intent_capabilities,
-        command_capabilities,
-        derive_capabilities,
-        get_capability_registry,
-        resolve_closure,
-        scale_intent_from_config
-    }
-    import from jaclang.project.kinds { plan_app_run }
     if config is None {
         return [];
     }

@@ -1,14 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
-import type from jaclang.compiler.backends.es.view_ir { ViewElement }
-
 obj FrameworkBackend {
     def name -> str abst;
     def runtime_module -> str;

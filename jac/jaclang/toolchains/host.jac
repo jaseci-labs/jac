@@ -2,7 +2,6 @@ import os;
 import platform;
 import subprocess;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
 
 def host_platform -> str {
     systems = {"Linux": "linux", "Darwin": "mac", "Windows": "windows"};

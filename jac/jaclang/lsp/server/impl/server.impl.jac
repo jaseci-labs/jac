@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-
 impl run_lang_server -> None {
     logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();

@@ -1,4 +1,3 @@
-import from jaclang.scale.events.broker { EventStreamBroker, Event }
 import logging;
 
 glob _broker: EventStreamBroker | None = None,

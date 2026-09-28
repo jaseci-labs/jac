@@ -1,16 +1,8 @@
 import builtins;
-import from jaclang.compiler.types.types { TypeBase, ClassType, ModuleType }
-import from jaclang.compiler.types.type_utils { compute_mro_linearization }
+
 import from typing { Optional }
 
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.codeinfo { CodeLocInfo }
-import from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.compiler.passes.context { Alert }
-import from jaclang.compiler.frontend.unitree { Symbol, UniScopeNode }
 import from jaclang.lsp.protocol { uris }
-
-import jaclang.lsp.protocol.types as lspt;
 
 glob _BUILTIN_NAMES = frozenset(dir(builtins));
 

@@ -1,11 +1,5 @@
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.project.config { JacConfig }
-import type from jaclang.project.apps { AppConfig }
-import type from jaclang.project.providers { EcosystemProvider }
 import os;
 
-import from jaclang.client.targets.registry { ClientTarget, target_for_app }
 import from pathlib { Path }
 
 comptime SPEC_SETUP: CommandSpec = CommandSpec(
@@ -41,8 +35,6 @@ comptime SPEC_SETUP: CommandSpec = CommandSpec(
      );
 
 def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
-    import from jaclang.cli.console { console }
-
     if toolchain {
         import from jaclang.toolchains.manager { setup_toolchain }
         return setup_toolchain(toolchain);
@@ -76,7 +68,7 @@ def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
             return 1;
         }
     }
-    import from jaclang.project.kinds { kind_has_client }
+
     kind = config.resolved_kind(app);
     if not kind_has_client(kind) {
         console.error(
@@ -89,8 +81,6 @@ def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
 }
 
 def run_client_setup(app: AppConfig) -> int {
-    import from jaclang.cli.console { console }
-
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -144,9 +134,6 @@ def run_client_build(
     output: str = "",
     kind: str = ""
 ) -> int {
-    import from jaclang.cli.console { console }
-    import from jaclang.client.targets.registry { target_for_kind }
-
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -208,12 +195,6 @@ def run_client_start(
     dev: bool,
     no_client: bool
 ) -> int | None {
-    import from jaclang.cli.console { console }
-    import from jaclang.client.client_diagnostics { is_debug_mode }
-
-    import from jaclang.project.kinds { kind_has_client }
-    import from jaclang.client.targets.registry { target_for_kind }
-
     config = get_config();
     if not config {
         return None;
@@ -248,7 +229,6 @@ def run_client_start(
         return 1;
     }
 
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     Jac.set_full_target_path(str(entry_path));
 
     if not dev and is_debug_mode(config) {
@@ -285,14 +265,10 @@ def run_client_start(
 }
 
 def get_config -> JacConfig | None {
-    import from jaclang.project.config { get_config as _get_config }
     return _get_config();
 }
 
 def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
-    import from jaclang.project.providers { get_provider_registry }
-    import from jaclang.cli.console { console }
-
     config = get_config();
     if config is None {
         console.error(
@@ -313,9 +289,6 @@ def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
 }
 
 def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int {
-    import from jaclang.project.providers { InstallContext }
-    import from jaclang.cli.console { console }
-
     if install_global {
         return run_npm_add_global(packages, dev);
     }
@@ -364,9 +337,6 @@ def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) ->
 
 def run_npm_add_global(packages: list[str], dev: bool) -> int {
     import subprocess;
-    import from jaclang.cli.console { console }
-    import from jaclang.client.bun_installer { get_bun, bun_unavailable_message }
-    import from jaclang.project.tool_paths { node_root }
 
     if not packages {
         console.error(
@@ -410,9 +380,6 @@ def run_npm_add_global(packages: list[str], dev: bool) -> int {
 }
 
 def run_npm_remove(packages: list[str], dev: bool) -> int {
-    import from jaclang.project.providers { InstallContext }
-    import from jaclang.cli.console { console }
-
     npm_ctx = _npm_context();
     if npm_ctx is None {
         return 1;

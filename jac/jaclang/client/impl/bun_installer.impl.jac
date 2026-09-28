@@ -3,8 +3,6 @@ import platform;
 import shutil;
 import sys;
 
-import from jaclang.cli.console { console }
-
 
 def _find_bundled_bun -> str | None {
     `override = os.environ.get("JAC_BUN", None);

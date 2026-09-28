@@ -1,11 +1,3 @@
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl EsastGenPass.exit_delete_stmt with uni.DeleteStmt exit {
     stmts: list[es.Statement] = [];
     ordinal = 0;
@@ -422,7 +414,7 @@ def _raised_exc_identity(cause: (uni.Expr | None)) -> tuple[bool, (str | None)] 
     if not shared.is_builtin_class {
         return (True, None);
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     name = shared.class_name;
     return (True, name if JAC_TYPE_REGISTRY.is_exception(name) else None);
 }
@@ -441,7 +433,7 @@ impl EsastGenPass.exit_raise_stmt with uni.RaiseStmt exit {
         callee = argument.callee;
         call_args = argument.arguments;
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     if callee is not None and isinstance(callee, es.Identifier) {
         (ty_known, exc_name) = _raised_exc_identity(here.cause);
         if not ty_known and JAC_TYPE_REGISTRY.is_exception(callee.name) {

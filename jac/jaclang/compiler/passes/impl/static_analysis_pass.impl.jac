@@ -15,10 +15,6 @@ impl StaticAnalysisPass._run_impl(ir_in: Module) -> Module {
 }
 
 impl StaticAnalysisPass._check_placement_warnings(mod: Module) -> None {
-    import from jaclang.compiler.symbol_utils {
-        report_placement_warnings,
-        report_serverless_kind_errors
-    }
     report_placement_warnings(self, mod);
     report_serverless_kind_errors(self, mod);
 }
@@ -140,7 +136,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             continue;
         }
 
-        if name_nd.find_parent_of_type(ImplImport) is not None {
+        if name_nd.find_parent_of_type(GraphImport) is not None {
             continue;
         }
 
@@ -460,17 +456,6 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
 }
 
 impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
-    import from jaclang.compiler.driver.boundary_classify {
-        is_client_native_edge_import
-    }
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.symbol_utils {
-        ClientImportVerdict,
-        classify_client_import_item,
-        is_client_boundary_import,
-        report_dead_client_import,
-        resolve_import_source_module
-    }
     for nd in mod.get_all_sub_nodes(typ=Import) {
         if is_client_native_edge_import(nd, self.prog) {
             continue;

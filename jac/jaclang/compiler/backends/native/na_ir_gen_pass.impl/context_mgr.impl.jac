@@ -1,5 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-
 impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
     if not nd.exprs {
         if isinstance(nd.body, (list, tuple)) {
@@ -223,7 +221,7 @@ impl NaIRGenPass._ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | No
     if not isinstance(expr, uni.FuncCall) {
         return None;
     }
-    import from jaclang.compiler.erased_imports { contextmanager_ability }
+
     _callee = self._callee_ability_of(expr);
     return _callee if contextmanager_ability(_callee) else None;
 }

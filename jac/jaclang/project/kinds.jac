@@ -1,22 +1,4 @@
 import os;
-import from jaclang.jac0core.ext_registry { base_stem }
-import from jaclang.project.apps { AppConfig, implicit_app }
-import from jaclang.project.config { JacConfig }
-
-import from jaclang.project.app_kinds {
-    KindSpec,
-    KIND_SPECS,
-    VALID_KINDS,
-    UI_DOM,
-    UI_MOBUI,
-    MOBILE_PLATFORMS,
-    kind_spec,
-    kind_entry,
-    is_valid_kind,
-    kind_ui,
-    kind_has_client,
-    kind_is_mobui
-}
 
 obj RunPlan {
     has spec: KindSpec,
@@ -96,8 +78,7 @@ def resolve_app_kind(config: JacConfig, app: AppConfig, entry_path: str) -> str 
     if project_kind {
         return project_kind;
     }
-    import from jaclang.project.placement { match_pin, validate_pins }
-    import from jaclang.project.workspace { workspace_for_path }
+
     workspace = workspace_for_path(entry_path) if entry_path else None;
     entry_pin = '';
     if workspace is not None {

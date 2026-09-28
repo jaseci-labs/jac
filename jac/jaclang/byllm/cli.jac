@@ -1,8 +1,5 @@
 import os;
 import sys;
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.cli.console { console }
 
 def _human_bytes(n: int) -> str {
     f = float(n);
@@ -16,15 +13,6 @@ def _human_bytes(n: int) -> str {
 }
 
 def _cmd_model(action: str = "list", alias: str = "") -> int {
-    import from jaclang.byllm.local_runtime { LOCAL_MODELS, list_local_aliases }
-    import from jaclang.byllm.model_cache {
-        ensure_model,
-        force_pull,
-        is_downloaded,
-        list_downloaded,
-        remove_alias,
-        get_cache_dir
-    }
     action = (action or "list").strip().lower();
 
     if action == "list" {

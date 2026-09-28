@@ -1,24 +1,5 @@
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 import from jaclang.server { sv_client }
-import from jaclang.server.settings { ServeSettings }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.config.config_loader {
-    GATEWAY_POD_KEYS,
-    get_scale_config,
-    normalize_gateway_config
-}
-import from jaclang.scale.runtime.fleet { FleetSpec, fleet_from_config, solo_fleet }
-import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV, DeployContext }
-import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.autoscale.http_activation_config {
-    build_http_activation_spec
-}
-import from jaclang.scale.runtime.context.service_routing {
-    resolve_http_activation_config
-}
+
 import from enum { StrEnum }
 
 
@@ -279,7 +260,7 @@ obj ManifestBuilder {
         if not self.project_dir or not os.path.isdir(self.project_dir) {
             return None;
         }
-        import from jaclang.scale.injector.bundle { _project_config }
+
         return _project_config(self.project_dir);
     }
 
@@ -325,8 +306,6 @@ obj ManifestBuilder {
     }
 
     def _prepare_injector(app_config: AppConfig) -> PvcInjector {
-        import from jaclang.scale.injector.binary_injector { select_injector }
-        import from jaclang.scale.injector.pvc_injector { PvcInjector }
         proj = self.project_dir or app_config.code_folder;
         self.project_dir = proj;
         fleet = self._fleet(app_config);
@@ -349,7 +328,7 @@ obj ManifestBuilder {
         project_dir: str, jac_bin: str, env: (dict[str, str] | None)
     ) -> str {
         import subprocess;
-        import from jaclang.cli.console { console }
+
         console.print("Installing the app's dependencies on the build host.");
         try {
             result = subprocess.run(
@@ -376,16 +355,7 @@ obj ManifestBuilder {
         import shutil;
         import subprocess;
         import from pathlib { Path }
-        import from jaclang.cli.console { console }
-        import from jaclang.scale.injector.binary { host_toolchain_path }
-        import from jaclang.scale.injector.bundle {
-            _stage_app,
-            release_binary_env,
-            remove_stage_root,
-            sanitized_jac_toml,
-            source_filter_for
-        }
-        import from jaclang.scale.runtime.context.util { jac_executable }
+
         client_entry = self._client_entry();
         if client_entry
             and not self._declared_client_entry()
@@ -714,7 +684,7 @@ obj ManifestBuilder {
 
     def _check_deploy_settings_resolve {
         import from pathlib { Path }
-        import from jaclang.project.config { get_config_for_path, report_env_findings }
+
         config = get_config_for_path(Path(self.project_dir));
         if config is None {
             return;
@@ -747,12 +717,7 @@ obj ManifestBuilder {
         deployments: dict[str, dict[str, any]], user_secret: dict[str, any] | None
     ) {
         import from pathlib { Path }
-        import from jaclang.scale.injector.bundle {
-            nested_sanitized_tomls,
-            sanitized_jac_toml,
-            source_filter_for,
-            unresolved_toml_references
-        }
+
         base = Path(self.project_dir);
         self._check_deploy_settings_resolve();
         base_toml = sanitized_jac_toml(base);
@@ -1186,7 +1151,6 @@ obj ManifestBuilder {
     }
 
     def _peer_dns_url(peer_name: str) -> str {
-        import from jaclang.scale.runtime.context.util { k8s_service_dns_url }
         return k8s_service_dns_url(
             k8s_safe_name(peer_name),
             self.k8s_config.namespace,
@@ -1220,7 +1184,6 @@ obj ManifestBuilder {
             );
         }
 
-        import from jaclang.scale.runtime.fleet { FLEET_ENV }
         peers: list[str] = [];
         if self.fleet is not None and not self.fleet.is_empty() {
             env.append({"name": FLEET_ENV, "value": self.fleet.to_env()});
@@ -1772,10 +1735,6 @@ obj ManifestBuilder {
     }
 
     def _pod_entrypoint -> dict[str, any] {
-        import from jaclang.scale.injector.bundle { APP_MOUNT_PATH }
-        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
-            build_service_apt_prefix
-        }
         apt_prefix = build_service_apt_prefix(self.k8s_config);
         return {
             "command": ["bash", "-c"],
@@ -1820,9 +1779,7 @@ obj ManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
-        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
-            image_pull_policy
-        }
+
         pull_policy = image_pull_policy(resolved_image);
         if pull_policy {
             container["imagePullPolicy"] = pull_policy;
@@ -1835,10 +1792,6 @@ obj ManifestBuilder {
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
 
-        import from jaclang.scale.injector.bundle { APP_MOUNT_PATH }
-        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
-            runtime_container_env
-        }
         container["workingDir"] = APP_MOUNT_PATH;
         env_list.extend(runtime_container_env());
         if shared_mounts {
@@ -1873,7 +1826,6 @@ obj ManifestBuilder {
             spec["securityContext"] = runtime_pod_security_context();
         }
 
-        import from jaclang.scale.injector.binary_injector { BinaryInjector }
         injector: BinaryInjector = BinaryInjector(
             storage_class=self.k8s_config.bundle_storage_class
         );
@@ -1886,9 +1838,6 @@ obj ManifestBuilder {
         spec = injector.mutate_pod_spec(spec, self.k8s_config.python_image);
         spec.pop("_jac_meta", None);
 
-        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
-            build_bootstrap_init_container
-        }
         spec["initContainers"].append(
             build_bootstrap_init_container(
                 self.k8s_config, self.k8s_config.python_image

@@ -55,11 +55,14 @@ def _native_dep_scan(
     }
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
+    host = active_host();
     files = [path]
-        + active_host().annex_files(path, '.impl.jac')
-        + active_host().annex_files(path, '.test.jac');
+        + host.annex_files(path, '.impl.jac')
+        + host.annex_files(path, '.test.jac');
+    arch = host.wiring_file(path);
+    stamped = files + ([arch] if arch is not None else []);
     fresh: list[tuple[str, float, int]] = [];
-    for f in files {
+    for f in stamped {
         try {
             fresh.append((f, os.path.getmtime(f), os.path.getsize(f)));
         } except OSError {
@@ -73,11 +76,16 @@ def _native_dep_scan(
     }
     sv_reason = '';
     deps: list[str] = [];
-    if not sv_reason {
-        base_dir = os.path.dirname(os.path.abspath(path)) or '.';
+    base_dir = os.path.dirname(os.path.abspath(path)) or '.';
+    woven = host.woven_module(path, JacProgram()) if arch is not None else None;
+    if woven is not None {
+        (sv_reason, deps) = scan_native_blockers(
+            woven, base_dir, allow_pub=True, hold_exempt=hold_exempt
+        );
+    } else {
         for f in files {
             try {
-                src = active_host().read_source(f);
+                src = host.read_source(f);
             } except Exception {
                 sv_reason = "unreadable annex";
                 break;

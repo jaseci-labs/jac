@@ -1756,9 +1756,9 @@ impl NormalizePass.enter_string with uni.String entry {
     here.value = f"{here.value}";
 }
 
-impl NormalizePass.enter_impl_import with uni.ImplImport entry {
+impl NormalizePass.enter_graph_import with uni.GraphImport entry {
     new_kid: list[uni.UniNode] = [
-        here.gen_token(Tok.KW_IMPL),
+        here.gen_token(Tok.KW_GRAPH),
         here.gen_token(Tok.KW_IMPORT)
     ];
     if here.scope {
@@ -1839,9 +1839,7 @@ impl NormalizePass.enter_import_rule with uni.ImportRule entry {
 
 impl NormalizePass.enter_module_pattern with uni.ModulePattern entry {
     new_kid: list[uni.UniNode] = [];
-    if here.is_any {
-        new_kid.append(here.gen_token(Tok.TYP_ANY));
-    } elif here.path is None {
+    if here.path is None {
         new_kid.append(here.gen_token(Tok.STAR_MUL));
     } else {
         new_kid.append(here.path);
