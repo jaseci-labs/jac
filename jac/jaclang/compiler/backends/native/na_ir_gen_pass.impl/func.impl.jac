@@ -357,6 +357,27 @@ impl NaIRGenPass._record_ret_facts(
     }
 }
 
+# C functions that return twice, as clang knows them by name (setjmp and
+# vfork families). LLVM then keeps the caller's frame valid for the second
+# return and never inlines the caller, which a vfork() child relies on.
+glob RETURNS_TWICE_EXTERNS: frozenset[str] = frozenset(
+         {
+             "setjmp",
+             "_setjmp",
+             "sigsetjmp",
+             "__sigsetjmp",
+             "savectx",
+             "getcontext",
+             "vfork"
+         }
+     );
+
+def _mark_returns_twice(name: str, func: ir.Function) -> None {
+    if name in RETURNS_TWICE_EXTERNS and "returns_twice" not in func.attributes {
+        func.attributes.add("returns_twice");
+    }
+}
+
 impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     if not isinstance(nd, uni.Ability) {
         return;
@@ -489,6 +510,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             "ret": sysv_ret_plan,
             "sret": sysv_sret
         };
+        _mark_returns_twice(name, sysv_func);
         self.func_symtab[name] = sysv_func;
         self.clib_extern_fns[name] = sysv_func;
         self.has_native_code = True;
@@ -521,6 +543,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     for (i, p) in enumerate(fixed_params) {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
+    _mark_returns_twice(name, func);
     self.func_symtab[name] = func;
     self.clib_extern_fns[name] = func;
     self.has_native_code = True;
