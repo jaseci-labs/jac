@@ -58,6 +58,19 @@ before linking the interpreter. The Jac module declares the library's
 functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`).
+A record or constant table that differs between the architectures of one
+system goes in `<name>.<os>.<arch>.jac`, which the native compiler prefers
+over `<name>.<arch>.jac`, `<name>.<os>.jac` and `<name>.jac`
+(`modules/stat_records.linux.x86_64.jac`); `gen_constants.jac --arch` writes
+such a table (`mmap_constants.linux.x86_64.jac` alone has `MAP_32BIT`).
+Constants the portable Jac code reads on every platform are listed in
+`gen_constants.jac`'s `PORTABLE` and declared as 0 where the headers lack
+them.
+
+Functions the C module parses with `PyArg_ParseTuple` or
+`PyArg_ParseTupleAndKeywords` instead of Argument Clinic use
+`ArgumentFormat` in `bindings/arguments.jac` with the same format units, so
+their conversions and messages are `getargs.c`'s.
 
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini`

@@ -258,7 +258,10 @@ int64_t jacpy_binding_property(void *handle, int64_t index, const char *name,
     JacTypeSpec *spec = (handle);
     char *owned_name = strdup(name), *owned_doc = strdup(doc);
     if (!owned_name || !owned_doc) { free(owned_name); free(owned_doc); return -1; }
-    spec->properties[index] = (PyGetSetDef){owned_name, (getter)get, (setter)set, owned_doc, (void *)(uintptr_t)context};
+    /* An empty doc is no doc, as a NULL one in a static PyGetSetDef. */
+    spec->properties[index] = (PyGetSetDef){owned_name, (getter)get, (setter)set,
+                                            *owned_doc ? owned_doc : NULL, (void *)(uintptr_t)context};
+    if (!*owned_doc) free(owned_doc);
     return 0;
 }
 

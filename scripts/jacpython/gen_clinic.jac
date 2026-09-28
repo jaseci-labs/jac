@@ -498,8 +498,14 @@ obj Emitter {
             var = local(p.name);
             position = i + 1;
             slot = f"args.values[{i}]";
-            optional_ssize = class_name(p.converter) == "Py_ssize_t_converter"
-                and "NoneType" in accepted(p.converter);
+            # Py_ssize_t(accept={int, NoneType}) and an object parsed by
+            # _Py_convert_optional_to_ssize_t (mmap's read(n)) are one converter.
+            optional_ssize = (
+                class_name(p.converter) == "Py_ssize_t_converter"
+                and "NoneType" in accepted(p.converter)
+            )
+                or getattr(p.converter, "converter", "")
+                    == "_Py_convert_optional_to_ssize_t";
             if i in required and i >= prefix {
                 missing = self.use("missing_argument");
                 body.append(

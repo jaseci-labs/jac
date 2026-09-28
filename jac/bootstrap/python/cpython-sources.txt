@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 67 C files / 122,841 lines; 46 headers / 18,237 lines.
-#   Total: 113 files / 141,078 source lines.
+#   Excluded: 68 C files / 125,220 lines; 47 headers / 19,006 lines.
+#   Total: 115 files / 144,226 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -546,7 +546,7 @@ Modules/clinic/gcmodule.c.h
 # Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
 # Modules/clinic/mathmodule.c.h  # removed: 1,114 source lines
 # Modules/clinic/md5module.c.h  # removed: 175 source lines
-Modules/clinic/mmapmodule.c.h
+# Modules/clinic/mmapmodule.c.h  # removed: 769 source lines
 Modules/clinic/posixmodule.c.h
 # Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
 Modules/clinic/pyexpat.c.h
@@ -584,7 +584,7 @@ Modules/main.c
 Modules/makesetup
 # Modules/mathmodule.c  # removed: 4,202 source lines
 # Modules/md5module.c  # removed: 413 source lines
-Modules/mmapmodule.c
+# Modules/mmapmodule.c  # removed: 2,379 source lines
 Modules/posixmodule.c
 Modules/posixmodule.h
 # Modules/pwdmodule.c  # removed: 380 source lines

@@ -38,6 +38,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyLong_UInt32_Converter,
     _PyLong_UnsignedInt_Converter,
     _PyLong_UnsignedShort_Converter,
+    PyNumber_AsSsize_t,
     PyNumber_Index,
     PyObject,
     PyObject_AsFileDescriptor,
@@ -106,7 +107,9 @@ def convert_ssize(value: ptr[PyObject]) -> i64 {
     return result;
 }
 
-# Py_ssize_t(accept={int, NoneType}): None keeps the C default.
+# Py_ssize_t(accept={int, NoneType}): _Py_convert_optional_to_ssize_t,
+# where None keeps the C default and an index too large overflows with
+# PyNumber_AsSsize_t's message.
 def convert_optional_ssize(value: ptr[PyObject], fallback: i64) -> i64 {
     if value == Py_None {
         return fallback;
@@ -118,7 +121,11 @@ def convert_optional_ssize(value: ptr[PyObject], fallback: i64) -> i64 {
         );
         raise boundary_failure();
     }
-    return convert_ssize(value);
+    result = PyNumber_AsSsize_t(value, PyExc_OverflowError);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
 }
 
 def convert_unsigned_long(

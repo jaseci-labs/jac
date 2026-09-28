@@ -115,7 +115,8 @@ glob OPAQUE: list[str] = [
      PLATFORM_RECORDS: dict[str, str] = {
          "timespec": "jaclang.runtime.python.modules.time_records",
          "timeval": "jaclang.runtime.python.modules.time_records",
-         "tm": "jaclang.runtime.python.modules.time_records"
+         "tm": "jaclang.runtime.python.modules.time_records",
+         "_Py_stat_struct": "jaclang.runtime.python.modules.stat_records"
      },
      SCALARS: dict[str, str] = {
          "int": "i32",
@@ -177,6 +178,8 @@ glob OPAQUE: list[str] = [
      # address (a HACL* digest buffer), not a Jac value; they take `ptr`.
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
          "_Py_strhex": {0},
+         "_PyBytes_Find": {0, 2},
+         "_PyBytes_ReverseFind": {0, 2},
          "PyUnicode_DecodeLocale": {0},
          "PyMember_GetOne": {0},
          "PyMember_SetOne": {0},
