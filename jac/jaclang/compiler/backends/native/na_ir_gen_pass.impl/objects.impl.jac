@@ -4973,3 +4973,123 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
     }
     return out;
 }
+
+impl NaIRGenPass._report_unreachable_overrides -> None {
+    """Refuse an override an imported base's own body can never reach (E5113).
+
+    Whether a class carries a vtable is decided in its own module
+    (`LayoutPass`), where subclasses in other modules are not visible. A
+    root class that is nobody's parent there, nor abstract, nor an
+    isinstance or OSP archetype, is lowered flat: its methods bind
+    `self.m()` straight to its own `m`. When an importer subclasses it,
+    `relax_vtable_header` drops the subclass's header to agree, so an
+    override declared here is reachable only through the subclass's own
+    static type -- a base method the subclass inherits still calls the
+    base's body, and nothing says so.
+
+    Like E5089 the check is deliberately narrow: it reports what the tree
+    proves, an inherited method of a flat imported base whose body calls
+    `self.X(...)` for an `X` this class overrides. An override no base body
+    dispatches to diverges only through callers holding the base type,
+    which this unit cannot see, and stays unreported. A base that carries a
+    vtable dispatches through it and is never reported.
+    """;
+    import os;
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    if self.module is None or self.module.loc is None {
+        return;
+    }
+    home = os.path.realpath(self.module.loc.mod_path);
+    reg = get_layout_registry(self.module, self.prog);
+    for arch in self._native_archetypes(self.module) {
+        if arch.body is None or arch.loc is None {
+            continue;
+        }
+        if os.path.realpath(arch.loc.mod_path) != home {
+            continue;
+        }
+        overrides: dict[str, uni.Ability] = {};
+        for stmt in arch.body {
+            if isinstance(stmt, uni.Ability)
+                and not stmt.is_abstract
+                and stmt.name_ref is not None {
+                overrides[stmt.name_ref.sym_name] = stmt;
+            }
+        }
+        if not overrides {
+            continue;
+        }
+        reported: set[str] = set();
+        seen: set[str] = set();
+        queue: list[uni.Expr] = list(arch.base_classes or []);
+        while queue {
+            base_expr = queue.pop(0);
+            if isinstance(base_expr, uni.AtomTrailer)
+                and isinstance(base_expr.right, uni.IndexSlice) {
+                base_expr = base_expr.target;
+            }
+            bname = self._get_name(base_expr);
+            if bname is None or bname in seen {
+                continue;
+            }
+            seen.add(bname);
+            sym = base_expr.sym if isinstance(base_expr, uni.NameAtom) else None;
+            decl = sym.decl if sym is not None else None;
+            base_arch = decl.find_parent_of_type(uni.Archetype)
+                if decl is not None
+                else None;
+            if base_arch is None {
+                continue;
+            }
+            queue.extend(base_arch.base_classes or []);
+            base_lay = reg.get_layout(self._arch_key(base_arch));
+            if base_lay is None or base_lay.has_vtable or base_lay.is_osp {
+                continue;
+            }
+            if not base_lay.decl_mod or base_lay.decl_mod == home {
+                continue;
+            }
+            for caller in (base_arch.body or []) {
+                if not isinstance(caller, uni.Ability) or caller.name_ref is None {
+                    continue;
+                }
+                calling = caller.name_ref.sym_name;
+                if calling in overrides {
+                    continue;
+                }
+                scopes: list[uni.UniNode] = [caller];
+                if isinstance(caller.body, uni.ImplDef) {
+                    scopes.append(caller.body);
+                }
+                for scope in scopes {
+                    for call in scope.get_all_sub_nodes(uni.FuncCall) {
+                        target = call.target;
+                        if not isinstance(target, uni.AtomTrailer)
+                            or not target.is_attr {
+                            continue;
+                        }
+                        if self._get_name(target.target) != "self" {
+                            continue;
+                        }
+                        dispatched = self._get_name(target.right);
+                        if dispatched is None
+                            or dispatched not in overrides
+                            or dispatched in reported {
+                            continue;
+                        }
+                        reported.add(dispatched);
+                        self.emit(
+                            E5113,
+                            node_override=overrides[dispatched],
+                            cls=self._arch_display(self._arch_key(arch)),
+                            meth=dispatched,
+                            base=bname,
+                            caller=calling,
+                            module=os.path.basename(base_lay.decl_mod)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

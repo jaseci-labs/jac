@@ -47,6 +47,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E5060,
     E5088,
     E5089,
+    E5113,
     E5090,
     E5091,
     E5092,
@@ -1166,6 +1167,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
+    def _report_unreachable_overrides -> None;
     def _own_prefix -> str;
     def _prefix_of_module(mod: (uni.Module | None)) -> str;
     def _prefix_of_path(path: str) -> str;
