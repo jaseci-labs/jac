@@ -273,6 +273,12 @@ SETUP
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
         --with-system-expat --with-system-libmpdec --without-readline
+    if [ -n "$host" ]; then
+        # Native Jac defines and reads objects through layouts.jac; its
+        # generated asserts fail the build if this configuration disagrees.
+        "$CC" $CFLAGS -DPy_BUILD_CORE -I. -IInclude -c -o "$work/layouts_check.o" "$recipe/layouts_check.c"
+        rm -f "$work/layouts_check.o"
+    fi
     if [ -n "$archives" ]; then
         # shellcheck disable=SC2086 # one make target per archive
         python_make -j"$jobs" $archives
