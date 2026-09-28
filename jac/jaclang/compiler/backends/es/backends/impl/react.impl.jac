@@ -1,4 +1,11 @@
 import jaclang.compiler.backends.es.estree as es;
+import from jaclang.compiler.backends.es.view_ir {
+    DynamicAttr,
+    EventAttr,
+    RefAttr,
+    StaticAttr,
+    ViewLocator
+}
 import from jaclang.compiler.backends.es.reactive_intent {
     StateField,
     RefField,
@@ -153,20 +160,34 @@ impl ReactBackend.lower_state_read(name: str) -> es.Expression {
     return self._state_cell_member(name, 'val');
 }
 
-impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
-    import from jaclang.compiler.backends.es.view_ir { DynamicAttr, EventAttr }
+impl ReactBackend._view_attr_property(
+    attr: (StaticAttr | DynamicAttr | EventAttr | RefAttr), locator: ViewLocator
+) -> es.Property {
     if isinstance(attr, DynamicAttr) {
-        attr_name = attr.name;
-        value = sync_loc(self.lower_view_expr(attr.value), jac_node=attr.jac_node);
-    } elif isinstance(attr, EventAttr) {
-        attr_name = attr.name;
-        value = attr.handler;
-    } else {
-        attr_name = attr.name;
-        value = attr.value;
+        return self._view_property(
+            attr.name,
+            locator.at(self.lower_view_expr(attr.value), jac_node=attr.jac_node),
+            attr.jac_node,
+            locator
+        );
     }
-    key_expr = sync_loc(es.Literal(value=attr_name), jac_node=attr.jac_node);
-    return sync_loc(
+    if isinstance(attr, EventAttr) {
+        return self._view_property(attr.name, attr.handler, attr.jac_node, locator);
+    }
+    if isinstance(attr, StaticAttr) {
+        return self._view_property(attr.name, attr.value, attr.jac_node, locator);
+    }
+    return self._view_property(attr.name, attr.value, attr.jac_node, locator);
+}
+
+impl ReactBackend._view_property(
+    name: str,
+    value: es.Expression,
+    jac_node: (uni.UniNode | None),
+    locator: ViewLocator
+) -> es.Property {
+    key_expr = locator.at(es.Literal(value=name), jac_node=jac_node);
+    return locator.at(
         es.Property(
             key=key_expr,
             value=value,
@@ -175,11 +196,11 @@ impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
             shorthand=False,
             computed=False
         ),
-        jac_node=attr.jac_node
+        jac_node=jac_node
     );
 }
 
-impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression {
+impl ReactBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expression {
     import from jaclang.compiler.backends.es.view_ir {
         HostTag,
         ComponentTag,
@@ -193,7 +214,7 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
     }
     tag = view.tag;
     if isinstance(tag, HostTag) {
-        tag_expr: es.Expression = sync_loc(
+        tag_expr: es.Expression = locator.at(
             es.Literal(value=tag.name), jac_node=tag.jac_node
         );
     } elif isinstance(tag, ComponentTag) {
@@ -201,12 +222,19 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
     } elif isinstance(tag, DynamicTag) {
         tag_expr = tag.expr;
     } else {
-        tag_expr = sync_loc(es.Literal(value=None), jac_node=tag.jac_node);
+        tag_expr = locator.at(es.Literal(value=None), jac_node=tag.jac_node);
     }
-    has_spread = `any(isinstance(a, SpreadAttr) for a in view.attrs);
+    properties: list[es.Property] = [];
+    has_spread = False;
+    for a in view.attrs {
+        if isinstance(a, SpreadAttr) {
+            has_spread = True;
+        } else {
+            properties.append(self._view_attr_property(a, locator));
+        }
+    }
     if not has_spread {
-        properties = [self._view_attr_property(a, sync_loc) for a in view.attrs];
-        props_expr: es.Expression = sync_loc(
+        props_expr: es.Expression = locator.at(
             es.ObjectExpression(properties=properties), jac_node=view.jac_node
         );
     } else {
@@ -216,9 +244,9 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
                 segments.append(a.value);
             } else {
                 segments.append(
-                    sync_loc(
+                    locator.at(
                         es.ObjectExpression(
-                            properties=[self._view_attr_property(a, sync_loc)]
+                            properties=[self._view_attr_property(a, locator)]
                         ),
                         jac_node=a.jac_node
                     )
@@ -226,12 +254,12 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
             }
         }
         if segments {
-            assign_member = sync_loc(
+            assign_member = locator.at(
                 es.MemberExpression(
-                    object=sync_loc(
+                    object=locator.at(
                         es.Identifier(name='Object'), jac_node=view.jac_node
                     ),
-                    property=sync_loc(
+                    property=locator.at(
                         es.Identifier(name='assign'), jac_node=view.jac_node
                     ),
                     computed=False,
@@ -239,20 +267,18 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
                 ),
                 jac_node=view.jac_node
             );
-            props_expr = sync_loc(
-                es.CallExpression(
-                    callee=assign_member,
-                    arguments=[
-                        sync_loc(
-                            es.ObjectExpression(properties=[]), jac_node=view.jac_node
-                        ),
-                        *segments
-                    ]
-                ),
+            assign_args: list[(es.Expression | es.SpreadElement)] = [
+                locator.at(es.ObjectExpression(properties=[]), jac_node=view.jac_node)
+            ];
+            for segment in segments {
+                assign_args.append(segment);
+            }
+            props_expr = locator.at(
+                es.CallExpression(callee=assign_member, arguments=assign_args),
                 jac_node=view.jac_node
             );
         } else {
-            props_expr = sync_loc(
+            props_expr = locator.at(
                 es.ObjectExpression(properties=[]), jac_node=view.jac_node
             );
         }
@@ -263,13 +289,19 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
             children_elements.append(child.value);
         } elif isinstance(child, DynamicChild) {
             children_elements.append(
-                sync_loc(self.lower_view_expr(child.value), jac_node=child.jac_node)
+                locator.at(self.lower_view_expr(child.value), jac_node=child.jac_node)
             );
         } elif isinstance(child, ElementChild) {
-            children_elements.append(self.lower_view(child.element, sync_loc));
-        } elif isinstance(child, (IfChild, EachChild)) {
+            children_elements.append(self.lower_view(child.element, locator));
+        } elif isinstance(child, IfChild) {
             children_elements.append(
-                sync_loc(
+                locator.at(
+                    self.lower_view_expr(child.js_fallback), jac_node=child.jac_node
+                )
+            );
+        } elif isinstance(child, EachChild) {
+            children_elements.append(
+                locator.at(
                     self.lower_view_expr(child.js_fallback), jac_node=child.jac_node
                 )
             );
@@ -277,12 +309,12 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
             children_elements.append(child.expr);
         }
     }
-    children_expr = sync_loc(
+    children_expr = locator.at(
         es.ArrayExpression(elements=children_elements), jac_node=view.jac_node
     );
-    return sync_loc(
+    return locator.at(
         es.CallExpression(
-            callee=sync_loc(
+            callee=locator.at(
                 es.Identifier(name=self.jsx_factory_name()), jac_node=view.jac_node
             ),
             arguments=[tag_expr, props_expr, children_expr]

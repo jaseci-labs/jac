@@ -10,7 +10,8 @@ impl EsJsxProcessor.element(nd: uni.JsxElement) -> Expression {
         TextChild,
         DynamicChild,
         ElementChild,
-        SlotChild
+        SlotChild,
+        ViewLocator
     }
 
     if nd.dynamic_tag is not None {
@@ -109,7 +110,7 @@ impl EsJsxProcessor.element(nd: uni.JsxElement) -> Expression {
     self._view_by_node[id(nd)] = view;
     backend = self.pass_ref.resolved_backend;
     assert backend is not None , "framework backend was not initialized";
-    return backend.lower_view(view, self.pass_ref.sync_loc);
+    return backend.lower_view(view, ViewLocator(anchor=self.pass_ref.ctx.current_node));
 }
 
 impl EsJsxProcessor._lift_control_flow(
