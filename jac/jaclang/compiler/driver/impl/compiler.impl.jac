@@ -762,6 +762,32 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     return frame;
 }
 
+impl JacCompiler.assemble_python(program: JacProgram, module: uni.Module) {
+    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
+    program.run_schedule(module, [JcirBytecodeGenPass]);
+}
+
+impl JacCompiler.assemble_native(
+    program: JacProgram, module: uni.Module, checking: bool
+) {
+    import copy;
+    import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
+    if not checking {
+        program.run_schedule(module, [NativeCompilePass]);
+        return;
+    }
+    previous = program.options;
+    checked = copy.copy(previous);
+    checked.aot_mode = True;
+    checked.skip_native_engine = False;
+    program.options = checked;
+    try {
+        program.run_schedule(module, [NativeCompilePass]);
+    } finally {
+        program.options = previous;
+    }
+}
+
 impl JacCompiler.leave_compile(ctx: SessionContext, frame: CompileFrame) {
     depth_prev = frame.depth_prev if isinstance(frame, HostCompileFrame) else 0;
     self._reentrant_depth = depth_prev;
@@ -974,7 +1000,6 @@ impl JacCompiler._compile_pipeline(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from jaclang.compiler.driver.pipeline_runner { compile_module }
     return compile_module(self, actual_program, file_path, options, use_str);
 }
 

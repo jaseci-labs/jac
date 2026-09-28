@@ -232,6 +232,10 @@ obj HostServices {
         raise RuntimeError("no compiler host is installed");
     }
 
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
+        return None;
+    }
+
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None) {

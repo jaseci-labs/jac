@@ -586,6 +586,14 @@ obj HostReferenceSession(SessionHooks) {
         return self.compiler.closure_options();
     }
 
+    def assemble_python(program: JacProgram, module: uni.Module) {
+        self.compiler.assemble_python(program, module);
+    }
+
+    def assemble_native(program: JacProgram, module: uni.Module, checking: bool) {
+        self.compiler.assemble_native(program, module, checking);
+    }
+
     def run_module(
         file_path: str,
         target_program: JacProgram,

@@ -835,6 +835,16 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
+        if self.kernel_only("client_boundary_facts") {
+            return None;
+        }
+        with self.delegating("client_boundary_facts") as host {
+            answer = host.client_boundary_facts(program, path);
+        }
+        return answer;
+    }
+
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None) {

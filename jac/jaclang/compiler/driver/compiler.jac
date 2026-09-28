@@ -1,24 +1,18 @@
 import type from jaclang.runtime.native_library { SharedNativeEngine }
-import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
-import ast as py_ast;
 import marshal;
 import os;
-import from collections.abc { Callable }
 import sys;
 import types;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.driver.jir {
     SEC_BYTECODE,
     SEC_MTIR,
     SEC_INTEROP,
     SEC_NBITCODE,
-    SEC_NIFACE,
     SEC_NOBJ,
     SEC_PLACEMENT,
-    SEC_IFACE,
     SEC_CLIENT,
     FLAG_PRECOMPILED,
     compute_content_sha256,
@@ -41,12 +35,7 @@ import type from jaclang.compiler.frontend.codeinfo {
     NativeModuleLayout
 }
 import from jaclang.project.textio { read_file_with_encoding }
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.passes.boundary_analysis_pass { BoundaryAnalysisPass }
-import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-
+import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.compiler.frontend.host { HostServices }
@@ -55,52 +44,20 @@ import from jaclang.compiler.driver.session_compile {
     SessionContext,
     SessionHooks
 }
-import from jaclang.compiler.driver.pass_driver {
-    build_diagnostic_policy,
-    compile_progress,
-    deliver_alerts,
-    run_pass
-}
 import from jaclang.compiler.driver.setup_progress { setup_progress }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    get_symtab_ir_sched,
-    providers_of,
-    pass_provides,
-    validate_schedule
-}
+import from jaclang.compiler.driver.module_compile { compile_module }
 import from jaclang.compiler.driver.pipeline_runner {
     run_utility,
     get_format_sched,
     get_lint_sched
 }
 import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
-import from jaclang.compiler.driver.pipeline_runner {
-    get_py_code_gen,
-    native_schedule_failure
-}
-import from jaclang.compiler.driver.toolchain { native_pipeline_available }
 import from jaclang.compiler.driver.source_failures {
     CompilerSourceError,
     import_error_re_enters,
-    module_import_in_flight,
     module_scoped_failure_details,
     bootstrap_tier_failure_details,
     note_compiler_source_failure
-}
-import from jaclang.compiler.driver.boundary_classify {
-    ClientImportVerdict,
-    _coerce_client_module,
-    _coerce_native_module,
-    _default_codespace_for,
-    classify_client_import_item,
-    import_declares_native_target,
-    is_client_boundary_import,
-    is_client_native_edge_import,
-    native_only_import_target,
-    symbol_linked_source_module
 }
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
@@ -265,6 +222,8 @@ obj JacCompiler(SessionHooks) {
     ) -> uni.Module;
 
     def enter_compile(ctx: SessionContext) -> CompileFrame;
+    def assemble_python(program: JacProgram, module: uni.Module);
+    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
     def leave_compile(ctx: SessionContext, frame: CompileFrame);
     def finish_compile(frame: CompileFrame);
     def check_crash(crash: Exception, file_path: str);

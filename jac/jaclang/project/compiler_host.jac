@@ -96,6 +96,7 @@ obj ProjectHost(HostServices) {
     def compiler_for(program: JacProgram) -> JacCompiler;
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None);

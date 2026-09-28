@@ -240,6 +240,16 @@ impl ProjectHost.native_session_declares(
     );
 }
 
+impl ProjectHost.client_boundary_facts(
+    program: JacProgram, path: str
+) -> (list[str] | None) {
+    try {
+        return program.iface_registry().client_boundary_facts(path);
+    } except Exception {
+        return None;
+    }
+}
+
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
         import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }

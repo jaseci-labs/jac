@@ -320,6 +320,9 @@ glob _ir_sched_loading: ContextVar[bool] = ContextVar(
      ),
      _analysis_sched_loading: ContextVar[bool] = ContextVar(
          'jac_analysis_sched_loading', `default=False
+     ),
+     _codegen_sched_loading: ContextVar[bool] = ContextVar(
+         'jac_codegen_sched_loading', `default=False
      );
 
 glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),

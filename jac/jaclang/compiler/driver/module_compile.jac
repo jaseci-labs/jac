@@ -1,0 +1,421 @@
+import os;
+import time;
+import from jaclang.compiler.passes.context { PassSchedule }
+import from jaclang.compiler.driver.pipeline_types {
+    AnalysisFact,
+    CompilationPhase,
+    CompilationProduct
+}
+import from jaclang.compiler.driver.pipeline {
+    _codegen_sched_loading,
+    product_ready,
+    providers_of_product,
+    register_product_schedule,
+    require_product,
+    schedule_tier_reason,
+    validate_schedule
+}
+import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.compiler.driver.context_passes { NativeImportFactsPass }
+import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
+import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.session_compile { SessionHooks }
+import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.constant { CodeContext }
+import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.driver.module_analysis {
+    ANALYSIS_PHASES,
+    ModuleAnalysis,
+    analyze_module,
+    cancelled,
+    record_phase
+}
+
+glob CODEGEN_SCHED_DEPS: tuple[str, ...] = (
+         'jaclang.compiler.passes.rc_facts_pass',
+         'jaclang.compiler.backends.es',
+         'jaclang.compiler.passes.freeze_structure_pass'
+     ),
+     NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', ),
+     _native_sched_failure: dict[str, str] = {};
+
+obj ModuleCompilation {
+    has session: SessionHooks,
+        analysis: ModuleAnalysis;
+
+    def native_checks {
+        analysis = self.analysis;
+        options = analysis.options;
+        if not (
+            options.no_cgen
+            and (options.native_parity or options.native_required_for(analysis.path))
+            and not options.symtab_ir_only
+            and not analysis.parse_failed
+            and not analysis.blocked
+            and product_ready(
+                analysis.program, analysis.module, CompilationProduct.ANALYSIS
+            )
+        ) {
+            return;
+        }
+        if not (
+            analysis.native or ModuleFacts.has_native_context_stmts(analysis.module)
+        ) {
+            return;
+        }
+        lowered = require_product(
+            analysis.program,
+            analysis.module,
+            CompilationProduct.NATIVE_IR,
+            cancel_token=options.cancel_token
+        );
+        if lowered and options.native_required_for(analysis.path) {
+            self.session.assemble_native(analysis.program, analysis.module, True);
+        }
+    }
+
+    def client_dependencies {
+        analysis = self.analysis;
+        options = analysis.options;
+        if analysis.parse_failed
+            or analysis.blocked
+            or options.symtab_ir_only
+            or options.no_cgen {
+            return;
+        }
+        program = analysis.program;
+        host = active_host();
+        seen: set[str] = set();
+        worklist: list[uni.Module | None] = [analysis.module];
+        paths: list[str] = [];
+        dep_options = CompileOptions(no_cgen=True, cancel_token=options.cancel_token);
+        while worklist or paths {
+            if worklist {
+                current = worklist.pop();
+                if current is not None {
+                    paths.extend(client_import_paths(current));
+                }
+                continue;
+            }
+            dep_path = paths.pop();
+            if dep_path in seen {
+                continue;
+            }
+            seen.add(dep_path);
+            dep = program.find_module(dep_path);
+            has_facts = dep is not None
+                and dep.gen
+                and dep.gen.interop_manifest
+                and bool(dep.gen.interop_manifest.bindings);
+            if not has_facts and not program.has_failed_parse(dep_path) {
+                served = host.client_boundary_facts(program, dep_path);
+                if served is not None {
+                    paths.extend(os.path.abspath(edge) for edge in served);
+                    continue;
+                }
+                dep = self.session.compile(dep_path, program, None, dep_options);
+            }
+            worklist.append(dep);
+        }
+        program.options = options;
+    }
+
+    def interface {
+        import from jaclang.compiler.driver.jir { is_compiler_tree_path }
+        analysis = self.analysis;
+        options = analysis.options;
+        closure = self.session.closure_options() or options;
+        if analysis.parse_failed or analysis.blocked or analysis.source is not None {
+            return;
+        }
+        wants = (options.no_cgen and not options.symtab_ir_only)
+            or (
+                closure.no_cgen
+                and not closure.symtab_ir_only
+                and not (
+                    analysis.program.internal and is_compiler_tree_path(analysis.path)
+                )
+            );
+        if wants {
+            require_product(
+                analysis.program,
+                analysis.module,
+                CompilationProduct.INTERFACE,
+                cancel_token=options.cancel_token
+            );
+        }
+    }
+
+    def codegen {
+        analysis = self.analysis;
+        options = analysis.options;
+        if analysis.parse_failed
+            or analysis.blocked
+            or options.no_cgen
+            or options.symtab_ir_only {
+            return;
+        }
+        program = analysis.program;
+        module = analysis.module;
+        program.options = options;
+        if not analysis.full_head {
+            program.run_schedule(
+                mod=module,
+                passes=get_bootstrap_code_gen(),
+                cancel_token=options.cancel_token
+            );
+            self.session.assemble_python(program, module);
+            return;
+        }
+        needs_native = analysis.native or ModuleFacts.has_native_context_stmts(module);
+        if needs_native
+            and not product_ready(program, module, CompilationProduct.ANALYSIS)
+            and not require_product(
+                program,
+                module,
+                CompilationProduct.ANALYSIS,
+                cancel_token=options.cancel_token
+            ) {
+            analysis.blocked = True;
+            return;
+        }
+        program.run_schedule(
+            mod=module,
+            passes=get_py_code_gen(
+                native=needs_native,
+                provided=program.analysis.analyses_run.provided(module)
+            ),
+            cancel_token=options.cancel_token
+        );
+        if module.gen.llvm_ir is not None {
+            self.session.assemble_native(program, module, False);
+        }
+        self.session.assemble_python(program, module);
+        if module.decided_codespace == 'native' {
+            scrubbed = scrub_native_artifacts_on_error(program, module);
+            if options.aot_mode and not scrubbed {
+                report_missing_native_ir(program, module);
+            }
+        }
+    }
+}
+
+def client_import_paths(module: uni.Module) -> list[str] {
+    out: list[str] = [];
+    for imp in module.get_all_sub_nodes(uni.Import) {
+        if not imp.from_loc or imp.is_virtual_jac {
+            continue;
+        }
+        try {
+            source = imp.from_loc.resolve_relative_path();
+        } except Exception {
+            continue;
+        }
+        if isinstance(source, str)
+            and imp.code_context == CodeContext.CLIENT
+            and source.endswith('.jac') {
+            out.append(os.path.abspath(source));
+        }
+    }
+    return out;
+}
+
+def scrub_native_artifacts_on_error(program: JacProgram, mod: uni.Module) -> bool {
+    mod_path = mod.loc.mod_path if mod?.loc else '';
+    if not mod_path or not program.module_scoped_errors(mod_path) {
+        return False;
+    }
+    gen = mod.gen;
+    gen.py_bytecode = None;
+    gen.llvm_ir = None;
+    gen.native_engine = None;
+    gen.native_bitcode = None;
+    gen.native_object = None;
+    gen.native_iface = None;
+    gen.native_layout = None;
+    return True;
+}
+
+def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
+    import from jaclang.compiler.driver.pass_driver { deliver_alerts }
+    import from jaclang.compiler.frontend.diagnostics { E5092 }
+    import from jaclang.compiler.passes.context { Alert }
+    if mod?.gen is None or mod.gen.llvm_ir is not None {
+        return;
+    }
+    mod_path = mod.loc.mod_path if mod?.loc else '';
+    if not mod_path or program.count_module_errors(mod_path) > 0 {
+        return;
+    }
+    reason = native_schedule_failure();
+    if not reason {
+        (available, why) = active_host().native_pipeline_available();
+        if not available {
+            reason = why;
+        }
+    }
+    if reason {
+        detail = f"the native codegen schedule could not be built ({reason})";
+    } elif not ModuleFacts.has_native_context_stmts(mod) {
+        detail = "the module declares no native code for the backend to lower";
+    } else {
+        detail = (
+            "the native codegen passes ran but emitted neither IR nor a "
+            "diagnostic; this is a compiler bug -- please report it"
+        );
+    }
+    from_pass: type = JcirGenPass;
+    try {
+        import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+        from_pass = NaIRGenPass;
+    } except Exception {}
+    deliver_alerts(
+        [
+            Alert(
+                msg=E5092.format_message(
+                    kind='module', name=os.path.basename(mod_path)
+                ),
+                loc=mod.loc.span(),
+                from_pass=from_pass,
+                code=E5092,
+                help_text=detail
+            )
+        ],
+        [],
+        program
+    );
+}
+
+obj CodegenStep {
+    has phase: CompilationPhase,
+        execute: Callable[[ModuleCompilation], None];
+}
+
+def codegen_steps -> list[CodegenStep] {
+    return [
+        CodegenStep(CompilationPhase.NATIVE_CHECKS, ModuleCompilation.native_checks),
+        CodegenStep(
+            CompilationPhase.CLIENT_DEPENDENCIES, ModuleCompilation.client_dependencies
+        ),
+        CodegenStep(CompilationPhase.INTERFACE, ModuleCompilation.interface),
+        CodegenStep(CompilationPhase.CODEGEN, ModuleCompilation.codegen)
+    ];
+}
+
+def module_pipeline -> list[CompilationPhase] {
+    return list(ANALYSIS_PHASES) + [step.phase for step in codegen_steps()];
+}
+
+def compile_module(
+    session: SessionHooks,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: str | None = None
+) -> uni.Module {
+    analysis = active_host().native_analyze(program, path, options, source);
+    if analysis is None {
+        analysis = analyze_module(program, path, options, source);
+    }
+    task = ModuleCompilation(session, analysis);
+    for step in codegen_steps() {
+        if cancelled(options) {
+            break;
+        }
+        started = time.perf_counter();
+        try {
+            step.execute(task);
+        } finally {
+            record_phase(program, step.phase, started);
+        }
+    }
+    return analysis.module;
+}
+
+def _codegen_tier_reason -> str {
+    if _codegen_sched_loading.get() {
+        return 'the codegen schedule was still loading';
+    }
+    dep = active_host().module_in_flight(
+        list(CODEGEN_SCHED_DEPS) + list(NATIVE_CODEGEN_DEPS)
+    );
+    if dep {
+        return f"'{dep}', a dependency of the codegen schedule, was mid-import";
+    }
+    return schedule_tier_reason();
+}
+
+def _note_native_schedule_failure(err: (BaseException | None)) {
+    if err is None {
+        _native_sched_failure.pop('reason', None);
+    } else {
+        _native_sched_failure['reason'] = f"{type(err).__name__}: {err}";
+    }
+}
+
+def native_schedule_failure -> str {
+    return _native_sched_failure.get('reason', '');
+}
+
+def get_bootstrap_code_gen -> PassSchedule {
+    return [NativeImportFactsPass, JcirGenPass];
+}
+
+def get_py_code_gen(
+    native: bool = True, provided: (set[AnalysisFact] | None) = None
+) -> PassSchedule {
+    if _codegen_tier_reason() {
+        return get_bootstrap_code_gen();
+    }
+    token = _codegen_sched_loading.set(True);
+    try {
+        active_host().load_modules(list(CODEGEN_SCHED_DEPS));
+        import from jaclang.compiler.backends.es { EsastGenPass }
+        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+        import from jaclang.compiler.passes.freeze_structure_pass {
+            FreezeStructurePass
+        }
+        passes: PassSchedule = [RcFactsPass, EsastGenPass];
+        if native {
+            active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
+            import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+            passes.append(NaIRGenPass);
+            _note_native_schedule_failure(None);
+        }
+        passes.extend(get_bootstrap_code_gen());
+        passes.append(FreezeStructurePass);
+        return validate_schedule(
+            passes,
+            preprovided=providers_of_product(CompilationProduct.ANALYSIS)
+                if provided is None
+                else provided,
+            origin='codegen schedule'
+        );
+    } except ImportError as e {
+        fail_loud_on_compiler_source(e);
+        if native {
+            _note_native_schedule_failure(e);
+        }
+        return get_bootstrap_code_gen();
+    } finally {
+        _codegen_sched_loading.reset(token);
+    }
+}
+
+def client_product_schedule -> PassSchedule {
+    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
+    return [EsastGenPass];
+}
+
+def native_ir_product_schedule -> PassSchedule {
+    import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
+}
+
+with entry {
+    register_product_schedule(CompilationProduct.CLIENT, client_product_schedule);
+    register_product_schedule(CompilationProduct.NATIVE_IR, native_ir_product_schedule);
+}
