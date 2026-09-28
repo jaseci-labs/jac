@@ -108,6 +108,7 @@ only where Jac cannot express the operation:
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
 | struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
+| C names of Jac definitions the native backend reserves (`PyBool_FromLong`) | a `:pub` definition of a reserved name is emitted as `__jac_def_<name>` | one-line forwarders in `object_api.c` |
 | returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
@@ -180,23 +181,97 @@ CPython C extensions compile against the object layouts, so the layouts are
 the ABI: `PyObject` (refcount, type), `PyVarObject`, `PyTypeObject` and the
 concrete layouts that macros read (`PyTupleObject.ob_item`,
 `PyListObject.ob_item`, `PyBytesObject.ob_sval`, the compact unicode forms).
-A Jac object model keeps these byte for byte. It needs:
+A Jac object model keeps these byte for byte. `Objects/boolobject.c` is the
+pilot port; it established the pieces below.
 
-- C-layout structs for each layout, with interior pointers and in-place field
-  writes through a pointer (gaps 1 and 2);
-- static type objects exported under their C names (C data definitions,
-  gap 4);
-- slot functions exported as C function pointers in those type objects; Jac
-  already emits named callbacks into C records;
-- refcounting as inline operations in Jac, since a call per `Py_INCREF` into
-  C costs a function call that ThinLTO cannot remove (`jacpython.o` enters the
-  link as machine code). Emitting `jacpython.o` as bitcode for the ThinLTO link
-  removes that boundary if Jac's LLVM and Zig's LLVM agree on the bitcode
-  version.
+**Layouts are generated and verified.** `scripts/jacpython/gen_layouts.jac`
+writes `runtime/python/layouts.jac`: one C-layout struct per layout it lists
+(`_object`, `PyVarObject`, `PyTypeObject`, `PyNumberMethods`, `_PyLongValue`,
+`PyLongObject`, `PyTupleObject` so far), read from the pinned headers through
+a small preprocessor that keeps the `#if` branches of the release build
+(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots are
+`Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
+pointers to records no port reads yet are opaque. `PyObject` stays the opaque
+handle of `cpython_api.jac`; its layout is `_object`, reached by casting a
+handle (`ptr[_object](op).view(1)[0].ob_type`). The 3.14 refcount union is its
+widest member, `ob_refcnt_full: i64`; a trailing C array `T name[1]` is one
+`T` field, and further elements are reached by pointer arithmetic. The same
+script writes the header constants initializers need (`Py_TPFLAGS_*`, the
+immortal refcount, `_PyLong_*_TAG`, `offsetof`/`sizeof` values) as `Final`
+globs, read back from a configured build's headers.
 
-Order: leaf types with little behaviour
-(`cellobject.c` 212, `boolobject.c` 227, `namespaceobject.c` 332,
-`capsule.c` 366, `iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
+It also writes `bootstrap/python/layouts_check.c`: `_Static_assert`s on the
+offset, size, kind (integer, pointer, record) and signedness of every
+generated field, each struct's size and alignment, and each constant's value.
+`build.sh` compiles it against the configured headers of every JacPython build
+before `make`, so a layout that differs on any platform fails the build.
+`gen_layouts.jac --check` fails when either file is stale. To add a layout or
+constant, extend `LAYOUTS` or `CONSTANTS` in the script and rerun it.
+
+**Static objects are C data definitions.** A port defines each static type
+and singleton under its C name in an `import from c` block, with the
+initializer the C macros produce. `object_model/bool.jac` defines
+`PyBool_Type` with `ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT`
+(`PyVarObject_HEAD_INIT`: immortal, statically allocated flag in the high
+bits) and `ob_type=addressof(PyType_Type)`, and `_Py_FalseStruct` /
+`_Py_TrueStruct` as `PyLongObject`s whose `lv_tag` is `_PyLong_FALSE_TAG` /
+`_PyLong_TRUE_TAG` and whose digit is 0 / 1. C's `Py_True` is the address of
+the Jac-defined object. Slot tables (`bool_as_number`) are `glob:priv`
+definitions; slots name Jac functions directly. Static C functions are plain
+`def`s; non-static ones are `def:pub` under their C names (`PyBool_FromLong`),
+so `gen_capi.jac` drops their declarations and Jac callers import them from
+the port. The extern types a port uses (`PyType_Type`, `PyLong_Type`,
+`PyExc_*`) are `glob` declarations typed with their layouts, and inherited
+slots are called through them:
+`addressof(PyLong_Type).view(1)[0].tp_as_number.view(1)[0].nb_and(a, b)`.
+`object_model/header.jac` holds the header's static inline operations
+(`Py_TYPE`, `Py_IS_TYPE`, `Py_SIZE`, `PyType_HasFeature`) as Jac reads of the
+layouts.
+
+**Removing the C file.** The port marks the file `# removed:` in
+`cpython-sources.txt`, `compiler-bridge.patch` deletes its object from
+`OBJECT_OBJS` (the build-only host keeps it), and `native_api.jac` imports the
+port so its definitions are in `jacpython.o`. The build's absent-input check
+then proves the C object is gone.
+
+What boolobject needed beyond the layouts:
+
+- `_Py_ID(True)` and `_Py_ID(False)` (the statically allocated identifier
+  strings) are fields of `_PyRuntime`, whose layout differs between platform
+  builds. Interning returns them, since the static strings are interned at
+  startup, so `bool_repr` is `PyUnicode_InternFromString("True")`.
+- `bool_new` performs `PyArg_UnpackTuple`'s checks (tuple check,
+  `_PyArg_CheckPositional`) and reads `ob_item` directly, with the same
+  errors; it was written before variadic calls were closed in the language.
+- The `_PyArg_NoKeywords`, `_PyArg_NoKwnames` and `_PyArg_CheckPositional`
+  macros are written out: the fast test inline, then the exported function.
+- Two compiler fixes: a module-level `Final` glob is a C constant in data
+  initializers (`tp_flags=Py_TPFLAGS_DEFAULT`, also inside `|`, `+`, `<<`
+  expressions), and `Final[T]` lowers as `T` natively; C data may be typed with
+  a foreign struct another module declares (declarations wait until every
+  module's structs are registered).
+- A `:pub` definition named after a C function the native backend itself
+  declares (`NATIVE_RESERVED_C_SYMBOLS` in `codeinfo.jac`: its Python interop
+  calls `PyBool_FromLong`, `PyTuple_New`, `PyObject_IsTrue`, ...) is emitted
+  as `__jac_def_<name>`, so C callers do not reach it. `object_api.c`
+  forwards `PyBool_FromLong` to `__jac_def_PyBool_FromLong` until a clib
+  block can define a function under its exact C name, as it already defines
+  data (a `def` with a body in `import from c` is E5060 today). Every later
+  object port that defines one of those names needs the same.
+- `gen_capi.jac` reads `Name(` in string literals as a call, so a message that
+  names a C function (`"PyArg_UnpackTuple() argument list is not a tuple"`)
+  is split into adjacent literals.
+
+Refcounting from Jac is still a call into C (`Py_IncRef`, `jacpy_release`);
+with `_object` declared, inline immortality-aware reference operations in Jac
+are the next shared helper. `jacpython.o` enters the link as machine code,
+so a call into C costs a call ThinLTO cannot remove; emitting it as bitcode
+for the ThinLTO link removes that boundary if Jac's LLVM and Zig's LLVM agree
+on the bitcode version.
+
+Order after `boolobject.c`: leaf types with little behaviour
+(`cellobject.c` 212, `namespaceobject.c` 332, `capsule.c` 366,
+`iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
 `rangeobject.c` 1,317), then containers (`tupleobject.c`, `listobject.c`,
 `setobject.c`, `dictobject.c`), then numbers and text (`floatobject.c`,
 `complexobject.c`, `longobject.c`, `bytesobject.c`, `unicodeobject.c`), and
