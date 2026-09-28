@@ -405,4 +405,57 @@ def plain(fmt: ptr[u8], *args: VaList) -> None {}
 def call_it -> None { plain(ptr[u8](), [1, 2]); }
 ''';
     assert checker_codes(code) == ["E1157", "E1157"];
+test "C data definitions use Final constants and structs another module declares" {
+    decls = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr[CpVec3];
+    }
+    def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;
+    def cp_label_len(s: ptr[u8]) -> i32;
+}
+glob CP_COUNT: Final[i32] = 6, CP_LIMIT: Final[i64] = (1 << 40) + 2;
+''';
+    user = '''import from cdecls { CP_COUNT, CP_LIMIT, CpRecipe, CpVec3, cp_label_len, cp_recipe_run }
+import from "CLIB_POINTERS_LIBRARY" {
+    glob user_origin: CpVec3 = CpVec3(x=f32(1.0), y=f32(2.0), z=f32(3.0)),
+         user_recipe: CpRecipe = CpRecipe(
+             count=CP_COUNT | 1,
+             scale=double,
+             label=ptr[u8]("user"),
+             origin=addressof(user_origin)
+         ),
+         user_limit: i64 = CP_LIMIT;
+}
+def double(v: i32) -> i32 {
+    return v * i32(2);
+}
+with entry {
+    recipe = addressof(user_recipe);
+    print(
+        "final",
+        cp_recipe_run(recipe, i32(5)),
+        cp_label_len(recipe.view(1)[0].label),
+        recipe.view(1)[0].origin.view(1)[0].z,
+        user_limit
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, decls, "cdecls.jac");
+        out = assert_native_identity(stage_source(directory, user, "user.jac"));
+    }
+    assert "final 17 4 3.0 1099511627778" in out.splitlines() , out;
+}
+
+test "only Final globs are C constants" {
+    code = DECLS
+        + '''
+glob plain_count: i32 = 3;
+glob fixed_count: Final[i32] = 3;
+import from "CLIB_POINTERS_LIBRARY" {
+    glob cp_plain: i32 = plain_count, cp_fixed: i32 = fixed_count + 1;
+}
+''';
+    assert checker_codes(code) == ["E1155"];
 }

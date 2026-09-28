@@ -29,6 +29,14 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         }
         return None;
     }
+    # `Final[T]` qualifies a binding, not its storage: it lowers as T.
+    if isinstance(t, _ClassType)
+        and t._shared is not None
+        and t.shared.class_name == "Final"
+        and t.private is not None
+        and len(t.private.type_args or []) == 1 {
+        return self._lower_type(t.private.type_args[0]);
+    }
     mangled = self._mangled_of(t);
 
     key = (t, mangled) if isinstance(t, TypeBase) and mangled is not None else None;

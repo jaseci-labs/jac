@@ -133,6 +133,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._forward_declare_archetype_names(self.module);
 
     self._register_imported_struct_types();
+    self._declare_pending_clib_globals();
     self._declare_pending_clib_abilities();
     self._register_globals(self.module);
     self._register_entry_globals(self.module);
@@ -1145,6 +1146,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         self._walk_imported_module_type_names(imported_mod);
     }
 
+    self._declare_pending_clib_globals();
     self._declare_pending_clib_abilities();
 
     for (_, imported_mod) in imported_mods {
@@ -1798,10 +1800,16 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
 
         self._clib_detect_vtable_structs();
 
+        # Declared once every module's foreign structs are registered: a C
+        # data symbol's type can be a struct another module declares.
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.GlobalVars) {
                 for assign in decl.assignments {
-                    self._declare_clib_global(assign, _cur_lib, module);
+                    self._pending_clib_globals.append((assign, _cur_lib, module));
+                    target = assign.target[0] if assign.target else None;
+                    if _cur_lib is not None and isinstance(target, uni.Name) {
+                        self._clib_symbol_lib[target.sym_name] = _cur_lib;
+                    }
                 }
             }
         }
@@ -1830,6 +1838,14 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             self.module.gen._clib_symbol_lib = dict(self._clib_symbol_lib);
             self.has_native_code = True;
         }
+    }
+}
+
+impl NaIRGenPass._declare_pending_clib_globals -> None {
+    pending = self._pending_clib_globals;
+    self._pending_clib_globals = [];
+    for (assign, lib, owner) in pending {
+        self._declare_clib_global(assign, lib, owner);
     }
 }
 

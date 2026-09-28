@@ -348,17 +348,125 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     return literal_string_value(expr);
 }
 
-def c_scalar_constant(expr: (UniNode | None)) -> tuple[bool, any] {
-    import from jaclang.compiler.frontend.unitree { FuncCall, Name }
+"""The initializer of the module-level `Final` glob `nd` names, or None.
+
+A `Final` glob is never rebound, so its initializer is a named C constant: a
+C data definition may use it wherever a literal is accepted, as C uses an
+enumerator or a macro.
+"""
+def final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
+    import from jaclang.compiler.frontend.unitree { Name }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    decl = resolved_decl_of(nd.sym);
+    assign = decl if isinstance(decl, Assignment) else None;
+    if assign is None and decl is not None {
+        assign = decl.find_parent_of_type(Assignment);
+    }
+    if assign is None
+        or not isinstance(assign.parent, GlobalVars)
+        or clib_import_of(assign.parent) is not None
+        or len(assign.target) != 1
+        or assign.type_tag is None {
+        return None;
+    }
+    tag = assign.type_tag.tag;
+    if isinstance(tag, AtomTrailer) and not tag.is_attr {
+        tag = tag.target;
+    }
+    if not isinstance(tag, Name) or tag.value != "Final" {
+        return None;
+    }
+    return assign.value;
+}
+
+def c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any] {
+    import from jaclang.compiler.frontend.unitree { BinaryExpr, FuncCall, Name }
     import from jaclang.compiler.frontend.const_fold { fold_const }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if depth > 32 {
+        return (False, None);
+    }
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
     if isinstance(expr, FuncCall)
         and isinstance(expr.target, Name)
         and JAC_TYPE_REGISTRY.is_numeric(expr.target.value)
         and len(expr.params or []) == 1 {
-        return c_scalar_constant((expr.params or [])[0]);
+        return c_scalar_constant((expr.params or [])[0], depth + 1);
     }
-    return fold_const(expr);
+    if isinstance(expr, Name) {
+        value = final_glob_value(expr);
+        return c_scalar_constant(value, depth + 1)
+            if value is not None
+            else (False, None);
+    }
+    folded = fold_const(expr);
+    if not folded[0] and isinstance(expr, (BinaryExpr, UnaryExpr)) {
+        return _fold_with_finals(expr, depth);
+    }
+    return folded;
+}
+
+# Integer folding of an expression fold_const rejects because an operand
+# names a Final glob: each operand is folded through c_scalar_constant.
+def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
+    import from jaclang.compiler.frontend.unitree { BinaryExpr }
+    if isinstance(expr, UnaryExpr) {
+        (ok, value) = c_scalar_constant(expr.operand, depth + 1);
+        if not ok or not isinstance(value, int) or isinstance(value, bool) {
+            return (False, None);
+        }
+        op = expr.op.value;
+        if op == "-" {
+            return (True, -value);
+        }
+        if op == "~" {
+            return (True, ~value);
+        }
+        return (True, value) if op == "+" else (False, None);
+    }
+    if not isinstance(expr, BinaryExpr) {
+        return (False, None);
+    }
+    (lok, left) = c_scalar_constant(expr.left, depth + 1);
+    (rok, right) = c_scalar_constant(expr.right, depth + 1);
+    if not lok
+        or not rok
+        or not isinstance(left, int)
+        or not isinstance(right, int)
+        or isinstance(left, bool)
+        or isinstance(right, bool) {
+        return (False, None);
+    }
+    op = expr.op.value if hasattr(expr.op, "value") else "";
+    if op == "+" {
+        return (True, left + right);
+    }
+    if op == "-" {
+        return (True, left - right);
+    }
+    if op == "*" {
+        return (True, left * right);
+    }
+    if op == "|" {
+        return (True, left | right);
+    }
+    if op == "&" {
+        return (True, left & right);
+    }
+    if op == "^" {
+        return (True, left ^ right);
+    }
+    if op == "<<" and 0 <= right and right < 64 {
+        return (True, left << right);
+    }
+    if op == ">>" and 0 <= right and right < 64 {
+        return (True, left >> right);
+    }
+    return (False, None);
 }
 
 def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None) {

@@ -255,6 +255,7 @@ walker NaIRGenPass(CompilerPass) {
         clib_extern_names: set[str] = set(),
         clib_extern_fns: dict[str, ir.Function] = {},
         _pending_clib_abilities: list[uni.Ability] = [],
+        _pending_clib_globals: list[tuple[uni.Assignment, (str | None), uni.Module]] = [],
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
         clib_globals: dict[str, tuple[ir.GlobalVariable, any]] = {},
@@ -1255,6 +1256,7 @@ walker NaIRGenPass(CompilerPass) {
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
     def _process_clib_imports(module: uni.Module) -> None;
+    def _declare_pending_clib_globals -> None;
     def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type, pointee_names: dict[(ir.Type, str)]) -> str;
