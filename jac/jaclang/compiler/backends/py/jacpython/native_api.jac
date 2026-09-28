@@ -61,6 +61,7 @@ import from jaclang.runtime.python.bindings.syslog { PyInit_syslog }
 import from jaclang.runtime.python.bindings.resource { PyInit_resource }
 import from jaclang.runtime.python.bindings.atexit { PyInit_atexit }
 import from jaclang.runtime.python.bindings.time { PyInit_time }
+import from jaclang.runtime.python.bindings.select { PyInit_select }
 import from jaclang.runtime.python.bindings.md5 { PyInit__md5 }
 import from jaclang.runtime.python.bindings.sha1 { PyInit__sha1 }
 import from jaclang.runtime.python.bindings.sha2 { PyInit__sha2 }

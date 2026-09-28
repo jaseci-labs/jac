@@ -6,7 +6,11 @@ constants from resource_constants.<os>.jac.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_errno,
+    jacpy_long_u64_checked,
+    jacpy_release,
     NULL,
+    Py_NewRef,
     PyErr_SetFromErrno,
     PyExc_OSError,
     PyExc_OverflowError,
@@ -22,14 +26,10 @@ import from jaclang.runtime.python.cpython_api {
     PyStructSequence_SetItem,
     PySys_AuditTuple,
     PyTuple_GetItem,
-    PyTuple_Size,
-    Py_NewRef,
-    jacpy_errno,
-    jacpy_long_u64_checked,
-    jacpy_release
+    PyTuple_Size
 }
 import from jaclang.runtime.python.capi { object_error, object_tuple }
-import from jaclang.runtime.python.bindings.converters { borrowed_none, convert_int }
+import from jaclang.runtime.python.bindings.converters { borrowed_none }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
 import from jaclang.runtime.python.modules.resource_records {
     rusage,
@@ -49,10 +49,6 @@ import from c {
 
 glob:priv EINVAL: i32 = 22,
      EPERM: i32 = 1;
-
-def convert_pid_t(value: ptr[PyObject], fname: str, label: str) -> i32 {
-    return convert_int(value);
-}
 
 def:priv seconds(value: timeval) -> f64 {
     return f64(value.tv_sec) + f64(value.tv_usec) * 0.000001;

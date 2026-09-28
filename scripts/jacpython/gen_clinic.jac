@@ -280,6 +280,14 @@ obj Emitter {
             self.module_names.add(text);
             return text;
         }
+        # A bitwise OR of macros (select's POLLIN | POLLPRI | POLLOUT), in
+        # the parameter's own width.
+        if re.fullmatch(r"[A-Za-z_]\w*(?:\s*\|\s*[A-Za-z_]\w*)+", text) {
+            names = re.findall(r"[A-Za-z_]\w*", text);
+            self.module_names.update(names);
+            joined = " | ".join(names);
+            return f"{jtype}({joined})" if jtype in SCALAR.values() else joined;
+        }
         raise Unsupported(f"C default {text}");
     }
 
@@ -329,6 +337,13 @@ obj Emitter {
             }
             return ("bool", self.use("convert_bool") + "(value)", []);
         }
+        # PyLong_AsPid is PyLong_AsInt where pid_t is an int (every JacPython target).
+        if kind == "pid_t" {
+            return ("i32", self.use("convert_int") + "(value)", []);
+        }
+        if kind == "fildes" {
+            return ("i32", self.use("convert_fildes") + f"(value, {where})", []);
+        }
         if kind == "Py_ssize_t" {
             return ("i64", self.use("convert_ssize") + "(value)", []);
         }
@@ -344,6 +359,11 @@ obj Emitter {
                 self.use("convert_" + kind) + f"(value, {bitwise}, {where})",
                 []
             );
+        }
+        # Without bitwise=True these are CPython's _PyLong_*_Converter.
+        if kind in ("unsigned_short", "unsigned_int", "uint16", "uint32")
+            and not bitwise {
+            return (BOUNDED[kind][0], self.use("convert_" + kind) + "(value)", []);
         }
         if kind in BOUNDED {
             jt = BOUNDED[kind][0];

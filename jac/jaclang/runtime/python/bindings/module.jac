@@ -5,11 +5,16 @@ initialization. The immutable records can be shared by isolated interpreters.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_release,
     NULL,
+    PyCFunction_NewEx,
+    PyErr_NoMemory,
+    PyMem_RawCalloc,
+    PyMethodDef,
     PyModule_AddObjectRef,
-    PyObject,
-    jacpy_release
+    PyObject
 }
+import from jaclang.runtime.python.capi { c_string_copy }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from c {
     obj ModuleHooks {
@@ -112,6 +117,34 @@ obj MethodDefinition {
         callbacks: MethodCallbacks,
         doc: str,
         flags: i64 = 3;
+}
+
+import from c {
+    # A PyMethodDef whose callback takes positional arguments (METH_NOARGS,
+    # METH_O or METH_VARARGS).
+    obj PositionalMethodRecord {
+        has ml_name: ptr[u8] = ptr[u8](),
+            ml_meth: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
+            ml_flags: i32 = 0,
+            ml_doc: ptr[u8] = ptr[u8]();
+    }
+}
+
+# PyCFunction_New(): a builtin function over a positional callback, bound to
+# `owner`. Its method record lives for the process, as a static PyMethodDef does.
+def builtin_function(
+    definition: MethodDefinition, owner: ptr[PyObject]
+) -> ptr[PyObject] {
+    record = ptr[PositionalMethodRecord](PyMem_RawCalloc(1, 32));
+    if record.is_null() {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    record.view(1)[0].ml_name = c_string_copy(definition.name);
+    record.view(1)[0].ml_meth = definition.callbacks.positional;
+    record.view(1)[0].ml_flags = i32(definition.flags);
+    record.view(1)[0].ml_doc = c_string_copy(definition.doc);
+    return PyCFunction_NewEx(ptr[PyMethodDef](record), owner, NULL);
 }
 
 def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {

@@ -52,6 +52,7 @@ import from jaclang.runtime.python.cpython_api {
     PyFunction_Type,
     PyList_Type,
     PyLong_Type,
+    PyMem_RawMalloc,
     _PyNone_Type,
     PyObject,
     PyObject_Repr,
@@ -263,4 +264,21 @@ def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
     text = jacpy_unicode_decode_bytes(payload, "utf-8");
     jacpy_release(payload);
     return text;
+}
+
+# A NUL-terminated UTF-8 copy of `text` in raw memory the caller keeps (as a
+# static C string would be); NULL when allocation fails.
+def c_string_copy(text: str) -> ptr[u8] {
+    encoded = text.encode("utf-8");
+    size = len(encoded);
+    memory = ptr[u8](PyMem_RawMalloc(u64(size + 1)));
+    if memory.is_null() {
+        return memory;
+    }
+    characters = memory.view(size + 1);
+    for i in range(size) {
+        characters[i] = u8(encoded[i]);
+    }
+    characters[size] = u8(0);
+    return memory;
 }

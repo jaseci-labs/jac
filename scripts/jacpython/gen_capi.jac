@@ -83,6 +83,10 @@ glob OPAQUE: list[str] = [
              + "readonly: i32, ndim: i32, format_: ptr[u8], shape: ptr[i64], strides: ptr[i64], "
              + "suboffsets: ptr[i64], internal: ptr; }"
          ),
+         "PyMemberDef": (
+             "obj PyMemberDef { has name: ptr[u8] = ptr[u8](), type_: i32 = 0, "
+             + "offset: i64 = 0, flags: i32 = 0, doc: ptr[u8] = ptr[u8](); }"
+         ),
          "_PyTimeFraction": "obj _PyTimeFraction { has numer: i64 = 0, denom: i64 = 0; }",
          "_Py_clock_info_t": (
              "obj _Py_clock_info_t { has implementation: ptr[u8] = ptr[u8](), "
@@ -105,7 +109,7 @@ glob OPAQUE: list[str] = [
      },
      # Records a caller builds in Jac and lends for the call: a pointer
      # parameter to one is a borrow (`&T` when const, else `&mut T`).
-     BORROWED: set[str] = {"_PyTimeFraction", "_Py_clock_info_t"},
+     BORROWED: set[str] = {"PyMemberDef", "_PyTimeFraction", "_Py_clock_info_t"},
      # C library records whose layout differs between platforms. They are
      # declared by per-OS variant modules, imported from there, and borrowed.
      PLATFORM_RECORDS: dict[str, str] = {
@@ -174,7 +178,16 @@ glob OPAQUE: list[str] = [
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
          "_Py_strhex": {0},
          "PyUnicode_DecodeLocale": {0},
+         "PyMember_GetOne": {0},
+         "PyMember_SetOne": {0},
          "PyUnicode_DecodeLocaleAndSize": {0}
+     },
+     # `void *` out-parameters of converters whose C type the function fixes.
+     TYPED_OUT_PARAMETERS: dict[str, dict[int, str]] = {
+         "_PyLong_UnsignedShort_Converter": {1: "&mut u16"},
+         "_PyLong_UnsignedInt_Converter": {1: "&mut u32"},
+         "_PyLong_UInt16_Converter": {1: "&mut u16"},
+         "_PyLong_UInt32_Converter": {1: "&mut u32"}
      },
      # Pointer out-parameters the Jac side writes through `&mut`.
      OUT_POINTERS: dict[str, str] = {
@@ -324,6 +337,9 @@ def data_type(ctype: str) -> str | None {
 
 def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     base = ctype.replace("const ", "").replace(" const", "").strip();
+    if index is not None and index in TYPED_OUT_PARAMETERS.get(function, {}) {
+        return TYPED_OUT_PARAMETERS[function][index];
+    }
     record = re.match(r"^(?:struct )?(\w+) \*$", base);
     if record
         and (record.group(1) in BORROWED or record.group(1) in PLATFORM_RECORDS) {

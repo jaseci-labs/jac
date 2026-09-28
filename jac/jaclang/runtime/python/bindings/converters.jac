@@ -8,7 +8,14 @@ Python/getargs.c and Tools/clinic so upstream tests see the same text.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_is_float,
+    jacpy_is_unicode,
+    jacpy_release,
+    jacpy_unsigned_converter,
     NULL,
+    Py_GetConstantBorrowed,
+    Py_None,
+    Py_TYPE,
     PyBool_FromLong,
     PyErr_Occurred,
     PyExc_OverflowError,
@@ -27,16 +34,14 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromSize_t,
     PyLong_FromSsize_t,
     PyLong_FromUnsignedLong,
+    _PyLong_UInt16_Converter,
+    _PyLong_UInt32_Converter,
+    _PyLong_UnsignedInt_Converter,
+    _PyLong_UnsignedShort_Converter,
     PyNumber_Index,
     PyObject,
-    PyObject_IsTrue,
-    Py_GetConstantBorrowed,
-    Py_None,
-    Py_TYPE,
-    jacpy_is_float,
-    jacpy_is_unicode,
-    jacpy_release,
-    jacpy_unsigned_converter
+    PyObject_AsFileDescriptor,
+    PyObject_IsTrue
 }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_base,
@@ -168,6 +173,50 @@ def convert_unsigned_bounded(
         raise boundary_failure();
     }
     return u64(wide);
+}
+
+# fildes: an int or an object with fileno(), as _PyLong_FileDescriptor_Converter.
+def convert_fildes(value: ptr[PyObject], fname: str, label: str) -> i32 {
+    fd = PyObject_AsFileDescriptor(value);
+    if fd == -1 {
+        raise boundary_failure();
+    }
+    return fd;
+}
+
+# The non-bitwise unsigned short, unsigned int, uint16 and uint32
+# converters: CPython's _PyLong_*_Converter, which reject a negative value
+# with ValueError and a wider one with OverflowError naming the C type.
+def convert_unsigned_short(value: ptr[PyObject]) -> u16 {
+    result: u16 = 0;
+    if _PyLong_UnsignedShort_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def convert_unsigned_int(value: ptr[PyObject]) -> u32 {
+    result: u32 = 0;
+    if _PyLong_UnsignedInt_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def convert_uint16(value: ptr[PyObject]) -> u16 {
+    result: u16 = 0;
+    if _PyLong_UInt16_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def convert_uint32(value: ptr[PyObject]) -> u32 {
+    result: u32 = 0;
+    if _PyLong_UInt32_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
 }
 
 def convert_double(value: ptr[PyObject]) -> f64 {

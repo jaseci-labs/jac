@@ -6,7 +6,13 @@ are declared.
 import from jaclang.runtime.python.modules.time_records { timespec, timeval, tm }
 """
 import from c {
-    obj PyObject;  obj PyThreadState;  obj PyInterpreterState;  obj PyUnicodeWriter;  obj PyModuleDef;  obj PyMethodDef;  obj PyType_Spec;  obj PyCompilerFlags;  obj PyBytesWriter;  obj Py_buffer {
+    obj PyObject;  obj PyThreadState;  obj PyInterpreterState;  obj PyUnicodeWriter;  obj PyModuleDef;  obj PyMethodDef;  obj PyType_Spec;  obj PyCompilerFlags;  obj PyBytesWriter;  obj PyMemberDef {
+        has name: ptr[u8] = ptr[u8](),
+            type_: i32 = 0,
+            offset: i64 = 0,
+            flags: i32 = 0,
+            doc: ptr[u8] = ptr[u8]();
+    }  obj Py_buffer {
         has buf: ptr,
             owner: ptr[PyObject],
             length: i64,
@@ -43,19 +49,26 @@ import from c {
         arg0: ptr[PyObject], arg1: i64
     ) -> i32;  def PyBytes_AsString(arg0: ptr[PyObject]) -> ptr[u8];  def PyBytes_FromStringAndSize(
         arg0: bytes, arg1: i64
-    ) -> ptr[PyObject];  def PyBytes_Size(arg0: ptr[PyObject]) -> i64;  def PyCallable_Check(
-        arg0: ptr[PyObject]
-    ) -> i32;  def PyComplex_FromDoubles(real: f64, imag: f64) -> ptr[PyObject];  def PyComplex_ImagAsDouble(
+    ) -> ptr[PyObject];  def PyBytes_Size(arg0: ptr[PyObject]) -> i64;  def PyCFunction_NewEx(
+        arg0: ptr[PyMethodDef], arg1: ptr[PyObject], arg2: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyCallable_Check(arg0: ptr[PyObject]) -> i32;  def PyComplex_FromDoubles(
+        real: f64, imag: f64
+    ) -> ptr[PyObject];  def PyComplex_ImagAsDouble(op: ptr[PyObject]) -> f64;  def PyComplex_RealAsDouble(
         op: ptr[PyObject]
-    ) -> f64;  def PyComplex_RealAsDouble(op: ptr[PyObject]) -> f64;  def PyDict_Clear(
-        mp: ptr[PyObject]
-    );  def PyDict_Copy(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_DelItem(
+    ) -> f64;  def PyDict_Clear(mp: ptr[PyObject]);  def PyDict_Contains(
+        mp: ptr[PyObject], key: ptr[PyObject]
+    ) -> i32;  def PyDict_Copy(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_DelItem(
         mp: ptr[PyObject], key: ptr[PyObject]
     ) -> i32;  def PyDict_GetItemStringRef(
         mp: ptr[PyObject], key: str, result: &mut ptr[PyObject]
     ) -> i32;  def PyDict_Items(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_Keys(
         mp: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyDict_New -> ptr[PyObject];  def PyDict_SetItem(
+    ) -> ptr[PyObject];  def PyDict_New -> ptr[PyObject];  def PyDict_Next(
+        mp: ptr[PyObject],
+        pos: &mut i64,
+        key: &mut ptr[PyObject],
+        value: &mut ptr[PyObject]
+    ) -> i32;  def PyDict_SetItem(
         mp: ptr[PyObject], key: ptr[PyObject], item: ptr[PyObject]
     ) -> i32;  def PyDict_SetItemString(
         dp: ptr[PyObject], key: str, item: ptr[PyObject]
@@ -107,6 +120,8 @@ import from c {
         arg0: ptr[PyObject]
     ) -> i32;  def PyLong_AsLong(arg0: ptr[PyObject]) -> i64;  def PyLong_AsLongLong(
         arg0: ptr[PyObject]
+    ) -> i64;  def PyLong_AsNativeBytes(
+        v: ptr[PyObject], buffer: ptr, n_bytes: i64, flags: i32
     ) -> i64;  def PyLong_AsSsize_t(arg0: ptr[PyObject]) -> i64;  def PyLong_AsUnsignedLong(
         arg0: ptr[PyObject]
     ) -> u64;  def PyLong_AsUnsignedLongLong(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongLongMask(
@@ -123,13 +138,17 @@ import from c {
         arg0: ptr
     ) -> ptr[PyObject];  def PyLong_IsNegative(obj_: ptr[PyObject]) -> i32;  def PyMapping_Items(
         o: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyMem_Free(ptr_: ptr);  def PyMem_Malloc(
-        size: u64
+    ) -> ptr[PyObject];  def PyMem_Calloc(nelem: u64, elsize: u64) -> ptr;  def PyMem_Free(
+        ptr_: ptr
+    );  def PyMem_Malloc(size: u64) -> ptr;  def PyMem_RawCalloc(
+        nelem: u64, elsize: u64
     ) -> ptr;  def PyMem_RawFree(ptr_: ptr);  def PyMem_RawMalloc(size: u64) -> ptr;  def PyMem_RawRealloc(
         ptr_: ptr, new_size: u64
-    ) -> ptr;  def PyMem_Realloc(ptr_: ptr, new_size: u64) -> ptr;  def PyMemoryView_FromObject(
-        base: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyMethod_New(
+    ) -> ptr;  def PyMem_Realloc(ptr_: ptr, new_size: u64) -> ptr;  def PyMember_GetOne(
+        arg0: ptr, arg1: &mut PyMemberDef
+    ) -> ptr[PyObject];  def PyMember_SetOne(
+        arg0: ptr, arg1: &mut PyMemberDef, arg2: ptr[PyObject]
+    ) -> i32;  def PyMemoryView_FromObject(base: ptr[PyObject]) -> ptr[PyObject];  def PyMethod_New(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyModule_AddIntConstant(
         arg0: ptr[PyObject], arg1: str, arg2: i64
@@ -195,15 +214,15 @@ import from c {
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyNumber_Xor(
         o1: ptr[PyObject], o2: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyObject_Call(
+    ) -> ptr[PyObject];  def PyObject_AsFileDescriptor(arg0: ptr[PyObject]) -> i32;  def PyObject_Call(
         callable_: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallNoArgs(
         func: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallOneArg(
         func: ptr[PyObject], arg: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_DelItem(
-        o: ptr[PyObject], key: ptr[PyObject]
-    ) -> i32;  def PyObject_GenericGetAttr(
+    ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_DelAttrString(
+        v: ptr[PyObject], name: str
+    ) -> i32;  def PyObject_DelItem(o: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyObject_GenericGetAttr(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_GenericGetDict(
         arg0: ptr[PyObject], arg1: ptr
@@ -327,9 +346,17 @@ import from c {
         timeout: i64
     ) -> i64;  def _PyLong_GCD(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
-    ) -> ptr[PyObject];  def _PyLong_NumBits(v: ptr[PyObject]) -> i64;  def _PyNamespace_New(
-        kwds: ptr[PyObject]
-    ) -> ptr[PyObject];  def _PyObject_GetState(arg0: ptr[PyObject]) -> ptr[PyObject];  def _PyST_GetScope(
+    ) -> ptr[PyObject];  def _PyLong_NumBits(v: ptr[PyObject]) -> i64;  def _PyLong_UInt16_Converter(
+        arg0: ptr[PyObject], arg1: &mut u16
+    ) -> i32;  def _PyLong_UInt32_Converter(
+        arg0: ptr[PyObject], arg1: &mut u32
+    ) -> i32;  def _PyLong_UnsignedInt_Converter(
+        arg0: ptr[PyObject], arg1: &mut u32
+    ) -> i32;  def _PyLong_UnsignedShort_Converter(
+        arg0: ptr[PyObject], arg1: &mut u16
+    ) -> i32;  def _PyNamespace_New(kwds: ptr[PyObject]) -> ptr[PyObject];  def _PyObject_GetState(
+        arg0: ptr[PyObject]
+    ) -> ptr[PyObject];  def _PyST_GetScope(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> i32;  def _PySys_GetOptionalAttrString(
         arg0: str, arg1: &mut ptr[PyObject]
@@ -339,8 +366,12 @@ import from c {
         frac: &mut _PyTimeFraction, numer: i64, denom: i64
     ) -> i32;  def _PyTime_Add(t1: i64, t2: i64) -> i64;  def _PyTime_AsLong(
         t: i64
-    ) -> ptr[PyObject];  def _PyTime_AsTimespec(t: i64, ts: &mut timespec) -> i32;  def _PyTime_FromLong(
-        t: &mut i64, obj_: ptr[PyObject]
+    ) -> ptr[PyObject];  def _PyTime_AsMilliseconds(t: i64, round: i32) -> i64;  def _PyTime_AsTimespec(
+        t: i64, ts: &mut timespec
+    ) -> i32;  def _PyTime_AsTimeval(t: i64, tv: &mut timeval, round: i32) -> i32;  def _PyTime_AsTimeval_clamp(
+        t: i64, tv: &mut timeval, round: i32
+    );  def _PyTime_FromLong(t: &mut i64, obj_: ptr[PyObject]) -> i32;  def _PyTime_FromMillisecondsObject(
+        t: &mut i64, obj_: ptr[PyObject], round: i32
     ) -> i32;  def _PyTime_FromSecondsObject(
         t: &mut i64, obj_: ptr[PyObject], round: i32
     ) -> i32;  def _PyTime_FromTimespec(tp: &mut i64, ts: &timespec) -> i32;  def _PyTime_FromTimeval(
@@ -373,7 +404,9 @@ import from c {
         arg0: Py_complex, arg1: Py_complex
     ) -> Py_complex;  def _Py_c_quot(
         arg0: Py_complex, arg1: Py_complex
-    ) -> Py_complex;  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_strhex_bytes_with_sep(
+    ) -> Py_complex;  def _Py_set_inheritable(
+        fd: i32, inheritable: i32, atomic_flag_works: &mut i32
+    ) -> i32;  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_strhex_bytes_with_sep(
         argbuf: str, arglen: i64, sep: ptr[PyObject], bytes_per_group: i32
     ) -> ptr[PyObject];  def jacpy_ast_kind(handle: ptr[PyObject]) -> i64;  def jacpy_ast_new(
         kind: i64

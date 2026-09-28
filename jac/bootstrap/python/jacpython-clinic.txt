@@ -21,3 +21,4 @@ _sha3
 _blake2
 _hmac
 time
+select
