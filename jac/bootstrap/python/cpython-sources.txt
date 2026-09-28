@@ -314,7 +314,7 @@ Objects/weakrefobject.c
 Modules/Setup
 Modules/Setup.bootstrap.in
 Modules/Setup.stdlib.in
-Modules/_abc.c
+# Modules/_abc.c  # removed: 997 source lines
 Modules/_asynciomodule.c
 # Modules/_bisectmodule.c  # removed: 484 source lines
 # Modules/_bz2module.c  # removed: 843 source lines
@@ -503,7 +503,7 @@ Modules/cjkcodecs/mappings_kr.h
 Modules/cjkcodecs/mappings_tw.h
 Modules/cjkcodecs/multibytecodec.c
 Modules/cjkcodecs/multibytecodec.h
-Modules/clinic/_abc.c.h
+# Modules/clinic/_abc.c.h  # removed: 164 source lines
 Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
 # Modules/clinic/_bz2module.c.h  # removed: 241 source lines

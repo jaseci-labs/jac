@@ -69,3 +69,4 @@ _uuid           test.test_uuid
 _lsprof         test.test_cprofile,test.test_profile
 _multiprocessing test.test_multiprocessing_spawn.test_misc
 _posixshmem     test.test_multiprocessing_spawn.test_misc   linux:-lrt
+_abc            test.test_abc,test.test_isinstance
