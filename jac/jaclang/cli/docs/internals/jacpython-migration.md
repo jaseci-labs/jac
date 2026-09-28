@@ -82,8 +82,7 @@ express the operation:
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
 | varargs (`Py_BuildValue`, `PyErr_Format`, `PyObject_CallMethod`) | Jac clib calls are fixed-arity | helpers that fix the format |
 | struct fields of object layouts (`tp_richcompare`, `ob_alloc`, weakref lists) | layout differs between builds | helpers |
-| pointer arithmetic (`p + n`, `end - start`) | `ptr[T]` has no arithmetic | `jacpy_offset`, `jacpy_distance` |
-| calling a C function pointer | Jac can pass named callbacks to C but not call a `ptr` | a trampoline helper (`jacpy_atexit_call` runs atexit's `PyUnstable_AtExit` callbacks) |
+| calling a C function pointer | written before `Callable` struct fields closed gap 3; can move to Jac | `jacpy_atexit_call` runs atexit's `PyUnstable_AtExit` callbacks |
 | returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
@@ -108,19 +107,24 @@ C-layout Jac structs, so fields are read directly.
 
 ## Language gaps
 
-The ports so far needed these, each worked around in C or by a pattern:
+The ports so far needed these. Gaps 1 to 3 are closed in the language; use
+the Jac form, not a C helper:
 
-1. **Pointer arithmetic and pointer/integer conversion.** zlib's output window
-   and input buffer compute `next_out + n` and `end - next_in`.
-2. **Reading through a pointer without copying.** `p.view(1)[0]` copies a
-   struct; there is no `p.field` on `ptr[T]`.
-3. **Calling a function pointer.** `atexit` stores C callbacks and later calls
-   them; a C trampoline (`jacpy_atexit_call`) makes the call.
+1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
+   C: `p + n` and `p - n` step n elements of T (bytes for bare `ptr` or an
+   opaque T), `p - q` is the distance in elements, `p += n` works, `int(p)` is
+   the address and `ptr[T](n)` makes a pointer from one. zlib's output window
+   writes `window.next += visible` and `data_end - next_in`.
+2. **Field access through a pointer.** `p.view(1)[0].field` reads and
+   `p.view(1)[0].field = v` writes a C-layout struct in place.
+3. **Calling a function pointer.** A C-layout struct declared in an
+   `import from c` block with a `Callable[[...], R]` field calls it as
+   `rec.view(1)[0].field(args)`.
 4. **Exporting data symbols.** A static `PyTypeObject` is a C variable other C
    code takes the address of.
 5. **Varargs calls.**
 
-Gaps 1 to 4 block the object model and the evaluator.
+Gap 4 still blocks the object model and the evaluator.
 
 ## Object model (`Objects/`, 143k lines)
 
@@ -141,7 +145,7 @@ A Jac object model keeps these byte for byte. It needs:
   removes that boundary if Jac's LLVM and Zig's LLVM agree on the bitcode
   version.
 
-Order, once gaps 1, 2 and 4 are closed: leaf types with little behaviour
+Order, once gap 4 is closed: leaf types with little behaviour
 (`cellobject.c` 212, `boolobject.c` 227, `namespaceobject.c` 332,
 `capsule.c` 366, `iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
 `rangeobject.c` 1,317), then containers (`tupleobject.c`, `listobject.c`,

@@ -70,10 +70,11 @@ module's Argument Clinic input, and calls the module's `_impl` functions with th
 C signatures; `bindings/converters.jac` holds the generic clinic converters. The C
 helpers in `bootstrap/python/object_api.c` and `compiler_runtime.c` cover only what
 Jac cannot express (data symbols, macros without an exported function, varargs,
-pointer arithmetic, calls through C function pointers, structs returned by value,
-CPU feature probes), and `binding_api.c` stores opaque CPython module, type, and
-buffer records without module-specific policy. The porting process is documented
-in `cli/docs/internals/jacpython-migration.md`.
+structs returned by value, CPU feature probes), and `binding_api.c` stores opaque
+CPython module, type, and buffer records without module-specific policy. Pointer
+arithmetic, in-place field access through a pointer, and calls through C function
+pointers are written in Jac. The porting process is documented in
+`cli/docs/internals/jacpython-migration.md`.
 
 Declarations contain no Python objects and live for the process lifetime. Each
 interpreter owns its module state and heap types. Owned argument frames release
