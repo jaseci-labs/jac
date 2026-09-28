@@ -82,6 +82,7 @@ obj ArchetypeLayout {
         method_index: dict[str, int] = {},
         has_vtable: bool = False,
         vtable_by_dispatch: bool = False,
+        vtable_by_isinstance_only: bool = False,
         parent_field_start: dict[str, int] = {},
         is_osp: bool = False,
         is_acyclic: bool = False,
@@ -305,7 +306,7 @@ def headers_agree(child: ArchetypeLayout, base: ArchetypeLayout) -> bool {
 }
 
 def relax_vtable_header(
-    lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]
+    lay: ArchetypeLayout, ancestors: list[ArchetypeLayout], header_identity: bool = True
 ) -> bool {
     """Drop a vtable header a class carries only for having had a base.
 
@@ -323,12 +324,22 @@ def relax_vtable_header(
     carries a header either, the child's vtable slot is a habit rather than a
     requirement and dropping it makes the two units agree.
 
+    An `isinstance` target is not dispatched through: it needs a runtime
+    identity, and a build whose allocations carry a header already stamps the
+    class name there, which answers `isinstance` for a flat class as well as
+    the vtable pointer would. `header_identity` says the build has that
+    header; only then does an `isinstance`-only header count as a habit. A
+    headerless build keeps the vtable, the one identity it has.
+
     Every ancestor is checked, not just the primary: relaxing a child whose
     grandparent carries a header would trade one disagreement for another.
     A class that IS dispatched through keeps its header and its refusal --
     that pair genuinely has no assignment satisfying both.
     """;
-    if lay.is_osp or lay.vtable_by_dispatch or not lay.has_vtable {
+    identity_only = lay.vtable_by_isinstance_only and header_identity;
+    if lay.is_osp
+        or (lay.vtable_by_dispatch and not identity_only)
+        or not lay.has_vtable {
         return False;
     }
     for anc_lay in ancestors {
@@ -373,7 +384,7 @@ def extended_mro(reg: LayoutRegistry, lay: ArchetypeLayout) -> list[str] {
     return out;
 }
 
-def adopt_imported_bases(module: Module) -> list[str] {
+def adopt_imported_bases(module: Module, header_identity: bool = True) -> list[str] {
     reg: (LayoutRegistry | None) = module.gen.layout_registry;
     if reg is None {
         return [];
@@ -437,7 +448,7 @@ def adopt_imported_bases(module: Module) -> list[str] {
             continue;
         }
         if not headers_agree(lay, ancestors[0])
-            and not relax_vtable_header(lay, ancestors) {
+            and not relax_vtable_header(lay, ancestors, header_identity) {
             continue;
         }
         adopt_ancestor_slots(lay, ancestors);
