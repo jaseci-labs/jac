@@ -1235,7 +1235,8 @@ walker NaIRGenPass(CompilerPass) {
         args: list[ir.Value],
         type_key: str,
         kwargs: (dict[str, uni.UniNode] | None) = None,
-        kw_node: (uni.UniNode | None) = None
+        kw_node: (uni.UniNode | None) = None,
+        arg_nodes: (list[uni.UniNode] | None) = None
     ) -> (ir.Value | None);
 
     def _dispatch_builtin(

@@ -1921,7 +1921,8 @@ impl NaIRGenPass._dispatch_primitive_method(
     args: list[ir.Value],
     type_key: str,
     kwargs: (dict[str, uni.UniNode] | None) = None,
-    kw_node: (uni.UniNode | None) = None
+    kw_node: (uni.UniNode | None) = None,
+    arg_nodes: (list[uni.UniNode] | None) = None
 ) -> (ir.Value | None) {
     target = self._str_norm(target);
     args = [self._str_norm(_a) for _a in args];
@@ -1942,7 +1943,12 @@ impl NaIRGenPass._dispatch_primitive_method(
         );
         return None;
     }
-    _ctx = NativeEmitCtx(pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {}));
+    _ctx = NativeEmitCtx(
+        pass_ref=self,
+        type_key=type_key,
+        call_kwargs=(kwargs or {}),
+        arg_nodes=(arg_nodes or [])
+    );
     if isinstance(kw_node, uni.FuncCall)
         and isinstance(kw_node.target, uni.AtomTrailer) {
         _ctx.receiver_node = kw_node.target.target;

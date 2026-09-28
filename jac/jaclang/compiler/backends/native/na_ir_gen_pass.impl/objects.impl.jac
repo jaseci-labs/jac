@@ -2663,7 +2663,12 @@ impl NaIRGenPass._dispatch_receiver_method(
         arguments,
         "",
         kwargs=self._split_call_kwargs(nd) if takes_kwargs else None,
-        kw_node=nd if takes_kwargs else None
+        kw_node=nd if takes_kwargs else None,
+        arg_nodes=[
+            param
+            for param in (nd.params or [])
+            if not isinstance(param, uni.KWPair)
+        ]
     );
     if result is None {
         return None;
