@@ -71,18 +71,22 @@ them by hand.
 
 ## What stays C
 
-`jacpython.o` links into libpython, so any non-static CPython function is
-callable from Jac. `gen_capi.jac` declares `PyAPI_FUNC` functions and the
-`extern` functions of `Include/internal/`. C remains only where Jac cannot
-express the operation:
+`jacpython.o` links into libpython, so any non-static CPython symbol is
+reachable from Jac. `gen_capi.jac` declares `PyAPI_FUNC` functions, the
+`extern` functions of `Include/internal/`, and the data symbols the sources
+use: `PyAPI_DATA` variables and the `extern` variables of the internal
+headers. An exception object is read in place
+(`object_error(PyExc_ValueError, ...)`,
+`PyErr_ExceptionMatches(PyExc_KeyError)`); a static type or singleton is
+used by address (`addressof(PyCode_Type)`), and `Py_None`, `Py_NotImplemented`
+and `Py_Ellipsis` are declared as that address, as the C macros are. C remains
+only where Jac cannot express the operation:
 
 | C residue | Why | Where |
 |---|---|---|
-| data symbols (`PyExc_*`, `Py*_Type`, `_Py_NoDefaultStruct`) | Jac cannot take the address of an extern variable | `jacpy_exception_type`, `jacpy_runtime_object` |
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
 | varargs (`Py_BuildValue`, `PyErr_Format`, `PyObject_CallMethod`) | Jac clib calls are fixed-arity | helpers that fix the format |
-| struct fields of object layouts (`tp_richcompare`, `ob_alloc`, weakref lists) | layout differs between builds | helpers |
-| calling a C function pointer | written before `Callable` struct fields closed gap 3; can move to Jac | `jacpy_atexit_call` runs atexit's `PyUnstable_AtExit` callbacks |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `interp->atexit`, `interp->cached_objects`) | layout differs between builds | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
 | returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
@@ -107,8 +111,8 @@ C-layout Jac structs, so fields are read directly.
 
 ## Language gaps
 
-The ports so far needed these. Gaps 1 to 3 are closed in the language; use
-the Jac form, not a C helper:
+The ports so far needed these. Gaps 1 to 3 and the import half of gap 4 are
+closed in the language; use the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
    C: `p + n` and `p - n` step n elements of T (bytes for bare `ptr` or an
@@ -119,12 +123,20 @@ the Jac form, not a C helper:
    `p.view(1)[0].field = v` writes a C-layout struct in place.
 3. **Calling a function pointer.** A C-layout struct declared in an
    `import from c` block with a `Callable[[...], R]` field calls it as
-   `rec.view(1)[0].field(args)`.
-4. **Exporting data symbols.** A static `PyTypeObject` is a C variable other C
-   code takes the address of.
+   `rec.view(1)[0].field(args)`. atexit walks the `atexit_callback` records of
+   `PyUnstable_AtExit` this way; a slot read from a type (`sq_item`, a
+   `visitproc`) is stored into such a field (`slot.call = int(address)`) and
+   called.
+4. **Data symbols.** Importing is closed. In an `import from c` block,
+   `glob PyExc_TypeError: ptr[PyObject];` reads and writes the C variable in
+   place, and a C object declared with its opaque or C-layout type,
+   `glob PyLong_Type: PyObject;`, is used by address,
+   `addressof(PyLong_Type)`. Exporting is open: Jac cannot define a data
+   symbol under a fixed C name with a C layout, such as a static
+   `PyTypeObject` other C code takes the address of.
 5. **Varargs calls.**
 
-Gap 4 still blocks the object model and the evaluator.
+Exporting data symbols (gap 4) still blocks the object model and the evaluator.
 
 ## Object model (`Objects/`, 143k lines)
 
@@ -145,7 +157,7 @@ A Jac object model keeps these byte for byte. It needs:
   removes that boundary if Jac's LLVM and Zig's LLVM agree on the bitcode
   version.
 
-Order, once gap 4 is closed: leaf types with little behaviour
+Order, once data symbols can be exported (gap 4): leaf types with little behaviour
 (`cellobject.c` 212, `boolobject.c` 227, `namespaceobject.c` 332,
 `capsule.c` 366, `iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
 `rangeobject.c` 1,317), then containers (`tupleobject.c`, `listobject.c`,
