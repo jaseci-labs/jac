@@ -318,7 +318,7 @@ Modules/Setup.stdlib.in
 Modules/_asynciomodule.c
 # Modules/_bisectmodule.c  # removed: 484 source lines
 # Modules/_bz2module.c  # removed: 843 source lines
-Modules/_codecsmodule.c
+# Modules/_codecsmodule.c  # removed: 1,101 source lines
 # Modules/_collectionsmodule.c  # removed: 2,902 source lines
 # Modules/_csv.c  # removed: 1,864 source lines
 Modules/_ctypes/_ctypes.c
@@ -507,7 +507,7 @@ Modules/cjkcodecs/multibytecodec.h
 Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
 # Modules/clinic/_bz2module.c.h  # removed: 241 source lines
-Modules/clinic/_codecsmodule.c.h
+# Modules/clinic/_codecsmodule.c.h  # removed: 2,807 source lines
 # Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
 # Modules/clinic/_csv.c.h  # removed: 210 source lines
 Modules/clinic/_datetimemodule.c.h

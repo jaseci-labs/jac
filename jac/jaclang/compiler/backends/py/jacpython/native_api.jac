@@ -80,6 +80,7 @@ import from jaclang.runtime.python.bindings.posixshmem { PyInit__posixshmem }
 # (Objects/boolobject.c: PyBool_Type, _Py_FalseStruct, _Py_TrueStruct).
 import from jaclang.runtime.python.object_model.bool { PyBool_Type }
 import from jaclang.runtime.python.bindings.abc { PyInit__abc }
+import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

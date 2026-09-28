@@ -30,3 +30,4 @@ _lsprof
 _multiprocessing
 _posixshmem
 _abc
+_codecs
