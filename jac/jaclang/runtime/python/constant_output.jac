@@ -1,24 +1,24 @@
 """Compiler constants and code objects become retained CPython values."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_code_new,
+    jacpy_long_from_bytes,
+    jacpy_release,
+    jacpy_set_new,
+    jacpy_tuple_set_owned,
     NULL,
-    PyBool_FromLong,
+    Py_Ellipsis,
+    Py_NewRef,
+    Py_None,
     PyComplex_FromDoubles,
     PyFloat_FromDouble,
     PyLong_FromLongLong,
     PyNumber_Negative,
     PyObject,
     PySlice_New,
-    PyTuple_New,
-    Py_Ellipsis,
-    Py_NewRef,
-    Py_None,
-    jacpy_code_new,
-    jacpy_long_from_bytes,
-    jacpy_release,
-    jacpy_set_new,
-    jacpy_tuple_set_owned
+    PyTuple_New
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.objects {
     PyObj,
     PyNoneType,

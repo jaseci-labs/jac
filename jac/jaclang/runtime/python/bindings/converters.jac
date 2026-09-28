@@ -44,6 +44,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_AsFileDescriptor,
     PyObject_IsTrue
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_base,
     jacpy_binding_type_matches

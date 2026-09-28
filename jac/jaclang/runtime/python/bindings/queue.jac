@@ -1,20 +1,21 @@
 """SimpleQueue type and Python signatures over shared native FIFO state."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_lock_new,
+    jacpy_release,
     NULL,
+    Py_GenericAlias,
+    Py_NewRef,
+    Py_None,
+    Py_TYPE,
     PyBool_FromLong,
     PyExc_SystemError,
     PyLong_FromLongLong,
     PyObject,
     PyObject_IsTrue,
-    PyType_GetSlot,
-    Py_GenericAlias,
-    Py_NewRef,
-    Py_None,
-    Py_TYPE,
-    jacpy_lock_new,
-    jacpy_release
+    PyType_GetSlot
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,

@@ -5,7 +5,21 @@ and quoting. Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_dict_get,
+    jacpy_dict_pop_discard,
+    jacpy_error_pending,
+    jacpy_is_exact_long,
+    jacpy_is_unicode,
+    jacpy_list_new,
+    jacpy_release,
+    jacpy_set_exception,
+    jacpy_tuple_item,
+    jacpy_type_check,
+    jacpy_unicode_size,
+    jacpy_writer_new,
     NULL,
+    Py_NewRef,
+    Py_None,
     PyBool_FromLong,
     PyDict_Keys,
     PyDict_SetItem,
@@ -26,26 +40,13 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetIter,
     PyObject_IsTrue,
     PyObject_Str,
+    PyUnicode_ReadChar,
     PyUnicodeWriter,
     PyUnicodeWriter_Discard,
     PyUnicodeWriter_Finish,
-    PyUnicodeWriter_WriteChar,
-    PyUnicode_ReadChar,
-    Py_NewRef,
-    Py_None,
-    jacpy_dict_get,
-    jacpy_dict_pop_discard,
-    jacpy_error_pending,
-    jacpy_is_exact_long,
-    jacpy_is_unicode,
-    jacpy_list_new,
-    jacpy_release,
-    jacpy_set_exception,
-    jacpy_tuple_item,
-    jacpy_type_check,
-    jacpy_unicode_size,
-    jacpy_writer_new
+    PyUnicodeWriter_WriteChar
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi {
     new_writer,
     boundary_failure,

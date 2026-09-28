@@ -9,6 +9,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyUnicode_FromString
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,

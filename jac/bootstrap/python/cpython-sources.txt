@@ -215,7 +215,7 @@ Python/uniqueid.c
 
 # Builtin objects
 Objects/abstract.c
-Objects/boolobject.c
+# Objects/boolobject.c  # removed: 227 source lines
 Objects/bytearrayobject.c
 Objects/bytes_methods.c
 Objects/bytesobject.c

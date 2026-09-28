@@ -6,7 +6,17 @@ see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_dict_default,
+    jacpy_dict_repr,
+    jacpy_error_pending,
+    jacpy_release,
+    jacpy_set_key_error,
+    jacpy_tuple_set_owned,
     NULL,
+    Py_NewRef,
+    Py_None,
+    Py_ReprEnter,
+    Py_ReprLeave,
     PyBool_FromLong,
     PyExc_IndexError,
     PyExc_MemoryError,
@@ -22,18 +32,9 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_RichCompareBool,
     PyObject_SetItem,
     PySequence_List,
-    PyTuple_New,
-    Py_NewRef,
-    Py_None,
-    Py_ReprEnter,
-    Py_ReprLeave,
-    jacpy_dict_default,
-    jacpy_dict_repr,
-    jacpy_error_pending,
-    jacpy_release,
-    jacpy_set_key_error,
-    jacpy_tuple_set_owned
+    PyTuple_New
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.object_ring { object_ring }
 import from jaclang.runtime.python.capi {
     jac_heap_size,

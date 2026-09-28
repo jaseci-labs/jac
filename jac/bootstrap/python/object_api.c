@@ -563,6 +563,13 @@ PyObject **jacpy_typing_types(void) {
     return (PyObject **)&_PyInterpreterState_GET()->cached_objects.generic_type;
 }
 
+/* Interpreter functions an object-model port defines. A `:pub` Jac definition
+ * named after a C function the native backend itself declares (its Python
+ * interop calls PyBool_FromLong) is emitted as __jac_def_<name>, so the C name
+ * forwards to it. */
+extern PyObject *__jac_def_PyBool_FromLong(int64_t);
+PyObject *PyBool_FromLong(long ok) { return __jac_def_PyBool_FromLong(ok); }
+
 /* Weak references hang off an object-layout list that only C can walk. */
 #include "internal/pycore_weakref.h"
 #include "internal/pycore_dict.h"

@@ -5,8 +5,13 @@ transcendentals supplied by libm. See ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_clear_errno,
+    jacpy_complex_value,
+    jacpy_error_pending,
+    jacpy_math_errno,
+    jacpy_release,
     NULL,
-    PyBool_FromLong,
+    _Py_c_abs,
     PyComplex_FromDoubles,
     PyComplex_ImagAsDouble,
     PyComplex_RealAsDouble,
@@ -17,14 +22,9 @@ import from jaclang.runtime.python.cpython_api {
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyNumber_TrueDivide,
-    PyObject,
-    _Py_c_abs,
-    jacpy_clear_errno,
-    jacpy_complex_value,
-    jacpy_error_pending,
-    jacpy_math_errno,
-    jacpy_release
+    PyObject
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.numeric {
     asinh,
     atan2,

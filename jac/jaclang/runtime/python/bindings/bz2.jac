@@ -2,10 +2,10 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyBool_FromLong,
-    PyObject,
-    Py_NewRef
+    Py_NewRef,
+    PyObject
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

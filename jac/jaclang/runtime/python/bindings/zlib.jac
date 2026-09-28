@@ -1,16 +1,16 @@
 """The zlib module: its three stream types, the error type and the constants."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_release,
     NULL,
+    Py_NewRef,
     PyArg_ParseTupleAndKeywords,
-    PyBool_FromLong,
     PyModule_AddIntConstant,
     PyModule_AddObjectRef,
     PyObject,
-    PyUnicode_FromString,
-    Py_NewRef,
-    jacpy_release
+    PyUnicode_FromString
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

@@ -1,8 +1,15 @@
 """Native pickle constructors, descriptors, and Python callback ownership."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_error_pending,
+    jacpy_is_unicode,
+    jacpy_optional_attr,
+    jacpy_release,
+    jacpy_set_exception,
     NULL,
-    PyBool_FromLong,
+    Py_NewRef,
+    Py_None,
+    Py_TYPE,
     PyDict_New,
     PyDict_SetItem,
     PyErr_Clear,
@@ -21,16 +28,9 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GenericGetAttr,
     PyObject_GenericSetAttr,
     PyObject_GetAttrString,
-    PyObject_IsTrue,
-    Py_NewRef,
-    Py_None,
-    Py_TYPE,
-    jacpy_error_pending,
-    jacpy_is_unicode,
-    jacpy_optional_attr,
-    jacpy_release,
-    jacpy_set_exception
+    PyObject_IsTrue
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

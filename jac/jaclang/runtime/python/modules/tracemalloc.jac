@@ -5,11 +5,10 @@ The tracer itself hooks the allocators in Python/tracemalloc.c.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyBool_FromLong,
+    Py_NewRef,
     PyLong_FromLong,
     PyLong_FromSize_t,
     PyObject,
-    Py_NewRef,
     _PyTraceMalloc_ClearTraces,
     _PyTraceMalloc_GetMemory,
     _PyTraceMalloc_GetObjectTraceback,
@@ -21,6 +20,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyTraceMalloc_Start,
     _PyTraceMalloc_Stop
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.converters { borrowed_none }
 
 def:priv none -> ptr[PyObject] {

@@ -1,20 +1,21 @@
 """JSON scanner and encoder bindings, with native-owned Python settings."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_is_dict,
+    jacpy_is_unicode,
+    jacpy_release,
     NULL,
+    Py_NewRef,
+    Py_None,
     PyBool_FromLong,
     PyExc_AttributeError,
     PyExc_SystemError,
     PyExc_TypeError,
     PyObject,
     PyObject_GetAttrString,
-    PyObject_IsTrue,
-    Py_NewRef,
-    Py_None,
-    jacpy_is_dict,
-    jacpy_is_unicode,
-    jacpy_release
+    PyObject_IsTrue
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodDefinition,

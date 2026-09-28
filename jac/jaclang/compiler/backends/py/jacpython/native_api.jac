@@ -76,6 +76,9 @@ import from jaclang.runtime.python.bindings.uuid { PyInit__uuid }
 import from jaclang.runtime.python.bindings.lsprof { PyInit__lsprof }
 import from jaclang.runtime.python.bindings.multiprocessing { PyInit__multiprocessing }
 import from jaclang.runtime.python.bindings.posixshmem { PyInit__posixshmem }
+# Object-model ports define interpreter types and objects under their C names
+# (Objects/boolobject.c: PyBool_Type, _Py_FalseStruct, _Py_TrueStruct).
+import from jaclang.runtime.python.object_model.bool { PyBool_Type }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

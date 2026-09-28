@@ -335,6 +335,8 @@
 -		Python/instruction_sequence.o \
 @@ -495,1 +450,0 @@
 -		Python/symtable.o \
+@@ -523,1 +477,0 @@
+-		Objects/boolobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
