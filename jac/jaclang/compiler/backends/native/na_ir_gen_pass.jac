@@ -1796,6 +1796,7 @@ walker NaIRGenPass(CompilerPass) {
         val: ir.Value, expr: uni.UniNode
     ) -> (tuple[ir.Value, str, ir.Type] | None);
 
+    def _iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type;
     def _build_iter_from_expr(
         expr: uni.UniNode
     ) -> (tuple[ir.Value, str, ir.Type] | None);

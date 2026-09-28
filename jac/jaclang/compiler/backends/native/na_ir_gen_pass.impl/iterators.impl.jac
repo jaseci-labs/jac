@@ -627,7 +627,7 @@ impl NaIRGenPass._make_iter_from_value(
             return (
                 self._make_list_iter(val, _checked_list, elem_type),
                 _checked_list,
-                elem_type,
+                self._iter_yield_llvm(elem_type, expr),
 
             );
         }
@@ -635,7 +635,11 @@ impl NaIRGenPass._make_iter_from_value(
     for (lk, lt) in self.list_types.items() {
         if val.type == lt.as_pointer() {
             elem_type = self.list_helpers[lk]["elem_type"];
-            return (self._make_list_iter(val, lk, elem_type), lk, elem_type);
+            return (
+                self._make_list_iter(val, lk, elem_type),
+                lk,
+                self._iter_yield_llvm(elem_type, expr)
+            );
         }
     }
 
@@ -653,7 +657,11 @@ impl NaIRGenPass._make_iter_from_value(
     for (sk, st) in self.set_types.items() {
         if val.type == st.as_pointer() {
             elem_type = self.set_helpers[sk]["elem_type"];
-            return (self._make_set_iter(val, sk, elem_type), sk, elem_type);
+            return (
+                self._make_set_iter(val, sk, elem_type),
+                sk,
+                self._iter_yield_llvm(elem_type, expr)
+            );
         }
     }
 
@@ -678,6 +686,25 @@ impl NaIRGenPass._make_iter_from_value(
         return self._make_user_iter_from_obj(val, ustruct, expr);
     }
     return None;
+}
+
+impl NaIRGenPass._iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type {
+    """The type a collection iterator yields, as the loop body reads it.
+
+    A `ptr`-spec list or set stores every boxed element (a tuple, an object)
+    as an erased `i8*`; the iterator's next function writes that word into
+    the out slot unchanged. The consumer must read it back as the element's
+    static layout, the same refinement the indexed for-loop applies through
+    `elem_cast`, or a tuple element reaches the body typed as a string.
+    """;
+    if storage != ir.IntType(8).as_pointer() {
+        return storage;
+    }
+    refined = self._static_elem_llvm_of(expr);
+    if refined is not None and isinstance(refined, ir.PointerType) {
+        return refined;
+    }
+    return storage;
 }
 
 impl NaIRGenPass._adapter_clos_parts(clos: ir.Value) -> (NativeIterCallback | None) {
