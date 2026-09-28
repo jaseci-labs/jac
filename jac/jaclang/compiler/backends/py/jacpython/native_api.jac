@@ -69,6 +69,7 @@ import from jaclang.runtime.python.bindings.sha2 { PyInit__sha2 }
 import from jaclang.runtime.python.bindings.sha3 { PyInit__sha3 }
 import from jaclang.runtime.python.bindings.blake2 { PyInit__blake2 }
 import from jaclang.runtime.python.bindings.hmac { PyInit__hmac }
+import from jaclang.runtime.python.bindings.fcntl { PyInit_fcntl }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

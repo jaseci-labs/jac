@@ -539,7 +539,7 @@ Modules/clinic/_zoneinfo.c.h
 # Modules/clinic/binascii.c.h  # removed: 791 source lines
 # Modules/clinic/blake2module.c.h  # removed: 505 source lines
 # Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
-Modules/clinic/fcntlmodule.c.h
+# Modules/clinic/fcntlmodule.c.h  # removed: 273 source lines
 Modules/clinic/gcmodule.c.h
 # Modules/clinic/grpmodule.c.h  # removed: 155 source lines
 # Modules/clinic/hmacmodule.c.h  # removed: 673 source lines
@@ -567,7 +567,7 @@ Modules/clinic/unicodedata.c.h
 Modules/config.c.in
 # Modules/errnomodule.c  # removed: 988 source lines
 Modules/faulthandler.c
-Modules/fcntlmodule.c
+# Modules/fcntlmodule.c  # removed: 789 source lines
 Modules/gcmodule.c
 Modules/getaddrinfo.c
 Modules/getbuildinfo.c
