@@ -2353,6 +2353,8 @@ walker NaIRGenPass(CompilerPass) {
     def _str_desc_kind -> str;
     def _str_norm(val: ir.Value) -> ir.Value;
     def _str_view(val: ir.Value) -> ir.Value;
+    def _str_borrow(val: ir.Value) -> ir.Value;
+    def _consume_str_args(values: list[ir.Value]) -> None;
     def _str_materialize(val: ir.Value) -> ir.Value;
     def _str_norm_optional(val: ir.Value | None) -> (ir.Value | None);
     def _str_arg(val: ir.Value | None) -> (ir.Value | None);

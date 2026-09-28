@@ -1313,11 +1313,20 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     ub.ret(ir.Constant(i8p, None));
     ub = ir.IRBuilder(_u_probe);
     _u_end = ub.load(ub.gep(_u_data, [_u_len], name="u.endp"), name="u.end");
-    ub.cbranch(
-        ub.icmp_unsigned("==", _u_end, ir.Constant(i8, 0), name="u.hasnul"),
-        _u_pass,
-        _u_copy
-    );
+    _u_whole = ub.icmp_unsigned("==", _u_end, ir.Constant(i8, 0), name="u.hasnul");
+    if not _hl {
+        _u_whole = ub.and_(
+            _u_whole,
+            ub.icmp_unsigned(
+                "==",
+                _u_data,
+                ub.extract_value(uf.args[0], 0, name="u.root"),
+                name="u.isroot"
+            ),
+            name="u.whole"
+        );
+    }
+    ub.cbranch(_u_whole, _u_pass, _u_copy);
     ub = ir.IRBuilder(_u_pass);
     ub.ret(_u_data);
     ub = ir.IRBuilder(_u_copy);
@@ -1382,6 +1391,9 @@ impl NaIRGenPass._str_norm(val: ir.Value) -> ir.Value {
     if self._str_desc_ty is None or val.type != self._str_desc_ty {
         return val;
     }
+    if not self._is_owned(val) and not self._nogc_headerless() {
+        return self._str_view(val);
+    }
     if self.str_unwrap_fn is None {
         self._emit_str_desc_helpers();
     }
@@ -1419,6 +1431,25 @@ impl NaIRGenPass._str_view(val: ir.Value) -> ir.Value {
         self.builder.select(copied, view, previous, name="s.view.hold"), slot
     );
     return view;
+}
+
+impl NaIRGenPass._str_borrow(val: ir.Value) -> ir.Value {
+    if self._str_desc_ty is None or val.type != self._str_desc_ty {
+        return val;
+    }
+    return self._str_view(val);
+}
+
+impl NaIRGenPass._consume_str_args(values: list[ir.Value]) -> None {
+    if self._str_desc_ty is None or self._nogc_headerless() {
+        return;
+    }
+    for value in values {
+        if value.type == self._str_desc_ty and self._is_owned(value) {
+            self._release_owned_args([value], op="str_arg");
+            value.is_owned = False;
+        }
+    }
 }
 
 impl NaIRGenPass._str_materialize(val: ir.Value) -> ir.Value {
