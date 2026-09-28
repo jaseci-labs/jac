@@ -326,3 +326,30 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
     products.placement = placement_record(module, program);
     return products;
 }
+
+def products_record(products: UnitProducts) -> dict[str, object] {
+    return {
+        "path": products.path,
+        "jcir": base64.b64encode(products.jcir).decode("ascii"),
+        "mtir": products.mtir,
+        "interop": products.interop,
+        "client": products.client,
+        "placement": products.placement,
+        "ct_file_deps": list(products.ct_file_deps),
+        "ct_body_deps": list(products.ct_body_deps)
+    };
+}
+
+def products_from_record(raw: dict[str, object]) -> UnitProducts {
+    import from jaclang.compiler.frontend.kernel_inputs { json_str_list }
+    return UnitProducts(
+        path=str(raw.get("path", "")),
+        jcir=base64.b64decode(str(raw.get("jcir", ""))),
+        mtir=str(raw.get("mtir", "")),
+        interop=str(raw.get("interop", "")),
+        client=str(raw.get("client", "")),
+        placement=str(raw.get("placement", "")),
+        ct_file_deps=json_str_list(raw.get("ct_file_deps")),
+        ct_body_deps=json_str_list(raw.get("ct_body_deps"))
+    );
+}

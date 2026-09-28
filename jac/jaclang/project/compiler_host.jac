@@ -22,6 +22,7 @@ import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 import type from jaclang.compiler.frontend.kernel_inputs { KernelInputs }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob UNIT_COLLECT_EVERY: int = 16,
      UNIT_COLLECT_GROWTH_MB: int = 512;
@@ -97,6 +98,10 @@ obj ProjectHost(HostServices) {
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None);
+
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None);

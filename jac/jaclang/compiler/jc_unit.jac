@@ -29,7 +29,9 @@ import from jaclang.compiler.passes.annex_weave {
 import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_CRASHED,
     AnalysisReport,
-    run_kernel_analysis
+    CompileReport,
+    run_kernel_analysis,
+    run_kernel_compile
 }
 
 obj JcState {
@@ -40,6 +42,7 @@ obj JcState {
         lexdiags_h: int = 0,
         comments_h: int = 0,
         analysis_h: int = 0,
+        compile_h: int = 0,
         early_context: int = 0,
         pass_times: list[float] = [],
         pass_names_h: list[int] = [],
@@ -315,6 +318,32 @@ def:pub jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int 
     }
     _JC.analysis_h = PyUnicode_FromString(id(text));
     return status;
+}
+
+def:pub jc_compile(inputs: str, path: str, source: str, has_source: int) -> int {
+    _drop_stale_regions();
+    _drop_h(_JC.compile_h);
+    _JC.compile_h = 0;
+    status = ANALYSIS_CRASHED;
+    try {
+        outcome = run_kernel_compile(inputs, path, source if has_source != 0 else None);
+        status = outcome.analysis.status;
+        text = outcome.to_json();
+    } except Exception as err {
+        text = CompileReport(
+            analysis=AnalysisReport(
+                status=ANALYSIS_CRASHED, message=f"kernel compile raised: {err}"
+            )
+        ).to_json();
+    }
+    _JC.compile_h = PyUnicode_FromString(id(text));
+    return status;
+}
+
+def:pub jc_take_compile -> int {
+    h = _JC.compile_h;
+    _JC.compile_h = 0;
+    return h;
 }
 
 def:pub jc_take_analysis -> int {

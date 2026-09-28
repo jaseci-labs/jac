@@ -37,6 +37,8 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compilation_context { package_owned }
 import from jaclang.compiler.driver.session_compile { SessionHooks, compile_in_session }
 import from jaclang.compiler.driver.module_analysis { ModuleAnalysis, analyze_module }
+import from jaclang.compiler.driver.module_compile { compile_task }
+import from jaclang.compiler.driver.unit_products { UnitProducts, unit_products }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.types.stubcat.reader { StubCatalog, open_catalog_region }
 import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
@@ -49,6 +51,7 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob _CATALOGS: dict[str, StubCatalog] = {};
 
@@ -187,8 +190,11 @@ obj KernelSession(SessionHooks) {
         host = self.host;
         if host.fallback is None {
             host.census.count("run_module");
-            task = analyze_module(target_program, file_path, options, use_str);
+            task = analyze_module(target_program, file_path, options, use_str)
+                if options.no_cgen or options.symtab_ir_only
+                else compile_task(self, target_program, file_path, options, use_str);
             host.analyses[os.path.realpath(file_path)] = task;
+            host.record_unit(task);
             return task.module;
         }
         with host.delegating("run_module") as fallback {
@@ -283,6 +289,7 @@ obj KernelHost(HostServices) {
         _served: dict[str, ServedInterface] = {},
         _catalog: (StubCatalog | None) = None,
         analyses: dict[str, ModuleAnalysis] = {},
+        units: dict[str, UnitProducts] = {},
         _session: (KernelSession | None) = None;
 
     def postinit {
@@ -377,6 +384,14 @@ obj KernelHost(HostServices) {
         self._served[resolved] = ServedInterface(catalog=catalog, module=mod);
         program.stamp_app_facts(mod);
         return mod;
+    }
+
+    def record_unit(task: ModuleAnalysis) {
+        module = task.module;
+        if task.parse_failed or task.blocked or not module.gen.jcir {
+            return;
+        }
+        self.units[os.path.realpath(task.path)] = unit_products(module, task.program);
     }
 
     def host_turn(method: str = "") -> HostTurn {
@@ -841,6 +856,18 @@ obj KernelHost(HostServices) {
         }
         with self.delegating("client_boundary_facts") as host {
             answer = host.client_boundary_facts(program, path);
+        }
+        return answer;
+    }
+
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None) {
+        if self.kernel_only("kernel_compile") {
+            return None;
+        }
+        with self.delegating("kernel_compile") as host {
+            answer = host.kernel_compile(program, path, options);
         }
         return answer;
     }

@@ -250,6 +250,13 @@ impl ProjectHost.client_boundary_facts(
     }
 }
 
+impl ProjectHost.kernel_compile(
+    program: JacProgram, path: str, options: CompileOptions
+) -> (CompileReport | None) {
+    import from jaclang.project.kernel_compile { host_kernel_compile }
+    return host_kernel_compile(self, program, path, options);
+}
+
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
         import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }

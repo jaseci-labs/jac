@@ -31,6 +31,7 @@ import from jaclang.compiler.driver.session_compile {
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+import type from jaclang.compiler.native_compiler { NativeCompiler }
 
 glob SCAN_LIMIT: int = 4000,
      PACKAGE_CHAIN_DEPTH: int = 8,
@@ -631,7 +632,7 @@ def host_analysis(
     return analysis_report(program, path, tasks, status, message);
 }
 
-def kernel_analysis_json(
+def kernel_inputs_json(
     host: HostServices,
     program: JacProgram,
     path: str,
@@ -643,15 +644,31 @@ def kernel_analysis_json(
     return kernel_analysis_inputs(host, program, path, options, source).to_json();
 }
 
-def call_kernel_analyze(
-    kernel: any, inputs_json: str, path: str, source: (str | None)
+obj KernelEntry {
+    has call: str,
+        take: str;
+}
+
+glob ANALYZE_ENTRY: KernelEntry = KernelEntry(
+         call="jc_analyze", take="jc_take_analysis"
+     ),
+     COMPILE_ENTRY: KernelEntry = KernelEntry(
+         call="jc_compile", take="jc_take_compile"
+     );
+
+def call_kernel(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    inputs_json: str,
+    path: str,
+    source: (str | None)
 ) -> str {
     import from ctypes { c_int64, c_void_p }
     lib = kernel.lib;
-    analyze = lib.jc_analyze;
-    analyze.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
-    analyze.restype = c_int64;
-    take = lib.jc_take_analysis;
+    run = getattr(lib, kind.call);
+    run.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
+    run.restype = c_int64;
+    take = getattr(lib, kind.take);
     take.argtypes = [];
     take.restype = c_void_p;
     handles: list[int] = [];
@@ -664,7 +681,7 @@ def call_kernel_analyze(
             args.extend([c_void_p(handle), c_void_p(handle), c_int64(len(data))]);
         }
         args.append(c_int64(1 if source is not None else 0));
-        analyze(*args);
+        run(*args);
     } finally {
         for handle in handles {
             lib.jac_release(handle);
@@ -673,11 +690,15 @@ def call_kernel_analyze(
     return kernel._take(take()) or "";
 }
 
-def call_kernel_analyze_isolated(
-    kernel: any, inputs_json: str, path: str, source: (str | None)
+def call_kernel_isolated(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    inputs_json: str,
+    path: str,
+    source: (str | None)
 ) -> str {
     if not hasattr(os, "fork") {
-        return call_kernel_analyze(kernel, inputs_json, path, source);
+        return call_kernel(kernel, kind, inputs_json, path, source);
     }
     (read_fd, write_fd) = os.pipe();
     pid = os.fork();
@@ -685,7 +706,7 @@ def call_kernel_analyze_isolated(
         code = 0;
         try {
             os.close(read_fd);
-            payload = call_kernel_analyze(kernel, inputs_json, path, source).encode(
+            payload = call_kernel(kernel, kind, inputs_json, path, source).encode(
                 "utf-8"
             );
             sent = 0;
@@ -706,13 +727,25 @@ def call_kernel_analyze_isolated(
     (_, status) = os.waitpid(pid, 0);
     if os.WIFSIGNALED(status) {
         raise KernelAnalysisError(
-            f"the kernel analysis died with signal {os.WTERMSIG(status)}"
+            f"the kernel {kind.call} died with signal {os.WTERMSIG(status)}"
         );
     }
     if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0 or not payload {
-        raise KernelAnalysisError("the kernel analysis exited without a report");
+        raise KernelAnalysisError(f"the kernel {kind.call} exited without a report");
     }
     return payload.decode("utf-8");
+}
+
+def loaded_kernel(kind: KernelEntry) -> NativeCompiler {
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    kernel = ensure_loaded();
+    if kernel is None {
+        raise KernelAnalysisError("no native compiler kernel is available");
+    }
+    if not hasattr(kernel.lib, kind.call) {
+        raise KernelAnalysisError(f"the loaded kernel has no {kind.call}");
+    }
+    return kernel;
 }
 
 def kernel_analysis(
@@ -724,17 +757,15 @@ def kernel_analysis(
     in_process: bool = False,
     isolated: bool = False
 ) -> AnalysisReport {
-    inputs_json = kernel_analysis_json(host, program, path, options, source);
+    inputs_json = kernel_inputs_json(host, program, path, options, source);
     if in_process {
         outcome = run_kernel_analysis(inputs_json, path, source);
     } else {
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        kernel = ensure_loaded();
-        if kernel is None {
-            raise KernelAnalysisError("no native compiler kernel is available");
-        }
-        call = call_kernel_analyze_isolated if isolated else call_kernel_analyze;
-        outcome = AnalysisReport.from_json(call(kernel, inputs_json, path, source));
+        kernel = loaded_kernel(ANALYZE_ENTRY);
+        call = call_kernel_isolated if isolated else call_kernel;
+        outcome = AnalysisReport.from_json(
+            call(kernel, ANALYZE_ENTRY, inputs_json, path, source)
+        );
     }
     if outcome.status == ANALYSIS_CRASHED {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";

@@ -11,6 +11,7 @@ import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 obj NativeVerdict {
     has demoted: bool = False,
@@ -233,6 +234,12 @@ obj HostServices {
     }
 
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
+        return None;
+    }
+
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None) {
         return None;
     }
 

@@ -116,6 +116,18 @@ def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
     return client_artifact_from_json(text);
 }
 
+def assemble_jcir(jcir: bytes) -> (bytes | None) {
+    if not jcir {
+        return None;
+    }
+    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
+    result = compile_ir(jcir);
+    if result.diags or not result.modules {
+        return None;
+    }
+    return result.modules[0].bytecode;
+}
+
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes] {
@@ -206,6 +218,10 @@ obj JacCompiler(SessionHooks) {
     def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
+    def _adopt_kernel_compile(
+        full_target: str, program: JacProgram, options: CompileOptions
+    ) -> (bytes | None);
+
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def _load_native_from_cache(
         full_target: str,

@@ -308,13 +308,13 @@ def module_pipeline -> list[CompilationPhase] {
     return list(ANALYSIS_PHASES) + [step.phase for step in codegen_steps()];
 }
 
-def compile_module(
+def compile_task(
     session: SessionHooks,
     program: JacProgram,
     path: str,
     options: CompileOptions,
     source: str | None = None
-) -> uni.Module {
+) -> ModuleAnalysis {
     analysis = active_host().native_analyze(program, path, options, source);
     if analysis is None {
         analysis = analyze_module(program, path, options, source);
@@ -331,7 +331,17 @@ def compile_module(
             record_phase(program, step.phase, started);
         }
     }
-    return analysis.module;
+    return analysis;
+}
+
+def compile_module(
+    session: SessionHooks,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: str | None = None
+) -> uni.Module {
+    return compile_task(session, program, path, options, source).module;
 }
 
 def _codegen_tier_reason -> str {

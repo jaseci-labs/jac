@@ -277,6 +277,12 @@ impl JacCompiler._get_bytecode(
         skip_native_engine=not self._wants_native_engine(full_target, actual_program),
         skip_analysis=skip_analysis
     );
+    if not is_internal {
+        adopted = self._adopt_kernel_compile(full_target, actual_program, options);
+        if adopted is not None {
+            return marshal.loads(adopted);
+        }
+    }
     result: (uni.Module | None) = None;
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
@@ -311,6 +317,39 @@ impl JacCompiler._get_bytecode(
             self.selfhost.exit_bytecode();
         }
     }
+}
+
+impl JacCompiler._adopt_kernel_compile(
+    full_target: str, program: JacProgram, options: CompileOptions
+) -> (bytes | None) {
+    import from jaclang.compiler.frontend.host { active_host }
+    compiled = active_host().kernel_compile(program, full_target, options);
+    if compiled is None {
+        return None;
+    }
+    target = compiled.unit(full_target);
+    if target is None {
+        return None;
+    }
+    adopted: (bytes | None) = None;
+    for unit in compiled.units {
+        bytecode = assemble_jcir(unit.jcir);
+        if bytecode is None {
+            if unit is target {
+                return None;
+            }
+            continue;
+        }
+        sections = unit_sections(unit, bytecode);
+        try {
+            write_module_cache(unit.path, bytecode, extra_sections=sections);
+        } except OSError {}
+        if unit is target {
+            self._restore_sections(full_target, program, sections);
+            adopted = bytecode;
+        }
+    }
+    return adopted;
 }
 
 impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> bool {
@@ -476,10 +515,6 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
 }
 
 impl JacCompiler._precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
-    """The unit a precompiled tree carries for this source, with the root its
-    dependency rows are relative to: a sealed image is trusted by its
-    manifest, and an unsealed bundle (a checkout seeded with the kit's
-    precompile) only while the unit's key still matches the source.""";
     sealed = self._sealed_jir_data(full_target);
     if sealed is not None {
         return sealed;
