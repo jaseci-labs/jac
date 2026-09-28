@@ -257,6 +257,7 @@ walker NaIRGenPass(CompilerPass) {
         _pending_clib_abilities: list[uni.Ability] = [],
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
+        clib_globals: dict[str, tuple[ir.GlobalVariable, any]] = {},
         _foreign_modules: list[uni.Module] = [],
         _foreign_structs: (dict[str, list[tuple[str, str | None]]] | None) = None,
         _foreign_model_nmods: int = -1,
@@ -945,6 +946,10 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_c_ptr_arith(
         nd: uni.BinaryExpr, op: str
     ) -> tuple[bool, (ir.Value | None)];
+
+    def _declare_clib_global(assign: uni.Assignment, lib: (str | None)) -> None;
+    def _clib_global_of(nd: uni.Name) -> (tuple[ir.GlobalVariable, any] | None);
+    def _c_global_store(target: uni.Name, value: ir.Value, nd: uni.Assignment) -> None;
 
     def _c_ptr_aug(
         current: ir.Value, rhs: ir.Value, aug_op: str, target_type: any

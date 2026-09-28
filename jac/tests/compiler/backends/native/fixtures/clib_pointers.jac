@@ -47,7 +47,10 @@ import from "CLIB_POINTERS_LIBRARY" {
         v: i32
     ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_pointlist_fill(
         pl: &mut CpPointList, n: i32
-    ) -> None;
+    ) -> None;  def cp_global_read -> i32;  glob cp_global_count: i32,
+         cp_global_flag: bool,
+         cp_global_origin: CpVec3,
+         cp_global_origin_ref: ptr[CpVec3];
 }
 
 obj Session {
@@ -239,6 +242,23 @@ def arithmetic_demo {
     cp_buffer_free(buf);
 }
 
+"""Variables the C library defines: read and written in place, or by address."""
+def globals_demo {
+    print("global", cp_global_count, cp_global_flag);
+    cp_global_count = i32(11);
+    cp_global_count += i32(1);
+    print("global write", cp_global_read());
+    origin = addressof(cp_global_origin);
+    print("global object", origin == cp_global_origin_ref, origin.view(1)[0].y);
+    origin.view(1)[0].z = f32(9.0);
+    print("global place", cp_global_origin_ref.view(1)[0].z);
+    count = addressof(cp_global_count);
+    count.view(1)[0] = i32(40);
+    print("global address", cp_global_count);
+    cp_global_flag = False;
+    print("global flag", cp_global_flag);
+}
+
 """A struct holding a pointer that C fills in."""
 def pointer_field_demo {
     pl = CpPointList();
@@ -260,4 +280,5 @@ with entry {
     renderer_demo();
     pointer_field_demo();
     arithmetic_demo();
+    globals_demo();
 }

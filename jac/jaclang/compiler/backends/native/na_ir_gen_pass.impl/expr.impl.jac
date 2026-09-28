@@ -630,6 +630,14 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         return self.func_symtab[var_name];
     }
 
+    c_global = self._clib_global_of(nd);
+    if c_global is not None {
+        if self._c_scalar_llvm(c_global[1]) is None {
+            self.ctx.emit(E5092, node_override=nd, kind="read", name="C data object");
+            return None;
+        }
+        return self._c_load_scalar(c_global[0], c_global[1], f"c.glob.{var_name}");
+    }
     if var_name in self.global_vars {
         global_var = self.global_vars[var_name];
         return self.builder.load(global_var, name=f"glob.{var_name}");

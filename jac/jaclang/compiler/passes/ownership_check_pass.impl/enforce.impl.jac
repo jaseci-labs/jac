@@ -1,6 +1,6 @@
 import from jaclang.compiler.expr_keys { type_tag_borrows }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.c_interop { is_c_value_type }
+import from jaclang.compiler.c_interop { clib_import_of, is_c_value_type }
 import from jaclang.compiler.frontend.diagnostics {
     E1315,
     E1401,
@@ -1030,6 +1030,9 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
             }
         }
         for _gv in self.module.get_all_sub_nodes(GlobalVars) {
+            if clib_import_of(_gv) is not None {
+                continue;
+            }
             for _ga in _gv.get_all_sub_nodes(Assignment) {
                 if _ga.type_tag is not None
                     and _ga.type_tag.ownership == OwnershipKind.OWN {

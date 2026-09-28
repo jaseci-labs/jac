@@ -40,6 +40,7 @@ impl TypeCheckPass.exit_name with Name exit {
     if here.sym is not None {
         self._check_comptime_only_use(here);
         self._check_type_only_value_use(here);
+        self._check_c_global_use(here);
     }
 }
 
@@ -2331,7 +2332,11 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
     }
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     for decl in imp.clib_decls or [] {
-        if isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
+        if isinstance(decl, GlobalVars) {
+            for assign in decl.assignments {
+                self._check_c_global_decl(assign);
+            }
+        } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             for hv in decl.get_has_vars() {
                 tag = hv.type_tag.tag if hv.type_tag else None;
                 ftype = self._c_instance_of(tag);
@@ -2418,6 +2423,59 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
     }
 }
 
+impl TypeCheckPass._check_c_global_decl(assign: Assignment) -> None {
+    target = assign.target[0] if assign.target else None;
+    if not isinstance(target, Name) {
+        return;
+    }
+    if assign.value is not None {
+        self.ctx.emit(
+            E1153,
+            node_override=assign,
+            name=target.sym_name,
+            reason="has an initializer, but C owns its storage"
+        );
+        return;
+    }
+    tag = assign.type_tag.tag if assign.type_tag else None;
+    ctype = self._c_instance_of(tag);
+    if not self._c_plain_data(ctype) and self._opaque_member(ctype) is None {
+        self.ctx.emit(
+            E1153,
+            node_override=assign,
+            name=target.sym_name,
+            reason=f"has type {ctype}, which is not C data"
+        );
+    }
+}
+
+impl TypeCheckPass._check_c_global_use(nd: Name) -> None {
+    import from jaclang.compiler.c_interop {
+        clib_global_assignment,
+        clib_import_of,
+        foreign_struct_of_type,
+        is_builtin_addressof_call
+    }
+    sym = nd.sym;
+    assign = clib_global_assignment(sym.decl) if sym is not None else None;
+    if assign is None
+        or clib_import_of(nd) is not None
+        or is_builtin_addressof_call(nd.parent) {
+        return;
+    }
+    tag = assign.type_tag.tag if assign.type_tag else None;
+    ctype = self._c_instance_of(tag);
+    if self._c_plain_data(ctype) and foreign_struct_of_type(ctype) is None {
+        return;
+    }
+    self.ctx.emit(
+        E1153,
+        node_override=nd,
+        name=nd.sym_name,
+        reason=f"is a C object of type {ctype}, which Jac handles only by address: use addressof({nd.sym_name})"
+    );
+}
+
 impl TypeCheckPass._foreign_struct_contains(
     t: (TypeBase | None), target: Archetype
 ) -> bool {
@@ -2444,6 +2502,8 @@ impl TypeCheckPass._foreign_struct_contains(
 impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
         c_type_arg,
+        clib_global_assignment,
+        is_builtin_addressof_call,
         is_builtin_pin_call,
         is_ptr_type,
         opaque_c_of_type
@@ -2453,6 +2513,24 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
         and callee.is_instantiable_class()
         and (arch := opaque_c_of_type(callee)) is not None {
         self.ctx.emit(E1151, node_override=nd, name=arch.name.value, use="constructed");
+        return;
+    }
+    if is_builtin_addressof_call(nd) {
+        args = list(nd.params or []);
+        target = args[0] if len(args) == 1 else None;
+        if not isinstance(target, Name)
+            or target.sym is None
+            or clib_global_assignment(target.sym.decl) is None {
+            self.ctx.emit(
+                E1154,
+                node_override=nd,
+                what=f"'{target.sym_name}'"
+                    if isinstance(target, Name)
+                    else (
+                        "an expression" if len(args) == 1 else f"{len(args)} arguments"
+                    )
+            );
+        }
         return;
     }
     if is_builtin_pin_call(nd) {

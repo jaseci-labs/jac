@@ -28,8 +28,17 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     structs: list[dict[str, any]] = [];
     opaque: list[str] = [];
     functions: list[dict[str, any]] = [];
+    data: list[list[any]] = [];
     for decl in imp.clib_decls or [] {
-        if isinstance(decl, Archetype) and is_opaque_c_archetype(decl) {
+        if isinstance(decl, GlobalVars) {
+            for assign in decl.assignments {
+                target = assign.target[0] if assign.target else None;
+                tag = assign.type_tag.tag if assign.type_tag else None;
+                if isinstance(target, Name) {
+                    data.append([target.sym_name, c_type_spec(target.type, tag)]);
+                }
+            }
+        } elif isinstance(decl, Archetype) and is_opaque_c_archetype(decl) {
             opaque.append(decl.name.value);
         } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             fields: list[list[any]] = [];
@@ -72,7 +81,13 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
             );
         }
     }
-    return {"lib": lib, "structs": structs, "opaque": opaque, "functions": functions};
+    return {
+        "lib": lib,
+        "structs": structs,
+        "opaque": opaque,
+        "functions": functions,
+        "globals": data
+    };
 }
 
 impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
@@ -100,6 +115,7 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
     ];
     declared: list[str] = desc["opaque"] + [s["name"] for s in desc["structs"]];
     declared += [f["name"] for f in desc["functions"]];
+    declared += [g[0] for g in desc["globals"]];
     for name in declared {
         out.append(
             self.nod(
@@ -295,4 +311,18 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
         nd,
         [self.call_node(self.builtin_name('_jac_c_copy'), [got[0]], [], jac_node=nd)]
     );
+}
+
+impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
+    import from jaclang.compiler.c_interop {
+        clib_global_assignment,
+        clib_import_of,
+        is_builtin_addressof_call
+    }
+    if nd.sym is None
+        or clib_global_assignment(nd.sym.decl) is None
+        or clib_import_of(nd) is not None {
+        return False;
+    }
+    return not is_builtin_addressof_call(nd.parent);
 }

@@ -918,6 +918,20 @@ impl JcirGenPass.exit_name with Name exit {
             }
         }
     }
+    if self._is_c_global_value(here) {
+        self.set_out(
+            here,
+            [
+                self.nod(
+                    'Attribute',
+                    ['value', 'attr', 'ctx'],
+                    [self.name_load(name, here), "value", self.py_ctx(here)],
+                    jac_node=here
+                )
+            ]
+        );
+        return;
+    }
     if not is_identifier_slot(here) {
         if (name in self._get_builtin_names()) {
             self.builtin_imports.add(name);

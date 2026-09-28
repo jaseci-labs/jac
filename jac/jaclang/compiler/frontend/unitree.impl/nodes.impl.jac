@@ -2330,6 +2330,10 @@ impl FuncSignature.is_static.getter -> bool {
 }
 
 impl FuncSignature.is_in_py_class.getter -> bool {
+    owner = self.parent.decl_link if isinstance(self.parent, ImplDef) else self.parent;
+    if isinstance(owner, Ability) and owner.accessor_kind {
+        return False;
+    }
     is_archi = self.find_parent_of_type(Archetype);
     is_class = (is_archi is not None) and (is_archi.arch_type.name == Tok.KW_CLASS);
     return (

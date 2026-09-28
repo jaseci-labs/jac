@@ -134,3 +134,9 @@ void cp_pointlist_fill(CpPointList *pl, int32_t n) {
     pl->count = n;
     pl->items = cp_points_new(n);
 }
+
+int32_t cp_global_count = 7;
+bool cp_global_flag = true;
+CpVec3 cp_global_origin = {1.0f, 2.0f, 3.0f};
+CpVec3 *cp_global_origin_ref = &cp_global_origin;
+int32_t cp_global_read(void) { return cp_global_count; }

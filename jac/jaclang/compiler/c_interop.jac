@@ -4,6 +4,7 @@ import from jaclang.compiler.frontend.unitree {
     AtomTrailer,
     AtomUnit,
     Expr,
+    GlobalVars,
     Import,
     UnaryExpr,
     UniNode
@@ -153,24 +154,31 @@ def foreign_read_copies(nd: (UniNode | None)) -> bool {
         and not foreign_read_is_place(nd);
 }
 
-def is_builtin_pin_call(call: (UniNode | None)) -> bool {
+def _ambient_c_call_result(call: (UniNode | None), name: str) -> (TypeBase | None) {
     import from jaclang.compiler.frontend.unitree { FuncCall, Name }
-    if not isinstance(call, FuncCall) or not isinstance(call.target, Name) {
-        return False;
-    }
-    tgt = call.target;
-    if tgt.value != "pin" {
-        return False;
+    if not isinstance(call, FuncCall)
+        or not isinstance(call.target, Name)
+        or call.target.value != name {
+        return None;
     }
     import from jaclang.compiler.types.types { FunctionType }
+    tgt = call.target;
     decl = tgt.sym.decl if tgt.sym is not None else None;
-    if decl is not None and decl.loc is not None {
-        if str(decl.loc.mod_path).endswith(".jac") {
-            return False;
-        }
+    if decl is not None
+        and decl.loc is not None
+        and str(decl.loc.mod_path).endswith(".jac") {
+        return None;
     }
     fn_type = tgt.type;
-    return isinstance(fn_type, FunctionType) and is_pinned_type(fn_type.return_type);
+    return fn_type.return_type if isinstance(fn_type, FunctionType) else None;
+}
+
+def is_builtin_pin_call(call: (UniNode | None)) -> bool {
+    return is_pinned_type(_ambient_c_call_result(call, "pin"));
+}
+
+def is_builtin_addressof_call(call: (UniNode | None)) -> bool {
+    return is_ptr_type(_ambient_c_call_result(call, "addressof"));
 }
 
 def is_c_value_type(t: (TypeBase | None)) -> bool {
@@ -273,4 +281,15 @@ def _annotation_name(annotation: (UniNode | None)) -> (str | None) {
         return annotation.value;
     }
     return None;
+}
+
+def clib_global_assignment(decl: (UniNode | None)) -> (Assignment | None) {
+    assign = decl if isinstance(decl, Assignment) else None;
+    if assign is None and decl is not None {
+        assign = decl.find_parent_of_type(Assignment);
+    }
+    if assign is None or not isinstance(assign.parent, GlobalVars) {
+        return None;
+    }
+    return assign if clib_import_of(assign.parent) is not None else None;
 }

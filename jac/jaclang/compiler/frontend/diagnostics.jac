@@ -1130,6 +1130,28 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " retype it first with `ptr[T](p)`.",
          blocks_codegen=True
      ),
+     E1153 = _err(
+         "E1153",
+         Category.TYPE,
+         "C data symbol '{name}' {reason}",
+         help="`glob name: T;` in a C library import declares a variable C"
+         " defines. A symbol of C plain data (a sized scalar, `int`, `float`,"
+         " `bool` or a `ptr`) reads and writes the C variable in place. A symbol"
+         " of a foreign struct or an opaque C type is a C object Jac handles only"
+         " by address: `addressof(name)` is its `ptr[T]`. The declaration has no"
+         " initializer, since C owns the storage.",
+         blocks_codegen=True
+     ),
+     E1154 = _err(
+         "E1154",
+         Category.TYPE,
+         "addressof() takes a C data symbol, not {what}",
+         help="`addressof(name)` is the address of a variable C defines, declared"
+         " as `glob name: T;` in a C library import. A Jac value has no stable C"
+         " address: lend C the address of Jac storage through a `&T` / `&mut T`"
+         " parameter, or keep one alive with `pin(value)`.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

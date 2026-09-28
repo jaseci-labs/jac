@@ -1798,6 +1798,14 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         self._clib_detect_vtable_structs();
 
         for decl in stmt.clib_decls {
+            if isinstance(decl, uni.GlobalVars) {
+                for assign in decl.assignments {
+                    self._declare_clib_global(assign, _cur_lib);
+                }
+            }
+        }
+
+        for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
 

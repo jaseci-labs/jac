@@ -53,6 +53,7 @@ glob _CINTEROP_NAMES: dict[str, str] = {
          'PtrView': 'JacPtrView',
          'Pinned': 'JacPinned',
          'pin': 'jac_pin',
+         'addressof': 'jac_addressof',
          '_jac_clib_bind': 'clib_bind',
          '_jac_c_copy': 'c_copy',
          '_jac_c_cell': 'c_cell'
@@ -184,6 +185,7 @@ glob __all__ = [
          'PtrView',
          'Pinned',
          'pin',
+         'addressof',
          '_jac_clib_bind',
          '_jac_c_copy',
          '_jac_c_cell',

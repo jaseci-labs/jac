@@ -49,6 +49,7 @@ __all__ = [
     "PtrView",
     "Pinned",
     "pin",
+    "addressof",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -222,6 +223,9 @@ class Pinned(Generic[_PinT]):
     value: _PinT
 
 def pin(value: _PinT) -> Pinned[_PinT]: ...
+
+# The address of a C data symbol (`glob name: T;` in a C library import).
+def addressof(symbol: _PinT) -> ptr[_PinT]: ...
 
 class EdgeDir:
     OUT: int

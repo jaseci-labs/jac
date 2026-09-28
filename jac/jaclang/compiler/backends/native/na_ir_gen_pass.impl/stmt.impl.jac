@@ -2131,6 +2131,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         if var_name is None {
             continue;
         }
+        if isinstance(target_expr, uni.Name)
+            and self._clib_global_of(target_expr) is not None {
+            self._c_global_store(target_expr, value, nd);
+            continue;
+        }
 
         if var_name in self.local_vars {
             alloca = self.local_vars[var_name];

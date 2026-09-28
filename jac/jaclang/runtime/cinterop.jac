@@ -645,6 +645,81 @@ class CFunction {
     }
 }
 
+class CGlobal {
+    def init(self: CGlobal, lib: any, name: str, spec: list[any], scope: any) {
+        self._lib = lib;
+        self._name = name;
+        self._spec = spec;
+        self._scope = scope;
+        self._slot: any = None;
+    }
+
+    def _cell(self: CGlobal) -> any {
+        if self._slot is None {
+            kind = self._spec[0];
+            ctype: any = ctypes.c_uint8;
+            if kind == "ptr" {
+                ctype = ctypes.c_void_p;
+            } elif kind == "s" {
+                ctype = _SCALAR_CTYPES[self._spec[1]];
+            } elif kind == "struct" {
+                ctype = _resolve_elem(self._spec, self._scope);
+            }
+            self._slot = ctype.in_dll(self._lib, self._name);
+        }
+        return self._slot;
+    }
+
+    def _check_plain(self: CGlobal) {
+        if self._spec[0] not in ("s", "ptr") {
+            raise TypeError(
+                f"C data object '{self._name}' is handled only by address: use addressof({self._name})"
+            );
+        }
+    }
+
+    has value: any { getter; setter(value: any); }
+
+    def get(self: CGlobal) -> any {
+        self._check_plain();
+        raw = self._cell().value;
+        if self._spec[0] == "ptr" {
+            return _make_ptr(_resolve_elem(self._spec, self._scope), raw);
+        }
+        if self._spec[1] == "bool" {
+            return bool(raw);
+        }
+        return raw;
+    }
+
+    def set(self: CGlobal, value: any) {
+        self._check_plain();
+        self._cell().value = value._addr if isinstance(value, JacPtr) else value;
+    }
+
+    def address(self: CGlobal) -> JacPtr {
+        elem = JacPtr[_resolve_elem(self._spec, self._scope)];
+        return _make_ptr(elem, ctypes.addressof(self._cell()));
+    }
+}
+
+impl CGlobal.value.getter -> any {
+    return self.get();
+}
+
+impl CGlobal.value.setter(value: any) {
+    self.set(value);
+}
+
+def jac_addressof(symbol: any) -> JacPtr {
+    if not isinstance(symbol, CGlobal) {
+        raise TypeError(
+            f"addressof() takes a C data symbol, not '{type(symbol).__name__}'"
+        );
+    }
+    return symbol.address();
+}
+
 def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     desc = json.loads(desc_json);
     lib = _load_library(desc["lib"], scope.get("__file__") or "");
@@ -702,6 +777,9 @@ def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     }
     for name in pending {
         finish(name);
+    }
+    for (gname, gspec) in desc.get("globals", []) {
+        local[gname] = CGlobal(lib, gname, gspec, lookup);
     }
     for fn_desc in desc.get("functions", []) {
         local[fn_desc["name"]] = CFunction(

@@ -1,6 +1,8 @@
 import from jaclang.compiler.c_interop {
     c_builtin_kind,
     c_type_arg,
+    clib_global_assignment,
+    is_builtin_addressof_call,
     foreign_read_copies,
     foreign_struct_of_type,
     is_builtin_pin_call,
@@ -343,6 +345,19 @@ impl NaIRGenPass._codegen_c_interop_call(
             return (True, None);
         }
         return (True, self._codegen_pin(params[0]));
+    }
+    if is_builtin_addressof_call(nd) {
+        symbol = params[0] if len(params) == 1 else None;
+        symbol_slot = self._clib_global_of(symbol)
+            if isinstance(symbol, uni.Name)
+            else None;
+        if symbol_slot is None {
+            self.ctx.emit(
+                E5092, node_override=nd, kind="call", name="addressof(C data symbol)"
+            );
+            return (True, None);
+        }
+        return (True, self.builder.ptrtoint(symbol_slot[0], i64, name="c.addr"));
     }
     if is_ptr_type(callee_type)
         and callee_type is not None
@@ -690,4 +705,80 @@ impl NaIRGenPass._c_ptr_aug(
         return (True, None);
     }
     return (True, self._c_ptr_step(current, rhs, target_type, aug_op == "-="));
+}
+
+impl NaIRGenPass._declare_clib_global(
+    assign: uni.Assignment, lib: (str | None)
+) -> None {
+    target = assign.target[0] if assign.target else None;
+    if not isinstance(target, uni.Name) or target.sym_name in self.clib_globals {
+        return;
+    }
+    name = target.sym_name;
+    ctype = self._c_decl_type_of(assign.type_tag.tag) if assign.type_tag else None;
+    llt = self._c_scalar_llvm(ctype) or ir.IntType(8);
+    gv = self.llvm_module.globals.get(name);
+    if not isinstance(gv, ir.GlobalVariable) {
+        gv = ir.GlobalVariable(self.llvm_module, llt, name=name);
+        gv.linkage = "external";
+    }
+    self.clib_globals[name] = (gv, ctype);
+    if lib is not None {
+        self._clib_symbol_lib[name] = lib;
+    }
+    self.has_native_code = True;
+}
+
+impl NaIRGenPass._clib_global_of(
+    nd: uni.Name
+) -> (tuple[ir.GlobalVariable, any] | None) {
+    c_global = self.clib_globals.get(nd.sym_name);
+    if c_global is None or nd.sym_name in self.local_vars {
+        return None;
+    }
+    decl = nd.sym.decl if nd.sym is not None else None;
+    assign = decl.find_parent_of_type(uni.Assignment) if decl is not None else None;
+    if assign is not None and clib_global_assignment(assign) is None {
+        return None;
+    }
+    return c_global;
+}
+
+impl NaIRGenPass._c_global_store(
+    target: uni.Name, value: ir.Value, nd: uni.Assignment
+) -> None {
+    c_global = self._clib_global_of(target);
+    if c_global is None {
+        return;
+    }
+    (slot, ctype) = c_global;
+    if self._c_scalar_llvm(ctype) is None {
+        self.ctx.emit(
+            E5092, node_override=target, kind="assignment", name="C data object"
+        );
+        return;
+    }
+    if nd.aug_op is not None {
+        current = self._c_load_scalar(slot, ctype, f"c.glob.{target.sym_name}.cur");
+        updated = self._apply_scalar_aug_op(
+            current,
+            value,
+            nd.aug_op.value,
+            nd.value,
+            unsigned=self._is_unsigned_node(target),
+            checked=self._is_sized_node(target) or self._is_sized_node(nd.value),
+            target_type=ctype
+        );
+        if updated is None {
+            self.ctx.emit(
+                E5092,
+                node_override=target,
+                kind="augmented assignment",
+                name="C data symbol"
+            );
+            return;
+        }
+        value = updated;
+    }
+    self._c_store_scalar(value, slot, ctype);
 }

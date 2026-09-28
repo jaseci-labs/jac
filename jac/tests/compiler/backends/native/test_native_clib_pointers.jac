@@ -134,7 +134,13 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "bytes 24",
         "address True 24",
         "void step True",
-        "byte 15"
+        "byte 15",
+        "global 7 True",
+        "global write 12",
+        "global object True 2.0",
+        "global place 9.0",
+        "global address 40",
+        "global flag False"
     ];
     lines = out.splitlines();
     for line in expected {
@@ -251,4 +257,20 @@ def mismatch(p: ptr[CpVec3]) -> ptr[CpDb] { return p; }
 def scalar(p: ptr[u8]) -> ptr[i8] { return p; }
 ''';
     assert checker_codes(code) == ["E1002", "E1002", "E1002"];
+}
+
+test "C data symbols are declared without a value and C objects are used by address" {
+    code = DECLS
+        + '''
+import from "CLIB_POINTERS_LIBRARY" {
+    glob cp_global_count: i32 = 3;
+    glob cp_global_name: str;
+    glob cp_global_origin: CpVec3;
+    glob cp_global_db: CpDb;
+}
+def use_object -> CpVec3 { return cp_global_origin; }
+def use_opaque -> ptr[CpDb] { return addressof(cp_global_db); }
+def not_symbol(v: i32) -> ptr[i32] { return addressof(v); }
+''';
+    assert checker_codes(code) == ["E1153", "E1153", "E1153", "E1154"];
 }
