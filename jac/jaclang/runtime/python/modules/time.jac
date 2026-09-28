@@ -91,6 +91,7 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.capi {
     boundary_failure,
+    c_string_copy,
     c_string_text,
     object_error,
     object_tuple,
@@ -127,6 +128,9 @@ import from c {
     ) -> u64;
 }
 import from c { def time(result: ptr) -> i64;  }
+
+# The error handler tm_zone decodes with, as a C string for the process.
+glob:priv SURROGATEESCAPE: ptr[u8] = c_string_copy("surrogateescape");
 
 glob:priv SEC_TO_NS: i64 = 1000000000,
      INT_MAX: int = 2147483647,
@@ -431,7 +435,7 @@ def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
         PyLong_FromLong(c_remainder(int(p.tm_wday) + 6, 7)),
         PyLong_FromLong(i64(p.tm_yday) + 1),
         PyLong_FromLong(i64(p.tm_isdst)),
-        PyUnicode_DecodeLocale(ptr(p.tm_zone), "surrogateescape"),
+        PyUnicode_DecodeLocale(ptr(p.tm_zone), SURROGATEESCAPE),
         PyLong_FromLong(p.tm_gmtoff)
     ];
     failed = False;

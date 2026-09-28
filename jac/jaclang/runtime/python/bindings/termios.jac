@@ -1,6 +1,7 @@
 """The termios module: generated clinic tables, termios.error and the constants."""
 
 import from jaclang.runtime.python.cpython_api {
+    NULL,
     PyExc_ImportError,
     PyLong_FromUnsignedLong,
     PyModule_AddIntConstant,
@@ -26,7 +27,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         );
         return i32(-1);
     }
-    error = jacpy_binding_exception("termios.error", "", "");
+    error = jacpy_binding_exception("termios.error", NULL, "");
     if not add_state_owned(module, 0, "error", error) {
         return i32(-1);
     }

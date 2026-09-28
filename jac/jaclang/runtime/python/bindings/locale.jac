@@ -8,6 +8,7 @@ has <libintl.h>.
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_char_max,
+    NULL,
     PyExc_ImportError,
     PyModule_AddIntConstant,
     PyObject
@@ -56,7 +57,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_constants(module, True)
         or PyModule_AddIntConstant(module, "CHAR_MAX", jacpy_char_max()) < 0
         or not add_state_owned(
-            module, ERROR, "Error", jacpy_binding_exception("locale.Error", "", "")
+            module, ERROR, "Error", jacpy_binding_exception("locale.Error", NULL, "")
         )
         or not add_constants(module, False) {
         return i32(-1);
