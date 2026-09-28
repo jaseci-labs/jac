@@ -241,6 +241,10 @@ obj HostServices {
         return "";
     }
 
+    def client_stub_globals -> list[str] {
+        return [];
+    }
+
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None) {

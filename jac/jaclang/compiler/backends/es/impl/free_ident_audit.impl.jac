@@ -1,11 +1,8 @@
-import re;
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
 
 glob _AMBIENT_CACHE: set[str] = set(),
-     _RAW_DECL_RE: re.Pattern = re.compile(
-         r"\b(?:function|class|const|let|var)\s+\*?\s*([A-Za-z_$][A-Za-z0-9_$]*)"
-     );
+     _RAW_DECL_KEYWORDS: set[str] = {"function", "class", "const", "let", "var"};
 
 glob _JS_LANGUAGE_GLOBALS: set[str] = {
          "globalThis",
@@ -134,57 +131,14 @@ glob _SYNTACTIC_IDENTIFIERS: set[str] = {
          'void'
      };
 
-def _stub_names(path: str) -> set[str] {
-    import ast;
-    out: set[str] = set();
-    try {
-        with open(path, encoding="utf-8") as handle {
-            tree = ast.parse(handle.read());
-        }
-    } except Exception {
-        return out;
-    }
-
-    for node in tree.body {
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
-            out.add(node.name);
-        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
-            out.add(node.target.id);
-        } elif isinstance(node, ast.Assign) {
-            for tgt in node.targets {
-                if not isinstance(tgt, ast.Name) {
-                    continue;
-                }
-                out.add(tgt.id);
-                if tgt.id != "__all__" {
-                    continue;
-                }
-                for elt in getattr(node.value, "elts", []) {
-                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
-                        out.add(elt.value);
-                    }
-                }
-            }
-        }
-    }
-    return out;
-}
-
 impl client_ambient_globals -> set[str] {
     if _AMBIENT_CACHE {
         return _AMBIENT_CACHE;
     }
-    import os;
+    import from jaclang.compiler.frontend.host { active_host }
     names: set[str] = set(_JS_LANGUAGE_GLOBALS);
     names.update(BROWSER_SEED_GLOBALS);
-
-    import jaclang;
-    stub_dir = os.path.join(
-        os.path.dirname(str(jaclang.__file__)), "compiler", "types"
-    );
-    for stub in ("js_globals.pyi", "dom_types.pyi") {
-        names.update(_stub_names(os.path.join(stub_dir, stub)));
-    }
+    names.update(active_host().client_stub_globals());
     _AMBIENT_CACHE.update(names);
     return _AMBIENT_CACHE;
 }
@@ -197,9 +151,47 @@ def _loc_of(nd: es.Node) -> tuple[int, int] {
     return (loc.start.line, loc.start.column);
 }
 
+def _word_char(ch: str) -> bool {
+    return ch.isalnum() or ch == "_";
+}
+
+def _js_ident_char(ch: str) -> bool {
+    return ch.isalnum() or ch == "_" or ch == "$";
+}
+
 def _harvest_raw(source: str, decls: set[str]) {
-    for hit in _RAW_DECL_RE.finditer(source) {
-        decls.add(hit.group(1));
+    n = len(source);
+    i = 0;
+    while i < n {
+        if not _word_char(source[i]) {
+            i += 1;
+            continue;
+        }
+        start = i;
+        while i < n and _word_char(source[i]) {
+            i += 1;
+        }
+        if source[start:i] not in _RAW_DECL_KEYWORDS
+            or i >= n
+            or not source[i].isspace() {
+            continue;
+        }
+        while i < n and source[i].isspace() {
+            i += 1;
+        }
+        if i < n and source[i] == "*" {
+            i += 1;
+            while i < n and source[i].isspace() {
+                i += 1;
+            }
+        }
+        if i < n and _js_ident_char(source[i]) and not source[i].isdigit() {
+            name_start = i;
+            while i < n and _js_ident_char(source[i]) {
+                i += 1;
+            }
+            decls.add(source[name_start:i]);
+        }
     }
 }
 

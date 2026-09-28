@@ -643,6 +643,8 @@ def kernel_inputs_json(
     inputs = kernel_analysis_inputs(host, program, path, options, source);
     if not options.no_cgen {
         inputs.osp_core_js = host.client_osp_core_js();
+        inputs.client_stub_globals = host.client_stub_globals();
+        inputs.client_stub_globals_known = True;
     }
     return inputs.to_json();
 }

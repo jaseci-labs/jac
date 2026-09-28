@@ -37,6 +37,7 @@ obj ProjectHost(HostServices) {
     has _defaults_active: bool = False,
         _last_defaults: (ProjectDefaults | None) = None,
         _facts: dict[str, tuple[any, ProjectFacts]] = {},
+        _stub_globals: list[str] = [],
         _collect_budget: UnitCollectBudget = UnitCollectBudget(),
         _platform: (HostPlatform | None) = None;
 
@@ -96,6 +97,7 @@ obj ProjectHost(HostServices) {
     def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
+    def client_stub_globals -> list[str];
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None);
@@ -196,4 +198,40 @@ def project_defaults_of(cfg: any) -> ProjectDefaults {
         check=check_settings_of(cfg.check),
         client_framework=cfg.client.framework if cfg.client else "react"
     );
+}
+
+def client_stub_names(path: str) -> set[str] {
+    import ast;
+    out: set[str] = set();
+    try {
+        with open(path, encoding="utf-8") as handle {
+            tree = ast.parse(handle.read());
+        }
+    } except Exception {
+        return out;
+    }
+    for node in tree.body {
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
+            out.add(node.name);
+        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
+            out.add(node.target.id);
+        } elif isinstance(node, ast.Assign) {
+            for tgt in node.targets {
+                if not isinstance(tgt, ast.Name) {
+                    continue;
+                }
+                out.add(tgt.id);
+                if tgt.id != "__all__"
+                    or not isinstance(node.value, (ast.List, ast.Tuple)) {
+                    continue;
+                }
+                for elt in node.value.elts {
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
+                        out.add(elt.value);
+                    }
+                }
+            }
+        }
+    }
+    return out;
 }

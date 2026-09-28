@@ -272,6 +272,20 @@ impl ProjectHost.client_osp_core_js -> str {
     return osp_core_js();
 }
 
+impl ProjectHost.client_stub_globals -> list[str] {
+    if not self._stub_globals {
+        import os;
+        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+        stub_dir = os.path.join(jaclang_pkg_root(), "compiler", "types");
+        names: set[str] = set();
+        for stub in ("js_globals.pyi", "dom_types.pyi") {
+            names.update(client_stub_names(os.path.join(stub_dir, stub)));
+        }
+        self._stub_globals.extend(sorted(names));
+    }
+    return list(self._stub_globals);
+}
+
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
         import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }

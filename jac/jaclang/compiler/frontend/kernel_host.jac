@@ -884,6 +884,19 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def client_stub_globals -> list[str] {
+        self.census.count("client_stub_globals");
+        if self.inputs.client_stub_globals_known {
+            return list(self.inputs.client_stub_globals);
+        }
+        with self.missing("client_stub_globals", "") as host {
+            answer = host.client_stub_globals();
+        }
+        self.inputs.client_stub_globals = list(answer);
+        self.inputs.client_stub_globals_known = True;
+        return answer;
+    }
+
     def kernel_compile(
         program: JacProgram, path: str, options: CompileOptions
     ) -> (CompileReport | None) {
