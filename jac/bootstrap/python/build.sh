@@ -239,14 +239,24 @@ SETUP
                 echo "native_api.jac does not import PyInit_$module" >&2
                 exit 1
             }
-            echo "$module $flags" >> Modules/Setup.local
-            # A flag naming an archive under Modules/ is one of CPython's own
-            # make targets (the vendored HACL* libraries). makesetup only puts
-            # it on the link line: a module without a C source has no rule
-            # that depends on it, so it is built before the interpreter.
+            # A flag prefixed with an OS (linux:-lrt) applies only there.
+            selected=
             for flag in $flags; do
+                case "$flag" in
+                    *:*)
+                        [ "${flag%%:*}" = "${platform%%-*}" ] || continue
+                        flag=${flag#*:}
+                        ;;
+                esac
+                selected="$selected $flag"
+                # A flag naming an archive under Modules/ is one of CPython's
+                # own make targets (the vendored HACL* libraries). makesetup
+                # only puts it on the link line: a module without a C source
+                # has no rule that depends on it, so it is built before the
+                # interpreter.
                 case "$flag" in Modules/*.a) archives="$archives $flag" ;; esac
             done
+            echo "$module$selected" >> Modules/Setup.local
         done < "$registry"
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above

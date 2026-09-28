@@ -80,6 +80,8 @@ import from c {
         PyObject
     ];  def PyErr_Occurred -> ptr[PyObject];  def PyErr_SetFromErrno(
         arg0: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObject(
+        arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObjects(
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_SetNone(arg0: ptr[PyObject]);  def PyErr_SetObject(
@@ -597,7 +599,7 @@ import from c {
         iterable: ptr[PyObject], frozen: i64
     ) -> ptr[PyObject];  def jacpy_set_owned(
         target: ptr[PyObject], field: i64, value: ptr[PyObject]
-    ) -> i64;  def jacpy_slice_adjust(
+    ) -> i64;  def jacpy_shm_open(name: ptr, flags: i64, mode: i64) -> i64;  def jacpy_slice_adjust(
         length: i64, bounds: SliceBounds
     ) -> SliceBounds;  def jacpy_slice_unpack(value: ptr[PyObject]) -> SliceBounds;  def jacpy_source_bytes(
         handle: ptr[PyObject]

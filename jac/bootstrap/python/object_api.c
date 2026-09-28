@@ -636,10 +636,18 @@ int64_t jacpy_interpreter_finalizing(void) { return _PyInterpreterState_GetFinal
 /* sem_open(3) is variadic: the mode and initial value follow O_CREAT. A
  * fixed-arity form; arguments a call without O_CREAT passes are ignored, as
  * the C library ignores them. */
+
+/* sem_open(3) and shm_open(3) are variadic: the mode (and a semaphore's
+ * initial value) follow O_CREAT. Fixed-arity forms; arguments a call without
+ * O_CREAT passes are ignored, as the C library ignores them. */
 #include <fcntl.h>
 #include <semaphore.h>
+#include <sys/mman.h>
 void *jacpy_sem_open(const char *name, int64_t flags, int64_t mode, int64_t value) {
     return (void *)sem_open(name, (int)flags, (mode_t)mode, (unsigned int)value);
+}
+int64_t jacpy_shm_open(const void *name, int64_t flags, int64_t mode) {
+    return shm_open((const char *)name, (int)flags, (mode_t)mode);
 }
 
 /* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and

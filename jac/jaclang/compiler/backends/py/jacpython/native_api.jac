@@ -75,6 +75,7 @@ import from jaclang.runtime.python.bindings.posixsubprocess { PyInit__posixsubpr
 import from jaclang.runtime.python.bindings.uuid { PyInit__uuid }
 import from jaclang.runtime.python.bindings.lsprof { PyInit__lsprof }
 import from jaclang.runtime.python.bindings.multiprocessing { PyInit__multiprocessing }
+import from jaclang.runtime.python.bindings.posixshmem { PyInit__posixshmem }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

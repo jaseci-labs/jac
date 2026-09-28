@@ -11,7 +11,8 @@
 #   linker flags      Extra Setup.local flags for a foreign library. A path
 #                     Modules/<name>.a names an archive CPython's makefile
 #                     builds (the vendored HACL* libraries); build.sh makes
-#                     it before linking the interpreter.
+#                     it before linking the interpreter. A flag prefixed
+#                     with an OS (linux:-lrt) applies only on that OS.
 #
 # This file is the single list. build.sh writes the Setup.local *static* block
 # from it and fails when native_api.jac does not import a listed PyInit;
@@ -67,3 +68,4 @@ _posixsubprocess test.test_subprocess
 _uuid           test.test_uuid
 _lsprof         test.test_cprofile,test.test_profile
 _multiprocessing test.test_multiprocessing_spawn.test_misc
+_posixshmem     test.test_multiprocessing_spawn.test_misc   linux:-lrt

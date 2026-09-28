@@ -57,7 +57,11 @@ makesetup rule depends on the archive; `build.sh` makes every such target
 before linking the interpreter. The Jac module declares the library's
 functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
-variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`).
+variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
+code that differs between C libraries in a `<name>.<os>.jac` variant
+(`modules/semaphore_platform.darwin.jac`). A linker flag only one OS needs
+carries that OS as a prefix: glibc 2.17 keeps `shm_open` in librt, so
+`_posixshmem` lists `linux:-lrt`.
 A record or constant table that differs between the architectures of one
 system goes in `<name>.<os>.<arch>.jac`, which the native compiler prefers
 over `<name>.<arch>.jac`, `<name>.<os>.jac` and `<name>.jac`
@@ -76,6 +80,11 @@ A Jac module can also define interpreter functions under their C names: the
 atexit port defines `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini`
 as `def:pub`, which `pylifecycle.c` and `pystate.c` call. `gen_capi.jac` does
 not declare a name a JacPython source defines.
+
+`gen_clinic.jac` skips a clinic function whose `#if` needs `MS_WINDOWS`
+(`_multiprocessing.closesocket`) and lists it in the generated file's
+docstring. A module's own converter (`SEM_HANDLE_converter`) types its variable
+by the Jac converter's return type.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
@@ -98,7 +107,7 @@ only where Jac cannot express the operation:
 | C residue | Why | Where |
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
-| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
 | returning a C struct by value (`PyStatus`) | Jac definitions return scalars and pointers | the hook stays C (`_PyAtExit_Init` in `compiler_runtime.c`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |

@@ -28,3 +28,4 @@ termios,
 _posixsubprocess,
 _lsprof
 _multiprocessing
+_posixshmem
