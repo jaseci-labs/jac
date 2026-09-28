@@ -111,8 +111,8 @@ C-layout Jac structs, so fields are read directly.
 
 ## Language gaps
 
-The ports so far needed these. Gaps 1 to 3 and the import half of gap 4 are
-closed in the language; use the Jac form, not a C helper:
+The ports so far needed these. Gaps 1 to 4 are closed in the language; use
+the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
    C: `p + n` and `p - n` step n elements of T (bytes for bare `ptr` or an
@@ -127,16 +127,27 @@ closed in the language; use the Jac form, not a C helper:
    `PyUnstable_AtExit` this way; a slot read from a type (`sq_item`, a
    `visitproc`) is stored into such a field (`slot.call = int(address)`) and
    called.
-4. **Data symbols.** Importing is closed. In an `import from c` block,
+4. **Data symbols.** In an `import from c` block,
    `glob PyExc_TypeError: ptr[PyObject];` reads and writes the C variable in
    place, and a C object declared with its opaque or C-layout type,
    `glob PyLong_Type: PyObject;`, is used by address,
-   `addressof(PyLong_Type)`. Exporting is open: Jac cannot define a data
-   symbol under a fixed C name with a C layout, such as a static
-   `PyTypeObject` other C code takes the address of.
-5. **Varargs calls.**
+   `addressof(PyLong_Type)`. With an initializer the block defines the
+   symbol: `glob PyBool_Type: PyTypeObject = PyTypeObject(...);` is C-layout
+   storage exported under that name (unless `glob:priv`), built at link time
+   from C constants (literals, `ptr[u8]("text")`, `addressof(symbol)`, named
+   functions for callback fields, nested struct constructors). A
+   `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
+   `addressof(table)` is its first element.
 
-Exporting data symbols (gap 4) still blocks the object model and the evaluator.
+Still open:
+
+5. **Varargs.** Calling a variadic C function passes only the fixed
+   arguments on the C-ABI path, and Jac cannot define one (`PyErr_Format`,
+   `Py_BuildValue`).
+6. **Structs by value across an exported function.** A `def:pub` taking or
+   returning a C struct by value (`PyStatus` in the interpreter
+   initialization code) still uses Jac's own convention.
+7. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
 
 ## Object model (`Objects/`, 143k lines)
 
@@ -148,7 +159,8 @@ A Jac object model keeps these byte for byte. It needs:
 
 - C-layout structs for each layout, with interior pointers and in-place field
   writes through a pointer (gaps 1 and 2);
-- static type objects exported under their C names (gap 4);
+- static type objects exported under their C names (C data definitions,
+  gap 4);
 - slot functions exported as C function pointers in those type objects; Jac
   already emits named callbacks into C records;
 - refcounting as inline operations in Jac, since a call per `Py_INCREF` into
@@ -157,7 +169,7 @@ A Jac object model keeps these byte for byte. It needs:
   removes that boundary if Jac's LLVM and Zig's LLVM agree on the bitcode
   version.
 
-Order, once data symbols can be exported (gap 4): leaf types with little behaviour
+Order: leaf types with little behaviour
 (`cellobject.c` 212, `boolobject.c` 227, `namespaceobject.c` 332,
 `capsule.c` 366, `iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
 `rangeobject.c` 1,317), then containers (`tupleobject.c`, `listobject.c`,
