@@ -1,25 +1,31 @@
+import from _hex { to_hex }
 import from _hashlib_native {
     evp_md_for,
     digest_size_for,
     block_size_for,
-    evp_digest,
-    to_hex
+    ctx_require,
+    evp_ctx_new,
+    evp_ctx_update,
+    evp_ctx_digest,
+    evp_ctx_clone,
+    evp_ctx_free
 }
 
 
 obj:pub Hash {
-    has _md: int,
-        _chunks: list[bytes],
+    has _ctx: int,
         digest_size: int,
         block_size: int,
         name: str;
 
     def update(data: bytes) {
-        self._chunks.append(data);
+        ctx_require(self._ctx, "hash");
+        evp_ctx_update(self._ctx, data);
     }
 
     def digest -> bytes {
-        return evp_digest(self._md, self._chunks, self.digest_size);
+        ctx_require(self._ctx, "hash");
+        return evp_ctx_digest(self._ctx);
     }
 
     def hexdigest -> str {
@@ -27,29 +33,31 @@ obj:pub Hash {
     }
 
     def copy -> Hash {
-        cp: list[bytes] = [];
-        for c in self._chunks {
-            cp.append(c);
-        }
+        ctx_require(self._ctx, "hash");
         return Hash(
-            _md=self._md,
-            _chunks=cp,
+            _ctx=evp_ctx_clone(self._ctx),
             digest_size=self.digest_size,
             block_size=self.block_size,
             name=self.name
         );
     }
+
+    def drop {
+        if self._ctx != 0 {
+            evp_ctx_free(self._ctx);
+            self._ctx = 0;
+        }
+    }
 }
 
 
-def:priv new(name: str, data: bytes = b"") -> Hash {
+def:pub new(name: str, data: bytes = b"") -> Hash {
     md: int = evp_md_for(name);
     if md == 0 {
         raise ValueError("unsupported hash type " + name);
     }
     h = Hash(
-        _md=md,
-        _chunks=[],
+        _ctx=evp_ctx_new(md),
         digest_size=digest_size_for(name),
         block_size=block_size_for(name),
         name=name
@@ -89,11 +97,31 @@ def:pub sha512(data: bytes = b"") -> Hash {
 }
 
 
+def:pub sha3_224(data: bytes = b"") -> Hash {
+    return new("sha3_224", data);
+}
+
+
 def:pub sha3_256(data: bytes = b"") -> Hash {
     return new("sha3_256", data);
 }
 
 
+def:pub sha3_384(data: bytes = b"") -> Hash {
+    return new("sha3_384", data);
+}
+
+
 def:pub sha3_512(data: bytes = b"") -> Hash {
     return new("sha3_512", data);
+}
+
+
+def:pub blake2b(data: bytes = b"") -> Hash {
+    return new("blake2b", data);
+}
+
+
+def:pub blake2s(data: bytes = b"") -> Hash {
+    return new("blake2s", data);
 }
