@@ -274,3 +274,27 @@ def not_symbol(v: i32) -> ptr[i32] { return addressof(v); }
 ''';
     assert checker_codes(code) == ["E1153", "E1153", "E1153", "E1154"];
 }
+
+test "C data symbols imported from another module stay C variables" {
+    decls = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    def cp_global_read -> i32;
+    glob cp_global_count: i32, cp_global_origin: CpVec3, cp_global_origin_ref: ptr[CpVec3];
+}
+''';
+    user = '''import from cdecls {
+    cp_global_count, cp_global_origin, cp_global_origin_ref, cp_global_read
+}
+with entry {
+    cp_global_count += i32(5);
+    print("imported", cp_global_read(), cp_global_count);
+    print("imported object", addressof(cp_global_origin) == cp_global_origin_ref);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, decls, "cdecls.jac");
+        out = assert_native_identity(stage_source(directory, user, "user.jac"));
+    }
+    assert "imported 12 12" in out.splitlines() , out;
+    assert "imported object True" in out.splitlines() , out;
+}

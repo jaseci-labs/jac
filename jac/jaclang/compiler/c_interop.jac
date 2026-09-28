@@ -6,7 +6,9 @@ import from jaclang.compiler.frontend.unitree {
     Expr,
     GlobalVars,
     Import,
+    Symbol,
     UnaryExpr,
+    resolved_decl_of,
     UniNode
 }
 
@@ -292,4 +294,8 @@ def clib_global_assignment(decl: (UniNode | None)) -> (Assignment | None) {
         return None;
     }
     return assign if clib_import_of(assign.parent) is not None else None;
+}
+
+def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
+    return clib_global_assignment(resolved_decl_of(sym)) if sym is not None else None;
 }

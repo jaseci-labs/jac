@@ -1,7 +1,7 @@
 import from jaclang.compiler.c_interop {
     c_builtin_kind,
     c_type_arg,
-    clib_global_assignment,
+    clib_global_of_symbol,
     is_builtin_addressof_call,
     foreign_read_copies,
     foreign_struct_of_type,
@@ -736,9 +736,7 @@ impl NaIRGenPass._clib_global_of(
     if c_global is None or nd.sym_name in self.local_vars {
         return None;
     }
-    decl = nd.sym.decl if nd.sym is not None else None;
-    assign = decl.find_parent_of_type(uni.Assignment) if decl is not None else None;
-    if assign is not None and clib_global_assignment(assign) is None {
+    if clib_global_of_symbol(nd.sym) is None {
         return None;
     }
     return c_global;

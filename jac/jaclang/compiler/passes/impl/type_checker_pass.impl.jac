@@ -2451,15 +2451,13 @@ impl TypeCheckPass._check_c_global_decl(assign: Assignment) -> None {
 
 impl TypeCheckPass._check_c_global_use(nd: Name) -> None {
     import from jaclang.compiler.c_interop {
-        clib_global_assignment,
-        clib_import_of,
+        clib_global_of_symbol,
         foreign_struct_of_type,
         is_builtin_addressof_call
     }
-    sym = nd.sym;
-    assign = clib_global_assignment(sym.decl) if sym is not None else None;
+    assign = clib_global_of_symbol(nd.sym);
     if assign is None
-        or clib_import_of(nd) is not None
+        or nd.find_parent_of_type(Import) is not None
         or is_builtin_addressof_call(nd.parent) {
         return;
     }
@@ -2502,7 +2500,7 @@ impl TypeCheckPass._foreign_struct_contains(
 impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
         c_type_arg,
-        clib_global_assignment,
+        clib_global_of_symbol,
         is_builtin_addressof_call,
         is_builtin_pin_call,
         is_ptr_type,
@@ -2518,9 +2516,7 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     if is_builtin_addressof_call(nd) {
         args = list(nd.params or []);
         target = args[0] if len(args) == 1 else None;
-        if not isinstance(target, Name)
-            or target.sym is None
-            or clib_global_assignment(target.sym.decl) is None {
+        if not isinstance(target, Name) or clib_global_of_symbol(target.sym) is None {
             self.ctx.emit(
                 E1154,
                 node_override=nd,

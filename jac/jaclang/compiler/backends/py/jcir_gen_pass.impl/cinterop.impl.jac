@@ -315,13 +315,11 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
 
 impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
     import from jaclang.compiler.c_interop {
-        clib_global_assignment,
-        clib_import_of,
+        clib_global_of_symbol,
         is_builtin_addressof_call
     }
-    if nd.sym is None
-        or clib_global_assignment(nd.sym.decl) is None
-        or clib_import_of(nd) is not None {
+    if clib_global_of_symbol(nd.sym) is None
+        or nd.find_parent_of_type(Import) is not None {
         return False;
     }
     return not is_builtin_addressof_call(nd.parent);
