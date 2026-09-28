@@ -1,4 +1,5 @@
 import from jaclang.compiler.c_interop {
+    c_array_elem,
     c_builtin_kind,
     c_scalar_constant,
     c_string_literal,
@@ -724,7 +725,14 @@ impl NaIRGenPass._declare_clib_global(
     ctype = self._c_decl_type_of(assign.type_tag.tag) if assign.type_tag else None;
     sname = self._foreign_struct_name_of_type(ctype);
     llt = self._c_scalar_llvm(ctype);
-    if llt is None {
+    elem = c_array_elem(ctype);
+    elem_info = self._c_elem_info(elem) if elem is not None else None;
+    if elem_info is not None {
+        count = len(assign.value.values)
+            if isinstance(assign.value, uni.ListVal) and owner is self.module
+            else 0;
+        llt = ir.ArrayType(elem_info[0], count);
+    } elif llt is None {
         llt = self.struct_types[sname] if sname is not None else ir.IntType(8);
     }
     gv = self.llvm_module.globals.get(name);
@@ -798,6 +806,23 @@ impl NaIRGenPass._c_const_init(
     }
     if isinstance(expr, uni.Null) {
         return ir.Constant(llt, None);
+    }
+    elem = c_array_elem(ctype);
+    if elem is not None and isinstance(llt, ir.ArrayType) {
+        if not isinstance(expr, uni.ListVal) {
+            return None;
+        }
+        items: list[ir.Constant] = [];
+        for item in expr.values {
+            value = self._c_const_init(item, elem, llt.element)
+                if isinstance(item, uni.Expr)
+                else None;
+            if value is None {
+                return None;
+            }
+            items.append(value);
+        }
+        return ir.Constant(llt, items);
     }
     sname = self._foreign_struct_name_of_type(ctype);
     if sname is not None {

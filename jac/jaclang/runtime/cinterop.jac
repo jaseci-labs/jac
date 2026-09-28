@@ -665,6 +665,7 @@ class CGlobal {
         self._scope = scope;
         self._slot: any = None;
         self._init: any = None;
+        self._keep: any = None;
     }
 
     def define(self: CGlobal, initializer: any) {
@@ -684,6 +685,8 @@ class CGlobal {
                 ctype = _SCALAR_CTYPES[self._spec[1]];
             } elif kind == "struct" {
                 ctype = _resolve_elem(self._spec, self._scope);
+            } elif kind == "array" {
+                ctype = _field_ctype(self._spec[1], self._scope) * 1;
             }
             self._slot = ctype.in_dll(self._lib, self._name);
         }
@@ -694,6 +697,14 @@ class CGlobal {
         kind = self._spec[0];
         if kind == "struct" {
             return value;
+        }
+        if kind == "array" {
+            self._keep = value;
+            elem = _field_ctype(self._spec[1], self._scope);
+            items = [
+                item._addr if isinstance(item, JacPtr) else item for item in value
+            ];
+            return (elem * len(items))(*items);
         }
         if kind == "ptr" {
             return ctypes.c_void_p(value._addr if isinstance(value, JacPtr) else value);
@@ -729,7 +740,8 @@ class CGlobal {
     }
 
     def address(self: CGlobal) -> JacPtr {
-        elem = JacPtr[_resolve_elem(self._spec, self._scope)];
+        target = self._spec[1] if self._spec[0] == "array" else self._spec;
+        elem = JacPtr[_resolve_elem(target, self._scope)];
         return _make_ptr(elem, ctypes.addressof(self._cell()));
     }
 }

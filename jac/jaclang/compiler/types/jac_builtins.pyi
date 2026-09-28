@@ -226,7 +226,11 @@ class Pinned(Generic[_PinT]):
 
 def pin(value: _PinT) -> Pinned[_PinT]: ...
 
-# The address of a C data symbol (`glob name: T;` in a C library import).
+# The address of a C data symbol (`glob name: T;` in a C library import); a
+# C array symbol (`list[T]`) yields the address of its first element.
+@overload
+def addressof(symbol: list[_PinT]) -> ptr[_PinT]: ...
+@overload
 def addressof(symbol: _PinT) -> ptr[_PinT]: ...
 
 class EdgeDir:

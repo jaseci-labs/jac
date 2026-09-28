@@ -142,7 +142,8 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "global address 40",
         "global flag False",
         "defined 18 6 5.0",
-        "defined scalar 100 5"
+        "defined scalar 100 5",
+        "defined array 16.0 10.0 24"
     ];
     lines = out.splitlines();
     for line in expected {

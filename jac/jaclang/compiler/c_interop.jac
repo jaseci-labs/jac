@@ -156,31 +156,41 @@ def foreign_read_copies(nd: (UniNode | None)) -> bool {
         and not foreign_read_is_place(nd);
 }
 
-def _ambient_c_call_result(call: (UniNode | None), name: str) -> (TypeBase | None) {
+def _ambient_c_call_returns(
+    call: (UniNode | None), name: str
+) -> list[(TypeBase | None)] {
     import from jaclang.compiler.frontend.unitree { FuncCall, Name }
     if not isinstance(call, FuncCall)
         or not isinstance(call.target, Name)
         or call.target.value != name {
-        return None;
+        return [];
     }
-    import from jaclang.compiler.types.types { FunctionType }
+    import from jaclang.compiler.types.types { FunctionType, OverloadedType }
     tgt = call.target;
     decl = tgt.sym.decl if tgt.sym is not None else None;
     if decl is not None
         and decl.loc is not None
         and str(decl.loc.mod_path).endswith(".jac") {
-        return None;
+        return [];
     }
     fn_type = tgt.type;
-    return fn_type.return_type if isinstance(fn_type, FunctionType) else None;
+    if isinstance(fn_type, FunctionType) {
+        return [fn_type.return_type];
+    }
+    if isinstance(fn_type, OverloadedType) {
+        return [o.return_type for o in fn_type.overloads];
+    }
+    return [];
 }
 
 def is_builtin_pin_call(call: (UniNode | None)) -> bool {
-    return is_pinned_type(_ambient_c_call_result(call, "pin"));
+    returns = _ambient_c_call_returns(call, "pin");
+    return bool(returns) and all(is_pinned_type(r) for r in returns);
 }
 
 def is_builtin_addressof_call(call: (UniNode | None)) -> bool {
-    return is_ptr_type(_ambient_c_call_result(call, "addressof"));
+    returns = _ambient_c_call_returns(call, "addressof");
+    return bool(returns) and all(is_ptr_type(r) for r in returns);
 }
 
 def is_c_value_type(t: (TypeBase | None)) -> bool {
@@ -226,6 +236,10 @@ def c_type_spec(
         ];
     }
     if isinstance(t, ClassType) and t._shared is not None {
+        elem = c_array_elem(t);
+        if elem is not None {
+            return ["array", c_type_spec(elem, None)];
+        }
         kind = c_builtin_kind(t);
         if kind == "ptr" {
             arg = c_type_arg(t);
@@ -324,4 +338,13 @@ def c_scalar_constant(expr: (UniNode | None)) -> tuple[bool, any] {
         return c_scalar_constant((expr.params or [])[0]);
     }
     return fold_const(expr);
+}
+
+def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None) {
+    cls = _class_of(t);
+    if cls is None or cls._shared is None or not cls.is_builtin("list") {
+        return None;
+    }
+    args = cls.private.type_args if cls.private else None;
+    return args[0] if args else None;
 }

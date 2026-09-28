@@ -66,7 +66,12 @@ import from "CLIB_POINTERS_LIBRARY" {
              label=ptr[u8]("recipe"),
              origin=addressof(cp_jac_origin)
          ),
-         cp_jac_limit: i64 = 99;
+         cp_jac_limit: i64 = 99,
+         cp_jac_points: list[CpVec3] = [
+             CpVec3(x=f32(1.0), y=f32(2.0), z=f32(3.0)),
+             CpVec3(x=f32(10.0))
+         ],
+         cp_jac_bytes: list[u8] = [u8(7), u8(8), u8(9)];
 }
 
 obj Session {
@@ -291,6 +296,13 @@ def definitions_demo {
     );
     cp_jac_limit += 1;
     print("defined scalar", cp_jac_limit, cp_label_len(ptr[u8]("hello")));
+    points = addressof(cp_jac_points);
+    print(
+        "defined array",
+        cp_points_sum(points, i32(2)),
+        (points + 1).view(1)[0].x,
+        cp_buffer_sum(addressof(cp_jac_bytes), i32(3))
+    );
 }
 
 """A struct holding a pointer that C fills in."""

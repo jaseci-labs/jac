@@ -2428,10 +2428,23 @@ impl TypeCheckPass._check_c_global_decl(assign: Assignment) -> None {
     if not isinstance(target, Name) {
         return;
     }
+    import from jaclang.compiler.c_interop { c_array_elem }
     tag = assign.type_tag.tag if assign.type_tag else None;
     ctype = self._c_instance_of(tag);
     opaque = self._opaque_member(ctype);
-    if not self._c_plain_data(ctype) and opaque is None {
+    elem = c_array_elem(ctype);
+    if elem is not None {
+        elem_type = self.evaluator._convert_to_instance(elem);
+        if not self._c_plain_data(elem_type) {
+            self.ctx.emit(
+                E1153,
+                node_override=assign,
+                name=target.sym_name,
+                reason=f"is an array of {elem_type}, which is not C data"
+            );
+            return;
+        }
+    } elif not self._c_plain_data(ctype) and opaque is None {
         self.ctx.emit(
             E1153,
             node_override=assign,
@@ -2464,6 +2477,7 @@ impl TypeCheckPass._c_const_problem(
     expr: Expr, ctype: (TypeBase | None)
 ) -> (str | None) {
     import from jaclang.compiler.c_interop {
+        c_array_elem,
         c_scalar_constant,
         c_string_literal,
         foreign_struct_of_type,
@@ -2474,6 +2488,20 @@ impl TypeCheckPass._c_const_problem(
         expr = expr.value;
     }
     if isinstance(expr, Null) {
+        return None;
+    }
+    elem = c_array_elem(ctype);
+    if elem is not None {
+        if not isinstance(expr, ListVal) {
+            return "initializes a C array with something other than a list literal";
+        }
+        elem_type = self.evaluator._convert_to_instance(elem);
+        for item in expr.values {
+            if isinstance(item, Expr)
+                and (problem := self._c_const_problem(item, elem_type)) is not None {
+                return problem;
+            }
+        }
         return None;
     }
     arch = foreign_struct_of_type(ctype);
