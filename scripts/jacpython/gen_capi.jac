@@ -56,7 +56,8 @@ glob OPAQUE: list[str] = [
          "PyModuleDef",
          "PyType_Spec",
          "PyCompilerFlags",
-         "PyBytesWriter"
+         "PyBytesWriter",
+         "_Py_freelists"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -205,8 +206,10 @@ glob OPAQUE: list[str] = [
      },
      # Pointer parameters that take memory the caller holds as a raw address
      # (a HACL* digest buffer, a Py_buffer, a path read after fork(), an
-     # optional out-flag passed as NULL), not a Jac value; they take `ptr`.
+     # optional out-flag passed as NULL, a keyword-name array defined as C
+     # data), not a Jac value; they take `ptr`.
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
+         "PyArg_ParseTupleAndKeywords": {3},
          "_Py_strhex": {0},
          "_PyBytes_Find": {0, 2},
          "_PyBytes_ReverseFind": {0, 2},
