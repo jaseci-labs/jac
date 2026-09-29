@@ -112,6 +112,17 @@ def object_error(kind: ptr[PyObject], message: str) {
     jacpy_set_exception(kind, message, i64(len(message.encode("utf-8"))));
 }
 
+# `value` converted to a C int as a C cast does: its low 32 bits, read as a
+# signed number. A Jac narrowing `i32(value)` traps on an out-of-range value
+# instead; ports use this where the C code they replace truncates.
+def c_int(value: int) -> i32 {
+    bits = value & 0xFFFFFFFF;
+    if bits >= 0x80000000 {
+        bits -= 0x100000000;
+    }
+    return i32(bits);
+}
+
 # The byte at `address + offset` of C memory.
 def memory_byte(address: ptr, offset: i64) -> i64 {
     return i64(ptr[u8](int(address) + int(offset)).view(1)[0]);

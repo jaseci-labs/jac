@@ -125,6 +125,7 @@ import from jaclang.runtime.python.modules.socket_core {
     set_error,
     set_gaierror,
     set_herror,
+    sock_cloexec_works,
     socket_error,
     socket_parse_timeout,
     socket_state,
@@ -187,9 +188,7 @@ import from c {
     ) -> ptr[u8];
     # Serializes the non-reentrant netdb lookups where the C library has no
     # gethostbyname_r(); process-wide, as the C module's netdb_lock is.
-    glob netdb_lock: ptr = ptr();
-    # socket_core's flag of the kernel's SOCK_CLOEXEC support.
-    glob sock_cloexec_works: i32; glob:priv getaddrinfo_keywords: list[ptr[u8]] = [
+    glob netdb_lock: ptr = ptr(); glob:priv getaddrinfo_keywords: list[ptr[u8]] = [
              ptr[u8]("host"),
              ptr[u8]("port"),
              ptr[u8]("family"),
