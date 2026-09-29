@@ -135,6 +135,40 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
     return out;
 }
 
+glob NON_DISPATCHED_METHODS: frozenset[str] = frozenset(
+         {"init", "postinit", "__init__", "__post_init__"}
+     );
+
+def open_dispatch(arch: Archetype) -> bool {
+    """Can a module this one never sees override a method dispatched through it?
+
+    Layout is decided per module, and a subclass in an importing module is
+    invisible here. A class other modules can name, whose own body declares a
+    method or accessor a subclass may override, must carry a vtable so a call
+    through a reference typed as this class reaches the override wherever it
+    was declared; without one the call binds to this class's body. A private
+    class cannot be named, so cannot be subclassed, outside its module, whose
+    registry is therefore complete for it. A foreign (C-layout) struct is
+    plain data, and constructors, static and class methods never dispatch
+    through an instance.
+    """;
+    import from jaclang.compiler.frontend.constant { SymbolAccess }
+    import from jaclang.compiler.c_interop { is_clib_archetype }
+    if arch.access_type == SymbolAccess.PRIVATE or is_clib_archetype(arch) {
+        return False;
+    }
+    for method in arch.get_methods() {
+        mname = method.name_ref.sym_name if method.name_ref else None;
+        if mname is not None
+            and mname not in NON_DISPATCHED_METHODS
+            and not method.is_static
+            and not method.is_classmethod {
+            return True;
+        }
+    }
+    return bool(archetype_accessors(arch));
+}
+
 def get_layout_registry(module: Module, prog: JacProgram) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
