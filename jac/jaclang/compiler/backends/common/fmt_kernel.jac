@@ -543,3 +543,136 @@ def jac_bytes_fromhex(text: str) -> bytes {
     }
     return bytes(out);
 }
+
+def _jac_bytes_is_space(v: int) -> bool {
+    return v == 32 or (v >= 9 and v <= 13);
+}
+
+def jac_bytes_upper(data: bytes) -> bytes {
+    out = bytearray();
+    for v in data {
+        out.append(v - 32 if v >= 97 and v <= 122 else v);
+    }
+    return bytes(out);
+}
+
+def jac_bytes_lower(data: bytes) -> bytes {
+    out = bytearray();
+    for v in data {
+        out.append(v + 32 if v >= 65 and v <= 90 else v);
+    }
+    return bytes(out);
+}
+
+def jac_bytes_strip(data: bytes, chars: bytes, has_chars: bool, which: int) -> bytes {
+    start = 0;
+    end = len(data);
+    if which != 2 {
+        while start < end
+            and (
+                data[start] in chars if has_chars else _jac_bytes_is_space(data[start])
+            ) {
+            start += 1;
+        }
+    }
+    if which != 1 {
+        while end > start
+            and (
+                data[end - 1] in chars
+                    if has_chars
+                    else _jac_bytes_is_space(data[end - 1])
+            ) {
+            end -= 1;
+        }
+    }
+    return data[start:end];
+}
+
+def _jac_bytes_split_ws(data: bytes, maxsplit: int) -> list[bytes] {
+    parts: list[bytes] = [];
+    n = len(data);
+    i = 0;
+    while i < n {
+        while i < n and _jac_bytes_is_space(data[i]) {
+            i += 1;
+        }
+        if i >= n {
+            break;
+        }
+        if maxsplit >= 0 and len(parts) == maxsplit {
+            parts.append(data[i:]);
+            break;
+        }
+        j = i;
+        while j < n and not _jac_bytes_is_space(data[j]) {
+            j += 1;
+        }
+        parts.append(data[i:j]);
+        i = j;
+    }
+    return parts;
+}
+
+def jac_bytes_split(
+    data: bytes, sep: bytes, has_sep: bool, maxsplit: int
+) -> list[bytes] {
+    if not has_sep {
+        return _jac_bytes_split_ws(data, maxsplit);
+    }
+    if len(sep) == 0 {
+        raise ValueError("empty separator");
+    }
+    parts: list[bytes] = [];
+    start = 0;
+    at = data.find(sep, start);
+    while at >= 0 and (maxsplit < 0 or len(parts) < maxsplit) {
+        parts.append(data[start:at]);
+        start = at + len(sep);
+        at = data.find(sep, start);
+    }
+    parts.append(data[start:]);
+    return parts;
+}
+
+def jac_bytes_replace(data: bytes, old: bytes, new: bytes, count: int) -> bytes {
+    out = bytearray();
+    done = 0;
+    if len(old) == 0 {
+        i = 0;
+        while i <= len(data) {
+            if count < 0 or done < count {
+                out.extend(new);
+                done += 1;
+            }
+            if i < len(data) {
+                out.append(data[i]);
+            }
+            i += 1;
+        }
+        return bytes(out);
+    }
+    start = 0;
+    at = data.find(old, start);
+    while at >= 0 and (count < 0 or done < count) {
+        out.extend(data[start:at]);
+        out.extend(new);
+        done += 1;
+        start = at + len(old);
+        at = data.find(old, start);
+    }
+    out.extend(data[start:]);
+    return bytes(out);
+}
+
+def jac_bytes_join(sep: bytes, parts: list[bytes]) -> bytes {
+    out = bytearray();
+    first = True;
+    for part in parts {
+        if not first {
+            out.extend(sep);
+        }
+        out.extend(part);
+        first = False;
+    }
+    return bytes(out);
+}
