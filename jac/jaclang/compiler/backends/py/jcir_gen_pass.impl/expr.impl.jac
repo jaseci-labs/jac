@@ -613,7 +613,11 @@ impl JcirGenPass._flush_text_run(merged: list[CgNode], run: list[str]) -> None {
 
 impl JcirGenPass._flush_byte_run(merged: list[CgNode], run: list[bytes]) -> None {
     if run {
-        merged.append(self.const_of(b"".join(run)));
+        joined = bytearray();
+        for chunk in run {
+            joined.extend(chunk);
+        }
+        merged.append(self.const_of(bytes(joined)));
         run.clear();
     }
 }

@@ -283,6 +283,12 @@ obj CgNode(CgItem) {
         value: list[any] = self.get(key);
         return value;
     }
+
+    def push(key: str, item: any) {
+        value = self.items(key);
+        value.append(item);
+        self.setf(key, value);
+    }
 }
 
 obj PlacePath {

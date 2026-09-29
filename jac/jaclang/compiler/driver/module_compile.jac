@@ -8,7 +8,7 @@ import from jaclang.compiler.driver.pipeline_types {
 }
 import from jaclang.compiler.driver.pipeline {
     _codegen_sched_loading,
-    codegen_backend,
+    codegen_backend_passes,
     product_ready,
     providers_of_product,
     register_product_schedule,
@@ -288,13 +288,11 @@ def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
         );
     }
     from_pass: type = JcirGenPass;
-    schedule: PassSchedule = [];
-    native = native_codegen();
-    if native is not None {
-        schedule.extend(native());
-    }
-    for step in schedule {
-        from_pass = step;
+    schedule = native_codegen();
+    if schedule is not None {
+        for step in schedule {
+            from_pass = step;
+        }
     }
     deliver_alerts(
         [
@@ -386,8 +384,8 @@ def native_schedule_failure -> str {
     return _native_sched_failure[0] if _native_sched_failure else "";
 }
 
-def native_codegen -> (Callable[[], PassSchedule] | None) {
-    found = codegen_backend("native");
+def native_codegen -> (PassSchedule | None) {
+    found = codegen_backend_passes("native");
     if found is not None {
         return found;
     }
@@ -398,7 +396,7 @@ def native_codegen -> (Callable[[], PassSchedule] | None) {
         _note_native_schedule_failure(f"{type(e).__name__}: {e}");
         return None;
     }
-    return codegen_backend("native");
+    return codegen_backend_passes("native");
 }
 
 def get_bootstrap_code_gen -> PassSchedule {
@@ -423,7 +421,9 @@ def get_py_code_gen(
         if native {
             schedule = native_codegen();
             if schedule is not None {
-                passes.extend(schedule());
+                for step in schedule {
+                    passes.append(step);
+                }
                 _note_native_schedule_failure("");
             }
         }

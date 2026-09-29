@@ -118,8 +118,8 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
         slice_call = self.call_node(
             self.name_load('slice'), [start_ast, stop_ast, step_ast], []
         );
-        target_py.get('keywords').append(
-            self.nod('keyword', ['arg', 'value'], ['slc', slice_call])
+        target_py.push(
+            'keywords', self.nod('keyword', ['arg', 'value'], ['slc', slice_call])
         );
         self.set_out(here, [target_py]);
     } else {

@@ -103,8 +103,12 @@ def register_codegen_backend(name: str, schedule: Callable[[], PassSchedule]) {
     _CODEGEN_BACKENDS[name] = schedule;
 }
 
-def codegen_backend(name: str) -> (Callable[[], PassSchedule] | None) {
-    return _CODEGEN_BACKENDS.get(name);
+def codegen_backend_passes(name: str) -> (PassSchedule | None) {
+    registered = _CODEGEN_BACKENDS.get(name);
+    if registered is not None {
+        return registered();
+    }
+    return None;
 }
 
 def product_pipeline(product: CompilationProduct) -> PassSchedule {

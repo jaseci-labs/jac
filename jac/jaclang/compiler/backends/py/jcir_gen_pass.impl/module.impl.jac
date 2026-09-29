@@ -381,11 +381,13 @@ impl JcirGenPass.exit_test with Test exit {
             )
         );
     }
-    func.get('decorator_list').append(
+    func.push(
+        'decorator_list',
         self.call_node(self.jaclib_obj('jac_test'), [], jac_test_keywords)
     );
     if jcir_is_test_path(here.loc.mod_path) {
-        func.get('decorator_list').append(
+        func.push(
+            'decorator_list',
             self.call_node(
                 self.jaclib_obj('impl_patch_filename'),
                 [],
