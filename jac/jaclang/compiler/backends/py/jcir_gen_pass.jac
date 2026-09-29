@@ -285,6 +285,13 @@ obj CgNode(CgItem) {
     }
 }
 
+obj PlacePath {
+    has kind: str,
+        name: str = "",
+        target: (CgNode | None) = None,
+        key: (CgNode | None) = None;
+}
+
 obj CgSplice(CgItem) {
     has src: str,
         offset: int = 0,
@@ -641,10 +648,11 @@ walker JcirGenPass(TreePass) {
     can exit_atom_trailer with AtomTrailer exit;
     can exit_atom_unit with AtomUnit exit;
     can exit_func_call with FuncCall exit;
-    def _place_parts(arg: UniNode) -> (tuple[str, any, any] | None);
+    def _place_parts(arg: UniNode) -> (PlacePath | None);
     def _name_take_expr(owner: str) -> CgNode;
     def _name_swap_expr(store_id: str, value: CgNode) -> CgNode;
     def _lower_take(nd: FuncCall) -> (CgNode | None);
+    def _second_of_pair(first: CgNode) -> CgNode;
     def _lower_swap(nd: FuncCall) -> (CgNode | None);
     def _exit_func_call_impl(nd: FuncCall) -> None;
     def _fold_sorted_traversal(nd: FuncCall) -> bool;
