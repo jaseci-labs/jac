@@ -7,7 +7,22 @@
 #endif
 #include "Python.h"
 #include "internal/pycore_long.h"
+#include "internal/pycore_abstract.h"
+#include "internal/pycore_freelist_state.h"
+#include "internal/pycore_range.h"
 #include <stddef.h>
+
+/* The private object structs of the ported Objects/ files, as the
+ * pinned sources define them. */
+typedef struct { PyObject_HEAD PyObject *ns_dict; } _PyNamespaceObject;
+typedef struct { PyObject_HEAD void *pointer; const char *name; void *context; PyCapsule_Destructor destructor; traverseproc traverse_func; inquiry clear_func; } PyCapsule;
+typedef struct { PyObject_HEAD Py_ssize_t it_index; PyObject *it_seq; } seqiterobject;
+typedef struct { PyObject_HEAD PyObject *it_callable; PyObject *it_sentinel; } calliterobject;
+typedef struct { PyObject_HEAD PyObject *wrapped; PyObject *default_value; } anextawaitableobject;
+typedef struct { PyObject_HEAD Py_ssize_t en_index; PyObject* en_sit; PyObject* en_result; PyObject* en_longindex; PyObject* one; } enumobject;
+typedef struct { PyObject_HEAD Py_ssize_t index; PyObject* seq; } reversedobject;
+typedef struct { PyObject_HEAD PyObject *start; PyObject *stop; PyObject *step; PyObject *length; } rangeobject;
+typedef struct { PyObject_HEAD PyObject *start; PyObject *step; PyObject *len; } longrangeiterobject;
 
 #define FIELD(type, field, offset, size) \
     _Static_assert(offsetof(type, field) == (offset), #type "." #field " offset"); \
@@ -268,9 +283,210 @@ KIND(PyStatus, exitcode, 1);
 SIGNED(PyStatus, exitcode, 1);
 LAYOUT(PyStatus, 32, 8);
 
+/* PyAsyncMethods */
+FIELD(PyAsyncMethods, am_await, 0, 8);
+KIND(PyAsyncMethods, am_await, 5);
+FIELD(PyAsyncMethods, am_aiter, 8, 8);
+KIND(PyAsyncMethods, am_aiter, 5);
+FIELD(PyAsyncMethods, am_anext, 16, 8);
+KIND(PyAsyncMethods, am_anext, 5);
+FIELD(PyAsyncMethods, am_send, 24, 8);
+KIND(PyAsyncMethods, am_send, 5);
+LAYOUT(PyAsyncMethods, 32, 8);
+
+/* PySequenceMethods */
+FIELD(PySequenceMethods, sq_length, 0, 8);
+KIND(PySequenceMethods, sq_length, 5);
+FIELD(PySequenceMethods, sq_concat, 8, 8);
+KIND(PySequenceMethods, sq_concat, 5);
+FIELD(PySequenceMethods, sq_repeat, 16, 8);
+KIND(PySequenceMethods, sq_repeat, 5);
+FIELD(PySequenceMethods, sq_item, 24, 8);
+KIND(PySequenceMethods, sq_item, 5);
+FIELD(PySequenceMethods, was_sq_slice, 32, 8);
+KIND(PySequenceMethods, was_sq_slice, 5);
+FIELD(PySequenceMethods, sq_ass_item, 40, 8);
+KIND(PySequenceMethods, sq_ass_item, 5);
+FIELD(PySequenceMethods, was_sq_ass_slice, 48, 8);
+KIND(PySequenceMethods, was_sq_ass_slice, 5);
+FIELD(PySequenceMethods, sq_contains, 56, 8);
+KIND(PySequenceMethods, sq_contains, 5);
+FIELD(PySequenceMethods, sq_inplace_concat, 64, 8);
+KIND(PySequenceMethods, sq_inplace_concat, 5);
+FIELD(PySequenceMethods, sq_inplace_repeat, 72, 8);
+KIND(PySequenceMethods, sq_inplace_repeat, 5);
+LAYOUT(PySequenceMethods, 80, 8);
+
+/* PyMappingMethods */
+FIELD(PyMappingMethods, mp_length, 0, 8);
+KIND(PyMappingMethods, mp_length, 5);
+FIELD(PyMappingMethods, mp_subscript, 8, 8);
+KIND(PyMappingMethods, mp_subscript, 5);
+FIELD(PyMappingMethods, mp_ass_subscript, 16, 8);
+KIND(PyMappingMethods, mp_ass_subscript, 5);
+LAYOUT(PyMappingMethods, 24, 8);
+
+/* PyGetSetDef */
+FIELD(PyGetSetDef, name, 0, 8);
+KIND(PyGetSetDef, name, 5);
+FIELD(PyGetSetDef, get, 8, 8);
+KIND(PyGetSetDef, get, 5);
+FIELD(PyGetSetDef, set, 16, 8);
+KIND(PyGetSetDef, set, 5);
+FIELD(PyGetSetDef, doc, 24, 8);
+KIND(PyGetSetDef, doc, 5);
+FIELD(PyGetSetDef, closure, 32, 8);
+KIND(PyGetSetDef, closure, 5);
+LAYOUT(PyGetSetDef, 40, 8);
+
+/* PyCellObject */
+FIELD(PyCellObject, ob_base, 0, 16);
+KIND(PyCellObject, ob_base, 12);
+FIELD(PyCellObject, ob_ref, 16, 8);
+KIND(PyCellObject, ob_ref, 5);
+LAYOUT(PyCellObject, 24, 8);
+
+/* PySliceObject */
+FIELD(PySliceObject, ob_base, 0, 16);
+KIND(PySliceObject, ob_base, 12);
+FIELD(PySliceObject, start, 16, 8);
+KIND(PySliceObject, start, 5);
+FIELD(PySliceObject, stop, 24, 8);
+KIND(PySliceObject, stop, 5);
+FIELD(PySliceObject, step, 32, 8);
+KIND(PySliceObject, step, 5);
+LAYOUT(PySliceObject, 40, 8);
+
+/* _PyRangeIterObject */
+FIELD(_PyRangeIterObject, ob_base, 0, 16);
+KIND(_PyRangeIterObject, ob_base, 12);
+FIELD(_PyRangeIterObject, start, 16, 8);
+KIND(_PyRangeIterObject, start, 1);
+SIGNED(_PyRangeIterObject, start, 1);
+FIELD(_PyRangeIterObject, step, 24, 8);
+KIND(_PyRangeIterObject, step, 1);
+SIGNED(_PyRangeIterObject, step, 1);
+FIELD(_PyRangeIterObject, len, 32, 8);
+KIND(_PyRangeIterObject, len, 1);
+SIGNED(_PyRangeIterObject, len, 1);
+LAYOUT(_PyRangeIterObject, 40, 8);
+
+/* _Py_freelist */
+FIELD(struct _Py_freelist, freelist, 0, 8);
+KIND(struct _Py_freelist, freelist, 5);
+FIELD(struct _Py_freelist, size, 8, 8);
+KIND(struct _Py_freelist, size, 1);
+SIGNED(struct _Py_freelist, size, 1);
+LAYOUT(struct _Py_freelist, 16, 8);
+
+/* _PyNamespaceObject */
+FIELD(_PyNamespaceObject, ob_base, 0, 16);
+KIND(_PyNamespaceObject, ob_base, 12);
+FIELD(_PyNamespaceObject, ns_dict, 16, 8);
+KIND(_PyNamespaceObject, ns_dict, 5);
+LAYOUT(_PyNamespaceObject, 24, 8);
+
+/* PyCapsule */
+FIELD(PyCapsule, ob_base, 0, 16);
+KIND(PyCapsule, ob_base, 12);
+FIELD(PyCapsule, pointer, 16, 8);
+KIND(PyCapsule, pointer, 5);
+FIELD(PyCapsule, name, 24, 8);
+KIND(PyCapsule, name, 5);
+FIELD(PyCapsule, context, 32, 8);
+KIND(PyCapsule, context, 5);
+FIELD(PyCapsule, destructor, 40, 8);
+KIND(PyCapsule, destructor, 5);
+FIELD(PyCapsule, traverse_func, 48, 8);
+KIND(PyCapsule, traverse_func, 5);
+FIELD(PyCapsule, clear_func, 56, 8);
+KIND(PyCapsule, clear_func, 5);
+LAYOUT(PyCapsule, 64, 8);
+
+/* seqiterobject */
+FIELD(seqiterobject, ob_base, 0, 16);
+KIND(seqiterobject, ob_base, 12);
+FIELD(seqiterobject, it_index, 16, 8);
+KIND(seqiterobject, it_index, 1);
+SIGNED(seqiterobject, it_index, 1);
+FIELD(seqiterobject, it_seq, 24, 8);
+KIND(seqiterobject, it_seq, 5);
+LAYOUT(seqiterobject, 32, 8);
+
+/* calliterobject */
+FIELD(calliterobject, ob_base, 0, 16);
+KIND(calliterobject, ob_base, 12);
+FIELD(calliterobject, it_callable, 16, 8);
+KIND(calliterobject, it_callable, 5);
+FIELD(calliterobject, it_sentinel, 24, 8);
+KIND(calliterobject, it_sentinel, 5);
+LAYOUT(calliterobject, 32, 8);
+
+/* anextawaitableobject */
+FIELD(anextawaitableobject, ob_base, 0, 16);
+KIND(anextawaitableobject, ob_base, 12);
+FIELD(anextawaitableobject, wrapped, 16, 8);
+KIND(anextawaitableobject, wrapped, 5);
+FIELD(anextawaitableobject, default_value, 24, 8);
+KIND(anextawaitableobject, default_value, 5);
+LAYOUT(anextawaitableobject, 32, 8);
+
+/* enumobject */
+FIELD(enumobject, ob_base, 0, 16);
+KIND(enumobject, ob_base, 12);
+FIELD(enumobject, en_index, 16, 8);
+KIND(enumobject, en_index, 1);
+SIGNED(enumobject, en_index, 1);
+FIELD(enumobject, en_sit, 24, 8);
+KIND(enumobject, en_sit, 5);
+FIELD(enumobject, en_result, 32, 8);
+KIND(enumobject, en_result, 5);
+FIELD(enumobject, en_longindex, 40, 8);
+KIND(enumobject, en_longindex, 5);
+FIELD(enumobject, one, 48, 8);
+KIND(enumobject, one, 5);
+LAYOUT(enumobject, 56, 8);
+
+/* reversedobject */
+FIELD(reversedobject, ob_base, 0, 16);
+KIND(reversedobject, ob_base, 12);
+FIELD(reversedobject, index, 16, 8);
+KIND(reversedobject, index, 1);
+SIGNED(reversedobject, index, 1);
+FIELD(reversedobject, seq, 24, 8);
+KIND(reversedobject, seq, 5);
+LAYOUT(reversedobject, 32, 8);
+
+/* rangeobject */
+FIELD(rangeobject, ob_base, 0, 16);
+KIND(rangeobject, ob_base, 12);
+FIELD(rangeobject, start, 16, 8);
+KIND(rangeobject, start, 5);
+FIELD(rangeobject, stop, 24, 8);
+KIND(rangeobject, stop, 5);
+FIELD(rangeobject, step, 32, 8);
+KIND(rangeobject, step, 5);
+FIELD(rangeobject, length, 40, 8);
+KIND(rangeobject, length, 5);
+LAYOUT(rangeobject, 48, 8);
+
+/* longrangeiterobject */
+FIELD(longrangeiterobject, ob_base, 0, 16);
+KIND(longrangeiterobject, ob_base, 12);
+FIELD(longrangeiterobject, start, 16, 8);
+KIND(longrangeiterobject, start, 5);
+FIELD(longrangeiterobject, step, 24, 8);
+KIND(longrangeiterobject, step, 5);
+FIELD(longrangeiterobject, len, 32, 8);
+KIND(longrangeiterobject, len, 5);
+LAYOUT(longrangeiterobject, 40, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
 CONSTANT(Py_TPFLAGS_TUPLE_SUBCLASS, 67108864LL);
+CONSTANT(Py_TPFLAGS_HAVE_GC, 16384LL);
+CONSTANT(Py_TPFLAGS_BASETYPE, 1024LL);
+CONSTANT(Py_TPFLAGS_SEQUENCE, 32LL);
 CONSTANT(_PyLong_FALSE_TAG, 1LL);
 CONSTANT(_PyLong_TRUE_TAG, 8LL);
 CONSTANT(offsetof(struct _longobject, long_value.ob_digit), 24LL);
@@ -278,3 +494,46 @@ CONSTANT(sizeof(digit), 4LL);
 CONSTANT(_PyStatus_TYPE_OK, 0LL);
 CONSTANT(_PyStatus_TYPE_ERROR, 1LL);
 CONSTANT(sizeof(Py_buffer), 80LL);
+CONSTANT(METH_VARARGS, 1LL);
+CONSTANT(METH_KEYWORDS, 2LL);
+CONSTANT(METH_NOARGS, 4LL);
+CONSTANT(METH_O, 8LL);
+CONSTANT(METH_CLASS, 16LL);
+CONSTANT(Py_T_OBJECT_EX, 16LL);
+CONSTANT(_Py_T_OBJECT, 6LL);
+CONSTANT(Py_READONLY, 1LL);
+CONSTANT(Py_LT, 0LL);
+CONSTANT(Py_LE, 1LL);
+CONSTANT(Py_EQ, 2LL);
+CONSTANT(Py_NE, 3LL);
+CONSTANT(Py_GT, 4LL);
+CONSTANT(Py_GE, 5LL);
+CONSTANT(PY_ITERSEARCH_COUNT, 1LL);
+CONSTANT(PY_ITERSEARCH_INDEX, 2LL);
+CONSTANT(PY_ITERSEARCH_CONTAINS, 3LL);
+CONSTANT(offsetof(PyTupleObject, ob_item), 32LL);
+CONSTANT(sizeof(PyCellObject), 24LL);
+CONSTANT(sizeof(PySliceObject), 40LL);
+CONSTANT(offsetof(PySliceObject, start), 16LL);
+CONSTANT(offsetof(PySliceObject, stop), 24LL);
+CONSTANT(offsetof(PySliceObject, step), 32LL);
+CONSTANT(sizeof(_PyRangeIterObject), 40LL);
+CONSTANT(sizeof(_PyNamespaceObject), 24LL);
+CONSTANT(offsetof(_PyNamespaceObject, ns_dict), 16LL);
+CONSTANT(sizeof(PyCapsule), 64LL);
+CONSTANT(sizeof(seqiterobject), 32LL);
+CONSTANT(sizeof(calliterobject), 32LL);
+CONSTANT(sizeof(anextawaitableobject), 32LL);
+CONSTANT(sizeof(enumobject), 56LL);
+CONSTANT(sizeof(reversedobject), 32LL);
+CONSTANT(sizeof(rangeobject), 48LL);
+CONSTANT(offsetof(rangeobject, start), 16LL);
+CONSTANT(offsetof(rangeobject, stop), 24LL);
+CONSTANT(offsetof(rangeobject, step), 32LL);
+CONSTANT(sizeof(longrangeiterobject), 40LL);
+CONSTANT(offsetof(struct _Py_freelists, slices), 432LL);
+CONSTANT(offsetof(struct _Py_freelists, ranges), 448LL);
+CONSTANT(offsetof(struct _Py_freelists, range_iters), 464LL);
+CONSTANT(Py_slices_MAXFREELIST, 1LL);
+CONSTANT(Py_ranges_MAXFREELIST, 6LL);
+CONSTANT(Py_range_iters_MAXFREELIST, 6LL);
