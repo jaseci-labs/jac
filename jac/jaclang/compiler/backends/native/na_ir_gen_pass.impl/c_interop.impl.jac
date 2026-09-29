@@ -13,7 +13,8 @@ import from jaclang.compiler.c_interop {
     is_builtin_pin_call,
     is_pinned_type,
     is_ptr_type,
-    is_ptr_view_type
+    is_ptr_view_type,
+    named_function_of
 }
 
 impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
@@ -863,7 +864,7 @@ impl NaIRGenPass._emit_clib_data_inits -> None {
                 node_override=value,
                 kind="C data definition",
                 name=gv.name,
-                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, and constructors of foreign structs made of these."
+                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, `ptr(function)`, and constructors of foreign structs made of these."
             );
             continue;
         }
@@ -1011,11 +1012,30 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if text is not None {
                 return self._c_string_global(text).ptrtoint(i64) as ir.Constant;
             }
+            if len(params) == 1 and named_function_of(arg) is not None {
+                return self._c_const_function_address(arg);
+            }
             return self._c_const_scalar(arg, i64) if len(params) == 1 else None;
         }
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+"""`ptr(f)` in a C data initializer: the address of the named function, as
+C's cast of a function to `void *` gives. A C function definition is its C
+symbol; any other def is its native function, whose C calling convention
+takes C scalars and pointers as C does."""
+impl NaIRGenPass._c_const_function_address(expr: uni.Expr) -> (ir.Constant | None) {
+    if not isinstance(expr, uni.Name) {
+        return None;
+    }
+    target = self._clib_exports.get(expr.sym_name)
+        or self.func_symtab.get(expr.sym_name);
+    if not isinstance(target, ir.Function) {
+        return None;
+    }
+    return target.ptrtoint(ir.IntType(64)) as ir.Constant;
 }
 
 impl NaIRGenPass._clib_global_of(

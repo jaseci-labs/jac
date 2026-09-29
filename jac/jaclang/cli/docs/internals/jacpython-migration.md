@@ -167,9 +167,10 @@ the Jac form, not a C helper:
    symbol: `glob PyBool_Type: PyTypeObject = PyTypeObject(...);` is C-layout
    storage exported under that name (unless `glob:priv`), built at link time
    from C constants (literals, `ptr[u8]("text")`, `addressof(symbol)`, named
-   functions for callback fields, nested struct constructors). A
-   `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
-   `addressof(table)` is its first element.
+   functions for callback fields, `ptr(function)` for a bare `ptr` field
+   such as `PyMethodDef.ml_meth` or `PyType_Slot.pfunc`, nested struct
+   constructors). A `list[T]` symbol is a C array, such as a `PyMethodDef`
+   table, and `addressof(table)` is its first element.
 
 5. **Varargs.** A call to a variadic C function passes each extra argument
    with C's default promotions, and a borrowed one (`&mut x`) as the

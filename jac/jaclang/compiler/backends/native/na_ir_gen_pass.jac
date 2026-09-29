@@ -973,6 +973,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | None);
     def _c_const_address(expr: uni.Expr) -> (ir.Constant | None);
+    def _c_const_function_address(expr: uni.Expr) -> (ir.Constant | None);
     def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);
     def _clib_global_of(nd: uni.Name) -> (tuple[ir.GlobalVariable, any] | None);
     def _c_global_store(target: uni.Name, value: ir.Value, nd: uni.Assignment) -> None;

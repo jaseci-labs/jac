@@ -566,6 +566,82 @@ with entry {
     assert "variadic 321" in out.splitlines() , out;
 }
 
+glob FUNCTION_ADDRESS_LIBRARY: str = '''#include <stdint.h>
+typedef struct { const char *name; void *code; int32_t arity; } FaEntry;
+int64_t fa_call(const FaEntry *record, int64_t value) {
+    if (record->arity == 1) return ((int64_t (*)(int64_t))record->code)(value);
+    return ((int64_t (*)(int64_t, int64_t))record->code)(value, 3);
+}
+''',
+     FUNCTION_ADDRESS_PROGRAM: str = '''import from "FA_LIBRARY" {
+    obj FaEntry { has name: ptr[u8], code: ptr, arity: i32; }
+    def fa_call(record: ptr[FaEntry], value: i64) -> i64;
+    def fa_c_twice(value: i64) -> i64 {
+        return value * 2;
+    }
+    glob fa_table: list[FaEntry] = [
+             FaEntry(name=ptr[u8]("inc"), code=ptr(fa_inc), arity=1),
+             FaEntry(name=ptr[u8]("scale"), code=ptr(fa_scale), arity=2),
+             FaEntry(name=ptr[u8]("twice"), code=ptr(fa_c_twice), arity=1),
+             FaEntry(name=ptr[u8](), code=ptr(), arity=0)
+         ];
+}
+def fa_inc(value: i64) -> i64 {
+    return value + 1;
+}
+def fa_scale(value: i64, factor: i64) -> i64 {
+    return value * factor;
+}
+with entry {
+    table = addressof(fa_table);
+    print("inc", fa_call(table, 41));
+    print("scale", fa_call(table + 1, 5));
+    print("twice", fa_call(table + 2, 21));
+    print("end", (table + 3).view(1)[0].code.is_null());
+}
+''';
+
+test "a C data pointer field takes a named function's address" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        library = str(Path(directory) / "libfa.so");
+        source = Path(directory) / "fa.c";
+        source.write_text(FUNCTION_ADDRESS_LIBRARY);
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", "-O1", str(source), "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        program = Path(directory) / "fa.jac";
+        program.write_text(FUNCTION_ADDRESS_PROGRAM.replace("FA_LIBRARY", library));
+        for memory in ("nogc", "rc", "managed") {
+            binary = str(Path(directory) / f"fa.{memory}");
+            native_build(str(program), binary, memory=memory);
+            lines = native_run(binary).splitlines();
+            for expected in ["inc 42", "scale 15", "twice 42", "end True"] {
+                assert expected in lines , f"{memory}: missing {expected!r} in {lines}";
+            }
+        }
+    }
+}
+
+test "only a named function's address is a C constant pointer" {
+    code = DECLS
+        + '''
+glob plain_address: int = 64;
+import from "CLIB_POINTERS_LIBRARY" {
+    obj FaSlot { has code: ptr; }
+    glob fa_bad: FaSlot = FaSlot(code=ptr(plain_address));
+}
+''';
+    assert checker_codes(code) == ["E1155"];
+}
+
 test "C function definitions take and return C data" {
     code = DECLS
         + '''

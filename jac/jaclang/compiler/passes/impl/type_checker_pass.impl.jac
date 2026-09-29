@@ -2488,7 +2488,8 @@ impl TypeCheckPass._c_const_problem(
         c_string_literal,
         foreign_struct_of_type,
         is_builtin_addressof_call,
-        is_ptr_type
+        is_ptr_type,
+        named_function_of
     }
     while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
         expr = expr.value;
@@ -2571,6 +2572,7 @@ impl TypeCheckPass._c_const_problem(
                         and (
                             c_string_literal(params[0]) is not None
                             or c_scalar_constant(params[0])[0]
+                            or named_function_of(params[0]) is not None
                         )
                     )
                 ) {
