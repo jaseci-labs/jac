@@ -171,7 +171,7 @@ only where Jac cannot express the operation:
 | C residue | Why | Where |
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
-| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types); object ports read the fields gen_layouts generates and asserts instead (`interp->gc`, `interp->object_state.freelists`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
@@ -378,11 +378,20 @@ definitions under their names; tables and types are C data. What they added:
   `tp_iternext == NULL`); an address is stored with `field = int(p)`.
 - `tp_traverse` implementations take the visitor as a `ptr` and visit with
   `bindings/module.jac`'s `visit_reference` (Py_VISIT).
-- The slice and range freelists are `struct _Py_freelists` fields of the
-  interpreter state; `jacpy_freelists()` in `object_api.c` returns that
-  struct, and `header.jac`'s `freelist_pop` / `freelist_push` implement
-  `_Py_FREELIST_POP` / `_Py_FREELIST_FREE` over the `_Py_freelists_*` offsets
-  gen_layouts asserts.
+- The slice, range and method freelists are `struct _Py_freelists` fields
+  of the interpreter state. `header.jac` reaches the interpreter from
+  `PyThreadState_GetUnchecked()` through `PyThreadState.interp`, and its
+  `freelist_pop` / `freelist_push` implement `_Py_FREELIST_POP` /
+  `_Py_FREELIST_FREE` over the `_Py_freelists_*` offsets. Its
+  `object_gc_track` / `object_gc_untrack` are `_PyObject_GC_TRACK` /
+  `_PyObject_GC_UNTRACK` over the `PyGC_Head` layout and the interpreter's
+  GC state (generation 0's list head and heap size). The interpreter and
+  thread-state offsets come from gen_layouts like the object layouts
+  (`PyThreadState_INTERP`, `PyInterpreterState_FREELISTS`,
+  `PyInterpreterState_GC`, `_gc_runtime_state_GENERATION0` / `_HEAP_SIZE`),
+  so `layouts_check.c` asserts them on every build; the `_in` variants take
+  an interpreter the caller already read, so a method object's creation and
+  free each read the thread state once.
 - `header.jac` also holds `Py_REFCNT`, the tuple item macros,
   `_PyTuple_Recycle`, `PyObject_TypeCheck`, `Py_RETURN_RICHCOMPARE` and
   `_PyEval_GetBuiltin(&_Py_ID(name))` (by interning, as bool_repr does).

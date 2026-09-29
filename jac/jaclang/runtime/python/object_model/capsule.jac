@@ -23,8 +23,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyObject_GC_Del,
     PyObject_GC_IsTracked,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GetAttrString,
     PyUnicode_FromFormat,
     _PyObject_GC_New,
@@ -40,7 +38,12 @@ import from jaclang.runtime.python.layouts {
     _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
     _object
 }
-import from jaclang.runtime.python.object_model.header { PyType_Type, object_is_type }
+import from jaclang.runtime.python.object_model.header {
+    object_gc_track,
+    object_gc_untrack,
+    object_is_type,
+    PyType_Type
+}
 
 import from c {
     def strcmp(left: ptr[u8], right: ptr[u8]) -> i32;  def strlen(
@@ -217,7 +220,7 @@ import from c {
             return i32(-1);
         }
         if PyObject_GC_IsTracked(op) == 0 {
-            PyObject_GC_Track(op);
+            object_gc_track(op);
         }
         capsule = capsule_of(op);
         capsule.view(1)[0].traverse_func = int(traverse_func);
@@ -277,7 +280,7 @@ import from c {
 
 def capsule_dealloc(op: ptr[PyObject]) {
     capsule = capsule_of(op);
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     if int(capsule.view(1)[0].destructor) != 0 {
         capsule.view(1)[0].destructor(op);
     }

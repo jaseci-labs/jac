@@ -508,12 +508,6 @@ PyObject **jacpy_typing_types(void) {
     return (PyObject **)&_PyInterpreterState_GET()->cached_objects.generic_type;
 }
 
-/* The interpreter's freelists are an interpreter-state field (a thread-state
- * field in free-threaded builds); ports reach a list by its offset in
- * struct _Py_freelists, which layouts.jac asserts. */
-#include "internal/pycore_freelist.h"
-struct _Py_freelists *jacpy_freelists(void) { return _Py_freelists_GET(); }
-
 /* The open_code hook and its data are _PyRuntime fields, whose layout
  * differs between builds. */
 #include "internal/pycore_runtime.h"

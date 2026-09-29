@@ -26,8 +26,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_CallFunctionObjArgs,
     PyObject_ClearWeakRefs,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_GetAttr,
     PyObject_GetAttrString,
@@ -78,13 +76,15 @@ import from jaclang.runtime.python.layouts {
     unionobject_WEAKREFLIST
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     _Py_FalseStruct,
     _Py_TrueStruct,
+    object_gc_track,
+    object_gc_untrack,
     object_is_type,
     object_size,
     object_type,
     object_type_check,
+    PyType_Type,
     tuple_get_item
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
@@ -188,7 +188,7 @@ def union_check(op: ptr[PyObject]) -> bool {
 
 def unionobject_dealloc(op: ptr[PyObject]) {
     alias = union_of(op);
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     if alias.view(1)[0].weakreflist {
         PyObject_ClearWeakRefs(op);
     }
@@ -610,7 +610,7 @@ def make_union(
     created.view(1)[0].hashable_args = hashable_args;
     created.view(1)[0].unhashable_args = unhashable_args;
     created.view(1)[0].weakreflist = NULL;
-    PyObject_GC_Track(op);
+    object_gc_track(op);
     return op;
 }
 

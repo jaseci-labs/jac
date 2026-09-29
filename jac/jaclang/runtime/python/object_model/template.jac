@@ -18,8 +18,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMethodDef,
     PyObject,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GetAttrString,
     PyObject_GetIter,
     PyObject_SelfIter,
@@ -60,6 +58,8 @@ import from jaclang.runtime.python.layouts {
     templateobject_STRINGS
 }
 import from jaclang.runtime.python.object_model.header {
+    object_gc_track,
+    object_gc_untrack,
     object_size,
     object_type,
     tuple_get_item,
@@ -189,7 +189,7 @@ def templateiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 def templateiter_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     object_type(op).view(1)[0].tp_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
@@ -319,7 +319,7 @@ def template_new(
 }
 
 def template_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     object_type(op).view(1)[0].tp_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
@@ -375,7 +375,7 @@ def template_iter(op: ptr[PyObject]) -> ptr[PyObject] {
     it.view(1)[0].stringsiter = stringsiter;
     it.view(1)[0].interpolationsiter = interpolationsiter;
     it.view(1)[0].from_strings = 1;
-    PyObject_GC_Track(iterator);
+    object_gc_track(iterator);
     return iterator;
 }
 
@@ -483,7 +483,7 @@ import from c {
         t = template_of(op);
         t.view(1)[0].strings = Py_NewRef(strings);
         t.view(1)[0].interpolations = Py_NewRef(interpolations);
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }
 }
