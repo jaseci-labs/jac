@@ -60,7 +60,10 @@ import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi { boundary_failure, object_error }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_record
+}
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -251,6 +254,11 @@ import from c {
     glob:priv lzma_allocator_record: lzma_allocator = lzma_allocator(
              alloc=lzma_malloc, free=lzma_free
          );
+}
+import from jaclang.runtime.python.bindings.members {
+    record_set_byte,
+    record_set_int,
+    record_set_object
 }
 
 def:priv new_stream -> Pinned[lzma_stream] {
@@ -1027,6 +1035,17 @@ obj DecompressorState(NativeState) {
     }
 }
 
+# Decompressor_members[]: check (Py_T_INT), eof and needs_input (Py_T_BOOL)
+# and unused_data (Py_T_OBJECT_EX) read the record, which mirrors the state
+# after every change and holds unused_data borrowed.
+def mirror_decompressor(instance: ptr[PyObject], state: DecompressorState) {
+    record = jacpy_binding_record(instance, LZMADecompressor_token.handle);
+    record_set_int(record, 0, int(state.check));
+    record_set_byte(record, 4, 1 if state.eof else 0);
+    record_set_byte(record, 5, 1 if state.needs_input else 0);
+    record_set_object(record, 8, state.unused_data);
+}
+
 def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     if jacpy_binding_native_present(instance, LZMADecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, LZMADecompressor_token.handle);
@@ -1215,6 +1234,7 @@ def _lzma_LZMADecompressor_decompress_impl(
             receiver, state, data.address(), u64(data.size()), max_length
         );
     }
+    mirror_decompressor(receiver, state);
     PyThread_release_lock(state.lock);
     return result;
 }
@@ -1305,6 +1325,7 @@ def _lzma_LZMADecompressor_impl(
         jacpy_release(instance);
         return NULL;
     }
+    mirror_decompressor(instance, state);
     return instance;
 }
 

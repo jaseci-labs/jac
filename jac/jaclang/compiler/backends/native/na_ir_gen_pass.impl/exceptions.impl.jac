@@ -487,6 +487,18 @@ impl NaIRGenPass._store_exc_message(
         return False;
     }
     i32 = ir.IntType(32);
+    copied = False;
+    if self._nogc_headerless() and not self._is_owned(text) {
+        i8p = ir.IntType(8).as_pointer();
+        text = self._mark_owned(
+            self._call_str_dup(
+                self.builder,
+                self._coerce_type(self._str_norm(text), i8p),
+                name="exc.msg.own"
+            )
+        );
+        copied = True;
+    }
     text = self._coerce_type(
         text, self.struct_field_types[type_name][EXC_MESSAGE_FIELD]
     );
@@ -504,7 +516,7 @@ impl NaIRGenPass._store_exc_message(
             name="field.exc.msg"
         )
     );
-    if moved {
+    if moved and not copied {
         self._nogc_consume_local(args[0]);
     }
     return True;
@@ -608,8 +620,18 @@ impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) ->
         for (slot, value) in zip(self._nogc_err_slot(), values) {
             self.builder.store(value, slot);
         }
+        held = self._slot_caught_drops.get(id(values));
+        if held is not None {
+            (drop_slot, handed_back) = held;
+            self.builder.store(handed_back, self._nogc_err_drop_slot());
+            self.builder.store(ir.Constant(handed_back.type, None), drop_slot);
+        }
         self._emit_err_propagate(loc="reraise");
     } else {
+        held_slot = self._unbound_caught_slots.get(id(values));
+        if held_slot is not None and isinstance(held_slot.type, ir.PointerType) {
+            self.builder.store(ir.Constant(held_slot.type.pointee, None), held_slot);
+        }
         self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
         self.builder.unreachable();
     }
@@ -919,6 +941,10 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     if exc_msg is None {
         return;
     }
+    exc_drop: (ir.Value | None) = None;
+    if self._slot_lowering_active() and self._nogc_headerless() {
+        exc_drop = self._raise_payload_drop(exc_payload, exc_msg, exc_type_name);
+    }
 
     if isinstance(exc_msg.type, ir.PointerType) and exc_msg.type != i8p {
         exc_msg = self.builder.bitcast(exc_msg, i8p, name="exc.msg.cast");
@@ -931,7 +957,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
 
     self._register_exc_lineage(nd.cause, exc_type_id);
     if self._slot_lowering_active() {
-        self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg);
+        self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg, exc_drop);
         return;
     }
     self.builder.call(
@@ -1154,8 +1180,27 @@ impl NaIRGenPass._codegen_try_unwind(
                 self.local_vars[var_name] = alloca;
             }
 
+            unbound_slot: (ir.Value | None) = None;
+            if except_node.name is None
+                and not _in_gen
+                and not self._nogc_headerless() {
+                caught_obj = self.builder.load(
+                    self.builder.gep(
+                        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)]
+                    ),
+                    name="exc.unbound.obj"
+                );
+                unbound_slot = self._exc_binding_slot(UNBOUND_CAUGHT, caught_obj.type);
+                unbound_old = self.builder.load(unbound_slot, name="exc.unbound.old");
+                self.builder.store(caught_obj, unbound_slot);
+                self._emit_rc_release_typed(unbound_old, op="overwrite");
+                self.local_vars[UNBOUND_CAUGHT] = unbound_slot;
+            }
             caught_values = self._exception_values(exc_state);
             self._caught_error_stack.append((func, caught_values));
+            if unbound_slot is not None {
+                self._unbound_caught_slots[id(caught_values)] = unbound_slot;
+            }
             if except_node.name is not None {
                 self._exc_bindings.append(
                     (func, var_name, alloca, bound_val, caught_values)
@@ -1168,19 +1213,12 @@ impl NaIRGenPass._codegen_try_unwind(
             self._finally_stack.pop();
             if except_node.name is not None {
                 self._exc_bindings.pop();
-            } elif not self.builder.block.is_terminated
-                and not _in_gen
-                and not self._nogc_headerless() {
-                self._emit_rc_release_typed(
-                    self.builder.load(
-                        self.builder.gep(
-                            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)]
-                        ),
-                        name="exc.unbound.obj"
-                    ),
-                    op="scope_exit"
-                );
+            } elif unbound_slot is not None and not self.builder.block.is_terminated {
+                held = self.builder.load(unbound_slot, name="exc.unbound.held");
+                self.builder.store(ir.Constant(held.type, None), unbound_slot);
+                self._emit_rc_release_typed(held, op="scope_exit");
             }
+            self._unbound_caught_slots.pop(id(caught_values), None);
             self._caught_error_stack.pop();
             if not self.builder.block.is_terminated {
                 self.builder.branch(finally_bb);
@@ -1462,6 +1500,143 @@ impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
     return (fields[0], fields[1], fields[2]);
 }
 
+impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
+    """The error record's drop slot: how to free the pending payload.
+
+    A raise that hands its payload to the record stores the function that
+    frees it here, and null when the payload is not the record's to free (a
+    static message, or an object someone else still owns). Whoever takes the
+    error off the record takes this with it.
+    """;
+    i32 = ir.IntType(32);
+    context = self.builder.call(self._get_exception_context_fn(), []);
+    return self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
+}
+
+impl NaIRGenPass._raise_payload_drop(
+    payload: (ir.Value | None), msg: ir.Value, type_name: str
+) -> (ir.Value | None) {
+    """The drop a raise hands to the error record with its payload, if any.
+
+    Only a value the raise owns outright is handed over: a freshly built
+    exception object is dropped through its class's drop (which reads the
+    object's own vtable for a subclass), and a freshly built message string
+    is freed. A borrowed object or a static message gets no drop.
+    """;
+    i8p = ir.IntType(8).as_pointer();
+    if payload is not None and payload is not msg {
+        if not self._is_owned(payload) or type_name not in self.struct_types {
+            return None;
+        }
+        drop_fn = self._emit_struct_drop_fn(type_name);
+        if drop_fn is None {
+            return None;
+        }
+        return self.builder.bitcast(drop_fn, i8p, name="exc.drop.obj");
+    }
+    if msg.type != i8p or not self._is_owned(msg) {
+        return None;
+    }
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    return self.builder.bitcast(free_fn, i8p, name="exc.drop.msg");
+}
+
+impl NaIRGenPass._emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> None {
+    """Drop the exception a handler took off the error record, then forget it.""";
+    i8p = ir.IntType(8).as_pointer();
+    func = self.builder.function;
+    drop = self.builder.load(drop_slot, name="exc.drop");
+    call_bb = func.append_basic_block("exc.drop.call");
+    done_bb = func.append_basic_block("exc.drop.done");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "!=", drop, ir.Constant(i8p, None), name="exc.drop.set"
+        ),
+        call_bb,
+        done_bb
+    );
+    self.builder.position_at_end(call_bb);
+    drop_ty = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
+    self.builder.call(
+        self.builder.bitcast(drop, drop_ty, name="exc.drop.fn"),
+        [self.builder.load(obj_slot, name="exc.drop.obj")]
+    );
+    self.builder.store(ir.Constant(i8p, None), drop_slot);
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+}
+
+impl NaIRGenPass._exc_binding_escapes(handler: uni.Except) -> bool {
+    """Can the exception bound by `except ... as e` outlive its handler?
+
+    The handler drops the caught exception when it ends, so every use of the
+    binding must only read it: an argument to a plain function call, an
+    operand of arithmetic, comparison or `not`, an f-string part, a branch
+    condition, a statement of its own, or `raise e`, reached directly or
+    through attribute, index and method-call chains rooted at `e`. Anything
+    else -- storing it, returning it, putting it in a container, handing it to
+    a method, capturing it in a closure -- may keep a reference past the
+    drop, so the handler leaves such an exception undropped.
+    """;
+    if not isinstance(handler.name, uni.Name) {
+        return False;
+    }
+    bound = handler.name.value;
+    for stmt in handler.body or [] {
+        for use in stmt.get_all_sub_nodes(typ=uni.Name) {
+            if use.value != bound or use is handler.name {
+                continue;
+            }
+            scope = use.parent;
+            while scope is not None and scope is not handler {
+                if isinstance(scope, (uni.LambdaExpr, uni.Ability)) {
+                    return True;
+                }
+                scope = scope.parent;
+            }
+            cur: uni.UniNode = use;
+            while (isinstance(cur.parent, uni.AtomTrailer) and cur.parent.target is cur)
+                or (
+                    isinstance(cur.parent, uni.FuncCall) and cur.parent.target is cur
+                ) {
+                cur = cur.parent;
+            }
+            up = cur.parent;
+            if isinstance(up, uni.KWPair) {
+                cur = up;
+                up = up.parent;
+            }
+            if isinstance(up, uni.FuncCall) {
+                if isinstance(up.target, uni.Name) and cur in list(up.params or []) {
+                    continue;
+                }
+                return True;
+            }
+            if isinstance(
+                up, (uni.ExprStmt, uni.FormattedValue, uni.BinaryExpr, uni.CompareExpr)
+            ) {
+                continue;
+            }
+            if isinstance(up, uni.UnaryExpr)
+                and isinstance(up.op, uni.Token)
+                and up.op.name == Tok.NOT {
+                continue;
+            }
+            if isinstance(up, (uni.IfStmt, uni.WhileStmt)) and up.condition is cur {
+                continue;
+            }
+            if isinstance(up, uni.RaiseStmt) and up.cause is cur and cur is use {
+                continue;
+            }
+            if isinstance(up, uni.Assignment) and cur in list(up.target) {
+                continue;
+            }
+            return True;
+        }
+    }
+    return False;
+}
+
 impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     i8p = ir.IntType(8).as_pointer();
     for handler in reversed(self._slot_try_stack) {
@@ -1532,7 +1707,7 @@ impl NaIRGenPass._emit_pending_error_check -> None {
 }
 
 impl NaIRGenPass._codegen_raise_slot(
-    payload: ir.Value, type_id: int, msg: ir.Value
+    payload: ir.Value, type_id: int, msg: ir.Value, drop: (ir.Value | None) = None
 ) -> None {
     i32 = ir.IntType(32);
     (tglob, oglob, mglob) = self._nogc_err_slot();
@@ -1540,6 +1715,10 @@ impl NaIRGenPass._codegen_raise_slot(
     self.builder.store(ir.Constant(i32, type_id + 1), tglob);
     self.builder.store(payload, oglob);
     self.builder.store(msg, mglob);
+    if self._nogc_headerless() {
+        i8p = ir.IntType(8).as_pointer();
+        self.builder.store(drop or ir.Constant(i8p, None), self._nogc_err_drop_slot());
+    }
     self._emit_err_propagate(loc="raise");
 }
 
@@ -1553,11 +1732,20 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     finally_bb = func.append_basic_block("finally");
     merge_bb = func.append_basic_block("try.merge");
     error_bb = func.append_basic_block("finally.error");
+    exc_drop: (tuple[ir.Value, ir.Value] | None) = None;
+    if self._nogc_headerless() {
+        exc_drop = (
+            self._entry_alloca(i8p, "try.exc.drop"),
+            self._entry_alloca(i8p, "try.exc.obj")
+        );
+        self.builder.store(ir.Constant(i8p, None), exc_drop[0]);
+    }
     frame = NativeFinalizer(
         body=nd.finally_body,
         function=func,
         loop_depth=len(self.loop_stack),
-        handler_depth=len(self._slot_try_stack)
+        handler_depth=len(self._slot_try_stack),
+        exc_drop=exc_drop
     );
     self._finally_stack.append(frame);
     kind = self._entry_alloca(i32, "try.kind");
@@ -1612,10 +1800,32 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         );
         self._caught_error_stack.append((func, caught_values));
         self.builder.store(ir.Constant(i32, 0), tglob);
+        handler_drops = False;
+        if exc_drop is not None {
+            drop_field = self._nogc_err_drop_slot();
+            taken = self.builder.load(drop_field, name="exc.drop.taken");
+            self.builder.store(ir.Constant(i8p, None), drop_field);
+            handed_back: ir.Value = ir.Constant(i8p, None);
+            if except_node.name is None or not self._exc_binding_escapes(except_node) {
+                self.builder.store(taken, exc_drop[0]);
+                self.builder.store(caught_values[1], exc_drop[1]);
+                handed_back = taken;
+                handler_drops = True;
+            }
+            self._slot_caught_drops[id(caught_values)] = (exc_drop[0], handed_back);
+        }
+        var_name = "";
+        shadowed: (ir.Value | None) = None;
+        was_borrowed = False;
         if except_node.name is not None {
             var_name = except_node.name.value
                 if isinstance(except_node.name, uni.Name)
                 else str(except_node.name);
+            shadowed = self.local_vars.get(var_name);
+            was_borrowed = var_name in self.borrowed_vars;
+            if handler_drops {
+                self.borrowed_vars.add(var_name);
+            }
             if caught is not None {
                 _exc_sp_ty = self.struct_types[caught].as_pointer();
                 bound_val = self.builder.bitcast(
@@ -1637,7 +1847,18 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         }
         if except_node.name is not None {
             self._exc_bindings.pop();
+            if handler_drops {
+                if not was_borrowed {
+                    self.borrowed_vars.discard(var_name);
+                }
+                if shadowed is not None {
+                    self.local_vars[var_name] = shadowed;
+                } else {
+                    self.local_vars.pop(var_name, None);
+                }
+            }
         }
+        self._slot_caught_drops.pop(id(caught_values), None);
         self._caught_error_stack.pop();
         if not self.builder.block.is_terminated {
             self.builder.store(ir.Constant(i32, 0), kind);
@@ -1652,6 +1873,11 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     self.builder.store(ir.Constant(i32, 1), kind);
     self.builder.branch(finally_bb);
     self.builder.position_at_end(finally_bb);
+    pending_drop: (ir.Value | None) = None;
+    if exc_drop is not None {
+        self._emit_caught_drop(exc_drop[0], exc_drop[1]);
+        pending_drop = self.builder.load(self._nogc_err_drop_slot(), name="err.drop");
+    }
     pending = (
         self.builder.load(tglob),
         self.builder.load(oglob),
@@ -1673,6 +1899,9 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         for (slot, value) in zip(self._nogc_err_slot(), pending) {
             self.builder.store(value, slot);
         }
+        if pending_drop is not None {
+            self.builder.store(pending_drop, self._nogc_err_drop_slot());
+        }
         self._emit_err_propagate(loc="try.propagate");
     }
     self.builder.position_at_end(merge_bb);
@@ -1692,6 +1921,9 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
             self._slot_try_stack = saved_handlers[:frame.handler_depth];
             if frame.pop_handler {
                 self.builder.call(self._exc_pop_fn, []);
+            }
+            if frame.exc_drop is not None {
+                self._emit_caught_drop(frame.exc_drop[0], frame.exc_drop[1]);
             }
             if frame.context_exit is not None {
                 (cm, exit_fn) = frame.context_exit;

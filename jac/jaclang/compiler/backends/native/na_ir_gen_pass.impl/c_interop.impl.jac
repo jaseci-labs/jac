@@ -399,7 +399,6 @@ impl NaIRGenPass._codegen_c_interop_call(
         and len(params) == 1
         and not isinstance(params[0], uni.KWPair)
         and self._reads_c_callback(params[0]) {
-        # The address a C function-pointer field holds, as ptr fields are read.
         return (True, self._c_address_of_value(self._codegen_expr(params[0])));
     }
     if isinstance(nd.target, uni.Name)
@@ -697,6 +696,33 @@ impl NaIRGenPass._c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None) {
     return None;
 }
 
+impl NaIRGenPass._c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    if self._foreign_struct_name_of_type(elem) is not None {
+        storage = self._codegen_expr(arg.operand);
+        if storage is not None and isinstance(storage.type, ir.PointerType) {
+            return self.builder.ptrtoint(storage, i64, name="c.lend.struct");
+        }
+    } else {
+        slot = self._clib_place_ptr(arg);
+        want = self._c_scalar_llvm(elem);
+        if slot is not None
+            and want is not None
+            and isinstance(slot.type, ir.PointerType)
+            and slot.type.pointee == want {
+            return self.builder.ptrtoint(slot, i64, name="c.lend");
+        }
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C pointer argument",
+        name=str(arg.operand.type),
+        help_text="`&mut x` passed to a `ptr[T]` parameter lends the address of a variable or field whose storage is the C `T`."
+    );
+    return None;
+}
+
 impl NaIRGenPass._c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None) {
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     if isinstance(arg, uni.UnaryExpr) and is_borrow_kind(arg.ownership) {
@@ -807,6 +833,13 @@ impl NaIRGenPass._codegen_c_ptr_arith(
         return (True, span);
     }
     return (True, b.sdiv(span, self._sizeof_llvm(elem), name="c.ptr.dist"));
+}
+
+impl NaIRGenPass._is_c_ptr_node(nd: (uni.UniNode | None)) -> bool {
+    if isinstance(nd, uni.CfgExpr) {
+        nd = nd.expr;
+    }
+    return nd is not None and is_ptr_type(nd?.type);
 }
 
 impl NaIRGenPass._c_ptr_aug(
@@ -973,10 +1006,6 @@ impl NaIRGenPass._c_const_init(
     return self._c_const_scalar(expr, llt);
 }
 
-# Whether C calls a function of type `have` exactly as one of type `want`: the
-# same parameters and result, where a pointer and a 64-bit integer (Jac's
-# representation of `ptr[T]`) are passed alike, so no trampoline is needed and
-# a slot holds the function's own address, as C code comparing slots expects.
 impl NaIRGenPass._c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool {
     if have == want {
         return True;
@@ -1079,7 +1108,7 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if named {
                 return address;
             }
-            # A cast `ptr[T](address)` of any C constant address.
+
             return self._c_const_address(arg);
         }
         return None;
@@ -1087,8 +1116,6 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
     return self._c_const_scalar(expr, i64);
 }
 
-# A read of a callback field of a foreign struct (`rec.view(1)[0].destructor`),
-# whose value is a C function pointer.
 impl NaIRGenPass._reads_c_callback(nd: uni.Expr) -> bool {
     found = foreign_field_of(nd);
     if found is None {
@@ -1096,16 +1123,15 @@ impl NaIRGenPass._reads_c_callback(nd: uni.Expr) -> bool {
     }
     (arch, index) = found;
     struct_type = self.struct_types.get(arch.name.value);
-    if struct_type is None or index >= len(struct_type.elements) {
+    elements = struct_type.elements if struct_type is not None else None;
+    if elements is None or index >= len(elements) {
         return False;
     }
-    field_type = struct_type.elements[index];
+    field_type = elements[index];
     return isinstance(field_type, ir.PointerType)
         and isinstance(field_type.pointee, ir.FunctionType);
 }
 
-# A C pointer value (a function pointer read from a callback field) as the
-# 64-bit address Jac holds pointers in; other values pass through.
 impl NaIRGenPass._c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None) {
     if value is not None and isinstance(value.type, ir.PointerType) {
         return self.builder.ptrtoint(value, ir.IntType(64), name="c.fn.addr");
@@ -1113,20 +1139,13 @@ impl NaIRGenPass._c_address_of_value(value: (ir.Value | None)) -> (ir.Value | No
     return value;
 }
 
-# `ptr(f)` for a named function `f`: the address C calls it at, as C casts a
-# function to a data or generic function pointer (`(void *)f`,
-# `_PyCFunction_CAST(f)`). A C function defined in a C library import yields its
-# C-ABI entry and a C function its symbol. A Jac function's parameters and
-# result must be C scalars or pointers; C calls it through a trampoline of its
-# own type that leaves the open region (kernel units call it directly). The
-# first item is False when `expr` names no function.
 impl NaIRGenPass._c_function_address(
     expr: uni.Expr
 ) -> tuple[bool, (ir.Constant | None)] {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
-    if named_function_of(expr) is None {
+    if not isinstance(expr, uni.Name) or named_function_of(expr) is None {
         return (False, None);
     }
     i64 = ir.IntType(64);
@@ -1136,21 +1155,20 @@ impl NaIRGenPass._c_function_address(
         return (True, exported.ptrtoint(i64) as ir.Constant);
     }
     target = self.func_symtab.get(name);
-    ftype = target.function_type if isinstance(target, ir.Function) else None;
-    c_callable = ftype is not None and not ftype.var_arg;
-    passed: list[ir.Type] = list(ftype.args) if c_callable else [];
-    if c_callable and not isinstance(ftype.return_type, ir.VoidType) {
-        passed.append(ftype.return_type);
-    }
-    for t in passed {
-        if not (
-            (isinstance(t, ir.IntType) and t.width in (8, 16, 32, 64))
-            or isinstance(t, (ir.FloatType, ir.DoubleType, ir.PointerType))
-        ) {
-            c_callable = False;
+    c_callable = False;
+    if isinstance(target, ir.Function) and not target.function_type.var_arg {
+        ftype = target.function_type;
+        passed: list[ir.Type] = list(ftype.args);
+        if not isinstance(ftype.return_type, ir.VoidType) {
+            passed.append(ftype.return_type);
         }
+        c_callable = all(
+            (isinstance(t, ir.IntType) and t.width in (8, 16, 32, 64))
+                or isinstance(t, (ir.FloatType, ir.DoubleType, ir.PointerType))
+            for t in passed
+        );
     }
-    if not c_callable {
+    if not isinstance(target, ir.Function) or not c_callable {
         self.ctx.emit(
             E5092,
             node_override=expr,
@@ -1161,14 +1179,13 @@ impl NaIRGenPass._c_function_address(
         return (True, None);
     }
     if not self._c_calls_directly(target) {
-        target = self._emit_clib_c_trampoline(target, ftype.as_pointer());
+        target = self._emit_clib_c_trampoline(
+            target, target.function_type.as_pointer()
+        );
     }
     return (True, target.ptrtoint(i64) as ir.Constant);
 }
 
-# Whether C may call `target` without a C-entry trampoline: a C function, or
-# any function of a kernel unit (which allocates on the heap, so the open
-# region's extent never needs cutting at the foreign frame).
 impl NaIRGenPass._c_calls_directly(target: ir.Function) -> bool {
     return self._is_kernel_unit() or self.clib_extern_fns.get(target.name) is target;
 }

@@ -74,6 +74,64 @@ test "a named own local moved into an inline-flattened own field drops once" {
         == ["drop node 0", "h.slot.v=2", "drop node 2", "done"] , out;
 }
 
+test "str() of a string returns a value its consumer owns" {
+    out = assert_native_identity(_fixture("str_builtin_ownership.jac"));
+    assert out.splitlines() == ["caught: out of range", "literal item3 580"] , out;
+}
+
+"""Build `name` headerless and require the macOS `leaks` tool to find nothing."""
+def _assert_nogc_leak_free(name: str) {
+    import shutil;
+    import subprocess;
+    import tempfile;
+    import from tests.support { native_build }
+    if not shutil.which("leaks") {
+        testskip("the macOS leaks tool is not available");
+    }
+    binary = os.path.join(tempfile.mkdtemp(), name.replace(".jac", ".nogc"));
+    native_build(_fixture(name), binary, memory="nogc");
+    lk = subprocess.run(
+        ["leaks", "--atExit", "--", binary], capture_output=True, text=True, timeout=300
+    );
+    assert "0 leaks for 0 total leaked bytes" in lk.stdout , lk.stdout[-1500:];
+}
+
+test "str() copies and len() temporaries leave nothing behind" {
+    out = assert_native_identity(_fixture("str_builtin_leaks.jac"));
+    assert out.strip() == "literal 870" , out;
+    _assert_nogc_leak_free("str_builtin_leaks.jac");
+}
+
+test "rebound and freshly built string locals leave nothing behind" {
+    out = assert_native_identity(_fixture("rebind_leaks.jac"));
+    assert out.strip() == "item49 1350" , out;
+    _assert_nogc_leak_free("rebind_leaks.jac");
+}
+
+test "objects own their str and bytes fields and containers their strings" {
+    out = assert_native_identity(_fixture("str_field_leaks.jac"));
+    assert out.strip() == "1280" , out;
+    _assert_nogc_leak_free("str_field_leaks.jac");
+}
+
+test "a method handing back its receiver returns a borrow" {
+    out = assert_native_identity(_fixture("receiver_borrow.jac"));
+    assert out.strip() == "530" , out;
+    _assert_nogc_leak_free("receiver_borrow.jac");
+}
+
+test "static text a builtin returns reaches its owner as a copy" {
+    out = assert_native_identity(_fixture("static_text_owners.jac"));
+    assert out.splitlines() == ["ABC", "744"] , out;
+    _assert_nogc_leak_free("static_text_owners.jac");
+}
+
+test "caught exceptions are freed when their handler ends" {
+    out = assert_native_identity(_fixture("caught_exception_leaks.jac"));
+    assert out.strip() == "1770" , out;
+    _assert_nogc_leak_free("caught_exception_leaks.jac");
+}
+
 test "an own field held by pointer drops the object each store replaces" {
     out = assert_native_identity(_fixture("pointer_field_move.jac"));
     assert out.splitlines()

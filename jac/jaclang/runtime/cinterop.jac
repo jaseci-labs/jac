@@ -158,6 +158,36 @@ class JacPtr {
         return not self.__eq__(other);
     }
 
+    # Ordering compares the unsigned addresses, as C orders pointers into one
+    # object.
+    def __lt__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr < other._addr;
+    }
+
+    def __le__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr <= other._addr;
+    }
+
+    def __gt__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr > other._addr;
+    }
+
+    def __ge__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr >= other._addr;
+    }
+
     def __hash__(self: JacPtr) -> int {
         return hash(self._addr);
     }
@@ -470,6 +500,15 @@ def c_vararg(value: any, spec_json: str) -> any {
 
 def c_cell(spec: str, value: any, scope: any) -> CCell {
     return CCell(_resolve_elem(json.loads(spec), scope), value);
+}
+
+# `&mut x` passed to a `ptr[T]` parameter of a C-ABI function: the address of
+# x's C cell, or of a foreign struct's own storage, as the `ptr[T]` `spec`
+# names it.
+def c_lend(spec: str, target: any, scope: any) -> JacPtr {
+    cls = _resolve_elem(json.loads(spec), scope);
+    storage = target.c if isinstance(target, CCell) else target;
+    return cls(ctypes.addressof(storage));
 }
 
 def _resolve_elem(spec: list[any], scope: any) -> any {

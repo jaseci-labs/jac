@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     SizedText,
     argument_label,
@@ -42,270 +37,249 @@ import from jaclang.runtime.python.modules.unicodedata {
     unicodedata_UCD_numeric_impl
 }
 
-glob:priv unicodedata_UCD_decimal_signature = CallSignature(
-         "decimal", ["chr", "default"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv unicodedata_UCD_decimal_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "decimal", argument_label("", 1)));
-    default_: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = value;
+def:priv unicodedata_UCD_decimal_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        chr: i32 = i32(convert_unicode_char(value, "decimal", argument_label("", 1)));
+        default_: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = value;
+        }
+        return unicodedata_UCD_decimal_impl(receiver, chr, default_);
+    } except boundary_failure {
+        return NULL;
     }
-    return unicodedata_UCD_decimal_impl(receiver, chr, default_);
 }
 
 def:priv unicodedata_UCD_decimal_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        unicodedata_UCD_decimal_signature,
-        args,
-        nargs,
-        NULL,
-        unicodedata_UCD_decimal_bound,
-        receiver
-    );
+    if not check_positional("decimal", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return unicodedata_UCD_decimal_bound(receiver, args, nargs);
 }
 
-glob:priv unicodedata_UCD_digit_signature = CallSignature(
-         "digit", ["chr", "default"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv unicodedata_UCD_digit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "digit", argument_label("", 1)));
-    default_: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = value;
+def:priv unicodedata_UCD_digit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        chr: i32 = i32(convert_unicode_char(value, "digit", argument_label("", 1)));
+        default_: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = value;
+        }
+        return unicodedata_UCD_digit_impl(receiver, chr, default_);
+    } except boundary_failure {
+        return NULL;
     }
-    return unicodedata_UCD_digit_impl(receiver, chr, default_);
 }
 
 def:priv unicodedata_UCD_digit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        unicodedata_UCD_digit_signature,
-        args,
-        nargs,
-        NULL,
-        unicodedata_UCD_digit_bound,
-        receiver
-    );
+    if not check_positional("digit", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return unicodedata_UCD_digit_bound(receiver, args, nargs);
 }
 
-glob:priv unicodedata_UCD_numeric_signature = CallSignature(
-         "numeric", ["chr", "default"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv unicodedata_UCD_numeric_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "numeric", argument_label("", 1)));
-    default_: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = value;
+def:priv unicodedata_UCD_numeric_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        chr: i32 = i32(convert_unicode_char(value, "numeric", argument_label("", 1)));
+        default_: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = value;
+        }
+        return unicodedata_UCD_numeric_impl(receiver, chr, default_);
+    } except boundary_failure {
+        return NULL;
     }
-    return unicodedata_UCD_numeric_impl(receiver, chr, default_);
 }
 
 def:priv unicodedata_UCD_numeric_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        unicodedata_UCD_numeric_signature,
-        args,
-        nargs,
-        NULL,
-        unicodedata_UCD_numeric_bound,
-        receiver
-    );
-}
-
-def:priv unicodedata_UCD_category_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "category", "argument"));
-    return unicodedata_UCD_category_impl(receiver, chr);
+    if not check_positional("numeric", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return unicodedata_UCD_numeric_bound(receiver, args, nargs);
 }
 
 def:priv unicodedata_UCD_category_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_category_bound, receiver);
-}
-
-def:priv unicodedata_UCD_bidirectional_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "bidirectional", "argument"));
-    return unicodedata_UCD_bidirectional_impl(receiver, chr);
+    try {
+        chr: i32 = i32(convert_unicode_char(value, "category", "argument"));
+        return unicodedata_UCD_category_impl(receiver, chr);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_bidirectional_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_bidirectional_bound, receiver);
-}
-
-def:priv unicodedata_UCD_combining_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "combining", "argument"));
-    return return_int(unicodedata_UCD_combining_impl(receiver, chr));
+    try {
+        chr: i32 = i32(convert_unicode_char(value, "bidirectional", "argument"));
+        return unicodedata_UCD_bidirectional_impl(receiver, chr);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_combining_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_combining_bound, receiver);
-}
-
-def:priv unicodedata_UCD_mirrored_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "mirrored", "argument"));
-    return return_int(unicodedata_UCD_mirrored_impl(receiver, chr));
+    try {
+        chr: i32 = i32(convert_unicode_char(value, "combining", "argument"));
+        return return_int(unicodedata_UCD_combining_impl(receiver, chr));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_mirrored_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_mirrored_bound, receiver);
-}
-
-def:priv unicodedata_UCD_east_asian_width_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "east_asian_width", "argument"));
-    return unicodedata_UCD_east_asian_width_impl(receiver, chr);
+    try {
+        chr: i32 = i32(convert_unicode_char(value, "mirrored", "argument"));
+        return return_int(unicodedata_UCD_mirrored_impl(receiver, chr));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_east_asian_width_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_east_asian_width_bound, receiver);
-}
-
-def:priv unicodedata_UCD_decomposition_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "decomposition", "argument"));
-    return unicodedata_UCD_decomposition_impl(receiver, chr);
+    try {
+        chr: i32 = i32(convert_unicode_char(value, "east_asian_width", "argument"));
+        return unicodedata_UCD_east_asian_width_impl(receiver, chr);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_decomposition_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_decomposition_bound, receiver);
+    try {
+        chr: i32 = i32(convert_unicode_char(value, "decomposition", "argument"));
+        return unicodedata_UCD_decomposition_impl(receiver, chr);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv unicodedata_UCD_is_normalized_signature = CallSignature(
-         "is_normalized", ["form", "unistr"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv unicodedata_UCD_is_normalized_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    form: ptr[PyObject] = convert_unicode(
-        value, "is_normalized", argument_label("", 1)
-    );
-    value = args.values[1];
-    unistr: ptr[PyObject] = convert_unicode(
-        value, "is_normalized", argument_label("", 2)
-    );
-    return unicodedata_UCD_is_normalized_impl(receiver, form, unistr);
+def:priv unicodedata_UCD_is_normalized_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        form: ptr[PyObject] = convert_unicode(
+            value, "is_normalized", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        unistr: ptr[PyObject] = convert_unicode(
+            value, "is_normalized", argument_label("", 2)
+        );
+        return unicodedata_UCD_is_normalized_impl(receiver, form, unistr);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_is_normalized_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        unicodedata_UCD_is_normalized_signature,
-        args,
-        nargs,
-        NULL,
-        unicodedata_UCD_is_normalized_bound,
-        receiver
-    );
+    if not check_positional("is_normalized", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return unicodedata_UCD_is_normalized_bound(receiver, args, nargs);
 }
 
-glob:priv unicodedata_UCD_normalize_signature = CallSignature(
-         "normalize", ["form", "unistr"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv unicodedata_UCD_normalize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    form: ptr[PyObject] = convert_unicode(value, "normalize", argument_label("", 1));
-    value = args.values[1];
-    unistr: ptr[PyObject] = convert_unicode(value, "normalize", argument_label("", 2));
-    return unicodedata_UCD_normalize_impl(receiver, form, unistr);
+def:priv unicodedata_UCD_normalize_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        form: ptr[PyObject] = convert_unicode(
+            value, "normalize", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        unistr: ptr[PyObject] = convert_unicode(
+            value, "normalize", argument_label("", 2)
+        );
+        return unicodedata_UCD_normalize_impl(receiver, form, unistr);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv unicodedata_UCD_normalize_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        unicodedata_UCD_normalize_signature,
-        args,
-        nargs,
-        NULL,
-        unicodedata_UCD_normalize_bound,
-        receiver
-    );
+    if not check_positional("normalize", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return unicodedata_UCD_normalize_bound(receiver, args, nargs);
 }
 
-glob:priv unicodedata_UCD_name_signature = CallSignature(
-         "name", ["chr", "default"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv unicodedata_UCD_name_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    chr: i32 = i32(convert_unicode_char(value, "name", argument_label("", 1)));
-    default_: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = value;
+def:priv unicodedata_UCD_name_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        chr: i32 = i32(convert_unicode_char(value, "name", argument_label("", 1)));
+        default_: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = value;
+        }
+        return unicodedata_UCD_name_impl(receiver, chr, default_);
+    } except boundary_failure {
+        return NULL;
     }
-    return unicodedata_UCD_name_impl(receiver, chr, default_);
 }
 
 def:priv unicodedata_UCD_name_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        unicodedata_UCD_name_signature,
-        args,
-        nargs,
-        NULL,
-        unicodedata_UCD_name_bound,
-        receiver
-    );
-}
-
-def:priv unicodedata_UCD_lookup_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: SizedText = convert_sized_str(value, "lookup", "argument");
-    return unicodedata_UCD_lookup_impl(receiver, name.data, name.size);
+    if not check_positional("name", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return unicodedata_UCD_name_bound(receiver, args, nargs);
 }
 
 def:priv unicodedata_UCD_lookup_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, unicodedata_UCD_lookup_bound, receiver);
+    try {
+        name: SizedText = convert_sized_str(value, "lookup", "argument");
+        return unicodedata_UCD_lookup_impl(receiver, name.data, name.size);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob UCD_methods: list[MethodDefinition] = [
+glob unicodedata_docstring: str = "This module provides access to the Unicode Character Database which\ndefines character properties for all Unicode characters. The data in\nthis database is based on the UnicodeData.txt file version\n which is publicly available from ftp://ftp.unicode.org/.\n\nThe module uses the same names and symbols as defined by the\nUnicodeData File Format .",
+     UCD_methods: list[MethodDefinition] = [
          MethodDefinition(
              "decimal",
              MethodCallbacks(fast=unicodedata_UCD_decimal_call),

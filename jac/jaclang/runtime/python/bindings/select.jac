@@ -148,7 +148,9 @@ glob:priv poll_type = TypeDefinition(
          kqueue_doc,
          kqueue_methods,
          u64(TypeFlags.DEFAULT.value),
-         TypeHooks(create=select_kqueue_new, dealloc=kqueue_dealloc),
+         TypeHooks(
+             create=select_kqueue_new, dealloc=kqueue_dealloc, finalize=kqueue_finalize
+         ),
          [
              PropertyDefinition(
                  "closed",

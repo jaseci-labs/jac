@@ -21,11 +21,7 @@ import from jaclang.runtime.python.bindings.clinic.lsprof {
     Profiler_methods,
     profiler_init_init
 }
-import from jaclang.runtime.python.modules.lsprof {
-    Profiler_token,
-    profiler_finalize,
-    profiler_new
-}
+import from jaclang.runtime.python.modules.lsprof { Profiler_token, profiler_finalize }
 
 # Untracked first: flushing unmatched calls can run the user's timer.
 def:priv profiler_dealloc(instance: ptr[PyObject]) {
@@ -44,7 +40,6 @@ glob:priv profiler_type = TypeDefinition(
          Profiler_methods,
          u64(TypeFlags.BASETYPE.value | TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          TypeHooks(
-             create=profiler_new,
              initialize=profiler_init_init,
              dealloc=profiler_dealloc,
              traverse=profiler_traverse

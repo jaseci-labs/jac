@@ -61,7 +61,9 @@ glob:priv semlock_type = TypeDefinition(
              traverse=semlock_traverse
          ),
          members=semlock_members,
-         record_size=SEMLOCK_FIELDS_SIZE
+         record_size=SEMLOCK_FIELDS_SIZE,
+         generic_getattr=True,
+         generic_setattr=True
      );
 
 # SemLock, with SEM_VALUE_MAX in its dict; a value that is negative as a C

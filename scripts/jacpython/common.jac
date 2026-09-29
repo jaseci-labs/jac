@@ -142,3 +142,61 @@ def write_or_check(target: Path, text: str, check: bool, command: str) -> bool {
     print(f"wrote {target.relative_to(REPO)}");
     return True;
 }
+
+# Bytes of each sized integer type a C integer array holds.
+glob INTEGER_WIDTHS: dict[str, int] = {
+         "u8": 1,
+         "u16": 2,
+         "u32": 4,
+         "i8": 1,
+         "i16": 2,
+         "i32": 4
+     },
+     # Characters of a bytes literal per generated line (indent and quotes aside).
+     BYTES_LINE_CHARS: int = 72;
+
+# The escape of one byte of a bytes literal: printable ASCII as itself, the
+# rest as the shortest octal escape that `following` (the next byte) cannot
+# extend.
+def byte_escape(byte: int, following: int) -> str {
+    ch = chr(byte);
+    if ch in '\\"' {
+        return "\\" + ch;
+    }
+    if 32 <= byte < 127 {
+        return ch;
+    }
+    digits = f"{byte:o}";
+    if 48 <= following <= 55 {
+        digits = digits.rjust(3, "0");
+    }
+    return "\\" + digits;
+}
+
+# The initializer of a C integer array of `jt` holding `values`: a bytes
+# literal of its little-endian elements (which the native compiler lays out as
+# the array), split into adjacent literals that fit the formatter's line.
+def bytes_literal(values: list[int], jt: str) -> str {
+    import ast;
+    width = INTEGER_WIDTHS[jt];
+    signed = jt.startswith("i");
+    data = b"".join(v.to_bytes(width, "little", signed=signed) for v in values);
+    lines: list[str] = [];
+    line: list[str] = [];
+    size = 0;
+    for i in range(len(data)) {
+        token = byte_escape(data[i], data[i + 1] if i + 1 < len(data) else -1);
+        if size + len(token) > BYTES_LINE_CHARS {
+            lines.append('b"' + "".join(line) + '"');
+            line = [];
+            size = 0;
+        }
+        line.append(token);
+        size += len(token);
+    }
+    lines.append('b"' + "".join(line) + '"');
+    if b"".join(ast.literal_eval(text) for text in lines) != data {
+        raise ValueError(f"a {jt} table does not survive its bytes literal");
+    }
+    return "(\n" + "\n".join(lines) + "\n)";
+}

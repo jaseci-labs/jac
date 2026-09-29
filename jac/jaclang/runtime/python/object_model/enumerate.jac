@@ -40,7 +40,6 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicode_InternFromString,
     PyVectorcall_NARGS,
     Py_BuildValue,
-    Py_GenericAlias,
     Py_IncRef,
     Py_NewRef,
     Py_None,
@@ -51,6 +50,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyUnicode_EqualToASCIIString,
     jacpy_release
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.layouts {
     METH_CLASS,
     METH_NOARGS,

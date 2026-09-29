@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 109 C files / 184,949 lines; 94 headers / 74,711 lines.
-#   Total: 203 files / 259,660 source lines.
+#   Excluded: 127 C files / 203,195 lines; 111 headers / 96,010 lines.
+#   Total: 238 files / 299,205 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -222,12 +222,12 @@ Objects/bytesobject.c
 Objects/call.c
 # Objects/capsule.c  # removed: 366 source lines
 # Objects/cellobject.c  # removed: 212 source lines
-Objects/classobject.c
+# Objects/classobject.c  # removed: 518 source lines
 Objects/clinic/bytearrayobject.c.h
 Objects/clinic/bytesobject.c.h
-Objects/clinic/classobject.c.h
+# Objects/clinic/classobject.c.h  # removed: 85 source lines
 Objects/clinic/codeobject.c.h
-Objects/clinic/complexobject.c.h
+# Objects/clinic/complexobject.c.h  # removed: 188 source lines
 Objects/clinic/descrobject.c.h
 Objects/clinic/dictobject.c.h
 # Objects/clinic/enumobject.c.h  # removed: 113 source lines
@@ -235,31 +235,31 @@ Objects/clinic/exceptions.c.h
 Objects/clinic/floatobject.c.h
 Objects/clinic/frameobject.c.h
 Objects/clinic/funcobject.c.h
-Objects/clinic/interpolationobject.c.h
+# Objects/clinic/interpolationobject.c.h  # removed: 94 source lines
 Objects/clinic/listobject.c.h
 Objects/clinic/longobject.c.h
 Objects/clinic/memoryobject.c.h
 Objects/clinic/moduleobject.c.h
 Objects/clinic/odictobject.c.h
 Objects/clinic/setobject.c.h
-Objects/clinic/structseq.c.h
+# Objects/clinic/structseq.c.h  # removed: 68 source lines
 Objects/clinic/tupleobject.c.h
 Objects/clinic/typeobject.c.h
 Objects/clinic/typevarobject.c.h
 Objects/clinic/unicodeobject.c.h
 Objects/codeobject.c
-Objects/complexobject.c
+# Objects/complexobject.c  # removed: 1,422 source lines
 Objects/descrobject.c
 Objects/dictobject.c
 # Objects/enumobject.c  # removed: 585 source lines
 Objects/exceptions.c
-Objects/fileobject.c
+# Objects/fileobject.c  # removed: 548 source lines
 Objects/floatobject.c
 Objects/frameobject.c
 Objects/funcobject.c
-Objects/genericaliasobject.c
+# Objects/genericaliasobject.c  # removed: 1,056 source lines
 Objects/genobject.c
-Objects/interpolationobject.c
+# Objects/interpolationobject.c  # removed: 231 source lines
 # Objects/iterobject.c  # removed: 541 source lines
 Objects/listobject.c
 Objects/longobject.c
@@ -293,13 +293,13 @@ Objects/moduleobject.c
 Objects/object.c
 Objects/obmalloc.c
 Objects/odictobject.c
-Objects/picklebufobject.c
+# Objects/picklebufobject.c  # removed: 224 source lines
 # Objects/rangeobject.c  # removed: 1,317 source lines
 Objects/setobject.c
 # Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
-Objects/structseq.c
-Objects/templateobject.c
+# Objects/structseq.c  # removed: 795 source lines
+# Objects/templateobject.c  # removed: 416 source lines
 Objects/tupleobject.c
 Objects/typeobject.c
 Objects/typeslots.inc
@@ -307,7 +307,7 @@ Objects/typevarobject.c
 Objects/unicodectype.c
 Objects/unicodeobject.c
 Objects/unicodetype_db.h
-Objects/unionobject.c
+# Objects/unionobject.c  # removed: 600 source lines
 Objects/weakrefobject.c
 
 # Builtin and extension modules
@@ -334,7 +334,7 @@ Modules/_ctypes/stgdict.c
 # Modules/_datetimemodule.c  # removed: 7,787 source lines
 # Modules/_decimal/_decimal.c  # removed: 6,341 source lines
 # Modules/_decimal/docstrings.h  # removed: 966 source lines
-Modules/_elementtree.c
+# Modules/_elementtree.c  # removed: 4,560 source lines
 # Modules/_functoolsmodule.c  # removed: 1,953 source lines
 Modules/_hacl/Hacl_HMAC.c
 Modules/_hacl/Hacl_HMAC.h
@@ -485,24 +485,24 @@ Modules/addrinfo.h
 # Modules/atexitmodule.c  # removed: 361 source lines
 # Modules/binascii.c  # removed: 1,337 source lines
 # Modules/blake2module.c  # removed: 1,074 source lines
-Modules/cjkcodecs/_codecs_cn.c
-Modules/cjkcodecs/_codecs_hk.c
-Modules/cjkcodecs/_codecs_iso2022.c
-Modules/cjkcodecs/_codecs_jp.c
-Modules/cjkcodecs/_codecs_kr.c
-Modules/cjkcodecs/_codecs_tw.c
-Modules/cjkcodecs/alg_jisx0201.h
-Modules/cjkcodecs/cjkcodecs.h
-Modules/cjkcodecs/clinic/multibytecodec.c.h
-Modules/cjkcodecs/emu_jisx0213_2000.h
-Modules/cjkcodecs/mappings_cn.h
-Modules/cjkcodecs/mappings_hk.h
-Modules/cjkcodecs/mappings_jisx0213_pair.h
-Modules/cjkcodecs/mappings_jp.h
-Modules/cjkcodecs/mappings_kr.h
-Modules/cjkcodecs/mappings_tw.h
-Modules/cjkcodecs/multibytecodec.c
-Modules/cjkcodecs/multibytecodec.h
+# Modules/cjkcodecs/_codecs_cn.c  # removed: 470 source lines
+# Modules/cjkcodecs/_codecs_hk.c  # removed: 190 source lines
+# Modules/cjkcodecs/_codecs_iso2022.c  # removed: 1,153 source lines
+# Modules/cjkcodecs/_codecs_jp.c  # removed: 770 source lines
+# Modules/cjkcodecs/_codecs_kr.c  # removed: 468 source lines
+# Modules/cjkcodecs/_codecs_tw.c  # removed: 143 source lines
+# Modules/cjkcodecs/alg_jisx0201.h  # removed: 65 source lines
+# Modules/cjkcodecs/cjkcodecs.h  # removed: 525 source lines
+# Modules/cjkcodecs/clinic/multibytecodec.c.h  # removed: 701 source lines
+# Modules/cjkcodecs/emu_jisx0213_2000.h  # removed: 54 source lines
+# Modules/cjkcodecs/mappings_cn.h  # removed: 4,104 source lines
+# Modules/cjkcodecs/mappings_hk.h  # removed: 2,379 source lines
+# Modules/cjkcodecs/mappings_jisx0213_pair.h  # removed: 60 source lines
+# Modules/cjkcodecs/mappings_jp.h  # removed: 4,766 source lines
+# Modules/cjkcodecs/mappings_kr.h  # removed: 3,253 source lines
+# Modules/cjkcodecs/mappings_tw.h  # removed: 2,635 source lines
+# Modules/cjkcodecs/multibytecodec.c  # removed: 2,145 source lines
+# Modules/cjkcodecs/multibytecodec.h  # removed: 152 source lines
 # Modules/clinic/_abc.c.h  # removed: 164 source lines
 Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
@@ -511,7 +511,7 @@ Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
 # Modules/clinic/_csv.c.h  # removed: 210 source lines
 # Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
-Modules/clinic/_elementtree.c.h
+# Modules/clinic/_elementtree.c.h  # removed: 1,334 source lines
 # Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
 # Modules/clinic/_hashopenssl.c.h  # removed: 1,987 source lines
 # Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
@@ -549,7 +549,7 @@ Modules/clinic/gcmodule.c.h
 # Modules/clinic/mmapmodule.c.h  # removed: 769 source lines
 Modules/clinic/posixmodule.c.h
 # Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
-Modules/clinic/pyexpat.c.h
+# Modules/clinic/pyexpat.c.h  # removed: 836 source lines
 # Modules/clinic/resource.c.h  # removed: 177 source lines
 # Modules/clinic/selectmodule.c.h  # removed: 1,379 source lines
 # Modules/clinic/sha1module.c.h  # removed: 175 source lines
@@ -588,7 +588,7 @@ Modules/makesetup
 Modules/posixmodule.c
 Modules/posixmodule.h
 # Modules/pwdmodule.c  # removed: 380 source lines
-Modules/pyexpat.c
+# Modules/pyexpat.c  # removed: 2,537 source lines
 # Modules/resource.c  # removed: 568 source lines
 Modules/rotatingtree.c
 Modules/rotatingtree.h

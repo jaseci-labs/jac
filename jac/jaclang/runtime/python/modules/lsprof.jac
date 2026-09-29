@@ -51,8 +51,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetAttrString,
     PyObject_Repr,
     PyObject_Str,
-    PyStructSequence_New,
-    PyStructSequence_SetItem,
     PyThreadState_Get,
     _PyTime_FromLong,
     _PyTime_FromSeconds,
@@ -63,6 +61,10 @@ import from jaclang.runtime.python.cpython_api {
     _PyUnicode_EqualToASCIIString,
     PyUnicode_FromFormat,
     PyUnicode_FromString
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_New,
+    PyStructSequence_SetItem
 }
 import from jaclang.runtime.python.capi {
     boundary_failure,
@@ -326,31 +328,21 @@ obj ProfilerState(NativeState) {
     }
 }
 
+# The zeroed ProfilerObject: object.__new__ allocates the instance and its
+# state appears on first use, which __init__ then configures.
 def profiler_of(instance: ptr[PyObject]) -> ProfilerState | None {
-    if jacpy_binding_native_present(instance, Profiler_token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, Profiler_token.handle);
-        if isinstance(state, ProfilerState) {
-            return state;
+    if jacpy_binding_native_present(instance, Profiler_token.handle) == 0 {
+        fresh = ProfilerState(entries=RotatingTree(), free_contexts=[]);
+        if jacpy_binding_native_set(instance, Profiler_token.handle, fresh) < 0 {
+            return None;
         }
+    }
+    state = jacpy_binding_native_get(instance, Profiler_token.handle);
+    if isinstance(state, ProfilerState) {
+        return state;
     }
     object_error(PyExc_SystemError, "Profiler state is unavailable");
     return None;
-}
-
-# tp_new: the zeroed ProfilerObject that __init__ then configures.
-def profiler_new(
-    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    instance = jacpy_binding_allocate(type);
-    if not instance {
-        return NULL;
-    }
-    state = ProfilerState(entries=RotatingTree(), free_contexts=[]);
-    if jacpy_binding_native_set(instance, Profiler_token.handle, state) < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    return instance;
 }
 
 # profiler_dealloc(), before the payload is disposed.

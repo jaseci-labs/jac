@@ -11,23 +11,32 @@ Compiled only on Windows, so absent here:
     _ssl.enum_certificates
     _ssl.enum_crls
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject, jacpy_release }
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyMem_Free,
+    PyObject,
+    PyTuple_Size,
+    jacpy_dict_size,
+    jacpy_release,
+    jacpy_tuple_items
+}
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
     PARSE_NOTHING,
     PARSE_POSITIONAL,
-    invoke,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    invoke_tuple,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     borrowed_none,
@@ -38,10 +47,13 @@ import from jaclang.runtime.python.bindings.converters {
     convert_double,
     convert_int,
     convert_str,
-    convert_text_buffer
+    convert_text_buffer,
+    new_checks_arguments
 }
 import from jaclang.runtime.python.modules.ssl {
+    MemoryBIO_token,
     PY_SSL_ENCODING_PEM,
+    _SSLContext_token,
     _ssl_Certificate_get_info_impl,
     _ssl_Certificate_public_bytes_impl,
     _ssl_MemoryBIO_eof_get_impl,
@@ -125,97 +137,104 @@ import from jaclang.runtime.python.modules.ssl {
     subclass_get_state_ctx_self_Sock_Type
 }
 
-def:priv _ssl__test_decode_cert_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path: ptr[PyObject] = convert_PyUnicode_FSConverter(
-        value, "_test_decode_cert", "argument"
-    );
-    result = _ssl__test_decode_cert_impl(receiver, path);
-    if path {
-        jacpy_release(path);
-    }
-    return result;
-}
-
 def:priv _ssl__test_decode_cert_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl__test_decode_cert_bound, receiver);
+    try {
+        path: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "_test_decode_cert", "argument"
+        );
+        try {
+            return _ssl__test_decode_cert_impl(receiver, path);
+        } finally {
+            jacpy_release(path);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _ssl_RAND_add_signature = CallSignature(
-         "RAND_add", ["string", "entropy"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _ssl_RAND_add_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    string: BufferArgument = convert_text_buffer(
-        value, "RAND_add", argument_label("", 1)
-    );
-    value = args.values[1];
-    entropy: f64 = convert_double(value);
-    return _ssl_RAND_add_impl(receiver, string, entropy);
+def:priv _ssl_RAND_add_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        string: BufferArgument = convert_text_buffer(
+            value, "RAND_add", argument_label("", 1)
+        );
+        try {
+            value = clinic_args[1];
+            entropy: f64 = convert_double(value);
+            return _ssl_RAND_add_impl(receiver, string, entropy);
+        } finally {
+            string.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl_RAND_add_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _ssl_RAND_add_signature, args, nargs, NULL, _ssl_RAND_add_bound, receiver
-    );
-}
-
-def:priv _ssl_RAND_bytes_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    n: i32 = convert_int(value);
-    return _ssl_RAND_bytes_impl(receiver, n);
+    if not check_positional("RAND_add", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _ssl_RAND_add_bound(receiver, args, nargs);
 }
 
 def:priv _ssl_RAND_bytes_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl_RAND_bytes_bound, receiver);
-}
-
-def:priv _ssl_RAND_status_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl_RAND_status_impl(receiver);
+    try {
+        n: i32 = convert_int(value);
+        return _ssl_RAND_bytes_impl(receiver, n);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl_RAND_status_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl_RAND_status_bound, receiver);
-}
-
-def:priv _ssl_get_default_verify_paths_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl_get_default_verify_paths_impl(receiver);
+    try {
+        return _ssl_RAND_status_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl_get_default_verify_paths_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl_get_default_verify_paths_bound, receiver);
+    try {
+        return _ssl_get_default_verify_paths_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _ssl_txt2obj_signature = CallSignature(
          "txt2obj", ["txt", "name"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _ssl_txt2obj_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    txt: str = convert_str(value, "txt2obj", argument_label("txt", 1));
-    name: bool = False;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        name = convert_bool(value);
+def:priv _ssl_txt2obj_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        txt: str = convert_str(value, "txt2obj", argument_label("txt", 1));
+        name: bool = False;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            name = convert_bool(value);
+        }
+        return _ssl_txt2obj_impl(receiver, txt, name);
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl_txt2obj_impl(receiver, txt, name);
 }
 
 def:priv _ssl_txt2obj_call(
@@ -224,80 +243,103 @@ def:priv _ssl_txt2obj_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _ssl_txt2obj_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_ssl_txt2obj_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _ssl_txt2obj_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl_txt2obj_signature, args, nargs, kwnames, _ssl_txt2obj_bound, receiver
     );
-}
-
-def:priv _ssl_nid2obj_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    nid: i32 = convert_int(value);
-    return _ssl_nid2obj_impl(receiver, nid);
 }
 
 def:priv _ssl_nid2obj_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl_nid2obj_bound, receiver);
+    try {
+        nid: i32 = convert_int(value);
+        return _ssl_nid2obj_impl(receiver, nid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _ssl__SSLContext_signature = CallSignature(
          "_SSLContext", ["protocol"], 1, 1, 1, parser=PARSE_POSITIONAL
      );
 
-def:priv _ssl__SSLContext_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    protocol: i32 = convert_int(value);
-    return _ssl__SSLContext_impl(receiver, protocol);
+def:priv _ssl__SSLContext_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        protocol: i32 = convert_int(value);
+        return _ssl__SSLContext_impl(receiver, protocol);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:pub _ssl__SSLContext_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _ssl__SSLContext_signature, args, kwargs, _ssl__SSLContext_bound, type
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 1 and size <= 1 {
+            return _ssl__SSLContext_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    return invoke_tuple(
+        _ssl__SSLContext_signature,
+        args,
+        kwargs,
+        _ssl__SSLContext_bound,
+        type,
+        checked=new_checks_arguments(type, _SSLContext_token)
     );
-}
-
-def:priv _ssl__SSLContext_set_ciphers_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    cipherlist: str = convert_str(value, "set_ciphers", "argument");
-    return _ssl__SSLContext_set_ciphers_impl(receiver, cipherlist);
 }
 
 def:priv _ssl__SSLContext_set_ciphers_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl__SSLContext_set_ciphers_bound, receiver);
-}
-
-def:priv _ssl__SSLContext_get_ciphers_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLContext_get_ciphers_impl(receiver);
+    try {
+        cipherlist: str = convert_str(value, "set_ciphers", "argument");
+        return _ssl__SSLContext_set_ciphers_impl(receiver, cipherlist);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext_get_ciphers_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLContext_get_ciphers_bound, receiver);
-}
-
-def:priv _ssl__SSLContext__set_alpn_protocols_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    protos: BufferArgument = convert_buffer(value, "_set_alpn_protocols", "argument");
-    return _ssl__SSLContext__set_alpn_protocols_impl(receiver, protos);
+    try {
+        return _ssl__SSLContext_get_ciphers_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext__set_alpn_protocols_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl__SSLContext__set_alpn_protocols_bound, receiver);
+    try {
+        protos: BufferArgument = convert_buffer(
+            value, "_set_alpn_protocols", "argument"
+        );
+        try {
+            return _ssl__SSLContext__set_alpn_protocols_impl(receiver, protos);
+        } finally {
+            protos.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext_verify_mode_get(
@@ -417,21 +459,29 @@ glob:priv _ssl__SSLContext_load_cert_chain_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _ssl__SSLContext_load_cert_chain_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    certfile: ptr[PyObject] = value;
-    keyfile: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        keyfile = value;
+def:priv _ssl__SSLContext_load_cert_chain_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        certfile: ptr[PyObject] = value;
+        keyfile: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            keyfile = value;
+        }
+        password: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            password = value;
+        }
+        return _ssl__SSLContext_load_cert_chain_impl(
+            receiver, certfile, keyfile, password
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    password: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        password = value;
-    }
-    return _ssl__SSLContext_load_cert_chain_impl(receiver, certfile, keyfile, password);
 }
 
 def:priv _ssl__SSLContext_load_cert_chain_call(
@@ -440,7 +490,18 @@ def:priv _ssl__SSLContext_load_cert_chain_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        return _ssl__SSLContext_load_cert_chain_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLContext_load_cert_chain_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLContext_load_cert_chain_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext_load_cert_chain_signature,
         args,
         nargs,
@@ -460,27 +521,31 @@ glob:priv _ssl__SSLContext_load_verify_locations_signature = CallSignature(
      );
 
 def:priv _ssl__SSLContext_load_verify_locations_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cafile: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        cafile = value;
+    clinic_args = stack.view(count);
+    try {
+        cafile: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            cafile = value;
+        }
+        capath: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            capath = value;
+        }
+        cadata: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            cadata = value;
+        }
+        return _ssl__SSLContext_load_verify_locations_impl(
+            receiver, cafile, capath, cadata
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    capath: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        capath = value;
-    }
-    cadata: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        cadata = value;
-    }
-    return _ssl__SSLContext_load_verify_locations_impl(
-        receiver, cafile, capath, cadata
-    );
 }
 
 def:priv _ssl__SSLContext_load_verify_locations_call(
@@ -489,7 +554,18 @@ def:priv _ssl__SSLContext_load_verify_locations_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 3 {
+        return _ssl__SSLContext_load_verify_locations_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLContext_load_verify_locations_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLContext_load_verify_locations_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext_load_verify_locations_signature,
         args,
         nargs,
@@ -499,17 +575,15 @@ def:priv _ssl__SSLContext_load_verify_locations_call(
     );
 }
 
-def:priv _ssl__SSLContext_load_dh_params_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path: ptr[PyObject] = value;
-    return _ssl__SSLContext_load_dh_params_impl(receiver, path);
-}
-
 def:priv _ssl__SSLContext_load_dh_params_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl__SSLContext_load_dh_params_bound, receiver);
+    try {
+        path: ptr[PyObject] = value;
+        return _ssl__SSLContext_load_dh_params_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _ssl__SSLContext__wrap_socket_signature = CallSignature(
@@ -521,33 +595,39 @@ glob:priv _ssl__SSLContext__wrap_socket_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _ssl__SSLContext__wrap_socket_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    subclass_get_state_ctx_self_Sock_Type(
-        receiver, value, "_wrap_socket", argument_label("sock", 1)
-    );
-    sock: ptr[PyObject] = value;
-    value = args.values[1];
-    server_side: bool = convert_bool(value);
-    server_hostname: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        server_hostname = value;
+def:priv _ssl__SSLContext__wrap_socket_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        subclass_get_state_ctx_self_Sock_Type(
+            receiver, value, "_wrap_socket", argument_label("sock", 1)
+        );
+        sock: ptr[PyObject] = value;
+        value = clinic_args[1];
+        server_side: bool = convert_bool(value);
+        server_hostname: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            server_hostname = value;
+        }
+        owner: ptr[PyObject] = borrowed_none();
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            owner = value;
+        }
+        session: ptr[PyObject] = borrowed_none();
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            session = value;
+        }
+        return _ssl__SSLContext__wrap_socket_impl(
+            receiver, sock, server_side, server_hostname, owner, session
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    owner: ptr[PyObject] = borrowed_none();
-    if args.values[3] != NULL {
-        value = args.values[3];
-        owner = value;
-    }
-    session: ptr[PyObject] = borrowed_none();
-    if args.values[4] != NULL {
-        value = args.values[4];
-        session = value;
-    }
-    return _ssl__SSLContext__wrap_socket_impl(
-        receiver, sock, server_side, server_hostname, owner, session
-    );
 }
 
 def:priv _ssl__SSLContext__wrap_socket_call(
@@ -556,7 +636,18 @@ def:priv _ssl__SSLContext__wrap_socket_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        return _ssl__SSLContext__wrap_socket_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLContext__wrap_socket_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLContext__wrap_socket_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext__wrap_socket_signature,
         args,
         nargs,
@@ -575,38 +666,44 @@ glob:priv _ssl__SSLContext__wrap_bio_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _ssl__SSLContext__wrap_bio_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    subclass_get_state_ctx_self_PySSLMemoryBIO_Type(
-        receiver, value, "_wrap_bio", argument_label("incoming", 1)
-    );
-    incoming: ptr[PyObject] = value;
-    value = args.values[1];
-    subclass_get_state_ctx_self_PySSLMemoryBIO_Type(
-        receiver, value, "_wrap_bio", argument_label("outgoing", 2)
-    );
-    outgoing: ptr[PyObject] = value;
-    value = args.values[2];
-    server_side: bool = convert_bool(value);
-    server_hostname: ptr[PyObject] = borrowed_none();
-    if args.values[3] != NULL {
-        value = args.values[3];
-        server_hostname = value;
+def:priv _ssl__SSLContext__wrap_bio_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        subclass_get_state_ctx_self_PySSLMemoryBIO_Type(
+            receiver, value, "_wrap_bio", argument_label("incoming", 1)
+        );
+        incoming: ptr[PyObject] = value;
+        value = clinic_args[1];
+        subclass_get_state_ctx_self_PySSLMemoryBIO_Type(
+            receiver, value, "_wrap_bio", argument_label("outgoing", 2)
+        );
+        outgoing: ptr[PyObject] = value;
+        value = clinic_args[2];
+        server_side: bool = convert_bool(value);
+        server_hostname: ptr[PyObject] = borrowed_none();
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            server_hostname = value;
+        }
+        owner: ptr[PyObject] = borrowed_none();
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            owner = value;
+        }
+        session: ptr[PyObject] = borrowed_none();
+        if count > 5 and clinic_args[5] != NULL {
+            value = clinic_args[5];
+            session = value;
+        }
+        return _ssl__SSLContext__wrap_bio_impl(
+            receiver, incoming, outgoing, server_side, server_hostname, owner, session
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    owner: ptr[PyObject] = borrowed_none();
-    if args.values[4] != NULL {
-        value = args.values[4];
-        owner = value;
-    }
-    session: ptr[PyObject] = borrowed_none();
-    if args.values[5] != NULL {
-        value = args.values[5];
-        session = value;
-    }
-    return _ssl__SSLContext__wrap_bio_impl(
-        receiver, incoming, outgoing, server_side, server_hostname, owner, session
-    );
 }
 
 def:priv _ssl__SSLContext__wrap_bio_call(
@@ -615,7 +712,16 @@ def:priv _ssl__SSLContext__wrap_bio_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 4 {
+        return _ssl__SSLContext__wrap_bio_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_ssl__SSLContext__wrap_bio_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _ssl__SSLContext__wrap_bio_bound(receiver, values, 6);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext__wrap_bio_signature,
         args,
         nargs,
@@ -625,43 +731,35 @@ def:priv _ssl__SSLContext__wrap_bio_call(
     );
 }
 
-def:priv _ssl__SSLContext_session_stats_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLContext_session_stats_impl(receiver);
-}
-
 def:priv _ssl__SSLContext_session_stats_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLContext_session_stats_bound, receiver);
-}
-
-def:priv _ssl__SSLContext_set_default_verify_paths_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLContext_set_default_verify_paths_impl(receiver);
+    try {
+        return _ssl__SSLContext_session_stats_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext_set_default_verify_paths_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _ssl__SSLContext_set_default_verify_paths_bound, receiver
-    );
-}
-
-def:priv _ssl__SSLContext_set_ecdh_curve_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: ptr[PyObject] = value;
-    return _ssl__SSLContext_set_ecdh_curve_impl(receiver, name);
+    try {
+        return _ssl__SSLContext_set_default_verify_paths_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext_set_ecdh_curve_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl__SSLContext_set_ecdh_curve_bound, receiver);
+    try {
+        name: ptr[PyObject] = value;
+        return _ssl__SSLContext_set_ecdh_curve_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext_sni_callback_get(
@@ -676,31 +774,34 @@ def:priv _ssl__SSLContext_sni_callback_set(
     return i32(_ssl__SSLContext_sni_callback_set_impl(receiver, value));
 }
 
-def:priv _ssl__SSLContext_cert_store_stats_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLContext_cert_store_stats_impl(receiver);
-}
-
 def:priv _ssl__SSLContext_cert_store_stats_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLContext_cert_store_stats_bound, receiver);
+    try {
+        return _ssl__SSLContext_cert_store_stats_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _ssl__SSLContext_get_ca_certs_signature = CallSignature(
          "get_ca_certs", ["binary_form"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _ssl__SSLContext_get_ca_certs_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    binary_form: bool = False;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        binary_form = convert_bool(value);
+def:priv _ssl__SSLContext_get_ca_certs_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        binary_form: bool = False;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            binary_form = convert_bool(value);
+        }
+        return _ssl__SSLContext_get_ca_certs_impl(receiver, binary_form);
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl__SSLContext_get_ca_certs_impl(receiver, binary_form);
 }
 
 def:priv _ssl__SSLContext_get_ca_certs_call(
@@ -709,7 +810,18 @@ def:priv _ssl__SSLContext_get_ca_certs_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _ssl__SSLContext_get_ca_certs_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLContext_get_ca_certs_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLContext_get_ca_certs_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext_get_ca_certs_signature,
         args,
         nargs,
@@ -724,12 +836,16 @@ glob:priv _ssl__SSLContext_set_psk_client_callback_signature = CallSignature(
      );
 
 def:priv _ssl__SSLContext_set_psk_client_callback_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    callback: ptr[PyObject] = value;
-    return _ssl__SSLContext_set_psk_client_callback_impl(receiver, callback);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        callback: ptr[PyObject] = value;
+        return _ssl__SSLContext_set_psk_client_callback_impl(receiver, callback);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLContext_set_psk_client_callback_call(
@@ -738,7 +854,18 @@ def:priv _ssl__SSLContext_set_psk_client_callback_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _ssl__SSLContext_set_psk_client_callback_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLContext_set_psk_client_callback_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLContext_set_psk_client_callback_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext_set_psk_client_callback_signature,
         args,
         nargs,
@@ -758,21 +885,28 @@ glob:priv _ssl__SSLContext_set_psk_server_callback_signature = CallSignature(
      );
 
 def:priv _ssl__SSLContext_set_psk_server_callback_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    callback: ptr[PyObject] = value;
-    identity_hint: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        identity_hint = convert_cstr(
-            value, "set_psk_server_callback", argument_label("identity_hint", 2), True
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        callback: ptr[PyObject] = value;
+        identity_hint: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            identity_hint = convert_cstr(
+                value,
+                "set_psk_server_callback",
+                argument_label("identity_hint", 2),
+                True
+            );
+        }
+        return _ssl__SSLContext_set_psk_server_callback_impl(
+            receiver, callback, identity_hint
         );
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl__SSLContext_set_psk_server_callback_impl(
-        receiver, callback, identity_hint
-    );
 }
 
 def:priv _ssl__SSLContext_set_psk_server_callback_call(
@@ -781,7 +915,18 @@ def:priv _ssl__SSLContext_set_psk_server_callback_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _ssl__SSLContext_set_psk_server_callback_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLContext_set_psk_server_callback_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLContext_set_psk_server_callback_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLContext_set_psk_server_callback_signature,
         args,
         nargs,
@@ -791,125 +936,109 @@ def:priv _ssl__SSLContext_set_psk_server_callback_call(
     );
 }
 
-def:priv _ssl__SSLSocket_do_handshake_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_do_handshake_impl(receiver);
-}
-
 def:priv _ssl__SSLSocket_do_handshake_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_do_handshake_bound, receiver);
+    try {
+        return _ssl__SSLSocket_do_handshake_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _ssl__SSLSocket_getpeercert_signature = CallSignature(
-         "getpeercert", ["der"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
-def:priv _ssl__SSLSocket_getpeercert_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    der: bool = False;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        der = convert_bool(value);
+def:priv _ssl__SSLSocket_getpeercert_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        der: bool = False;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            der = convert_bool(value);
+        }
+        return _ssl__SSLSocket_getpeercert_impl(receiver, der);
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl__SSLSocket_getpeercert_impl(receiver, der);
 }
 
 def:priv _ssl__SSLSocket_getpeercert_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _ssl__SSLSocket_getpeercert_signature,
-        args,
-        nargs,
-        NULL,
-        _ssl__SSLSocket_getpeercert_bound,
-        receiver
-    );
-}
-
-def:priv _ssl__SSLSocket_get_verified_chain_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_get_verified_chain_impl(receiver);
+    if not check_positional("getpeercert", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return _ssl__SSLSocket_getpeercert_bound(receiver, args, nargs);
 }
 
 def:priv _ssl__SSLSocket_get_verified_chain_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_get_verified_chain_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_get_unverified_chain_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_get_unverified_chain_impl(receiver);
+    try {
+        return _ssl__SSLSocket_get_verified_chain_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_get_unverified_chain_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_get_unverified_chain_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_shared_ciphers_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_shared_ciphers_impl(receiver);
+    try {
+        return _ssl__SSLSocket_get_unverified_chain_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_shared_ciphers_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_shared_ciphers_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_cipher_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_cipher_impl(receiver);
+    try {
+        return _ssl__SSLSocket_shared_ciphers_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_cipher_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_cipher_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_version_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_version_impl(receiver);
+    try {
+        return _ssl__SSLSocket_cipher_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_version_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_version_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_selected_alpn_protocol_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_selected_alpn_protocol_impl(receiver);
+    try {
+        return _ssl__SSLSocket_version_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_selected_alpn_protocol_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_selected_alpn_protocol_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_compression_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_compression_impl(receiver);
+    try {
+        return _ssl__SSLSocket_selected_alpn_protocol_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_compression_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_compression_bound, receiver);
+    try {
+        return _ssl__SSLSocket_compression_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_context_get(
@@ -948,39 +1077,39 @@ def:priv _ssl__SSLSocket_owner_set(
     return i32(_ssl__SSLSocket_owner_set_impl(receiver, value));
 }
 
-def:priv _ssl__SSLSocket_write_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    b: BufferArgument = convert_buffer(value, "write", "argument");
-    return _ssl__SSLSocket_write_impl(receiver, b);
-}
-
 def:priv _ssl__SSLSocket_write_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl__SSLSocket_write_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_pending_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_pending_impl(receiver);
+    try {
+        b: BufferArgument = convert_buffer(value, "write", "argument");
+        try {
+            return _ssl__SSLSocket_write_impl(receiver, b);
+        } finally {
+            b.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_pending_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_pending_bound, receiver);
-}
-
-def:priv _ssl__SSLSocket_shutdown_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_shutdown_impl(receiver);
+    try {
+        return _ssl__SSLSocket_pending_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_shutdown_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl__SSLSocket_shutdown_bound, receiver);
+    try {
+        return _ssl__SSLSocket_shutdown_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _ssl__SSLSocket_get_channel_binding_signature = CallSignature(
@@ -988,17 +1117,21 @@ glob:priv _ssl__SSLSocket_get_channel_binding_signature = CallSignature(
      );
 
 def:priv _ssl__SSLSocket_get_channel_binding_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cb_type: str = "tls-unique";
-    if args.values[0] != NULL {
-        value = args.values[0];
-        cb_type = convert_str(
-            value, "get_channel_binding", argument_label("cb_type", 1)
-        );
+    clinic_args = stack.view(count);
+    try {
+        cb_type: str = "tls-unique";
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            cb_type = convert_str(
+                value, "get_channel_binding", argument_label("cb_type", 1)
+            );
+        }
+        return _ssl__SSLSocket_get_channel_binding_impl(receiver, cb_type);
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl__SSLSocket_get_channel_binding_impl(receiver, cb_type);
 }
 
 def:priv _ssl__SSLSocket_get_channel_binding_call(
@@ -1007,7 +1140,18 @@ def:priv _ssl__SSLSocket_get_channel_binding_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _ssl__SSLSocket_get_channel_binding_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl__SSLSocket_get_channel_binding_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl__SSLSocket_get_channel_binding_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl__SSLSocket_get_channel_binding_signature,
         args,
         nargs,
@@ -1017,19 +1161,14 @@ def:priv _ssl__SSLSocket_get_channel_binding_call(
     );
 }
 
-def:priv _ssl__SSLSocket_verify_client_post_handshake_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl__SSLSocket_verify_client_post_handshake_impl(receiver);
-}
-
 def:priv _ssl__SSLSocket_verify_client_post_handshake_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _ssl__SSLSocket_verify_client_post_handshake_bound, receiver
-    );
+    try {
+        return _ssl__SSLSocket_verify_client_post_handshake_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl__SSLSocket_session_get(
@@ -1054,15 +1193,33 @@ glob:priv _ssl_MemoryBIO_signature = CallSignature(
          "MemoryBIO", [], 0, 0, 0, parser=PARSE_NOTHING
      );
 
-def:priv _ssl_MemoryBIO_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl_MemoryBIO_impl(receiver);
+def:priv _ssl_MemoryBIO_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        return _ssl_MemoryBIO_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:pub _ssl_MemoryBIO_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(_ssl_MemoryBIO_signature, args, kwargs, _ssl_MemoryBIO_bound, type);
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 0 and size <= 0 {
+            return _ssl_MemoryBIO_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    return invoke_tuple(
+        _ssl_MemoryBIO_signature,
+        args,
+        kwargs,
+        _ssl_MemoryBIO_bound,
+        type,
+        checked=new_checks_arguments(type, MemoryBIO_token)
+    );
 }
 
 def:priv _ssl_MemoryBIO_pending_get(
@@ -1077,55 +1234,54 @@ def:priv _ssl_MemoryBIO_eof_get(
     return _ssl_MemoryBIO_eof_get_impl(receiver);
 }
 
-glob:priv _ssl_MemoryBIO_read_signature = CallSignature(
-         "read", ["size"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
-def:priv _ssl_MemoryBIO_read_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    size: i32 = -1;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        size = convert_int(value);
+def:priv _ssl_MemoryBIO_read_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        size: i32 = -1;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            size = convert_int(value);
+        }
+        return _ssl_MemoryBIO_read_impl(receiver, size);
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl_MemoryBIO_read_impl(receiver, size);
 }
 
 def:priv _ssl_MemoryBIO_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _ssl_MemoryBIO_read_signature,
-        args,
-        nargs,
-        NULL,
-        _ssl_MemoryBIO_read_bound,
-        receiver
-    );
-}
-
-def:priv _ssl_MemoryBIO_write_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    b: BufferArgument = convert_buffer(value, "write", "argument");
-    return _ssl_MemoryBIO_write_impl(receiver, b);
+    if not check_positional("read", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return _ssl_MemoryBIO_read_bound(receiver, args, nargs);
 }
 
 def:priv _ssl_MemoryBIO_write_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _ssl_MemoryBIO_write_bound, receiver);
-}
-
-def:priv _ssl_MemoryBIO_write_eof_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl_MemoryBIO_write_eof_impl(receiver);
+    try {
+        b: BufferArgument = convert_buffer(value, "write", "argument");
+        try {
+            return _ssl_MemoryBIO_write_impl(receiver, b);
+        } finally {
+            b.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl_MemoryBIO_write_eof_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl_MemoryBIO_write_eof_bound, receiver);
+    try {
+        return _ssl_MemoryBIO_write_eof_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _ssl_SSLSession_time_get(
@@ -1162,14 +1318,20 @@ glob:priv _ssl_Certificate_public_bytes_signature = CallSignature(
          "public_bytes", ["format"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _ssl_Certificate_public_bytes_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    format_: i32 = PY_SSL_ENCODING_PEM;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        format_ = convert_int(value);
+def:priv _ssl_Certificate_public_bytes_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        format_: i32 = PY_SSL_ENCODING_PEM;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            format_ = convert_int(value);
+        }
+        return _ssl_Certificate_public_bytes_impl(receiver, format_);
+    } except boundary_failure {
+        return NULL;
     }
-    return _ssl_Certificate_public_bytes_impl(receiver, format_);
 }
 
 def:priv _ssl_Certificate_public_bytes_call(
@@ -1178,7 +1340,18 @@ def:priv _ssl_Certificate_public_bytes_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _ssl_Certificate_public_bytes_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _ssl_Certificate_public_bytes_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _ssl_Certificate_public_bytes_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _ssl_Certificate_public_bytes_signature,
         args,
         nargs,
@@ -1188,19 +1361,26 @@ def:priv _ssl_Certificate_public_bytes_call(
     );
 }
 
-def:priv _ssl_Certificate_get_info_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _ssl_Certificate_get_info_impl(receiver);
-}
-
 def:priv _ssl_Certificate_get_info_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _ssl_Certificate_get_info_bound, receiver);
+    try {
+        return _ssl_Certificate_get_info_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob MemoryBIO_doc: str = "",
      _SSLContext_doc: str = "",
+     SSLError_doc: str = "An error occurred in the SSL implementation.",
+     SSLCertVerificationError_doc: str = "A certificate could not be verified.",
+     SSLZeroReturnError_doc: str = "SSL/TLS session closed cleanly.",
+     SSLWantReadError_doc: str = "Non-blocking SSL socket needs to read more data\nbefore the requested operation can be completed.",
+     SSLWantWriteError_doc: str = "Non-blocking SSL socket needs to write more data\nbefore the requested operation can be completed.",
+     SSLSyscallError_doc: str = "System error when attempting SSL operation.",
+     SSLEOFError_doc: str = "SSL/TLS connection terminated abruptly.",
+     module_doc: str = "Implementation module for SSL socket operations.  See the socket module\nfor documentation.",
      Certificate_methods: list[MethodDefinition] = [
          MethodDefinition(
              "public_bytes",

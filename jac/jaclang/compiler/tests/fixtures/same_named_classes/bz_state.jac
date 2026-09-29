@@ -10,14 +10,14 @@ obj CompressorState {
     }
 }
 
-def make_state(level: int) -> CompressorState {
+def make_state(level: int) -> own CompressorState {
     return CompressorState(level=level);
 }
 
-def is_state(value: object) -> bool {
+def is_state(value: &object) -> bool {
     return isinstance(value, CompressorState);
 }
 
-def describe_all(states: list[CompressorState]) -> str {
+def describe_all(states: &list[CompressorState]) -> str {
     return ",".join(state.describe() for state in states);
 }

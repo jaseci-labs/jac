@@ -53,7 +53,14 @@ import from jaclang.runtime.python.bindings.module {
     jacpy_binding_state_get,
     visit_reference
 }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_record
+}
+import from jaclang.runtime.python.bindings.members {
+    record_set_byte,
+    record_set_object
+}
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -1057,6 +1064,16 @@ def:priv decompressor_of(instance: ptr[PyObject]) -> ZlibDecompressorState | Non
 }
 
 # tp_new: _ZlibDecompressor(wbits=15, zdict=b'').
+# ZlibDecompressor_members[]: eof and needs_input (Py_T_BOOL) and unused_data
+# (Py_T_OBJECT_EX) read the record, which mirrors the state after every change
+# and holds unused_data borrowed.
+def mirror_decompressor(instance: ptr[PyObject], state: ZlibDecompressorState) {
+    record = jacpy_binding_record(instance, ZlibDecompressor_token.handle);
+    record_set_byte(record, 0, 1 if state.eof else 0);
+    record_set_byte(record, 1, 1 if state.needs_input else 0);
+    record_set_object(record, 8, state.unused_data);
+}
+
 def zlib_decompressor_new(
     cls: ptr[PyObject], wbits: i32, zdict: ptr[PyObject]
 ) -> ptr[PyObject] {
@@ -1093,6 +1110,7 @@ def zlib_decompressor_new(
             jacpy_release(instance);
             return NULL;
         }
+        mirror_decompressor(instance, state);
         return instance;
     }
     if err == Z_STREAM_ERROR {
@@ -1317,6 +1335,7 @@ def zlib_ZlibDecompressor_decompress_impl(
             max_length
         );
     }
+    mirror_decompressor(receiver, state);
     PyThread_release_lock(lock);
     return result;
 }

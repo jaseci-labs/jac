@@ -139,10 +139,16 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
                 or self._opt_payload_of(_result.type) is not None
             ) {
             import from jaclang.compiler.passes.rc_facts_pass {
+                call_borrows_receiver,
                 Ownership,
                 result_ownership
             }
-            if result_ownership(nd) == Ownership.OWNED {
+            if result_ownership(nd) == Ownership.OWNED
+                and not (
+                    self._nogc_headerless()
+                    and isinstance(nd, uni.FuncCall)
+                    and call_borrows_receiver(nd)
+                ) {
                 self._mark_owned(_result);
             }
         }
@@ -1681,7 +1687,9 @@ impl NaIRGenPass._codegen_compare_link(
     is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
         or isinstance(right.type, (ir.DoubleType, ir.FloatType));
     _cmp_unsigned = self._is_unsigned_node(left_node)
-        or self._is_unsigned_node(right_node);
+        or self._is_unsigned_node(right_node)
+        or self._is_c_ptr_node(left_node)
+        or self._is_c_ptr_node(right_node);
     if is_float {
         (left, right) = self._promote_to_float(left, right, unsigned=_cmp_unsigned);
     }
@@ -1946,6 +1954,11 @@ impl NaIRGenPass._codegen_compare_chain(
 }
 
 impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
+    import from jaclang.compiler.c_interop { c_lent_arg_elem }
+    lent = c_lent_arg_elem(nd);
+    if lent is not None {
+        return self._c_lent_address(nd, lent);
+    }
     operand = self._codegen_expr(nd.operand);
     if operand is None {
         return None;

@@ -20,7 +20,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     Py_None,
     Py_NotImplemented,
-    PyComplex_FromDoubles,
     PyDict_GetItemWithError,
     PyDict_Size,
     PyErr_Clear,
@@ -69,6 +68,7 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicode_FromWideChar,
     _PyLong_GCD
 }
+import from jaclang.runtime.python.object_model.complex { PyComplex_FromDoubles }
 import from jaclang.runtime.python.layouts { PyTypeObject }
 import from jaclang.runtime.python.capi {
     boundary_failure,

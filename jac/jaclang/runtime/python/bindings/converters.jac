@@ -13,12 +13,12 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_unicode_size,
     PyUnicode_ReadChar,
     jacpy_release,
-    jacpy_unicode_size,
     jacpy_unsigned_converter,
     NULL,
     Py_GetConstantBorrowed,
     Py_None,
     Py_TYPE,
+    PyErr_Clear,
     PyErr_Occurred,
     PyExc_OverflowError,
     PyExc_TypeError,
@@ -38,20 +38,24 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromUnsignedLong,
     _PyLong_UInt16_Converter,
     _PyLong_UInt32_Converter,
+    _PyLong_UInt64_Converter,
+    _PyLong_UInt8_Converter,
     _PyLong_UnsignedInt_Converter,
     _PyLong_UnsignedShort_Converter,
     PyNumber_AsSsize_t,
     PyNumber_Index,
     PyObject,
-    PyObject_AsFileDescriptor,
     PyObject_IsTrue,
+    PyType_GetSlot,
     PyArg_Parse,
     PyUnicode_AsUTF8AndSize,
     PyUnicode_FSConverter,
     PyUnicode_ReadChar
 }
+import from jaclang.runtime.python.object_model.file { PyObject_AsFileDescriptor }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.type {
+    TypeSlot,
     jacpy_binding_base,
     jacpy_binding_type_matches
 }
@@ -163,6 +167,23 @@ def convert_optional_ssize(value: ptr[PyObject], fallback: i64) -> i64 {
     return result;
 }
 
+# _PyEval_SliceIndexNotNone (ceval.c): an index, clamped to Py_ssize_t,
+# never None.
+def convert_slice_index_not_none(value: ptr[PyObject], fname: str, label: str) -> i64 {
+    if PyIndex_Check(value) == 0 {
+        object_error(
+            PyExc_TypeError,
+            "slice indices must be integers or have an __index__ method"
+        );
+        raise boundary_failure();
+    }
+    result = PyNumber_AsSsize_t(value, NULL);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
 def convert_unsigned_long(
     value: ptr[PyObject], bitwise: bool, fname: str, label: str
 ) -> u64 {
@@ -207,11 +228,13 @@ def convert_unsigned_long_long(
 def convert_unsigned_bounded(
     value: ptr[PyObject], bitwise: bool, limit: u64, kind: str, fname: str, label: str
 ) -> u64 {
+    # Clinic's B, H and I units mask without an index check, as getargs does.
     if bitwise {
-        if PyIndex_Check(value) == 0 {
-            bad_argument(fname, label, "int", value);
+        masked = PyLong_AsUnsignedLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
         }
-        return PyLong_AsUnsignedLongMask(value) & limit;
+        return masked & limit;
     }
     wide = convert_long(value);
     if wide < 0 {
@@ -264,6 +287,22 @@ def convert_uint16(value: ptr[PyObject]) -> u16 {
 def convert_uint32(value: ptr[PyObject]) -> u32 {
     result: u32 = 0;
     if _PyLong_UInt32_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def convert_uint8(value: ptr[PyObject]) -> u8 {
+    result: u8 = 0;
+    if _PyLong_UInt8_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def convert_uint64(value: ptr[PyObject]) -> u64 {
+    result: u64 = 0;
+    if _PyLong_UInt64_Converter(value, &mut result) == 0 {
         raise boundary_failure();
     }
     return result;
@@ -453,6 +492,39 @@ obj ClassToken {
         }
         return self.handle;
     }
+}
+
+# Clinic's self_type_check for a tp_new parser that refuses arguments: the
+# class itself, or a subclass keeping its tp_init.
+def new_checks_arguments(type: ptr[PyObject], token: ClassToken) -> bool {
+    base = jacpy_binding_base(type, token.definition_of(type));
+    # Every instance derives from the defining class; without it, check.
+    if not base {
+        PyErr_Clear();
+        return True;
+    }
+    checked = type == base
+        or PyType_GetSlot(type, i32(TypeSlot.INIT.value))
+            == PyType_GetSlot(base, i32(TypeSlot.INIT.value));
+    jacpy_release(base);
+    return checked;
+}
+
+# The tp_init form: the instance's class is the class itself or keeps its
+# tp_new.
+def init_checks_arguments(instance: ptr[PyObject], token: ClassToken) -> bool {
+    type = Py_TYPE(instance);
+    base = jacpy_binding_base(type, token.definition_of(type));
+    # Every instance derives from the defining class; without it, check.
+    if not base {
+        PyErr_Clear();
+        return True;
+    }
+    checked = type == base
+        or PyType_GetSlot(type, i32(TypeSlot.NEW.value))
+            == PyType_GetSlot(base, i32(TypeSlot.NEW.value));
+    jacpy_release(base);
+    return checked;
 }
 
 def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {

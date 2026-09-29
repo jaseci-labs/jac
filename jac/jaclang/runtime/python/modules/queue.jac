@@ -9,8 +9,10 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_SetNone,
+    PyExc_SystemError,
     PyExc_ValueError,
     PyObject,
+    PyType_GetModule,
     PyThread_release_lock,
     Py_MakePendingCalls,
     Py_NewRef,
@@ -19,13 +21,24 @@ import from jaclang.runtime.python.cpython_api {
     _PyDeadline_Init,
     jacpy_error_pending,
     jacpy_lock_free,
+    jacpy_lock_new,
     jacpy_lock_wait,
     jacpy_release,
     jacpy_timeout_ns
 }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { visit_reference }
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
+}
+import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
+}
 
 import from jaclang.runtime.python.modules.object_ring { object_ring }
 
@@ -135,4 +148,95 @@ def:pub jacpy_queue_get(
         }
     }
     return NULL;
+}
+
+# The Argument Clinic _impl functions over the instance's native FIFO,
+# found through the SimpleQueue ClassToken.
+glob SimpleQueue_token = ClassToken();
+
+def:priv queue_of(instance: ptr[PyObject]) -> (queue_state | None) {
+    if jacpy_binding_native_present(instance, SimpleQueue_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, SimpleQueue_token.handle);
+        if isinstance(state, queue_state) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native SimpleQueue state is unavailable");
+    return None;
+}
+
+def simplequeue_new_impl(type: ptr[PyObject]) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(type);
+    if instance == 0 {
+        return NULL;
+    }
+    lock = jacpy_lock_new();
+    if lock == 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    if jacpy_binding_native_set(instance, SimpleQueue_token.handle, jacpy_queue_new(lock))
+        < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+def:priv put(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+    state = queue_of(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_queue_put(state, item);
+    return Py_NewRef(Py_None);
+}
+
+def _queue_SimpleQueue_put_impl(
+    instance: ptr[PyObject], item: ptr[PyObject], block: bool, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
+    return put(instance, item);
+}
+
+def _queue_SimpleQueue_put_nowait_impl(
+    instance: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return put(instance, item);
+}
+
+# Empty is the defining module's second state slot.
+def:priv take(
+    instance: ptr[PyObject], cls: ptr[PyObject], block: bool, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = queue_of(instance);
+    if state is None {
+        return NULL;
+    }
+    empty = jacpy_binding_state_get(PyType_GetModule(cls), 1);
+    return jacpy_queue_get(state, empty, i64(block), timeout);
+}
+
+def _queue_SimpleQueue_get_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], block: bool, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
+    return take(instance, cls, block, timeout);
+}
+
+def _queue_SimpleQueue_get_nowait_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject] {
+    return take(instance, cls, False, Py_None);
+}
+
+def _queue_SimpleQueue_empty_impl(instance: ptr[PyObject]) -> i32 {
+    state = queue_of(instance);
+    if state is None {
+        return i32(-1);
+    }
+    return i32(jacpy_queue_size(state) == 0);
+}
+
+def _queue_SimpleQueue_qsize_impl(instance: ptr[PyObject]) -> i64 {
+    state = queue_of(instance);
+    return jacpy_queue_size(state) if state is not None else i64(-1);
 }

@@ -1,4 +1,5 @@
 import from jaclang.compiler.frontend.unitree {
+    Ability,
     Archetype,
     Assignment,
     AtomTrailer,
@@ -27,6 +28,27 @@ def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
         return imp;
     }
     return None;
+}
+
+"""Whether a C block defines code or data (a function with a body or a glob
+with a value) rather than only declaring what a library provides."""
+def clib_block_defines(imp: (UniNode | None)) -> bool {
+    import from jaclang.compiler.frontend.unitree { Ability }
+    if not isinstance(imp, Import) or not imp.clib_decls {
+        return False;
+    }
+    for decl in imp.clib_decls {
+        if isinstance(decl, Ability)
+            and decl.body is not None
+            and not (isinstance(decl.body, list) and not decl.body) {
+            return True;
+        }
+        if isinstance(decl, GlobalVars)
+            and any(a.value is not None for a in decl.assignments) {
+            return True;
+        }
+    }
+    return False;
 }
 
 def is_clib_archetype(arch: (UniNode | None)) -> bool {
@@ -244,6 +266,117 @@ def c_call_borrows_args(call: (UniNode | None)) -> bool {
         return True;
     }
     return is_ptr_type(call.target.type);
+}
+
+"""The element type `T` when a borrowed argument of type `operand_type` lends
+its address to a `ptr[T]` parameter: `T` is a C scalar (other than bool, whose
+Jac storage is not C's), a C pointer or a foreign struct, and the operand is
+exactly `T`. None otherwise."""
+def c_lent_elem(
+    param_type: (TypeBase | None), operand_type: (TypeBase | None)
+) -> (TypeBase | None) {
+    if not is_ptr_type(param_type) {
+        return None;
+    }
+    elem = c_type_arg(param_type);
+    if elem is None {
+        return None;
+    }
+    spec = c_type_spec(elem, None);
+    if spec[0] not in ("s", "ptr", "struct") or spec == ["s", "bool"] {
+        return None;
+    }
+    return elem if c_type_spec(operand_type, None) == spec else None;
+}
+
+"""The callee of a call when it has the C ABI: a C library declaration or a
+function a C block defines, in this module or another. None otherwise."""
+def c_abi_callee(call: (UniNode | None)) -> (Ability | None) {
+    import from jaclang.compiler.frontend.unitree { FuncCall }
+    import from jaclang.compiler.symbol_utils { resolved_callee }
+    if not isinstance(call, FuncCall) {
+        return None;
+    }
+    callee = resolved_callee(call);
+    if not isinstance(callee, Ability) or clib_import_of(callee) is None {
+        return None;
+    }
+    return callee;
+}
+
+"""The `ptr[T]` element type a borrowed argument (`&mut x` or `&x`) of a
+C-ABI call lends `x`'s address to for the call, as C's `&x` does; None when
+the argument is not such a loan. The parameter must be a plain `ptr[T]`
+(a borrowed C parameter keeps its own path) and `x` exactly `T`."""
+def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None) {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    if not isinstance(arg, UnaryExpr) or not is_borrow_kind(arg.ownership) {
+        return None;
+    }
+    param = c_lent_param(arg);
+    call = arg.parent;
+    if param is None or call is None {
+        return None;
+    }
+    return c_lent_elem(c_param_type(call, param), arg.operand.type);
+}
+
+"""A C-ABI callee parameter's type: its own, or (for a callee another module
+defines, whose parameter nodes are not typed here) the called function type's."""
+def c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None) {
+    import from jaclang.compiler.frontend.unitree { FuncCall }
+    import from jaclang.compiler.types.types { FunctionType }
+    if param.type is not None {
+        return param.type;
+    }
+    fn_type = call.target.type if isinstance(call, FuncCall) else None;
+    if not isinstance(fn_type, FunctionType) {
+        return None;
+    }
+    name = param.name.value if param.name is not None else None;
+    for p in fn_type.parameters or [] {
+        if p.name == name and not p.is_self and not p.is_cls {
+            return p.param_type;
+        }
+    }
+    return None;
+}
+
+"""The plain (not borrowed) parameter of a C-ABI callee that a positional
+call argument binds to, or None."""
+def c_lent_param(arg: UniNode) -> (ParamVar | None) {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    import from jaclang.compiler.frontend.unitree { FuncCall, FuncSignature, KWPair }
+    call = arg.parent;
+    if not isinstance(call, FuncCall) {
+        return None;
+    }
+    callee = c_abi_callee(call);
+    if callee is None or not isinstance(callee.signature, FuncSignature) {
+        return None;
+    }
+    params = [
+        p
+        for p in callee.signature.get_parameters()
+        if not (p.is_vararg or p.is_kwargs)
+    ];
+    args = list(call.params or []);
+    target: (ParamVar | None) = None;
+    for (i, a) in enumerate(args) {
+        if isinstance(a, KWPair) {
+            break;
+        }
+        if a is arg and i < len(params) {
+            target = params[i];
+        }
+    }
+    if target is None
+        or (
+            target.type_tag is not None and is_borrow_kind(target.type_tag.ownership)
+        ) {
+        return None;
+    }
+    return target;
 }
 
 glob _SPEC_SCALAR_ALIASES: dict[str, str] = {"int": "i64", "float": "f64"};

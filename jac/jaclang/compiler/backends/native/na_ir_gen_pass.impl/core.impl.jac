@@ -1,4 +1,4 @@
-import from jaclang.compiler.c_interop { c_variadic_param }
+import from jaclang.compiler.c_interop { c_variadic_param, clib_block_defines }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
     if `entry.is_float {
@@ -231,8 +231,6 @@ impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
     issue.record(self.llvm_module);
 }
 
-# The globals the module initializer computes, and the globals of other units
-# it loads (declarations: this unit does not define them).
 impl NaIRGenPass._glob_init_symbols -> tuple[list[str], list[str]] {
     computed: list[str] = [];
     for init_tuple in self._global_init_nodes {
@@ -1182,7 +1180,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             _direct_mod is None
             or self._is_catalog_module(_direct_mod)
             or any(
-                not isinstance(s, uni.Import)
+                not isinstance(s, uni.Import) or clib_block_defines(s)
                 for s in ModuleFacts.iter_context_stmts(_direct_mod)
             )
         );

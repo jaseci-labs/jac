@@ -93,6 +93,9 @@ import type from jaclang.compiler.passes.osp_analysis { OspSlot }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import from jaclang.compiler.backends.native.na_constants {
     CLASS_DISPLAY_OFF,
+    CLASS_RECORD_ANCESTRY,
+    VTABLE_SET_BUCKETS,
+    VTABLE_SET_SYMBOL,
     EXC_LINEAGE_BITS,
     EXC_LINEAGE_MIX,
     EXC_LINEAGE_SLOTS,
@@ -114,7 +117,8 @@ import from jaclang.compiler.backends.native.na_constants {
     RC_COLOR_PURPLE,
     RC_COLOR_SHIFT,
     RC_COLOR_WHITE,
-    RC_CYCLE_THRESHOLD
+    RC_CYCLE_THRESHOLD,
+    UNBOUND_CAUGHT
 }
 
 glob GEN_PENDING_FLAG_OFF: int = 8,
@@ -144,7 +148,8 @@ obj NativeFinalizer {
         handler_depth: int,
         pop_handler: bool = False,
         context_exit: tuple[ir.Value, ir.Function] | None = None,
-        gen_exit: tuple[ir.Value, ir.Type] | None = None;
+        gen_exit: tuple[ir.Value, ir.Type] | None = None,
+        exc_drop: tuple[ir.Value, ir.Value] | None = None;
 }
 
 obj NativeErrorHandler {
@@ -299,6 +304,7 @@ walker NaIRGenPass(CompilerPass) {
         arch_type_params: dict[str, list[str]] = {},
         struct_field_inline: dict[str, set] = {},
         struct_field_borrow: dict[str, set] = {},
+        struct_field_text: dict[str, dict[str, str]] = {},
         _subclassed_arch_names: (set[str] | None) = None,
         _aos_deciding: set[str] = set(),
         _self_owned: bool = False,
@@ -317,6 +323,8 @@ walker NaIRGenPass(CompilerPass) {
                     tuple[ir.Value, ir.Value, ir.Value]
                 ]
             ] = [],
+        _slot_caught_drops: dict[int, tuple[ir.Value, ir.Value]] = {},
+        _unbound_caught_slots: dict[int, ir.Value] = {},
         _exc_context_fn: (ir.Function | None) = None,
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},
@@ -349,6 +357,9 @@ walker NaIRGenPass(CompilerPass) {
         _isa_seq_fn: (ir.Function | None) = None,
         _isa_h_fn: (ir.Function | None) = None,
         _isa_vt_fn: (ir.Function | None) = None,
+        _isa_mro_fn: (ir.Function | None) = None,
+        _isa_vtobj_fn: (ir.Function | None) = None,
+        _vtable_nodes: list[ir.GlobalVariable] = [],
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _class_ctor_lookup_fn: (ir.Function | None) = None,
@@ -426,6 +437,7 @@ walker NaIRGenPass(CompilerPass) {
         rc_gc_enable_fn: (ir.Function | None) = None,
         rc_gc_disabled_gv: object = None,
         rc_cycles_enable_fn: (ir.Function | None) = None,
+        rc_release_depth_gv: (ir.GlobalVariable | None) = None,
         rc_cycles_enabled_gv: object = None,
         rc_debug_gv: object = None,
         rc_alloc_id_gv: object = None,
@@ -953,6 +965,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_c_interop_call(nd: uni.FuncCall) -> tuple[bool, (ir.Value | None)];
     def _c_vararg(arg: uni.Expr) -> (ir.Value | None);
     def _c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None);
+    def _c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None);
     def _va_abi -> str;
     def _va_storage_type(abi: str) -> ir.Type;
     def _c_va_start(nd: uni.UniNode) -> (ir.Value | None);
@@ -967,6 +980,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.BinaryExpr, op: str
     ) -> tuple[bool, (ir.Value | None)];
 
+    def _is_c_ptr_node(nd: (uni.UniNode | None)) -> bool;
     def _declare_clib_global(
         assign: uni.Assignment, lib: (str | None), owner: uni.Module
     ) -> None;
@@ -1509,6 +1523,12 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_state_message(obj_val: ir.Value, type_name: str) -> ir.Value;
     def _exc_bound_struct(ex: (uni.Expr | None)) -> (str | None);
     def _reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None;
+    def _exc_binding_escapes(handler: uni.Except) -> bool;
+    def _raise_payload_drop(
+        payload: (ir.Value | None), msg: ir.Value, type_name: str
+    ) -> (ir.Value | None);
+
+    def _emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> None;
     def _reraise_if_bound(cause: uni.Expr) -> None;
     def _exc_lineage_fns -> tuple[ir.Function, ir.Function];
     def _emit_exc_lineage_probe(
@@ -2783,6 +2803,10 @@ walker NaIRGenPass(CompilerPass) {
         tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
     ) -> (ir.Value | None);
 
+    def _variadic_elem_coerce(
+        val: ir.Value, container: (uni.UniNode | None)
+    ) -> ir.Value;
+
     def _tuple_struct_of_value(
         val: (ir.Value | None)
     ) -> (ir.LiteralStructType | None);
@@ -3102,6 +3126,14 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_isa_hashed_fn -> ir.Function;
     def _emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable;
     def _emit_isa_vtable_fn -> ir.Function;
+    def _emit_isa_records_fn -> ir.Function;
+    def _vtable_set -> ir.GlobalVariable;
+    def _emit_isa_vtobj_fn -> ir.Function;
+    def _emit_vtable_set_registrations -> None;
+    def _isinstance_name_fallback(
+        hit: ir.Value, obj_ptr: ir.Value, names: list[str], prefix: str
+    ) -> ir.Value;
+
     def _isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value;
     def _vtable_slot_certain(ty: (TypeBase | None)) -> bool;
     def _isinstance_vtable_fallback(
@@ -3162,6 +3194,14 @@ walker NaIRGenPass(CompilerPass) {
 
     def _slot_lowering_active -> bool;
     def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
+    def _nogc_err_drop_slot -> ir.Value;
+    def _nogc_text_field(type_name: str, fname: str) -> str;
+    def _nogc_own_text(
+        expr: (uni.UniNode | None), val: ir.Value, kind: str
+    ) -> ir.Value;
+
+    def _nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> None;
+    def _nogc_release_dict_key(key: ir.Value) -> None;
     def _emit_finalizers(loop_depth: int = 0) -> bool;
     def _emit_err_check(
         callee: (uni.Ability | None), site: (uni.UniNode | None) = None
@@ -3169,7 +3209,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _emit_pending_error_check -> None;
     def _emit_err_propagate(loc: str = "") -> None;
-    def _codegen_raise_slot(payload: ir.Value, type_id: int, msg: ir.Value) -> None;
+    def _codegen_raise_slot(
+        payload: ir.Value, type_id: int, msg: ir.Value, drop: (ir.Value | None) = None
+    ) -> None;
+
     def _codegen_try_slot(nd: uni.TryStmt) -> None;
     def _codegen_try_unwind(nd: uni.TryStmt, emit_finally: bool = True) -> None;
     def _codegen_finally_guard(nd: uni.TryStmt) -> None;

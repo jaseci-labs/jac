@@ -17,6 +17,7 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
              "_jac_clib_bind",
              "_jac_c_copy",
              "_jac_c_cell",
+             "_jac_c_lend",
              "_jac_c_function_ptr",
              "_jac_c_vararg",
              "ScheduleTrigger",

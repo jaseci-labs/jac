@@ -23,11 +23,11 @@ def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
 
 def _application_ir(plan: LinkPlan) -> str {
     import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+    import from jaclang.compiler.frontend.codeinfo { is_toolchain_unit }
     registry = plan.prog.native_units();
     parts: list[str] = [];
     for u in plan.units {
-        if native_unit_identity(u.path).startswith("jaclang/") {
+        if is_toolchain_unit(u.path) {
             continue;
         }
         bc = registry.bitcode_for(u.path, plan.options);

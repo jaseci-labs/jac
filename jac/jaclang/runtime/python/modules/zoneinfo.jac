@@ -76,7 +76,8 @@ import from jaclang.runtime.python.bindings.module {
 }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_allocate,
-    jacpy_binding_owner
+    jacpy_binding_owner,
+    jacpy_binding_record
 }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
@@ -84,6 +85,7 @@ import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_present
 }
 import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.members { record_set_object }
 
 # The handle of the module definition, which the binding fills in, so a type
 # finds its module as PyType_GetModuleByDef() does.
@@ -430,6 +432,9 @@ def:priv zoneinfo_new_instance(
                 zone.key = Py_NewRef(key);
                 failed = jacpy_binding_native_set(instance, ZoneInfo_token.handle, zone)
                     < 0;
+                if not failed {
+                    mirror_key(instance, zone);
+                }
             } else {
                 failed = True;
             }
@@ -542,7 +547,16 @@ def zoneinfo_ZoneInfo_from_file_impl(
         jacpy_release(instance);
         return NULL;
     }
+    mirror_key(instance, zone);
     return instance;
+}
+
+# ZoneInfo's `key` member (Py_T_OBJECT_EX) reads the record, which holds the
+# state's key borrowed.
+def mirror_key(instance: ptr[PyObject], zone: ZoneInfoState) {
+    record_set_object(
+        jacpy_binding_record(instance, ZoneInfo_token.handle), 0, zone.key
+    );
 }
 
 def zoneinfo_ZoneInfo_no_cache_impl(

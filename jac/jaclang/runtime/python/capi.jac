@@ -336,3 +336,19 @@ def c_string_copy(text: str) -> ptr[u8] {
     characters[size] = u8(0);
     return memory;
 }
+
+# A C string made once and kept for the process, as a string literal is in C:
+# for C APIs that keep the pointer (a capsule name) or take a C string where
+# a Jac str would be a temporary.
+obj StaticText {
+    has text: str,
+        address: ptr[u8] = ptr[u8]();
+
+    # The C string; NULL when allocation fails.
+    def get -> ptr[u8] {
+        if not self.address {
+            self.address = c_string_copy(self.text);
+        }
+        return self.address;
+    }
+}
