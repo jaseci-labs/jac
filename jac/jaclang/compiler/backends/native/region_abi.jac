@@ -11,6 +11,8 @@ glob REGION_KERNEL_ABI: dict[str, tuple[bool, int]] = {
          "__jac_region_unwind": (False, 1),
          "__jac_region_current": (True, 0),
          "__jac_region_depth": (True, 0),
+         "__jac_region_escape": (True, 0),
+         "__jac_region_restore": (False, 1),
          "__jac_region_of": (True, 1),
          "__jac_region_owns": (True, 1)
      };

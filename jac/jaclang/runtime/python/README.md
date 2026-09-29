@@ -28,7 +28,11 @@ CPython license is retained.
 The native object is built with Jac's `rc` memory profile and the same LLVM
 module pipeline as every other native artifact. Each compile request runs inside
 one region, so the tokens, trees, symbol tables and code units it builds are
-reclaimed together once its CPython result exists.
+reclaimed together once its CPython result exists. A request can re-enter
+native modules through CPython (the tokenizer imports `unicodedata` to decode
+`\N{...}`); every binding callback is a Jac function C calls, which runs with
+no current region, so module state and objects built there never land in the
+request's region.
 
 The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
 backend to emit the replacement object, rejects interpreted demotions, and

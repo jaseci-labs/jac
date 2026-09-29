@@ -3,6 +3,7 @@ import json;
 import os;
 import sys;
 import from jaclang.runtime.scalars { numeric_shapes }
+import from jaclang.runtime.region { escape_regions, restore_regions }
 
 def _scalar_ctypes -> dict[str, any] {
     out: dict[str, any] = {};
@@ -586,7 +587,12 @@ def _callback_trampoline(spec: list[any], fn: any, scope: any) -> any {
             _callback_arg(params[i], raw[i], scope) if i < len(params) else raw[i]
             for i in range(len(raw))
         ];
-        result = fn(*args);
+        saved = escape_regions();
+        try {
+            result = fn(*args);
+        } finally {
+            restore_regions(saved);
+        }
         if ret[0] == "ptr" {
             return result._addr if isinstance(result, JacPtr) else None;
         }

@@ -487,6 +487,44 @@ import from "CLIB_POINTERS_LIBRARY" {
     assert checker_codes(code) == ["E1155", "E1155"];
 }
 
+test "a Jac function C calls runs outside the caller's open region" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr[CpVec3];
+    }
+    def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;
+    glob kept_recipe: CpRecipe = CpRecipe(count=i32(1), scale=remember);
+}
+obj Kept {
+    has value: i32;
+
+    def drop {}
+}
+def remember(v: i32) -> i32 {
+    item = Kept(value=v);
+    doubled = item.value * i32(2);
+    print("callback on heap", region_of(item) is None);
+    return doubled;
+}
+with entry {
+    r: own Region = Region();
+    in r {
+        opened = Kept(value=i32(1));
+        print("open", region_of(opened) is None);
+        print("run", cp_recipe_run(addressof(kept_recipe), i32(20)));
+    }
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code));
+    }
+    lines = out.splitlines();
+    assert "open False" in lines , out;
+    assert "callback on heap True" in lines , out;
+    assert "run 41" in lines , out;
+}
+
 test "only Final globs are C constants" {
     code = DECLS
         + '''
