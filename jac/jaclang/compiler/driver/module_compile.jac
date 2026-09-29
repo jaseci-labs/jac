@@ -48,6 +48,18 @@ obj ModuleCompilation {
     has session: SessionHooks,
         analysis: ModuleAnalysis;
 
+    def run_phase(phase: CompilationPhase) {
+        if phase == CompilationPhase.NATIVE_CHECKS {
+            self.native_checks();
+        } elif phase == CompilationPhase.CLIENT_DEPENDENCIES {
+            self.client_dependencies();
+        } elif phase == CompilationPhase.INTERFACE {
+            self.interface();
+        } elif phase == CompilationPhase.CODEGEN {
+            self.codegen();
+        }
+    }
+
     def native_checks {
         analysis = self.analysis;
         options = analysis.options;
@@ -299,24 +311,17 @@ def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
     );
 }
 
-obj CodegenStep {
-    has phase: CompilationPhase,
-        execute: Callable[[ModuleCompilation], None];
-}
-
-def codegen_steps -> list[CodegenStep] {
-    return [
-        CodegenStep(CompilationPhase.NATIVE_CHECKS, ModuleCompilation.native_checks),
-        CodegenStep(
-            CompilationPhase.CLIENT_DEPENDENCIES, ModuleCompilation.client_dependencies
-        ),
-        CodegenStep(CompilationPhase.INTERFACE, ModuleCompilation.interface),
-        CodegenStep(CompilationPhase.CODEGEN, ModuleCompilation.codegen)
-    ];
-}
+glob CODEGEN_PHASES: list[CompilationPhase] = [
+         CompilationPhase.NATIVE_CHECKS,
+         CompilationPhase.CLIENT_DEPENDENCIES,
+         CompilationPhase.INTERFACE,
+         CompilationPhase.CODEGEN
+     ];
 
 def module_pipeline -> list[CompilationPhase] {
-    return list(ANALYSIS_PHASES) + [step.phase for step in codegen_steps()];
+    phases: list[CompilationPhase] = list(ANALYSIS_PHASES);
+    phases.extend(CODEGEN_PHASES);
+    return phases;
 }
 
 def compile_task(
@@ -331,15 +336,15 @@ def compile_task(
         analysis = analyze_module(program, path, options, source);
     }
     task = ModuleCompilation(session, analysis);
-    for step in codegen_steps() {
+    for phase in CODEGEN_PHASES {
         if cancelled(options) {
             break;
         }
         started = time.perf_counter();
         try {
-            step.execute(task);
+            task.run_phase(phase);
         } finally {
-            record_phase(program, step.phase, started);
+            record_phase(program, phase, started);
         }
     }
     return analysis;
