@@ -202,3 +202,26 @@ test "a client module compiles in the kernel with the host's products" {
         assert_same_products(emitted, expected);
     }
 }
+
+"""A client module importing `@jac/runtime` makes the type evaluator ask for
+the declaration file beside the virtual module, so the snapshot has to answer
+that question too; a kernel compile then misses nothing."""
+test "a client module importing a virtual Jac module compiles in the kernel" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'app.jac').write_text(
+            'import from "@jac/runtime" { jacIsLoggedIn }\n\n'
+                + 'def:pub app -> JsxElement {\n'
+                + '    return <div>{"in" if jacIsLoggedIn() else "out"}</div>;\n}\n'
+        );
+        entry_file = str(base / 'app.jac');
+        expected = host_products(entry_file);
+        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+    }
+}

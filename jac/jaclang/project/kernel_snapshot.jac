@@ -157,7 +157,10 @@ obj ClosureScan {
             self.follow(self.resolved(mod_path, None));
             self.learn_npm(spec, owner);
             if spec.startswith("@jac/") {
-                learner.jac_virtual_module_path(spec);
+                virtual_path = learner.jac_virtual_module_path(spec);
+                if virtual_path {
+                    learner.sibling_declaration(virtual_path);
+                }
             }
             if spec.startswith("jaclang.") {
                 learner.resolve_module(spec, os.path.join(os.path.dirname(owner), ""));
@@ -681,10 +684,13 @@ def kernel_inputs_json(
         inputs.client_stub_globals = host.client_stub_globals();
         inputs.client_stub_globals_known = True;
         for module_id in injected_virtual_modules(resolve_active_backend()) {
-            if module_id not in inputs.virtual_modules {
-                inputs.virtual_modules[module_id] = host.jac_virtual_module_path(
-                    module_id
-                )
+            if module_id in inputs.virtual_modules {
+                continue;
+            }
+            virtual_path = host.jac_virtual_module_path(module_id) or "";
+            inputs.virtual_modules[module_id] = virtual_path;
+            if virtual_path and virtual_path not in inputs.siblings {
+                inputs.siblings[virtual_path] = host.sibling_declaration(virtual_path)
                     or "";
             }
         }
