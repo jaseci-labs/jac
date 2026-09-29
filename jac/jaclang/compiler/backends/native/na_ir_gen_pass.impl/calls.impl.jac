@@ -1,4 +1,5 @@
 import from jaclang.compiler.frontend.constant { OwnershipKind }
+import from jaclang.compiler.c_interop { clib_import_of }
 
 glob _NA_ABC_REDUCTIONS: dict[str, tuple[str, ...]] = {
          "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
@@ -2435,6 +2436,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
+            if sig.return_type is None and clib_import_of(sig) is not None {
+                # A C definition with no return annotation returns void.
+                ret_ir_type = ir.VoidType();
+            }
             _extern_sym = func_name;
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(

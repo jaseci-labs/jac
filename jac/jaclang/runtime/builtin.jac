@@ -58,6 +58,7 @@ glob _CINTEROP_NAMES: dict[str, str] = {
          '_jac_clib_bind': 'clib_bind',
          '_jac_c_copy': 'c_copy',
          '_jac_c_cell': 'c_cell',
+         '_jac_c_lend': 'c_lend',
          '_jac_c_function_ptr': 'c_function_ptr',
          '_jac_c_vararg': 'c_vararg'
      };
@@ -193,6 +194,7 @@ glob __all__ = [
          '_jac_clib_bind',
          '_jac_c_copy',
          '_jac_c_cell',
+         '_jac_c_lend',
          '_jac_c_function_ptr',
          '_jac_c_vararg',
          '_jac_region_open',

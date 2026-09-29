@@ -697,6 +697,37 @@ impl NaIRGenPass._c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None) {
     return None;
 }
 
+# `&mut x` (or `&x`) passed to a `ptr[T]` parameter of a C-ABI function lends
+# x's address for the call, as C's `&x` does: a C scalar or pointer variable's
+# storage slot, or a foreign struct's storage, which the callee reads and
+# writes in place.
+impl NaIRGenPass._c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    if self._foreign_struct_name_of_type(elem) is not None {
+        storage = self._codegen_expr(arg.operand);
+        if storage is not None and isinstance(storage.type, ir.PointerType) {
+            return self.builder.ptrtoint(storage, i64, name="c.lend.struct");
+        }
+    } else {
+        slot = self._clib_place_ptr(arg);
+        want = self._c_scalar_llvm(elem);
+        if slot is not None
+            and want is not None
+            and isinstance(slot.type, ir.PointerType)
+            and slot.type.pointee == want {
+            return self.builder.ptrtoint(slot, i64, name="c.lend");
+        }
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C pointer argument",
+        name=str(arg.operand.type),
+        help_text="`&mut x` passed to a `ptr[T]` parameter lends the address of a variable or field whose storage is the C `T`."
+    );
+    return None;
+}
+
 impl NaIRGenPass._c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None) {
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     if isinstance(arg, uni.UnaryExpr) and is_borrow_kind(arg.ownership) {

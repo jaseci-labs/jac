@@ -1946,6 +1946,11 @@ impl NaIRGenPass._codegen_compare_chain(
 }
 
 impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
+    import from jaclang.compiler.c_interop { c_lent_arg_elem }
+    lent = c_lent_arg_elem(nd);
+    if lent is not None {
+        return self._c_lent_address(nd, lent);
+    }
     operand = self._codegen_expr(nd.operand);
     if operand is None {
         return None;

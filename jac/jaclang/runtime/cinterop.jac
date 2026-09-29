@@ -472,6 +472,15 @@ def c_cell(spec: str, value: any, scope: any) -> CCell {
     return CCell(_resolve_elem(json.loads(spec), scope), value);
 }
 
+# `&mut x` passed to a `ptr[T]` parameter of a C-ABI function: the address of
+# x's C cell, or of a foreign struct's own storage, as the `ptr[T]` `spec`
+# names it.
+def c_lend(spec: str, target: any, scope: any) -> JacPtr {
+    cls = _resolve_elem(json.loads(spec), scope);
+    storage = target.c if isinstance(target, CCell) else target;
+    return cls(ctypes.addressof(storage));
+}
+
 def _resolve_elem(spec: list[any], scope: any) -> any {
     kind = spec[0];
     if kind == "s" {
