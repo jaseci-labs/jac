@@ -337,9 +337,10 @@
 -		Python/symtable.o \
 @@ -523,1 +477,0 @@
 -		Objects/boolobject.o \
-@@ -529,1 +482,0 @@
+@@ -528,2 +481,0 @@
+-		Objects/capsule.o \
 -		Objects/cellobject.o \
-@@ -551,1 +503,0 @@
+@@ -551,1 +502,0 @@
 -		Objects/namespaceobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser

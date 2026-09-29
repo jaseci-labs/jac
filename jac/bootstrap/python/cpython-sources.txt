@@ -220,7 +220,7 @@ Objects/bytearrayobject.c
 Objects/bytes_methods.c
 Objects/bytesobject.c
 Objects/call.c
-Objects/capsule.c
+# Objects/capsule.c  # removed: 366 source lines
 # Objects/cellobject.c  # removed: 212 source lines
 Objects/classobject.c
 Objects/clinic/bytearrayobject.c.h
