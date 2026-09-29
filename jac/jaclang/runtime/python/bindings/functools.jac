@@ -552,7 +552,7 @@ def:priv placeholder_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyTuple_Size(args) != 0 or (kwargs != 0 and jacpy_dict_size(kwargs) != 0) {
-        object_error(PyExc_TypeError, "Placeholder takes no arguments");
+        object_error(PyExc_TypeError, "PlaceholderType takes no arguments");
         return NULL;
     }
     module = module_for(type);
@@ -816,7 +816,7 @@ glob:priv callable_flags = u64(
      ),
      placeholder_type = TypeDefinition(
          "functools._PlaceholderType",
-         "",
+         "The type of the Placeholder singleton.\n\nUsed as a placeholder for partial arguments.",
          [
              MethodDefinition(
                  "__reduce__",
@@ -861,6 +861,9 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             module, "_lru_cache_wrapper", Py_NewRef(jacpy_binding_state_get(module, 2))
         )
         or not add_owned(
+            module, "_PlaceholderType", Py_NewRef(jacpy_binding_state_get(module, 4))
+        )
+        or not add_owned(
             module, "Placeholder", Py_NewRef(jacpy_binding_state_get(module, 5))
         ) {
         return i32(-1);
@@ -870,7 +873,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 
 glob:priv definition = ModuleDefinition(
          "_functools",
-         "Native Jac callable policies.",
+         "Tools that operate on functions.",
          [
              MethodDefinition(
                  "reduce",
