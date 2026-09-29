@@ -1,6 +1,9 @@
 import from jaclang.compiler.c_interop {
     c_array_elem,
     c_builtin_kind,
+    c_bytes_array_values,
+    c_bytes_elem_shape,
+    c_bytes_literal,
     c_variadic_param,
     is_va_list_type,
     c_scalar_constant,
@@ -818,9 +821,14 @@ impl NaIRGenPass._declare_clib_global(
     elem = c_array_elem(ctype);
     elem_info = self._c_elem_info(elem) if elem is not None else None;
     if elem_info is not None {
-        count = len(assign.value.values)
-            if isinstance(assign.value, uni.ListVal) and owner is self.module
-            else 0;
+        count = 0;
+        if owner is self.module and isinstance(assign.value, uni.ListVal) {
+            count = len(assign.value.values);
+        } elif owner is self.module
+            and (data := c_bytes_literal(assign.value)) is not None
+            and (shape := c_bytes_elem_shape(elem)) is not None {
+            count = len(data) // shape[0];
+        }
         llt = ir.ArrayType(elem_info[0], count);
     } elif llt is None {
         llt = self.struct_types[sname] if sname is not None else ir.IntType(8);
@@ -863,7 +871,7 @@ impl NaIRGenPass._emit_clib_data_inits -> None {
                 node_override=value,
                 kind="C data definition",
                 name=gv.name,
-                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, and constructors of foreign structs made of these."
+                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, constructors of foreign structs made of these, and for an integer array a bytes literal of its little-endian elements."
             );
             continue;
         }
@@ -899,6 +907,17 @@ impl NaIRGenPass._c_const_init(
     }
     elem = c_array_elem(ctype);
     if elem is not None and isinstance(llt, ir.ArrayType) {
+        data = c_bytes_literal(expr);
+        if data is not None {
+            shape = c_bytes_elem_shape(elem);
+            if shape is None or len(data) != shape[0] * llt.count {
+                return None;
+            }
+            if shape[0] == 1 {
+                return ir.Constant(llt, bytearray(data));
+            }
+            return ir.Constant(llt, c_bytes_array_values(data, shape[0], shape[1]));
+        }
         if not isinstance(expr, uni.ListVal) {
             return None;
         }

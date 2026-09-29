@@ -457,6 +457,36 @@ with entry {
     assert "final 17 4 3.0 1099511627778" in out.splitlines() , out;
 }
 
+test "a bytes literal lays out a C integer array's little-endian elements" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    glob bytes_u8: list[u8] = b"\\x01\\xff" b"A",
+         bytes_u16: list[u16] = b"\\x34\\x12\\xff\\xff",
+         bytes_i32: list[i32] = b"\\xfe\\xff\\xff\\xff\\x00\\x00\\x00\\x01";
+}
+with entry {
+    small = addressof(bytes_u8).view(3);
+    wide = addressof(bytes_u16).view(2);
+    signed = addressof(bytes_i32).view(2);
+    print("bytes", small[0], small[1], small[2], wide[0], wide[1], signed[0], signed[1]);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code));
+    }
+    assert "bytes 1 255 65 4660 65535 -2 16777216" in out.splitlines() , out;
+}
+
+test "a bytes literal initializes only a sized integer array of whole elements" {
+    code = DECLS
+        + '''
+import from "CLIB_POINTERS_LIBRARY" {
+    glob odd_u16: list[u16] = b"\\x01\\x02\\x03",
+         reals: list[f64] = b"\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00";
+}
+''';
+    assert checker_codes(code) == ["E1155", "E1155"];
+}
+
 test "only Final globs are C constants" {
     code = DECLS
         + '''
