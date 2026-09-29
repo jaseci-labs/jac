@@ -385,6 +385,10 @@ impl NaIRGenPass._codegen_delete_list_slice(
 }
 
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
+    if nd.is_tail {
+        self._codegen_tail_return(nd);
+        return;
+    }
     _gc = self._gen_ctx;
     if _gc is not None and self.builder.function is _gc.resume_fn {
         _gr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
@@ -577,6 +581,170 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
         _fb = 0 if isinstance(func_ret_type, (ir.IntType, ir.DoubleType)) else None;
         self.builder.ret(ir.Constant(func_ret_type, _fb));
     }
+}
+
+impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
+    """Lower `return tail f(args);` to an LLVM `musttail` call.
+
+    The callee reuses the caller's frame, so the call has to be the last thing
+    the function does and has to fit the frame exactly. Every condition LLVM
+    places on `musttail` is checked here, before anything is emitted where it
+    can be, and a call that cannot be guaranteed is `E5113` naming the reason;
+    it is never quietly lowered as an ordinary call, which would bring back the
+    stack growth the programmer asked to rule out.
+    """;
+    func = self.builder.function;
+    reason = self._tail_frame_blocker();
+    if reason is not None {
+        self.emit(E5113, node_override=nd, reason=reason);
+        return;
+    }
+    saved_site = self._tail_call_site;
+    self._tail_call_site = nd.expr;
+    try {
+        val = self._codegen_required(nd.expr);
+    } finally {
+        self._tail_call_site = saved_site;
+    }
+    if val is None {
+        return;
+    }
+    blk = self.builder.block;
+    last = blk.instructions[-1] if blk.instructions else None;
+    call: (ir.CallInstr | None) = None;
+    if isinstance(last, ir.CallInstr) {
+        if last is val
+            or (
+                isinstance(func.return_value.type, ir.VoidType)
+                and isinstance(last.type, ir.VoidType)
+            ) {
+            call = last;
+        }
+    }
+    if call is None {
+        self.emit(
+            E5113,
+            node_override=nd,
+            reason="work remains after the call (an exception check, releasing an owned argument, or converting its result), so the call is not in tail position"
+        );
+        return;
+    }
+    reason = self._tail_call_mismatch(call, func);
+    if reason is not None {
+        self.emit(E5113, node_override=nd, reason=reason);
+        return;
+    }
+    call.tail = "musttail";
+    if isinstance(func.return_value.type, ir.VoidType) {
+        self.builder.ret_void();
+    } else {
+        self.builder.ret(call);
+    }
+}
+
+impl NaIRGenPass._tail_frame_blocker -> (str | None) {
+    """Why the current frame cannot be handed to a tail callee, if it cannot.
+
+    Scope-exit cleanup runs after a normal return's call, which `musttail`
+    forbids, so it has to be empty: the dry run emits it into a scratch block
+    that is discarded, and any instruction there is an owned value to release,
+    a region to leave or a string to free.
+    """;
+    func = self.builder.function;
+    if self._gen_ctx is not None and func is self._gen_ctx.resume_fn {
+        return "a generator's frame outlives each resumption";
+    }
+    if func.function_type.var_arg {
+        return "the caller is variadic";
+    }
+    if any(frame.function is func for frame in self._finally_stack) {
+        return "a `finally` or `with` block must run after the call";
+    }
+    if self._slot_try_stack {
+        return "a `try` handler must stay active while the callee runs";
+    }
+    if self.region_open_stack {
+        return "an open region must be left after the call";
+    }
+    if self.closure_cell_handles {
+        return "captured variables' cells must be released after the call";
+    }
+    saved = self.builder.block;
+    probe = func.append_basic_block(name="tail.cleanup.probe");
+    self.builder.position_at_end(probe);
+    try {
+        self._emit_scope_cleanup(skip_var=None, loc="");
+        pending = len(probe.instructions) > 0;
+    } finally {
+        func.blocks.remove(probe);
+        self.builder.position_at_end(saved);
+    }
+    if pending {
+        return "an owned local must be released after the call";
+    }
+    return None;
+}
+
+impl NaIRGenPass._tail_call_mismatch(
+    call: ir.CallInstr, func: ir.Function
+) -> (str | None) {
+    """Why `call` cannot be `musttail` from `func`, if it cannot.
+
+    LLVM requires the callee to take the caller's parameter list and return
+    type with the same calling convention and variadic-ness, and ABI-affecting
+    parameter attributes (`sret`, `byval`, `inalloca`) to agree. A pointer the
+    callee receives must not be the address of the caller's stack.
+    """;
+    callee = call.callee;
+    fnty = func.function_type;
+    callee_ty: any = None;
+    try {
+        callee_ty = callee.function_type;
+    } except TypeError {
+        return "the callee's signature is unknown";
+    }
+    if callee_ty.var_arg {
+        return "the callee is variadic";
+    }
+    if callee_ty.return_type != fnty.return_type {
+        return f"the callee returns {callee_ty.return_type}, the caller {fnty.return_type}";
+    }
+    if len(callee_ty.args) != len(fnty.args) {
+        return f"the callee takes {len(callee_ty.args)} parameters, the caller {len(
+            fnty.args
+        )}";
+    }
+    for (i, (a, b)) in enumerate(zip(callee_ty.args, fnty.args)) {
+        if a != b {
+            return f"parameter {i + 1} is {a} in the callee and {b} in the caller";
+        }
+    }
+    if (call.cconv or "") != (func.calling_convention or "") {
+        return "the callee uses a different calling convention";
+    }
+    _abi = {"sret", "byval", "inalloca", "preallocated", "swifterror"};
+    for arg in func.args {
+        if _abi & {str(a).split("(")[0] for a in arg.attributes} {
+            return "the caller passes a parameter by an ABI attribute (`sret`, `byval`)";
+        }
+    }
+    if isinstance(callee, ir.Function) {
+        for arg in callee.args {
+            if _abi & {str(a).split("(")[0] for a in arg.attributes} {
+                return "the callee takes a parameter by an ABI attribute (`sret`, `byval`)";
+            }
+        }
+    }
+    for operand in call.args {
+        cur = operand;
+        while isinstance(cur, (ir.CastInstr, ir.GEPInstr)) {
+            cur = cur.operands[0];
+        }
+        if isinstance(cur, ir.AllocaInstr) {
+            return "an argument is the address of a caller local, which the callee would outlive";
+        }
+    }
+    return None;
 }
 
 impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {

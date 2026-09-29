@@ -1256,8 +1256,17 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     }
 }
 
-impl NaIRGenPass._emit_err_check(callee: (uni.Ability | None)) -> None {
-    if callee is not None {
+impl NaIRGenPass._emit_err_check(
+    callee: (uni.Ability | None), site: (uni.UniNode | None) = None
+) -> None {
+    """Propagate a raise the callee left pending, unless the call is a tail call.
+
+    A `return tail` call returns the callee's result straight to this
+    function's caller, which checks the pending error itself; the frame has no
+    handler and nothing to clean up (the tail lowering refuses otherwise), so
+    propagating here would return the same fallback one frame earlier.
+    """;
+    if callee is not None and (site is None or site is not self._tail_call_site) {
         self._emit_pending_error_check();
     }
 }
