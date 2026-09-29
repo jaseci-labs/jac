@@ -158,6 +158,36 @@ class JacPtr {
         return not self.__eq__(other);
     }
 
+    # Ordering compares the unsigned addresses, as C orders pointers into one
+    # object.
+    def __lt__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr < other._addr;
+    }
+
+    def __le__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr <= other._addr;
+    }
+
+    def __gt__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr > other._addr;
+    }
+
+    def __ge__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr >= other._addr;
+    }
+
     def __hash__(self: JacPtr) -> int {
         return hash(self._addr);
     }

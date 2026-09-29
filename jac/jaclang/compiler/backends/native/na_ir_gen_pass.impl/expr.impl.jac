@@ -1681,7 +1681,9 @@ impl NaIRGenPass._codegen_compare_link(
     is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
         or isinstance(right.type, (ir.DoubleType, ir.FloatType));
     _cmp_unsigned = self._is_unsigned_node(left_node)
-        or self._is_unsigned_node(right_node);
+        or self._is_unsigned_node(right_node)
+        or self._is_c_ptr_node(left_node)
+        or self._is_c_ptr_node(right_node);
     if is_float {
         (left, right) = self._promote_to_float(left, right, unsigned=_cmp_unsigned);
     }
