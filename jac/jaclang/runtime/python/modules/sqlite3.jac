@@ -101,8 +101,6 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Check,
     PySequence_GetItem,
     PySequence_Size,
-    PySlice_AdjustIndices,
-    PySlice_Unpack,
     PySys_Audit,
     PyThread_get_thread_ident,
     PyTuple_GetItem,
@@ -153,6 +151,10 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.object_model.slice {
+    PySlice_AdjustIndices,
+    PySlice_Unpack
+}
 import from jaclang.runtime.python.capi {
     boundary_failure,
     c_string_copy,
@@ -4990,15 +4992,22 @@ def:priv get_subscript_index(blob: BlobState, item: ptr[PyObject]) -> i64 {
 
 # The slice's start, stop, step and length over the blob; None on failure.
 def:priv get_slice_info(blob: BlobState, item: ptr[PyObject]) -> (list[i64] | None) {
-    start: i64 = 0;
-    stop: i64 = 0;
-    step: i64 = 0;
-    if PySlice_Unpack(item, &mut start, &mut stop, &mut step) < 0 {
+    # start, stop and step, the out-parameters of the Jac-defined slice API.
+    cells = ptr[i64](PyMem_Malloc(24));
+    if not cells {
+        PyErr_NoMemory();
+        return None;
+    }
+    if PySlice_Unpack(item, cells, cells + 1, cells + 2) < 0 {
+        PyMem_Free(cells);
         return None;
     }
     length = i64(sqlite3_blob_bytes(blob.blob));
-    slicelen = PySlice_AdjustIndices(length, &mut start, &mut stop, step);
-    return [start, stop, step, slicelen];
+    step = (cells + 2).view(1)[0];
+    slicelen = PySlice_AdjustIndices(length, cells, cells + 1, step);
+    info = [cells.view(1)[0], (cells + 1).view(1)[0], step, slicelen];
+    PyMem_Free(cells);
+    return info;
 }
 
 def blob_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
