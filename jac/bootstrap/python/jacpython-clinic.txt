@@ -47,3 +47,4 @@ math
 _operator
 array
 _struct
+_collections
