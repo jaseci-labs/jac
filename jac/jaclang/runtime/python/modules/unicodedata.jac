@@ -208,10 +208,8 @@ import from c {
 glob UCD_token = ClassToken();
 
 # PreviousDBVersion: a UCD object's database, the changes of an older
-# Unicode version against the current one. The record is C data; a UCD
-# object's native state only points at it, so no Jac value it holds can
-# belong to a region open while the module is imported (the tokenizer
-# imports unicodedata inside a compile request's region).
+# Unicode version against the current one, as C data (the name and the two
+# lookups); a UCD object's native state points at it.
 import from c {
     obj PreviousDBVersionRecord {
         has name: ptr[u8],
@@ -1688,8 +1686,7 @@ def unicodedata_UCD_lookup_impl(
 }
 
 # new_previous_version: a UCD object of `ucd_type` answering from the older
-# database `version`; NULL with the exception set on failure. The state is
-# built on the managed heap, outside any region the import runs under.
+# database `version`; NULL with the exception set on failure.
 def new_previous_version(
     ucd_type: ptr[PyObject], version: ptr[PreviousDBVersionRecord]
 ) -> ptr[PyObject] {
@@ -1697,7 +1694,7 @@ def new_previous_version(
     if not self {
         return NULL;
     }
-    state = managed(PreviousDBVersion(record=version));
+    state = PreviousDBVersion(record=version);
     if jacpy_binding_native_set(self, UCD_token.definition_of(ucd_type), state) < 0 {
         jacpy_release(self);
         return NULL;
