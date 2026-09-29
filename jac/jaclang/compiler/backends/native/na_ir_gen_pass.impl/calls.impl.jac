@@ -2374,7 +2374,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is not None
         and declaration is not None
         and func is self.clib_extern_fns.get(func_name)
-        and ModuleFacts.unwrap_body(declaration) {
+        and ModuleFacts.unwrap_body(declaration)
+        and clib_import_of(declaration) is None {
         func = None;
     }
     if _mod_qual is not None {

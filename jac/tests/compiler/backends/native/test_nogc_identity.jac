@@ -120,6 +120,12 @@ test "a method handing back its receiver returns a borrow" {
     _assert_nogc_leak_free("receiver_borrow.jac");
 }
 
+test "static text a builtin returns reaches its owner as a copy" {
+    out = assert_native_identity(_fixture("static_text_owners.jac"));
+    assert out.splitlines() == ["ABC", "744"] , out;
+    _assert_nogc_leak_free("static_text_owners.jac");
+}
+
 test "caught exceptions are freed when their handler ends" {
     out = assert_native_identity(_fixture("caught_exception_leaks.jac"));
     assert out.strip() == "1770" , out;

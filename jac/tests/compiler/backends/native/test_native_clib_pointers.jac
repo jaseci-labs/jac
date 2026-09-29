@@ -1125,3 +1125,32 @@ with entry {
 ''';
     assert checker_codes(code) == ["E1053", "E1053"];
 }
+
+test "an imported C definition returns a struct by value through its C ABI" {
+    pairs = '''import from c {
+    obj Pair {
+        has a: f64, b: f64;
+    }
+    def make_pair(x: f64) -> Pair {
+        return Pair(a=x, b=x * 2.0);
+    }
+    def pair_sum(p: Pair) -> f64 {
+        return p.a + p.b;
+    }
+}
+''';
+    user = '''import from pairs { Pair, make_pair, pair_sum }
+
+with entry {
+    p = make_pair(1.5);
+    print("pair", p.a, p.b, pair_sum(p));
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        Path(directory, "pairs.jac").write_text(pairs);
+        path = str(Path(directory) / "user.jac");
+        Path(path).write_text(user);
+        out = assert_native_identity(path);
+    }
+    assert "pair 1.5 3.0 4.5" in out.splitlines() , out;
+}
