@@ -71,7 +71,7 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyLong_FromUInt32,
     PyLong_FromUnsignedLong,
-    PyMapping_GetOptionalItem,
+    PyMapping_GetOptionalItemString,
     PyMem_Free,
     PyMem_Malloc,
     PyMem_RawFree,
@@ -768,6 +768,16 @@ def state_by_type(type: ptr[PyObject]) -> (SqliteState | None) {
 
 def:priv state_of(instance: ptr[PyObject]) -> (SqliteState | None) {
     return state_by_type(Py_TYPE(instance));
+}
+
+# A NUL-terminated UTF-8 C string as a Jac str.
+def:priv c_text(address: ptr[u8]) -> str {
+    text = c_string_text(address);
+    try {
+        return text_value(text);
+    } finally {
+        jacpy_release(text);
+    }
 }
 
 # PyUnicode_FromStringAndSize() over C memory: a strict UTF-8 decode.
@@ -3998,12 +4008,9 @@ def:priv bind_parameters(
             # Skip the first character (the colon).
             binding_name += 1;
             current_param = NULL;
-            key = c_string_text(binding_name);
-            if not key {
-                return;
-            }
-            found = PyMapping_GetOptionalItem(parameters, key, &mut current_param);
-            jacpy_release(key);
+            found = PyMapping_GetOptionalItemString(
+                parameters, c_text(binding_name), &mut current_param
+            );
             if found == -1 {
                 return;
             } elif found == 0 {

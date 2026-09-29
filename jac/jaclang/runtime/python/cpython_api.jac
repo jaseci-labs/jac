@@ -265,9 +265,7 @@ import from c {
         PyLongLayout
     ];  def PyLong_GetSign(v: ptr[PyObject], sign: &mut i32) -> i32;  def PyLong_IsNegative(
         obj_: ptr[PyObject]
-    ) -> i32;  def PyMapping_Check(o: ptr[PyObject]) -> i32;  def PyMapping_GetOptionalItem(
-        arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: &mut ptr[PyObject]
-    ) -> i32;  def PyMapping_GetOptionalItemString(
+    ) -> i32;  def PyMapping_Check(o: ptr[PyObject]) -> i32;  def PyMapping_GetOptionalItemString(
         arg0: ptr[PyObject], arg1: str, arg2: &mut ptr[PyObject]
     ) -> i32;  def PyMapping_Items(o: ptr[PyObject]) -> ptr[PyObject];  def PyMem_Calloc(
         nelem: u64, elsize: u64
