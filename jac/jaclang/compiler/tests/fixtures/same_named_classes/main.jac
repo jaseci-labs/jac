@@ -20,22 +20,23 @@ obj TracedBz(BzState) {
 }
 
 with entry {
-    bz = make_bz(9);
-    zs = make_zs(0.25);
+    bz: own BzState = make_bz(9);
+    zs: own ZsState = make_zs(0.25);
     zs.feed(4);
-    local_bz = BzState(level=3, flushed=True, label="local");
-    local_zs = ZsState();
+    local_bz: own BzState = BzState(level=3, flushed=True, label="local");
+    local_zs: own ZsState = ZsState();
     local_zs.feed(10);
     print(bz.describe(), zs.describe());
     print(local_bz.describe(), local_zs.describe());
-    print(
-        describe_bz([make_bz(1), TracedBz(level=2, label="fresh")]),
-        describe_zs([make_zs(0.75), ZsState(ratio=2.0)])
-    );
-    print(is_bz(bz), is_bz(zs), is_zs(zs), is_zs(bz));
+    first_bz: own BzState = make_bz(1);
+    first_zs: own ZsState = make_zs(0.75);
+    bz_list: own list[BzState] = [first_bz, BzState(level=2, label="fresh")];
+    zs_list: own list[ZsState] = [first_zs, ZsState(ratio=2.0)];
+    print(describe_bz(&bz_list), describe_zs(&zs_list));
+    print(is_bz(&bz), is_bz(&zs), is_zs(&zs), is_zs(&bz));
     print(isinstance(local_bz, BzState), isinstance(local_bz, ZsState));
-    traced = TracedBz(level=5);
-    print(is_zs(traced), isinstance(traced, BzState), isinstance(traced, ZsState));
+    traced: own TracedBz = TracedBz(level=5);
+    print(is_bz(&traced), is_zs(&traced), isinstance(traced, BzState));
+    print(bz.level + len(zs.chunks), zs.ratio * 2, traced.describe());
     print(type(bz).__name__, type(zs).__name__);
-    print(bz.level + len(zs.chunks), zs.ratio * 2);
 }

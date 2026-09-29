@@ -640,13 +640,22 @@ def native_stdlib_root -> (str | None) {
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
 }
 
-def is_in_jaclang_package(file_path: str) -> bool {
+"""Is `file_path` a module of the toolchain rather than of a program?
+
+A module belongs to the unit root it is keyed by (`native_unit_root`): the
+jaclang package for the compiler, runtime and bundled stdlib, but a project
+with its own `jac.toml` (templates, examples, test fixtures) inside the
+package is a program like any other.
+"""
+def is_toolchain_unit(file_path: str) -> bool {
     import os;
     pkg = jaclang_pkg_root();
     if not file_path or not pkg {
         return False;
     }
-    return os.path.abspath(file_path).startswith(pkg + os.sep);
+    unit_root = native_unit_root(os.path.dirname(os.path.realpath(file_path)));
+    return unit_root is not None
+        and os.path.realpath(unit_root) == os.path.realpath(pkg);
 }
 
 def bundled_native_module_names -> list[str] {
