@@ -230,7 +230,7 @@ Objects/clinic/codeobject.c.h
 Objects/clinic/complexobject.c.h
 Objects/clinic/descrobject.c.h
 Objects/clinic/dictobject.c.h
-Objects/clinic/enumobject.c.h
+# Objects/clinic/enumobject.c.h  # removed: 113 source lines
 Objects/clinic/exceptions.c.h
 Objects/clinic/floatobject.c.h
 Objects/clinic/frameobject.c.h
@@ -251,7 +251,7 @@ Objects/codeobject.c
 Objects/complexobject.c
 Objects/descrobject.c
 Objects/dictobject.c
-Objects/enumobject.c
+# Objects/enumobject.c  # removed: 585 source lines
 Objects/exceptions.c
 Objects/fileobject.c
 Objects/floatobject.c

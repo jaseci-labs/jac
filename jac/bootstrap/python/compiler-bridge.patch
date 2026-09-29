@@ -340,9 +340,11 @@
 @@ -528,2 +481,0 @@
 -		Objects/capsule.o \
 -		Objects/cellobject.o \
-@@ -543,1 +494,0 @@
+@@ -534,1 +485,0 @@
+-		Objects/enumobject.o \
+@@ -543,1 +493,0 @@
 -		Objects/iterobject.o \
-@@ -551,1 +501,0 @@
+@@ -551,1 +500,0 @@
 -		Objects/namespaceobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
