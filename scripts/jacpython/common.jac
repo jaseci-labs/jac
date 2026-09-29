@@ -7,11 +7,8 @@ format_jac() exactly as it would be formatted in place.
 import hashlib;
 import json;
 import os;
-import shutil;
-import subprocess;
 import sys;
 import tarfile;
-import tempfile;
 import from pathlib { Path }
 
 glob REPO: Path = Path(__file__).resolve().parents[2],
@@ -77,40 +74,17 @@ def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
 # sits beside the target so the project's jac.toml applies, and formatting is
 # repeated to a fixed point because one pass can add blank lines a second keeps.
 def format_jac(text: str, target: Path) -> str {
-    jac = shutil.which("jac");
-    if jac is None {
-        sys.exit("jac is not on PATH; generated Jac is formatted with `jac fmt`");
-    }
-    target.parent.mkdir(parents=True, exist_ok=True);
-    scratch = tempfile.mkstemp(prefix=".gen_", suffix=".jac", dir=target.parent);
-    os.close(scratch[0]);
-    path = Path(scratch[1]);
-    # The scratch file sits in the compiler's source tree, so a native
-    # compiler kernel keyed on that tree would be rebuilt for every call.
-    environment = {** os.environ, "JAC_COMPILER_LIB": "off"};
-    try {
-        path.write_text(text);
-        for _ in range(3) {
-            before = path.read_text();
-            result = subprocess.run(
-                [jac, "fmt", "--lintfix", str(path)],
-                capture_output=True,
-                text=True,
-                env=environment
-            );
-            if result.returncode != 0 {
-                sys.exit(
-                    f"jac fmt failed on generated Jac:\n{result.stdout}{result.stderr}"
-                );
-            }
-            if path.read_text() == before {
-                break;
-            }
+    import from jaclang.compiler.driver.program { JacProgram }
+    for _ in range(3) {
+        program = JacProgram.jac_str_formatter(text, str(target), auto_lint=True);
+        formatted = program.mod.main.gen.jac;
+        if any(e.code is not None and e.code.code == "E5051" for e in program.errors_had) or not formatted or not formatted.strip() {
+            sys.exit("jac fmt failed on generated Jac for " + f"{target}:\n" + "\n".join(str(e) for e in program.errors_had));
         }
-        return path.read_text();
-    } finally {
-        path.unlink(missing_ok=True);
+        if formatted == text { break; }
+        text = formatted;
     }
+    return text;
 }
 
 # Write `text` to `target`, or with `check` fail when the committed file differs.

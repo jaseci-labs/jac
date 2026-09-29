@@ -34,10 +34,19 @@ import from common { BOOTSTRAP, REPO, RUNTIME, extract_tree, format_jac, pin }
 glob OUTPUT: Path = RUNTIME / "bindings/clinic",
      MODULES: str = "jaclang.runtime.python.modules",
      REGISTRY: Path = BOOTSTRAP / "jacpython-clinic.txt",
-     METH_VARARGS: int = 1,
-     METH_KEYWORDS: int = 2,
-     METH_CLASS: int = 16,
-     METH_STATIC: int = 32,
+     # PyMethodDef flags by name. METH_METHOD is left out: a method taking
+     # defining_class finds it through its ClassToken.
+     METHOD_FLAGS: dict[str, int] = {
+         "METH_VARARGS": 1,
+         "METH_KEYWORDS": 2,
+         "METH_NOARGS": 4,
+         "METH_O": 8,
+         "METH_CLASS": 16,
+         "METH_STATIC": 32,
+         "METH_COEXIST": 64,
+         "METH_FASTCALL": 128,
+         "METH_METHOD": 0
+     },
      SCALAR: dict[str, str] = {
          "int": "i32",
          "unsigned int": "u32",
@@ -127,26 +136,20 @@ obj Unsupported(Exception) {}
 
 # Preprocessor symbols only Windows defines. JacPython builds for Linux and
 # macOS, so a clinic function whose #if needs one is not generated.
-glob WINDOWS_SYMBOLS: set[str] = {"MS_WINDOWS", "MS_WINDOWS_DESKTOP", "MS_WINDOWS_APP"};
-
-def:priv windows_symbol(name: str) -> str {
-    return "False" if name in WINDOWS_SYMBOLS else "True";
-}
+glob WINDOWS_SYMBOLS: set[str] = {
+         "MS_WINDOWS",
+         "MS_WINDOWS_DESKTOP",
+         "MS_WINDOWS_APP"
+     };
 
 def:priv tested_symbol(hit: any) -> str {
-    return windows_symbol(hit.group(1) or hit.group(2));
+    return hit.group(1) or hit.group(2);
 }
 
-def:priv condition_word(hit: any) -> str {
-    name: str = hit.group(0);
-    return name
-        if name in ("True", "False", "and", "or", "not")
-        else windows_symbol(name);
-}
-
-# Whether a clinic #if condition holds on the POSIX targets: Windows symbols
-# are undefined and every other feature test is taken as defined, since the
-# module binding decides what a platform actually offers.
+# Whether a clinic #if condition can hold on a POSIX target: Windows symbols
+# are undefined, and the condition holds for some choice of every other
+# feature test (a function under !defined(HAVE_BROKEN_POLL) exists where poll
+# works), since the module binding decides what a platform actually offers.
 def posix_condition(condition: str) -> bool {
     if not condition {
         return True;
@@ -161,12 +164,29 @@ def posix_condition(condition: str) -> bool {
     );
     expression = expression.replace("&&", " and ").replace("||", " or ");
     expression = re.sub(r"!(?!=)", " not ", expression);
-    expression = re.sub(r"\b[A-Za-z_]\w*\b", condition_word, expression);
-    try {
-        return bool(eval(expression, {}, {}));
-    } except Exception {
-        return True;
+    symbols = sorted(
+        set(re.findall(r"\b[A-Za-z_]\w*\b", expression))
+            - {"True", "False", "and", "or", "not"}
+    );
+    features = [
+        name
+        for name in symbols
+        if name not in WINDOWS_SYMBOLS
+    ];
+    for choice in range(2 ** len(features)) {
+        values: dict[str, bool] = {name: False for name in symbols};
+        for (bit, name) in enumerate(features) {
+            values[name] = bool((choice >> bit) & 1);
+        }
+        try {
+            if eval(expression, {}, values) {
+                return True;
+            }
+        } except Exception {
+            return True;
+        }
     }
+    return False;
 }
 
 def class_name(value: any) -> str {
@@ -195,9 +215,11 @@ def module_sources(tree: Path, module: str) -> list[Path] {
     sys.exit(f"{module} is not built by Modules/Setup.stdlib.in or Setup.bootstrap.in");
 }
 
-# The preprocessor condition each clinic function is compiled under, by full
-# name, as Tools/clinic sees it while rendering the block ("" when none).
-glob CONDITIONS: dict[str, str] = {};
+# The preprocessor condition each clinic function is compiled under, as
+# Tools/clinic sees it while rendering the block ("" when none). Keyed by the
+# Function's id: a function defined once per platform branch (semaphore.c's
+# SemLock.acquire) has one full name for several definitions.
+glob CONDITIONS: dict[int, str] = {};
 
 # JacPython builds only POSIX targets, where a function compiled only under a
 # Windows condition does not exist.
@@ -205,11 +227,20 @@ def windows_only(condition: str) -> bool {
     return not posix_condition(condition);
 }
 
+# How Tools/clinic parses each function's arguments, by Function id: its
+# ParseArgsCodeGen (flags, pos_only, min_pos, max_pos, min_kw_only) and the
+# generated C parser, which names the getargs routine it calls.
+glob PARSERS: dict[int, tuple[any, str]] = {};
+
 # (class or None, clinic function) for every clinic input block of `sources`.
 def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
     sys.path.insert(0, str(tree / "Tools/clinic"));
     app = importlib.import_module("libclinic.app");
     clanguage = importlib.import_module("libclinic.clanguage");
+    parse_args = importlib.import_module("libclinic.parse_args");
+    # Tools/clinic/libclinic/cli.py: a file defining Py_LIMITED_API gets the
+    # limited C API's parsers and messages.
+    limited = importlib.import_module("libclinic.cli").LIMITED_CAPI_REGEX;
     function_type = importlib.import_module("libclinic.function").Function;
     found: list[tuple[any, any]] = [];
     for source in sources {
@@ -222,14 +253,24 @@ def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
         def record_conditions(clinic: any, signatures: any) -> any {
             for signature in signatures {
                 if isinstance(signature, function_type) {
-                    CONDITIONS[signature.full_name] = language.cpp.condition();
+                    CONDITIONS[id(signature)] = language.cpp.condition();
                 }
             }
             return render(clinic, signatures);
         }
+        def record_parser(f: any, codegen: any) -> dict[str, str] {
+            generator = parse_args.ParseArgsCodeGen(f, codegen);
+            templates = generator.parse_args(language);
+            PARSERS[id(f)] = (generator, templates["parser_definition"]);
+            return templates;
+        }
         language.render = record_conditions;
+        language.output_templates = record_parser;
         clinic = app.Clinic(
-            language, filename=str(source), verify=False, limited_capi=False
+            language,
+            filename=str(source),
+            verify=False,
+            limited_capi=bool(limited.search(text))
         );
         clinic.parse(text);
         # Classes declared without a module prefix (md5's `class MD5Type`)
@@ -282,6 +323,8 @@ obj Emitter {
         getsets: dict[str, dict[str, dict[str, str]]] = {},
         hooks: list[str] = [],
         tokens: set[str] = set(),
+        invokers: set[str] = {"BoundArguments"},
+        qualified: bool = False,
         skipped: list[str] = [],
         windows: list[str] = [],
         class_docs: dict[str, str] = {};
@@ -361,16 +404,21 @@ obj Emitter {
     }
 
     # (Jac type, expression over `value`, extra statements) for one parameter.
-    def convert(fname: str, p: any, position: int) -> tuple[str, str, list[str]] {
+    def convert(
+        fname: str, p: any, position: int, numbered: bool = False
+    ) -> tuple[str, str, list[str]] {
         conv = p.converter;
         kind = class_name(conv).removesuffix("_converter");
-        shown = p.name if p.kind.name != "POSITIONAL_ONLY" else "";
+        # getargs' own conversions (a format parser) number every argument.
+        shown = p.name if p.kind.name != "POSITIONAL_ONLY" and not numbered else "";
         # Position 0 is clinic's METH_O argument, named only "argument".
         label = jac_string("argument")
             if position == 0
             else self.use("argument_label") + f"({jac_string(shown)}, {position})";
         where = f"{jac_string(fname)}, {label}";
         accept_names = accepted(conv);
+        # The limited C API reports a mismatch with the type's %T name.
+        qualified = ", True" if self.qualified else "";
         # Clinic records bitwise=True only as the mask format unit it selects.
         bitwise = getattr(conv, "format_unit", "") in ("B", "H", "I", "k", "K");
         if kind == "object" {
@@ -389,7 +437,7 @@ obj Emitter {
                     [
                         f"if {check}(value) == 0 {{ {bad}({where}, {jac_string(
                             expected
-                        )}, value); }}"
+                        )}, value{qualified}); }}"
                     ]
                 );
             }
@@ -473,6 +521,17 @@ obj Emitter {
             }
             return ("str", self.use("convert_str") + f"(value, {where})", []);
         }
+        if kind == "unicode" and self.qualified {
+            self.api.add("jacpy_is_unicode");
+            bad = self.use("bad_argument");
+            return (
+                "ptr[PyObject]",
+                "value",
+                [
+                    f'if jacpy_is_unicode(value) == 0 {{ {bad}({where}, "str", value, True); }}'
+                ]
+            );
+        }
         if kind == "unicode" {
             return (
                 "ptr[PyObject]",
@@ -504,6 +563,54 @@ obj Emitter {
         return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
     }
 
+    # The PyMethodDef flags and getargs parser clinic generates for `f`.
+    # tp_new and tp_init keep the flags clinic chose internally; they only
+    # select the parser.
+    def calling_convention(f: any) -> tuple[int, str] {
+        if id(f) not in PARSERS {
+            raise Unsupported("no clinic parser");
+        }
+        generator = PARSERS[id(f)][0];
+        body = PARSERS[id(f)][1];
+        names = [name.strip() for name in generator.flags.split("|")];
+        flags = 0;
+        for name in names {
+            if name not in METHOD_FLAGS {
+                raise Unsupported(f"flag {name}");
+            }
+            flags = flags | METHOD_FLAGS[name];
+        }
+        if "switch (" in body {
+            raise Unsupported("optional groups");
+        }
+        if "_PyArg_ParseStackAndKeywords(" in body
+            or "_PyArg_ParseTupleAndKeywordsFast(" in body {
+            raise Unsupported("keyword format parsing");
+        }
+        if "PyArg_ParseTupleAndKeywords(" in body {
+            parser = "PARSE_FORMAT_KEYWORDS";
+        } elif "METH_NOARGS" in names {
+            parser = "PARSE_NOTHING"
+                if "_PyArg_NoPositional(" in body
+                else "PARSE_GIVEN";
+        } elif "METH_O" in names {
+            parser = "PARSE_GIVEN";
+        } elif "_PyArg_UnpackKeywords(" in body {
+            parser = "PARSE_KEYWORDS";
+        } elif "takes no arguments" in body {
+            parser = "PARSE_NO_ARGUMENTS";
+        } elif "_PyArg_ParseStack(" in body or "PyArg_ParseTuple(" in body {
+            parser = "PARSE_FORMAT";
+        } elif "_PyArg_CheckPositional(" in body
+            or (generator.limited_capi and "expected" in body) {
+            # The limited C API spells _PyArg_CheckPositional() out inline.
+            parser = "PARSE_POSITIONAL";
+        } else {
+            raise Unsupported(f"parser for {generator.flags}");
+        }
+        return (flags, parser);
+    }
+
     def function(cls: any, f: any) {
         kind = f.kind.name;
         params = list(f.parameters.values());
@@ -523,6 +630,17 @@ obj Emitter {
         ) {
             raise Unsupported("*args");
         }
+        convention = self.calling_convention(f);
+        flags = convention[0];
+        parser = convention[1];
+        generator = PARSERS[id(f)][0];
+        # The limited C API's clinic converters name a mismatched argument's
+        # type with %T; getargs' format conversions use tp_name.
+        self.qualified = bool(generator.limited_capi)
+            and parser != "PARSE_FORMAT_KEYWORDS";
+        # getargs converts as it binds: a binding error waits for the
+        # arguments before it to convert.
+        stepwise = parser == "PARSE_FORMAT_KEYWORDS";
         base = f.c_basename;
         impl_name = base + "_impl";
         self.impls.add(impl_name);
@@ -549,35 +667,15 @@ obj Emitter {
             );
             call_args.append("cls");
         }
-        # Tools/clinic's use_meth_o(): one required positional-only argument.
-        meth_o = len(params) == 1
-            and params[0].kind.name == "POSITIONAL_ONLY"
-            and not params[0].is_optional()
-            and not uses_class
-            and kind not in ("METHOD_NEW", "METHOD_INIT");
-        positional_only = sum(
-            1
-            for p in params
-            if p.kind.name == "POSITIONAL_ONLY"
-        );
-        positional = sum(
-            1
-            for p in params
-            if p.kind.name != "KEYWORD_ONLY"
-        );
-        required = [
-            i
-            for (i, p) in enumerate(params)
-            if not p.is_optional()
-        ];
-        prefix = 0;
-        while prefix < len(params) and prefix in required {
-            prefix += 1;
-        }
+        # A METH_O argument is named only "argument" in type errors.
+        meth_o = bool(flags & METHOD_FLAGS["METH_O"]);
         for (i, p) in enumerate(params) {
             var = local(p.name);
             position = i + 1;
             slot = f"args.values[{i}]";
+            if stepwise {
+                body.append(f"args.reach({i});");
+            }
             # Py_ssize_t(accept={int, NoneType}) and an object parsed by
             # _Py_convert_optional_to_ssize_t (mmap's read(n)) are one converter.
             optional_ssize = (
@@ -586,14 +684,6 @@ obj Emitter {
             )
                 or getattr(p.converter, "converter", "")
                     == "_Py_convert_optional_to_ssize_t";
-            if i in required and i >= prefix {
-                missing = self.use("missing_argument");
-                body.append(
-                    f"if {slot} == NULL {{ {missing}({jac_string(fname)}, {jac_string(
-                        p.name
-                    )}, {position}); }}"
-                );
-            }
             if optional_ssize {
                 fallback = self.default_value(p, "i64") if p.is_optional() else "0";
                 body.append(f"{var}: i64 = {fallback};");
@@ -603,7 +693,7 @@ obj Emitter {
                 call_args.append(var);
                 continue;
             }
-            converted = self.convert(fname, p, 0 if meth_o else position);
+            converted = self.convert(fname, p, 0 if meth_o else position, stepwise);
             jtype = converted[0];
             expr = converted[1];
             checks = converted[2];
@@ -631,6 +721,9 @@ obj Emitter {
             }
             call_args.append(var);
         }
+        if stepwise {
+            body.append(f"args.reach({len(params)});");
+        }
         call = f"{impl_name}({', '.join(call_args)})";
         result = f"{wrap}({call})" if wrap else call;
         if uses_class {
@@ -641,11 +734,26 @@ obj Emitter {
         } else {
             body.append(f"return {result};");
         }
-        names = ", ".join(jac_string(p.name) for p in params);
         sig = f"{base}_signature";
-        self.lines.append(
-            f"glob:priv {sig} = CallSignature({jac_string(fname)}, [{names}], {prefix}, {positional}, {positional_only});"
-        );
+        if parser != "PARSE_GIVEN" {
+            names = ", ".join(jac_string(p.name) for p in params);
+            options = [
+                f"{jac_string(fname)}",
+                f"[{names}]",
+                str(generator.min_pos),
+                str(generator.max_pos),
+                str(generator.pos_only)
+            ];
+            if generator.min_kw_only {
+                options.append(f"keyword_required={generator.min_kw_only}");
+            }
+            options.append(f"parser={self.parse_constant(parser)}");
+            self.lines.append(
+                f"glob:priv {sig} = {self.invoker('CallSignature')}({', '.join(
+                    options
+                )});"
+            );
+        }
         self.lines.append(
             f"def:priv {base}_bound(args: BoundArguments) -> ptr[PyObject] {{"
         );
@@ -666,7 +774,7 @@ obj Emitter {
                 f"def:pub {base}_new(type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {{"
             );
             self.lines.append(
-                f"    return invoke({sig}, args, kwargs, {base}_bound, type);"
+                f"    return {self.invoker('invoke')}({sig}, args, kwargs, {base}_bound, type);"
             );
             self.lines.append("}");
             self.hooks.append(f"{base}_new");
@@ -677,7 +785,7 @@ obj Emitter {
                 f"def:pub {base}_init(receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> i32 {{"
             );
             self.lines.append(
-                f"    result = invoke({sig}, args, kwargs, {base}_bound, receiver);"
+                f"    result = {self.invoker('invoke')}({sig}, args, kwargs, {base}_bound, receiver);"
             );
             self.lines.append("    if not result { return i32(-1); }");
             self.lines.append("    jacpy_release(result);");
@@ -690,25 +798,58 @@ obj Emitter {
         if kind in ("GETTER", "SETTER") {
             raise Unsupported("getter/setter routed separately");
         }
-        flags = METH_VARARGS | METH_KEYWORDS;
-        if kind == "CLASS_METHOD" {
-            flags = flags | METH_CLASS;
+        # The callback CPython's call machinery invokes for these flags.
+        fast = bool(flags & METHOD_FLAGS["METH_FASTCALL"]);
+        keywords = bool(flags & METHOD_FLAGS["METH_KEYWORDS"]);
+        head = f"def:priv {base}_call(receiver: ptr[PyObject], ";
+        if meth_o or flags & METHOD_FLAGS["METH_NOARGS"] {
+            argument = "value" if meth_o else "unused";
+            self.lines.append(head + f"{argument}: ptr[PyObject]) -> ptr[PyObject] {{");
+            self.lines.append(
+                f"    return {self.invoker('invoke_given')}({'value'
+                    if meth_o
+                    else 'NULL'}, {base}_bound, receiver);"
+            );
+            callback = "positional";
+        } elif fast {
+            kwnames = ", kwnames: ptr[PyObject]" if keywords else "";
+            self.lines.append(
+                head
+                    + f"args: ptr[ptr[PyObject]], nargs: i64{kwnames}) -> ptr[PyObject] {{"
+            );
+            self.lines.append(
+                f"    return {self.invoker('invoke_vector')}({sig}, args, nargs, {'kwnames'
+                    if keywords
+                    else 'NULL'}, {base}_bound, receiver);"
+            );
+            callback = "fast_keywords" if keywords else "fast";
+        } elif keywords {
+            self.lines.append(
+                head + "args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {"
+            );
+            self.lines.append(
+                f"    return {self.invoker('invoke')}({sig}, args, kwargs, {base}_bound, receiver);"
+            );
+            callback = "keywords";
+        } else {
+            raise Unsupported(f"calling convention {generator.flags}");
         }
-        if kind == "STATIC_METHOD" {
-            flags = flags | METH_STATIC;
-        }
-        self.lines.append(
-            f"def:priv {base}_call(receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {{"
-        );
-        self.lines.append(
-            f"    return invoke({sig}, args, kwargs, {base}_bound, receiver);"
-        );
         self.lines.append("}");
         self.tables.setdefault(self.table_name(cls), []).append(
-            f"MethodDefinition({jac_string(f.name)}, MethodCallbacks(keywords={base}_call), {jac_string(
+            f"MethodDefinition({jac_string(f.name)}, MethodCallbacks({callback}={base}_call), {jac_string(
                 doc
             )}, {flags})"
         );
+    }
+
+    def invoker(name: str) -> str {
+        self.invokers.add(name);
+        return name;
+    }
+
+    def parse_constant(name: str) -> str {
+        self.invokers.add(name);
+        return name;
     }
 
     def accessor(cls: any, f: any) {
@@ -763,7 +904,9 @@ obj Emitter {
             )} }}",
             "import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }",
             "import from jaclang.runtime.python.bindings.type { PropertyDefinition, PropertyCallbacks }",
-            "import from jaclang.runtime.python.bindings.arguments { BoundArguments, CallSignature, invoke }",
+            f"import from jaclang.runtime.python.bindings.arguments {{ {', '.join(
+                sorted(self.invokers)
+            )} }}",
             "import from jaclang.runtime.python.bindings.buffer { BufferArgument }"
         ];
         converters = sorted(self.converters);
@@ -825,7 +968,7 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];
-        if windows_only(CONDITIONS.get(f.full_name, "")) {
+        if windows_only(CONDITIONS.get(id(f), "")) {
             emitter.windows.append(f.full_name);
             continue;
         }

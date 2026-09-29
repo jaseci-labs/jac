@@ -7,10 +7,7 @@ jaclang.runtime.python.modules.locale.
 Compiled only on Windows, so absent here:
     _locale._getdefaultlocale
 """
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { NULL, PyObject }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
@@ -19,7 +16,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_POSITIONAL,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -45,7 +44,7 @@ import from jaclang.runtime.python.modules.locale {
 }
 
 glob:priv _locale_setlocale_signature = CallSignature(
-         "setlocale", ["category", "locale"], 1, 2, 2
+         "setlocale", ["category", "locale"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _locale_setlocale_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -61,29 +60,31 @@ def:priv _locale_setlocale_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_setlocale_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_setlocale_signature, args, kwargs, _locale_setlocale_bound, receiver
+    return invoke_vector(
+        _locale_setlocale_signature,
+        args,
+        nargs,
+        NULL,
+        _locale_setlocale_bound,
+        receiver
     );
 }
 
-glob:priv _locale_localeconv_signature = CallSignature("localeconv", [], 0, 0, 0);
 def:priv _locale_localeconv_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _locale_localeconv_impl(receiver);
 }
 
 def:priv _locale_localeconv_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_localeconv_signature, args, kwargs, _locale_localeconv_bound, receiver
-    );
+    return invoke_given(NULL, _locale_localeconv_bound, receiver);
 }
 
 glob:priv _locale_strcoll_signature = CallSignature(
-         "strcoll", ["os1", "os2"], 2, 2, 2
+         "strcoll", ["os1", "os2"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _locale_strcoll_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -96,16 +97,12 @@ def:priv _locale_strcoll_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_strcoll_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_strcoll_signature, args, kwargs, _locale_strcoll_bound, receiver
+    return invoke_vector(
+        _locale_strcoll_signature, args, nargs, NULL, _locale_strcoll_bound, receiver
     );
 }
-
-glob:priv _locale_strxfrm_signature = CallSignature(
-         "strxfrm", ["string"], 1, 1, 1
-     );
 
 def:priv _locale_strxfrm_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -115,16 +112,10 @@ def:priv _locale_strxfrm_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_strxfrm_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_strxfrm_signature, args, kwargs, _locale_strxfrm_bound, receiver
-    );
+    return invoke_given(value, _locale_strxfrm_bound, receiver);
 }
-
-glob:priv _locale_nl_langinfo_signature = CallSignature(
-         "nl_langinfo", ["key"], 1, 1, 1
-     );
 
 def:priv _locale_nl_langinfo_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -134,14 +125,11 @@ def:priv _locale_nl_langinfo_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_nl_langinfo_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_nl_langinfo_signature, args, kwargs, _locale_nl_langinfo_bound, receiver
-    );
+    return invoke_given(value, _locale_nl_langinfo_bound, receiver);
 }
 
-glob:priv _locale_gettext_signature = CallSignature("gettext", ["msg"], 1, 1, 1);
 def:priv _locale_gettext_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -150,15 +138,13 @@ def:priv _locale_gettext_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_gettext_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_gettext_signature, args, kwargs, _locale_gettext_bound, receiver
-    );
+    return invoke_given(value, _locale_gettext_bound, receiver);
 }
 
 glob:priv _locale_dgettext_signature = CallSignature(
-         "dgettext", ["domain", "msg"], 2, 2, 2
+         "dgettext", ["domain", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _locale_dgettext_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -171,15 +157,15 @@ def:priv _locale_dgettext_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_dgettext_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_dgettext_signature, args, kwargs, _locale_dgettext_bound, receiver
+    return invoke_vector(
+        _locale_dgettext_signature, args, nargs, NULL, _locale_dgettext_bound, receiver
     );
 }
 
 glob:priv _locale_dcgettext_signature = CallSignature(
-         "dcgettext", ["domain", "msg", "category"], 3, 3, 3
+         "dcgettext", ["domain", "msg", "category"], 3, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv _locale_dcgettext_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -194,16 +180,17 @@ def:priv _locale_dcgettext_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_dcgettext_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_dcgettext_signature, args, kwargs, _locale_dcgettext_bound, receiver
+    return invoke_vector(
+        _locale_dcgettext_signature,
+        args,
+        nargs,
+        NULL,
+        _locale_dcgettext_bound,
+        receiver
     );
 }
-
-glob:priv _locale_textdomain_signature = CallSignature(
-         "textdomain", ["domain"], 1, 1, 1
-     );
 
 def:priv _locale_textdomain_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -213,15 +200,13 @@ def:priv _locale_textdomain_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_textdomain_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_textdomain_signature, args, kwargs, _locale_textdomain_bound, receiver
-    );
+    return invoke_given(value, _locale_textdomain_bound, receiver);
 }
 
 glob:priv _locale_bindtextdomain_signature = CallSignature(
-         "bindtextdomain", ["domain", "dir"], 2, 2, 2
+         "bindtextdomain", ["domain", "dir"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _locale_bindtextdomain_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -234,19 +219,25 @@ def:priv _locale_bindtextdomain_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_bindtextdomain_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _locale_bindtextdomain_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _locale_bindtextdomain_bound,
         receiver
     );
 }
 
 glob:priv _locale_bind_textdomain_codeset_signature = CallSignature(
-         "bind_textdomain_codeset", ["domain", "codeset"], 2, 2, 2
+         "bind_textdomain_codeset",
+         ["domain", "codeset"],
+         2,
+         2,
+         2,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _locale_bind_textdomain_codeset_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -261,20 +252,17 @@ def:priv _locale_bind_textdomain_codeset_bound(args: BoundArguments) -> ptr[PyOb
 }
 
 def:priv _locale_bind_textdomain_codeset_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _locale_bind_textdomain_codeset_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _locale_bind_textdomain_codeset_bound,
         receiver
     );
 }
-
-glob:priv _locale_getencoding_signature = CallSignature(
-         "getencoding", [], 0, 0, 0
-     );
 
 def:priv _locale_getencoding_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -282,85 +270,83 @@ def:priv _locale_getencoding_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _locale_getencoding_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _locale_getencoding_signature, args, kwargs, _locale_getencoding_bound, receiver
-    );
+    return invoke_given(NULL, _locale_getencoding_bound, receiver);
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "setlocale",
-             MethodCallbacks(keywords=_locale_setlocale_call),
+             MethodCallbacks(fast=_locale_setlocale_call),
              "setlocale($module, category, locale=<unrepresentable>, /)\n--\n\nActivates/queries locale processing.",
-             3
+             128
          ),
          MethodDefinition(
              "localeconv",
-             MethodCallbacks(keywords=_locale_localeconv_call),
+             MethodCallbacks(positional=_locale_localeconv_call),
              "localeconv($module, /)\n--\n\nReturns numeric and monetary locale-specific parameters.",
-             3
+             4
          ),
          MethodDefinition(
              "strcoll",
-             MethodCallbacks(keywords=_locale_strcoll_call),
+             MethodCallbacks(fast=_locale_strcoll_call),
              "strcoll($module, os1, os2, /)\n--\n\nCompares two strings according to the locale.",
-             3
+             128
          ),
          MethodDefinition(
              "strxfrm",
-             MethodCallbacks(keywords=_locale_strxfrm_call),
+             MethodCallbacks(positional=_locale_strxfrm_call),
              "strxfrm($module, string, /)\n--\n\nReturn a string that can be used as a key for locale-aware comparisons.",
-             3
+             8
          ),
          MethodDefinition(
              "nl_langinfo",
-             MethodCallbacks(keywords=_locale_nl_langinfo_call),
+             MethodCallbacks(positional=_locale_nl_langinfo_call),
              "nl_langinfo($module, key, /)\n--\n\nReturn the value for the locale information associated with key.",
-             3
+             8
          ),
          MethodDefinition(
              "gettext",
-             MethodCallbacks(keywords=_locale_gettext_call),
+             MethodCallbacks(positional=_locale_gettext_call),
              "gettext($module, msg, /)\n--\n\ngettext(msg) -> string\n\nReturn translation of msg.",
-             3
+             8
          ),
          MethodDefinition(
              "dgettext",
-             MethodCallbacks(keywords=_locale_dgettext_call),
+             MethodCallbacks(fast=_locale_dgettext_call),
              "dgettext($module, domain, msg, /)\n--\n\ndgettext(domain, msg) -> string\n\nReturn translation of msg in domain.",
-             3
+             128
          ),
          MethodDefinition(
              "dcgettext",
-             MethodCallbacks(keywords=_locale_dcgettext_call),
+             MethodCallbacks(fast=_locale_dcgettext_call),
              "dcgettext($module, domain, msg, category, /)\n--\n\nReturn translation of msg in domain and category.",
-             3
+             128
          ),
          MethodDefinition(
              "textdomain",
-             MethodCallbacks(keywords=_locale_textdomain_call),
+             MethodCallbacks(positional=_locale_textdomain_call),
              "textdomain($module, domain, /)\n--\n\nSet the C library's textdmain to domain, returning the new domain.",
-             3
+             8
          ),
          MethodDefinition(
              "bindtextdomain",
-             MethodCallbacks(keywords=_locale_bindtextdomain_call),
+             MethodCallbacks(fast=_locale_bindtextdomain_call),
              "bindtextdomain($module, domain, dir, /)\n--\n\nBind the C library's domain to dir.",
-             3
+             128
          ),
          MethodDefinition(
              "bind_textdomain_codeset",
-             MethodCallbacks(keywords=_locale_bind_textdomain_codeset_call),
+             MethodCallbacks(fast=_locale_bind_textdomain_codeset_call),
              "bind_textdomain_codeset($module, domain, codeset, /)\n--\n\nBind the C library's domain to codeset.",
-             3
+             128
          ),
          MethodDefinition(
              "getencoding",
-             MethodCallbacks(keywords=_locale_getencoding_call),
+             MethodCallbacks(positional=_locale_getencoding_call),
              "getencoding($module, /)\n--\n\nGet the current locale encoding.",
-             3
+             4
          ),
 
      ];

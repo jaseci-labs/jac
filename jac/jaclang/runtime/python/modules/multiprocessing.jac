@@ -37,7 +37,13 @@ import from jaclang.runtime.python.cpython_api {
     PyThread_get_thread_ident,
     PyThreadState
 }
-import from jaclang.runtime.python.capi { boundary_failure, object_error, text_object }
+import from jaclang.runtime.python.capi {
+    boundary_failure,
+    c_string_text,
+    object_error,
+    text_object,
+    text_value
+}
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
 import from jaclang.runtime.python.bindings.payload {
@@ -385,16 +391,26 @@ def _multiprocessing_SemLock_impl(
 }
 
 def _multiprocessing_SemLock__rebuild_impl(
-    type: ptr[PyObject], handle: u64, kind: i32, maxvalue: i32, name: str | None
+    type: ptr[PyObject], handle: u64, kind: i32, maxvalue: i32, name: ptr[u8]
 ) -> ptr[PyObject] {
     semaphore = ptr(int(handle));
-    if name is not None {
-        semaphore = jacpy_sem_open(name, 0, 0, 0);
+    text: str | None = None;
+    if not name.is_null() {
+        decoded = c_string_text(name);
+        if not decoded {
+            return NULL;
+        }
+        try {
+            text = text_value(decoded);
+        } finally {
+            jacpy_release(decoded);
+        }
+        semaphore = jacpy_sem_open(text, 0, 0, 0);
         if semaphore == ptr(SEM_FAILED) {
             return oserror();
         }
     }
-    return new_semlock(type, semaphore, int(kind), int(maxvalue), name);
+    return new_semlock(type, semaphore, int(kind), int(maxvalue), text);
 }
 
 def _multiprocessing_SemLock__count_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
