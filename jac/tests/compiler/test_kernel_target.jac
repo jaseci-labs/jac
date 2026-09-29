@@ -11,7 +11,11 @@ import os;
 import shutil;
 import tempfile;
 import from jaclang.compiler.frontend.codeinfo {
+    bundled_stdlib_module_of,
+    is_in_jaclang_package,
     is_kernel_unit_path,
+    is_native_by_location,
+    is_shared_runtime_module,
     jaclang_pkg_root,
     native_arch_scope,
     native_stdlib_root,
@@ -100,8 +104,20 @@ test "a kernel target retargets the package predicates at a staging copy" {
         assert native_arch_scope(osp_self) == "";
         assert native_arch_scope(unitree_self) != "";
         identity = native_unit_identity(unitree_self);
+        math_copy = os.path.join(copy, "runtime", "na_stdlib", "math.jac");
+        fragment_copy = os.path.join(copy, "runtime", "graph_fragment.jac");
+        assert not is_native_by_location(math_copy);
+        assert bundled_stdlib_module_of(math_copy) is None;
 
         set_kernel_target(running_kernel_target(copy));
+        # The target's native stdlib is bundled stdlib: a stage-0 compiler
+        # that judged it by its own install path refused its `def:pub`
+        # variadics, and every compile-time evaluator above them fell to an
+        # abort stub in the kernel it built.
+        assert is_native_by_location(math_copy);
+        assert bundled_stdlib_module_of(math_copy) == "math";
+        assert is_in_jaclang_package(math_copy);
+        assert is_shared_runtime_module(fragment_copy);
         real_copy = os.path.realpath(copy) + os.sep;
         assert os.path.realpath(kernel_root_path()).startswith(real_copy) , kernel_root_path();
         for p in native_scope_paths() {
@@ -127,6 +143,7 @@ test "a kernel target retargets the package predicates at a staging copy" {
     }
     assert target_pkg_root() == jaclang_pkg_root();
     assert native_arch_scope(os.path.join(copy, "runtime", "osp_kernel.jac")) != "";
+    assert not is_native_by_location(math_copy);
 }
 
 test "only a kernel target's units share module cache files across trees" {

@@ -501,6 +501,13 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
     return not self.internal and _default_codespace_for(self) == 'native';
 }
 
+impl JacProgram.anchors_native_under_default(
+    self: JacProgram, mod: uni.Module
+) -> bool {
+    import from jaclang.compiler.driver.boundary_classify { module_own_native_anchor }
+    return not self.internal and module_own_native_anchor(mod);
+}
+
 impl JacProgram.parse_source(
     self: JacProgram,
     source_str: str,
@@ -595,6 +602,18 @@ impl JacProgram.parse_source(
             active_host().record_native_coverage(
                 parsed.loc.mod_path, 'server', '', _na_why
             );
+        }
+    } elif run_codespace_infer and self.anchors_native_under_default(parsed) {
+        import from jaclang.compiler.placement.placement_solver {
+            native_default_verdict
+        }
+        (_na_ok, _na_why) = native_default_verdict(
+            parsed, self, bool(self.options is not None and self.options.native_unit)
+        );
+        if _na_ok {
+            _coerce_native_module(parsed);
+            parsed.codespace_inferred = True;
+            active_host().record_native_coverage(parsed.loc.mod_path, 'native');
         }
     }
     return parsed;
