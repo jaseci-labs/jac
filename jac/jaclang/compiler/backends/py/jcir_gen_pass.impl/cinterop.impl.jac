@@ -469,8 +469,13 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
         clib_global_of_symbol,
         is_builtin_addressof_call
     }
+    # The declaration itself is the symbol, not its value; a C function a C
+    # block defines reads and writes C data like any other function.
     if clib_global_of_symbol(nd.sym) is None
-        or nd.find_parent_of_type(Import) is not None {
+        or (
+            nd.find_parent_of_type(Import) is not None
+            and nd.find_parent_of_type(Ability) is None
+        ) {
         return False;
     }
     return not is_builtin_addressof_call(nd.parent);

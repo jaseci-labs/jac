@@ -14,6 +14,7 @@
 #include "internal/pycore_range.h"
 #include "internal/pycore_typeobject.h"
 #include "internal/pycore_interp_structs.h"
+#include "internal/pycore_gc.h"
 #include <stddef.h>
 
 /* The private object structs of the ported Objects/ files, as the
@@ -294,6 +295,15 @@ FIELD(PyListObject, allocated, 32, 8);
 KIND(PyListObject, allocated, 1);
 SIGNED(PyListObject, allocated, 1);
 LAYOUT(PyListObject, 40, 8);
+
+/* PyGC_Head */
+FIELD(PyGC_Head, _gc_next, 0, 8);
+KIND(PyGC_Head, _gc_next, 1);
+SIGNED(PyGC_Head, _gc_next, 0);
+FIELD(PyGC_Head, _gc_prev, 8, 8);
+KIND(PyGC_Head, _gc_prev, 1);
+SIGNED(PyGC_Head, _gc_prev, 0);
+LAYOUT(PyGC_Head, 16, 8);
 
 /* PyStatus */
 FIELD(PyStatus, _type, 0, 4);
@@ -1045,6 +1055,15 @@ CONSTANT(offsetof(rangeobject, start), 16LL);
 CONSTANT(offsetof(rangeobject, stop), 24LL);
 CONSTANT(offsetof(rangeobject, step), 32LL);
 CONSTANT(sizeof(longrangeiterobject), 40LL);
+CONSTANT(offsetof(PyThreadState, interp), 16LL);
+CONSTANT(offsetof(PyInterpreterState, object_state.freelists), 11168LL);
+CONSTANT(offsetof(PyInterpreterState, gc), 7408LL);
+CONSTANT(offsetof(struct _gc_runtime_state, generation0), 256LL);
+CONSTANT(offsetof(struct _gc_runtime_state, heap_size), 216LL);
+CONSTANT(sizeof(PyGC_Head), 16LL);
+CONSTANT(_PyGC_PREV_MASK_FINALIZED, 1LL);
+CONSTANT((Py_ssize_t)_PyGC_PREV_MASK, -4LL);
+CONSTANT((Py_ssize_t)~_PyGC_PREV_MASK, 3LL);
 CONSTANT(offsetof(struct _Py_freelists, slices), 432LL);
 CONSTANT(offsetof(struct _Py_freelists, ranges), 448LL);
 CONSTANT(offsetof(struct _Py_freelists, range_iters), 464LL);

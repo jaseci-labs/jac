@@ -48,6 +48,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E5089,
     E5090,
     E5091,
+    E1158,
     E5092,
     E5095,
     E5113,
@@ -267,6 +268,8 @@ walker NaIRGenPass(CompilerPass) {
         clib_struct_abi_types: dict[str, ir.Type] = {},
         clib_globals: dict[str, tuple[ir.GlobalVariable, any]] = {},
         _clib_definitions: dict[str, uni.Ability] = {},
+        _foreign_clib_abilities: dict[str, uni.Ability] = {},
+        _shared_raise_blocks: dict[str, ir.Block] = {},
         _clib_exports: dict[str, ir.Function] = {},
         _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
         _c_strings: dict[str, ir.GlobalVariable] = {},
@@ -595,6 +598,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_region_leaves(count: int) -> None;
     def _region_depth -> ir.Value;
     def _region_unwind(depth: ir.Value) -> None;
+    def _region_open_test -> ir.Value;
     def _region_c_entry_escape -> (ir.Value | None);
     def _region_c_entry_restore(saved: (ir.Value | None)) -> None;
     def _region_alloc_object(
@@ -966,6 +970,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_vararg(arg: uni.Expr) -> (ir.Value | None);
     def _c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None);
     def _c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None);
+    def _final_scalar_value(nd: uni.Name, value_type: ir.Type) -> (ir.Value | None);
     def _va_abi -> str;
     def _va_storage_type(abi: str) -> ir.Type;
     def _c_va_start(nd: uni.UniNode) -> (ir.Value | None);
@@ -1297,6 +1302,7 @@ walker NaIRGenPass(CompilerPass) {
     def _declare_pending_clib_globals -> None;
     def _declare_pending_clib_abilities -> None;
     def _declare_clib_definitions -> None;
+    def _clib_abi_signature(decl: uni.Ability) -> str;
     def _emit_clib_definitions -> None;
     def _emit_clib_export_thunk(name: str) -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
@@ -2639,7 +2645,9 @@ walker NaIRGenPass(CompilerPass) {
     def _unwind_node_type -> ir.Type;
     def _register_unwind_cleanup -> None;
     def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
-    def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
+    def _thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
+    def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None;
+    def _c_entry_tail_or_escape(c_entry: ir.Function, jac_fn: ir.Function) -> bool;
     def _tail_frame_blocker -> (str | None);
     def _tail_call_mismatch(call: ir.CallInstr, func: ir.Function) -> (str | None);
     def _codegen_delete(nd: uni.DeleteStmt) -> None;

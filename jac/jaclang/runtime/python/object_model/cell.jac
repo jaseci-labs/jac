@@ -14,8 +14,6 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_ValueError,
     PyObject,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_RichCompare,
     PyUnicode_FromFormat,
@@ -38,9 +36,11 @@ import from jaclang.runtime.python.layouts {
     _object
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
+    object_gc_track,
+    object_gc_untrack,
     object_is_type,
     object_type,
+    PyType_Type,
     rich_compare_values
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
@@ -112,7 +112,7 @@ import from c {
             return NULL;
         }
         cell_of(op).view(1)[0].ob_ref = Py_XNewRef(value);
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }  def PyCell_Get(op: ptr[PyObject]) -> ptr[PyObject] {
         if not cell_check(op) {
@@ -145,7 +145,7 @@ def cell_new(
 }
 
 def cell_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(cell_of(op).view(1)[0].ob_ref);
     PyObject_GC_Del(op);
 }
