@@ -116,7 +116,19 @@ time with a bound `self`, like `_abc`'s weakref callback, comes from a
 Jac converter's return type. A `PyBytesObject` or `PyByteArrayObject`
 parameter (format unit `S` or `Y`) is checked as `object(subclass_of=...)`
 over bytes or bytearray. A module built from several C files (`_zstd`'s
-`Modules/_zstd/`) gets one glue file for all of them.
+`Modules/_zstd/`) gets one glue file for all of them. A default read from the
+module state or the receiver's C fields (`clinic_state()->ConnectionType`,
+`((pysqlite_Cursor *)self)->arraysize`) is a module function over the
+receiver (`clinic_state_ConnectionType(receiver)`, `self_arraysize(receiver)`),
+and an optional argument of a module's own converter (`_sqlite3`'s
+`Autocommit`) keeps the C default when omitted. A parameter clinic deprecates
+with `[from X.Y]` warns as its parser does: the `CallSignature` carries the
+message and the argument counts that trigger it. A clinic block whose `_impl`
+the C file never defines, a clone kept for its docstring and method table
+entry (`_sqlite3.connect`), contributes only `<c_basename>_doc`, and the
+binding supplies the function. `TypeHooks(finalize=...)` is `tp_finalize`; a
+dealloc calls `PyObject_CallFinalizerFromDealloc()` first, as
+`sqlite3.Connection` does.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or

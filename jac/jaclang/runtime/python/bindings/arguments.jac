@@ -17,6 +17,8 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Next,
     PyDict_Size,
     PyErr_Occurred,
+    PyErr_WarnEx,
+    PyExc_DeprecationWarning,
     PyExc_OverflowError,
     PyExc_TypeError,
     PyExc_ValueError,
@@ -57,7 +59,8 @@ obj BoundArguments {
         context: ptr[PyObject] = NULL,
         keywords: ptr[PyObject] = NULL,
         failure: str = "",
-        failure_at: int = -1;
+        failure_at: int = -1,
+        nargs: int = 0;
 
     def fail_at(index: int, message: str) {
         self.failure = message;
@@ -191,7 +194,11 @@ def plural(count: int) -> str {
 # max_pos, `positional_only` its pos_only and `keyword_required` its
 # min_kw_only. The positional parsers refuse keywords first, as
 # _PyArg_NoKeywords() does for tp_new and tp_init (a METH_FASTCALL call
-# never passes any).
+# never passes any). Parameters clinic deprecates with `[from X.Y]` warn as
+# its parser does: `positional_warning` before binding when
+# low < nargs <= high of `positional_warn_range`, `keyword_warning` after it
+# when the parameter at `keyword_warn_required` or a given one of
+# `keyword_warn_optional` came by keyword.
 obj CallSignature {
     has name: str,
         names: list[str],
@@ -199,7 +206,48 @@ obj CallSignature {
         positional_count: int,
         positional_only: int = 0,
         keyword_required: int = 0,
-        parser: int = PARSE_AUTO;
+        parser: int = PARSE_AUTO,
+        positional_warning: str = "",
+        positional_warn_range: tuple[int, int] = (0, 0),
+        keyword_warning: str = "",
+        keyword_warn_required: int = -1,
+        keyword_warn_optional: list[int] = [];
+
+    def warn(message: str) -> bool {
+        return PyErr_WarnEx(PyExc_DeprecationWarning, message, 1) == 0;
+    }
+
+    # Bind the arguments and apply the deprecation warnings around it.
+    def bind_values(
+        result: BoundArguments,
+        positional: list[ptr[PyObject]],
+        keywords: KeywordArguments
+    ) -> bool {
+        count = len(positional);
+        result.nargs = count;
+        if self.positional_warning
+            and self.positional_warn_range[0] < count
+            and count <= self.positional_warn_range[1]
+            and not self.warn(self.positional_warning) {
+            return False;
+        }
+        if not self.bind_arguments(result, positional, keywords) {
+            return False;
+        }
+        if self.keyword_warning {
+            passed = self.keyword_warn_required >= 0
+                and count < self.keyword_warn_required + 1;
+            for index in self.keyword_warn_optional {
+                if count < index + 1 and result.values[index] != NULL {
+                    passed = True;
+                }
+            }
+            if passed and not self.warn(self.keyword_warning) {
+                return False;
+            }
+        }
+        return True;
+    }
 
     def bind(
         result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
@@ -231,7 +279,7 @@ obj CallSignature {
 
     # Bind borrowed positional and keyword arguments to result.values as
     # new references; False with the TypeError set on a mismatch.
-    def bind_values(
+    def bind_arguments(
         result: BoundArguments,
         positional: list[ptr[PyObject]],
         keywords: KeywordArguments
