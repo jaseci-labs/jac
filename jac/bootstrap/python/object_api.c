@@ -514,6 +514,16 @@ PyObject **jacpy_typing_types(void) {
 #include "internal/pycore_freelist.h"
 struct _Py_freelists *jacpy_freelists(void) { return _Py_freelists_GET(); }
 
+/* The open_code hook and its data are _PyRuntime fields, whose layout
+ * differs between builds. */
+#include "internal/pycore_runtime.h"
+void **jacpy_open_code_hook(void) { return (void **)&_PyRuntime.open_code_hook; }
+void **jacpy_open_code_userdata(void) { return &_PyRuntime.open_code_userdata; }
+
+/* The descriptor of stdin (0), stdout (1) or stderr (2): the stdio streams are
+ * macros or differently named globals across C libraries. */
+int32_t jacpy_stdio_fileno(int32_t stream) { return fileno(stream == 2 ? stderr : stream == 1 ? stdout : stdin); }
+
 /* Weak references hang off an object-layout list that only C can walk. */
 #include "internal/pycore_weakref.h"
 #include "internal/pycore_dict.h"

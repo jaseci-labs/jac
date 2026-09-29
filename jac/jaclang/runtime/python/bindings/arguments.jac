@@ -361,13 +361,13 @@ obj CallSignature {
         maxargs = len(self.names);
         reqlimit = maxpos + minkw if minkw else minpos;
         minposonly = min(posonly, minpos);
-        caller = self.caller();
         if nkwargs == 0 and minkw == 0 and minpos <= nargs and nargs <= maxpos {
             for i in range(nargs) {
                 result.values[i] = Py_NewRef(positional[i]);
             }
             return True;
         }
+        caller = self.caller();
         if nargs + nkwargs > maxargs {
             return invalid(
                 f"{caller} takes at most {maxargs} {'keyword '
