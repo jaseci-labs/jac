@@ -294,7 +294,7 @@ Objects/object.c
 Objects/obmalloc.c
 Objects/odictobject.c
 Objects/picklebufobject.c
-Objects/rangeobject.c
+# Objects/rangeobject.c  # removed: 1,317 source lines
 Objects/setobject.c
 # Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
