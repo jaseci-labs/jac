@@ -8,8 +8,10 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyExc_ValueError,
+    PyList_Insert,
     PyLong_FromLongLong,
     PyObject,
+    PyObject_CallMethod,
     PyObject_CallOneArg,
     PyObject_IsTrue,
     PySequence_Size,
@@ -18,7 +20,7 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_NotImplemented,
     jacpy_comparison_slot,
-    jacpy_insert,
+    jacpy_is_exact_list,
     jacpy_less,
     jacpy_recursion_enter,
     jacpy_release,
@@ -158,8 +160,16 @@ def:pub jacpy_bisect(
     if insert == 0 {
         return PyLong_FromLongLong(index);
     }
-    if jacpy_insert(sequence, index, item) < 0 {
-        return NULL;
+    if jacpy_is_exact_list(sequence) != 0 {
+        if PyList_Insert(sequence, index, item) < 0 {
+            return NULL;
+        }
+    } else {
+        result = PyObject_CallMethod(sequence, "insert", "nO", index, item);
+        if not result {
+            return NULL;
+        }
+        jacpy_release(result);
     }
     return Py_NewRef(Py_None);
 }

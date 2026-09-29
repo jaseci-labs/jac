@@ -15,9 +15,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_exact_long,
     jacpy_is_long,
     jacpy_is_tuple,
-    jacpy_libm_parts,
     jacpy_long_fits_i64,
-    jacpy_long_frexp,
     jacpy_long_shift,
     jacpy_long_sign,
     jacpy_math_errno,
@@ -53,7 +51,9 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetIter,
     PyObject_RichCompareBool,
     PySequence_Tuple,
-    PyTuple_Size
+    PyTuple_Size,
+    Py_BuildValue,
+    _PyLong_Frexp
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi { object_error, required, boundary_failure }
@@ -93,6 +93,8 @@ import from jaclang.runtime.python.modules.numeric {
     remainder,
     pow,
     fma,
+    frexp,
+    modf,
     isfinite,
     isinf,
     isnan,
@@ -438,27 +440,19 @@ def:priv logarithm(value: ptr[PyObject], base: int) -> float {
         }
         x = PyLong_AsDouble(value);
         if jacpy_error_pending() != 0 {
+            # The conversion to double overflowed, but the log can be computed
+            # anyway: the value is ~= x * 2**e, so its log ~= log(x) + log(2) * e.
             PyErr_Clear();
-            parts = required(jacpy_long_frexp(value));
-            fraction: ptr[PyObject] = NULL;
-            exponent: ptr[PyObject] = NULL;
-            try {
-                fraction = required(jacpy_tuple_item(parts, 0));
-                exponent = required(jacpy_tuple_item(parts, 1));
-                x = input_float(fraction);
-                power = float(PyLong_AsLongLong(exponent));
-                if base == 2 {
-                    return log2(x) + power;
-                }
-                if base == 10 {
-                    return log10(x) + power * log10(2.0);
-                }
-                return log(x) + power * log(2.0);
-            } finally {
-                jacpy_release(parts);
-                jacpy_release(fraction);
-                jacpy_release(exponent);
+            exponent: i64 = 0;
+            x = _PyLong_Frexp(value, &mut exponent);
+            power = float(exponent);
+            if base == 2 {
+                return log2(x) + power;
             }
+            if base == 10 {
+                return log10(x) + power * log10(2.0);
+            }
+            return log(x) + power * log(2.0);
         }
         if base == 2 {
             return log2(x);
@@ -890,12 +884,31 @@ def:pub jacpy_math_binary(
     }
 }
 
+# math.frexp(x) (operation 0) and math.modf(x) (operation 1). Special values
+# are handled directly, to sidestep platform differences.
 def:pub jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
+    x: float = 0.0;
     try {
-        return required(jacpy_libm_parts(input_float(value), operation));
+        x = input_float(value);
     } except boundary_failure {
         return NULL;
     }
+    if operation == 0 {
+        exponent: i32 = 0;
+        if not (isnan(x) or isinf(x) or x == 0.0) {
+            x = frexp(x, &mut exponent);
+        }
+        return Py_BuildValue("(di)", x, exponent);
+    }
+    if isinf(x) {
+        return Py_BuildValue("(dd)", copysign(0.0, x), x);
+    }
+    if isnan(x) {
+        return Py_BuildValue("(dd)", x, x);
+    }
+    whole: float = 0.0;
+    fraction = modf(x, &mut whole);
+    return Py_BuildValue("(dd)", fraction, whole);
 }
 
 def:pub jacpy_math_ldexp(
@@ -1205,24 +1218,17 @@ def:priv norm(values: list[float], largest: float, found_nan: bool) -> float {
     if largest == 0.0 or len(values) <= 1 {
         return largest;
     }
-    parts = required(jacpy_libm_parts(largest, 0));
-    exponent: ptr[PyObject] = NULL;
-    scale: float = 0.0;
-    try {
-        exponent = required(jacpy_tuple_item(parts, 1));
-        power = int(PyLong_AsLongLong(exponent));
-        if power < -1023 {
-            for i in range(len(values)) {
-                values[i] /= 2.2250738585072014e-308;
-            }
-            return 2.2250738585072014e-308
-                * norm(values, largest / 2.2250738585072014e-308, found_nan);
+    exponent: i32 = 0;
+    frexp(largest, &mut exponent);
+    power = int(exponent);
+    if power < -1023 {
+        for i in range(len(values)) {
+            values[i] /= 2.2250738585072014e-308;
         }
-        scale = scaled(1.0, -power);
-    } finally {
-        jacpy_release(parts);
-        jacpy_release(exponent);
+        return 2.2250738585072014e-308
+            * norm(values, largest / 2.2250738585072014e-308, found_nan);
     }
+    scale = scaled(1.0, -power);
     total: float = 1.0;
     fraction1: float = 0.0;
     fraction2: float = 0.0;

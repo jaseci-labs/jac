@@ -11,7 +11,6 @@ a lock's state with sem_trywait() instead.
 import from jaclang.runtime.python.cpython_api {
     jacpy_errno,
     jacpy_release,
-    jacpy_sem_open,
     jacpy_set_errno,
     NULL,
     Py_NewRef,
@@ -75,7 +74,9 @@ import from c {
         semaphore: ptr, value: &mut i32
     ) -> i32;  def sem_post(semaphore: ptr) -> i32;  def sem_trywait(
         semaphore: ptr
-    ) -> i32;  def sem_unlink(name: str) -> i32;  def sem_wait(semaphore: ptr) -> i32;  def gettimeofday(
+    ) -> i32;  def sem_open(name: str, flags: i32, *args: any) -> ptr;  def sem_unlink(
+        name: str
+    ) -> i32;  def sem_wait(semaphore: ptr) -> i32;  def gettimeofday(
         now: &mut timeval, zone: ptr
     ) -> i32;  def select(
         count: i32, read: ptr, write: ptr, error: ptr, timeout: &mut timeval
@@ -374,7 +375,7 @@ def _multiprocessing_SemLock_impl(
         object_error(PyExc_ValueError, "unrecognized kind");
         return NULL;
     }
-    handle = jacpy_sem_open(name, O_CREAT | O_EXCL, 0o600, i64(value));
+    handle = sem_open(name, i32(O_CREAT | O_EXCL), i32(0o600), value);
     if handle != ptr(SEM_FAILED) and (not unlink or sem_unlink(name) >= 0) {
         result = new_semlock(
             type, handle, int(kind), int(maxvalue), None if unlink else name
@@ -404,7 +405,7 @@ def _multiprocessing_SemLock__rebuild_impl(
         }
         text = text_value(decoded);
         jacpy_release(decoded);
-        semaphore = jacpy_sem_open(text, 0, 0, 0);
+        semaphore = sem_open(text, i32(0));
         if semaphore == ptr(SEM_FAILED) {
             return oserror();
         }

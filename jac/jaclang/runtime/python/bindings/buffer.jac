@@ -20,24 +20,40 @@ obj BufferArgument {
         return jacpy_buffer_bytes(self.view);
     }
 
+    # The "w*" format: a writable contiguous buffer.
     def acquire_writable(value: ptr[PyObject]) -> bool {
         self.close();
-        self.view = jacpy_buffer_acquire_writable(value);
-        return bool(self.view);
+        view = new_view();
+        if view and PyArg_Parse(value, "w*", view) == 0 {
+            PyMem_Free(view);
+            view = ptr[Py_buffer]();
+        }
+        self.view = view;
+        return bool(view);
     }
 
     # The "s*" format: a str as its UTF-8 encoding or a contiguous buffer.
     def acquire_string(value: ptr[PyObject]) -> bool {
         self.close();
-        self.view = jacpy_buffer_acquire_string(value);
-        return bool(self.view);
+        view = new_view();
+        if view and PyArg_Parse(value, "s*", view) == 0 {
+            PyMem_Free(view);
+            view = ptr[Py_buffer]();
+        }
+        self.view = view;
+        return bool(view);
     }
 
     # PyObject_GetBuffer with PyBUF_* flags, keeping the exporter's exception.
     def export(value: ptr[PyObject], flags: i64) -> bool {
         self.close();
-        self.view = jacpy_buffer_export(value, flags);
-        return bool(self.view);
+        view = new_view();
+        if view and PyObject_GetBuffer(value, view, i32(flags)) < 0 {
+            PyMem_Free(view);
+            view = ptr[Py_buffer]();
+        }
+        self.view = view;
+        return bool(view);
     }
 
     def owner -> ptr[PyObject] {
@@ -72,15 +88,29 @@ obj BufferArgument {
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_buffer_acquire,
-    jacpy_buffer_acquire_string,
-    jacpy_buffer_acquire_writable,
     jacpy_buffer_bytes,
-    jacpy_buffer_export,
     jacpy_buffer_release,
     NULL,
     Py_buffer,
-    PyObject
+    PyArg_Parse,
+    PyErr_NoMemory,
+    PyMem_Calloc,
+    PyMem_Free,
+    PyObject,
+    PyObject_GetBuffer
 }
+import from jaclang.runtime.python.layouts { PY_BUFFER_SIZE }
+
+# A zeroed Py_buffer in PyMem memory for an acquisition to fill;
+# jacpy_buffer_release releases the view and frees it.
+def:priv new_view -> ptr[Py_buffer] {
+    view = ptr[Py_buffer](PyMem_Calloc(1, PY_BUFFER_SIZE));
+    if not view {
+        PyErr_NoMemory();
+    }
+    return view;
+}
+
 import from c {
     obj BufferLayout {
         has address: ptr,

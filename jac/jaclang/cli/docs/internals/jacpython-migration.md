@@ -78,9 +78,10 @@ Functions the C module parses with `PyArg_ParseTuple` or
 their conversions and messages are `getargs.c`'s.
 
 A Jac module can also define interpreter functions under their C names: the
-atexit port defines `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini`
-as `def:pub`, which `pylifecycle.c` and `pystate.c` call. `gen_capi.jac` does
-not declare a name a JacPython source defines.
+atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
+`PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini` in an
+`import from c` block, and `pylifecycle.c` and `pystate.c` call them.
+`gen_capi.jac` does not declare a name a JacPython source defines.
 
 The generated glue keeps C's argument types where they matter. A `str`
 argument that may be NULL (it accepts None, or its C default is NULL, like
@@ -119,6 +120,7 @@ only where Jac cannot express the operation:
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
 | struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
+| the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
 
 `object_api.c`, `compiler_runtime.c` and `binding_api.c` hold only these. They
@@ -170,7 +172,11 @@ the Jac form, not a C helper:
    `addressof(table)` is its first element.
 
 5. **Varargs.** A call to a variadic C function passes each extra argument
-   with C's default promotions. `def PyErr_Format(exception: ptr[PyObject],
+   with C's default promotions, and a borrowed one (`&mut x`) as the
+   variable's address, so a port calls `fcntl`, `syslog`, `PyTuple_Pack`,
+   `Py_BuildValue` or `PyArg_UnpackTuple(args, "bool", 0, 1, &mut x)` as C
+   does; `gen_capi.jac` declares a variadic function's `...` as
+   `*args: any`. `def PyErr_Format(exception: ptr[PyObject],
    format: ptr[u8], *args: VaList)` defines a C variadic function, a
    `VaList` parameter receives a C `va_list` (`PyErr_FormatV`),
    `args.arg(T)` reads the next argument as the C type T, and a `VaList`
@@ -229,9 +235,9 @@ bits) and `ob_type=addressof(PyType_Type)`, and `_Py_FalseStruct` /
 `_PyLong_TRUE_TAG` and whose digit is 0 / 1. C's `Py_True` is the address of
 the Jac-defined object. Slot tables (`bool_as_number`) are `glob:priv`
 definitions; slots name Jac functions directly. Static C functions are plain
-`def`s; non-static ones are `def:pub` under their C names (`PyBool_FromLong`),
-so `gen_capi.jac` drops their declarations and Jac callers import them from
-the port. The extern types a port uses (`PyType_Type`, `PyLong_Type`,
+`def`s; non-static ones are C function definitions under their C names in an
+`import from c` block (`PyBool_FromLong`), so `gen_capi.jac` drops their
+declarations and Jac callers import them from the port. The extern types a port uses (`PyType_Type`, `PyLong_Type`,
 `PyExc_*`) are `glob` declarations typed with their layouts, and inherited
 slots are called through them:
 `addressof(PyLong_Type).view(1)[0].tp_as_number.view(1)[0].nb_and(a, b)`.
@@ -251,9 +257,9 @@ What boolobject needed beyond the layouts:
   strings) are fields of `_PyRuntime`, whose layout differs between platform
   builds. Interning returns them, since the static strings are interned at
   startup, so `bool_repr` is `PyUnicode_InternFromString("True")`.
-- `bool_new` performs `PyArg_UnpackTuple`'s checks (tuple check,
-  `_PyArg_CheckPositional`) and reads `ob_item` directly, with the same
-  errors; it was written before variadic calls were closed in the language.
+- `bool_new` calls `PyArg_UnpackTuple(args, "bool", 0, 1, &mut x)` as C does.
+  A borrowed variadic argument passed the variable's value instead of its
+  address; both backends now pass the address.
 - The `_PyArg_NoKeywords`, `_PyArg_NoKwnames` and `_PyArg_CheckPositional`
   macros are written out: the fast test inline, then the exported function.
 - Two compiler fixes: a module-level `Final` glob is a C constant in data
@@ -266,9 +272,6 @@ What boolobject needed beyond the layouts:
   `__jac_def_<name>`, so a port defines CPython's API functions in an
   `import from c` block instead (`def PyBool_FromLong(ok: i64) ->
   ptr[PyObject] { ... }`), which exports the exact C name with the C ABI.
-- `gen_capi.jac` reads `Name(` in string literals as a call, so a message that
-  names a C function (`"PyArg_UnpackTuple() argument list is not a tuple"`)
-  is split into adjacent literals.
 
 Refcounting from Jac is still a call into C (`Py_IncRef`, `jacpy_release`);
 with `_object` declared, inline immortality-aware reference operations in Jac

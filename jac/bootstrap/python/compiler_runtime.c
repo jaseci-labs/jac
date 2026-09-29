@@ -24,16 +24,6 @@ static PyObject *utf8_result(PyObject *value) {
     Py_DECREF(value);
     return bytes;
 }
-PyObject *jacpy_normalize(const char *source, int64_t size) {
-    PyObject *text = PyUnicode_DecodeUTF8(source, size, "surrogatepass");
-    if (text == NULL) return NULL;
-    PyObject *module = PyImport_ImportModule("unicodedata");
-    if (module == NULL) { Py_DECREF(text); return NULL; }
-    PyObject *result = PyObject_CallMethod(module, "normalize", "sO", "NFKC", text);
-    Py_DECREF(module);
-    Py_DECREF(text);
-    return utf8_result(result);
-}
 PyObject *jacpy_unicode_escape(const char *source, int64_t size) {
     const char *invalid = NULL;
     int invalid_char = -1;
@@ -49,9 +39,6 @@ int64_t jacpy_buffer_byte(PyObject *handle, int64_t index) {
     return (unsigned char)PyBytes_AS_STRING(handle)[index];
 }
 void jacpy_release(PyObject *handle) { Py_XDECREF(handle); }
-int64_t jacpy_warning(const char *message, const char *filename, int64_t line) {
-    return PyErr_WarnExplicit(PyExc_SyntaxWarning, message, filename, (int)line, NULL, NULL);
-}
 
 /* Numeric conversion is retained object-runtime behavior. The Jac parser
  * classifies literals and the native compiler owns their serialized values. */
@@ -278,16 +265,6 @@ PyObject *jacpy_take_error_text(void) {
     Py_DECREF(error);
     return utf8_result(text);
 }
-/* Compiler failures keep CPython's argument shape: SyntaxError subclasses take
- * (message, (filename, lineno, offset, text, end_lineno, end_offset)). */
-void jacpy_raise_compiler_error(PyObject *type, PyObject *message, PyObject *location) {
-    if (location != 0 && PyObject_IsSubclass(type, PyExc_SyntaxError) > 0) {
-        PyObject *args = PyTuple_Pack(2, message, location);
-        if (args != NULL) { PyErr_SetObject(type, args); Py_DECREF(args); }
-        return;
-    }
-    PyErr_SetObject(type, message);
-}
 
 #include <structmember.h>
 typedef struct {
@@ -424,20 +401,10 @@ __attribute__((constructor)) static void jacpy_initialize(void) { __jac_shared_i
 /* atexit keeps the heads of both of its callback lists in PyInterpreterState,
  * an object layout only C addresses, and the C list is guarded by a lock
  * macro. modules/atexit.jac implements the module and the interpreter hooks
- * over these accessors and walks and calls the atexit_callback records itself;
- * _PyAtExit_Init stays here because it returns PyStatus by value. */
+ * over these accessors and walks and calls the atexit_callback records itself. */
 #include "internal/pycore_atexit.h"
-#include "internal/pycore_initconfig.h"
 #include "internal/pycore_interp.h"
-PyStatus _PyAtExit_Init(PyInterpreterState *interp) {
-    struct atexit_state *state = &interp->atexit;
-    assert(state->callbacks == NULL);
-    state->callbacks = PyList_New(0);
-    if (state->callbacks == NULL) return _PyStatus_NO_MEMORY();
-    return _PyStatus_OK();
-}
-PyObject *jacpy_atexit_callbacks(PyInterpreterState *interp) { return interp->atexit.callbacks; }
-void jacpy_atexit_release_callbacks(PyInterpreterState *interp) { Py_CLEAR(interp->atexit.callbacks); }
+PyObject **jacpy_atexit_callbacks(PyInterpreterState *interp) { return &interp->atexit.callbacks; }
 int32_t jacpy_atexit_push(PyInterpreterState *interp, void *func, void *data) {
     PyThreadState *tstate = _PyThreadState_GET();
     _Py_EnsureTstateNotNULL(tstate);

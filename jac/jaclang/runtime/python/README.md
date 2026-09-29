@@ -82,11 +82,13 @@ static types and singletons are used by address (`addressof(PyCode_Type)`,
 module's Argument Clinic input, and calls the module's `_impl` functions with their
 C signatures; `bindings/converters.jac` holds the generic clinic converters. The C
 helpers in `bootstrap/python/object_api.c` and `compiler_runtime.c` cover only what
-Jac cannot express (macros without an exported function, varargs, fields of object
-layouts and interpreter state, structs returned by value, CPU feature probes), and
-`binding_api.c` stores opaque CPython module, type, and buffer records without
-module-specific policy. Data symbols, pointer arithmetic, in-place field access
-through a pointer, and calls through C function pointers are written in Jac. The porting process is documented in
+Jac cannot express (macros without an exported function, fields of object layouts
+and interpreter state, CPU feature probes), and `binding_api.c` stores opaque
+CPython module, type, and buffer records without module-specific policy. Data
+symbols, pointer arithmetic, in-place field access through a pointer, calls
+through C function pointers, calls to variadic C functions (`fcntl`, `syslog`,
+`PyTuple_Pack`, `Py_BuildValue`), and C functions with exact C names and structs
+by value (`_PyAtExit_Init` returns a `PyStatus`) are written in Jac. The porting process is documented in
 `cli/docs/internals/jacpython-migration.md`.
 
 Declarations contain no Python objects and live for the process lifetime. Each

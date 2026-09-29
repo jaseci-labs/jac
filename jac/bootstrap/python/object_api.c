@@ -24,15 +24,6 @@ void *jacpy_sequence_slot(PyObject *handle) {
 int64_t jacpy_less(PyObject *left, PyObject *right) {
     return PyObject_RichCompareBool(left, right, Py_LT);
 }
-int64_t jacpy_insert(PyObject *handle, int64_t index, PyObject *value) {
-    if (PyList_CheckExact(handle))
-        return PyList_Insert(handle, (Py_ssize_t)index, value);
-    PyObject *result = PyObject_CallMethod(handle, "insert", "nO",
-                                         (Py_ssize_t)index, value);
-    if (!result) return -1;
-    Py_DECREF(result);
-    return 0;
-}
 int64_t jacpy_recursion_enter(const char *context) {
     /* Unlike most CPython status APIs this may return positive on failure. */
     return Py_EnterRecursiveCall(context) ? -1 : 0;
@@ -165,27 +156,6 @@ Py_buffer *jacpy_buffer_acquire(PyObject *value, int64_t kind) {
     if (!ok) { PyMem_Free(view); return NULL; }
     return view;
 }
-Py_buffer *jacpy_buffer_acquire_writable(PyObject *value) {
-    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
-    if (!view) { PyErr_NoMemory(); return NULL; }
-    if (!PyArg_Parse(value, "w*", view)) { PyMem_Free(view); return NULL; }
-    return view;
-}
-/* The "s*" format: a str as its UTF-8 encoding, or a C-contiguous buffer. */
-Py_buffer *jacpy_buffer_acquire_string(PyObject *value) {
-    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
-    if (!view) { PyErr_NoMemory(); return NULL; }
-    if (!PyArg_Parse(value, "s*", view)) { PyMem_Free(view); return NULL; }
-    return view;
-}
-/* PyObject_GetBuffer with the caller's PyBUF_* flags; the exporter's own
- * exception (BufferError for a read-only object) is kept. */
-Py_buffer *jacpy_buffer_export(PyObject *value, int64_t flags) {
-    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
-    if (!view) { PyErr_NoMemory(); return NULL; }
-    if (PyObject_GetBuffer(value, view, (int)flags) < 0) { PyMem_Free(view); return NULL; }
-    return view;
-}
 void jacpy_buffer_release(Py_buffer *value) {
     if (!value) return;
     Py_buffer *view = value;
@@ -205,12 +175,6 @@ PyObject *jacpy_power(PyObject *a, PyObject *b, int64_t inplace) {
 int64_t jacpy_is_unicode(PyObject *a) { return PyUnicode_Check(a); }
 PyObject *jacpy_unicode_split(PyObject *a, PyObject *sep) { return PyUnicode_Split(a, sep, -1); }
 int64_t jacpy_dict_size(PyObject *a) { return a ? PyDict_Size(a) : 0; }
-PyObject *jacpy_dict_entry(PyObject *a, int64_t position) {
-    Py_ssize_t pos = position;
-    PyObject *key, *value;
-    if (!PyDict_Next(a, &pos, &key, &value)) return NULL;
-    return Py_BuildValue("nOO", pos, key, value);
-}
 #include <openssl/crypto.h>
 int64_t jacpy_crypto_compare(const void *a, const void *b, int64_t size) {
     return CRYPTO_memcmp(a, b, size);
@@ -261,11 +225,6 @@ PyObject *jacpy_long_repr(PyObject *value) { return PyLong_Type.tp_repr(value); 
 PyObject *jacpy_float_repr(PyObject *value) { return PyFloat_Type.tp_repr(value); }
 PyObject *jacpy_type_name(PyObject *value) { return PyUnicode_FromString(Py_TYPE(value)->tp_name); }
 PyObject *jacpy_qualified_type_name(PyObject *value) { return PyType_GetFullyQualifiedName(Py_TYPE(value)); }
-int64_t jacpy_exception_note(PyObject *error, PyObject *note) {
-    PyObject *result = PyObject_CallMethod(error, "add_note", "O", note);
-    if (!result) return -1;
-    Py_DECREF(result); return 0;
-}
 int64_t jacpy_fast_size(PyObject *value) { return PySequence_Fast_GET_SIZE(value); }
 PyObject *jacpy_fast_item(PyObject *value, int64_t index) { return Py_NewRef(PySequence_Fast_GET_ITEM(value, index)); }
 
@@ -389,11 +348,6 @@ double jacpy_libm_cos(double value) { return JACPY_LIBM(cos)(value); }
 double jacpy_libm_tan(double value) { return JACPY_LIBM(tan)(value); }
 double jacpy_libm_fma(double x, double y, double z) { return JACPY_LIBM(fma)(x, y, z); }
 
-void jacpy_set_key_error(PyObject *key) {
-    PyObject *args = PyTuple_Pack(1, key);
-    if (args) { PyErr_SetObject(PyExc_KeyError, args); Py_DECREF(args); }
-}
-
 PyObject *jacpy_dict_repr(PyObject *value) { return PyDict_Type.tp_repr(value); }
 
 
@@ -412,16 +366,8 @@ PyObject *jacpy_special_noargs(PyObject *value, const char *name) {
     if(!method) return NULL;
     PyObject *result=PyObject_CallNoArgs(method); Py_DECREF(method); return result;
 }
-PyObject *jacpy_libm_parts(double value, int64_t integral) {
-    if(integral) { double whole; double fraction=modf(value,&whole); return Py_BuildValue("dd",fraction,whole); }
-    int exponent=0; double fraction=frexp(value,&exponent); return Py_BuildValue("di",fraction,exponent);
-}
 uint64_t jacpy_float_bits(double value) { uint64_t bits; memcpy(&bits,&value,sizeof(bits)); return bits; }
 double jacpy_float_from_bits(uint64_t bits) { double value; memcpy(&value,&bits,sizeof(value)); return value; }
-PyObject *jacpy_long_frexp(PyObject *value) {
-    int64_t exponent; double fraction=_PyLong_Frexp((PyLongObject *)value,&exponent);
-    return PyErr_Occurred() ? NULL : Py_BuildValue("dL",fraction,(long long)exponent);
-}
 
 
 int64_t jacpy_is_exact_float(PyObject *value) { return PyFloat_CheckExact(value); }
@@ -479,8 +425,6 @@ PyObject *jacpy_bytes_unescape(PyObject *value) { return PyBytes_DecodeEscape(Py
 
 
 
-int64_t jacpy_audit_pickle_find(PyObject *module, PyObject *name) { return PySys_Audit("pickle.find_class", "OO", module, name); }
-
 PyObject *jacpy_mapping_optional_item(PyObject *mapping, PyObject *key) { PyObject *result = NULL; return PyMapping_GetOptionalItem(mapping, key, &result) < 0 ? NULL : result; }
 
 
@@ -488,14 +432,6 @@ PyObject *jacpy_mapping_optional_item(PyObject *mapping, PyObject *key) { PyObje
 void jacpy_exception_context(PyObject *error, PyObject *cause) { PyException_SetContext(error, Py_NewRef(cause)); }
 
 PyObject *jacpy_unicode_intern(PyObject *value) { PyObject *result=Py_NewRef(value); PyUnicode_InternInPlace(&result); return result; }
-
-int64_t jacpy_dict_memory(PyObject *value) {
-    PyObject *size = PyObject_CallMethod(value, "__sizeof__", NULL);
-    if (!size) return -1;
-    Py_ssize_t result = PyLong_AsSsize_t(size);
-    Py_DECREF(size);
-    return result;
-}
 
 /* General value conversion and interpreter services for native bindings. */
 int64_t jacpy_is_slice(PyObject *value) { return PySlice_Check(value); }
@@ -522,10 +458,6 @@ PyObject *jacpy_builtins(void) { return Py_NewRef(PyEval_GetBuiltins()); }
 PyObject *jacpy_fs_text(const void *text) {
     return text ? PyUnicode_DecodeFSDefault(text) : Py_NewRef(Py_None);
 }
-
-/* A NUL-terminated UTF-8 string that C owns (a PyMethodDef name), decoded as
- * PyUnicode_FromFormat's %s decodes it: invalid bytes are replaced. */
-PyObject *jacpy_c_text(const void *text) { return PyUnicode_FromFormat("%s", (const char *)text); }
 
 /* PyCFunctionObject fields, which only its object layout holds; borrowed. */
 PyMethodDef *jacpy_cfunction_method(PyObject *function) { return ((PyCFunctionObject *)function)->m_ml; }
@@ -605,32 +537,9 @@ int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {
     return _PyDict_DelItemIf(dictionary, key, dead_weakref, NULL);
 }
 
-/* syslog(3) is variadic; the module always logs one preformatted message. */
-#include <syslog.h>
-void jacpy_syslog(int32_t priority, const char *message) { syslog(priority, "%s", message); }
-
 /* errno is a thread-local macro; read and write it through functions. */
 int64_t jacpy_errno(void) { return errno; }
 void jacpy_set_errno(int64_t value) { errno = (int)value; }
-
-/* fcntl(2) and ioctl(2) are variadic; the third argument is an int or a
- * pointer, depending on the command. */
-#include <fcntl.h>
-#include <sys/ioctl.h>
-int32_t jacpy_fcntl_int(int32_t fd, int32_t command, int32_t argument) { return fcntl(fd, command, argument); }
-int32_t jacpy_fcntl_pointer(int32_t fd, int32_t command, void *argument) { return fcntl(fd, command, argument); }
-int32_t jacpy_ioctl_int(int32_t fd, uint64_t request, int32_t argument) { return ioctl(fd, (unsigned long)request, argument); }
-int32_t jacpy_ioctl_pointer(int32_t fd, uint64_t request, void *argument) { return ioctl(fd, (unsigned long)request, argument); }
-
-/* getdents64(2) through syscall(2), which is variadic; glibc before 2.30 has
- * no wrapper. Async-signal-safe: _posixsubprocess lists /proc/self/fd with it
- * between fork() and exec(). Other systems report ENOSYS. */
-#if defined(__linux__)
-#include <sys/syscall.h>
-int64_t jacpy_getdents64(int32_t fd, void *buffer, int64_t size) { return syscall(SYS_getdents64, fd, buffer, (size_t)size); }
-#else
-int64_t jacpy_getdents64(int32_t fd, void *buffer, int64_t size) { (void)fd; (void)buffer; (void)size; errno = ENOSYS; return -1; }
-#endif
 
 /* Directory iteration. struct dirent's layout and the opendir/readdir symbol
  * variants differ between C libraries and macOS architectures (x86_64 binds
@@ -643,23 +552,6 @@ int32_t jacpy_closedir(void *directory) { return closedir((DIR *)directory); }
 
 /* _PyInterpreterState_GetFinalizing() is static inline. */
 int64_t jacpy_interpreter_finalizing(void) { return _PyInterpreterState_GetFinalizing(_PyInterpreterState_GET()) != NULL; }
-
-/* sem_open(3) is variadic: the mode and initial value follow O_CREAT. A
- * fixed-arity form; arguments a call without O_CREAT passes are ignored, as
- * the C library ignores them. */
-
-/* sem_open(3) and shm_open(3) are variadic: the mode (and a semaphore's
- * initial value) follow O_CREAT. Fixed-arity forms; arguments a call without
- * O_CREAT passes are ignored, as the C library ignores them. */
-#include <fcntl.h>
-#include <semaphore.h>
-#include <sys/mman.h>
-void *jacpy_sem_open(const char *name, int64_t flags, int64_t mode, int64_t value) {
-    return (void *)sem_open(name, (int)flags, (mode_t)mode, (unsigned int)value);
-}
-int64_t jacpy_shm_open(const void *name, int64_t flags, int64_t mode) {
-    return shm_open((const char *)name, (int)flags, (mode_t)mode);
-}
 
 /* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and
  * similar unsigned C types: -1 on error, 1 when the value needs more than
@@ -685,13 +577,6 @@ int64_t jacpy_unsigned_converter(PyObject *value, uint64_t *out, int64_t long_lo
 
 /* The address an int denotes, as struct's 'P' format packs it. */
 uint64_t jacpy_long_address(PyObject *value) { return (uint64_t)(uintptr_t)PyLong_AsVoidPtr(value); }
-
-/* PyErr_FormatUnraisable is variadic; modules pass the message and, where the
- * C format rendered one with %R, the object it names. */
-void jacpy_unraisable(const char *message, PyObject *object) {
-    if (object) PyErr_FormatUnraisable("%s %R", message, object);
-    else PyErr_FormatUnraisable("%s", message);
-}
 
 /* HACL*'s vectorized BLAKE2 runs only where configure compiled it and the CPU
  * has the instructions; the CPUID probe is an intrinsic Jac cannot express.

@@ -7,7 +7,6 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_dict_default,
-    jacpy_dict_entry,
     jacpy_dict_size,
     jacpy_error_pending,
     jacpy_fast_item,
@@ -36,6 +35,7 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     PyDict_DelItem,
     PyDict_New,
+    PyDict_Next,
     PyDict_SetItem,
     PyErr_SetObject,
     PyExc_StopIteration,
@@ -953,36 +953,22 @@ obj json_output {
                 }
             } else {
                 position: i64 = 0;
-                while True {
-                    record = jacpy_dict_entry(value, position);
-                    if record == 0 {
-                        if jacpy_error_pending() != 0 {
-                            raise boundary_failure();
-                        }
-                        break;
-                    }
+                entry_key: ptr[PyObject] = NULL;
+                entry_value: ptr[PyObject] = NULL;
+                while PyDict_Next(
+                    value, &mut position, &mut entry_key, &mut entry_value
+                )
+                    != 0 {
+                    # Held across the encoder callbacks, which run user code.
+                    key = Py_NewRef(entry_key);
+                    child = Py_NewRef(entry_value);
                     try {
-                        index = required(jacpy_tuple_item(record, 0));
-                        try {
-                            position = PyLong_AsLongLong(index);
-                        } finally {
-                            jacpy_release(index);
-                        }
-                        key = required(jacpy_tuple_item(record, 1));
-                        try {
-                            child = required(jacpy_tuple_item(record, 2));
-                            try {
-                                first = self.key_value(
-                                    value, key, child, level, separator, first
-                                );
-                            } finally {
-                                jacpy_release(child);
-                            }
-                        } finally {
-                            jacpy_release(key);
-                        }
+                        first = self.key_value(
+                            value, key, child, level, separator, first
+                        );
                     } finally {
-                        jacpy_release(record);
+                        jacpy_release(child);
+                        jacpy_release(key);
                     }
                 }
             }

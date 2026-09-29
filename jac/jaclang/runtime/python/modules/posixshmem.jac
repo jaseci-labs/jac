@@ -7,7 +7,6 @@ EINTR unless a signal handler raises.
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_errno,
-    jacpy_shm_open,
     NULL,
     Py_NewRef,
     PyErr_CheckSignals,
@@ -24,6 +23,10 @@ import from jaclang.runtime.python.bindings.converters { borrowed_none }
 import from jaclang.runtime.python.modules.errno_constants { EINTR }
 import from c {
     def shm_unlink(name: ptr[u8]) -> i32;  def strlen(text: ptr[u8]) -> u64;
+    # macOS declares shm_open() variadic, reading the mode only with O_CREAT;
+    # glibc declares the mode a fixed mode_t, which the x86_64 and aarch64
+    # Linux ABIs pass in the same register as a variadic int.
+    def shm_open(name: ptr[u8], flags: i32, *args: any) -> i32;
 }
 
 # The UTF-8 name of path, or a null pointer with the error set when it cannot
@@ -48,11 +51,11 @@ def _posixshmem_shm_open_impl(
     if name.is_null() {
         return i32(-1);
     }
-    fd: i64 = 0;
+    fd: i32 = 0;
     interrupted: i32 = 0;
     while True {
         thread = PyEval_SaveThread();
-        fd = jacpy_shm_open(name, i64(flags), i64(mode));
+        fd = shm_open(name, flags, mode);
         PyEval_RestoreThread(thread);
         if not (fd < 0 and jacpy_errno() == EINTR) {
             break;
@@ -68,7 +71,7 @@ def _posixshmem_shm_open_impl(
         }
         return i32(-1);
     }
-    return i32(fd);
+    return fd;
 }
 
 def _posixshmem_shm_unlink_impl(

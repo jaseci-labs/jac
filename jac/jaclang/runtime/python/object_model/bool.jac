@@ -12,7 +12,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyArg_CheckPositional,
     _PyArg_NoKeywords,
     _PyArg_NoKwnames,
-    PyErr_SetString,
+    PyArg_UnpackTuple,
     PyErr_WarnEx,
     PyObject,
     PyObject_IsTrue,
@@ -24,29 +24,21 @@ import from jaclang.runtime.python.layouts {
     PyLong_DIGITS_OFFSET,
     PyLong_DIGIT_SIZE,
     PyNumberMethods,
-    PyTupleObject,
     PyTypeObject,
     PyVarObject,
     Py_TPFLAGS_DEFAULT,
-    Py_TPFLAGS_TUPLE_SUBCLASS,
     _PyLongValue,
     _PyLong_FALSE_TAG,
     _PyLong_TRUE_TAG,
     _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
     _object
 }
-import from jaclang.runtime.python.object_model.header {
-    object_is_type,
-    object_size,
-    object_type,
-    type_has_feature
-}
+import from jaclang.runtime.python.object_model.header { object_is_type }
 
 import from c {
     glob PyType_Type: PyTypeObject,
          PyLong_Type: PyTypeObject,
-         PyExc_DeprecationWarning: ptr[PyObject],
-         PyExc_SystemError: ptr[PyObject];
+         PyExc_DeprecationWarning: ptr[PyObject];
     # Arithmetic methods -- only so we can override &, |, ^.
     glob:priv bool_as_number: PyNumberMethods = PyNumberMethods(
              nb_invert=bool_invert, nb_and=bool_and, nb_xor=bool_xor, nb_or=bool_or
@@ -130,20 +122,8 @@ def bool_new(
     if kwds and _PyArg_NoKeywords("bool", kwds) == 0 {
         return NULL;
     }
-    # PyArg_UnpackTuple(args, "bool", 0, 1, &x) is variadic, so its checks are
-    # written out; the message is split so gen_capi.jac does not read a call.
-    if not type_has_feature(object_type(args), Py_TPFLAGS_TUPLE_SUBCLASS) {
-        PyErr_SetString(
-            PyExc_SystemError, "PyArg_UnpackTuple" "() argument list is not a tuple"
-        );
+    if PyArg_UnpackTuple(args, "bool", 0, 1, &mut x) == 0 {
         return NULL;
-    }
-    nargs = object_size(args);
-    if _PyArg_CheckPositional("bool", nargs, 0, 1) == 0 {
-        return NULL;
-    }
-    if nargs == 1 {
-        x = ptr[PyTupleObject](args).view(1)[0].ob_item;
     }
     ok = PyObject_IsTrue(x);
     if ok < 0 {

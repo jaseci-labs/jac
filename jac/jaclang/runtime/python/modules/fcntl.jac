@@ -1,18 +1,14 @@
 """File control and I/O control on file descriptors.
 
 Derived from CPython 3.14.6 Modules/fcntlmodule.c; see ../LICENSE.cpython.
-fcntl(2) and ioctl(2) are variadic, so they are called through the fixed-arity
-jacpy_fcntl_* and jacpy_ioctl_* helpers. The struct flock layout comes from
+fcntl(2) and ioctl(2) are variadic; the third argument is an int or a
+pointer, depending on the command. The struct flock layout comes from
 fcntl_records.<os>.jac and the command constants from fcntl_constants.<os>.jac.
 """
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_bytes_from_memory,
     jacpy_errno,
-    jacpy_fcntl_int,
-    jacpy_fcntl_pointer,
-    jacpy_ioctl_int,
-    jacpy_ioctl_pointer,
     jacpy_is_bytes,
     jacpy_is_long,
     jacpy_is_unicode,
@@ -60,7 +56,11 @@ import from jaclang.runtime.python.modules.fcntl_constants {
     LOCK_SH,
     LOCK_UN
 }
-import from c { def flock(fd: i32, operation: i32) -> i32;  }
+import from c {
+    def flock(fd: i32, operation: i32) -> i32;  def fcntl(
+        fd: i32, cmd: i32, *args: any
+    ) -> i32;  def ioctl(fd: i32, request: u64, *args: any) -> i32;
+}
 
 # Argument plus NUL byte plus a guard that detects a buffer overflow.
 glob:priv BUFFER_SIZE: i64 = 1024,
@@ -165,7 +165,7 @@ def fcntl_fcntl_impl(
         }
         while True {
             thread = PyEval_SaveThread();
-            ret = jacpy_fcntl_int(fd, code, i32.wrap(int_arg));
+            ret = fcntl(fd, code, i32.wrap(int_arg));
             PyEval_RestoreThread(thread);
             if ret != -1 or not interrupted() {
                 break;
@@ -201,7 +201,7 @@ def fcntl_fcntl_impl(
         view.close();
         while True {
             thread = PyEval_SaveThread();
-            ret = jacpy_fcntl_pointer(fd, code, buffer);
+            ret = fcntl(fd, code, buffer);
             PyEval_RestoreThread(thread);
             if ret != -1 or not interrupted() {
                 break;
@@ -238,7 +238,7 @@ def:priv ioctl_buffer(fd: i32, code: u64, address: ptr) -> tuple[i32, bool] {
     async_err = False;
     while True {
         thread = PyEval_SaveThread();
-        ret = jacpy_ioctl_pointer(fd, code, address);
+        ret = ioctl(fd, code, address);
         PyEval_RestoreThread(thread);
         if ret != -1 or not interrupted() {
             break;
@@ -275,7 +275,7 @@ def fcntl_ioctl_impl(
         }
         while True {
             thread = PyEval_SaveThread();
-            ret = jacpy_ioctl_int(fd, code, int_arg);
+            ret = ioctl(fd, code, int_arg);
             PyEval_RestoreThread(thread);
             if ret != -1 or not interrupted() {
                 break;
@@ -471,7 +471,7 @@ def fcntl_lockf_impl(
     async_err = False;
     while True {
         thread = PyEval_SaveThread();
-        ret = jacpy_fcntl_pointer(fd, command, memory);
+        ret = fcntl(fd, command, memory);
         PyEval_RestoreThread(thread);
         if ret != -1 or not interrupted() {
             break;

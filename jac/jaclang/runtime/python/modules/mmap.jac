@@ -102,10 +102,7 @@ import from c {
         name: i32
     ) -> i64;
 }
-import from c {
-    # fcntl() is variadic; F_FULLFSYNC reads no third argument.
-    def fcntl(fd: i32, command: i32) -> i32;
-}
+import from c { def fcntl(fd: i32, command: i32, *args: any) -> i32;  }
 
 glob PY_SSIZE_T_MAX: i64 = 0x7FFFFFFFFFFFFFFF;
 

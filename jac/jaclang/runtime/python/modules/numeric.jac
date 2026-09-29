@@ -23,6 +23,8 @@ import from c {
         y: f64, x: f64
     ) -> f64;  def hypot(x: f64, y: f64) -> f64;  def copysign(x: f64, y: f64) -> f64;  def ldexp(
         value: f64, exponent: i32
+    ) -> f64;  def frexp(value: f64, exponent: &mut i32) -> f64;  def modf(
+        value: f64, whole: &mut f64
     ) -> f64;
 }
 import from jaclang.runtime.python.cpython_api {

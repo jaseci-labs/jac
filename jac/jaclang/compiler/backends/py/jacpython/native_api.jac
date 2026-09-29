@@ -14,14 +14,16 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_TabError,
     PyExc_TypeError,
     PyExc_ValueError,
+    PyErr_SetObject,
     PyLong_FromLongLong,
     PyObject,
+    PyObject_IsSubclass,
     PyTuple_New,
+    PyTuple_Pack,
     Py_NewRef,
     Py_None,
     _PyExc_IncompleteInputError,
     jacpy_error_pending,
-    jacpy_raise_compiler_error,
     jacpy_release,
     jacpy_source_kind,
     jacpy_tuple_set_owned
@@ -221,8 +223,16 @@ def raise_failure(request: native_request, error: syntax_failure) {
                     object_error(
                         PyExc_SystemError, "unknown native diagnostic " + error.kind
                     );
+                } elif location and PyObject_IsSubclass(kind, PyExc_SyntaxError) > 0 {
+                    # A SyntaxError subclass takes CPython's argument shape:
+                    # (message, (filename, lineno, offset, text, end_lineno, end_offset)).
+                    args = PyTuple_Pack(2, message, location);
+                    if args {
+                        PyErr_SetObject(kind, args);
+                        jacpy_release(args);
+                    }
                 } else {
-                    jacpy_raise_compiler_error(kind, message, location);
+                    PyErr_SetObject(kind, message);
                 }
             } finally {
                 jacpy_release(location);

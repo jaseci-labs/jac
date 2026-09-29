@@ -18,8 +18,8 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetIter,
     PyTuple_Size,
     Py_NewRef,
+    _PyDict_SizeOf,
     jacpy_bytearray_memory,
-    jacpy_dict_memory,
     jacpy_error_pending,
     jacpy_is_dict,
     jacpy_is_tuple,
@@ -134,11 +134,7 @@ def:pub jacpy_pickler_size(state: pickle_state) -> i64 {
         result += jacpy_bytearray_memory(state.stream.buffer);
     }
     if state.memo != 0 {
-        memory = jacpy_dict_memory(state.memo);
-        if memory < 0 {
-            return -1;
-        }
-        result += memory;
+        result += _PyDict_SizeOf(state.memo);
     }
     return result;
 }
@@ -225,11 +221,7 @@ def:pub jacpy_unpickler_size(state: unpickle_state) -> i64 {
         + jac_list_heap_size(u64(id(state.stack)))
         + jac_list_heap_size(u64(id(state.marks)));
     if state.memo != 0 {
-        memory = jacpy_dict_memory(state.memo);
-        if memory < 0 {
-            return -1;
-        }
-        result += memory;
+        result += _PyDict_SizeOf(state.memo);
     }
     return result;
 }

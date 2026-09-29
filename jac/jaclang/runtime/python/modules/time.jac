@@ -431,7 +431,7 @@ def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
         PyLong_FromLong(c_remainder(int(p.tm_wday) + 6, 7)),
         PyLong_FromLong(i64(p.tm_yday) + 1),
         PyLong_FromLong(i64(p.tm_isdst)),
-        PyUnicode_DecodeLocale(ptr(p.tm_zone), "surrogateescape"),
+        PyUnicode_DecodeLocale(ptr(p.tm_zone), ptr[u8]("surrogateescape")),
         PyLong_FromLong(p.tm_gmtoff)
     ];
     failed = False;

@@ -12,4 +12,5 @@ glob PLATFORM: str = "",
      SIGSTOP: i64 = 0,
      SA_SIGINFO: i64 = 0,
      NSIG: i64 = 0,
+     SYS_getdents64: i64 = 0,
      CONSTANTS: list[tuple[str, i64]] = [];

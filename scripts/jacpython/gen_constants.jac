@@ -142,7 +142,8 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "KQ_FILTER_READ",
              "KQ_EV_ADD"
          ],
-         "mmap": ["F_FULLFSYNC", "MREMAP_MAYMOVE"]
+         "mmap": ["F_FULLFSYNC", "MREMAP_MAYMOVE"],
+         "_posixsubprocess": ["SYS_getdents64"]
      },
      # Values the C module uses internally rather than publishing with a macro.
      EXTRA: dict[str, list[str]] = {
@@ -161,7 +162,8 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "SIGKILL",
              "SIGSTOP",
              "SA_SIGINFO",
-             "NSIG"
+             "NSIG",
+             "SYS_getdents64"
          ],
          "_multiprocessing": ["O_CREAT", "O_EXCL", "SEM_VALUE_MAX"]
      },

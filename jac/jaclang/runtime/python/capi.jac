@@ -28,7 +28,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_bytes_copy_to,
     jacpy_bytes_from_memory,
     jacpy_bytes_length,
-    jacpy_exception_note,
     jacpy_qualified_type_name,
     jacpy_release,
     jacpy_set_exception,
@@ -63,7 +62,8 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_Type,
     PyType_Type,
     PyUnicode_Type,
-    PyUnicodeWriter
+    PyUnicodeWriter,
+    _PyException_AddNote
 }
 import from c {
     def jac_heap_size(address: u64) -> i64;  def jac_list_heap_size(
@@ -248,7 +248,7 @@ def serialization_note(
         }
         note = text_object("when serializing " + type_name(value, True) + tail);
         try {
-            checked(jacpy_exception_note(error, note));
+            checked(i64(_PyException_AddNote(error, note)));
         } finally {
             jacpy_release(note);
         }

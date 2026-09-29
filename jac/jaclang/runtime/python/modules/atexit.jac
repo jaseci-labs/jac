@@ -4,15 +4,15 @@ The interpreter keeps both callback lists in PyInterpreterState: the Python
 callbacks as a list of (func, args, kwargs) tuples, newest first, and the C
 callbacks of PyUnstable_AtExit as a linked list of atexit_callback records.
 The two list heads are interpreter-state fields (the C one guarded by a lock
-macro), so the jacpy_atexit_* helpers of compiler_runtime.c reach them, and
-_PyAtExit_Init stays C because it returns PyStatus by value. The records
-themselves are C-layout structs walked and called here. The interpreter calls
-the other hooks by their C names.
+macro), so the jacpy_atexit_* helpers of compiler_runtime.c reach them. The
+records themselves are C-layout structs walked and called here. The
+interpreter hooks are C functions defined under their C names.
 """
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyCallable_Check,
+    PyErr_FormatUnraisable,
     PyExc_TypeError,
     PyInterpreterState,
     PyInterpreterState_Get,
@@ -20,6 +20,7 @@ import from jaclang.runtime.python.cpython_api {
     PyList_GetItem,
     PyList_GetSlice,
     PyList_Insert,
+    PyList_New,
     PyList_SetSlice,
     PyList_Size,
     PyLong_FromSsize_t,
@@ -36,19 +37,22 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_atexit_callbacks,
     jacpy_atexit_detach,
     jacpy_atexit_push,
-    jacpy_atexit_release_callbacks,
     jacpy_release,
-    jacpy_tuple_set_owned,
-    jacpy_unraisable
+    jacpy_tuple_set_owned
 }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.converters { borrowed_none }
+import from jaclang.runtime.python.layouts {
+    PyStatus,
+    _PyStatus_TYPE_ERROR,
+    _PyStatus_TYPE_OK
+}
 
 glob:priv PY_EQ: i32 = 2;
 
 """The current interpreter's list of Python callbacks (borrowed)."""
 def:priv current_callbacks -> ptr[PyObject] {
-    return jacpy_atexit_callbacks(PyInterpreterState_Get());
+    return jacpy_atexit_callbacks(PyInterpreterState_Get()).view(1)[0];
 }
 
 """atexit_cleanup(): drop every Python callback without calling it."""
@@ -60,7 +64,7 @@ def:priv atexit_cleanup(callbacks: ptr[PyObject]) {
 def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
     copy = PyList_GetSlice(callbacks, 0, PyList_Size(callbacks));
     if not copy {
-        jacpy_unraisable("Exception ignored while copying atexit callbacks", NULL);
+        PyErr_FormatUnraisable("Exception ignored while copying atexit callbacks");
         return;
     }
     for index in range(int(PyList_Size(copy))) {
@@ -70,7 +74,7 @@ def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
         kwargs = PyTuple_GetItem(item, 2);
         result = PyObject_Call(func, args, NULL if kwargs == Py_None else kwargs);
         if not result {
-            jacpy_unraisable("Exception ignored in atexit callback", func);
+            PyErr_FormatUnraisable("Exception ignored in atexit callback %R", func);
         } else {
             jacpy_release(result);
         }
@@ -79,32 +83,49 @@ def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
     atexit_cleanup(callbacks);
 }
 
-def:pub PyUnstable_AtExit(
-    interp: ptr[PyInterpreterState], func: ptr, data: ptr
-) -> i32 {
-    return jacpy_atexit_push(interp, func, data);
-}
-
-"""Called once the interpreter no longer runs Python code: drop the Python
-callbacks, then run the C ones newest first."""
-def:pub _PyAtExit_Fini(interp: ptr[PyInterpreterState]) {
-    callbacks = jacpy_atexit_callbacks(interp);
-    if callbacks {
-        atexit_cleanup(callbacks);
+import from c {
+    def _PyAtExit_Init(interp: ptr[PyInterpreterState]) -> PyStatus {
+        callbacks = PyList_New(0);
+        jacpy_atexit_callbacks(interp).view(1)[0] = callbacks;
+        if not callbacks {
+            # _PyStatus_NO_MEMORY()
+            return PyStatus(
+                _type=_PyStatus_TYPE_ERROR,
+                func=ptr[u8]("_PyAtExit_Init"),
+                err_msg=ptr[u8]("memory allocation failed"),
+                exitcode=0
+            );
+        }
+        return PyStatus(
+            _type=_PyStatus_TYPE_OK, func=ptr[u8](), err_msg=ptr[u8](), exitcode=0
+        );
+    }  def PyUnstable_AtExit(
+        interp: ptr[PyInterpreterState], func: ptr, data: ptr
+    ) -> i32 {
+        return jacpy_atexit_push(interp, func, data);
     }
-    jacpy_atexit_release_callbacks(interp);
-    callback = jacpy_atexit_detach(interp);
-    while callback {
-        record = callback.view(1)[0];
-        # Freed before the call, as CPython does: the record is not needed after.
-        PyMem_Free(callback);
-        record.func(record.data);
-        callback = record.next;
+    # Called once the interpreter no longer runs Python code: drop the Python
+    # callbacks, then run the C ones newest first.
+    def _PyAtExit_Fini(interp: ptr[PyInterpreterState]) {
+        slot = jacpy_atexit_callbacks(interp);
+        callbacks = slot.view(1)[0];
+        if callbacks {
+            atexit_cleanup(callbacks);
+        }
+        # Py_CLEAR
+        slot.view(1)[0] = NULL;
+        jacpy_release(callbacks);
+        callback = jacpy_atexit_detach(interp);
+        while callback {
+            record = callback.view(1)[0];
+            # Freed before the call, as CPython does: the record is not needed after.
+            PyMem_Free(callback);
+            record.func(record.data);
+            callback = record.next;
+        }
+    }  def _PyAtExit_Call(interp: ptr[PyInterpreterState]) {
+        atexit_callfuncs(jacpy_atexit_callbacks(interp).view(1)[0]);
     }
-}
-
-def:pub _PyAtExit_Call(interp: ptr[PyInterpreterState]) {
-    atexit_callfuncs(jacpy_atexit_callbacks(interp));
 }
 
 """register(func, /, *args, **kwargs): func is returned, so it decorates."""

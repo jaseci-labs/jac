@@ -18,19 +18,18 @@ no result.
 """
 
 import from jaclang.runtime.python.cpython_api {
-    jacpy_c_text,
     jacpy_cfunction_method,
     jacpy_cfunction_module,
     jacpy_cfunction_self,
     jacpy_is_unicode,
     jacpy_release,
     jacpy_type_check,
-    jacpy_unraisable,
     NULL,
     Py_NewRef,
     Py_TYPE,
     PyCFunction_Type,
     PyErr_Clear,
+    PyErr_FormatUnraisable,
     PyErr_GetRaisedException,
     PyErr_SetRaisedException,
     _PyEval_SetProfile,
@@ -62,6 +61,7 @@ import from jaclang.runtime.python.cpython_api {
     PyType_GetModule,
     _PyType_LookupRef,
     _PyUnicode_EqualToASCIIString,
+    PyUnicode_FromFormat,
     PyUnicode_FromString
 }
 import from jaclang.runtime.python.capi {
@@ -364,8 +364,8 @@ def profiler_finalize(instance: ptr[PyObject]) {
     }
     if state.flags & POF_ENABLED {
         if _PyEval_SetProfile(PyThreadState_Get(), ptr(), NULL) < 0 {
-            jacpy_unraisable(
-                "Exception ignored while destroying _lsprof profiler", NULL
+            PyErr_FormatUnraisable(
+                "Exception ignored while destroying _lsprof profiler"
             );
         }
     }
@@ -382,8 +382,8 @@ def:priv call_external_timer(state: ProfilerState) -> int {
     value = PyObject_CallNoArgs(state.external_timer);
     state.flags &= ~POF_EXT_TIMER;
     if not value {
-        jacpy_unraisable(
-            "Exception ignored while calling _lsprof timer", state.external_timer
+        PyErr_FormatUnraisable(
+            "Exception ignored while calling _lsprof timer %R", state.external_timer
         );
         return 0;
     }
@@ -398,8 +398,8 @@ def:priv call_external_timer(state: ProfilerState) -> int {
     }
     jacpy_release(value);
     if status < 0 {
-        jacpy_unraisable(
-            "Exception ignored while calling _lsprof timer", state.external_timer
+        PyErr_FormatUnraisable(
+            "Exception ignored while calling _lsprof timer %R", state.external_timer
         );
         return 0;
     }
@@ -422,7 +422,7 @@ def:priv is_cfunction(value: ptr[PyObject]) -> bool {
 # The UTF-8 name of a built-in's PyMethodDef, as %s formats it.
 def:priv method_name(function: ptr[PyObject]) -> ptr[PyObject] {
     method: ptr[PyMethodDef] = jacpy_cfunction_method(function);
-    return jacpy_c_text(method.view(1)[0].ml_name);
+    return PyUnicode_FromFormat("%s", method.view(1)[0].ml_name);
 }
 
 # normalizeUserObj(): code objects are kept; a built-in function is replaced

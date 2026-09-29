@@ -24,10 +24,10 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyObject_GetAttr,
     PyObject_Str,
+    PySys_Audit,
     PyTuple_Size,
     Py_NewRef,
     Py_None,
-    jacpy_audit_pickle_find,
     jacpy_dict_get,
     jacpy_error_pending,
     jacpy_is_tuple,
@@ -126,7 +126,7 @@ def find_global(
     if jacpy_is_unicode(module) == 0 or jacpy_is_unicode(name) == 0 {
         builtin_stream_error(PyExc_TypeError, "module and name must be strings");
     }
-    checked(jacpy_audit_pickle_find(module, name));
+    checked(i64(PySys_Audit("pickle.find_class", "OO", module, name)));
     names: ptr[PyObject] = NULL;
     mapped_module: ptr[PyObject] = NULL;
     mapped_name: ptr[PyObject] = NULL;

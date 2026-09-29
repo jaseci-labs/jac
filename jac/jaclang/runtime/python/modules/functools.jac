@@ -7,7 +7,6 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_call_two,
-    jacpy_dict_entry,
     jacpy_dict_get,
     jacpy_dict_size,
     jacpy_error_pending,
@@ -30,6 +29,7 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Clear,
     PyDict_Copy,
     PyDict_New,
+    PyDict_Next,
     PyDict_SetItem,
     PyDict_Update,
     PyErr_ExceptionMatches,
@@ -248,34 +248,20 @@ def:pub jacpy_partial_init(
 ) -> i64 {
     merged: ptr[PyObject] = NULL;
     kw: ptr[PyObject] = NULL;
-    pair: ptr[PyObject] = NULL;
     try {
         validate_tail(args, placeholder);
         if keywords != 0 {
             pos: i64 = 0;
-            while True {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                position = required(jacpy_tuple_item(pair, 0));
-                pos = PyLong_AsLongLong(position);
-                jacpy_release(position);
-                value = required(jacpy_tuple_item(pair, 2));
-                invalid = value == placeholder;
-                jacpy_release(value);
-                jacpy_release(pair);
-                pair = NULL;
-                if invalid {
+            key: ptr[PyObject] = NULL;
+            value: ptr[PyObject] = NULL;
+            while PyDict_Next(keywords, &mut pos, &mut key, &mut value) != 0 {
+                if value == placeholder {
                     object_error(
                         PyExc_TypeError,
                         "Placeholder cannot be passed as a keyword argument"
                     );
                     raise boundary_failure();
                 }
-            }
-            if jacpy_error_pending() != 0 {
-                raise boundary_failure();
             }
         }
         merged = required(merge_args(old_args, args, placeholder, False));
@@ -295,7 +281,6 @@ def:pub jacpy_partial_init(
     } finally {
         jacpy_release(merged);
         jacpy_release(kw);
-        jacpy_release(pair);
     }
 }
 
@@ -403,7 +388,6 @@ def:pub jacpy_partial_repr(
     fn = Py_NewRef(state.function);
     args = Py_NewRef(state.args);
     kw = Py_NewRef(state.keywords);
-    pair: ptr[PyObject] = NULL;
     item: ptr[PyObject] = NULL;
     key: ptr[PyObject] = NULL;
     text: ptr[PyObject] = NULL;
@@ -416,17 +400,12 @@ def:pub jacpy_partial_repr(
             item = NULL;
         }
         pos: i64 = 0;
-        while True {
-            pair = jacpy_dict_entry(kw, pos);
-            if pair == 0 {
-                break;
-            }
-            item = required(jacpy_tuple_item(pair, 0));
-            pos = PyLong_AsLongLong(item);
-            jacpy_release(item);
-            item = NULL;
-            key = required(jacpy_tuple_item(pair, 1));
-            item = required(jacpy_tuple_item(pair, 2));
+        entry_key: ptr[PyObject] = NULL;
+        entry_value: ptr[PyObject] = NULL;
+        while PyDict_Next(kw, &mut pos, &mut entry_key, &mut entry_value) != 0 {
+            # Prevent key.__str__ from deleting the value.
+            key = Py_NewRef(entry_key);
+            item = Py_NewRef(entry_value);
             text = required(PyObject_Str(key));
             arguments += ", " + text_value(text) + "=" + repr_value(item);
             jacpy_release(item);
@@ -435,11 +414,6 @@ def:pub jacpy_partial_repr(
             key = NULL;
             jacpy_release(text);
             text = NULL;
-            jacpy_release(pair);
-            pair = NULL;
-        }
-        if jacpy_error_pending() != 0 {
-            return NULL;
         }
         return text_object(
             type_name(owner, True) + "(" + repr_value(fn) + arguments + ")"
@@ -450,7 +424,6 @@ def:pub jacpy_partial_repr(
         jacpy_release(fn);
         jacpy_release(args);
         jacpy_release(kw);
-        jacpy_release(pair);
         jacpy_release(item);
         jacpy_release(key);
         jacpy_release(text);
@@ -569,8 +542,10 @@ def:priv cache_key(
         + (2 * nk + 1 if nk > 0 else i64(0))
         + (n + nk if state.typed else i64(0));
     key = required(PyTuple_New(count));
-    pair: ptr[PyObject] = NULL;
     item: ptr[PyObject] = NULL;
+    pos: i64 = 0;
+    keyword: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
     try {
         position: i64 = 0;
         for i in range(int(n)) {
@@ -584,30 +559,11 @@ def:priv cache_key(
         if nk > 0 {
             checked(jacpy_tuple_set_owned(key, position, Py_NewRef(state.marker)));
             position += 1;
-            pos: i64 = 0;
-            while True {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                item = required(jacpy_tuple_item(pair, 0));
-                pos = PyLong_AsLongLong(item);
-                jacpy_release(item);
-                item = NULL;
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_tuple_item(pair, 1))
-                    )
-                );
+            while PyDict_Next(keywords, &mut pos, &mut keyword, &mut value) != 0 {
+                checked(jacpy_tuple_set_owned(key, position, Py_NewRef(keyword)));
                 position += 1;
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_tuple_item(pair, 2))
-                    )
-                );
+                checked(jacpy_tuple_set_owned(key, position, Py_NewRef(value)));
                 position += 1;
-                jacpy_release(pair);
-                pair = NULL;
             }
         }
         if state.typed {
@@ -622,37 +578,22 @@ def:priv cache_key(
                 jacpy_release(item);
                 item = NULL;
             }
-            pos = i64(0);
-            while nk > 0 {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                item = required(jacpy_tuple_item(pair, 0));
-                pos = PyLong_AsLongLong(item);
-                jacpy_release(item);
-                item = required(jacpy_tuple_item(pair, 2));
+            pos = 0;
+            while nk > 0
+                and PyDict_Next(keywords, &mut pos, &mut keyword, &mut value) != 0 {
                 checked(
                     jacpy_tuple_set_owned(
-                        key, position, required(jacpy_object_type(item))
+                        key, position, required(jacpy_object_type(value))
                     )
                 );
                 position += 1;
-                jacpy_release(item);
-                item = NULL;
-                jacpy_release(pair);
-                pair = NULL;
             }
-        }
-        if jacpy_error_pending() != 0 {
-            raise boundary_failure();
         }
         return key;
     } except boundary_failure {
         jacpy_release(key);
         raise;
     } finally {
-        jacpy_release(pair);
         jacpy_release(item);
     }
 }

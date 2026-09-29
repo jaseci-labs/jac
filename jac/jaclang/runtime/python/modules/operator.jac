@@ -5,7 +5,6 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_crypto_compare,
-    jacpy_dict_entry,
     jacpy_dict_size,
     jacpy_error_pending,
     jacpy_is_unicode,
@@ -23,6 +22,7 @@ import from jaclang.runtime.python.cpython_api {
     Py_ReprEnter,
     Py_ReprLeave,
     PyBool_FromLong,
+    PyDict_Next,
     PyExc_RuntimeError,
     PyExc_TypeError,
     PyImport_ImportModuleAttrString,
@@ -268,35 +268,25 @@ def:pub jacpy_operator_repr(
                 expected = jacpy_dict_size(kwargs);
                 position: i64 = 0;
                 seen: i64 = 0;
-                while kwargs != 0 {
-                    record = jacpy_dict_entry(kwargs, position);
-                    if record == 0 {
-                        if jacpy_error_pending() != 0 {
-                            raise boundary_failure();
-                        }
-                        break;
-                    }
+                entry_key: ptr[PyObject] = NULL;
+                entry_value: ptr[PyObject] = NULL;
+                while kwargs != 0
+                    and PyDict_Next(
+                        kwargs, &mut position, &mut entry_key, &mut entry_value
+                    )
+                        != 0 {
+                    # Held while repr() runs user code.
+                    key = Py_NewRef(entry_key);
+                    value = Py_NewRef(entry_value);
                     try {
-                        pos = required(jacpy_tuple_item(record, 0));
-                        position = PyLong_AsLongLong(pos);
-                        jacpy_release(pos);
-                        key = required(jacpy_tuple_item(record, 1));
-                        try {
-                            value = required(jacpy_tuple_item(record, 2));
-                            try {
-                                parts.append(text_value(key) + "=" + repr_value(value));
-                            } finally {
-                                jacpy_release(value);
-                            }
-                        } finally {
-                            jacpy_release(key);
-                        }
-                        seen += 1;
-                        if seen > expected {
-                            break;
-                        }
+                        parts.append(text_value(key) + "=" + repr_value(value));
                     } finally {
-                        jacpy_release(record);
+                        jacpy_release(value);
+                        jacpy_release(key);
+                    }
+                    seen += 1;
+                    if seen > expected {
+                        break;
                     }
                 }
                 if seen != expected {

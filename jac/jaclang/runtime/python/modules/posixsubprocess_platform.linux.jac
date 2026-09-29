@@ -11,14 +11,15 @@ sigaction 152 with the handler first, and struct linux_dirent64 has d_reclen
 at byte 16 and d_name at byte 19.
 """
 
-import from jaclang.runtime.python.cpython_api { jacpy_getdents64, _Py_open_noraise }
+import from jaclang.runtime.python.cpython_api { _Py_open_noraise }
 import from jaclang.runtime.python.modules.posixsubprocess_constants {
     O_RDONLY,
     SIGKILL,
     SIGSTOP,
     SIG_BLOCK,
     SIG_SETMASK,
-    NSIG
+    NSIG,
+    SYS_getdents64
 }
 import from jaclang.runtime.python.modules.posixsubprocess_fds {
     CLOSE_EACH,
@@ -34,6 +35,8 @@ import from c {
     ) -> i32;  def sigfillset(signals: ptr) -> i32;  def pthread_sigmask(
         how: i32, signals: ptr, old_signals: ptr
     ) -> i32;
+    # getdents64() through syscall(), which glibc before 2.30 has no wrapper for.
+    def syscall(number: i64, *args: any) -> i64;
 }
 
 glob PLATFORM: str = "linux",
@@ -69,7 +72,7 @@ def close_open_fds(
     }
     entries = ptr[u8](buffer);
     while True {
-        size = jacpy_getdents64(fd_dir_fd, buffer, DIRENT_BUFFER_SIZE);
+        size = syscall(SYS_getdents64, fd_dir_fd, buffer, u64(DIRENT_BUFFER_SIZE));
         if size <= 0 {
             break;
         }

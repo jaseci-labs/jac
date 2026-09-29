@@ -25,8 +25,7 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     _PySys_GetOptionalAttrString,
     jacpy_is_unicode,
-    jacpy_release,
-    jacpy_syslog
+    jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error, object_tuple }
 import from jaclang.runtime.python.bindings.converters { borrowed_none }
@@ -34,7 +33,7 @@ import from jaclang.runtime.python.modules.syslog_constants { LOG_USER, LOG_INFO
 import from c {
     def openlog(ident: ptr[u8], option: i32, facility: i32);  def closelog;  def setlogmask(
         mask: i32
-    ) -> i32;
+    ) -> i32;  def syslog(priority: i32, message_format: str, *args: any);
 }
 
 glob:priv ident_object: ptr[PyObject] = NULL,
@@ -164,7 +163,7 @@ def syslog_syslog_impl(
     # Keep the ident alive while the message is logged: openlog() keeps a
     # pointer to its UTF-8 buffer rather than a copy.
     ident = Py_NewRef(ident_object) if ident_object else NULL;
-    jacpy_syslog(priority, message);
+    syslog(priority, "%s", message);
     jacpy_release(ident);
     return Py_NewRef(borrowed_none());
 }

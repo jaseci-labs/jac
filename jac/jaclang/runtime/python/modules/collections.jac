@@ -10,7 +10,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_dict_repr,
     jacpy_error_pending,
     jacpy_release,
-    jacpy_set_key_error,
     jacpy_tuple_set_owned,
     NULL,
     Py_NewRef,
@@ -18,7 +17,9 @@ import from jaclang.runtime.python.cpython_api {
     Py_ReprEnter,
     Py_ReprLeave,
     PyBool_FromLong,
+    PyErr_SetObject,
     PyExc_IndexError,
+    PyExc_KeyError,
     PyExc_MemoryError,
     PyExc_RuntimeError,
     PyExc_ValueError,
@@ -32,7 +33,8 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_RichCompareBool,
     PyObject_SetItem,
     PySequence_List,
-    PyTuple_New
+    PyTuple_New,
+    PyTuple_Pack
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.object_ring { object_ring }
@@ -480,7 +482,12 @@ def:pub jacpy_default_missing(
     mapping: ptr[PyObject], factory: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
     if factory == 0 or factory == Py_None {
-        jacpy_set_key_error(key);
+        tup = PyTuple_Pack(1, key);
+        if not tup {
+            return NULL;
+        }
+        PyErr_SetObject(PyExc_KeyError, tup);
+        jacpy_release(tup);
         return NULL;
     }
     args = PyTuple_New(0);

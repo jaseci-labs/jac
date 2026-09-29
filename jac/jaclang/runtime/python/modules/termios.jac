@@ -9,7 +9,6 @@ termios_constants.<os>.jac.
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_bytes_from_memory,
-    jacpy_ioctl_pointer,
     jacpy_is_bytes,
     jacpy_is_list,
     jacpy_is_long,
@@ -73,7 +72,7 @@ import from c {
         fd: i32
     ) -> i32;  def tcflush(fd: i32, queue: i32) -> i32;  def tcflow(
         fd: i32, action: i32
-    ) -> i32;
+    ) -> i32;  def ioctl(fd: i32, request: u64, *args: any) -> i32;
 }
 
 def:priv termios_error(module: ptr[PyObject]) -> ptr[PyObject] {
@@ -302,7 +301,7 @@ def termios_tcgetwinsize_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
         return NULL;
     }
     thread = PyEval_SaveThread();
-    status = jacpy_ioctl_pointer(fd, u64.wrap(TIOCGWINSZ), size);
+    status = ioctl(fd, u64.wrap(TIOCGWINSZ), size);
     PyEval_RestoreThread(thread);
     result = termios_error(module) if status == -1 else winsize_tuple(size);
     PyMem_Free(size);
@@ -322,7 +321,7 @@ def:priv set_winsize(
     module: ptr[PyObject], fd: i32, rows: i64, columns: i64, size: ptr
 ) -> ptr[PyObject] {
     # The old winsize may have more fields, such as xpixel and ypixel.
-    if jacpy_ioctl_pointer(fd, u64.wrap(TIOCGWINSZ), size) == -1 {
+    if ioctl(fd, u64.wrap(TIOCGWINSZ), size) == -1 {
         return termios_error(module);
     }
     record = ptr[winsize](size).view(1);
@@ -333,7 +332,7 @@ def:priv set_winsize(
         return NULL;
     }
     thread = PyEval_SaveThread();
-    status = jacpy_ioctl_pointer(fd, u64.wrap(TIOCSWINSZ), size);
+    status = ioctl(fd, u64.wrap(TIOCSWINSZ), size);
     PyEval_RestoreThread(thread);
     return termios_error(module) if status == -1 else none();
 }
