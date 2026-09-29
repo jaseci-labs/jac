@@ -2687,8 +2687,10 @@ impl NaIRGenPass._dispatch_receiver_method(
 }
 
 impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | None) {
+    _mc_mark = len(self.ctx.errors_had);
     trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
+        self._refuse_unlowered_method_call(nd, None, None, _mc_mark);
         return None;
     }
     import from jaclang.compiler.symbol_utils { imported_module_name }
@@ -2699,6 +2701,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
     method_name = self._get_name(trailer.right);
     if method_name is None {
+        self._refuse_unlowered_method_call(nd, None, None, _mc_mark);
         return None;
     }
     if target_name == "super" and self._self_arch is not None {
@@ -2734,6 +2737,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             if _pyb_sup is not None {
                 return _pyb_sup;
             }
+            self._refuse_unlowered_method_call(nd, method_name, None, _mc_mark);
             return None;
         }
         self.emit(
@@ -2753,6 +2757,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if is_builtin_region_type(trailer.target.type) {
             _pt_recv = self._codegen_expr(trailer.target);
             if _pt_recv is None {
+                self._refuse_unlowered_method_call(nd, method_name, None, _mc_mark);
                 return None;
             }
             return self._region_partition(_pt_recv);
@@ -2974,31 +2979,20 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         return self._emit_struct_call(method_name, nd);
     }
 
-    if target_name == "int" and method_name == "from_bytes" {
-        arg_vals = self._codegen_call_args(nd);
-        if arg_vals {
-            _emitter = self._ensure_emitters().get("int");
-            if isinstance(_emitter, NativeIntEmitter) {
-                _ctx = NativeEmitCtx(pass_ref=self, type_key="");
-                result = _emitter.emit_from_bytes(_ctx, arg_vals);
-                if result is not None {
-                    return result;
-                }
-            }
+    _static_emitter = self._ensure_emitters().get(target_name)
+        if module_name is None and target_name
+        else None;
+    if isinstance(_static_emitter, PrimitiveEmitter)
+        and method_name in _static_emitter.static_names() {
+        _static_result = _static_emitter.dispatch_static(
+            method_name,
+            NativeEmitCtx(pass_ref=self, type_key=""),
+            self._codegen_call_args(nd)
+        );
+        if _static_result is None {
+            self._refuse_unlowered_method_call(nd, method_name, None, _mc_mark);
         }
-    }
-    if target_name == "float" and method_name == "fromhex" {
-        arg_vals = self._codegen_call_args(nd);
-        if arg_vals {
-            _emitter = self._ensure_emitters().get("float");
-            if isinstance(_emitter, NativeFloatEmitter) {
-                _ctx = NativeEmitCtx(pass_ref=self, type_key="");
-                result = _emitter.emit_fromhex(_ctx, arg_vals);
-                if result is not None {
-                    return result;
-                }
-            }
-        }
+        return _static_result;
     }
 
     list_spec = self._list_spec_of(trailer.target);
@@ -3218,6 +3212,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if _bytes_method or _str_method {
         obj_val = self._codegen_receiver(trailer.target);
         if obj_val is None {
+            self._refuse_unlowered_method_call(nd, method_name, None, _mc_mark);
             return None;
         }
         if _bytes_method
@@ -3228,12 +3223,16 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             );
         }
         if self._is_bytes_value(obj_val) {
-            if not _bytes_method {
-                return None;
+            _bytes_res: (ir.Value | None) = None;
+            if _bytes_method {
+                _bytes_res = self._dispatch_receiver_method(
+                    "bytes", method_name, obj_val, obj_val, nd
+                );
             }
-            return self._dispatch_receiver_method(
-                "bytes", method_name, obj_val, obj_val, nd
-            );
+            if _bytes_res is None {
+                self._refuse_unlowered_method_call(nd, method_name, obj_val, _mc_mark);
+            }
+            return _bytes_res;
         }
         _str_receiver = self._str_view(obj_val);
         if self._opt_payload_of(_str_receiver.type) == ir.IntType(8).as_pointer() {
@@ -3242,12 +3241,16 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             );
         }
         if _str_receiver.type == ir.IntType(8).as_pointer() {
-            if not _str_method {
-                return None;
+            _str_res: (ir.Value | None) = None;
+            if _str_method {
+                _str_res = self._dispatch_receiver_method(
+                    "str", method_name, _str_receiver, obj_val, nd
+                );
             }
-            return self._dispatch_receiver_method(
-                "str", method_name, _str_receiver, obj_val, nd
-            );
+            if _str_res is None {
+                self._refuse_unlowered_method_call(nd, method_name, obj_val, _mc_mark);
+            }
+            return _str_res;
         }
     }
 
@@ -3284,9 +3287,15 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
     if type_name is None {
+        self._refuse_unlowered_method_call(nd, method_name, obj_val, _mc_mark);
         return None;
     }
 
+    if type_name == "File" {
+        self._emit_file_helpers();
+    } elif type_name == "BinaryFile" {
+        self._emit_binary_file_helpers();
+    }
     func = self._resolve_method(type_name, method_name);
     _is_mono_method = False;
     if func is None {
@@ -3344,6 +3353,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if self._pyb_base_of(type_name) is not None {
             return self._codegen_pyb_method_call(nd, type_name, method_name);
         }
+        self._refuse_unlowered_method_call(nd, method_name, obj_val, _mc_mark);
         return None;
     }
 
@@ -3351,6 +3361,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         obj_val = self._codegen_receiver(trailer.target);
     }
     if obj_val is None {
+        self._refuse_unlowered_method_call(nd, method_name, None, _mc_mark);
         return None;
     }
     obj_val = self._opt_unwrap_attr(obj_val);
@@ -3404,6 +3415,58 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     return self._erased_call_result(nd, func, result);
+}
+
+impl NaIRGenPass._refuse_unlowered_method_call(
+    nd: uni.FuncCall, method_name: (str | None), receiver: (ir.Value | None), mark: int
+) -> None {
+    """Refuse a method call that no dispatch arm lowered.
+
+    Every arm of `_codegen_method_call_inner` that lowers a call returns its
+    result; an arm that falls through to `None` has emitted no call at all.
+    A `None` from a method call is indistinguishable from a void result at
+    the expression-statement site, so an unrefused fall-through deletes the
+    call from the program without a word (`x.append(v)` on an `any`
+    receiver lowered to nothing). A refusal already recorded since `mark`
+    names the real cause and stands alone; otherwise this one is emitted, so
+    the enclosing callable demotes instead of running without the call.
+    """;
+    if len(self.ctx.errors_had) > mark {
+        return;
+    }
+    trailer = nd.target;
+    receiver_node = trailer.target if isinstance(trailer, uni.AtomTrailer) else None;
+    shown = method_name or type(trailer).__name__;
+    if (receiver is not None and self._is_jacval_ty(receiver.type))
+        or self._type_key_of(receiver_node) in ("any", "Any") {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="method",
+            name=f"{shown} (on an `any` receiver)",
+            help_text=(
+                "An `any` value carries only its runtime kind, not the "
+                "element layout a native method needs, so method calls on an "
+                "`any` receiver are not lowered natively. Annotate the "
+                "receiver with its concrete type (e.g. `bytearray` or "
+                "`list[int]`) or move this code to a @sv/Python context."
+            )
+        );
+        return;
+    }
+    receiver_type = self._type_key_of(receiver_node);
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind="method",
+        name=f"{receiver_type}.{shown}" if receiver_type else shown,
+        help_text=(
+            "No native lowering handles this method on this receiver, so the "
+            "call cannot be emitted. Annotate the receiver with a concrete "
+            "type the native backend lowers, or move this code to a "
+            "@sv/Python context."
+        )
+    );
 }
 
 impl NaIRGenPass._is_static_method_func(func: ir.Function) -> bool {

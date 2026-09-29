@@ -2427,13 +2427,33 @@ impl NativeBytesEmitter.emit_decode(
 impl NativeBytesEmitter.emit_hex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    p = ctx.pass_ref;
+    fn = p._get_fmt_kernel_fn("jac_bytes_hex");
+    if fn is None {
+        return None;
+    }
+    return get_builder(p).call(
+        fn, [p._coerce_type(target, fn.args[0].type)], name="bytes.hex"
+    );
 }
 
 impl NativeBytesEmitter.emit_fromhex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 1 {
+        return None;
+    }
+    p = ctx.pass_ref;
+    fn = p._get_fmt_kernel_fn("jac_bytes_fromhex");
+    if fn is None {
+        return None;
+    }
+    return get_builder(p).call(
+        fn, [p._coerce_type(args[0], fn.args[0].type)], name="bytes.fromhex"
+    );
 }
 
 impl NativeBytesEmitter.emit_count(

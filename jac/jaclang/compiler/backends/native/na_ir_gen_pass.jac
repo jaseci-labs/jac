@@ -17,10 +17,9 @@ import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
 import from jaclang.compiler.backends.native.primitives_native {
     NativeEmitCtx,
     NativeSetEmitter,
-    NativeDictEmitter,
-    NativeIntEmitter,
-    NativeFloatEmitter
+    NativeDictEmitter
 }
+import from jaclang.compiler.backends.common.primitives { PrimitiveEmitter }
 import from jaclang.compiler.backends.native.lowering {
     NativeLoweringIssue,
     NativeLoweringKind
@@ -3093,6 +3092,13 @@ walker NaIRGenPass(CompilerPass) {
     def _aos_elem_struct(type_key: str) -> (ir.Type | None);
     def _container_is_view(nd: uni.UniNode) -> bool;
     def _codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | None);
+    def _refuse_unlowered_method_call(
+        nd: uni.FuncCall,
+        method_name: (str | None),
+        receiver: (ir.Value | None),
+        mark: int
+    ) -> None;
+
     def _field_slot_ptr(
         obj_val: ir.Value, field_name: str, type_name: str
     ) -> ir.Value;

@@ -497,3 +497,49 @@ def jac_fmt_bool(v: bool, spec: str) -> str {
     }
     return jac_fmt_int(1 if v else 0, spec);
 }
+
+def _jac_hex_digit(ch: str) -> int {
+    idx = "0123456789abcdefABCDEF".find(ch);
+    if idx < 0 {
+        return -1;
+    }
+    return idx if idx < 16 else idx - 6;
+}
+
+def jac_bytes_hex(data: bytes) -> str {
+    digits = "0123456789abcdef";
+    out = "";
+    for v in data {
+        out += digits[v // 16];
+        out += digits[v % 16];
+    }
+    return out;
+}
+
+def jac_bytes_fromhex(text: str) -> bytes {
+    out = bytearray();
+    n = len(text);
+    i = 0;
+    while i < n {
+        if text[i] in " \t\n\r\x0b\x0c" {
+            i += 1;
+            continue;
+        }
+        hi = _jac_hex_digit(text[i]);
+        if hi >= 0 and i + 1 == n {
+            raise ValueError(
+                "fromhex() arg must contain an even number of hexadecimal digits"
+            );
+        }
+        lo = _jac_hex_digit(text[i + 1]) if hi >= 0 else -1;
+        if hi < 0 or lo < 0 {
+            bad = i if hi < 0 else i + 1;
+            raise ValueError(
+                f"non-hexadecimal number found in fromhex() arg at position {bad}"
+            );
+        }
+        out.append(hi * 16 + lo);
+        i += 2;
+    }
+    return bytes(out);
+}
