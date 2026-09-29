@@ -255,6 +255,8 @@ import from c {
 
 import from c {
     def jacpy_binding_type_matches(type: ptr[PyObject], definition: ptr) -> i64;
+    # The binding definition nearest to `type` along its tp_base chain.
+    def jacpy_binding_token(type: ptr[PyObject]) -> ptr;
 }
 
 import from c {

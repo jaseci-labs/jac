@@ -388,8 +388,28 @@ PyObject *jacpy_binding_base(PyObject *type, void *definition) {
     return (PyObject *)base;
 }
 
+/* A heap type's Py_tp_token (the binding definition that made it), or NULL. */
+static inline void *type_token(PyTypeObject *type) {
+    return PyType_HasFeature(type, Py_TPFLAGS_HEAPTYPE) ? ((PyHeapTypeObject *)type)->ht_token : NULL;
+}
+
+/* The binding definition nearest to `type` along its tp_base chain: the
+ * type's own for an instance of a binding type, its binding base's for a
+ * Python subclass. One pointer comparison then identifies the kind. */
+void *jacpy_binding_token(PyObject *type) {
+    for (PyTypeObject *t = (PyTypeObject *)type; t; t = t->tp_base) {
+        void *token = type_token(t);
+        if (token) return token;
+    }
+    return NULL;
+}
+
+/* An instance of the definition's own type (the common case) has its
+ * payload at its type's data, without the MRO search and base reference. */
 static void **native_payload(PyObject *object, void *definition) {
-    PyTypeObject *base = (PyTypeObject *)jacpy_binding_base((PyObject *)Py_TYPE(object), definition);
+    PyTypeObject *type = Py_TYPE(object);
+    if (type_token(type) == definition) return PyObject_GetTypeData(object, type);
+    PyTypeObject *base = (PyTypeObject *)jacpy_binding_base((PyObject *)type, definition);
     if (!base) return NULL;
     void **slot = PyObject_GetTypeData((object), base);
     Py_DECREF(base);
@@ -485,6 +505,7 @@ int64_t jacpy_binding_dict_replace(PyObject *object, PyObject *dictionary) {
 
 /* Invoke inherited opaque built-in slots without duplicating their layouts. */
 int64_t jacpy_binding_type_matches(PyObject *type, void *definition) {
+    if (type_token((PyTypeObject *)type) == definition) return 1;
     PyTypeObject *base = NULL;
     int found = PyType_GetBaseByToken((PyTypeObject *)type, definition, &base);
     Py_XDECREF(base);

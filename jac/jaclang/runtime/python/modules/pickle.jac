@@ -62,7 +62,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_basicsize,
     jacpy_binding_owner,
     jacpy_binding_record,
-    jacpy_binding_type_matches
+    jacpy_binding_token
 }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
@@ -485,14 +485,15 @@ def module_for(type: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 def type_definition(type: ptr[PyObject]) -> ptr {
+    found = jacpy_binding_token(type);
     for token in [
         Pickler_token,
         Unpickler_token,
         PicklerMemoProxy_token,
         UnpicklerMemoProxy_token
     ] {
-        if jacpy_binding_type_matches(type, token.handle) != 0 {
-            return token.handle;
+        if token.handle == found {
+            return found;
         }
     }
     return ptr();

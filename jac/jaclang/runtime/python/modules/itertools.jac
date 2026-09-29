@@ -38,6 +38,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_owner,
     jacpy_binding_allocate,
     jacpy_binding_type_matches,
+    jacpy_binding_token,
     jacpy_binding_basicsize,
     jacpy_binding_matches
 }
@@ -253,8 +254,9 @@ def module_for(type: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 def kind_for(type: ptr[PyObject]) -> int {
+    token = jacpy_binding_token(type);
     for index in range(len(kind_tokens)) {
-        if jacpy_binding_type_matches(type, kind_tokens[index].handle) != 0 {
+        if kind_tokens[index].handle == token {
             return index;
         }
     }
