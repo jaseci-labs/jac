@@ -844,6 +844,13 @@ def _native_variant_path(base_no_ext: str) -> (str | None) {
     return None;
 }
 
+def native_variant_of(module_path: str) -> str {
+    if not module_path.endswith('.jac') {
+        return module_path;
+    }
+    return _native_variant_path(module_path[:-len('.jac')]) or module_path;
+}
+
 def _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if candidate is None {
         return None;
