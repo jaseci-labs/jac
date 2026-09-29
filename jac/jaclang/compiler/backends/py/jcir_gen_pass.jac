@@ -447,6 +447,7 @@ walker JcirGenPass(TreePass) {
     def _ct_param_fields(nd: Archetype) -> list[CgNode];
     def _import_ref(module: str, name: str, jac_node: UniNode) -> CgNode;
     def _class_ref(module: str, name: str, jac_node: UniNode) -> CgNode;
+    def _ct_ordered(items: list[CtValue]) -> list[CtValue];
     def _materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None);
     def _comptime_if_out(nd: IfStmt) -> bool;
     def _if_out(nd: IfStmt) -> None;
@@ -617,6 +618,9 @@ walker JcirGenPass(TreePass) {
     can exit_unary_expr with UnaryExpr exit;
     def _emit_jobj_ref(nd: UnaryExpr) -> None;
     can exit_if_else_expr with IfElseExpr exit;
+    def _multi_string_text(piece: (str | bytes | CgNode)) -> (str | None);
+    def _flush_text_run(merged: list[CgNode], run: list[str]) -> None;
+    def _flush_byte_run(merged: list[CgNode], run: list[bytes]) -> None;
     def _multi_string_pieces(str_seq: Sequence[UniNode]) -> list[str | bytes | CgNode];
     can exit_multi_string with MultiString exit;
     can exit_f_string with FString exit;

@@ -631,27 +631,31 @@ impl JcirGenPass._del_is_trivial(cgn: CgNode) -> bool {
     if cgn.cls in ('Name', 'Constant') {
         return True;
     }
-    if cgn.cls == 'Slice' {
-        return all(
-            (part is None) or (isinstance(part, CgNode) and self._del_is_trivial(part))
-            for part in (cgn.get('lower'), cgn.get('upper'), cgn.get('step'))
-        );
+    if cgn.cls != 'Slice' {
+        return False;
     }
-    return False;
+    parts: list[any] = [cgn.get('lower'), cgn.get('upper'), cgn.get('step')];
+    for part in parts {
+        if part is None {
+            continue;
+        }
+        if not (isinstance(part, CgNode) and self._del_is_trivial(part)) {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl JcirGenPass._del_slice_value(value: CgNode, nd: DeleteStmt) -> CgNode {
     if value.cls != 'Slice' {
         return value;
     }
-    return self.call_node(
-        self.name_load('slice', jac_node=nd),
-        [
-            part if isinstance(part, CgNode) else self.const_of(None)
-            for part in (value.get('lower'), value.get('upper'), value.get('step'))
-        ],
-        []
-    );
+    bounds: list[CgNode] = [];
+    for key in ['lower', 'upper', 'step'] {
+        part = value.get(key);
+        bounds.append(part if isinstance(part, CgNode) else self.const_of(None));
+    }
+    return self.call_node(self.name_load('slice', jac_node=nd), bounds, []);
 }
 
 impl JcirGenPass._del_bind_temp(
