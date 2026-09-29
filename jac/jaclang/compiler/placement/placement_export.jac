@@ -13,6 +13,15 @@ import from jaclang.compiler.placement.placement {
     placement_evidence_for
 }
 
+def escapes_record(escapes: list[tuple[int, str]]) -> list[any] {
+    rows: list[any] = [];
+    for (index, name) in escapes {
+        row: list[any] = [index, name];
+        rows.append(row);
+    }
+    return rows;
+}
+
 def element_to_dict(es: ElementSummary) -> dict[str, any] {
     return {
         'index': es.index,
@@ -27,7 +36,7 @@ def element_to_dict(es: ElementSummary) -> dict[str, any] {
         'import_py_targets': list(es.import_py_targets),
         'reqs': [list(r) for r in es.reqs],
         'refs': list(es.refs),
-        'escapes': [list(e) for e in es.escapes],
+        'escapes': escapes_record(es.escapes),
         'glob_writes': list(es.glob_writes)
     };
 }

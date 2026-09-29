@@ -56,9 +56,18 @@ def interop_record(module: uni.Module) -> dict[str, any] {
         'surface': {name: rec.to_dict() for (name, rec) in manifest.surface.items()},
         'endpoint_effects': dict(manifest.endpoint_effects),
         'native_host_imports': dict(manifest.native_host_imports),
-        'app_edges': list(manifest.app_edges),
+        'app_edges': app_edges_record(manifest.app_edges),
         'provider_routes': dict(manifest.provider_routes)
     };
+}
+
+def app_edges_record(edges: list[tuple[str, str]]) -> list[any] {
+    rows: list[any] = [];
+    for (consumer, provider) in edges {
+        row: list[any] = [consumer, provider];
+        rows.append(row);
+    }
+    return rows;
 }
 
 def interop_manifest_of(record: dict[str, any]) -> InteropManifest {
@@ -85,7 +94,9 @@ def interop_manifest_of(record: dict[str, any]) -> InteropManifest {
     }
     manifest.endpoint_effects.update(record.get('endpoint_effects', {}));
     manifest.native_host_imports.update(record['native_host_imports']);
-    manifest.app_edges.extend(record['app_edges']);
+    for edge in record['app_edges'] {
+        manifest.app_edges.append((str(edge[0]), str(edge[1])));
+    }
     manifest.provider_routes.update(record['provider_routes']);
     return manifest;
 }
@@ -211,13 +222,22 @@ def client_artifact_json(artifact: ClientArtifact) -> str {
             "js": artifact.js,
             "manifest": manifest_record(artifact.manifest),
             "native_import_sources": list(artifact.native_import_sources),
-            "source_map": [list(seg) for seg in artifact.source_map],
+            "source_map": source_map_record(artifact.source_map),
             "dep_digests": dict(artifact.dep_digests),
             "framework": artifact.framework,
             "boundary_contracts": dict(artifact.boundary_contracts)
         },
         sort_keys=True
     );
+}
+
+def source_map_record(segments: list[tuple[int, int, int, int, str]]) -> list[any] {
+    rows: list[any] = [];
+    for (line, col, src_line, src_col, src_path) in segments {
+        row: list[any] = [line, col, src_line, src_col, src_path];
+        rows.append(row);
+    }
+    return rows;
 }
 
 def source_segment(raw: any) -> (tuple[int, int, int, int, str] | None) {
