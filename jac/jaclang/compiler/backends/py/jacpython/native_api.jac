@@ -88,11 +88,22 @@ import from jaclang.runtime.python.bindings.posixshmem { PyInit__posixshmem }
 import from jaclang.runtime.python.object_model.bool { PyBool_Type }
 import from jaclang.runtime.python.object_model.capsule { PyCapsule_Type }
 import from jaclang.runtime.python.object_model.cell { PyCell_Type }
+import from jaclang.runtime.python.object_model.complex { PyComplex_Type }
 import from jaclang.runtime.python.object_model.enumerate { PyEnum_Type }
+import from jaclang.runtime.python.object_model.file { PyStdPrinter_Type }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAliasType }
+import from jaclang.runtime.python.object_model.interpolation { _PyInterpolation_Type }
 import from jaclang.runtime.python.object_model.iterator { PySeqIter_Type }
+import from jaclang.runtime.python.object_model.method { PyMethod_Type }
 import from jaclang.runtime.python.object_model.namespace { _PyNamespace_Type }
+import from jaclang.runtime.python.object_model.picklebuffer { PyPickleBuffer_Type }
 import from jaclang.runtime.python.object_model.range { PyRange_Type }
 import from jaclang.runtime.python.object_model.slice { PySlice_Type }
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_UnnamedField
+}
+import from jaclang.runtime.python.object_model.template { _PyTemplate_Type }
+import from jaclang.runtime.python.object_model.union { _PyUnion_Type }
 import from jaclang.runtime.python.bindings.abc { PyInit__abc }
 import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.bindings.locale { PyInit__locale }

@@ -17,12 +17,14 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     Py_NotImplemented,
     _PyEval_GetBuiltin,
+    _Py_Dealloc,
     _Py_NewReference,
     jacpy_freelists,
     jacpy_release
 }
 import from jaclang.runtime.python.layouts {
     _Py_freelist,
+    PyListObject,
     PyTupleObject,
     PyTupleObject_ITEMS,
     PyTypeObject,
@@ -33,6 +35,8 @@ import from jaclang.runtime.python.layouts {
     Py_LE,
     Py_LT,
     Py_NE,
+    Py_TPFLAGS_LIST_SUBCLASS,
+    _Py_IMMORTAL_INITIAL_REFCNT,
     _object
 }
 
@@ -41,6 +45,45 @@ import from c {
          # Defined by bool.jac; Py_True and Py_False are their addresses.
          _Py_TrueStruct: PyObject,
          _Py_FalseStruct: PyObject;
+}
+
+"""Py_INCREF: count a new reference to `op` unless it is immortal (the
+release build's 32-bit count at or above _Py_IMMORTAL_INITIAL_REFCNT)."""
+def object_incref(op: ptr[PyObject]) {
+    header = ptr[_object](op);
+    full = header.view(1)[0].ob_refcnt_full;
+    if (full & 0xFFFFFFFF) >= _Py_IMMORTAL_INITIAL_REFCNT {
+        return;
+    }
+    header.view(1)[0].ob_refcnt_full = full + 1;
+}
+
+"""Py_NewRef: `op` with a new reference counted."""
+def object_new_ref(op: ptr[PyObject]) -> ptr[PyObject] {
+    object_incref(op);
+    return op;
+}
+
+"""Py_DECREF: drop a reference to `op`, deallocating it at zero; an immortal
+object (a negative 32-bit count) is left alone."""
+def object_decref(op: ptr[PyObject]) {
+    header = ptr[_object](op);
+    full = header.view(1)[0].ob_refcnt_full;
+    if (full & 0x80000000) != 0 {
+        return;
+    }
+    full -= 1;
+    header.view(1)[0].ob_refcnt_full = full;
+    if (full & 0xFFFFFFFF) == 0 {
+        _Py_Dealloc(op);
+    }
+}
+
+"""Py_XDECREF."""
+def object_xdecref(op: ptr[PyObject]) {
+    if op {
+        object_decref(op);
+    }
 }
 
 """Py_TYPE: the type of `op` (borrowed)."""
@@ -78,6 +121,14 @@ def type_has_feature(type: ptr[PyTypeObject], feature: u64) -> bool {
 """_PyTuple_ITEMS: the address of a tuple's first item."""
 def tuple_items(tuple: ptr[PyObject]) -> ptr[ptr[PyObject]] {
     return ptr[ptr[PyObject]](ptr[u8](tuple) + PyTupleObject_ITEMS);
+}
+
+"""PySequence_Fast_ITEMS: the item array of PySequence_Fast's list or tuple."""
+def fast_items(fast: ptr[PyObject]) -> ptr[ptr[PyObject]] {
+    if (object_type(fast).view(1)[0].tp_flags & Py_TPFLAGS_LIST_SUBCLASS) != u64(0) {
+        return ptr[PyListObject](fast).view(1)[0].ob_item;
+    }
+    return tuple_items(fast);
 }
 
 """PyTuple_GET_ITEM (borrowed)."""

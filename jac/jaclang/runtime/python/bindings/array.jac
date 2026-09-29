@@ -25,7 +25,6 @@ import from jaclang.runtime.python.cpython_api {
     PyType_GetSlot,
     PyType_IsSubtype,
     PyUnicode_FromOrdinal,
-    Py_GenericAlias,
     Py_NewRef,
     Py_None,
     Py_NotImplemented,
@@ -49,6 +48,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_slice_unpack,
     jacpy_type_check
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

@@ -4,7 +4,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_lock_new,
     jacpy_release,
     NULL,
-    Py_GenericAlias,
     Py_NewRef,
     Py_None,
     Py_TYPE,
@@ -14,6 +13,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_IsTrue,
     PyType_GetSlot
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,

@@ -26,11 +26,13 @@ import from jaclang.runtime.python.cpython_api {
     PyMem_RawRealloc,
     PyObject,
     PySequence_Contains,
-    PyStructSequence_New,
-    PyStructSequence_SetItem,
     PyThreadState,
     PyUnicode_EncodeFSDefault,
     PyUnicode_FromString
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_New,
+    PyStructSequence_SetItem
 }
 import from jaclang.runtime.python.capi { object_error, repr_value }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
