@@ -81,3 +81,4 @@ _datetime       test.test_datetime
 _decimal        test.test_decimal                       -lmpdec -lm
 _socket         test.test_socket,test.test_selectors
 _hashlib        test.test_hashlib,test.test_hmac        -lcrypto
+_ssl            test.test_ssl                           -lssl -lcrypto

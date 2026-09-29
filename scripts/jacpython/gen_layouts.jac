@@ -63,6 +63,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/descrobject.h",
          "Include/cpython/cellobject.h",
          "Include/sliceobject.h",
+         "Include/cpython/pyerrors.h",
          "Include/internal/pycore_range.h",
          "Include/internal/pycore_freelist_state.h",
          "Include/datetime.h"
@@ -75,8 +76,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Objects/iterobject.c",
          "Objects/enumobject.c",
          "Objects/rangeobject.c",
-         # The socket object and the _socket.CAPI record, which _ssl.c
-         # (still C) reads through this header.
+         # The socket object and the _socket.CAPI record: the _socket and
+         # _ssl ports define and read them; the header has no C user left.
          "Modules/socketmodule.h"
      ],
      # Headers the constant probe and layouts_check.c include after Python.h
@@ -127,6 +128,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyDateTime_BaseDateTime", "_PyDateTime_BaseDateTime"),
          ("PyDateTime_DateTime", "PyDateTime_DateTime"),
          ("PyDateTime_CAPI", "PyDateTime_CAPI"),
+         # ssl.SSLError's tp_str reads an OSError's strerror in place.
+         ("PyOSErrorObject", "PyOSErrorObject"),
          ("PySocketSockObject", "PySocketSockObject"),
          ("PySocketModule_APIObject", "PySocketModule_APIObject")
      ],
@@ -286,6 +289,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_SOCKET_TYPE_OFFSET", "offsetof(PySocketSockObject, sock_type)", "i64"),
          ("PY_SOCKET_PROTO_OFFSET", "offsetof(PySocketSockObject, sock_proto)", "i64"),
          ("PY_SOCKET_API_SIZE", "sizeof(PySocketModule_APIObject)", "i64"),
+         ("PY_OS_ERROR_OBJECT_SIZE", "sizeof(PyOSErrorObject)", "i64"),
          ("Py_CLEANUP_SUPPORTED", "Py_CLEANUP_SUPPORTED", "i32")
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every

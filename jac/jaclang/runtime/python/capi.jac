@@ -25,6 +25,7 @@ enum builtin_kind {
 }
 
 import from jaclang.runtime.python.cpython_api {
+    PyUnicode_DecodeUTF8Stateful,
     jacpy_bytes_copy_to,
     jacpy_bytes_from_memory,
     jacpy_bytes_length,
@@ -311,6 +312,12 @@ def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
     text = jacpy_unicode_decode_bytes(payload, "utf-8");
     jacpy_release(payload);
     return text;
+}
+
+# `size` bytes at `address` as a new str decoded as strict UTF-8, as
+# PyUnicode_FromStringAndSize() does.
+def c_text(address: ptr, size: i64) -> ptr[PyObject] {
+    return PyUnicode_DecodeUTF8Stateful(address, size, ptr[u8](), None);
 }
 
 # A NUL-terminated UTF-8 copy of `text` in raw memory the caller keeps (as a

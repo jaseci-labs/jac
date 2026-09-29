@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 105 C files / 177,496 lines; 89 headers / 61,779 lines.
-#   Total: 194 files / 239,275 source lines.
+#   Excluded: 109 C files / 184,949 lines; 94 headers / 74,711 lines.
+#   Total: 203 files / 259,660 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -448,15 +448,15 @@ Modules/_sre/sre.h
 Modules/_sre/sre_constants.h
 Modules/_sre/sre_lib.h
 Modules/_sre/sre_targets.h
-Modules/_ssl.c
-Modules/_ssl.h
+# Modules/_ssl.c  # removed: 6,943 source lines
+# Modules/_ssl.h  # removed: 80 source lines
 # Modules/_ssl_data_111.h  # pruned: 6,543 source lines
 # Modules/_ssl_data_300.h  # pruned: 8,588 source lines
-Modules/_ssl/cert.c
-Modules/_ssl/clinic/cert.c.h
-Modules/_ssl/debughelpers.c
-Modules/_ssl/misc.c
-Modules/_ssl_data_35.h
+# Modules/_ssl/cert.c  # removed: 251 source lines
+# Modules/_ssl/clinic/cert.c.h  # removed: 92 source lines
+# Modules/_ssl/debughelpers.c  # removed: 225 source lines
+# Modules/_ssl/misc.c  # removed: 34 source lines
+# Modules/_ssl_data_35.h  # removed: 9,437 source lines
 # Modules/_stat.c  # removed: 713 source lines
 # Modules/_statisticsmodule.c  # removed: 159 source lines
 # Modules/_struct.c  # removed: 2,825 source lines
@@ -525,7 +525,7 @@ Modules/clinic/_localemodule.c.h
 # Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
 # Modules/clinic/_randommodule.c.h  # removed: 177 source lines
 Modules/clinic/_remote_debugging_module.c.h
-Modules/clinic/_ssl.c.h
+# Modules/clinic/_ssl.c.h  # removed: 2,909 source lines
 # Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
 # Modules/clinic/_struct.c.h  # removed: 461 source lines
 # Modules/clinic/_suggestions.c.h  # removed: 41 source lines
@@ -598,7 +598,7 @@ Modules/rotatingtree.h
 # Modules/sha3module.c  # removed: 680 source lines
 Modules/signalmodule.c
 # Modules/socketmodule.c  # removed: 9,305 source lines
-Modules/socketmodule.h
+# Modules/socketmodule.h  # removed: 414 source lines
 # Modules/symtablemodule.c  # removed: 130 source lines
 # Modules/syslogmodule.c  # removed: 469 source lines
 Modules/termios.c

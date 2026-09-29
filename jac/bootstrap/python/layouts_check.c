@@ -725,6 +725,37 @@ FIELD(PyDateTime_CAPI, Time_FromTimeAndFold, 112, 8);
 KIND(PyDateTime_CAPI, Time_FromTimeAndFold, 5);
 LAYOUT(PyDateTime_CAPI, 120, 8);
 
+/* PyOSErrorObject */
+FIELD(PyOSErrorObject, ob_base, 0, 16);
+KIND(PyOSErrorObject, ob_base, 12);
+FIELD(PyOSErrorObject, dict, 16, 8);
+KIND(PyOSErrorObject, dict, 5);
+FIELD(PyOSErrorObject, args, 24, 8);
+KIND(PyOSErrorObject, args, 5);
+FIELD(PyOSErrorObject, notes, 32, 8);
+KIND(PyOSErrorObject, notes, 5);
+FIELD(PyOSErrorObject, traceback, 40, 8);
+KIND(PyOSErrorObject, traceback, 5);
+FIELD(PyOSErrorObject, context, 48, 8);
+KIND(PyOSErrorObject, context, 5);
+FIELD(PyOSErrorObject, cause, 56, 8);
+KIND(PyOSErrorObject, cause, 5);
+FIELD(PyOSErrorObject, suppress_context, 64, 1);
+KIND(PyOSErrorObject, suppress_context, 1);
+SIGNED(PyOSErrorObject, suppress_context, 1);
+FIELD(PyOSErrorObject, myerrno, 72, 8);
+KIND(PyOSErrorObject, myerrno, 5);
+FIELD(PyOSErrorObject, strerror, 80, 8);
+KIND(PyOSErrorObject, strerror, 5);
+FIELD(PyOSErrorObject, filename, 88, 8);
+KIND(PyOSErrorObject, filename, 5);
+FIELD(PyOSErrorObject, filename2, 96, 8);
+KIND(PyOSErrorObject, filename2, 5);
+FIELD(PyOSErrorObject, written, 104, 8);
+KIND(PyOSErrorObject, written, 1);
+SIGNED(PyOSErrorObject, written, 1);
+LAYOUT(PyOSErrorObject, 112, 8);
+
 /* PySocketSockObject */
 FIELD(PySocketSockObject, ob_base, 0, 16);
 KIND(PySocketSockObject, ob_base, 12);
@@ -878,4 +909,5 @@ CONSTANT(offsetof(PySocketSockObject, sock_family), 20LL);
 CONSTANT(offsetof(PySocketSockObject, sock_type), 24LL);
 CONSTANT(offsetof(PySocketSockObject, sock_proto), 28LL);
 CONSTANT(sizeof(PySocketModule_APIObject), 24LL);
+CONSTANT(sizeof(PyOSErrorObject), 112LL);
 CONSTANT(Py_CLEANUP_SUPPORTED, 131072LL);

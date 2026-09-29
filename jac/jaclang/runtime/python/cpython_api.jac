@@ -7,7 +7,7 @@ are declared.
 import from jaclang.runtime.python.modules.stat_records { _Py_stat_struct }
 import from jaclang.runtime.python.modules.time_records { timespec, timeval, tm }
 import from c {
-    obj PyObject;  obj PyThreadState;  obj PyInterpreterState;  obj PyUnicodeWriter;  obj PyModuleDef;  obj PyCompilerFlags;  obj PyBytesWriter;  obj PyMutex;  obj _Py_freelists;  obj PyLongWriter;  obj PyLongExport {
+    obj PyObject;  obj PyThreadState;  obj PyInterpreterState;  obj PyUnicodeWriter;  obj PyModuleDef;  obj PyCompilerFlags;  obj PyBytesWriter;  obj PyMutex;  obj _Py_freelists;  obj PyLongWriter;  obj FILE;  obj PyLongExport {
         has value: i64 = 0,
             negative: u8 = 0,
             ndigits: i64 = 0,
@@ -106,9 +106,11 @@ import from c {
         view: ptr[Py_buffer]
     );  def PyByteArray_FromObject(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyByteArray_Resize(
         arg0: ptr[PyObject], arg1: i64
-    ) -> i32;  def PyBytes_AsString(arg0: ptr[PyObject]) -> ptr[u8];  def PyBytes_DecodeEscape(
+    ) -> i32;  def PyBytes_AsString(arg0: ptr[PyObject]) -> ptr[u8];  def PyBytes_AsStringAndSize(
+        obj_: ptr[PyObject], s: &mut ptr[u8], len_: &mut i64
+    ) -> i32;  def PyBytes_DecodeEscape(
         arg0: ptr, arg1: i64, arg2: ptr[u8], arg3: i64, arg4: ptr[u8]
-    ) -> ptr[PyObject];  def PyBytes_FromStringAndSize(
+    ) -> ptr[PyObject];  def PyBytes_FromString(arg0: ptr) -> ptr[PyObject];  def PyBytes_FromStringAndSize(
         arg0: bytes, arg1: i64
     ) -> ptr[PyObject];  def PyBytes_Size(arg0: ptr[PyObject]) -> i64;  def PyCFunction_NewEx(
         arg0: ptr[PyMethodDef], arg1: ptr[PyObject], arg2: ptr[PyObject]
@@ -170,6 +172,8 @@ import from c {
         PyObject
     ];  def PyErr_NewException(
         name: str, base: ptr[PyObject], dict_: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyErr_NewExceptionWithDoc(
+        name: str, doc: str, base: ptr[PyObject], dict_: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_NoMemory -> ptr[PyObject];  def PyErr_Occurred -> ptr[
         PyObject
     ];  def PyErr_Print;  def PyErr_ResourceWarning(
@@ -191,6 +195,8 @@ import from c {
         lineno: i32,
         module: ptr[u8],
         registry: ptr[PyObject]
+    ) -> i32;  def PyErr_WarnFormat(
+        category: ptr[PyObject], stack_level: i64, format_: str, *args: any
     ) -> i32;  def PyEval_RestoreThread(arg0: ptr[PyThreadState]);  def PyEval_SaveThread -> ptr[
         PyThreadState
     ];  def PyFloat_AsDouble(arg0: ptr[PyObject]) -> f64;  def PyFloat_FromDouble(
@@ -448,17 +454,17 @@ import from c {
         arg0: ptr[PyObject], arg1: i64, arg2: ptr[PyObject]
     );  def PySys_Audit(event: str, argFormat: str, *args: any) -> i32;  def PySys_AuditTuple(
         event: str, args: ptr[PyObject]
-    ) -> i32;  def PyThreadState_Get -> ptr[PyThreadState];  def PyThread_acquire_lock(
-        arg0: ptr, arg1: i32
-    ) -> i32;  def PyThread_allocate_lock -> ptr;  def PyThread_free_lock(arg0: ptr);  def PyThread_get_thread_ident -> u64;  def PyThread_release_lock(
+    ) -> i32;  def PyThreadState_Get -> ptr[PyThreadState];  def PyThreadState_Swap(
+        arg0: ptr[PyThreadState]
+    ) -> ptr[PyThreadState];  def PyThread_acquire_lock(arg0: ptr, arg1: i32) -> i32;  def PyThread_allocate_lock -> ptr;  def PyThread_free_lock(
         arg0: ptr
-    );  def PyTime_AsSecondsDouble(t: i64) -> f64;  def PyTime_Monotonic(
+    );  def PyThread_get_thread_ident -> u64;  def PyThread_release_lock(arg0: ptr);  def PyTime_AsSecondsDouble(
+        t: i64
+    ) -> f64;  def PyTime_Monotonic(result: &mut i64) -> i32;  def PyTime_PerfCounter(
         result: &mut i64
-    ) -> i32;  def PyTime_PerfCounter(result: &mut i64) -> i32;  def PyTime_PerfCounterRaw(
+    ) -> i32;  def PyTime_PerfCounterRaw(result: &mut i64) -> i32;  def PyTime_Time(
         result: &mut i64
-    ) -> i32;  def PyTime_Time(result: &mut i64) -> i32;  def PyTuple_GetItem(
-        arg0: ptr[PyObject], arg1: i64
-    ) -> ptr[PyObject];  def PyTuple_GetSlice(
+    ) -> i32;  def PyTuple_GetItem(arg0: ptr[PyObject], arg1: i64) -> ptr[PyObject];  def PyTuple_GetSlice(
         arg0: ptr[PyObject], arg1: i64, arg2: i64
     ) -> ptr[PyObject];  def PyTuple_New(size: i64) -> ptr[PyObject];  def PyTuple_Pack(
         arg0: i64, *args: any
@@ -473,6 +479,8 @@ import from c {
         arg3: ptr[PyObject]
     ) -> ptr[PyObject];  def PyType_FromModuleAndSpec(
         arg0: ptr[PyObject], arg1: ptr[PyType_Spec], arg2: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyType_FromSpecWithBases(
+        arg0: ptr[PyType_Spec], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyType_GenericAlloc(
         arg0: ptr[PyObject], arg1: i64
     ) -> ptr[PyObject];  def PyType_GenericNew(
@@ -487,7 +495,9 @@ import from c {
         length: i64
     ) -> ptr[PyUnicodeWriter];  def PyUnicodeWriter_Discard(
         writer: ptr[PyUnicodeWriter]
-    );  def PyUnicodeWriter_Finish(writer: ptr[PyUnicodeWriter]) -> ptr[PyObject];  def PyUnicodeWriter_WriteASCII(
+    );  def PyUnicodeWriter_Finish(writer: ptr[PyUnicodeWriter]) -> ptr[PyObject];  def PyUnicodeWriter_Format(
+        writer: ptr[PyUnicodeWriter], format_: str, *args: any
+    ) -> i32;  def PyUnicodeWriter_WriteASCII(
         writer: ptr[PyUnicodeWriter], str_: str, size: i64
     ) -> i32;  def PyUnicodeWriter_WriteChar(
         writer: ptr[PyUnicodeWriter], ch: u32
@@ -497,7 +507,7 @@ import from c {
         writer: ptr[PyUnicodeWriter], str_: ptr[PyObject], start: i64, end: i64
     ) -> i32;  def PyUnicode_AppendAndDel(
         pleft: &mut ptr[PyObject], right: ptr[PyObject]
-    );  def PyUnicode_AsEncodedString(
+    );  def PyUnicode_AsASCIIString(unicode: ptr[PyObject]) -> ptr[PyObject];  def PyUnicode_AsEncodedString(
         unicode: ptr[PyObject], encoding: str, errors: str
     ) -> ptr[PyObject];  def PyUnicode_AsLatin1String(
         unicode: ptr[PyObject]
@@ -523,7 +533,7 @@ import from c {
         string: ptr, length: i64, errors: ptr[u8]
     ) -> ptr[PyObject];  def PyUnicode_DecodeCharmap(
         string: ptr, length: i64, mapping: ptr[PyObject], errors: ptr[u8]
-    ) -> ptr[PyObject];  def PyUnicode_DecodeLatin1(
+    ) -> ptr[PyObject];  def PyUnicode_DecodeFSDefault(s: ptr) -> ptr[PyObject];  def PyUnicode_DecodeLatin1(
         string: ptr, length: i64, errors: ptr[u8]
     ) -> ptr[PyObject];  def PyUnicode_DecodeLocale(
         str_: ptr, errors: ptr[u8]
@@ -553,6 +563,8 @@ import from c {
         str_: ptr[PyObject], ch: u32, start: i64, end: i64, direction: i32
     ) -> i64;  def PyUnicode_Format(
         format_: ptr[PyObject], args: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyUnicode_FromEncodedObject(
+        obj_: ptr[PyObject], encoding: str, errors: str
     ) -> ptr[PyObject];  def PyUnicode_FromFormat(
         format_: str, *args: any
     ) -> ptr[PyObject];  def PyUnicode_FromKindAndData(
@@ -591,7 +603,7 @@ import from c {
         arg0: ptr[PyObject]
     );  def Py_TYPE(ob: ptr[PyObject]) -> ptr[PyObject];  def Py_XNewRef(
         obj_: ptr[PyObject]
-    ) -> ptr[PyObject];  def _PyArg_CheckPositional(
+    ) -> ptr[PyObject];  def Py_fopen(path: ptr[PyObject], mode: str) -> ptr[FILE];  def _PyArg_CheckPositional(
         arg0: str, arg1: i64, arg2: i64, arg3: i64
     ) -> i32;  def _PyArg_NoKeywords(funcname: str, kwargs: ptr[PyObject]) -> i32;  def _PyArg_NoKwnames(
         funcname: str, kwnames: ptr[PyObject]
@@ -621,7 +633,9 @@ import from c {
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyLong_Frexp(a: ptr[PyObject], e: &mut i64) -> f64;  def _PyLong_FromGid(
         arg0: u32
-    ) -> ptr[PyObject];  def _PyLong_FromUid(arg0: u32) -> ptr[PyObject];  def _PyLong_GCD(
+    ) -> ptr[PyObject];  def _PyLong_FromTime_t(sec: i64) -> ptr[PyObject];  def _PyLong_FromUid(
+        arg0: u32
+    ) -> ptr[PyObject];  def _PyLong_GCD(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyLong_NumBits(v: ptr[PyObject]) -> i64;  def _PyLong_UInt16_Converter(
         arg0: ptr[PyObject], arg1: &mut u16
@@ -631,6 +645,8 @@ import from c {
         arg0: ptr[PyObject], arg1: &mut u64
     ) -> i32;  def _PyLong_UnsignedInt_Converter(
         arg0: ptr[PyObject], arg1: &mut u32
+    ) -> i32;  def _PyLong_UnsignedLongLong_Converter(
+        arg0: ptr[PyObject], arg1: ptr
     ) -> i32;  def _PyLong_UnsignedShort_Converter(
         arg0: ptr[PyObject], arg1: &mut u16
     ) -> i32;  def _PyMem_Strdup(str_: ptr) -> ptr[u8];  def _PyNumber_Index(

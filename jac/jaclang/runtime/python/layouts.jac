@@ -374,6 +374,20 @@ import from c {
                     [i32, i32, i32, i32, ptr[PyObject], i32, ptr[PyTypeObject]],
                     ptr[PyObject]
                 ];
+    }  obj PyOSErrorObject {
+        has ob_base: _object,
+            dict: ptr[PyObject],
+            args: ptr[PyObject],
+            notes: ptr[PyObject],
+            traceback: ptr[PyObject],
+            context: ptr[PyObject],
+            cause: ptr[PyObject],
+            suppress_context: i8,
+            myerrno: ptr[PyObject],
+            strerror: ptr[PyObject],
+            filename: ptr[PyObject],
+            filename2: ptr[PyObject],
+            written: i64;
     }  obj PySocketSockObject {
         has ob_base: _object,
             sock_fd: i32,
@@ -510,4 +524,5 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      PY_SOCKET_TYPE_OFFSET: Final[i64] = 24,
      PY_SOCKET_PROTO_OFFSET: Final[i64] = 28,
      PY_SOCKET_API_SIZE: Final[i64] = 24,
+     PY_OS_ERROR_OBJECT_SIZE: Final[i64] = 112,
      Py_CLEANUP_SUPPORTED: Final[i32] = 131072;

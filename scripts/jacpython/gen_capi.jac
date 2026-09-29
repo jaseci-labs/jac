@@ -58,7 +58,8 @@ glob OPAQUE: list[str] = [
          "PyBytesWriter",
          "PyMutex",
          "_Py_freelists",
-         "PyLongWriter"
+         "PyLongWriter",
+         "FILE"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -241,6 +242,8 @@ glob OPAQUE: list[str] = [
          "PyBytes_DecodeEscape": {0},
          "PyMember_GetOne": {0},
          "PyMember_SetOne": {0},
+         "PyBytes_FromString": {0},
+         "PyUnicode_DecodeFSDefault": {0},
          "PyUnicode_DecodeASCII": {0},
          "PyUnicode_DecodeCharmap": {0},
          "PyUnicode_DecodeLatin1": {0},
@@ -305,6 +308,7 @@ glob OPAQUE: list[str] = [
      OUT_POINTERS: dict[str, str] = {
          "PyObject **": "&mut ptr[PyObject]",
          "void **": "&mut ptr",
+         "char **": "&mut ptr[u8]",
          "Py_ssize_t *": "&mut i64",
          "int *": "&mut i32",
          "double *": "&mut f64",
