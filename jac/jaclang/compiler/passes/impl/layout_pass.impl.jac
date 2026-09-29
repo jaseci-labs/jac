@@ -105,11 +105,9 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
                 } elif isinstance(base_expr, AstSymbolNode) {
                     pname = base_expr.sym_name;
                 }
-                if pname is None {
-                    continue;
-                }
                 _pnative = referenced_native_name(base_expr);
-                if _pnative is None and is_erased_base_name(pname, archetypes) {
+                if _pnative is None
+                    and (pname is None or is_erased_base_name(pname, archetypes)) {
                     continue;
                 }
                 pname = _pnative or pname;
