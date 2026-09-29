@@ -284,7 +284,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     );
     self.builder.store(v, out_typed);
     for _entry in self._gen_try_stack {
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
     }
     k = len(gc.resume_blocks) + 1;
     ip_slot = self.builder.bitcast(gc.frame_i8, i64.as_pointer(), name="yield.ip");
@@ -296,7 +296,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     self.builder.position_at_end(rbb);
     for _entry in self._gen_try_stack {
         exc_state = _entry.state;
-        self.builder.call(self._exc_push_fn, [exc_state]);
+        self._emit_exc_push(self.builder, exc_state);
         if _entry.depth is not None {
             self.builder.store(self._region_depth(), _entry.depth);
         }
