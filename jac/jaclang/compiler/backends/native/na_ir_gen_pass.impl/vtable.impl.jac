@@ -18,9 +18,15 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     i8_ptr = ir.IntType(8).as_pointer();
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
+    _drop_body = self._emit_struct_drop_body_fn(arch_name)
+        if self._nogc_headerless()
+        else None;
     entries: list[ir.Value] = [
         self._emit_class_name_const(arch_name),
-        self._emit_vtable_ancestry(arch_name).bitcast(i8_ptr)
+        self._emit_vtable_ancestry(arch_name).bitcast(i8_ptr),
+        _drop_body.bitcast(i8_ptr)
+            if _drop_body is not None
+            else ir.Constant(i8_ptr, None)
     ];
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);

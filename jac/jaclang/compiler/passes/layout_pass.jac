@@ -44,7 +44,8 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "bytes"
      }
          | set(JAC_TYPE_REGISTRY.sized_scalar_names()),
-     VTABLE_HEADER_SLOTS: int = 2,
+     VTABLE_HEADER_SLOTS: int = 3,
+     VTABLE_DROP_SLOT: int = 2,
      EXC_MESSAGE_FIELD: str = "__jac_exc_msg__";
 
 glob LAYOUT_COMPATIBLE_SCALARS: set[str] = LAYOUT_COMPATIBLE_PRIMITIVES | {"type"};

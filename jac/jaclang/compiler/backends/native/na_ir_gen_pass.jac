@@ -60,6 +60,7 @@ import from jaclang.compiler.passes.layout_pass {
     archetype_accessors,
     ArchetypeLayout,
     EnumLayout,
+    VTABLE_DROP_SLOT,
     VTABLE_HEADER_SLOTS
 }
 import from jaclang.compiler.type_registry { JacTypeEntry }
@@ -470,6 +471,7 @@ walker NaIRGenPass(CompilerPass) {
         tuple_release_fns: dict[str, ir.Function] = {},
         tuple_trace_fns: dict[str, ir.Function] = {},
         struct_drop_fns: dict[str, ir.Function] = {},
+        struct_drop_body_fns: dict[str, ir.Function] = {},
         container_drop_fns: dict[str, ir.Function] = {},
         container_layouts: dict[str, dict[str, any]] = {},
         struct_drop_hooks: dict[str, ir.Function] = {},
@@ -2427,6 +2429,8 @@ walker NaIRGenPass(CompilerPass) {
     def _arch_is_osp_name(arch_name: str) -> bool;
     def _arch_is_walker_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
+    def _emit_struct_drop_body_fn(type_name: str) -> (ir.Function | None);
+    def _drop_dispatches(type_name: str) -> bool;
     def _emit_nogc_field_drops(
         b: ir.IRBuilder, type_name: str, _dobj: ir.Value
     ) -> None;

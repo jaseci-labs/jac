@@ -1728,15 +1728,92 @@ impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
     );
 
     b.position_at_end(body_bb);
-    _dobj = b.bitcast(fn.args[0], struct_type.as_pointer(), name="drop.obj");
-    self._emit_nogc_field_drops(b, type_name, _dobj);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
-    b.call(free_fn, [fn.args[0]]);
+    _static_body = self._emit_struct_drop_body_fn(type_name);
+    assert _static_body is not None;
+    if self._drop_dispatches(type_name) {
+        i32 = ir.IntType(32);
+        _vt_pp = b.bitcast(
+            fn.args[0], i8p.as_pointer().as_pointer(), name="drop.vt.pp"
+        );
+        _vt = b.load(_vt_pp, name="drop.vt");
+        _has_vt = b.icmp_unsigned(
+            "!=", _vt, ir.Constant(_vt.type, None), name="drop.has.vt"
+        );
+        _vt_bb = fn.append_basic_block("drop.vt.read");
+        _dyn_bb = fn.append_basic_block("drop.dynamic");
+        _stat_bb = fn.append_basic_block("drop.static");
+        b.cbranch(_has_vt, _vt_bb, _stat_bb);
+        b.position_at_end(_vt_bb);
+        _slot = b.gep(_vt, [ir.Constant(i32, VTABLE_DROP_SLOT)], name="drop.slot");
+        _dyn = b.load(_slot, name="drop.dyn");
+        _has_dyn = b.icmp_unsigned(
+            "!=", _dyn, ir.Constant(i8p, None), name="drop.has.dyn"
+        );
+        b.cbranch(_has_dyn, _dyn_bb, _stat_bb);
+        b.position_at_end(_dyn_bb);
+        b.call(b.bitcast(_dyn, fnty.as_pointer(), name="drop.dyn.fn"), [fn.args[0]]);
+        b.branch(done_bb);
+        b.position_at_end(_stat_bb);
+    }
+    b.call(_static_body, [fn.args[0]]);
     b.branch(done_bb);
 
     b.position_at_end(done_bb);
     b.ret_void();
     return fn;
+}
+
+impl NaIRGenPass._emit_struct_drop_body_fn(type_name: str) -> (ir.Function | None) {
+    """Drop an object known to be exactly `type_name`: its fields, then itself.
+
+    This is the body a headerless build stores in the class's vtable drop
+    slot, so `__drop_T` for any ancestor `T` reaches it through the object's
+    own vtable and drops the subclass's extra fields and runs its `drop` hook.
+    """;
+    if type_name in self.struct_drop_body_fns {
+        return self.struct_drop_body_fns[type_name];
+    }
+    struct_type = self.struct_types.get(type_name);
+    if struct_type is None {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    fnty = ir.FunctionType(ir.VoidType(), [i8p]);
+    fn = ir.Function(self.llvm_module, fnty, name=f"__drop_body_{type_name}");
+    fn.linkage = "private";
+    fn.args[0].name = "self";
+    self.struct_drop_body_fns[type_name] = fn;
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    _dobj = b.bitcast(fn.args[0], struct_type.as_pointer(), name="drop.obj");
+    self._emit_nogc_field_drops(b, type_name, _dobj);
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    b.call(free_fn, [fn.args[0]]);
+    b.ret_void();
+    return fn;
+}
+
+impl NaIRGenPass._drop_dispatches(type_name: str) -> bool {
+    """Must dropping a `type_name` reference read the object's own vtable?
+
+    A reference typed as a class may hold a subclass instance with its own
+    `drop` hook and owned fields, declared in a module this one never sees.
+    Only a class with a vtable can say which it holds, and only a private
+    class with no subclass in its own registry is provably final.
+    """;
+    if not self._arch_has_vtable(type_name) or type_name in self.clib_struct_names {
+        return False;
+    }
+    if not self._devirt_closed_world(type_name) {
+        return True;
+    }
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    reg = get_layout_registry(self.module, self.prog);
+    for cand in reg.mro_order {
+        if cand != type_name and type_name in self._mro_of(cand) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._emit_nogc_field_drops(
