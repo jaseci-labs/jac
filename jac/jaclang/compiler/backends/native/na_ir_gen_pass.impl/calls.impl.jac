@@ -2363,10 +2363,14 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # A C function another module defines in Jac is reached through its
+    # interop binding, unless its C ABI moves a struct by value, which only
+    # the C-ABI call through its declaration here can.
     if func is not None
         and declaration is not None
         and func is self.clib_extern_fns.get(func_name)
-        and ModuleFacts.unwrap_body(declaration) {
+        and ModuleFacts.unwrap_body(declaration)
+        and not self._clib_passes_structs(func_name) {
         func = None;
     }
     if _mod_qual is not None {

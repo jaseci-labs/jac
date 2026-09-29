@@ -1298,6 +1298,10 @@ walker NaIRGenPass(CompilerPass) {
     def _declare_clib_definitions -> None;
     def _emit_clib_definitions -> None;
     def _emit_clib_export_thunk(name: str) -> None;
+    """Whether the C ABI plan of `name` passes or returns a struct by value,
+    which only a C-ABI call reaches."""
+    def _clib_passes_structs(name: str) -> bool;
+
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type, pointee_names: dict[(ir.Type, str)]) -> str;
     def _layout_pointee_names -> dict[(ir.Type, str)];

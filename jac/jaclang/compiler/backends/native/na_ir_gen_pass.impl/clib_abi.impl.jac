@@ -474,6 +474,16 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
     }
 }
 
+impl NaIRGenPass._clib_passes_structs(name: str) -> bool {
+    plan = self.clib_fn_abi.get(name);
+    if plan is None {
+        return False;
+    }
+    return bool(plan["sret"])
+        or plan["ret"].get("kind") == "struct_reg"
+        or any(pp["kind"] != "scalar" for pp in plan["params"]);
+}
+
 impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
     """Emit an exported C symbol's thunk as one `musttail` jump into its body.
 
