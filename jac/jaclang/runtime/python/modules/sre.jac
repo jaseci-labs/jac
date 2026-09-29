@@ -90,6 +90,7 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.layouts {
     PyTypeObject,
+    PyVarObject,
     PyBUF_SIMPLE,
     Py_EQ,
     Py_NE,
@@ -210,9 +211,7 @@ import from c {
     ) -> i32;  def memchr(source: ptr, value: i32, size: u64) -> ptr;
     # PatternObject: `code` is the first of `codesize` code words.
     obj PatternObject {
-        has ob_refcnt: i64,
-            ob_type: ptr,
-            ob_size: i64,
+        has ob_base: PyVarObject,
             groups: i64,
             groupindex: ptr[PyObject],
             indexgroup: ptr[PyObject],
@@ -225,9 +224,7 @@ import from c {
     }
     # MatchObject: `mark` is the first of 2 * `groups` marks.
     obj MatchObject {
-        has ob_refcnt: i64,
-            ob_type: ptr,
-            ob_size: i64,
+        has ob_base: PyVarObject,
             string: ptr[PyObject],
             regs: ptr[PyObject],
             pattern: ptr[PyObject],
@@ -239,21 +236,17 @@ import from c {
     }
     # TemplateObject; its Py_SIZE items (TemplateItem) follow the header.
     obj TemplateObject {
-        has ob_refcnt: i64,
-            ob_type: ptr,
-            ob_size: i64,
+        has ob_base: PyVarObject,
             chunks: i64,
             literal: ptr[PyObject];
     }  obj TemplateItem {
         has index: i64,
             literal: ptr[PyObject];
-    }
-    # ScannerObject: the matching state (SRE_STATE) is embedded at
-    # SCANNER_STATE and the `executing` flag follows it at SCANNER_EXECUTING.
-    obj ScannerObject {
-        has ob_refcnt: i64,
-            ob_type: ptr,
-            pattern: ptr[PyObject];
+    }  obj ScannerObject {
+        has ob_base: _object,
+            pattern: ptr[PyObject],
+            state: SreState,
+            executing: i32;
     }
 }
 
@@ -276,7 +269,6 @@ glob PATTERN_SIZE: Final[int] = 96,
      SCANNER_SIZE: Final[int] = 264,
      SCANNER_PATTERN: Final[int] = 16,
      SCANNER_STATE: Final[int] = 24,
-     SCANNER_EXECUTING: Final[int] = 256,
      # offsetof(SRE_STATE, buffer)
      STATE_BUFFER: Final[int] = 40;
 
@@ -325,11 +317,6 @@ def pattern_code(op: ptr[PyObject]) -> ptr[u32] {
 # The match's mark array.
 def match_marks(op: ptr[PyObject]) -> ptr[i64] {
     return ptr[i64](ptr[u8](op) + MATCH_MARK);
-}
-
-# The scanner's `executing` flag.
-def scanner_executing(op: ptr[PyObject]) -> ptr[i32] {
-    return ptr[i32](ptr[u8](op) + SCANNER_EXECUTING);
 }
 
 # The template's items.
@@ -1559,12 +1546,12 @@ def _sre_template_impl(
     for i in range(n) {
         index = PyLong_AsSsize_t(PyList_GetItem(template, 2 * i + 1));
         if index == -1 and PyErr_Occurred() {
-            template_record(self).view(1)[0].ob_size = i;
+            template_record(self).view(1)[0].ob_base.ob_size = i;
             jacpy_release(self);
             return NULL;
         }
         if index < 0 {
-            template_record(self).view(1)[0].ob_size = i;
+            template_record(self).view(1)[0].ob_base.ob_size = i;
             PyErr_SetString(PyExc_TypeError, "invalid template");
             jacpy_release(self);
             return NULL;
@@ -2460,9 +2447,9 @@ def scanner_dealloc(op: ptr[PyObject]) {
 }
 
 def:priv scanner_begin(self: ptr[PyObject]) -> bool {
-    executing = scanner_executing(self).view(1);
-    was_executing = executing[0];
-    executing[0] = 1;
+    s = scanner_record(self).view(1);
+    was_executing = s[0].executing;
+    s[0].executing = 1;
     if was_executing != 0 {
         PyErr_SetString(
             PyExc_ValueError, "regular expression scanner already executing"
@@ -2473,7 +2460,7 @@ def:priv scanner_begin(self: ptr[PyObject]) -> bool {
 }
 
 def:priv scanner_end(self: ptr[PyObject]) {
-    scanner_executing(self).view(1)[0] = 0;
+    scanner_record(self).view(1)[0].executing = 0;
 }
 
 def:priv scanner_next(
@@ -2541,7 +2528,7 @@ def pattern_scanner(
     }
     s = scanner_record(scanner).view(1);
     s[0].pattern = NULL;
-    scanner_executing(scanner).view(1)[0] = 0;
+    s[0].executing = 0;
     # create search state object
     if not state_init(scanner_state(scanner), self, string, pos, endpos, False) {
         # state_fini() of the scanner's dealloc finds nothing to release.
