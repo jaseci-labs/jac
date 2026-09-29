@@ -575,7 +575,7 @@ def:priv get_ddict(instance: ptr[PyObject], zd: ZstdDictState) -> ptr {
 
 # ----------------------------------------------------------- ZstdCompressor
 
-obj ZstdCompressorState(NativeState) {
+obj CompressorState(NativeState) {
     has cctx: ptr = ptr(),
         # ZstdDict object in use
         dict: ptr[PyObject] = NULL,
@@ -611,10 +611,10 @@ obj ZstdCompressorState(NativeState) {
     }
 }
 
-def compressor_of(instance: ptr[PyObject]) -> ZstdCompressorState | None {
+def compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
     if jacpy_binding_native_present(instance, ZstdCompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdCompressor_token.handle);
-        if isinstance(state, ZstdCompressorState) {
+        if isinstance(state, CompressorState) {
             return state;
         }
     }
@@ -627,7 +627,7 @@ def compressor_of(instance: ptr[PyObject]) -> ZstdCompressorState | None {
 def release_compressor_context(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, ZstdCompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdCompressor_token.handle);
-        if isinstance(state, ZstdCompressorState) {
+        if isinstance(state, CompressorState) {
             state.free_context();
         }
     }
@@ -663,7 +663,7 @@ def convert_zstd_contentsize_converter(
 }
 
 def:priv set_c_level(
-    instance: ptr[PyObject], state: ZstdCompressorState, level: i32
+    instance: ptr[PyObject], state: CompressorState, level: i32
 ) -> bool {
     min_level = ZSTD_minCLevel();
     max_level = ZSTD_maxCLevel();
@@ -706,7 +706,7 @@ def:priv option_values(
 }
 
 def:priv set_c_parameters(
-    instance: ptr[PyObject], state: ZstdCompressorState, options: ptr[PyObject]
+    instance: ptr[PyObject], state: CompressorState, options: ptr[PyObject]
 ) -> bool {
     module = module_of(instance);
     if not module {
@@ -757,7 +757,7 @@ def:priv set_c_parameters(
 
 def:priv load_c_impl(
     instance: ptr[PyObject],
-    state: ZstdCompressorState,
+    state: CompressorState,
     zd_object: ptr[PyObject],
     zd: ZstdDictState,
     load_type: i32
@@ -786,7 +786,7 @@ def:priv load_c_impl(
 }
 
 def:priv load_c_dict(
-    instance: ptr[PyObject], state: ZstdCompressorState, zstd_dict: ptr[PyObject]
+    instance: ptr[PyObject], state: CompressorState, zstd_dict: ptr[PyObject]
 ) -> bool {
     # When compressing, use undigested dictionary by default.
     (zd_object, load_type) = parse_zstd_dict(
@@ -815,7 +815,7 @@ def _zstd_ZstdCompressor_new_impl(
     if not instance {
         return NULL;
     }
-    state = ZstdCompressorState(lock=new_mutex());
+    state = CompressorState(lock=new_mutex());
     if not state.lock {
         jacpy_release(instance);
         PyErr_NoMemory();
@@ -885,7 +885,7 @@ obj CompressInput {
 
 def:priv compress_lock_held(
     instance: ptr[PyObject],
-    state: ZstdCompressorState,
+    state: CompressorState,
     data: CompressInput,
     end_directive: i32
 ) -> ptr[PyObject] {
@@ -930,7 +930,7 @@ def:priv compress_lock_held(
 }
 
 def:priv compress_mt_continue_lock_held(
-    instance: ptr[PyObject], state: ZstdCompressorState, data: CompressInput
+    instance: ptr[PyObject], state: CompressorState, data: CompressInput
 ) -> ptr[PyObject] {
     source = ZSTD_inBuffer(src=data.address, size=u64(data.size), pos=0);
     out = ZSTD_outBuffer();
@@ -971,7 +971,7 @@ def:priv compress_mt_continue_lock_held(
 
 # Record the mode after a compress or flush; a failure ends the frame and
 # resets the session, which never fails.
-def:priv settle_mode(state: ZstdCompressorState, result: ptr[PyObject], mode: i32) {
+def:priv settle_mode(state: CompressorState, result: ptr[PyObject], mode: i32) {
     if result {
         state.last_mode = mode;
     } else {
@@ -1056,7 +1056,7 @@ def _zstd_ZstdCompressor_set_pledged_input_size_impl(
 
 # --------------------------------------------------------- ZstdDecompressor
 
-obj ZstdDecompressorState(NativeState) {
+obj DecompressorState(NativeState) {
     has dctx: ptr = ptr(),
         # ZstdDict object in use
         dict: ptr[PyObject] = NULL,
@@ -1104,10 +1104,10 @@ obj ZstdDecompressorState(NativeState) {
     }
 }
 
-def decompressor_of(instance: ptr[PyObject]) -> ZstdDecompressorState | None {
+def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     if jacpy_binding_native_present(instance, ZstdDecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdDecompressor_token.handle);
-        if isinstance(state, ZstdDecompressorState) {
+        if isinstance(state, DecompressorState) {
             return state;
         }
     }
@@ -1120,14 +1120,14 @@ def decompressor_of(instance: ptr[PyObject]) -> ZstdDecompressorState | None {
 def release_decompressor_context(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, ZstdDecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdDecompressor_token.handle);
-        if isinstance(state, ZstdDecompressorState) {
+        if isinstance(state, DecompressorState) {
             state.free_context();
         }
     }
 }
 
 def:priv set_d_parameters(
-    instance: ptr[PyObject], state: ZstdDecompressorState, options: ptr[PyObject]
+    instance: ptr[PyObject], state: DecompressorState, options: ptr[PyObject]
 ) -> bool {
     module = module_of(instance);
     if not module {
@@ -1168,7 +1168,7 @@ def:priv set_d_parameters(
 
 def:priv load_d_impl(
     instance: ptr[PyObject],
-    state: ZstdDecompressorState,
+    state: DecompressorState,
     zd_object: ptr[PyObject],
     zd: ZstdDictState,
     load_type: i32
@@ -1196,7 +1196,7 @@ def:priv load_d_impl(
 
 # Load dictionary or prefix to decompression context
 def:priv load_d_dict(
-    instance: ptr[PyObject], state: ZstdDecompressorState, zstd_dict: ptr[PyObject]
+    instance: ptr[PyObject], state: DecompressorState, zstd_dict: ptr[PyObject]
 ) -> bool {
     # When decompressing, use digested dictionary by default.
     (zd_object, load_type) = parse_zstd_dict(
@@ -1219,7 +1219,7 @@ def:priv load_d_dict(
 # flushed, an error code, or a positive count of work left in the frame.
 def:priv decompress_lock_held(
     instance: ptr[PyObject],
-    state: ZstdDecompressorState,
+    state: DecompressorState,
     source: &mut ZSTD_inBuffer,
     max_length: i64
 ) -> ptr[PyObject] {
@@ -1261,7 +1261,7 @@ def:priv decompress_lock_held(
     return output_finish(buffer, &mut out);
 }
 
-def:priv reset_session_lock_held(state: ZstdDecompressorState) {
+def:priv reset_session_lock_held(state: DecompressorState) {
     state.in_begin = 0;
     state.in_end = 0;
     previous = state.unused_data;
@@ -1275,7 +1275,7 @@ def:priv reset_session_lock_held(state: ZstdDecompressorState) {
 
 def:priv stream_decompress_lock_held(
     instance: ptr[PyObject],
-    state: ZstdDecompressorState,
+    state: DecompressorState,
     data: BufferArgument,
     max_length: i64
 ) -> ptr[PyObject] {
@@ -1388,7 +1388,7 @@ def _zstd_ZstdDecompressor_new_impl(
     if not instance {
         return NULL;
     }
-    state = ZstdDecompressorState(lock=new_mutex());
+    state = DecompressorState(lock=new_mutex());
     if not state.lock {
         jacpy_release(instance);
         PyErr_NoMemory();
