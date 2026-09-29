@@ -9,7 +9,9 @@ sources use, so a Jac port reads like the C it replaces:
     jac run scripts/jacpython/gen_capi.jac            # rewrite the file
     jac run scripts/jacpython/gen_capi.jac --check    # fail on drift
 
-Exported functions and data symbols are declared. A PyAPI_DATA variable (or
+Exported functions and data symbols are declared. A variadic function's `...`
+is `*args: any`, so a call passes its extra arguments with C's default
+promotions (`PyTuple_Pack(2, a, b)`). A PyAPI_DATA variable (or
 an internal header's `extern` one) becomes a `glob` of the clib block: an
 object pointer such as `PyExc_TypeError` is read in place as ptr[PyObject],
 and a C object such as `PyLong_Type` is declared with the opaque PyObject type
@@ -35,8 +37,8 @@ import from common {
 }
 
 glob OUTPUT: Path = RUNTIME / "cpython_api.jac",
-     # C helpers for what has no exported function: data symbols, macros, struct
-     # fields, varargs and errno. Their Jac declarations come from these files too.
+     # C helpers for what has no exported function: macros, struct fields and
+     # errno. Their Jac declarations come from these files too.
      HELPER_SOURCES: list[Path] = [
          BOOTSTRAP / "object_api.c",
          BOOTSTRAP / "compiler_runtime.c"
@@ -235,6 +237,7 @@ glob OPAQUE: list[str] = [
          "PyBytes_DecodeEscape": {2, 4},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
+         "PyErr_WarnExplicit": {4},
          "PyUnicode_AsWideCharString": {1},
          "PyUnicode_DecodeASCII": {2},
          "PyUnicode_DecodeCharmap": {3},
@@ -311,6 +314,9 @@ glob OPAQUE: list[str] = [
      API_FUNC: str = r"PyAPI_FUNC\(((?:[^()]|\([^()]*\))*)\)\s*([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)",
      INTERNAL_EXTERN: str = r"^[ \t]*extern[ \t]+((?:const[ \t]+)?[A-Za-z_]\w*(?:[ \t]+\w+)*[ \t\*]*?)[ \t]*\**?\b([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)\s*;",
      API_DATA: str = r"PyAPI_DATA\(([^()]*)\)\s*([A-Za-z_]\w*)\s*;",
+     # A function the headers export with PyAPI_DATA (pycore_long.h's
+     # `PyAPI_DATA(double) _PyLong_Frexp(PyLongObject *a, int64_t *e);`).
+     API_DATA_FUNC: str = r"PyAPI_DATA\(([^()]*)\)\s*([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)\s*;",
      INTERNAL_DATA: str = r"^[ \t]*extern[ \t]+((?:const[ \t]+)?[A-Za-z_]\w*[ \t\*]*?)[ \t]*\b([A-Za-z_]\w*)[ \t]*;",
      HELPER_DEF: str = r"^(?!static)((?:const )?\w+(?: \w+)*\s*\**)\s*(jacpy_\w+)\(([^)]*)\)\s*\{",
      # Typedef structs of the C helpers whose fields are all scalars.
@@ -357,7 +363,8 @@ def declarations(
     functions: dict[str, tuple[str, list[tuple[str, str]]]] = {};
     for path in sorted(texts) {
         text = plain(texts[path]);
-        found = list(re.finditer(API_FUNC, text, re.S));
+        found = list(re.finditer(API_FUNC, text, re.S))
+            + list(re.finditer(API_DATA_FUNC, text, re.S));
         # Internal headers (and posixmodule.h) also declare plain `extern`
         # functions. jacpython.o links into libpython itself, so they resolve
         # like exported ones.
@@ -550,9 +557,11 @@ def used_names(known: set[str]) -> set[str] {
             text = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', text);
             names.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text));
             CALLED.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text));
+            # jac fmt joins the definitions of a C block onto the line that
+            # closes the previous one (`}  def PyUnstable_AtExit(...) {`).
             defined.update(
                 re.findall(
-                    r"(?m)^\s*def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b[^;{]*\{",
+                    r"(?m)(?:^|\})\s*def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b[^;{]*\{",
                     text
                 )
             );
@@ -599,8 +608,14 @@ def render(
         rendered: list[str] = [];
         mapped = True;
         for (index, (ctype, pname)) in enumerate(params) {
+            # A C variadic function takes its extra arguments with C's default
+            # promotions.
+            if ctype == "..." {
+                rendered.append("*args: any");
+                break;
+            }
             jtype = jac_type(name, ctype, index);
-            if jtype is None or ctype == "..." {
+            if jtype is None {
                 mapped = False;
                 break;
             }

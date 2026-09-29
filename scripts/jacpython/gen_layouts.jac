@@ -53,7 +53,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/object.h",
          "Include/cpython/object.h",
          "Include/cpython/longintrepr.h",
-         "Include/cpython/tupleobject.h"
+         "Include/cpython/tupleobject.h",
+         "Include/cpython/initconfig.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -65,7 +66,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyTypeObject", "struct _typeobject"),
          ("_PyLongValue", "_PyLongValue"),
          ("PyLongObject", "struct _longobject"),
-         ("PyTupleObject", "PyTupleObject")
+         ("PyTupleObject", "PyTupleObject"),
+         ("PyStatus", "PyStatus")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -85,7 +87,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "offsetof(struct _longobject, long_value.ob_digit)",
              "i64"
          ),
-         ("PyLong_DIGIT_SIZE", "sizeof(digit)", "i64")
+         ("PyLong_DIGIT_SIZE", "sizeof(digit)", "i64"),
+         ("_PyStatus_TYPE_OK", "_PyStatus_TYPE_OK", "u32"),
+         ("_PyStatus_TYPE_ERROR", "_PyStatus_TYPE_ERROR", "u32"),
+         ("PY_BUFFER_SIZE", "sizeof(Py_buffer)", "u64")
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every
      # supported release build (linux and darwin, x86_64 and aarch64).
@@ -422,9 +427,23 @@ def size_align(jac: str) -> tuple[int, int] {
 
 # The member declarations of a struct body: (C type, member name). An anonymous
 # union contributes its first member, which the size asserts prove is its
-# widest; an array member `T name[1]` contributes one T (see layouts.jac).
+# widest; an array member `T name[1]` contributes one T (see layouts.jac). A
+# member of an inline enum type (`PyStatus._type`) is the enum's integer type,
+# unsigned int for enumerators that are all non-negative, which the kind and
+# signedness asserts prove.
 def members(body: str) -> list[tuple[str, str, bool]] {
     body = body.replace("__extension__", " ");
+    while True {
+        hit = re.search(r"\benum\s*\{", body);
+        if hit is None {
+            break;
+        }
+        end = closing(body, hit.end() - 1);
+        if re.search(r"=\s*-", body[hit.end():end - 1]) {
+            sys.exit("gen_layouts: only enums without negative values are supported");
+        }
+        body = body[:hit.start()] + "unsigned int" + body[end:];
+    }
     while True {
         hit = re.search(r"\b(union|struct)\s*\{", body);
         if hit is None {
@@ -525,8 +544,11 @@ def require(name: str) -> None {
 }
 
 # --------------------------------------------------------------------- output
-def capi_opaque -> set[str] {
-    return set(re.findall(r"\bobj (\w+);", CAPI.read_text()));
+# The records cpython_api.jac declares, opaque (`obj PyObject;`) or C-layout
+# (`obj PyMethodDef { ... }`); layouts.jac imports them rather than
+# redeclaring a distinct type.
+def capi_records -> set[str] {
+    return set(re.findall(r"\bobj (\w+)\s*[;{]", CAPI.read_text()));
 }
 
 def c_type_name(layout: Layout) -> str {
@@ -534,7 +556,7 @@ def c_type_name(layout: Layout) -> str {
 }
 
 def render_jac(values: dict[str, int]) -> str {
-    from_capi = sorted({"PyObject"} | (set(opaque) & capi_opaque()));
+    from_capi = sorted({"PyObject"} | (set(opaque) & capi_records()));
     local = sorted(set(opaque) - set(from_capi));
     lines = [
         '"""CPython object layouts for native Jac object-model ports.',

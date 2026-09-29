@@ -255,6 +255,19 @@ FIELD(PyTupleObject, ob_item, 32, 8);
 KIND(PyTupleObject, ob_item[0], 5);
 LAYOUT(PyTupleObject, 40, 8);
 
+/* PyStatus */
+FIELD(PyStatus, _type, 0, 4);
+KIND(PyStatus, _type, 1);
+SIGNED(PyStatus, _type, 0);
+FIELD(PyStatus, func, 8, 8);
+KIND(PyStatus, func, 5);
+FIELD(PyStatus, err_msg, 16, 8);
+KIND(PyStatus, err_msg, 5);
+FIELD(PyStatus, exitcode, 24, 4);
+KIND(PyStatus, exitcode, 1);
+SIGNED(PyStatus, exitcode, 1);
+LAYOUT(PyStatus, 32, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
 CONSTANT(Py_TPFLAGS_TUPLE_SUBCLASS, 67108864LL);
@@ -262,3 +275,6 @@ CONSTANT(_PyLong_FALSE_TAG, 1LL);
 CONSTANT(_PyLong_TRUE_TAG, 8LL);
 CONSTANT(offsetof(struct _longobject, long_value.ob_digit), 24LL);
 CONSTANT(sizeof(digit), 4LL);
+CONSTANT(_PyStatus_TYPE_OK, 0LL);
+CONSTANT(_PyStatus_TYPE_ERROR, 1LL);
+CONSTANT(sizeof(Py_buffer), 80LL);
