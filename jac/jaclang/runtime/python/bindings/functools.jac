@@ -8,7 +8,6 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_SystemError,
     PyExc_TypeError,
     PyIndex_Check,
-    PyMethod_New,
     PyObject,
     PyObject_CallNoArgs,
     PyObject_GenericGetDict,
@@ -19,7 +18,6 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_GetSlice,
     PyTuple_New,
     PyTuple_Size,
-    Py_GenericAlias,
     Py_LeaveRecursiveCall,
     Py_NewRef,
     Py_None,
@@ -33,6 +31,8 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_set_owned,
     jacpy_type_check
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
+import from jaclang.runtime.python.object_model.method { PyMethod_New }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodDefinition,
