@@ -18,10 +18,18 @@ bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T
 fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.
 Pointers to records no port reads yet are opaque.
 """
-import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
+import from jaclang.runtime.python.cpython_api {
+    PyMemberDef,
+    PyMethodDef,
+    PyObject,
+    PyType_Slot,
+    PyType_Spec,
+    Py_buffer,
+    Py_complex
+}
 
 import from c {
-    obj PyBufferProcs;  obj _object {
+    obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -149,6 +157,10 @@ import from c {
         has ob_base: PyVarObject,
             ob_hash: i64,
             ob_item: ptr[PyObject];
+    }  obj PyListObject {
+        has ob_base: PyVarObject,
+            ob_item: ptr[ptr[PyObject]],
+            allocated: i64;
     }  obj PyStatus {
         has _type: u32,
             func: ptr[u8],
@@ -374,12 +386,88 @@ import from c {
                     [i32, i32, i32, i32, ptr[PyObject], i32, ptr[PyTypeObject]],
                     ptr[PyObject]
                 ];
+    }  obj PyBufferProcs {
+        has bf_getbuffer: Callable[[ptr[PyObject], ptr[Py_buffer], i32], i32],
+            bf_releasebuffer: Callable[[ptr[PyObject], ptr[Py_buffer]], None];
+    }  obj PyFloatObject {
+        has ob_base: _object,
+            ob_fval: f64;
+    }  obj PyComplexObject {
+        has ob_base: _object,
+            cval: Py_complex;
+    }  obj PyMethodObject {
+        has ob_base: _object,
+            im_func: ptr[PyObject],
+            im_self: ptr[PyObject],
+            im_weakreflist: ptr[PyObject],
+            vectorcall:
+                Callable[
+                    [ptr[PyObject], ptr[ptr[PyObject]], u64, ptr[PyObject]],
+                    ptr[PyObject]
+                ];
+    }  obj PyInstanceMethodObject {
+        has ob_base: _object,
+            func: ptr[PyObject];
+    }  obj PyStructSequence_Field {
+        has name: ptr[u8],
+            doc: ptr[u8];
+    }  obj PyStructSequence_Desc {
+        has name: ptr[u8],
+            doc: ptr[u8],
+            fields: ptr[PyStructSequence_Field],
+            n_in_sequence: i32;
+    }  obj PyPickleBufferObject {
+        has ob_base: _object,
+            view: Py_buffer,
+            weakreflist: ptr[PyObject];
+    }  obj interpolationobject {
+        has ob_base: _object,
+            value: ptr[PyObject],
+            expression: ptr[PyObject],
+            conversion: ptr[PyObject],
+            format_spec: ptr[PyObject];
+    }  obj templateiterobject {
+        has ob_base: _object,
+            stringsiter: ptr[PyObject],
+            interpolationsiter: ptr[PyObject],
+            from_strings: i32;
+    }  obj templateobject {
+        has ob_base: _object,
+            strings: ptr[PyObject],
+            interpolations: ptr[PyObject];
+    }  obj unionobject {
+        has ob_base: _object,
+            args: ptr[PyObject],
+            hashable_args: ptr[PyObject],
+            unhashable_args: ptr[PyObject],
+            parameters: ptr[PyObject],
+            weakreflist: ptr[PyObject];
+    }  obj gaobject {
+        has ob_base: _object,
+            origin: ptr[PyObject],
+            args: ptr[PyObject],
+            parameters: ptr[PyObject],
+            weakreflist: ptr[PyObject],
+            starred: u8,
+            vectorcall:
+                Callable[
+                    [ptr[PyObject], ptr[ptr[PyObject]], u64, ptr[PyObject]],
+                    ptr[PyObject]
+                ];
+    }  obj gaiterobject {
+        has ob_base: _object,
+            obj_: ptr[PyObject];
+    }  obj PyStdPrinter_Object {
+        has ob_base: _object,
+            fd: i32;
     }
 }
 
 glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
+     _Py_IMMORTAL_INITIAL_REFCNT: Final[i64] = 3221225472,
      Py_TPFLAGS_DEFAULT: Final[u64] = 0,
      Py_TPFLAGS_TUPLE_SUBCLASS: Final[u64] = 67108864,
+     Py_TPFLAGS_LIST_SUBCLASS: Final[u64] = 33554432,
      Py_TPFLAGS_HAVE_GC: Final[u64] = 16384,
      Py_TPFLAGS_BASETYPE: Final[u64] = 1024,
      Py_TPFLAGS_SEQUENCE: Final[u64] = 32,
@@ -433,6 +521,68 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      _Py_freelists_SLICES: Final[i64] = 432,
      _Py_freelists_RANGES: Final[i64] = 448,
      _Py_freelists_RANGE_ITERS: Final[i64] = 464,
+     _Py_freelists_PYMETHODOBJECTS: Final[i64] = 608,
+     Py_pymethodobjects_MAXFREELIST: Final[i64] = 20,
+     Py_TPFLAGS_HAVE_VECTORCALL: Final[u64] = 2048,
+     Py_TPFLAGS_HEAPTYPE: Final[u64] = 512,
+     Py_TPFLAGS_READY: Final[u64] = 4096,
+     Py_TPFLAGS_DISALLOW_INSTANTIATION: Final[u64] = 128,
+     _Py_TPFLAGS_STATIC_BUILTIN: Final[u64] = 2,
+     _Py_TYPE_VERSION_COMPLEX: Final[u32] = 11,
+     Py_T_DOUBLE: Final[i32] = 4,
+     Py_T_BOOL: Final[i32] = 14,
+     Py_tp_members: Final[i32] = 72,
+     PyBUF_FULL_RO: Final[i32] = 284,
+     Py_DTSF_SIGN: Final[i32] = 1,
+     Py_PRINT_RAW: Final[i32] = 1,
+     PyHASH_IMAG: Final[u64] = 1000003,
+     FVC_STR: Final[i32] = 1,
+     FVC_REPR: Final[i32] = 2,
+     FVC_ASCII: Final[i32] = 3,
+     PY_VECTORCALL_ARGUMENTS_OFFSET: Final[u64] = 9223372036854775808,
+     _Py_MEMORYVIEW_C: Final[i32] = 2,
+     _Py_MEMORYVIEW_FORTRAN: Final[i32] = 4,
+     PyMemoryViewObject_VIEW: Final[i64] = 56,
+     PyMemoryViewObject_FLAGS: Final[i64] = 40,
+     PyComplexObject_SIZE: Final[i64] = 32,
+     PyComplexObject_REAL: Final[i64] = 16,
+     PyComplexObject_IMAG: Final[i64] = 24,
+     PyMethodObject_SIZE: Final[i64] = 48,
+     PyMethodObject_FUNC: Final[i64] = 16,
+     PyMethodObject_SELF: Final[i64] = 24,
+     PyMethodObject_WEAKREFLIST: Final[i64] = 32,
+     PyMethodObject_VECTORCALL: Final[i64] = 40,
+     PyInstanceMethodObject_SIZE: Final[i64] = 24,
+     PyInstanceMethodObject_FUNC: Final[i64] = 16,
+     PyStructSequence_SIZE: Final[i64] = 40,
+     PyPickleBufferObject_SIZE: Final[i64] = 104,
+     PyPickleBufferObject_VIEW: Final[i64] = 16,
+     Py_buffer_LEN: Final[i64] = 16,
+     Py_buffer_ITEMSIZE: Final[i64] = 24,
+     PY_MEMBER_DEF_SIZE: Final[i64] = 40,
+     PY_TYPE_SLOT_SIZE: Final[i64] = 16,
+     PY_TYPE_SPEC_SIZE: Final[i64] = 32,
+     PyPickleBufferObject_WEAKREFLIST: Final[i64] = 96,
+     interpolationobject_SIZE: Final[i64] = 48,
+     interpolationobject_VALUE: Final[i64] = 16,
+     interpolationobject_EXPRESSION: Final[i64] = 24,
+     interpolationobject_CONVERSION: Final[i64] = 32,
+     interpolationobject_FORMAT_SPEC: Final[i64] = 40,
+     templateiterobject_SIZE: Final[i64] = 40,
+     templateobject_SIZE: Final[i64] = 32,
+     templateobject_STRINGS: Final[i64] = 16,
+     templateobject_INTERPOLATIONS: Final[i64] = 24,
+     unionobject_SIZE: Final[i64] = 56,
+     unionobject_ARGS: Final[i64] = 16,
+     unionobject_WEAKREFLIST: Final[i64] = 48,
+     gaobject_SIZE: Final[i64] = 64,
+     gaobject_ORIGIN: Final[i64] = 16,
+     gaobject_ARGS: Final[i64] = 24,
+     gaobject_STARRED: Final[i64] = 48,
+     gaobject_WEAKREFLIST: Final[i64] = 40,
+     gaobject_VECTORCALL: Final[i64] = 56,
+     gaiterobject_SIZE: Final[i64] = 24,
+     PyStdPrinter_Object_SIZE: Final[i64] = 24,
      Py_slices_MAXFREELIST: Final[i64] = 1,
      Py_ranges_MAXFREELIST: Final[i64] = 6,
      Py_range_iters_MAXFREELIST: Final[i64] = 6,

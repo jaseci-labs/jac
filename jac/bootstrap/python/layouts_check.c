@@ -12,6 +12,8 @@
 #include "internal/pycore_abstract.h"
 #include "internal/pycore_freelist_state.h"
 #include "internal/pycore_range.h"
+#include "internal/pycore_typeobject.h"
+#include "internal/pycore_interp_structs.h"
 #include <stddef.h>
 
 /* The private object structs of the ported Objects/ files, as the
@@ -25,6 +27,14 @@ typedef struct { PyObject_HEAD Py_ssize_t en_index; PyObject* en_sit; PyObject* 
 typedef struct { PyObject_HEAD Py_ssize_t index; PyObject* seq; } reversedobject;
 typedef struct { PyObject_HEAD PyObject *start; PyObject *stop; PyObject *step; PyObject *length; } rangeobject;
 typedef struct { PyObject_HEAD PyObject *start; PyObject *step; PyObject *len; } longrangeiterobject;
+typedef struct { PyObject_HEAD Py_buffer view; PyObject *weakreflist; } PyPickleBufferObject;
+typedef struct { PyObject_HEAD PyObject *value; PyObject *expression; PyObject *conversion; PyObject *format_spec; } interpolationobject;
+typedef struct { PyObject_HEAD PyObject *stringsiter; PyObject *interpolationsiter; int from_strings; } templateiterobject;
+typedef struct { PyObject_HEAD PyObject *strings; PyObject *interpolations; } templateobject;
+typedef struct { PyObject_HEAD PyObject *args; PyObject *hashable_args; PyObject *unhashable_args; PyObject *parameters; PyObject *weakreflist; } unionobject;
+typedef struct { PyObject_HEAD PyObject *origin; PyObject *args; PyObject *parameters; PyObject *weakreflist; bool starred; vectorcallfunc vectorcall; } gaobject;
+typedef struct { PyObject_HEAD PyObject *obj; } gaiterobject;
+typedef struct { PyObject_HEAD int fd; } PyStdPrinter_Object;
 
 #define FIELD(type, field, offset, size) \
     _Static_assert(offsetof(type, field) == (offset), #type "." #field " offset"); \
@@ -271,6 +281,16 @@ SIGNED(PyTupleObject, ob_hash, 1);
 FIELD(PyTupleObject, ob_item, 32, 8);
 KIND(PyTupleObject, ob_item[0], 5);
 LAYOUT(PyTupleObject, 40, 8);
+
+/* PyListObject */
+FIELD(PyListObject, ob_base, 0, 24);
+KIND(PyListObject, ob_base, 12);
+FIELD(PyListObject, ob_item, 24, 8);
+KIND(PyListObject, ob_item, 5);
+FIELD(PyListObject, allocated, 32, 8);
+KIND(PyListObject, allocated, 1);
+SIGNED(PyListObject, allocated, 1);
+LAYOUT(PyListObject, 40, 8);
 
 /* PyStatus */
 FIELD(PyStatus, _type, 0, 4);
@@ -722,9 +742,222 @@ FIELD(PyDateTime_CAPI, Time_FromTimeAndFold, 112, 8);
 KIND(PyDateTime_CAPI, Time_FromTimeAndFold, 5);
 LAYOUT(PyDateTime_CAPI, 120, 8);
 
+/* Py_buffer */
+FIELD(Py_buffer, buf, 0, 8);
+KIND(Py_buffer, buf, 5);
+FIELD(Py_buffer, obj, 8, 8);
+KIND(Py_buffer, obj, 5);
+FIELD(Py_buffer, len, 16, 8);
+KIND(Py_buffer, len, 1);
+SIGNED(Py_buffer, len, 1);
+FIELD(Py_buffer, itemsize, 24, 8);
+KIND(Py_buffer, itemsize, 1);
+SIGNED(Py_buffer, itemsize, 1);
+FIELD(Py_buffer, readonly, 32, 4);
+KIND(Py_buffer, readonly, 1);
+SIGNED(Py_buffer, readonly, 1);
+FIELD(Py_buffer, ndim, 36, 4);
+KIND(Py_buffer, ndim, 1);
+SIGNED(Py_buffer, ndim, 1);
+FIELD(Py_buffer, format, 40, 8);
+KIND(Py_buffer, format, 5);
+FIELD(Py_buffer, shape, 48, 8);
+KIND(Py_buffer, shape, 5);
+FIELD(Py_buffer, strides, 56, 8);
+KIND(Py_buffer, strides, 5);
+FIELD(Py_buffer, suboffsets, 64, 8);
+KIND(Py_buffer, suboffsets, 5);
+FIELD(Py_buffer, internal, 72, 8);
+KIND(Py_buffer, internal, 5);
+LAYOUT(Py_buffer, 80, 8);
+
+/* PyBufferProcs */
+FIELD(PyBufferProcs, bf_getbuffer, 0, 8);
+KIND(PyBufferProcs, bf_getbuffer, 5);
+FIELD(PyBufferProcs, bf_releasebuffer, 8, 8);
+KIND(PyBufferProcs, bf_releasebuffer, 5);
+LAYOUT(PyBufferProcs, 16, 8);
+
+/* Py_complex */
+FIELD(Py_complex, real, 0, 8);
+KIND(Py_complex, real, 8);
+FIELD(Py_complex, imag, 8, 8);
+KIND(Py_complex, imag, 8);
+LAYOUT(Py_complex, 16, 8);
+
+/* PyFloatObject */
+FIELD(PyFloatObject, ob_base, 0, 16);
+KIND(PyFloatObject, ob_base, 12);
+FIELD(PyFloatObject, ob_fval, 16, 8);
+KIND(PyFloatObject, ob_fval, 8);
+LAYOUT(PyFloatObject, 24, 8);
+
+/* PyComplexObject */
+FIELD(PyComplexObject, ob_base, 0, 16);
+KIND(PyComplexObject, ob_base, 12);
+FIELD(PyComplexObject, cval, 16, 16);
+KIND(PyComplexObject, cval, 12);
+LAYOUT(PyComplexObject, 32, 8);
+
+/* PyMethodObject */
+FIELD(PyMethodObject, ob_base, 0, 16);
+KIND(PyMethodObject, ob_base, 12);
+FIELD(PyMethodObject, im_func, 16, 8);
+KIND(PyMethodObject, im_func, 5);
+FIELD(PyMethodObject, im_self, 24, 8);
+KIND(PyMethodObject, im_self, 5);
+FIELD(PyMethodObject, im_weakreflist, 32, 8);
+KIND(PyMethodObject, im_weakreflist, 5);
+FIELD(PyMethodObject, vectorcall, 40, 8);
+KIND(PyMethodObject, vectorcall, 5);
+LAYOUT(PyMethodObject, 48, 8);
+
+/* PyInstanceMethodObject */
+FIELD(PyInstanceMethodObject, ob_base, 0, 16);
+KIND(PyInstanceMethodObject, ob_base, 12);
+FIELD(PyInstanceMethodObject, func, 16, 8);
+KIND(PyInstanceMethodObject, func, 5);
+LAYOUT(PyInstanceMethodObject, 24, 8);
+
+/* PyType_Slot */
+FIELD(PyType_Slot, slot, 0, 4);
+KIND(PyType_Slot, slot, 1);
+SIGNED(PyType_Slot, slot, 1);
+FIELD(PyType_Slot, pfunc, 8, 8);
+KIND(PyType_Slot, pfunc, 5);
+LAYOUT(PyType_Slot, 16, 8);
+
+/* PyType_Spec */
+FIELD(PyType_Spec, name, 0, 8);
+KIND(PyType_Spec, name, 5);
+FIELD(PyType_Spec, basicsize, 8, 4);
+KIND(PyType_Spec, basicsize, 1);
+SIGNED(PyType_Spec, basicsize, 1);
+FIELD(PyType_Spec, itemsize, 12, 4);
+KIND(PyType_Spec, itemsize, 1);
+SIGNED(PyType_Spec, itemsize, 1);
+FIELD(PyType_Spec, flags, 16, 4);
+KIND(PyType_Spec, flags, 1);
+SIGNED(PyType_Spec, flags, 0);
+FIELD(PyType_Spec, slots, 24, 8);
+KIND(PyType_Spec, slots, 5);
+LAYOUT(PyType_Spec, 32, 8);
+
+/* PyStructSequence_Field */
+FIELD(PyStructSequence_Field, name, 0, 8);
+KIND(PyStructSequence_Field, name, 5);
+FIELD(PyStructSequence_Field, doc, 8, 8);
+KIND(PyStructSequence_Field, doc, 5);
+LAYOUT(PyStructSequence_Field, 16, 8);
+
+/* PyStructSequence_Desc */
+FIELD(PyStructSequence_Desc, name, 0, 8);
+KIND(PyStructSequence_Desc, name, 5);
+FIELD(PyStructSequence_Desc, doc, 8, 8);
+KIND(PyStructSequence_Desc, doc, 5);
+FIELD(PyStructSequence_Desc, fields, 16, 8);
+KIND(PyStructSequence_Desc, fields, 5);
+FIELD(PyStructSequence_Desc, n_in_sequence, 24, 4);
+KIND(PyStructSequence_Desc, n_in_sequence, 1);
+SIGNED(PyStructSequence_Desc, n_in_sequence, 1);
+LAYOUT(PyStructSequence_Desc, 32, 8);
+
+/* PyPickleBufferObject */
+FIELD(PyPickleBufferObject, ob_base, 0, 16);
+KIND(PyPickleBufferObject, ob_base, 12);
+FIELD(PyPickleBufferObject, view, 16, 80);
+KIND(PyPickleBufferObject, view, 12);
+FIELD(PyPickleBufferObject, weakreflist, 96, 8);
+KIND(PyPickleBufferObject, weakreflist, 5);
+LAYOUT(PyPickleBufferObject, 104, 8);
+
+/* interpolationobject */
+FIELD(interpolationobject, ob_base, 0, 16);
+KIND(interpolationobject, ob_base, 12);
+FIELD(interpolationobject, value, 16, 8);
+KIND(interpolationobject, value, 5);
+FIELD(interpolationobject, expression, 24, 8);
+KIND(interpolationobject, expression, 5);
+FIELD(interpolationobject, conversion, 32, 8);
+KIND(interpolationobject, conversion, 5);
+FIELD(interpolationobject, format_spec, 40, 8);
+KIND(interpolationobject, format_spec, 5);
+LAYOUT(interpolationobject, 48, 8);
+
+/* templateiterobject */
+FIELD(templateiterobject, ob_base, 0, 16);
+KIND(templateiterobject, ob_base, 12);
+FIELD(templateiterobject, stringsiter, 16, 8);
+KIND(templateiterobject, stringsiter, 5);
+FIELD(templateiterobject, interpolationsiter, 24, 8);
+KIND(templateiterobject, interpolationsiter, 5);
+FIELD(templateiterobject, from_strings, 32, 4);
+KIND(templateiterobject, from_strings, 1);
+SIGNED(templateiterobject, from_strings, 1);
+LAYOUT(templateiterobject, 40, 8);
+
+/* templateobject */
+FIELD(templateobject, ob_base, 0, 16);
+KIND(templateobject, ob_base, 12);
+FIELD(templateobject, strings, 16, 8);
+KIND(templateobject, strings, 5);
+FIELD(templateobject, interpolations, 24, 8);
+KIND(templateobject, interpolations, 5);
+LAYOUT(templateobject, 32, 8);
+
+/* unionobject */
+FIELD(unionobject, ob_base, 0, 16);
+KIND(unionobject, ob_base, 12);
+FIELD(unionobject, args, 16, 8);
+KIND(unionobject, args, 5);
+FIELD(unionobject, hashable_args, 24, 8);
+KIND(unionobject, hashable_args, 5);
+FIELD(unionobject, unhashable_args, 32, 8);
+KIND(unionobject, unhashable_args, 5);
+FIELD(unionobject, parameters, 40, 8);
+KIND(unionobject, parameters, 5);
+FIELD(unionobject, weakreflist, 48, 8);
+KIND(unionobject, weakreflist, 5);
+LAYOUT(unionobject, 56, 8);
+
+/* gaobject */
+FIELD(gaobject, ob_base, 0, 16);
+KIND(gaobject, ob_base, 12);
+FIELD(gaobject, origin, 16, 8);
+KIND(gaobject, origin, 5);
+FIELD(gaobject, args, 24, 8);
+KIND(gaobject, args, 5);
+FIELD(gaobject, parameters, 32, 8);
+KIND(gaobject, parameters, 5);
+FIELD(gaobject, weakreflist, 40, 8);
+KIND(gaobject, weakreflist, 5);
+FIELD(gaobject, starred, 48, 1);
+KIND(gaobject, starred, 4);
+SIGNED(gaobject, starred, 0);
+FIELD(gaobject, vectorcall, 56, 8);
+KIND(gaobject, vectorcall, 5);
+LAYOUT(gaobject, 64, 8);
+
+/* gaiterobject */
+FIELD(gaiterobject, ob_base, 0, 16);
+KIND(gaiterobject, ob_base, 12);
+FIELD(gaiterobject, obj, 16, 8);
+KIND(gaiterobject, obj, 5);
+LAYOUT(gaiterobject, 24, 8);
+
+/* PyStdPrinter_Object */
+FIELD(PyStdPrinter_Object, ob_base, 0, 16);
+KIND(PyStdPrinter_Object, ob_base, 12);
+FIELD(PyStdPrinter_Object, fd, 16, 4);
+KIND(PyStdPrinter_Object, fd, 1);
+SIGNED(PyStdPrinter_Object, fd, 1);
+LAYOUT(PyStdPrinter_Object, 24, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
+CONSTANT(_Py_IMMORTAL_INITIAL_REFCNT, 3221225472LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
 CONSTANT(Py_TPFLAGS_TUPLE_SUBCLASS, 67108864LL);
+CONSTANT(Py_TPFLAGS_LIST_SUBCLASS, 33554432LL);
 CONSTANT(Py_TPFLAGS_HAVE_GC, 16384LL);
 CONSTANT(Py_TPFLAGS_BASETYPE, 1024LL);
 CONSTANT(Py_TPFLAGS_SEQUENCE, 32LL);
@@ -778,6 +1011,68 @@ CONSTANT(sizeof(longrangeiterobject), 40LL);
 CONSTANT(offsetof(struct _Py_freelists, slices), 432LL);
 CONSTANT(offsetof(struct _Py_freelists, ranges), 448LL);
 CONSTANT(offsetof(struct _Py_freelists, range_iters), 464LL);
+CONSTANT(offsetof(struct _Py_freelists, pymethodobjects), 608LL);
+CONSTANT(Py_pymethodobjects_MAXFREELIST, 20LL);
+CONSTANT(Py_TPFLAGS_HAVE_VECTORCALL, 2048LL);
+CONSTANT(Py_TPFLAGS_HEAPTYPE, 512LL);
+CONSTANT(Py_TPFLAGS_READY, 4096LL);
+CONSTANT(Py_TPFLAGS_DISALLOW_INSTANTIATION, 128LL);
+CONSTANT(_Py_TPFLAGS_STATIC_BUILTIN, 2LL);
+CONSTANT(_Py_TYPE_VERSION_COMPLEX, 11LL);
+CONSTANT(Py_T_DOUBLE, 4LL);
+CONSTANT(Py_T_BOOL, 14LL);
+CONSTANT(Py_tp_members, 72LL);
+CONSTANT(PyBUF_FULL_RO, 284LL);
+CONSTANT(Py_DTSF_SIGN, 1LL);
+CONSTANT(Py_PRINT_RAW, 1LL);
+CONSTANT(_PyHASH_IMAG, 1000003LL);
+CONSTANT(FVC_STR, 1LL);
+CONSTANT(FVC_REPR, 2LL);
+CONSTANT(FVC_ASCII, 3LL);
+CONSTANT(PY_VECTORCALL_ARGUMENTS_OFFSET, -9223372036854775808LL);
+CONSTANT(_Py_MEMORYVIEW_C, 2LL);
+CONSTANT(_Py_MEMORYVIEW_FORTRAN, 4LL);
+CONSTANT(offsetof(PyMemoryViewObject, view), 56LL);
+CONSTANT(offsetof(PyMemoryViewObject, flags), 40LL);
+CONSTANT(sizeof(PyComplexObject), 32LL);
+CONSTANT(offsetof(PyComplexObject, cval.real), 16LL);
+CONSTANT(offsetof(PyComplexObject, cval.imag), 24LL);
+CONSTANT(sizeof(PyMethodObject), 48LL);
+CONSTANT(offsetof(PyMethodObject, im_func), 16LL);
+CONSTANT(offsetof(PyMethodObject, im_self), 24LL);
+CONSTANT(offsetof(PyMethodObject, im_weakreflist), 32LL);
+CONSTANT(offsetof(PyMethodObject, vectorcall), 40LL);
+CONSTANT(sizeof(PyInstanceMethodObject), 24LL);
+CONSTANT(offsetof(PyInstanceMethodObject, func), 16LL);
+CONSTANT(sizeof(PyStructSequence), 40LL);
+CONSTANT(sizeof(PyPickleBufferObject), 104LL);
+CONSTANT(offsetof(PyPickleBufferObject, view), 16LL);
+CONSTANT(offsetof(Py_buffer, len), 16LL);
+CONSTANT(offsetof(Py_buffer, itemsize), 24LL);
+CONSTANT(sizeof(PyMemberDef), 40LL);
+CONSTANT(sizeof(PyType_Slot), 16LL);
+CONSTANT(sizeof(PyType_Spec), 32LL);
+CONSTANT(offsetof(PyPickleBufferObject, weakreflist), 96LL);
+CONSTANT(sizeof(interpolationobject), 48LL);
+CONSTANT(offsetof(interpolationobject, value), 16LL);
+CONSTANT(offsetof(interpolationobject, expression), 24LL);
+CONSTANT(offsetof(interpolationobject, conversion), 32LL);
+CONSTANT(offsetof(interpolationobject, format_spec), 40LL);
+CONSTANT(sizeof(templateiterobject), 40LL);
+CONSTANT(sizeof(templateobject), 32LL);
+CONSTANT(offsetof(templateobject, strings), 16LL);
+CONSTANT(offsetof(templateobject, interpolations), 24LL);
+CONSTANT(sizeof(unionobject), 56LL);
+CONSTANT(offsetof(unionobject, args), 16LL);
+CONSTANT(offsetof(unionobject, weakreflist), 48LL);
+CONSTANT(sizeof(gaobject), 64LL);
+CONSTANT(offsetof(gaobject, origin), 16LL);
+CONSTANT(offsetof(gaobject, args), 24LL);
+CONSTANT(offsetof(gaobject, starred), 48LL);
+CONSTANT(offsetof(gaobject, weakreflist), 40LL);
+CONSTANT(offsetof(gaobject, vectorcall), 56LL);
+CONSTANT(sizeof(gaiterobject), 24LL);
+CONSTANT(sizeof(PyStdPrinter_Object), 24LL);
 CONSTANT(Py_slices_MAXFREELIST, 1LL);
 CONSTANT(Py_ranges_MAXFREELIST, 6LL);
 CONSTANT(Py_range_iters_MAXFREELIST, 6LL);
