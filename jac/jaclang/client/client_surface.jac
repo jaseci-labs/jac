@@ -22,6 +22,12 @@ def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
     return None;
 }
 
+glob WASM_HOST_MODULE: str = "@jac/wasm_host";
+
+def injected_virtual_modules(backend: FrameworkBackend) -> list[str] {
+    return [backend.runtime_module(), WASM_HOST_MODULE];
+}
+
 def runtime_import_source(name: str, backend: (FrameworkBackend | None) = None) -> str {
     if backend is not None {
         src = backend.import_source(name);

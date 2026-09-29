@@ -673,9 +673,21 @@ def kernel_inputs_json(
     host.compiler_for(program).ensure_stub_catalog();
     inputs = kernel_analysis_inputs(host, program, path, options, source);
     if not options.no_cgen {
+        import from jaclang.client.client_surface { injected_virtual_modules }
+        import from jaclang.compiler.backends.es.backends.registry {
+            resolve_active_backend
+        }
         inputs.osp_core_js = host.client_osp_core_js();
         inputs.client_stub_globals = host.client_stub_globals();
         inputs.client_stub_globals_known = True;
+        for module_id in injected_virtual_modules(resolve_active_backend()) {
+            if module_id not in inputs.virtual_modules {
+                inputs.virtual_modules[module_id] = host.jac_virtual_module_path(
+                    module_id
+                )
+                    or "";
+            }
+        }
     }
     return inputs.to_json();
 }

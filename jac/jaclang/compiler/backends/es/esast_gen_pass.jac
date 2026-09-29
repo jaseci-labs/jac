@@ -49,6 +49,7 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     js_identifiers
 }
 import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.client.client_surface { WASM_HOST_MODULE }
 import from jaclang.compiler.backends.es.js_paths {
     convert_to_js_import_path,
     relative_js_specifier
