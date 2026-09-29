@@ -1911,7 +1911,8 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
 impl NaIRGenPass._primitive_method_takes_kwargs(
     type_name: str, method_name: str
 ) -> bool {
-    return (type_name, method_name) in {("list", "sort"), ("str", "splitlines")};
+    return (type_name, method_name)
+        in {("list", "sort"), ("str", "splitlines"), ("bytes", "decode")};
 }
 
 impl NaIRGenPass._dispatch_primitive_method(

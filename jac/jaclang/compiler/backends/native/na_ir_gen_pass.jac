@@ -396,6 +396,9 @@ walker NaIRGenPass(CompilerPass) {
         _bytes_struct_type: (ir.Type | None) = None,
         _bytes_repr_function: (ir.Function | None) = None,
         _bytes_search_function: (ir.Function | None) = None,
+        _bytes_decode_function: (ir.Function | None) = None,
+        _name_lookup_function: (ir.Function | None) = None,
+        _codec_lookup_function: (ir.Function | None) = None,
         _float_repr_function: (ir.Function | None) = None,
         _repr_fns: dict[str, ir.Function] = {},
         _eq_fns: dict[str, ir.Function] = {},
@@ -710,6 +713,27 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_bytes_search(
         target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
     ) -> (ir.Value | None);
+
+    def _decode_literal(arg_node: (uni.UniNode | None)) -> (str | None);
+    def _private_cstr(data: bytes, name: str) -> ir.Value;
+    def _name_lookup_fn -> ir.Function;
+    def _codec_lookup_fn -> ir.Function;
+    def _bytes_decode_fn -> ir.Function;
+    def _emit_bytes_decode(
+        target: ir.Value,
+        args: list[ir.Value],
+        kwargs: dict[str, uni.UniNode],
+        call_node: (uni.UniNode | None)
+    ) -> (ir.Value | None);
+
+    def _emit_decode_failure(
+        data: ir.Value,
+        codec: ir.Value,
+        errors: ir.Value,
+        info: ir.Value,
+        errors_name: (ir.Value | None),
+        errors_literal: (str | None)
+    ) -> None;
 
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_callable_value(
@@ -1407,6 +1431,7 @@ walker NaIRGenPass(CompilerPass) {
         release_on_error: list[ir.Value] = []
     ) -> None;
 
+    def _emit_raise_value(exc_type_name: str, msg_val: ir.Value) -> None;
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
     def _exception_member_name(member: uni.UniNode) -> (str | None);
