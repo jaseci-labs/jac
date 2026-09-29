@@ -130,11 +130,6 @@ impl NaIRGenPass._region_unwind(depth: ir.Value) -> None {
     );
 }
 
-# The region boundary of a C-ABI entry point (a callback trampoline or a C
-# function definition's thunk): the open's extent does not cross the foreign
-# frame, so the Jac callee allocates on the heap. The saved depth goes to
-# _region_c_entry_restore on the way out; kernel units allocate on the heap
-# anyway and take no boundary (None).
 impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
     if self._is_kernel_unit() {
         return None;
