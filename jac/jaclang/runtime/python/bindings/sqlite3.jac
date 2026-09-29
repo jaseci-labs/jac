@@ -265,7 +265,7 @@ glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "sqlite3.Cursor",
          "SQLite database cursor class.",
          Cursor_methods,
-         GC_TYPE | u64(TypeFlags.BASETYPE.value | TypeFlags.MANAGED_WEAKREF.value),
+         GC_TYPE | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
              initialize=pysqlite_cursor_init_init,
              dealloc=cursor_dealloc,
@@ -276,7 +276,8 @@ glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          ),
          Cursor_getset,
          members=CURSOR_MEMBERS,
-         record_size=CURSOR_RECORD_SIZE
+         record_size=CURSOR_RECORD_SIZE,
+         weaklist=True
      ),
      row_type = TypeDefinition(
          "sqlite3.Row",
@@ -319,11 +320,7 @@ glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "sqlite3.Blob",
          "",
          Blob_methods,
-         GC_TYPE
-             | u64(
-                 TypeFlags.DISALLOW_INSTANTIATION.value
-                     | TypeFlags.MANAGED_WEAKREF.value
-             ),
+         GC_TYPE | u64(TypeFlags.DISALLOW_INSTANTIATION.value),
          TypeHooks(
              dealloc=blob_dealloc,
              traverse=blob_traverse,
@@ -331,7 +328,8 @@ glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              mapping_length=blob_length,
              subscript=blob_subscript,
              assign_subscript=blob_ass_subscript
-         )
+         ),
+         weaklist=True
      );
 
 # A new exception class sqlite3.<name> added to the module; its reference

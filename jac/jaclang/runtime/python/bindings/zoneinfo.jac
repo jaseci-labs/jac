@@ -1,14 +1,7 @@
 """The _zoneinfo module: the ZoneInfo type, a datetime.tzinfo subclass."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    Py_NewRef,
-    PyErr_Format,
-    PyExc_AttributeError,
-    PyModule_AddObjectRef,
-    PyObject
-}
-import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.cpython_api { PyModule_AddObjectRef, PyObject }
+
 import from jaclang.runtime.python.bindings.module {
     MethodCallbacks,
     MethodDefinition,
@@ -20,8 +13,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
+    jacpy_binding_record
 }
 import from jaclang.runtime.python.bindings.payload {
     clear_payload,
@@ -29,7 +21,6 @@ import from jaclang.runtime.python.bindings.payload {
     traverse_payload
 }
 import from jaclang.runtime.python.bindings.clinic.zoneinfo {
-    ZoneInfo_doc,
     ZoneInfo_methods,
     zoneinfo_ZoneInfo_new
 }
@@ -41,13 +32,19 @@ import from jaclang.runtime.python.modules.zoneinfo {
     populate_module_state,
     zoneinfo_fromutc,
     zoneinfo_init_subclass,
-    zoneinfo_of,
     zoneinfo_reduce,
     zoneinfo_repr,
     zoneinfo_str
 }
+import from jaclang.runtime.python.bindings.members {
+    MemberField,
+    MemberType,
+    record_clear
+}
 
+# The record holds the state's key borrowed: zeroed before the state goes.
 def:priv zoneinfo_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);
     dispose_payload(instance, ZoneInfo_token.handle);
 }
 
@@ -56,25 +53,8 @@ def:priv zoneinfo_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) 
 }
 
 def:priv zoneinfo_clear(instance: ptr[PyObject]) -> i32 {
+    record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);
     return clear_payload(instance, ZoneInfo_token.handle);
-}
-
-# The read-only `key` member (Py_T_OBJECT_EX).
-def:priv key(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    zone = zoneinfo_of(instance);
-    if zone is None {
-        return NULL;
-    }
-    if not zone.key {
-        PyErr_Format(
-            PyExc_AttributeError,
-            "'%.200s' object has no attribute '%s'",
-            object_type(instance).view(1)[0].tp_name,
-            "key"
-        );
-        return NULL;
-    }
-    return Py_NewRef(zone.key);
 }
 
 glob:priv methods: list[MethodDefinition] = ZoneInfo_methods
@@ -100,14 +80,9 @@ glob:priv methods: list[MethodDefinition] = ZoneInfo_methods
          ],
      zoneinfo_type = TypeDefinition(
          "zoneinfo.ZoneInfo",
-         ZoneInfo_doc,
+         "",
          methods,
-         u64(
-             TypeFlags.BASETYPE.value
-                 | TypeFlags.GC.value
-                 | TypeFlags.IMMUTABLE.value
-                 | TypeFlags.MANAGED_WEAKREF.value
-         ),
+         u64(TypeFlags.BASETYPE.value | TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          TypeHooks(
              create=zoneinfo_ZoneInfo_new,
              dealloc=zoneinfo_dealloc,
@@ -116,7 +91,10 @@ glob:priv methods: list[MethodDefinition] = ZoneInfo_methods
              repr=zoneinfo_repr,
              string=zoneinfo_str
          ),
-         [PropertyDefinition("key", PropertyCallbacks(read=key))]
+         members=[MemberField("key", MemberType.OBJECT_EX.value, 0, readonly=True)],
+         record_size=8,
+         weaklist=True,
+         generic_getattr=True
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {

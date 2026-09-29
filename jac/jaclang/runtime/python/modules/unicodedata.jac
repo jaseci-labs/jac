@@ -50,7 +50,10 @@ import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_present,
     jacpy_binding_native_set
 }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_record
+}
 import from jaclang.runtime.python.modules.unicodedata_db {
     COMP_SHIFT,
     CHANGES_3_2_0_SHIFT,
@@ -1613,7 +1616,7 @@ import from c {
     obj _PyUnicode_Name_CAPI {
         has getname: Callable[[u32, ptr[u8], i32, i32], i32],
             getcode: Callable[[ptr[u8], i32, ptr[u32], i32], i32];
-    }
+    }  import from jaclang.runtime.python.bindings.members { record_set_address }
     # Statically allocated so that any cached pointers stay valid after
     # unicodedata is removed from sys.modules and the capsule is gc'd
     # (gh-149449).
@@ -1695,10 +1698,15 @@ def new_previous_version(
         return NULL;
     }
     state = PreviousDBVersion(record=version);
-    if jacpy_binding_native_set(self, UCD_token.definition_of(ucd_type), state) < 0 {
+    definition = UCD_token.definition_of(ucd_type);
+    if jacpy_binding_native_set(self, definition, state) < 0 {
         jacpy_release(self);
         return NULL;
     }
+    # unidata_version (Py_T_STRING) reads the version's static name.
+    record_set_address(
+        jacpy_binding_record(self, definition), 0, version.view(1)[0].name
+    );
     return self;
 }
 
