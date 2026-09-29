@@ -207,17 +207,32 @@ impl NaIRGenPass._codegen_clib_call(
         );
     }
     _struct_temps: list[ir.Value] = [];
+    _heap_temps: list[ir.Value] = [];
     for (i, pp) in enumerate(param_plans) {
         _tv = args[i] if i < len(args) else None;
-        if _tv is not None
-            and pp["kind"] != "scalar"
-            and isinstance(_tv.type, ir.PointerType)
-            and self._is_owned(_tv) {
+        if _tv is None or not self._is_owned(_tv) {
+            continue;
+        }
+        if pp["kind"] != "scalar" and isinstance(_tv.type, ir.PointerType) {
             _struct_temps.append(_tv);
+        } elif pp["kind"] == "scalar"
+            and (
+                self._is_bytes_value(_tv)
+                or (self._str_desc_ty is not None and _tv.type == self._str_desc_ty)
+                or (pp.get("is_str") and isinstance(_tv.type, ir.PointerType))
+            ) {
+            _heap_temps.append(_tv);
         }
     }
     for _st in _struct_temps {
         self._c_release_temp(_st);
+    }
+    for _ht in _heap_temps {
+        if self._nogc_headerless() {
+            self._c_release_temp(_ht);
+        } else {
+            self._release_owned_args([_ht], op="c_temp");
+        }
     }
     rkind = ret_plan["kind"];
     if rkind == "sret" {
