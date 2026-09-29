@@ -77,6 +77,24 @@ Functions the C module parses with `PyArg_ParseTuple` or
 `ArgumentFormat` in `bindings/arguments.jac` with the same format units, so
 their conversions and messages are `getargs.c`'s.
 
+Argument errors match CPython's text because the glue uses CPython's own
+calling conventions. `gen_clinic.jac` reads the `PyMethodDef` flags and the
+parser Tools/clinic generates for each function (limited C API sources
+included) and emits the same flags with a callback of that shape
+(`MethodCallbacks.positional` for `METH_NOARGS`/`METH_O`/`METH_VARARGS`,
+`fast` for `METH_FASTCALL`, `fast_keywords` with `METH_KEYWORDS`), so
+CPython's call machinery reports "`_mod.f() takes no keyword arguments`" with
+the qualified name. The `CallSignature` names the getargs routine the C parser
+calls (`parser=PARSE_POSITIONAL` for `_PyArg_CheckPositional`,
+`PARSE_KEYWORDS` for `_PyArg_UnpackKeywords`, `PARSE_FORMAT` and
+`PARSE_FORMAT_KEYWORDS` for `PyArg_ParseTuple` and
+`PyArg_ParseTupleAndKeywords`); `bindings/arguments.jac` implements each with
+its messages. A hand-written binding picks the same flags and parser as the C
+module's clinic output. A C type's `PyMemberDef` fields are real member
+descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
+in the instance and `jacpy_binding_record()` gives their address
+(`select.kevent`, `_multiprocessing.SemLock`).
+
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini`
 as `def:pub`, which `pylifecycle.c` and `pystate.c` call. `gen_capi.jac` does
