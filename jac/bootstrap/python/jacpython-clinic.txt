@@ -36,3 +36,4 @@ _locale
 _bisect
 _heapq
 _random
+_statistics
