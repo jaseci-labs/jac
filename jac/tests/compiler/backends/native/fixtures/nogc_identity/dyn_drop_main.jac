@@ -16,6 +16,7 @@ obj Buffer(Resource) {
     def drop {
         print("drop buffer " + self.name + " " + str(len(self.data)));
     }
+
     def size -> int {
         return len(self.data);
     }

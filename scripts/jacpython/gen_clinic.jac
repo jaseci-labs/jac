@@ -133,24 +133,10 @@ glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS_APP"
      };
 
-def:priv windows_symbol(name: str) -> str {
-    return "False" if name in WINDOWS_SYMBOLS else "True";
-}
-
-def:priv tested_symbol(hit: any) -> str {
-    return windows_symbol(hit.group(1) or hit.group(2));
-}
-
-def:priv condition_word(hit: any) -> str {
-    name: str = hit.group(0);
-    return name
-        if name in ("True", "False", "and", "or", "not")
-        else windows_symbol(name);
-}
-
-# Whether a clinic #if condition holds on the POSIX targets: Windows symbols
-# are undefined and every other feature test is taken as defined, since the
-# module binding decides what a platform actually offers.
+# Whether a clinic #if condition can hold on a POSIX target: every Windows
+# symbol is undefined, and some choice of the other feature tests satisfies
+# it (`defined(HAVE_POLL) && !defined(HAVE_BROKEN_POLL)` holds where poll()
+# works), since the module binding decides what a platform actually offers.
 def posix_condition(condition: str) -> bool {
     if not condition {
         return True;
@@ -160,17 +146,31 @@ def posix_condition(condition: str) -> bool {
     if re.search(r"[<>=]", condition) {
         return not any(name in condition for name in WINDOWS_SYMBOLS);
     }
-    expression = re.sub(
-        r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", tested_symbol, condition
-    );
+    expression = re.sub(r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition);
     expression = expression.replace("&&", " and ").replace("||", " or ");
     expression = re.sub(r"!(?!=)", " not ", expression);
-    expression = re.sub(r"\b[A-Za-z_]\w*\b", condition_word, expression);
-    try {
-        return bool(eval(expression, {}, {}));
-    } except Exception {
+    symbols = sorted(
+        set(re.findall(r"\b[A-Za-z_]\w*\b", expression))
+            - {"True", "False", "and", "or", "not"}
+    );
+    features = [name for name in symbols if name not in WINDOWS_SYMBOLS];
+    if len(features) > 12 {
         return True;
     }
+    for choice in range(1 << len(features)) {
+        values = {name: False for name in symbols};
+        for (index, name) in enumerate(features) {
+            values[name] = bool((choice >> index) & 1);
+        }
+        try {
+            if eval(expression, {}, values) {
+                return True;
+            }
+        } except Exception {
+            return True;
+        }
+    }
+    return False;
 }
 
 def class_name(value: any) -> str {

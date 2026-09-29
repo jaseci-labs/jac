@@ -18,6 +18,7 @@ obj Resource {
     def drop {
         print("drop resource " + self.name);
     }
+
     def size -> int {
         return 0;
     }

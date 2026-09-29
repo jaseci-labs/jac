@@ -16,10 +16,10 @@ object's further elements follow it in memory, reached by pointer
 arithmetic from the field's offset exactly as C indexes past the declared
 bound. Pointers to records no port reads yet are opaque.
 """
-import from jaclang.runtime.python.cpython_api { PyObject }
+import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
 
 import from c {
-    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyGetSetDef;  obj PyMappingMethods;  obj PyMemberDef;  obj PyMethodDef;  obj PySequenceMethods;  obj _object {
+    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyGetSetDef;  obj PyMappingMethods;  obj PySequenceMethods;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -147,6 +147,11 @@ import from c {
         has ob_base: PyVarObject,
             ob_hash: i64,
             ob_item: ptr[PyObject];
+    }  obj PyStatus {
+        has _type: u32,
+            func: ptr[u8],
+            err_msg: ptr[u8],
+            exitcode: i32;
     }
 }
 
@@ -156,4 +161,7 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      _PyLong_FALSE_TAG: Final[u64] = 1,
      _PyLong_TRUE_TAG: Final[u64] = 8,
      PyLong_DIGITS_OFFSET: Final[i64] = 24,
-     PyLong_DIGIT_SIZE: Final[i64] = 4;
+     PyLong_DIGIT_SIZE: Final[i64] = 4,
+     _PyStatus_TYPE_OK: Final[u32] = 0,
+     _PyStatus_TYPE_ERROR: Final[u32] = 1,
+     PY_BUFFER_SIZE: Final[u64] = 80;

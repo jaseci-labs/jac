@@ -76,7 +76,9 @@ import from c {
             step: i64,
             count: i64,
             valid: i64;
-    }  def PyByteArray_Resize(arg0: ptr[PyObject], arg1: i64) -> i32;  def PyBytes_AsString(
+    }  def PyArg_Parse(arg0: ptr[PyObject], arg1: str, *args: any) -> i32;  def PyArg_UnpackTuple(
+        arg0: ptr[PyObject], arg1: str, arg2: i64, arg3: i64, *args: any
+    ) -> i32;  def PyByteArray_Resize(arg0: ptr[PyObject], arg1: i64) -> i32;  def PyBytes_AsString(
         arg0: ptr[PyObject]
     ) -> ptr[u8];  def PyBytes_DecodeEscape(
         arg0: ptr, arg1: i64, arg2: ptr[u8], arg3: i64, arg4: ptr[u8]
@@ -119,9 +121,9 @@ import from c {
         mp: ptr[PyObject], other: ptr[PyObject]
     ) -> i32;  def PyErr_CheckSignals -> i32;  def PyErr_Clear;  def PyErr_ExceptionMatches(
         arg0: ptr[PyObject]
-    ) -> i32;  def PyErr_GetRaisedException -> ptr[PyObject];  def PyErr_NoMemory -> ptr[
+    ) -> i32;  def PyErr_FormatUnraisable(arg0: str, *args: any);  def PyErr_GetRaisedException -> ptr[
         PyObject
-    ];  def PyErr_Occurred -> ptr[PyObject];  def PyErr_SetFromErrno(
+    ];  def PyErr_NoMemory -> ptr[PyObject];  def PyErr_Occurred -> ptr[PyObject];  def PyErr_SetFromErrno(
         arg0: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObject(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
@@ -133,6 +135,13 @@ import from c {
         exception: ptr[PyObject], string: str
     );  def PyErr_WarnEx(
         category: ptr[PyObject], message: str, stack_level: i64
+    ) -> i32;  def PyErr_WarnExplicit(
+        category: ptr[PyObject],
+        message: str,
+        filename: str,
+        lineno: i32,
+        module: ptr[u8],
+        registry: ptr[PyObject]
     ) -> i32;  def PyEval_RestoreThread(arg0: ptr[PyThreadState]);  def PyEval_SaveThread -> ptr[
         PyThreadState
     ];  def PyFloat_AsDouble(arg0: ptr[PyObject]) -> f64;  def PyFloat_FromDouble(
@@ -263,6 +272,8 @@ import from c {
         arg0: ptr[PyObject]
     ) -> i32;  def PyObject_Call(
         callable_: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyObject_CallMethod(
+        obj_: ptr[PyObject], name: str, format_: str, *args: any
     ) -> ptr[PyObject];  def PyObject_CallNoArgs(
         func: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallOneArg(
@@ -281,7 +292,9 @@ import from c {
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_GetAttrString(
         arg0: ptr[PyObject], arg1: str
-    ) -> ptr[PyObject];  def PyObject_GetItem(
+    ) -> ptr[PyObject];  def PyObject_GetBuffer(
+        obj_: ptr[PyObject], view: ptr[Py_buffer], flags: i32
+    ) -> i32;  def PyObject_GetItem(
         o: ptr[PyObject], key: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_GetIter(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyObject_GetOptionalAttr(
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: &mut ptr[PyObject]
@@ -331,19 +344,23 @@ import from c {
         type_: ptr[PyObject]
     ) -> ptr[PyObject];  def PyStructSequence_SetItem(
         arg0: ptr[PyObject], arg1: i64, arg2: ptr[PyObject]
-    );  def PySys_AuditTuple(event: str, args: ptr[PyObject]) -> i32;  def PyThreadState_Get -> ptr[
-        PyThreadState
-    ];  def PyThread_acquire_lock(arg0: ptr, arg1: i32) -> i32;  def PyThread_allocate_lock -> ptr;  def PyThread_free_lock(
+    );  def PySys_Audit(event: str, argFormat: str, *args: any) -> i32;  def PySys_AuditTuple(
+        event: str, args: ptr[PyObject]
+    ) -> i32;  def PyThreadState_Get -> ptr[PyThreadState];  def PyThread_acquire_lock(
+        arg0: ptr, arg1: i32
+    ) -> i32;  def PyThread_allocate_lock -> ptr;  def PyThread_free_lock(arg0: ptr);  def PyThread_get_thread_ident -> u64;  def PyThread_release_lock(
         arg0: ptr
-    );  def PyThread_get_thread_ident -> u64;  def PyThread_release_lock(arg0: ptr);  def PyTime_AsSecondsDouble(
-        t: i64
-    ) -> f64;  def PyTime_Monotonic(result: &mut i64) -> i32;  def PyTime_PerfCounter(
+    );  def PyTime_AsSecondsDouble(t: i64) -> f64;  def PyTime_Monotonic(
         result: &mut i64
-    ) -> i32;  def PyTime_PerfCounterRaw(result: &mut i64) -> i32;  def PyTime_Time(
+    ) -> i32;  def PyTime_PerfCounter(result: &mut i64) -> i32;  def PyTime_PerfCounterRaw(
         result: &mut i64
-    ) -> i32;  def PyTuple_GetItem(arg0: ptr[PyObject], arg1: i64) -> ptr[PyObject];  def PyTuple_GetSlice(
+    ) -> i32;  def PyTime_Time(result: &mut i64) -> i32;  def PyTuple_GetItem(
+        arg0: ptr[PyObject], arg1: i64
+    ) -> ptr[PyObject];  def PyTuple_GetSlice(
         arg0: ptr[PyObject], arg1: i64, arg2: i64
-    ) -> ptr[PyObject];  def PyTuple_New(size: i64) -> ptr[PyObject];  def PyTuple_SetItem(
+    ) -> ptr[PyObject];  def PyTuple_New(size: i64) -> ptr[PyObject];  def PyTuple_Pack(
+        arg0: i64, *args: any
+    ) -> ptr[PyObject];  def PyTuple_SetItem(
         arg0: ptr[PyObject], arg1: i64, arg2: ptr[PyObject]
     ) -> i32;  def PyTuple_Size(arg0: ptr[PyObject]) -> i64;  def PyType_GetDict(
         arg0: ptr[PyObject]
@@ -407,6 +424,8 @@ import from c {
         str_: ptr[PyObject], ch: u32, start: i64, end: i64, direction: i32
     ) -> i64;  def PyUnicode_Format(
         format_: ptr[PyObject], args: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyUnicode_FromFormat(
+        format_: str, *args: any
     ) -> ptr[PyObject];  def PyUnicode_FromKindAndData(
         kind: i32, buffer: ptr, size: i64
     ) -> ptr[PyObject];  def PyUnicode_FromOrdinal(ordinal: i32) -> ptr[PyObject];  def PyUnicode_FromString(
@@ -427,7 +446,7 @@ import from c {
         ob: ptr[PyObject], callback: ptr[PyObject]
     ) -> ptr[PyObject];  def PyWeakref_NewRef(
         ob: ptr[PyObject], callback: ptr[PyObject]
-    ) -> ptr[PyObject];  def Py_GenericAlias(
+    ) -> ptr[PyObject];  def Py_BuildValue(arg0: str, *args: any) -> ptr[PyObject];  def Py_GenericAlias(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def Py_GetConstantBorrowed(
         constant_id: u32
@@ -449,11 +468,13 @@ import from c {
         index: i32
     ) -> ptr[PyObject];  def _PyDeadline_Get(deadline: i64) -> i64;  def _PyDeadline_Init(
         timeout: i64
-    ) -> i64;  def _PyEval_SetProfile(
+    ) -> i64;  def _PyDict_SizeOf(arg0: ptr[PyObject]) -> i64;  def _PyEval_SetProfile(
         tstate: ptr[PyThreadState], func: ptr, arg: ptr[PyObject]
-    ) -> i32;  def _PyLong_FromGid(arg0: u32) -> ptr[PyObject];  def _PyLong_FromUid(
+    ) -> i32;  def _PyException_AddNote(
+        exc: ptr[PyObject], note: ptr[PyObject]
+    ) -> i32;  def _PyLong_Frexp(a: ptr[PyObject], e: &mut i64) -> f64;  def _PyLong_FromGid(
         arg0: u32
-    ) -> ptr[PyObject];  def _PyLong_GCD(
+    ) -> ptr[PyObject];  def _PyLong_FromUid(arg0: u32) -> ptr[PyObject];  def _PyLong_GCD(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyLong_NumBits(v: ptr[PyObject]) -> i64;  def _PyLong_UInt16_Converter(
         arg0: ptr[PyObject], arg1: &mut u16
@@ -561,31 +582,23 @@ import from c {
         handle: ptr[PyObject]
     ) -> i64;  def jacpy_ast_new(kind: i64) -> ptr[PyObject];  def jacpy_atexit_callbacks(
         interp: ptr[PyInterpreterState]
-    ) -> ptr[PyObject];  def jacpy_atexit_detach(
+    ) -> ptr[ptr[PyObject]];  def jacpy_atexit_detach(
         interp: ptr[PyInterpreterState]
     ) -> ptr[atexit_callback];  def jacpy_atexit_push(
         interp: ptr[PyInterpreterState], func: ptr, data: ptr
-    ) -> i32;  def jacpy_atexit_release_callbacks(interp: ptr[PyInterpreterState]);  def jacpy_audit_pickle_find(
-        module: ptr[PyObject], name: ptr[PyObject]
-    ) -> i64;  def jacpy_buffer_acquire(
+    ) -> i32;  def jacpy_buffer_acquire(
         value: ptr[PyObject], kind: i64
-    ) -> ptr[Py_buffer];  def jacpy_buffer_acquire_string(
-        value: ptr[PyObject]
-    ) -> ptr[Py_buffer];  def jacpy_buffer_acquire_writable(
-        value: ptr[PyObject]
     ) -> ptr[Py_buffer];  def jacpy_buffer_byte(
         handle: ptr[PyObject], index: i64
-    ) -> i64;  def jacpy_buffer_bytes(view: ptr[Py_buffer]) -> ptr[PyObject];  def jacpy_buffer_export(
-        value: ptr[PyObject], flags: i64
-    ) -> ptr[Py_buffer];  def jacpy_buffer_new(size: i64) -> ptr[PyObject];  def jacpy_buffer_release(
-        value: ptr[Py_buffer]
-    );  def jacpy_buffer_set(handle: ptr[PyObject], index: i64, value: i64);  def jacpy_buffer_size(
-        handle: ptr[PyObject]
-    ) -> i64;  def jacpy_builtins -> ptr[PyObject];  def jacpy_bytearray_memory(
-        value: ptr[PyObject]
-    ) -> i64;  def jacpy_bytearray_new(size: i64) -> ptr[PyObject];  def jacpy_bytes_address(
-        value: ptr[PyObject]
-    ) -> ptr;  def jacpy_bytes_copy_to(
+    ) -> i64;  def jacpy_buffer_bytes(view: ptr[Py_buffer]) -> ptr[PyObject];  def jacpy_buffer_new(
+        size: i64
+    ) -> ptr[PyObject];  def jacpy_buffer_release(value: ptr[Py_buffer]);  def jacpy_buffer_set(
+        handle: ptr[PyObject], index: i64, value: i64
+    );  def jacpy_buffer_size(handle: ptr[PyObject]) -> i64;  def jacpy_builtins -> ptr[
+        PyObject
+    ];  def jacpy_bytearray_memory(value: ptr[PyObject]) -> i64;  def jacpy_bytearray_new(
+        size: i64
+    ) -> ptr[PyObject];  def jacpy_bytes_address(value: ptr[PyObject]) -> ptr;  def jacpy_bytes_copy_to(
         value: ptr[PyObject], target: bytes, size: i64
     );  def jacpy_bytes_decode(
         value: ptr[PyObject], encoding: str, errors: str
@@ -595,7 +608,7 @@ import from c {
         address: ptr, size: i64
     ) -> ptr[PyObject];  def jacpy_bytes_length(value: ptr[PyObject]) -> i64;  def jacpy_bytes_unescape(
         value: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_c_text(text: ptr) -> ptr[PyObject];  def jacpy_call_two(
+    ) -> ptr[PyObject];  def jacpy_call_two(
         callable_: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_cfunction_method(
         function: ptr[PyObject]
@@ -630,11 +643,9 @@ import from c {
         handle: ptr[PyObject], encoding: str
     ) -> ptr[PyObject];  def jacpy_dict_default(
         dictionary: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_dict_entry(
-        a: ptr[PyObject], position: i64
     ) -> ptr[PyObject];  def jacpy_dict_get(
         dictionary: ptr[PyObject], key: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_dict_memory(value: ptr[PyObject]) -> i64;  def jacpy_dict_pop_discard(
+    ) -> ptr[PyObject];  def jacpy_dict_pop_discard(
         dictionary: ptr[PyObject], key: ptr[PyObject]
     ) -> i64;  def jacpy_dict_repr(value: ptr[PyObject]) -> ptr[PyObject];  def jacpy_dict_set_owned(
         dictionary: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
@@ -642,13 +653,9 @@ import from c {
         directory: ptr
     ) -> i32;  def jacpy_entropy(size: i64) -> ptr[PyObject];  def jacpy_errno -> i64;  def jacpy_error_pending -> i64;  def jacpy_exception_context(
         error: ptr[PyObject], cause: ptr[PyObject]
-    );  def jacpy_exception_note(error: ptr[PyObject], note: ptr[PyObject]) -> i64;  def jacpy_fast_item(
-        value: ptr[PyObject], index: i64
-    ) -> ptr[PyObject];  def jacpy_fast_size(value: ptr[PyObject]) -> i64;  def jacpy_fcntl_int(
-        fd: i32, command: i32, argument: i32
-    ) -> i32;  def jacpy_fcntl_pointer(fd: i32, command: i32, argument: ptr) -> i32;  def jacpy_fd_line(
-        fd: i64
-    ) -> ptr[PyObject];  def jacpy_field(
+    );  def jacpy_fast_item(value: ptr[PyObject], index: i64) -> ptr[PyObject];  def jacpy_fast_size(
+        value: ptr[PyObject]
+    ) -> i64;  def jacpy_fd_line(fd: i64) -> ptr[PyObject];  def jacpy_field(
         handle: ptr[PyObject], field: i64
     ) -> ptr[PyObject];  def jacpy_float32_bits(value: f64) -> u64;  def jacpy_float_bits(
         value: f64
@@ -658,13 +665,9 @@ import from c {
         address: ptr, size: i64, little: i64
     ) -> f64;  def jacpy_float_value(handle: ptr[PyObject]) -> f64;  def jacpy_fs_text(
         text: ptr
-    ) -> ptr[PyObject];  def jacpy_getdents64(fd: i32, buffer: ptr, size: i64) -> i64;  def jacpy_hacl_simd_features -> i64;  def jacpy_hash_unsigned(
+    ) -> ptr[PyObject];  def jacpy_hacl_simd_features -> i64;  def jacpy_hash_unsigned(
         handle: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_insert(
-        handle: ptr[PyObject], index: i64, value: ptr[PyObject]
-    ) -> i64;  def jacpy_interpreter_finalizing -> i64;  def jacpy_ioctl_int(
-        fd: i32, request: u64, argument: i32
-    ) -> i32;  def jacpy_ioctl_pointer(fd: i32, request: u64, argument: ptr) -> i32;  def jacpy_is_bool(
+    ) -> ptr[PyObject];  def jacpy_interpreter_finalizing -> i64;  def jacpy_is_bool(
         value: ptr[PyObject]
     ) -> i64;  def jacpy_is_bytearray(value: ptr[PyObject]) -> i64;  def jacpy_is_bytes(
         value: ptr[PyObject]
@@ -690,11 +693,9 @@ import from c {
         x: f64, y: f64, z: f64
     ) -> f64;  def jacpy_libm_log(value: f64) -> f64;  def jacpy_libm_log10(
         value: f64
-    ) -> f64;  def jacpy_libm_log2(value: f64) -> f64;  def jacpy_libm_parts(
-        value: f64, integral: i64
-    ) -> ptr[PyObject];  def jacpy_libm_sin(value: f64) -> f64;  def jacpy_libm_tan(
+    ) -> f64;  def jacpy_libm_log2(value: f64) -> f64;  def jacpy_libm_sin(
         value: f64
-    ) -> f64;  def jacpy_list_append_owned(
+    ) -> f64;  def jacpy_libm_tan(value: f64) -> f64;  def jacpy_list_append_owned(
         target: ptr[PyObject], value: ptr[PyObject]
     ) -> i64;  def jacpy_list_delete(
         handle: ptr[PyObject], start: i64, end: i64
@@ -710,9 +711,7 @@ import from c {
         value: ptr[PyObject]
     ) -> u64;  def jacpy_long_bytes(
         handle: ptr[PyObject], size: i64
-    ) -> ptr[PyObject];  def jacpy_long_fits_i64(value: ptr[PyObject]) -> i64;  def jacpy_long_frexp(
-        value: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_long_from_bytes(
+    ) -> ptr[PyObject];  def jacpy_long_fits_i64(value: ptr[PyObject]) -> i64;  def jacpy_long_from_bytes(
         handle: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_long_from_signed_bytes(
         value: ptr[PyObject]
@@ -732,9 +731,9 @@ import from c {
         value: f64, address: ptr, size: i64
     );  def jacpy_native_little_endian -> i64;  def jacpy_native_size(
         kind: i64, alignment: i64
-    ) -> i64;  def jacpy_normalize(source: str, size: i64) -> ptr[PyObject];  def jacpy_object_type(
-        value: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_opendir(path: ptr) -> ptr;  def jacpy_optional_attr(
+    ) -> i64;  def jacpy_object_type(value: ptr[PyObject]) -> ptr[PyObject];  def jacpy_opendir(
+        path: ptr
+    ) -> ptr;  def jacpy_optional_attr(
         value: ptr[PyObject], name: str
     ) -> ptr[PyObject];  def jacpy_optional_field(
         handle: ptr[PyObject], field: i64
@@ -746,27 +745,21 @@ import from c {
         a: ptr[PyObject], b: ptr[PyObject], inplace: i64
     ) -> ptr[PyObject];  def jacpy_process_id -> i64;  def jacpy_qualified_type_name(
         value: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_raise_compiler_error(
-        type_: ptr[PyObject], message: ptr[PyObject], location: ptr[PyObject]
-    );  def jacpy_readdir_name(directory: ptr) -> ptr[u8];  def jacpy_readline(
+    ) -> ptr[PyObject];  def jacpy_readdir_name(directory: ptr) -> ptr[u8];  def jacpy_readline(
         reader: ptr[PyObject], encoding: str, decode: i64
     ) -> ptr[PyObject];  def jacpy_recursion_enter(context: str) -> i64;  def jacpy_release(
         handle: ptr[PyObject]
     );  def jacpy_remove_dead_weakref(
         dictionary: ptr[PyObject], key: ptr[PyObject]
-    ) -> i64;  def jacpy_same_type(left: ptr[PyObject], right: ptr[PyObject]) -> i64;  def jacpy_sem_open(
-        name: str, flags: i64, mode: i64, value: i64
-    ) -> ptr;  def jacpy_sequence_item(
+    ) -> i64;  def jacpy_same_type(left: ptr[PyObject], right: ptr[PyObject]) -> i64;  def jacpy_sequence_item(
         handle: ptr[PyObject], index: i64
     ) -> ptr[PyObject];  def jacpy_sequence_size(handle: ptr[PyObject]) -> i64;  def jacpy_sequence_slot(
         handle: ptr[PyObject]
     ) -> ptr;  def jacpy_set_errno(value: i64);  def jacpy_set_exception(
         type_: ptr[PyObject], message: str, size: i64
-    );  def jacpy_set_key_error(key: ptr[PyObject]);  def jacpy_set_new(
-        iterable: ptr[PyObject], frozen: i64
-    ) -> ptr[PyObject];  def jacpy_set_owned(
+    );  def jacpy_set_new(iterable: ptr[PyObject], frozen: i64) -> ptr[PyObject];  def jacpy_set_owned(
         target: ptr[PyObject], field: i64, value: ptr[PyObject]
-    ) -> i64;  def jacpy_shm_open(name: ptr, flags: i64, mode: i64) -> i64;  def jacpy_slice_adjust(
+    ) -> i64;  def jacpy_slice_adjust(
         length: i64, bounds: SliceBounds
     ) -> SliceBounds;  def jacpy_slice_unpack(value: ptr[PyObject]) -> SliceBounds;  def jacpy_source_bytes(
         handle: ptr[PyObject]
@@ -782,11 +775,9 @@ import from c {
         symbols: ptr[PyObject],
         varnames: ptr[PyObject],
         children: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_syslog(priority: i32, message: str);  def jacpy_take_error_text -> ptr[
-        PyObject
-    ];  def jacpy_text(value: str, size: i64) -> ptr[PyObject];  def jacpy_timeout_ns(
-        value: ptr[PyObject]
-    ) -> i64;  def jacpy_tuple_exchange(
+    ) -> ptr[PyObject];  def jacpy_take_error_text -> ptr[PyObject];  def jacpy_text(
+        value: str, size: i64
+    ) -> ptr[PyObject];  def jacpy_timeout_ns(value: ptr[PyObject]) -> i64;  def jacpy_tuple_exchange(
         value: ptr[PyObject], index: i64, item: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_tuple_item(
         handle: ptr[PyObject], index: i64
@@ -806,15 +797,14 @@ import from c {
         value: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_unicode_size(text: ptr[PyObject]) -> i64;  def jacpy_unicode_split(
         a: ptr[PyObject], sep: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_unraisable(message: str, object_: ptr[PyObject]);  def jacpy_unsigned_converter(
+    ) -> ptr[PyObject];  def jacpy_unsigned_converter(
         value: ptr[PyObject], out: &mut u64, long_long: i64
     ) -> i64;  def jacpy_utf8(handle: ptr[PyObject]) -> ptr[PyObject];  def jacpy_value_kind(
         handle: ptr[PyObject]
-    ) -> i64;  def jacpy_wall_time -> i64;  def jacpy_warning(
-        message: str, filename: str, line: i64
-    ) -> i64;  def jacpy_weakref_list(object_: ptr[PyObject]) -> ptr[PyObject];  def jacpy_writer_new -> ptr[
-        PyUnicodeWriter
-    ];  glob PyAsyncGen_Type: PyObject,
+    ) -> i64;  def jacpy_wall_time -> i64;  def jacpy_weakref_list(
+        object_: ptr[PyObject]
+    ) -> ptr[PyObject];  def jacpy_writer_new -> ptr[PyUnicodeWriter];  glob PyAsyncGen_Type:
+             PyObject,
          PyBaseObject_Type: PyObject,
          PyBool_Type: PyObject,
          PyByteArray_Type: PyObject,
