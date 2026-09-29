@@ -290,12 +290,20 @@ def failure_location(filename: str, error: syntax_failure) -> ptr[PyObject] {
         );
         checked(
             jacpy_tuple_set_owned(
-                result, 4, required(PyLong_FromLongLong(i64(error.end_lineno)))
+                result,
+                4,
+                required(Py_NewRef(Py_None))
+                    if error.open_end
+                    else required(PyLong_FromLongLong(i64(error.end_lineno)))
             )
         );
         checked(
             jacpy_tuple_set_owned(
-                result, 5, required(PyLong_FromLongLong(i64(error.end_offset)))
+                result,
+                5,
+                required(Py_NewRef(Py_None))
+                    if error.open_end
+                    else required(PyLong_FromLongLong(i64(error.end_offset)))
             )
         );
     } except Exception {
