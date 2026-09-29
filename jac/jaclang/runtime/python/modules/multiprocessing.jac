@@ -32,20 +32,23 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_ValueError,
     PyFloat_AsDouble,
     PyLong_FromLong,
-    PyLong_FromVoidPtr,
+    PyMem_RawFree,
     PyObject,
     PyThread_get_thread_ident,
     PyThreadState
 }
 import from jaclang.runtime.python.capi {
-    boundary_failure,
+    c_string_copy,
     c_string_text,
     object_error,
-    text_object,
     text_value
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_record
+}
+import from jaclang.runtime.python.bindings.members { MemberField, MemberType }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_present,
@@ -84,6 +87,38 @@ import from c {
 
 glob SemLock_token = ClassToken();
 
+# The SemLockObject fields semaphore.c publishes as read-only members
+# (handle is T_SEM_HANDLE, a pointer-sized T_ULONG on POSIX).
+import from c {
+    obj semlock_fields {
+        has handle: u64 = 0,
+            kind: i32 = 0,
+            maxvalue: i32 = 0,
+            name: ptr[u8] = ptr[u8]();
+    }
+}
+
+glob SEMLOCK_FIELDS_SIZE: int = 24;
+
+# semlock_members[]; a function, as the type definition that reads it is
+# another module's global.
+def semlock_members -> list[MemberField] {
+    return [
+        MemberField(
+            name="handle", kind=MemberType.ULONG.value, offset=0, readonly=True, doc=""
+        ),
+        MemberField(
+            name="kind", kind=MemberType.INT.value, offset=8, readonly=True, doc=""
+        ),
+        MemberField(
+            name="maxvalue", kind=MemberType.INT.value, offset=12, readonly=True, doc=""
+        ),
+        MemberField(
+            name="name", kind=MemberType.STRING.value, offset=16, readonly=True, doc=""
+        )
+    ];
+}
+
 # These match the values in Lib/multiprocessing/synchronize.py.
 glob:priv RECURSIVE_MUTEX: int = 0,
      SEMAPHORE: int = 1,
@@ -119,7 +154,9 @@ obj SemLockState(NativeState) {
         count: int = 0,
         maxvalue: int = 0,
         kind: int = 0,
-        name: str | None = None;
+        name: str | None = None,
+        # The C copy of `name` the name member reads.
+        name_text: ptr[u8] = ptr[u8]();
 
     def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return i32(0);
@@ -129,6 +166,9 @@ obj SemLockState(NativeState) {
     def drop {
         if self.handle != ptr(SEM_FAILED) {
             sem_close(self.handle);
+        }
+        if not self.name_text.is_null() {
+            PyMem_RawFree(ptr(self.name_text));
         }
     }
 }
@@ -318,7 +358,9 @@ def:priv release(state: SemLockState) -> ptr[PyObject] {
                 if sem_post(state.handle) < 0 {
                     return oserror();
                 }
-                object_error(PyExc_ValueError, "semaphore or lock released too many times");
+                object_error(
+                    PyExc_ValueError, "semaphore or lock released too many times"
+                );
                 return NULL;
             }
         }
@@ -356,12 +398,29 @@ def:priv new_semlock(
         return NULL;
     }
     state = SemLockState(handle=handle, kind=kind, maxvalue=maxvalue, name=name);
+    if name is not None {
+        state.name_text = c_string_copy(name);
+        if state.name_text.is_null() {
+            state.handle = ptr(SEM_FAILED);
+            jacpy_release(instance);
+            return PyErr_NoMemory();
+        }
+    }
     if jacpy_binding_native_set(instance, SemLock_token.handle, state) < 0 {
         # The instance does not own the handle yet.
         state.handle = ptr(SEM_FAILED);
         jacpy_release(instance);
         return NULL;
     }
+    fields = ptr[semlock_fields](
+        jacpy_binding_record(instance, SemLock_token.handle)
+    ).view(
+        1
+    );
+    fields[0].handle = u64(int(handle));
+    fields[0].kind = i32(kind);
+    fields[0].maxvalue = i32(maxvalue);
+    fields[0].name = state.name_text;
     return instance;
 }
 
@@ -513,20 +572,4 @@ def _multiprocessing_sem_unlink_impl(
         return mp_set_error(NULL, MP_STANDARD_ERROR);
     }
     return Py_NewRef(borrowed_none());
-}
-
-# The SemLock members: handle, kind, maxvalue and name, read-only.
-def semlock_handle(state: SemLockState) -> ptr[PyObject] {
-    return PyLong_FromVoidPtr(state.handle);
-}
-
-def semlock_name(state: SemLockState) -> ptr[PyObject] {
-    if state.name is None {
-        return Py_NewRef(borrowed_none());
-    }
-    try {
-        return text_object(state.name);
-    } except boundary_failure {
-        return NULL;
-    }
 }
