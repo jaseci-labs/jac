@@ -41,11 +41,11 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
     _mp = str(self.module.loc.mod_path or "") if self.module?.loc else "";
     if _mp {
         import from jaclang.compiler.frontend.codeinfo {
-            is_in_jaclang_package,
+            is_toolchain_unit,
             bundled_stdlib_module_of,
             NOGC_NATIVE_STDLIB
         }
-        if is_in_jaclang_package(_mp) {
+        if is_toolchain_unit(_mp) {
             _na_mod = bundled_stdlib_module_of(_mp);
             if _na_mod is None or _na_mod not in NOGC_NATIVE_STDLIB {
                 return None;

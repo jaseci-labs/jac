@@ -93,6 +93,9 @@ import type from jaclang.compiler.passes.osp_analysis { OspSlot }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import from jaclang.compiler.backends.native.na_constants {
     CLASS_DISPLAY_OFF,
+    CLASS_RECORD_ANCESTRY,
+    VTABLE_SET_BUCKETS,
+    VTABLE_SET_SYMBOL,
     EXC_LINEAGE_BITS,
     EXC_LINEAGE_MIX,
     EXC_LINEAGE_SLOTS,
@@ -349,6 +352,9 @@ walker NaIRGenPass(CompilerPass) {
         _isa_seq_fn: (ir.Function | None) = None,
         _isa_h_fn: (ir.Function | None) = None,
         _isa_vt_fn: (ir.Function | None) = None,
+        _isa_mro_fn: (ir.Function | None) = None,
+        _isa_vtobj_fn: (ir.Function | None) = None,
+        _vtable_nodes: list[ir.GlobalVariable] = [],
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _class_ctor_lookup_fn: (ir.Function | None) = None,
@@ -3103,6 +3109,14 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_isa_hashed_fn -> ir.Function;
     def _emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable;
     def _emit_isa_vtable_fn -> ir.Function;
+    def _emit_isa_records_fn -> ir.Function;
+    def _vtable_set -> ir.GlobalVariable;
+    def _emit_isa_vtobj_fn -> ir.Function;
+    def _emit_vtable_set_registrations -> None;
+    def _isinstance_name_fallback(
+        hit: ir.Value, obj_ptr: ir.Value, names: list[str], prefix: str
+    ) -> ir.Value;
+
     def _isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value;
     def _vtable_slot_certain(ty: (TypeBase | None)) -> bool;
     def _isinstance_vtable_fallback(
