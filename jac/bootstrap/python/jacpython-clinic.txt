@@ -48,3 +48,4 @@ _operator
 array
 _struct
 _collections
+itertools
