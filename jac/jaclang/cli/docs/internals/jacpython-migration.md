@@ -190,7 +190,7 @@ the Jac form, not a C helper:
 
 Still open:
 
-7. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
+1. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
 
 ## Object model (`Objects/`, 143k lines)
 
