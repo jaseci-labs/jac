@@ -249,12 +249,25 @@ impl OwnershipCheckPass._nogc_entry_confined_str(tgt: Name) -> bool {
 impl OwnershipCheckPass._nogc_infer_state(
     expr: Expr | None
 ) -> tuple[OwnershipKind, list[Name]] {
-    import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
+    import from jaclang.compiler.passes.rc_facts_pass {
+        call_borrows_receiver,
+        result_ownership,
+        Ownership
+    }
     _none: list[Name] = [];
     while isinstance(expr, CfgExpr) {
         expr = expr.expr;
     }
     if expr is None {
+        return (OwnershipKind.NONE, _none);
+    }
+    if isinstance(expr, FuncCall)
+        and call_borrows_receiver(expr)
+        and isinstance(expr.target, AtomTrailer) {
+        _recv_root = self._place_of(expr.target.target);
+        if _recv_root is not None and _recv_root.sym is not None {
+            return (OwnershipKind.BORROW, [_recv_root]);
+        }
         return (OwnershipKind.NONE, _none);
     }
     _own = result_ownership(expr);

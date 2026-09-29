@@ -139,10 +139,16 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
                 or self._opt_payload_of(_result.type) is not None
             ) {
             import from jaclang.compiler.passes.rc_facts_pass {
+                call_borrows_receiver,
                 Ownership,
                 result_ownership
             }
-            if result_ownership(nd) == Ownership.OWNED {
+            if result_ownership(nd) == Ownership.OWNED
+                and not (
+                    self._nogc_headerless()
+                    and isinstance(nd, uni.FuncCall)
+                    and call_borrows_receiver(nd)
+                ) {
                 self._mark_owned(_result);
             }
         }
