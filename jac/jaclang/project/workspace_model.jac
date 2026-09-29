@@ -25,6 +25,7 @@ obj WorkspaceSpec {
         default_app: str = "",
         explicit: bool = False,
         digest: str = "",
+        persistence_namespace: str = "main",
         base_pins: dict[str, str] = {},
         base_npm_names: set[str] = set();
 

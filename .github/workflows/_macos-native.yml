@@ -101,12 +101,11 @@ jobs:
       # The same registry loop as test-compiler's passes-native chunk. On
       # darwin it is what exercises the per-OS records and generated constant
       # tables (pwd/grp, resource, _stat, errno, syslog) against CPython.
-      # math and _pickle fail on darwin only (#9595); drop the skip with the fix.
       - name: Check native standard-library replacements against CPython (darwin)
         run: |
           jac install "hypothesis>=6,<7" --global
           while read -r module tests _ <&3; do
-            case "$module" in ''|'#'*|math|_pickle) continue ;; esac
+            case "$module" in ''|'#'*) continue ;; esac
             for test in $(printf '%s' "$tests" | tr ',' ' '); do
               jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module"
             done

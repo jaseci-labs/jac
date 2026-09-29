@@ -156,17 +156,10 @@ def resolve_ref(
     }
     ctx = JacRuntimeInterface.get_context();
 
-    if ctx.mem.is_recoverable_quarantine(stub.ensure_id()) {
+    if ctx.mem.preserve_unresolved_ref(stub.ensure_id()) {
         return None;
     }
 
-    if os.environ.get("JAC_SV_SIBLING") == "1" {
-        logger.debug(
-            f"unresolvable ref {type(stub).__name__} [{stub.id}] in sibling "
-            "service; skipping without heal (peer-owned or owner will heal)"
-        );
-        return None;
-    }
     ref_repr = referrer.id if referrer is not None else '?';
     logger.error(
         f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
