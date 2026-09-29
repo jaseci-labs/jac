@@ -14,6 +14,7 @@ import from jaclang.compiler.c_interop {
     is_pinned_type,
     is_ptr_type,
     is_ptr_view_type,
+    foreign_field_of,
     named_function
 }
 
@@ -388,7 +389,15 @@ impl NaIRGenPass._codegen_c_interop_call(
         if named {
             return (True, address);
         }
-        return (True, self._codegen_expr(params[0]));
+        return (True, self._c_address_of_value(self._codegen_expr(params[0])));
+    }
+    if isinstance(nd.target, uni.Name)
+        and nd.target.value == "int"
+        and len(params) == 1
+        and not isinstance(params[0], uni.KWPair)
+        and self._reads_c_callback(params[0]) {
+        # The address a C function-pointer field holds, as ptr fields are read.
+        return (True, self._c_address_of_value(self._codegen_expr(params[0])));
     }
     if isinstance(nd.target, uni.Name)
         and nd.target.value == "bool"
@@ -1055,6 +1064,32 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+# A read of a callback field of a foreign struct (`rec.view(1)[0].destructor`),
+# whose value is a C function pointer.
+impl NaIRGenPass._reads_c_callback(nd: uni.Expr) -> bool {
+    found = foreign_field_of(nd);
+    if found is None {
+        return False;
+    }
+    (arch, index) = found;
+    struct_type = self.struct_types.get(arch.name.value);
+    if struct_type is None or index >= len(struct_type.elements) {
+        return False;
+    }
+    field_type = struct_type.elements[index];
+    return isinstance(field_type, ir.PointerType)
+        and isinstance(field_type.pointee, ir.FunctionType);
+}
+
+# A C pointer value (a function pointer read from a callback field) as the
+# 64-bit address Jac holds pointers in; other values pass through.
+impl NaIRGenPass._c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None) {
+    if value is not None and isinstance(value.type, ir.PointerType) {
+        return self.builder.ptrtoint(value, ir.IntType(64), name="c.fn.addr");
+    }
+    return value;
 }
 
 # `ptr(f)` for a named function `f`: the address C calls it at, as C casts a

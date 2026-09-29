@@ -23,6 +23,7 @@ glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),
      _LIBS: dict[str, any] = {},
      _C_STRINGS: dict[str, any] = {},
      _C_FUNCTIONS: list[any] = [],
+     _C_FUNCTION_TYPES: dict[any, any] = {},
      _VIEW_RANGE: str = "PtrView index out of range";
 
 class JacCOpaque {}
@@ -510,10 +511,31 @@ def _field_ctype(spec: list[any], scope: any) -> any {
     raise TypeError(f"'{spec!r}' is not a C struct field type");
 }
 
+def _c_function_address(fn: any) -> int {
+    return ctypes.cast(fn, ctypes.c_void_p).value or 0;
+}
+
 def _fn_ctype(spec: list[any], scope: any) -> any {
     params = [_arg_ctype(p, scope) for p in spec[1]];
     ret = _ret_ctype(spec[2], scope);
-    return ctypes.CFUNCTYPE(ret, *params);
+    base = ctypes.CFUNCTYPE(ret, *params);
+    addressable = _C_FUNCTION_TYPES.get(base);
+    if addressable is None {
+        # int() of a C function pointer is the address it holds, as it is for
+        # a callback field read natively.
+        addressable = `type(
+            base.__name__,
+            (base, ),
+            {
+                "_flags_": base._flags_,
+                "_restype_": base._restype_,
+                "_argtypes_": base._argtypes_,
+                "__int__": _c_function_address
+            }
+        );
+        _C_FUNCTION_TYPES[base] = addressable;
+    }
+    return addressable;
 }
 
 def _arg_ctype(spec: list[any], scope: any) -> any {

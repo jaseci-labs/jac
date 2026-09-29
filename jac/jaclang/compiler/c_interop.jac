@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Expr,
     GlobalVars,
     Import,
+    Name,
     ParamVar,
     Symbol,
     UnaryExpr,
@@ -139,6 +140,28 @@ def reads_foreign_storage(nd: (UniNode | None)) -> bool {
         return foreign_struct_of_type(base_type) is not None;
     }
     return is_ptr_view_type(base_type);
+}
+
+"""The foreign struct and field index an attribute read names
+(`rec.view(1)[0].destructor`), or None."""
+def foreign_field_of(nd: (UniNode | None)) -> (tuple[Archetype, int] | None) {
+    while isinstance(nd, AtomUnit) and isinstance(nd.value, Expr) {
+        nd = nd.value;
+    }
+    if not isinstance(nd, AtomTrailer) or not nd.is_attr {
+        return None;
+    }
+    arch = foreign_struct_of_type(nd.target.type);
+    name = nd.right.sym_name if isinstance(nd.right, Name) else None;
+    if arch is None or name is None {
+        return None;
+    }
+    for (index, field) in enumerate(arch.get_has_vars()) {
+        if field.name.sym_name == name {
+            return (arch, index);
+        }
+    }
+    return None;
 }
 
 def foreign_read_is_place(nd: UniNode) -> bool {

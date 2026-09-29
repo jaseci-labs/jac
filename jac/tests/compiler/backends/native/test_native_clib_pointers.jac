@@ -684,3 +684,31 @@ with entry {
     }
     assert "imported 6 16" in out.splitlines() , out;
 }
+
+test "int() of a callback field is the address C holds there" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr;
+    }
+    def cp_call_i32(fn: ptr, v: i32) -> i32;
+    glob user_recipe: CpRecipe = CpRecipe(count=i32(1), scale=triple),
+         user_empty: CpRecipe = CpRecipe(count=i32(2));
+}
+def triple(v: i32) -> i32 {
+    return v * i32(3);
+}
+with entry {
+    recipe = addressof(user_recipe);
+    held = int(recipe.view(1)[0].scale);
+    print(
+        "held",
+        cp_call_i32(ptr(held), i32(5)),
+        int(addressof(user_empty).view(1)[0].scale) == 0
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code, "held.jac"));
+    }
+    assert "held 15 True" in out.splitlines() , out;
+}
