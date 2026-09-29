@@ -474,8 +474,19 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _cy_is_purple = b.icmp_unsigned(
             "==", _cy_color, ir.Constant(i8, RC_COLOR_PURPLE), name="cy.is.purple"
         );
+
+        _cy_untraced = b.icmp_unsigned(
+            "!=",
+            b.and_(_cy_cb, ir.Constant(i8, RC_UNTRACED_BIT), name="cy.unt.bit"),
+            ir.Constant(i8, 0),
+            name="cy.untraced"
+        );
         set_root_bb = release_fn.append_basic_block("set_root");
-        b.cbranch(_cy_is_purple, dbg_rel_bb, set_root_bb);
+        b.cbranch(
+            b.or_(_cy_is_purple, _cy_untraced, name="cy.not.root"),
+            dbg_rel_bb,
+            set_root_bb
+        );
 
         b = ir.IRBuilder(set_root_bb);
         _cy_word = b.load(_cy_csp, name="cy.word");
@@ -515,32 +526,38 @@ impl NaIRGenPass._emit_rc_helpers -> None {
             name="cd.in.coll"
         );
         b.cbranch(_cd_in_coll, dbg_rel_bb, unbuf_pre);
+
+        unbuf_hit = release_fn.append_basic_block("unbuf.hit");
         b = ir.IRBuilder(unbuf_pre);
         _ub_buf = b.load(self.rc_roots_buf_gv, name="ub.buf");
         _ub_count = b.load(self.rc_roots_count_gv, name="ub.count");
         b.branch(unbuf_hdr);
         b = ir.IRBuilder(unbuf_hdr);
         _ub_i = b.phi(i64, name="ub.i");
-        _ub_i.add_incoming(ir.Constant(i64, 0), unbuf_pre);
+        _ub_i.add_incoming(_ub_count, unbuf_pre);
         b.cbranch(
-            b.icmp_unsigned(">=", _ub_i, _ub_count, name="ub.end"),
+            b.icmp_unsigned("==", _ub_i, ir.Constant(i64, 0), name="ub.end"),
             unbuf_clear,
             unbuf_body
         );
         b = ir.IRBuilder(unbuf_body);
+        _ub_prev = b.sub(_ub_i, ir.Constant(i64, 1), name="ub.prev");
         _ub_slot = b.gep(
-            _ub_buf, [b.mul(_ub_i, ir.Constant(i64, 8), name="ub.off")], name="ub.slot"
+            _ub_buf,
+            [b.mul(_ub_prev, ir.Constant(i64, 8), name="ub.off")],
+            name="ub.slot"
         );
         _ub_pp = b.bitcast(_ub_slot, i8_ptr.as_pointer(), name="ub.pp");
         _ub_obj = b.load(_ub_pp, name="ub.obj");
-        _ub_match = b.icmp_unsigned("==", _ub_obj, release_fn.args[0], name="ub.match");
-        b.store(
-            b.select(_ub_match, ir.Constant(i8_ptr, None), _ub_obj, name="ub.new"),
-            _ub_pp
+        _ub_i.add_incoming(_ub_prev, unbuf_body);
+        b.cbranch(
+            b.icmp_unsigned("==", _ub_obj, release_fn.args[0], name="ub.match"),
+            unbuf_hit,
+            unbuf_hdr
         );
-        _ub_next = b.add(_ub_i, ir.Constant(i64, 1), name="ub.next");
-        _ub_i.add_incoming(_ub_next, unbuf_body);
-        b.branch(unbuf_hdr);
+        b = ir.IRBuilder(unbuf_hit);
+        b.store(ir.Constant(i8_ptr, None), _ub_pp);
+        b.branch(unbuf_clear);
         b = ir.IRBuilder(unbuf_clear);
         (_ub_csp, _ub_cb) = self._emit_rc_color_load(b, release_fn.args[0]);
         self._emit_rc_clear_buffered(b, _ub_csp);

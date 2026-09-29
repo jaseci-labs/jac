@@ -112,7 +112,9 @@ import from jaclang.compiler.backends.native.na_constants {
     RC_COLOR_PURPLE,
     RC_COLOR_SHIFT,
     RC_COLOR_WHITE,
-    RC_CYCLE_THRESHOLD
+    RC_CYCLE_PACE,
+    RC_CYCLE_THRESHOLD,
+    RC_UNTRACED_BIT
 }
 
 glob GEN_PENDING_FLAG_OFF: int = 8,
@@ -444,6 +446,8 @@ walker NaIRGenPass(CompilerPass) {
         rc_roots_buf_gv: object = None,
         rc_roots_cap_gv: object = None,
         rc_roots_count_gv: object = None,
+        rc_roots_threshold_gv: object = None,
+        rc_traced_gv: object = None,
         rc_collecting_gv: object = None,
         rc_push_root_fn: (ir.Function | None) = None,
         rc_garbage_buf_gv: object = None,
@@ -1260,6 +1264,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_rc_color_reset(b: ir.IRBuilder, csp: ir.Value) -> None;
+    def _emit_rc_mark_untraced(b: ir.IRBuilder, csp: ir.Value) -> None;
     def _emit_rc_clear_buffered(b: ir.IRBuilder, csp: ir.Value) -> None;
     def _emit_rc_is_buffered(
         b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
