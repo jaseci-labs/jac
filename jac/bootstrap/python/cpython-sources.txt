@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 85 C files / 147,068 lines; 66 headers / 26,515 lines.
-#   Total: 151 files / 173,583 source lines.
+#   Excluded: 86 C files / 153,409 lines; 67 headers / 27,481 lines.
+#   Total: 153 files / 180,890 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -332,8 +332,8 @@ Modules/_ctypes/ctypes.h
 Modules/_ctypes/malloc_closure.c
 Modules/_ctypes/stgdict.c
 # Modules/_datetimemodule.c  # removed: 7,787 source lines
-Modules/_decimal/_decimal.c
-Modules/_decimal/docstrings.h
+# Modules/_decimal/_decimal.c  # removed: 6,341 source lines
+# Modules/_decimal/docstrings.h  # removed: 966 source lines
 Modules/_elementtree.c
 # Modules/_functoolsmodule.c  # removed: 1,953 source lines
 Modules/_hacl/Hacl_HMAC.c

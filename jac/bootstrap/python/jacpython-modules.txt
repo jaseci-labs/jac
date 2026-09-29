@@ -76,3 +76,4 @@ _codecs         test.test_codecs,test.test_codeccallbacks
 _locale         test.test_locale,test.test__locale
 _zoneinfo       test.test_zoneinfo
 _datetime       test.test_datetime
+_decimal        test.test_decimal                       -lmpdec -lm

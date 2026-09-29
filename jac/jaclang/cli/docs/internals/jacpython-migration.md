@@ -106,6 +106,11 @@ through the header's macros. `_PyDateTime_InitTypes()`, which
 before readying it; its IsoCalendarDate heap type is a `PyType_Spec` of C
 data whose slots are `ptr(function)`.
 
+Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
+`PyMethodDef` tables are C data whose callbacks are `ptr(function)`, and a
+`Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
+token for `PyType_GetBaseByToken()`, as in C.
+
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
 `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini` in an
