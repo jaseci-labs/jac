@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_ssize,
@@ -81,1143 +76,1175 @@ import from jaclang.runtime.python.modules.operator {
     _operator_xor_impl
 }
 
-def:priv _operator_truth_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return return_bool(_operator_truth_impl(receiver, a));
-}
-
 def:priv _operator_truth_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_truth_bound, receiver);
+    try {
+        a: ptr[PyObject] = value;
+        return return_bool(_operator_truth_impl(receiver, a));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _operator_add_signature = CallSignature(
-         "add", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_add_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_add_impl(receiver, a, b);
+def:priv _operator_add_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_add_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_add_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_add_signature, args, nargs, NULL, _operator_add_bound, receiver
-    );
+    if not check_positional("add", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_add_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_sub_signature = CallSignature(
-         "sub", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_sub_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_sub_impl(receiver, a, b);
+def:priv _operator_sub_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_sub_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_sub_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_sub_signature, args, nargs, NULL, _operator_sub_bound, receiver
-    );
+    if not check_positional("sub", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_sub_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_mul_signature = CallSignature(
-         "mul", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_mul_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_mul_impl(receiver, a, b);
+def:priv _operator_mul_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_mul_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_mul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_mul_signature, args, nargs, NULL, _operator_mul_bound, receiver
-    );
+    if not check_positional("mul", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_mul_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_matmul_signature = CallSignature(
-         "matmul", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_matmul_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_matmul_impl(receiver, a, b);
+def:priv _operator_matmul_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_matmul_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_matmul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_matmul_signature, args, nargs, NULL, _operator_matmul_bound, receiver
-    );
+    if not check_positional("matmul", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_matmul_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_floordiv_signature = CallSignature(
-         "floordiv", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_floordiv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_floordiv_impl(receiver, a, b);
+def:priv _operator_floordiv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_floordiv_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_floordiv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_floordiv_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_floordiv_bound,
-        receiver
-    );
+    if not check_positional("floordiv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_floordiv_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_truediv_signature = CallSignature(
-         "truediv", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_truediv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_truediv_impl(receiver, a, b);
+def:priv _operator_truediv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_truediv_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_truediv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_truediv_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_truediv_bound,
-        receiver
-    );
+    if not check_positional("truediv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_truediv_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_mod_signature = CallSignature(
-         "mod", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_mod_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_mod_impl(receiver, a, b);
+def:priv _operator_mod_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_mod_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_mod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_mod_signature, args, nargs, NULL, _operator_mod_bound, receiver
-    );
-}
-
-def:priv _operator_neg_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_neg_impl(receiver, a);
+    if not check_positional("mod", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_mod_bound(receiver, args, nargs);
 }
 
 def:priv _operator_neg_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_neg_bound, receiver);
-}
-
-def:priv _operator_pos_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_pos_impl(receiver, a);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_neg_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_pos_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_pos_bound, receiver);
-}
-
-def:priv _operator_abs_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_abs_impl(receiver, a);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_pos_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_abs_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_abs_bound, receiver);
-}
-
-def:priv _operator_inv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_inv_impl(receiver, a);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_abs_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_inv_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_inv_bound, receiver);
-}
-
-def:priv _operator_invert_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_invert_impl(receiver, a);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_inv_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_invert_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_invert_bound, receiver);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_invert_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _operator_lshift_signature = CallSignature(
-         "lshift", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_lshift_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_lshift_impl(receiver, a, b);
+def:priv _operator_lshift_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_lshift_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_lshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_lshift_signature, args, nargs, NULL, _operator_lshift_bound, receiver
-    );
+    if not check_positional("lshift", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_lshift_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_rshift_signature = CallSignature(
-         "rshift", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_rshift_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_rshift_impl(receiver, a, b);
+def:priv _operator_rshift_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_rshift_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_rshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_rshift_signature, args, nargs, NULL, _operator_rshift_bound, receiver
-    );
-}
-
-def:priv _operator_not__bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return return_bool(_operator_not__impl(receiver, a));
+    if not check_positional("rshift", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_rshift_bound(receiver, args, nargs);
 }
 
 def:priv _operator_not__call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_not__bound, receiver);
+    try {
+        a: ptr[PyObject] = value;
+        return return_bool(_operator_not__impl(receiver, a));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _operator_and__signature = CallSignature(
-         "and_", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_and__bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_and__impl(receiver, a, b);
+def:priv _operator_and__bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_and__impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_and__call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_and__signature, args, nargs, NULL, _operator_and__bound, receiver
-    );
+    if not check_positional("and_", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_and__bound(receiver, args, nargs);
 }
 
-glob:priv _operator_xor_signature = CallSignature(
-         "xor", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_xor_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_xor_impl(receiver, a, b);
+def:priv _operator_xor_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_xor_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_xor_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_xor_signature, args, nargs, NULL, _operator_xor_bound, receiver
-    );
+    if not check_positional("xor", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_xor_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_or__signature = CallSignature(
-         "or_", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_or__bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_or__impl(receiver, a, b);
+def:priv _operator_or__bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_or__impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_or__call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_or__signature, args, nargs, NULL, _operator_or__bound, receiver
-    );
+    if not check_positional("or_", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_or__bound(receiver, args, nargs);
 }
 
-glob:priv _operator_iadd_signature = CallSignature(
-         "iadd", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_iadd_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_iadd_impl(receiver, a, b);
+def:priv _operator_iadd_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_iadd_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_iadd_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_iadd_signature, args, nargs, NULL, _operator_iadd_bound, receiver
-    );
+    if not check_positional("iadd", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_iadd_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_isub_signature = CallSignature(
-         "isub", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_isub_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_isub_impl(receiver, a, b);
+def:priv _operator_isub_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_isub_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_isub_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_isub_signature, args, nargs, NULL, _operator_isub_bound, receiver
-    );
+    if not check_positional("isub", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_isub_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_imul_signature = CallSignature(
-         "imul", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_imul_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_imul_impl(receiver, a, b);
+def:priv _operator_imul_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_imul_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_imul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_imul_signature, args, nargs, NULL, _operator_imul_bound, receiver
-    );
+    if not check_positional("imul", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_imul_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_imatmul_signature = CallSignature(
-         "imatmul", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_imatmul_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_imatmul_impl(receiver, a, b);
+def:priv _operator_imatmul_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_imatmul_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_imatmul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_imatmul_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_imatmul_bound,
-        receiver
-    );
+    if not check_positional("imatmul", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_imatmul_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ifloordiv_signature = CallSignature(
-         "ifloordiv", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ifloordiv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ifloordiv_impl(receiver, a, b);
+def:priv _operator_ifloordiv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ifloordiv_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ifloordiv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ifloordiv_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_ifloordiv_bound,
-        receiver
-    );
+    if not check_positional("ifloordiv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ifloordiv_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_itruediv_signature = CallSignature(
-         "itruediv", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_itruediv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_itruediv_impl(receiver, a, b);
+def:priv _operator_itruediv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_itruediv_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_itruediv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_itruediv_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_itruediv_bound,
-        receiver
-    );
+    if not check_positional("itruediv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_itruediv_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_imod_signature = CallSignature(
-         "imod", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_imod_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_imod_impl(receiver, a, b);
+def:priv _operator_imod_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_imod_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_imod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_imod_signature, args, nargs, NULL, _operator_imod_bound, receiver
-    );
+    if not check_positional("imod", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_imod_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ilshift_signature = CallSignature(
-         "ilshift", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ilshift_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ilshift_impl(receiver, a, b);
+def:priv _operator_ilshift_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ilshift_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ilshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ilshift_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_ilshift_bound,
-        receiver
-    );
+    if not check_positional("ilshift", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ilshift_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_irshift_signature = CallSignature(
-         "irshift", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_irshift_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_irshift_impl(receiver, a, b);
+def:priv _operator_irshift_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_irshift_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_irshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_irshift_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_irshift_bound,
-        receiver
-    );
+    if not check_positional("irshift", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_irshift_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_iand_signature = CallSignature(
-         "iand", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_iand_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_iand_impl(receiver, a, b);
+def:priv _operator_iand_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_iand_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_iand_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_iand_signature, args, nargs, NULL, _operator_iand_bound, receiver
-    );
+    if not check_positional("iand", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_iand_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ixor_signature = CallSignature(
-         "ixor", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ixor_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ixor_impl(receiver, a, b);
+def:priv _operator_ixor_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ixor_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ixor_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ixor_signature, args, nargs, NULL, _operator_ixor_bound, receiver
-    );
+    if not check_positional("ixor", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ixor_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ior_signature = CallSignature(
-         "ior", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ior_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ior_impl(receiver, a, b);
+def:priv _operator_ior_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ior_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ior_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ior_signature, args, nargs, NULL, _operator_ior_bound, receiver
-    );
+    if not check_positional("ior", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ior_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_concat_signature = CallSignature(
-         "concat", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_concat_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_concat_impl(receiver, a, b);
+def:priv _operator_concat_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_concat_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_concat_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_concat_signature, args, nargs, NULL, _operator_concat_bound, receiver
-    );
+    if not check_positional("concat", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_concat_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_iconcat_signature = CallSignature(
-         "iconcat", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_iconcat_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_iconcat_impl(receiver, a, b);
+def:priv _operator_iconcat_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_iconcat_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_iconcat_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_iconcat_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_iconcat_bound,
-        receiver
-    );
+    if not check_positional("iconcat", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_iconcat_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_contains_signature = CallSignature(
-         "contains", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_contains_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return return_bool(_operator_contains_impl(receiver, a, b));
+def:priv _operator_contains_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return return_bool(_operator_contains_impl(receiver, a, b));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_contains_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_contains_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_contains_bound,
-        receiver
-    );
+    if not check_positional("contains", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_contains_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_indexOf_signature = CallSignature(
-         "indexOf", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_indexOf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return return_ssize(_operator_indexOf_impl(receiver, a, b));
+def:priv _operator_indexOf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return return_ssize(_operator_indexOf_impl(receiver, a, b));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_indexOf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_indexOf_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_indexOf_bound,
-        receiver
-    );
+    if not check_positional("indexOf", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_indexOf_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_countOf_signature = CallSignature(
-         "countOf", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_countOf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return return_ssize(_operator_countOf_impl(receiver, a, b));
+def:priv _operator_countOf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return return_ssize(_operator_countOf_impl(receiver, a, b));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_countOf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_countOf_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_countOf_bound,
-        receiver
-    );
+    if not check_positional("countOf", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_countOf_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_getitem_signature = CallSignature(
-         "getitem", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_getitem_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_getitem_impl(receiver, a, b);
+def:priv _operator_getitem_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_getitem_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_getitem_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_getitem_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_getitem_bound,
-        receiver
-    );
+    if not check_positional("getitem", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_getitem_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_setitem_signature = CallSignature(
-         "setitem", ["a", "b", "c"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_setitem_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    value = args.values[2];
-    c: ptr[PyObject] = value;
-    return _operator_setitem_impl(receiver, a, b, c);
+def:priv _operator_setitem_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        value = clinic_args[2];
+        c: ptr[PyObject] = value;
+        return _operator_setitem_impl(receiver, a, b, c);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_setitem_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_setitem_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_setitem_bound,
-        receiver
-    );
+    if not check_positional("setitem", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return _operator_setitem_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_delitem_signature = CallSignature(
-         "delitem", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_delitem_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_delitem_impl(receiver, a, b);
+def:priv _operator_delitem_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_delitem_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_delitem_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_delitem_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_delitem_bound,
-        receiver
-    );
+    if not check_positional("delitem", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_delitem_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_eq_signature = CallSignature(
-         "eq", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_eq_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_eq_impl(receiver, a, b);
+def:priv _operator_eq_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_eq_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_eq_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_eq_signature, args, nargs, NULL, _operator_eq_bound, receiver
-    );
+    if not check_positional("eq", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_eq_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ne_signature = CallSignature(
-         "ne", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ne_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ne_impl(receiver, a, b);
+def:priv _operator_ne_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ne_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ne_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ne_signature, args, nargs, NULL, _operator_ne_bound, receiver
-    );
+    if not check_positional("ne", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ne_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_lt_signature = CallSignature(
-         "lt", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_lt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_lt_impl(receiver, a, b);
+def:priv _operator_lt_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_lt_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_lt_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_lt_signature, args, nargs, NULL, _operator_lt_bound, receiver
-    );
+    if not check_positional("lt", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_lt_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_le_signature = CallSignature(
-         "le", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_le_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_le_impl(receiver, a, b);
+def:priv _operator_le_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_le_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_le_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_le_signature, args, nargs, NULL, _operator_le_bound, receiver
-    );
+    if not check_positional("le", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_le_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_gt_signature = CallSignature(
-         "gt", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_gt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_gt_impl(receiver, a, b);
+def:priv _operator_gt_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_gt_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_gt_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_gt_signature, args, nargs, NULL, _operator_gt_bound, receiver
-    );
+    if not check_positional("gt", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_gt_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ge_signature = CallSignature(
-         "ge", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ge_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ge_impl(receiver, a, b);
+def:priv _operator_ge_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ge_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ge_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ge_signature, args, nargs, NULL, _operator_ge_bound, receiver
-    );
+    if not check_positional("ge", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ge_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_pow_signature = CallSignature(
-         "pow", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_pow_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_pow_impl(receiver, a, b);
+def:priv _operator_pow_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_pow_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_pow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_pow_signature, args, nargs, NULL, _operator_pow_bound, receiver
-    );
+    if not check_positional("pow", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_pow_bound(receiver, args, nargs);
 }
 
-glob:priv _operator_ipow_signature = CallSignature(
-         "ipow", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_ipow_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_ipow_impl(receiver, a, b);
+def:priv _operator_ipow_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_ipow_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_ipow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_ipow_signature, args, nargs, NULL, _operator_ipow_bound, receiver
-    );
-}
-
-def:priv _operator_index_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_index_impl(receiver, a);
+    if not check_positional("ipow", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_ipow_bound(receiver, args, nargs);
 }
 
 def:priv _operator_index_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_index_bound, receiver);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_index_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _operator_is__signature = CallSignature(
-         "is_", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_is__bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_is__impl(receiver, a, b);
+def:priv _operator_is__bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_is__impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_is__call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_is__signature, args, nargs, NULL, _operator_is__bound, receiver
-    );
+    if not check_positional("is_", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_is__bound(receiver, args, nargs);
 }
 
-glob:priv _operator_is_not_signature = CallSignature(
-         "is_not", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_is_not_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator_is_not_impl(receiver, a, b);
+def:priv _operator_is_not_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator_is_not_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_is_not_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_is_not_signature, args, nargs, NULL, _operator_is_not_bound, receiver
-    );
-}
-
-def:priv _operator_is_none_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_is_none_impl(receiver, a);
+    if not check_positional("is_not", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator_is_not_bound(receiver, args, nargs);
 }
 
 def:priv _operator_is_none_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_is_none_bound, receiver);
-}
-
-def:priv _operator_is_not_none_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    return _operator_is_not_none_impl(receiver, a);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_is_none_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator_is_not_none_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _operator_is_not_none_bound, receiver);
+    try {
+        a: ptr[PyObject] = value;
+        return _operator_is_not_none_impl(receiver, a);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _operator_length_hint_signature = CallSignature(
-         "length_hint", ["obj", "default"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator_length_hint_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    obj_: ptr[PyObject] = value;
-    default_: i64 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = convert_ssize(value);
+def:priv _operator_length_hint_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        obj_: ptr[PyObject] = value;
+        default_: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = convert_ssize(value);
+        }
+        return return_ssize(_operator_length_hint_impl(receiver, obj_, default_));
+    } except boundary_failure {
+        return NULL;
     }
-    return return_ssize(_operator_length_hint_impl(receiver, obj_, default_));
 }
 
 def:priv _operator_length_hint_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator_length_hint_signature,
-        args,
-        nargs,
-        NULL,
-        _operator_length_hint_bound,
-        receiver
-    );
+    if not check_positional("length_hint", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _operator_length_hint_bound(receiver, args, nargs);
 }
 
-glob:priv _operator__compare_digest_signature = CallSignature(
-         "_compare_digest", ["a", "b"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _operator__compare_digest_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    a: ptr[PyObject] = value;
-    value = args.values[1];
-    b: ptr[PyObject] = value;
-    return _operator__compare_digest_impl(receiver, a, b);
+def:priv _operator__compare_digest_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        a: ptr[PyObject] = value;
+        value = clinic_args[1];
+        b: ptr[PyObject] = value;
+        return _operator__compare_digest_impl(receiver, a, b);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _operator__compare_digest_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _operator__compare_digest_signature,
-        args,
-        nargs,
-        NULL,
-        _operator__compare_digest_bound,
-        receiver
-    );
+    if not check_positional("_compare_digest", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _operator__compare_digest_bound(receiver, args, nargs);
 }
 
 glob operator_doc: str = "Operator interface.\n\nThis module exports a set of functions implemented in C corresponding\nto the intrinsic operators of Python.  For example, operator.add(x, y)\nis equivalent to the expression x+y.  The function names are those\nused for special methods; variants without leading and trailing\n'__' are also provided for convenience.",

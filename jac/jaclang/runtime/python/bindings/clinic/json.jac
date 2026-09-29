@@ -10,7 +10,6 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments { BoundArguments }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 
 

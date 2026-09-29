@@ -10,21 +10,19 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.modules.typing { _typing__idfunc_impl }
-
-def:priv _typing__idfunc_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    x: ptr[PyObject] = value;
-    return _typing__idfunc_impl(receiver, x);
-}
 
 def:priv _typing__idfunc_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _typing__idfunc_bound, receiver);
+    try {
+        x: ptr[PyObject] = value;
+        return _typing__idfunc_impl(receiver, x);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob typing_doc: str = "Primitives and accelerators for the typing module.\n",

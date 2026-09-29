@@ -10,13 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_double,
@@ -26,32 +22,32 @@ import from jaclang.runtime.python.modules.statistics {
     _statistics__normal_dist_inv_cdf_impl
 }
 
-glob:priv _statistics__normal_dist_inv_cdf_signature = CallSignature(
-         "_normal_dist_inv_cdf", ["p", "mu", "sigma"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _statistics__normal_dist_inv_cdf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    p: f64 = convert_double(value);
-    value = args.values[1];
-    mu: f64 = convert_double(value);
-    value = args.values[2];
-    sigma: f64 = convert_double(value);
-    return return_double(_statistics__normal_dist_inv_cdf_impl(receiver, p, mu, sigma));
+def:priv _statistics__normal_dist_inv_cdf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        p: f64 = convert_double(value);
+        value = clinic_args[1];
+        mu: f64 = convert_double(value);
+        value = clinic_args[2];
+        sigma: f64 = convert_double(value);
+        return return_double(
+            _statistics__normal_dist_inv_cdf_impl(receiver, p, mu, sigma)
+        );
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _statistics__normal_dist_inv_cdf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _statistics__normal_dist_inv_cdf_signature,
-        args,
-        nargs,
-        NULL,
-        _statistics__normal_dist_inv_cdf_bound,
-        receiver
-    );
+    if not check_positional("_normal_dist_inv_cdf", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return _statistics__normal_dist_inv_cdf_bound(receiver, args, nargs);
 }
 
 glob statistics_doc: str = "Accelerators for the statistics module.\n",

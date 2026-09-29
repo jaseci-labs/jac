@@ -11,23 +11,31 @@ Compiled only on Windows, so absent here:
     _multiprocessing.SemLock.acquire
     _multiprocessing.SemLock.release
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyMem_Free,
+    PyObject,
+    PyTuple_Size,
+    jacpy_dict_size,
+    jacpy_tuple_items
+}
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_FORMAT,
     PARSE_KEYWORDS,
-    PARSE_POSITIONAL,
-    invoke,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    invoke_tuple,
+    unpack_mapping,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     borrowed_none,
@@ -52,36 +60,40 @@ import from jaclang.runtime.python.modules.multiprocessing {
     convert_SEM_HANDLE
 }
 
-def:priv _multiprocessing_sem_unlink_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: str = convert_str(value, "sem_unlink", "argument");
-    return _multiprocessing_sem_unlink_impl(receiver, name);
-}
-
 def:priv _multiprocessing_sem_unlink_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _multiprocessing_sem_unlink_bound, receiver);
+    try {
+        name: str = convert_str(value, "sem_unlink", "argument");
+        return _multiprocessing_sem_unlink_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _multiprocessing_SemLock_acquire_signature = CallSignature(
          "acquire", ["block", "timeout"], 0, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _multiprocessing_SemLock_acquire_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    block: bool = True;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        block = convert_bool(value);
+def:priv _multiprocessing_SemLock_acquire_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        block: bool = True;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            block = convert_bool(value);
+        }
+        timeout: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            timeout = value;
+        }
+        return _multiprocessing_SemLock_acquire_impl(receiver, block, timeout);
+    } except boundary_failure {
+        return NULL;
     }
-    timeout: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        timeout = value;
-    }
-    return _multiprocessing_SemLock_acquire_impl(receiver, block, timeout);
 }
 
 def:priv _multiprocessing_SemLock_acquire_call(
@@ -90,7 +102,18 @@ def:priv _multiprocessing_SemLock_acquire_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 2 {
+        return _multiprocessing_SemLock_acquire_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _multiprocessing_SemLock_acquire_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _multiprocessing_SemLock_acquire_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multiprocessing_SemLock_acquire_signature,
         args,
         nargs,
@@ -100,15 +123,14 @@ def:priv _multiprocessing_SemLock_acquire_call(
     );
 }
 
-def:priv _multiprocessing_SemLock_release_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock_release_impl(receiver);
-}
-
 def:priv _multiprocessing_SemLock_release_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock_release_bound, receiver);
+    try {
+        return _multiprocessing_SemLock_release_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _multiprocessing_SemLock_signature = CallSignature(
@@ -120,27 +142,45 @@ glob:priv _multiprocessing_SemLock_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _multiprocessing_SemLock_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    kind: i32 = convert_int(value);
-    value = args.values[1];
-    value_: i32 = convert_int(value);
-    value = args.values[2];
-    maxvalue: i32 = convert_int(value);
-    value = args.values[3];
-    name: str = convert_str(value, "SemLock", argument_label("name", 4));
-    value = args.values[4];
-    unlink: bool = convert_bool(value);
-    return _multiprocessing_SemLock_impl(
-        receiver, kind, value_, maxvalue, name, unlink
-    );
+def:priv _multiprocessing_SemLock_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        kind: i32 = convert_int(value);
+        value = clinic_args[1];
+        value_: i32 = convert_int(value);
+        value = clinic_args[2];
+        maxvalue: i32 = convert_int(value);
+        value = clinic_args[3];
+        name: str = convert_str(value, "SemLock", argument_label("name", 4));
+        value = clinic_args[4];
+        unlink: bool = convert_bool(value);
+        return _multiprocessing_SemLock_impl(
+            receiver, kind, value_, maxvalue, name, unlink
+        );
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:pub _multiprocessing_SemLock_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 5 and size <= 5 {
+            return _multiprocessing_SemLock_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    values = unpack_mapping(_multiprocessing_SemLock_signature, args, kwargs);
+    if values {
+        unpacked = _multiprocessing_SemLock_bound(type, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_tuple(
         _multiprocessing_SemLock_signature,
         args,
         kwargs,
@@ -159,26 +199,30 @@ glob:priv _multiprocessing_SemLock__rebuild_signature = CallSignature(
      );
 
 def:priv _multiprocessing_SemLock__rebuild_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    handle = convert_SEM_HANDLE(value, "_rebuild", argument_label("", 1));
-    value = args.values[1];
-    kind: i32 = convert_int(value);
-    value = args.values[2];
-    maxvalue: i32 = convert_int(value);
-    value = args.values[3];
-    name: ptr[u8] = convert_cstr(value, "_rebuild", argument_label("", 4), True);
-    return _multiprocessing_SemLock__rebuild_impl(
-        receiver, handle, kind, maxvalue, name
-    );
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        handle = convert_SEM_HANDLE(value, "_rebuild", argument_label("", 1));
+        value = clinic_args[1];
+        kind: i32 = convert_int(value);
+        value = clinic_args[2];
+        maxvalue: i32 = convert_int(value);
+        value = clinic_args[3];
+        name: ptr[u8] = convert_cstr(value, "_rebuild", argument_label("", 4), True);
+        return _multiprocessing_SemLock__rebuild_impl(
+            receiver, handle, kind, maxvalue, name
+        );
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multiprocessing_SemLock__rebuild_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    return invoke_stack(
         _multiprocessing_SemLock__rebuild_signature,
         args,
         nargs,
@@ -188,126 +232,101 @@ def:priv _multiprocessing_SemLock__rebuild_call(
     );
 }
 
-def:priv _multiprocessing_SemLock__count_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock__count_impl(receiver);
-}
-
 def:priv _multiprocessing_SemLock__count_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock__count_bound, receiver);
-}
-
-def:priv _multiprocessing_SemLock__is_mine_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock__is_mine_impl(receiver);
+    try {
+        return _multiprocessing_SemLock__count_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multiprocessing_SemLock__is_mine_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock__is_mine_bound, receiver);
-}
-
-def:priv _multiprocessing_SemLock__get_value_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock__get_value_impl(receiver);
+    try {
+        return _multiprocessing_SemLock__is_mine_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multiprocessing_SemLock__get_value_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock__get_value_bound, receiver);
-}
-
-def:priv _multiprocessing_SemLock__is_zero_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock__is_zero_impl(receiver);
+    try {
+        return _multiprocessing_SemLock__get_value_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multiprocessing_SemLock__is_zero_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock__is_zero_bound, receiver);
-}
-
-def:priv _multiprocessing_SemLock__after_fork_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock__after_fork_impl(receiver);
+    try {
+        return _multiprocessing_SemLock__is_zero_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multiprocessing_SemLock__after_fork_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock__after_fork_bound, receiver);
-}
-
-def:priv _multiprocessing_SemLock___enter___bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multiprocessing_SemLock___enter___impl(receiver);
+    try {
+        return _multiprocessing_SemLock__after_fork_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multiprocessing_SemLock___enter___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _multiprocessing_SemLock___enter___bound, receiver);
+    try {
+        return _multiprocessing_SemLock___enter___impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _multiprocessing_SemLock___exit___signature = CallSignature(
-         "__exit__",
-         ["exc_type", "exc_value", "exc_tb"],
-         0,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
 def:priv _multiprocessing_SemLock___exit___bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    exc_type: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        exc_type = value;
+    clinic_args = stack.view(count);
+    try {
+        exc_type: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            exc_type = value;
+        }
+        exc_value: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            exc_value = value;
+        }
+        exc_tb: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            exc_tb = value;
+        }
+        return _multiprocessing_SemLock___exit___impl(
+            receiver, exc_type, exc_value, exc_tb
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    exc_value: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        exc_value = value;
-    }
-    exc_tb: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        exc_tb = value;
-    }
-    return _multiprocessing_SemLock___exit___impl(
-        receiver, exc_type, exc_value, exc_tb
-    );
 }
 
 def:priv _multiprocessing_SemLock___exit___call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _multiprocessing_SemLock___exit___signature,
-        args,
-        nargs,
-        NULL,
-        _multiprocessing_SemLock___exit___bound,
-        receiver
-    );
+    if not check_positional("__exit__", int(nargs), 0, 3) {
+        return NULL;
+    }
+    return _multiprocessing_SemLock___exit___bound(receiver, args, nargs);
 }
 
 glob SemLock_doc: str = "",

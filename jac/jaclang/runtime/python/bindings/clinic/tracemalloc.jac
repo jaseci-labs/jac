@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters { argument_label, convert_int }
 import from jaclang.runtime.python.modules.tracemalloc {
     _tracemalloc__get_object_traceback_impl,
@@ -32,136 +27,120 @@ import from jaclang.runtime.python.modules.tracemalloc {
     _tracemalloc_stop_impl
 }
 
-def:priv _tracemalloc_is_tracing_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_is_tracing_impl(receiver);
-}
-
 def:priv _tracemalloc_is_tracing_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_is_tracing_bound, receiver);
-}
-
-def:priv _tracemalloc_clear_traces_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_clear_traces_impl(receiver);
+    try {
+        return _tracemalloc_is_tracing_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc_clear_traces_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_clear_traces_bound, receiver);
-}
-
-def:priv _tracemalloc__get_traces_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc__get_traces_impl(receiver);
+    try {
+        return _tracemalloc_clear_traces_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc__get_traces_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc__get_traces_bound, receiver);
-}
-
-def:priv _tracemalloc__get_object_traceback_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    obj_: ptr[PyObject] = value;
-    return _tracemalloc__get_object_traceback_impl(receiver, obj_);
+    try {
+        return _tracemalloc__get_traces_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc__get_object_traceback_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _tracemalloc__get_object_traceback_bound, receiver);
+    try {
+        obj_: ptr[PyObject] = value;
+        return _tracemalloc__get_object_traceback_impl(receiver, obj_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _tracemalloc_start_signature = CallSignature(
-         "start", ["nframe"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
-def:priv _tracemalloc_start_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    nframe: i32 = 1;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        nframe = convert_int(value);
+def:priv _tracemalloc_start_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        nframe: i32 = 1;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            nframe = convert_int(value);
+        }
+        return _tracemalloc_start_impl(receiver, nframe);
+    } except boundary_failure {
+        return NULL;
     }
-    return _tracemalloc_start_impl(receiver, nframe);
 }
 
 def:priv _tracemalloc_start_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _tracemalloc_start_signature,
-        args,
-        nargs,
-        NULL,
-        _tracemalloc_start_bound,
-        receiver
-    );
-}
-
-def:priv _tracemalloc_stop_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_stop_impl(receiver);
+    if not check_positional("start", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return _tracemalloc_start_bound(receiver, args, nargs);
 }
 
 def:priv _tracemalloc_stop_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_stop_bound, receiver);
-}
-
-def:priv _tracemalloc_get_traceback_limit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_get_traceback_limit_impl(receiver);
+    try {
+        return _tracemalloc_stop_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc_get_traceback_limit_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_get_traceback_limit_bound, receiver);
-}
-
-def:priv _tracemalloc_get_tracemalloc_memory_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_get_tracemalloc_memory_impl(receiver);
+    try {
+        return _tracemalloc_get_traceback_limit_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc_get_tracemalloc_memory_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_get_tracemalloc_memory_bound, receiver);
-}
-
-def:priv _tracemalloc_get_traced_memory_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_get_traced_memory_impl(receiver);
+    try {
+        return _tracemalloc_get_tracemalloc_memory_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc_get_traced_memory_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_get_traced_memory_bound, receiver);
-}
-
-def:priv _tracemalloc_reset_peak_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _tracemalloc_reset_peak_impl(receiver);
+    try {
+        return _tracemalloc_get_traced_memory_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _tracemalloc_reset_peak_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _tracemalloc_reset_peak_bound, receiver);
+    try {
+        return _tracemalloc_reset_peak_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob module_doc: str = "Debug module to trace memory blocks allocated by Python.",

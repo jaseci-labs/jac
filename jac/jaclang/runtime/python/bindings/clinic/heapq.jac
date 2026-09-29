@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters { argument_label, bad_argument }
 import from jaclang.runtime.python.modules.heapq {
     _heapq_heapify_impl,
@@ -32,237 +27,222 @@ import from jaclang.runtime.python.modules.heapq {
     _heapq_heapreplace_max_impl
 }
 
-glob:priv _heapq_heappush_signature = CallSignature(
-         "heappush", ["heap", "item"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _heapq_heappush_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heappush", argument_label("", 1), "list", value);
+def:priv _heapq_heappush_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heappush", argument_label("", 1), "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = value;
+        return _heapq_heappush_impl(receiver, heap, item);
+    } except boundary_failure {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = value;
-    return _heapq_heappush_impl(receiver, heap, item);
 }
 
 def:priv _heapq_heappush_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _heapq_heappush_signature, args, nargs, NULL, _heapq_heappush_bound, receiver
-    );
-}
-
-def:priv _heapq_heappop_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heappop", "argument", "list", value);
+    if not check_positional("heappush", int(nargs), 2, 2) {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    return _heapq_heappop_impl(receiver, heap);
+    return _heapq_heappush_bound(receiver, args, nargs);
 }
 
 def:priv _heapq_heappop_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _heapq_heappop_bound, receiver);
+    try {
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heappop", "argument", "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        return _heapq_heappop_impl(receiver, heap);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _heapq_heapreplace_signature = CallSignature(
-         "heapreplace", ["heap", "item"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _heapq_heapreplace_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heapreplace", argument_label("", 1), "list", value);
+def:priv _heapq_heapreplace_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heapreplace", argument_label("", 1), "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = value;
+        return _heapq_heapreplace_impl(receiver, heap, item);
+    } except boundary_failure {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = value;
-    return _heapq_heapreplace_impl(receiver, heap, item);
 }
 
 def:priv _heapq_heapreplace_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _heapq_heapreplace_signature,
-        args,
-        nargs,
-        NULL,
-        _heapq_heapreplace_bound,
-        receiver
-    );
+    if not check_positional("heapreplace", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _heapq_heapreplace_bound(receiver, args, nargs);
 }
 
-glob:priv _heapq_heappushpop_signature = CallSignature(
-         "heappushpop", ["heap", "item"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _heapq_heappushpop_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heappushpop", argument_label("", 1), "list", value);
+def:priv _heapq_heappushpop_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heappushpop", argument_label("", 1), "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = value;
+        return _heapq_heappushpop_impl(receiver, heap, item);
+    } except boundary_failure {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = value;
-    return _heapq_heappushpop_impl(receiver, heap, item);
 }
 
 def:priv _heapq_heappushpop_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _heapq_heappushpop_signature,
-        args,
-        nargs,
-        NULL,
-        _heapq_heappushpop_bound,
-        receiver
-    );
-}
-
-def:priv _heapq_heapify_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heapify", "argument", "list", value);
+    if not check_positional("heappushpop", int(nargs), 2, 2) {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    return _heapq_heapify_impl(receiver, heap);
+    return _heapq_heappushpop_bound(receiver, args, nargs);
 }
 
 def:priv _heapq_heapify_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _heapq_heapify_bound, receiver);
+    try {
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heapify", "argument", "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        return _heapq_heapify_impl(receiver, heap);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _heapq_heappush_max_signature = CallSignature(
-         "heappush_max", ["heap", "item"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _heapq_heappush_max_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heappush_max", argument_label("", 1), "list", value);
+def:priv _heapq_heappush_max_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heappush_max", argument_label("", 1), "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = value;
+        return _heapq_heappush_max_impl(receiver, heap, item);
+    } except boundary_failure {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = value;
-    return _heapq_heappush_max_impl(receiver, heap, item);
 }
 
 def:priv _heapq_heappush_max_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _heapq_heappush_max_signature,
-        args,
-        nargs,
-        NULL,
-        _heapq_heappush_max_bound,
-        receiver
-    );
-}
-
-def:priv _heapq_heappop_max_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heappop_max", "argument", "list", value);
+    if not check_positional("heappush_max", int(nargs), 2, 2) {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    return _heapq_heappop_max_impl(receiver, heap);
+    return _heapq_heappush_max_bound(receiver, args, nargs);
 }
 
 def:priv _heapq_heappop_max_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _heapq_heappop_max_bound, receiver);
+    try {
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heappop_max", "argument", "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        return _heapq_heappop_max_impl(receiver, heap);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _heapq_heapreplace_max_signature = CallSignature(
-         "heapreplace_max", ["heap", "item"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _heapq_heapreplace_max_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heapreplace_max", argument_label("", 1), "list", value);
+def:priv _heapq_heapreplace_max_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heapreplace_max", argument_label("", 1), "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = value;
+        return _heapq_heapreplace_max_impl(receiver, heap, item);
+    } except boundary_failure {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = value;
-    return _heapq_heapreplace_max_impl(receiver, heap, item);
 }
 
 def:priv _heapq_heapreplace_max_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _heapq_heapreplace_max_signature,
-        args,
-        nargs,
-        NULL,
-        _heapq_heapreplace_max_bound,
-        receiver
-    );
-}
-
-def:priv _heapq_heapify_max_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heapify_max", "argument", "list", value);
+    if not check_positional("heapreplace_max", int(nargs), 2, 2) {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    return _heapq_heapify_max_impl(receiver, heap);
+    return _heapq_heapreplace_max_bound(receiver, args, nargs);
 }
 
 def:priv _heapq_heapify_max_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _heapq_heapify_max_bound, receiver);
+    try {
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heapify_max", "argument", "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        return _heapq_heapify_max_impl(receiver, heap);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _heapq_heappushpop_max_signature = CallSignature(
-         "heappushpop_max", ["heap", "item"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _heapq_heappushpop_max_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_list(value) == 0 {
-        bad_argument("heappushpop_max", argument_label("", 1), "list", value);
+def:priv _heapq_heappushpop_max_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_list(value) == 0 {
+            bad_argument("heappushpop_max", argument_label("", 1), "list", value);
+        }
+        heap: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = value;
+        return _heapq_heappushpop_max_impl(receiver, heap, item);
+    } except boundary_failure {
+        return NULL;
     }
-    heap: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = value;
-    return _heapq_heappushpop_max_impl(receiver, heap, item);
 }
 
 def:priv _heapq_heappushpop_max_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _heapq_heappushpop_max_signature,
-        args,
-        nargs,
-        NULL,
-        _heapq_heappushpop_max_bound,
-        receiver
-    );
+    if not check_positional("heappushpop_max", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _heapq_heappushpop_max_bound(receiver, args, nargs);
 }
 
 glob module_doc: str = "Heap queue algorithm (a.k.a. priority queue).\n\nHeaps are arrays for which a[k] <= a[2*k+1] and a[k] <= a[2*k+2] for\nall k, counting elements from 0.  For the sake of comparison,\nnon-existing elements are considered to be infinite.  The interesting\nproperty of a heap is that a[0] is always its smallest element.\n\nUsage:\n\nheap = []            # creates an empty heap\nheappush(heap, item) # pushes a new item on the heap\nitem = heappop(heap) # pops the smallest item from the heap\nitem = heap[0]       # smallest item on the heap without popping it\nheapify(x)           # transforms list into a heap, in-place, in linear time\nitem = heapreplace(heap, item) # pops and returns smallest item, and adds\n                               # new item; the heap size is unchanged\n\nOur API differs from textbook heap algorithms as follows:\n\n- We use 0-based indexing.  This makes the relationship between the\n  index for a node and the indexes for its children slightly less\n  obvious, but is more suitable since Python uses 0-based indexing.\n\n- Our heappop() method returns the smallest item, not the largest.\n\nThese two make it possible to view the heap as a regular Python list\nwithout surprises: heap[0] is the smallest item, and heap.sort()\nmaintains the heap invariant!\n",

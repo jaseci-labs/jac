@@ -10,13 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -25,125 +21,95 @@ import from jaclang.runtime.python.bindings.converters {
 }
 import from jaclang.runtime.python.modules.posixsubprocess { subprocess_fork_exec_impl }
 
-glob:priv subprocess_fork_exec_signature = CallSignature(
-         "fork_exec",
-         [
-             "args",
-             "executable_list",
-             "close_fds",
-             "pass_fds",
-             "cwd",
-             "env",
-             "p2cread",
-             "p2cwrite",
-             "c2pread",
-             "c2pwrite",
-             "errread",
-             "errwrite",
-             "errpipe_read",
-             "errpipe_write",
-             "restore_signals",
-             "call_setsid",
-             "pgid_to_set",
-             "gid",
-             "extra_groups",
-             "uid",
-             "child_umask",
-             "preexec_fn"
-         ],
-         22,
-         22,
-         22,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv subprocess_fork_exec_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    args_: ptr[PyObject] = value;
-    value = args.values[1];
-    executable_list: ptr[PyObject] = value;
-    value = args.values[2];
-    close_fds: bool = convert_bool(value);
-    value = args.values[3];
-    if jacpy_is_tuple(value) == 0 {
-        bad_argument("fork_exec", argument_label("", 4), "tuple", value);
+def:priv subprocess_fork_exec_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        args_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        executable_list: ptr[PyObject] = value;
+        value = clinic_args[2];
+        close_fds: bool = convert_bool(value);
+        value = clinic_args[3];
+        if jacpy_is_tuple(value) == 0 {
+            bad_argument("fork_exec", argument_label("", 4), "tuple", value);
+        }
+        pass_fds: ptr[PyObject] = value;
+        value = clinic_args[4];
+        cwd: ptr[PyObject] = value;
+        value = clinic_args[5];
+        env: ptr[PyObject] = value;
+        value = clinic_args[6];
+        p2cread: i32 = convert_int(value);
+        value = clinic_args[7];
+        p2cwrite: i32 = convert_int(value);
+        value = clinic_args[8];
+        c2pread: i32 = convert_int(value);
+        value = clinic_args[9];
+        c2pwrite: i32 = convert_int(value);
+        value = clinic_args[10];
+        errread: i32 = convert_int(value);
+        value = clinic_args[11];
+        errwrite: i32 = convert_int(value);
+        value = clinic_args[12];
+        errpipe_read: i32 = convert_int(value);
+        value = clinic_args[13];
+        errpipe_write: i32 = convert_int(value);
+        value = clinic_args[14];
+        restore_signals: bool = convert_bool(value);
+        value = clinic_args[15];
+        call_setsid: bool = convert_bool(value);
+        value = clinic_args[16];
+        pgid_to_set: i32 = convert_int(value);
+        value = clinic_args[17];
+        gid: ptr[PyObject] = value;
+        value = clinic_args[18];
+        extra_groups: ptr[PyObject] = value;
+        value = clinic_args[19];
+        uid: ptr[PyObject] = value;
+        value = clinic_args[20];
+        child_umask: i32 = convert_int(value);
+        value = clinic_args[21];
+        preexec_fn: ptr[PyObject] = value;
+        return subprocess_fork_exec_impl(
+            receiver,
+            args_,
+            executable_list,
+            close_fds,
+            pass_fds,
+            cwd,
+            env,
+            p2cread,
+            p2cwrite,
+            c2pread,
+            c2pwrite,
+            errread,
+            errwrite,
+            errpipe_read,
+            errpipe_write,
+            restore_signals,
+            call_setsid,
+            pgid_to_set,
+            gid,
+            extra_groups,
+            uid,
+            child_umask,
+            preexec_fn
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    pass_fds: ptr[PyObject] = value;
-    value = args.values[4];
-    cwd: ptr[PyObject] = value;
-    value = args.values[5];
-    env: ptr[PyObject] = value;
-    value = args.values[6];
-    p2cread: i32 = convert_int(value);
-    value = args.values[7];
-    p2cwrite: i32 = convert_int(value);
-    value = args.values[8];
-    c2pread: i32 = convert_int(value);
-    value = args.values[9];
-    c2pwrite: i32 = convert_int(value);
-    value = args.values[10];
-    errread: i32 = convert_int(value);
-    value = args.values[11];
-    errwrite: i32 = convert_int(value);
-    value = args.values[12];
-    errpipe_read: i32 = convert_int(value);
-    value = args.values[13];
-    errpipe_write: i32 = convert_int(value);
-    value = args.values[14];
-    restore_signals: bool = convert_bool(value);
-    value = args.values[15];
-    call_setsid: bool = convert_bool(value);
-    value = args.values[16];
-    pgid_to_set: i32 = convert_int(value);
-    value = args.values[17];
-    gid: ptr[PyObject] = value;
-    value = args.values[18];
-    extra_groups: ptr[PyObject] = value;
-    value = args.values[19];
-    uid: ptr[PyObject] = value;
-    value = args.values[20];
-    child_umask: i32 = convert_int(value);
-    value = args.values[21];
-    preexec_fn: ptr[PyObject] = value;
-    return subprocess_fork_exec_impl(
-        receiver,
-        args_,
-        executable_list,
-        close_fds,
-        pass_fds,
-        cwd,
-        env,
-        p2cread,
-        p2cwrite,
-        c2pread,
-        c2pwrite,
-        errread,
-        errwrite,
-        errpipe_read,
-        errpipe_write,
-        restore_signals,
-        call_setsid,
-        pgid_to_set,
-        gid,
-        extra_groups,
-        uid,
-        child_umask,
-        preexec_fn
-    );
 }
 
 def:priv subprocess_fork_exec_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        subprocess_fork_exec_signature,
-        args,
-        nargs,
-        NULL,
-        subprocess_fork_exec_bound,
-        receiver
-    );
+    if not check_positional("fork_exec", int(nargs), 22, 22) {
+        return NULL;
+    }
+    return subprocess_fork_exec_bound(receiver, args, nargs);
 }
 
 glob module_doc: str = "A POSIX helper for the subprocess module.",

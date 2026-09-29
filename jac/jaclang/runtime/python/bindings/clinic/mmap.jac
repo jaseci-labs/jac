@@ -14,14 +14,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     borrowed_none,
@@ -52,356 +47,357 @@ import from jaclang.runtime.python.modules.mmap {
     mmap_mmap_write_impl
 }
 
-def:priv mmap_mmap_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap_close_impl(receiver);
-}
-
 def:priv mmap_mmap_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap_close_bound, receiver);
-}
-
-def:priv mmap_mmap_read_byte_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap_read_byte_impl(receiver);
+    try {
+        return mmap_mmap_close_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_read_byte_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap_read_byte_bound, receiver);
-}
-
-def:priv mmap_mmap_readline_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap_readline_impl(receiver);
+    try {
+        return mmap_mmap_read_byte_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_readline_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap_readline_bound, receiver);
+    try {
+        return mmap_mmap_readline_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv mmap_mmap_read_signature = CallSignature(
-         "read", ["n"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_read_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    n: i64 = 9223372036854775807;
-    if args.values[0] != NULL {
-        n = convert_optional_ssize(args.values[0], 9223372036854775807);
+def:priv mmap_mmap_read_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        n: i64 = 9223372036854775807;
+        if count > 0 and clinic_args[0] != NULL {
+            n = convert_optional_ssize(clinic_args[0], 9223372036854775807);
+        }
+        return mmap_mmap_read_impl(receiver, n);
+    } except boundary_failure {
+        return NULL;
     }
-    return mmap_mmap_read_impl(receiver, n);
 }
 
 def:priv mmap_mmap_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_read_signature, args, nargs, NULL, mmap_mmap_read_bound, receiver
-    );
+    if not check_positional("read", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return mmap_mmap_read_bound(receiver, args, nargs);
 }
 
-glob:priv mmap_mmap_find_signature = CallSignature(
-         "find", ["view", "start", "end"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_find_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    view: BufferArgument = convert_buffer(value, "find", argument_label("", 1));
+def:priv mmap_mmap_find_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
     try {
-        start: ptr[PyObject] = borrowed_none();
-        if args.values[1] != NULL {
-            value = args.values[1];
-            start = value;
+        value = clinic_args[0];
+        view: BufferArgument = convert_buffer(value, "find", argument_label("", 1));
+        try {
+            start: ptr[PyObject] = borrowed_none();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                start = value;
+            }
+            end: ptr[PyObject] = borrowed_none();
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                end = value;
+            }
+            return mmap_mmap_find_impl(receiver, view, start, end);
+        } finally {
+            view.close();
         }
-        end: ptr[PyObject] = borrowed_none();
-        if args.values[2] != NULL {
-            value = args.values[2];
-            end = value;
-        }
-        return mmap_mmap_find_impl(receiver, view, start, end);
-    } finally {
-        view.close();
+    } except boundary_failure {
+        return NULL;
     }
 }
 
 def:priv mmap_mmap_find_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_find_signature, args, nargs, NULL, mmap_mmap_find_bound, receiver
-    );
+    if not check_positional("find", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return mmap_mmap_find_bound(receiver, args, nargs);
 }
 
-glob:priv mmap_mmap_rfind_signature = CallSignature(
-         "rfind", ["view", "start", "end"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_rfind_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    view: BufferArgument = convert_buffer(value, "rfind", argument_label("", 1));
+def:priv mmap_mmap_rfind_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
     try {
-        start: ptr[PyObject] = borrowed_none();
-        if args.values[1] != NULL {
-            value = args.values[1];
-            start = value;
+        value = clinic_args[0];
+        view: BufferArgument = convert_buffer(value, "rfind", argument_label("", 1));
+        try {
+            start: ptr[PyObject] = borrowed_none();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                start = value;
+            }
+            end: ptr[PyObject] = borrowed_none();
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                end = value;
+            }
+            return mmap_mmap_rfind_impl(receiver, view, start, end);
+        } finally {
+            view.close();
         }
-        end: ptr[PyObject] = borrowed_none();
-        if args.values[2] != NULL {
-            value = args.values[2];
-            end = value;
-        }
-        return mmap_mmap_rfind_impl(receiver, view, start, end);
-    } finally {
-        view.close();
+    } except boundary_failure {
+        return NULL;
     }
 }
 
 def:priv mmap_mmap_rfind_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_rfind_signature, args, nargs, NULL, mmap_mmap_rfind_bound, receiver
-    );
-}
-
-def:priv mmap_mmap_write_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    bytes_: BufferArgument = convert_buffer(value, "write", "argument");
-    try {
-        return mmap_mmap_write_impl(receiver, bytes_);
-    } finally {
-        bytes_.close();
+    if not check_positional("rfind", int(nargs), 1, 3) {
+        return NULL;
     }
+    return mmap_mmap_rfind_bound(receiver, args, nargs);
 }
 
 def:priv mmap_mmap_write_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, mmap_mmap_write_bound, receiver);
-}
-
-def:priv mmap_mmap_write_byte_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    byte: u8 = u8(
-        convert_unsigned_bounded(
-            value, False, u64(255), "unsigned byte integer", "write_byte", "argument"
-        )
-    );
-    return mmap_mmap_write_byte_impl(receiver, byte);
+    try {
+        bytes_: BufferArgument = convert_buffer(value, "write", "argument");
+        try {
+            return mmap_mmap_write_impl(receiver, bytes_);
+        } finally {
+            bytes_.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_write_byte_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, mmap_mmap_write_byte_bound, receiver);
-}
-
-def:priv mmap_mmap_size_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap_size_impl(receiver);
+    try {
+        byte: u8 = u8(
+            convert_unsigned_bounded(
+                value,
+                False,
+                u64(255),
+                "unsigned byte integer",
+                "write_byte",
+                "argument"
+            )
+        );
+        return mmap_mmap_write_byte_impl(receiver, byte);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_size_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap_size_bound, receiver);
-}
-
-def:priv mmap_mmap_resize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    newsize: i64 = convert_ssize(value);
-    return mmap_mmap_resize_impl(receiver, newsize);
+    try {
+        return mmap_mmap_size_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_resize_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, mmap_mmap_resize_bound, receiver);
-}
-
-def:priv mmap_mmap_tell_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap_tell_impl(receiver);
+    try {
+        newsize: i64 = convert_ssize(value);
+        return mmap_mmap_resize_impl(receiver, newsize);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_tell_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap_tell_bound, receiver);
+    try {
+        return mmap_mmap_tell_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv mmap_mmap_flush_signature = CallSignature(
-         "flush", ["offset", "size"], 0, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_flush_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    offset: i64 = 0;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        offset = convert_ssize(value);
+def:priv mmap_mmap_flush_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        offset: i64 = 0;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            offset = convert_ssize(value);
+        }
+        size: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            size = value;
+        }
+        return mmap_mmap_flush_impl(receiver, offset, size);
+    } except boundary_failure {
+        return NULL;
     }
-    size: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        size = value;
-    }
-    return mmap_mmap_flush_impl(receiver, offset, size);
 }
 
 def:priv mmap_mmap_flush_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_flush_signature, args, nargs, NULL, mmap_mmap_flush_bound, receiver
-    );
+    if not check_positional("flush", int(nargs), 0, 2) {
+        return NULL;
+    }
+    return mmap_mmap_flush_bound(receiver, args, nargs);
 }
 
-glob:priv mmap_mmap_seek_signature = CallSignature(
-         "seek", ["pos", "whence"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_seek_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pos: i64 = convert_ssize(value);
-    whence: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        whence = convert_int(value);
+def:priv mmap_mmap_seek_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pos: i64 = convert_ssize(value);
+        whence: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            whence = convert_int(value);
+        }
+        return mmap_mmap_seek_impl(receiver, pos, whence);
+    } except boundary_failure {
+        return NULL;
     }
-    return mmap_mmap_seek_impl(receiver, pos, whence);
 }
 
 def:priv mmap_mmap_seek_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_seek_signature, args, nargs, NULL, mmap_mmap_seek_bound, receiver
-    );
-}
-
-def:priv mmap_mmap_seekable_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap_seekable_impl(receiver);
+    if not check_positional("seek", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return mmap_mmap_seek_bound(receiver, args, nargs);
 }
 
 def:priv mmap_mmap_seekable_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap_seekable_bound, receiver);
+    try {
+        return mmap_mmap_seekable_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv mmap_mmap_move_signature = CallSignature(
-         "move", ["dest", "src", "count"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_move_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    dest: i64 = convert_ssize(value);
-    value = args.values[1];
-    src: i64 = convert_ssize(value);
-    value = args.values[2];
-    count: i64 = convert_ssize(value);
-    return mmap_mmap_move_impl(receiver, dest, src, count);
+def:priv mmap_mmap_move_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        dest: i64 = convert_ssize(value);
+        value = clinic_args[1];
+        src: i64 = convert_ssize(value);
+        value = clinic_args[2];
+        count: i64 = convert_ssize(value);
+        return mmap_mmap_move_impl(receiver, dest, src, count);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap_move_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_move_signature, args, nargs, NULL, mmap_mmap_move_bound, receiver
-    );
-}
-
-def:priv mmap_mmap___enter___bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return mmap_mmap___enter___impl(receiver);
+    if not check_positional("move", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return mmap_mmap_move_bound(receiver, args, nargs);
 }
 
 def:priv mmap_mmap___enter___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, mmap_mmap___enter___bound, receiver);
+    try {
+        return mmap_mmap___enter___impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv mmap_mmap___exit___signature = CallSignature(
-         "__exit__",
-         ["exc_type", "exc_value", "traceback"],
-         3,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap___exit___bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    exc_type: ptr[PyObject] = value;
-    value = args.values[1];
-    exc_value: ptr[PyObject] = value;
-    value = args.values[2];
-    traceback: ptr[PyObject] = value;
-    return mmap_mmap___exit___impl(receiver, exc_type, exc_value, traceback);
+def:priv mmap_mmap___exit___bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        exc_type: ptr[PyObject] = value;
+        value = clinic_args[1];
+        exc_value: ptr[PyObject] = value;
+        value = clinic_args[2];
+        traceback: ptr[PyObject] = value;
+        return mmap_mmap___exit___impl(receiver, exc_type, exc_value, traceback);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv mmap_mmap___exit___call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap___exit___signature,
-        args,
-        nargs,
-        NULL,
-        mmap_mmap___exit___bound,
-        receiver
-    );
+    if not check_positional("__exit__", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return mmap_mmap___exit___bound(receiver, args, nargs);
 }
 
-glob:priv mmap_mmap_madvise_signature = CallSignature(
-         "madvise", ["option", "start", "length"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv mmap_mmap_madvise_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    option: i32 = convert_int(value);
-    start: i64 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        start = convert_ssize(value);
+def:priv mmap_mmap_madvise_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        option: i32 = convert_int(value);
+        start: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            start = convert_ssize(value);
+        }
+        length: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            length = value;
+        }
+        return mmap_mmap_madvise_impl(receiver, option, start, length);
+    } except boundary_failure {
+        return NULL;
     }
-    length: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        length = value;
-    }
-    return mmap_mmap_madvise_impl(receiver, option, start, length);
 }
 
 def:priv mmap_mmap_madvise_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        mmap_mmap_madvise_signature,
-        args,
-        nargs,
-        NULL,
-        mmap_mmap_madvise_bound,
-        receiver
-    );
+    if not check_positional("madvise", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return mmap_mmap_madvise_bound(receiver, args, nargs);
 }
 
 glob mmap_doc: str = "Windows: mmap(fileno, length[, tagname[, access[, offset]]])\n\nMaps length bytes from the file specified by the file handle fileno,\nand returns a mmap object.  If length is larger than the current size\nof the file, the file is extended to contain length bytes.  If length\nis 0, the maximum length of the map is the current size of the file,\nexcept that if the file is empty Windows raises an exception (you cannot\ncreate an empty mapping on Windows).\n\nUnix: mmap(fileno, length[, flags[, prot[, access[, offset[, trackfd]]]]])\n\nMaps length bytes from the file specified by the file descriptor fileno,\nand returns a mmap object.  If length is 0, the maximum length of the map\nwill be the current size of the file when mmap is called.\nflags specifies the nature of the mapping. MAP_PRIVATE creates a\nprivate copy-on-write mapping, so changes to the contents of the mmap\nobject will be private to this process, and MAP_SHARED creates a mapping\nthat's shared with all other processes mapping the same areas of the file.\nThe default value is MAP_SHARED.\n\nTo map anonymous memory, pass -1 as the fileno (both versions).",

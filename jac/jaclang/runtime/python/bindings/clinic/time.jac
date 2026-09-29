@@ -10,38 +10,38 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.modules.time {
     convert_time_clockid_converter,
     time_clock_gettime_impl,
     time_clock_gettime_ns_impl
 }
 
-def:priv time_clock_gettime_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    clk_id: i32 = convert_time_clockid_converter(value, "clock_gettime", "argument");
-    return time_clock_gettime_impl(receiver, clk_id);
-}
-
 def:priv time_clock_gettime_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, time_clock_gettime_bound, receiver);
-}
-
-def:priv time_clock_gettime_ns_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    clk_id: i32 = convert_time_clockid_converter(value, "clock_gettime_ns", "argument");
-    return time_clock_gettime_ns_impl(receiver, clk_id);
+    try {
+        clk_id: i32 = convert_time_clockid_converter(
+            value, "clock_gettime", "argument"
+        );
+        return time_clock_gettime_impl(receiver, clk_id);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv time_clock_gettime_ns_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, time_clock_gettime_ns_bound, receiver);
+    try {
+        clk_id: i32 = convert_time_clockid_converter(
+            value, "clock_gettime_ns", "argument"
+        );
+        return time_clock_gettime_ns_impl(receiver, clk_id);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob time_doc: str = "time() -> floating-point number\n\nReturn the current time in seconds since the Epoch.\nFractions of a second may be present if the system clock provides them.",

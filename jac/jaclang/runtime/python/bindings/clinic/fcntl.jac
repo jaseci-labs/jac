@@ -10,13 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_bool,
@@ -31,128 +27,132 @@ import from jaclang.runtime.python.modules.fcntl {
     fcntl_lockf_impl
 }
 
-glob:priv fcntl_fcntl_signature = CallSignature(
-         "fcntl", ["fd", "cmd", "arg"], 2, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv fcntl_fcntl_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "fcntl", argument_label("", 1));
-    value = args.values[1];
-    cmd: i32 = convert_int(value);
-    arg_: ptr[PyObject] = NULL;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        arg_ = value;
+def:priv fcntl_fcntl_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "fcntl", argument_label("", 1));
+        value = clinic_args[1];
+        cmd: i32 = convert_int(value);
+        arg_: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            arg_ = value;
+        }
+        return fcntl_fcntl_impl(receiver, fd, cmd, arg_);
+    } except boundary_failure {
+        return NULL;
     }
-    return fcntl_fcntl_impl(receiver, fd, cmd, arg_);
 }
 
 def:priv fcntl_fcntl_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        fcntl_fcntl_signature, args, nargs, NULL, fcntl_fcntl_bound, receiver
-    );
+    if not check_positional("fcntl", int(nargs), 2, 3) {
+        return NULL;
+    }
+    return fcntl_fcntl_bound(receiver, args, nargs);
 }
 
-glob:priv fcntl_ioctl_signature = CallSignature(
-         "ioctl",
-         ["fd", "request", "arg", "mutate_flag"],
-         2,
-         4,
-         4,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv fcntl_ioctl_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "ioctl", argument_label("", 1));
-    value = args.values[1];
-    request: u64 = convert_unsigned_long(value, True, "ioctl", argument_label("", 2));
-    arg_: ptr[PyObject] = NULL;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        arg_ = value;
+def:priv fcntl_ioctl_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "ioctl", argument_label("", 1));
+        value = clinic_args[1];
+        request: u64 = convert_unsigned_long(
+            value, True, "ioctl", argument_label("", 2)
+        );
+        arg_: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            arg_ = value;
+        }
+        mutate_flag: bool = True;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            mutate_flag = convert_bool(value);
+        }
+        return fcntl_ioctl_impl(receiver, fd, request, arg_, mutate_flag);
+    } except boundary_failure {
+        return NULL;
     }
-    mutate_flag: bool = True;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        mutate_flag = convert_bool(value);
-    }
-    return fcntl_ioctl_impl(receiver, fd, request, arg_, mutate_flag);
 }
 
 def:priv fcntl_ioctl_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        fcntl_ioctl_signature, args, nargs, NULL, fcntl_ioctl_bound, receiver
-    );
+    if not check_positional("ioctl", int(nargs), 2, 4) {
+        return NULL;
+    }
+    return fcntl_ioctl_bound(receiver, args, nargs);
 }
 
-glob:priv fcntl_flock_signature = CallSignature(
-         "flock", ["fd", "operation"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv fcntl_flock_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "flock", argument_label("", 1));
-    value = args.values[1];
-    operation: i32 = convert_int(value);
-    return fcntl_flock_impl(receiver, fd, operation);
+def:priv fcntl_flock_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "flock", argument_label("", 1));
+        value = clinic_args[1];
+        operation: i32 = convert_int(value);
+        return fcntl_flock_impl(receiver, fd, operation);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv fcntl_flock_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        fcntl_flock_signature, args, nargs, NULL, fcntl_flock_bound, receiver
-    );
+    if not check_positional("flock", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return fcntl_flock_bound(receiver, args, nargs);
 }
 
-glob:priv fcntl_lockf_signature = CallSignature(
-         "lockf",
-         ["fd", "cmd", "len", "start", "whence"],
-         2,
-         5,
-         5,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv fcntl_lockf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "lockf", argument_label("", 1));
-    value = args.values[1];
-    cmd: i32 = convert_int(value);
-    len_: ptr[PyObject] = NULL;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        len_ = value;
+def:priv fcntl_lockf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "lockf", argument_label("", 1));
+        value = clinic_args[1];
+        cmd: i32 = convert_int(value);
+        len_: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            len_ = value;
+        }
+        start: ptr[PyObject] = NULL;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            start = value;
+        }
+        whence: i32 = 0;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            whence = convert_int(value);
+        }
+        return fcntl_lockf_impl(receiver, fd, cmd, len_, start, whence);
+    } except boundary_failure {
+        return NULL;
     }
-    start: ptr[PyObject] = NULL;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        start = value;
-    }
-    whence: i32 = 0;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        whence = convert_int(value);
-    }
-    return fcntl_lockf_impl(receiver, fd, cmd, len_, start, whence);
 }
 
 def:priv fcntl_lockf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        fcntl_lockf_signature, args, nargs, NULL, fcntl_lockf_bound, receiver
-    );
+    if not check_positional("lockf", int(nargs), 2, 5) {
+        return NULL;
+    }
+    return fcntl_lockf_bound(receiver, args, nargs);
 }
 
 glob module_doc: str = "This module performs file control and I/O control on file\ndescriptors.  It is an interface to the fcntl() and ioctl() Unix\nroutines.  File descriptors can be obtained with the fileno() method of\na file or socket object.",

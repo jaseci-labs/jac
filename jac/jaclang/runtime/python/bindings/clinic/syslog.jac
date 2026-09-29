@@ -7,20 +7,20 @@ jaclang.runtime.python.modules.syslog.
 Bound by hand in the module binding (no generic Jac converter):
     syslog.syslog: optional groups
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
+import from jaclang.runtime.python.cpython_api { NULL, PyMem_Free, PyObject }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
-    invoke_given,
-    invoke_vector
+    invoke_stack,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_long,
@@ -40,24 +40,30 @@ glob:priv syslog_openlog_signature = CallSignature(
          "openlog", ["ident", "logoption", "facility"], 0, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv syslog_openlog_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    ident: ptr[PyObject] = NULL;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        ident = convert_unicode(value, "openlog", argument_label("ident", 1));
+def:priv syslog_openlog_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        ident: ptr[PyObject] = NULL;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            ident = convert_unicode(value, "openlog", argument_label("ident", 1));
+        }
+        logoption: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            logoption = convert_long(value);
+        }
+        facility: i64 = LOG_USER;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            facility = convert_long(value);
+        }
+        return syslog_openlog_impl(receiver, ident, logoption, facility);
+    } except boundary_failure {
+        return NULL;
     }
-    logoption: i64 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        logoption = convert_long(value);
-    }
-    facility: i64 = LOG_USER;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        facility = convert_long(value);
-    }
-    return syslog_openlog_impl(receiver, ident, logoption, facility);
 }
 
 def:priv syslog_openlog_call(
@@ -66,59 +72,61 @@ def:priv syslog_openlog_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 3 {
+        return syslog_openlog_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(syslog_openlog_signature, args, nargs, kwnames);
+    if values {
+        unpacked = syslog_openlog_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         syslog_openlog_signature, args, nargs, kwnames, syslog_openlog_bound, receiver
     );
-}
-
-def:priv syslog_closelog_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return syslog_closelog_impl(receiver);
 }
 
 def:priv syslog_closelog_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, syslog_closelog_bound, receiver);
-}
-
-def:priv syslog_setlogmask_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    maskpri: i64 = convert_long(value);
-    return return_long(syslog_setlogmask_impl(receiver, maskpri));
+    try {
+        return syslog_closelog_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv syslog_setlogmask_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, syslog_setlogmask_bound, receiver);
-}
-
-def:priv syslog_LOG_MASK_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pri: i64 = convert_long(value);
-    return return_long(syslog_LOG_MASK_impl(receiver, pri));
+    try {
+        maskpri: i64 = convert_long(value);
+        return return_long(syslog_setlogmask_impl(receiver, maskpri));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv syslog_LOG_MASK_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, syslog_LOG_MASK_bound, receiver);
-}
-
-def:priv syslog_LOG_UPTO_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pri: i64 = convert_long(value);
-    return return_long(syslog_LOG_UPTO_impl(receiver, pri));
+    try {
+        pri: i64 = convert_long(value);
+        return return_long(syslog_LOG_MASK_impl(receiver, pri));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv syslog_LOG_UPTO_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, syslog_LOG_UPTO_bound, receiver);
+    try {
+        pri: i64 = convert_long(value);
+        return return_long(syslog_LOG_UPTO_impl(receiver, pri));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob module_methods: list[MethodDefinition] = [

@@ -89,8 +89,19 @@ calls (`parser=PARSE_POSITIONAL` for `_PyArg_CheckPositional`,
 `PARSE_KEYWORDS` for `_PyArg_UnpackKeywords`, `PARSE_FORMAT` and
 `PARSE_FORMAT_KEYWORDS` for `PyArg_ParseTuple` and
 `PyArg_ParseTupleAndKeywords`); `bindings/arguments.jac` implements each with
-its messages. A hand-written binding picks the same flags and parser as the C
-module's clinic output. A C type's `PyMemberDef` fields are real member
+its messages. The generated glue takes clinic's own fast paths without
+allocating: a `METH_O` or `METH_NOARGS` function converts its argument in
+place, a positional-only `METH_FASTCALL` function checks its arity with
+`check_positional` and converts the vectorcall stack, and a keyword-capable
+function or a `tp_new`/`tp_init` hands its stack or its tuple's items
+(`jacpy_tuple_items`) to the `_bound` function when no keywords are passed and
+the positional count is in range. Only the other calls go through the
+`CallSignature` (`invoke_stack`, `invoke_tuple`), which binds into an array as
+long as the parameter list. The glue calls its `_bound` function directly
+there: passing a Jac function as a `Callable` allocates a closure per call.
+`ArgumentFormat` analyses each format string once (`format_plan`). A
+hand-written binding picks the same flags and parser as the C module's clinic
+output. A C type's `PyMemberDef` fields are real member
 descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
 in the instance and `jacpy_binding_record()` gives their address
 (`select.kevent`, `_multiprocessing.SemLock`).
