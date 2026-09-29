@@ -284,6 +284,10 @@ SETUP
         # generated asserts fail the build if this configuration disagrees.
         "$CC" $CFLAGS -DPy_BUILD_CORE -I. -IInclude -c -o "$work/layouts_check.o" "$recipe/layouts_check.c"
         rm -f "$work/layouts_check.o"
+        # The configure features the generated constant tables recorded
+        # must be this build's.
+        "$CC" $CFLAGS -I. -IInclude -c -o "$work/features_check.o" "$recipe/features_check.c"
+        rm -f "$work/features_check.o"
     fi
     if [ -n "$archives" ]; then
         # shellcheck disable=SC2086 # one make target per archive
