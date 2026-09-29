@@ -49,6 +49,7 @@ _weakref        test.test_weakref
 _tracemalloc    test.test_tracemalloc
 zlib            test.test_zlib                          -lz
 _bz2            test.test_bz2                           -lbz2
+_zstd           test.test_zstd                          -lzstd
 errno           test.test_errno
 syslog          test.test_syslog
 resource        test.test_resource

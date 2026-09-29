@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 78 C files / 132,243 lines; 56 headers / 23,827 lines.
-#   Total: 134 files / 156,070 source lines.
+#   Excluded: 82 C files / 134,800 lines; 63 headers / 25,201 lines.
+#   Total: 145 files / 160,001 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -469,17 +469,17 @@ Modules/_threadmodule.c
 # Modules/_uuidmodule.c  # removed: 154 source lines
 # Modules/_weakref.c  # removed: 187 source lines
 Modules/_zoneinfo.c
-Modules/_zstd/_zstdmodule.c
-Modules/_zstd/_zstdmodule.h
-Modules/_zstd/buffer.h
-Modules/_zstd/clinic/_zstdmodule.c.h
-Modules/_zstd/clinic/compressor.c.h
-Modules/_zstd/clinic/decompressor.c.h
-Modules/_zstd/clinic/zstddict.c.h
-Modules/_zstd/compressor.c
-Modules/_zstd/decompressor.c
-Modules/_zstd/zstddict.c
-Modules/_zstd/zstddict.h
+# Modules/_zstd/_zstdmodule.c  # removed: 767 source lines
+# Modules/_zstd/_zstdmodule.h  # removed: 61 source lines
+# Modules/_zstd/buffer.h  # removed: 108 source lines
+# Modules/_zstd/clinic/_zstdmodule.c.h  # removed: 429 source lines
+# Modules/_zstd/clinic/compressor.c.h  # removed: 295 source lines
+# Modules/_zstd/clinic/decompressor.c.h  # removed: 225 source lines
+# Modules/_zstd/clinic/zstddict.c.h  # removed: 227 source lines
+# Modules/_zstd/compressor.c  # removed: 798 source lines
+# Modules/_zstd/decompressor.c  # removed: 717 source lines
+# Modules/_zstd/zstddict.c  # removed: 275 source lines
+# Modules/_zstd/zstddict.h  # removed: 29 source lines
 Modules/addrinfo.h
 # Modules/arraymodule.c  # removed: 3,359 source lines
 # Modules/atexitmodule.c  # removed: 361 source lines

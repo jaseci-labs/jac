@@ -95,7 +95,10 @@ gettext functions of `_locale`) is filtered by the binding from a flag in a
 `<name>.<os>.jac` variant, as `resource.prlimit` is. A callable made at run
 time with a bound `self`, like `_abc`'s weakref callback, comes from a
 `FunctionTable` in `bindings/module.jac`. A module's own converter (`SEM_HANDLE_converter`) types its variable by the
-Jac converter's return type.
+Jac converter's return type. A `PyBytesObject` or `PyByteArrayObject`
+parameter (format unit `S` or `Y`) is checked as `object(subclass_of=...)`
+over bytes or bytearray. A module built from several C files (`_zstd`'s
+`Modules/_zstd/`) gets one glue file for all of them.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
@@ -139,7 +142,9 @@ an integer is still accepted by the checker, so null tests are written
 matching the casts CPython's own C makes; non-object records
 (`PyThreadState`, `PyUnicodeWriter`, `Py_buffer`, `z_stream`) keep their own
 types. `Py_buffer` and library records like `z_stream` and `struct passwd` are
-C-layout Jac structs, so fields are read directly.
+C-layout Jac structs, so fields are read directly. `PyMutex` is opaque: a port
+keeps one in raw memory (`PyMem_RawCalloc(1, 1)`), so its address stays put
+while threads park on it, and calls `PyMutex_Lock`/`PyMutex_Unlock` (`_zstd`).
 
 ## Language gaps
 
