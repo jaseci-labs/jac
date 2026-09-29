@@ -146,14 +146,20 @@ def posix_condition(condition: str) -> bool {
     if re.search(r"[<>=]", condition) {
         return not any(name in condition for name in WINDOWS_SYMBOLS);
     }
-    expression = re.sub(r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition);
+    expression = re.sub(
+        r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition
+    );
     expression = expression.replace("&&", " and ").replace("||", " or ");
     expression = re.sub(r"!(?!=)", " not ", expression);
     symbols = sorted(
         set(re.findall(r"\b[A-Za-z_]\w*\b", expression))
             - {"True", "False", "and", "or", "not"}
     );
-    features = [name for name in symbols if name not in WINDOWS_SYMBOLS];
+    features = [
+        name
+        for name in symbols
+        if name not in WINDOWS_SYMBOLS
+    ];
     if len(features) > 12 {
         return True;
     }
@@ -402,9 +408,10 @@ obj Emitter {
             self.module_names.add(check);
             return ("ptr[PyObject]", "value", [f"{check}(value, {where});"]);
         }
+        # int(accept={str}) keeps its accepted types only as the "C" unit.
         if kind == "int" {
-            if "str" in accept_names {
-                raise Unsupported("int(accept={str})");
+            if getattr(conv, "format_unit", "") == "C" {
+                return ("i32", self.use("convert_char") + f"(value, {where})", []);
             }
             return ("i32", self.use("convert_int") + "(value)", []);
         }
@@ -463,6 +470,15 @@ obj Emitter {
         # as the getargs format unit it selects.
         unit = getattr(conv, "format_unit", "");
         if kind == "str" {
+            # "s#" as clinic parses it for a METH_O function, with PyArg_Parse;
+            # the _impl takes the C string and its size.
+            if unit == "s#" and position == 0 and not getattr(conv, "encoding", "") {
+                return (
+                    self.use("SizedText"),
+                    self.use("convert_sized_str") + f"(value, {where})",
+                    []
+                );
+            }
             if unit not in ("s", "z") or getattr(conv, "encoding", "") {
                 raise Unsupported(f"str converter '{unit}'");
             }
@@ -634,7 +650,11 @@ obj Emitter {
                     f"{var}: {jtype} = {expr};" if jtype else f"{var} = {expr};"
                 );
             }
-            call_args.append(var);
+            if jtype == "SizedText" {
+                call_args += [f"{var}.data", f"{var}.size"];
+            } else {
+                call_args.append(var);
+            }
         }
         call = f"{impl_name}({', '.join(call_args)})";
         result = f"{wrap}({call})" if wrap else call;
