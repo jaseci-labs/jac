@@ -57,7 +57,7 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
     if isinstance(expr, uni.TupleVal) {
         values = [self._literal_value(item) for item in expr.values];
         if all((val is not None) for val in values) {
-            return tuple(values);
+            return values;
         }
     }
     if isinstance(expr, uni.DictVal) {

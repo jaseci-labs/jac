@@ -2,7 +2,7 @@
 
 The MTIR graph shares nodes and closes cycles (a method points back at its
 class), so its record keys nodes by position; a client manifest's global
-values may be bytes, tuples or nested containers, so its record tags them."""
+values may be bytes or nested containers, so its record tags them."""
 import from jaclang.runtime.semantic {
     ClassInfo,
     FieldInfo,
@@ -62,7 +62,7 @@ test "a client artifact record keeps tagged global values and its source map" {
         params={"App": ["props"]},
         globals_values={
             "LOGO": b"\x00\xffpng",
-            "SIZE": (3, 4.5),
+            "SIZE": [3, 4.5],
             "TABLE": {"rows": [1, "two", True], "empty": []}
         },
         has_client=True,
@@ -86,7 +86,7 @@ test "a client artifact record keeps tagged global values and its source map" {
     assert restored is not None;
     assert restored.js == artifact.js;
     assert restored.manifest.globals_values == manifest.globals_values;
-    assert isinstance(restored.manifest.globals_values["SIZE"], tuple);
+    assert isinstance(restored.manifest.globals_values["LOGO"], bytes);
     assert restored.manifest.server_import_routes == manifest.server_import_routes;
     assert restored.manifest.page_export == "App";
     assert restored.manifest.layout_export is None;

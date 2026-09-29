@@ -110,7 +110,7 @@ def literal_to_json(value: any) -> dict[str, any] {
         for item in value {
             items.append(literal_to_json(item));
         }
-        return {"t": items};
+        return {"l": items};
     }
     if isinstance(value, list) {
         for item in value {
@@ -126,9 +126,6 @@ def literal_from_json(raw: any) -> any {
     record = json_map(raw);
     if "b" in record {
         return base64.b64decode(str(record["b"]).encode("ascii"));
-    }
-    if "t" in record {
-        return tuple(literal_from_json(item) for item in list(record["t"]));
     }
     if "l" in record {
         return [literal_from_json(item) for item in list(record["l"])];
