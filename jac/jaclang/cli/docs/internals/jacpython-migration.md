@@ -215,8 +215,9 @@ the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
    C: `p + n` and `p - n` step n elements of T (bytes for bare `ptr` or an
-   opaque T), `p - q` is the distance in elements, `p += n` works, `int(p)` is
-   the address and `ptr[T](n)` makes a pointer from one. zlib's output window
+   opaque T), `p - q` is the distance in elements, `p += n` works, `p < q`
+   (and `<=`, `>`, `>=`) orders two pointers of one pointee type by unsigned
+   address, `int(p)` is the address and `ptr[T](n)` makes a pointer from one. zlib's output window
    writes `window.next += visible` and `data_end - next_in`.
 2. **Field access through a pointer.** `p.view(1)[0].field` reads and
    `p.view(1)[0].field = v` writes a C-layout struct in place.

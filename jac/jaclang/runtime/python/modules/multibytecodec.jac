@@ -480,11 +480,6 @@ def:priv multibytecodec_encerror(
     return 0;
 }
 
-# The input bytes the decoder has not consumed (buf->inbuf_end - buf->inbuf).
-def:priv decode_remaining(buf: ptr[MultibyteDecodeBuffer]) -> int {
-    return int(buf.view(1)[0].inbuf_end - buf.view(1)[0].inbuf);
-}
-
 # The decoder's input size (buf->inbuf_end - buf->inbuf_top).
 def:priv decode_input_size(buf: ptr[MultibyteDecodeBuffer]) -> i64 {
     return i64(buf.view(1)[0].inbuf_end - buf.view(1)[0].inbuf_top);
@@ -605,7 +600,7 @@ def:priv multibytecodec_decerror(
     if newpos < 0 and not PyErr_Occurred() {
         newpos += decode_input_size(buf);
     }
-    if newpos < 0 or newpos > decode_input_size(buf) {
+    if newpos < 0 or buf.view(1)[0].inbuf_top + newpos > buf.view(1)[0].inbuf_end {
         PyErr_Clear();
         PyErr_Format(
             PyExc_IndexError, "position %zd from error handler out of bounds", newpos
@@ -865,7 +860,7 @@ def _multibytecodec_MultibyteCodec_decode_impl(
     buf.view(1)[0].inbuf_top = data;
     buf.view(1)[0].inbuf_end = data + datalen;
     failed = codec.view(1)[0].decinit(state, codec) != 0;
-    while not failed and decode_remaining(buf) > 0 {
+    while not failed and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end {
         r = run_decode(codec, state, buf);
         if r == 0 {
             break;
@@ -1151,7 +1146,7 @@ def:priv decoder_prepare_buffer(
 def:priv decoder_feed_buffer(
     ctx: StatefulState, buf: ptr[MultibyteDecodeBuffer]
 ) -> int {
-    while decode_remaining(buf) > 0 {
+    while buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end {
         r = run_decode(ctx.codec, ctx.state(), buf);
         if r == 0 or r == MBERR_TOOFEW {
             break;
@@ -1434,7 +1429,7 @@ def _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
     failed = decoder_feed_buffer(ctx, buf) != 0;
     if not failed
         and final
-        and decode_remaining(buf) > 0
+        and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end
         and multibytecodec_decerror(
             ctx.codec, ctx.state(), buf, ctx.errors, MBERR_TOOFEW
         )
@@ -1446,7 +1441,7 @@ def _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
     }
     # pending sequence still exists
     if not failed
-        and decode_remaining(buf) > 0
+        and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end
         and decoder_append_pending(ctx, buf) != 0 {
         failed = True;
     }
@@ -1618,7 +1613,7 @@ def:priv mbstreamreader_iread(
         failed = rsize > 0 and decoder_feed_buffer(ctx, buf) != 0;
         if not failed
             and (endoffile or sizehint < 0)
-            and decode_remaining(buf) > 0
+            and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end
             and multibytecodec_decerror(
                 ctx.codec, ctx.state(), buf, ctx.errors, MBERR_TOOFEW
             )
@@ -1627,7 +1622,7 @@ def:priv mbstreamreader_iread(
         }
         # pending sequence exists
         if not failed
-            and decode_remaining(buf) > 0
+            and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end
             and decoder_append_pending(ctx, buf) != 0 {
             failed = True;
         }

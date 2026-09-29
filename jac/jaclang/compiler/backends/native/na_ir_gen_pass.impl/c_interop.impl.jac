@@ -835,6 +835,14 @@ impl NaIRGenPass._codegen_c_ptr_arith(
     return (True, b.sdiv(span, self._sizeof_llvm(elem), name="c.ptr.dist"));
 }
 
+# Whether `nd` is a `ptr[T]` operand: an address, which orders unsigned.
+impl NaIRGenPass._is_c_ptr_node(nd: (uni.UniNode | None)) -> bool {
+    if isinstance(nd, uni.CfgExpr) {
+        nd = nd.expr;
+    }
+    return nd is not None and is_ptr_type(nd?.type);
+}
+
 impl NaIRGenPass._c_ptr_aug(
     current: ir.Value, rhs: ir.Value, aug_op: str, target_type: any
 ) -> tuple[bool, (ir.Value | None)] {

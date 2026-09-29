@@ -977,6 +977,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.BinaryExpr, op: str
     ) -> tuple[bool, (ir.Value | None)];
 
+    def _is_c_ptr_node(nd: (uni.UniNode | None)) -> bool;
     def _declare_clib_global(
         assign: uni.Assignment, lib: (str | None), owner: uni.Module
     ) -> None;

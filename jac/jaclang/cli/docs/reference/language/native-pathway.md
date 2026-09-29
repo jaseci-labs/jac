@@ -864,12 +864,16 @@ A pointer supports exactly these operations:
 |---|---|
 | `p.is_null()` | the address is NULL; `bool(p)` / `if p` test the same thing |
 | `p == q`, `p != q` | address equality |
+| `p + n`, `p - n`, `p += n`, `p -= n` | step `n` elements of `T`, as in C (bytes for a bare `ptr` or an opaque `T`) |
+| `p - q` | the distance from `q` to `p` in elements |
+| `p < q`, `p <= q`, `p > q`, `p >= q` | order by unsigned address, as C orders pointers into one object; both sides have one pointee type (a bare `ptr` side takes any `ptr[T]`, which widens to it) |
+| `int(p)`, `ptr[T](n)` | the address as an integer, and the pointer at an integer address |
 | passing `p` to C | the address, as is |
 | `p.view(n)` | a bounds-checked view of `n` elements ([below](#views-of-c-memory-pviewn)) |
 | `ptr[T]()` | the null pointer |
 | `ptr[T](q)` | the same address retyped as a `T*` |
 
-There is no dereference, no arithmetic and no `free`: C memory is freed by the C API that allocated it. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
+There is no dereference and no `free`: memory is read and written through `p.view(n)`, and C memory is freed by the C API that allocated it. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
 
 <!-- jac-skip -->
 ```jac

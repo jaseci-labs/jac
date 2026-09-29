@@ -139,6 +139,7 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "step 2.0 2.0",
         "distance 2 -2",
         "aug True 2.0",
+        "order True True True False",
         "bytes 24",
         "address True 24",
         "void step True",
@@ -268,6 +269,99 @@ def mismatch(p: ptr[CpVec3]) -> ptr[CpDb] { return p; }
 def scalar(p: ptr[u8]) -> ptr[i8] { return p; }
 ''';
     assert checker_codes(code) == ["E1002", "E1002", "E1002"];
+}
+
+test "pointers order by unsigned address across memory profiles and the Python backend" {
+    code = '''import from c {
+    glob order_cells: list[i32] = [i32(1), i32(2), i32(3)];
+}
+with entry {
+    first = addressof(order_cells);
+    last = first + 2;
+    print("lt", first < last, last < first, first < first);
+    print("le", first <= last, last <= first, first <= first);
+    print("gt", last > first, first > last, last > last);
+    print("ge", last >= first, first >= last, last >= last);
+    print("chain", first < first + 1 < last, first < last < first);
+    print("bare", ptr(first) < ptr(last), ptr(first) < last, last > ptr(first));
+    high = ptr[u8](0xFFFFFFFFFFFFFFF0);
+    low = ptr[u8](16);
+    print("unsigned", high > low, low < high, high >= low, low <= high);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        path = Path(directory) / "ordering.jac";
+        path.write_text(code);
+        out = assert_native_identity(str(path));
+    }
+    lines = out.splitlines();
+    for expected in [
+        "lt True False False",
+        "le True False True",
+        "gt True False False",
+        "ge True False True",
+        "chain True False",
+        "bare True True True",
+        "unsigned True True True True"
+    ] {
+        assert expected in lines , f"missing {expected!r} in:\n{out}";
+    }
+}
+
+test "pointer ordering needs one pointee type" {
+    code = DECLS
+        + '''
+def same(p: ptr[CpVec3], q: ptr[CpVec3]) -> bool { return p < q; }
+def widened(p: ptr[CpVec3], q: ptr) -> bool { return p <= q and q >= p; }
+def mismatch(p: ptr[CpVec3], q: ptr[CpDb]) -> bool { return p > q; }
+def scalar(p: ptr[u8], q: ptr[i8]) -> bool { return p >= q; }
+def integer(p: ptr[u8]) -> bool { return p < 16; }
+''';
+    assert checker_codes(code) == ["E1110", "E1110", "E1110"];
+}
+
+test "a function rebinds a C data glob of another module in place" {
+    holder = '''import from c {
+    obj GbRec {
+        has a: i32;
+    }
+    glob:priv gb_kept: ptr[GbRec] = ptr[GbRec]();
+    glob gb_count: i32 = i32(0);
+    glob gb_recs: list[GbRec] = [GbRec(a=i32(5)), GbRec(a=i32(6))];
+}
+glob gb_calls: int = 0;
+
+def keep(p: ptr[GbRec]) {
+    gb_kept = p;
+    gb_count += i32(1);
+    gb_calls = gb_calls + 1;
+}
+
+def kept_value -> i32 {
+    return gb_kept.view(1)[0].a;
+}
+
+def calls -> int {
+    return gb_calls;
+}
+''';
+    main = '''import from holder { calls, gb_count, gb_recs, keep, kept_value }
+with entry {
+    keep(addressof(gb_recs));
+    print("first", kept_value(), gb_count, calls());
+    keep(addressof(gb_recs) + 1);
+    print("second", kept_value(), gb_count, calls());
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "holder.jac").write_text(holder);
+        path = Path(directory) / "rebind.jac";
+        path.write_text(main);
+        out = assert_native_identity(str(path));
+    }
+    lines = out.splitlines();
+    assert "first 5 1 1" in lines , out;
+    assert "second 6 2 2" in lines , out;
 }
 
 test "C data symbols are declared without a value and C objects are used by address" {
