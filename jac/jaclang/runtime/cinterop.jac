@@ -2,6 +2,7 @@ import ctypes;
 import json;
 import os;
 import sys;
+import from ctypes.util { find_library }
 import from jaclang.runtime.scalars { numeric_shapes }
 import from jaclang.runtime.region { escape_regions, restore_regions }
 
@@ -640,7 +641,12 @@ def _lib_candidates(desc: dict[str, any], module_file: str) -> list[str] {
     if desc.get("level", 0) > 0 or len(names) > 1 {
         return [os.path.join(module_dir, rel)];
     }
-    return [fname, os.path.join(module_dir, fname)];
+    out = [fname, os.path.join(module_dir, fname)];
+    soname = find_library(base);
+    if soname and soname not in out {
+        out.append(soname);
+    }
+    return out;
 }
 
 def _load_library(desc: dict[str, any], module_file: str) -> any {
