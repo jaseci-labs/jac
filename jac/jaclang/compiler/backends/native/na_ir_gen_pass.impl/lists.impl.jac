@@ -113,6 +113,22 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         _old_v_s = b.load(ep2, name="lset_old_val");
         b.store(set_fn.args[2], ep2);
         self._emit_elem_release(b, elem_type, _old_v_s);
+    } elif self._nogc_headerless()
+        and isinstance(elem_type, ir.PointerType)
+        and self._elem_kind(elem_type) != "raw" {
+        _old_v_h = b.load(ep2, name="lset_old_val");
+        b.store(set_fn.args[2], ep2);
+        _replaced = b.icmp_unsigned(
+            "!=", _old_v_h, set_fn.args[2], name="lset.replaced"
+        );
+        _rep_bb = set_fn.append_basic_block("lset.drop");
+        _end_bb = set_fn.append_basic_block("lset.done");
+        b.cbranch(_replaced, _rep_bb, _end_bb);
+        b = self._emit_elem_slot_drop(
+            ir.IRBuilder(_rep_bb), set_fn, set_fn.args[0], _list_layout, 0, _old_v_h
+        );
+        b.branch(_end_bb);
+        b = ir.IRBuilder(_end_bb);
     } else {
         b.store(set_fn.args[2], ep2);
     }
