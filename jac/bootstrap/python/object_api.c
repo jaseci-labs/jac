@@ -212,6 +212,8 @@ int64_t jacpy_timeout_ns(PyObject *value) {
 /* Unicode builders and exact container operations used by native serializers. */
 PyUnicodeWriter *jacpy_writer_new(void) { return PyUnicodeWriter_Create(0); }
 int64_t jacpy_unicode_size(PyObject *text) { return PyUnicode_GET_LENGTH(text); }
+int64_t jacpy_unicode_kind(PyObject *text) { return PyUnicode_KIND(text); }
+void *jacpy_unicode_data(PyObject *text) { return PyUnicode_DATA(text); }
 PyObject *jacpy_unicode_decode_bytes(PyObject *value, const char *encoding) { return PyUnicode_FromEncodedObject(value, encoding, "strict"); }
 PyObject *jacpy_dict_default(PyObject *dictionary, PyObject *key, PyObject *value) {
     PyObject *result;

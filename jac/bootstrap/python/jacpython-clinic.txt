@@ -32,3 +32,4 @@ _posixshmem
 _abc
 _codecs
 _locale
+unicodedata
