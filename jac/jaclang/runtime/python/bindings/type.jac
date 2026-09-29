@@ -75,6 +75,7 @@ import from c {
             get_attribute: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
             set_attribute:
                 Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0,
+            string: Callable[[ptr[PyObject]], ptr[PyObject]] = 0,
             finalize: Callable[[ptr[PyObject]], None] = 0;
     }  def jacpy_binding_type(
         name: str,

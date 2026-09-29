@@ -115,6 +115,7 @@ impl NaIRGenPass._bind_function_parameter(
 }
 
 impl NaIRGenPass._leave_function(state: NativeFunctionState) -> None {
+    self._register_unwind_cleanup();
     self._leave_bindings(state.bindings);
     self._builder = state._builder;
     self.func_symtab = state.func_symtab;

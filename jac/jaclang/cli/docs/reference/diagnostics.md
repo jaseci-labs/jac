@@ -163,6 +163,7 @@ All three block code generation for the module that reports them.
 | `E0094` | Expected a wire ('provider --> consumer') or an edge rule here |
 | `E0095` | '*' must be the only item in a payload |
 | `E0096` | A rule payload lists names without aliases |
+| `E0097` | `return tail` needs a function call |
 
 ### Parser Warnings
 
@@ -308,7 +309,7 @@ Emitted by the type checker for [C library](language/native-pathway.md#c-library
 | `E1157` | C variadic {what} |
 | `E1158` | C function definition '{name}' {reason} |
 
-A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bool`, another foreign struct (nested by value, never containing itself), `ptr[T]` / `ptr`, or a named-function callback (`E1150`). A bodiless `obj Name;` declares an opaque C type, usable only as `ptr[Name]` (`E1151`). `pin(value)`, `p.view(n)` and `&T` / `&mut T` clib parameters lay their payload out in C memory, so `T` needs a known size (`E1152`). `glob name: T;` in a C library import declares a C variable and `glob name: T = value;` defines one; a C object (foreign struct, opaque type or `list[T]` array) is used only by address (`E1153`), `addressof()` takes only such a symbol (`E1154`), a definition's initializer is a C constant (`E1155`), and `ptr[u8]("text")` takes a string literal (`E1156`). A C variadic function takes C scalars, pointers, `str` or `bytes` as extra arguments and no keyword parameters (`E1157`), and a `def` with a body in a C library import defines a C function whose parameters and result are C data (`E1158`). Escaping a `PtrView` of C memory is `E1315`, and passing anything but a `Pinned[T]` to a `&mut Pinned[T]` parameter is an ordinary argument mismatch (`E1053`).
+A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bool`, another foreign struct (nested by value, never containing itself), `ptr[T]` / `ptr`, or a named-function callback (`E1150`). A bodiless `obj Name;` declares an opaque C type, usable only as `ptr[Name]` (`E1151`). `pin(value)`, `p.view(n)` and `&T` / `&mut T` clib parameters lay their payload out in C memory, so `T` needs a known size (`E1152`). `glob name: T;` in a C library import declares a C variable and `glob name: T = value;` defines one; a C object (foreign struct, opaque type or `list[T]` array) is used only by address (`E1153`), `addressof()` takes only such a symbol (`E1154`), a definition's initializer is a C constant, where `ptr(function)` is a named function's address for a `ptr` field such as a `PyMethodDef` entry and a sized integer array also takes a bytes literal, read as its little-endian elements (`E1155`), and `ptr[u8]("text")` takes a string literal (`E1156`). A C variadic function takes C scalars, pointers, `str` or `bytes` as extra arguments and no keyword parameters (`E1157`), and a `def` with a body in a C library import defines a C function whose parameters and result are C data (`E1158`). Escaping a `PtrView` of C memory is `E1315`, and passing anything but a `Pinned[T]` to a `&mut Pinned[T]` parameter is an ordinary argument mismatch (`E1053`).
 
 ### Exception / Context Manager / Yield
 
@@ -686,6 +687,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 | Code | Message |
 |------|---------|
+| `E5113` | `return tail` cannot be a guaranteed tail call: {reason} |
 
 ### Client Code Generation
 

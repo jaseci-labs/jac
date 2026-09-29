@@ -251,7 +251,7 @@ def renderer_demo {
     cp_batch_set_active(None);
 }
 
-"""C pointer arithmetic: element steps, distances and integer addresses."""
+"""C pointer arithmetic: element steps, distances, ordering and integer addresses."""
 def arithmetic_demo {
     pts = cp_points_new(i32(4));
     third = pts + 2;
@@ -261,6 +261,7 @@ def arithmetic_demo {
     cursor += 3;
     cursor -= 1;
     print("aug", cursor == third, cursor.view(1)[0].x);
+    print("order", pts < third, third <= cursor, pts + 3 > third, third >= pts + 3);
     print("bytes", ptr[u8](third) - ptr[u8](pts));
     address = int(third);
     print("address", ptr[CpVec3](address) == third, address - int(pts));

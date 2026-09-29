@@ -193,13 +193,19 @@ def region_of(__x: object) -> Region | None: ...
 # string literal, like a C string literal. Arithmetic
 # follows C: `p + n` and `p - n` step n elements of T (bytes when T is bare or
 # opaque), `p - q` is the distance in elements, and `int(p)` is the address.
+# `<`, `<=`, `>` and `>=` order two pointers of one element type (or a bare
+# `ptr`, which any `ptr[T]` widens to) by address, as C orders pointers into
+# one object.
 _PtrT = TypeVar("_PtrT", covariant=True)
 _ViewT = TypeVar("_ViewT")
 _PinT = TypeVar("_PinT")
 
 class ptr(Generic[_PtrT]):
-    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address.
-    def __init__(self, address: ptr[object] | int | str = ...) -> None: ...
+    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address, and
+    # `ptr(f)` is the address C calls the named function `f` at.
+    def __init__(
+        self, address: ptr[object] | int | str | Callable[..., object] = ...
+    ) -> None: ...
     def is_null(self) -> bool: ...
     # A borrowed, bounds-checked window of `n` elements starting at the
     # address. It is a local view: it may not outlive its scope.
@@ -212,6 +218,10 @@ class ptr(Generic[_PtrT]):
     def __int__(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...
     def __ne__(self, other: object) -> bool: ...
+    def __lt__(self, other: ptr[_PtrT]) -> bool: ...  # type: ignore[misc]
+    def __le__(self, other: ptr[_PtrT]) -> bool: ...  # type: ignore[misc]
+    def __gt__(self, other: ptr[_PtrT]) -> bool: ...  # type: ignore[misc]
+    def __ge__(self, other: ptr[_PtrT]) -> bool: ...  # type: ignore[misc]
     def __hash__(self) -> int: ...
 
 class PtrView(Generic[_ViewT]):

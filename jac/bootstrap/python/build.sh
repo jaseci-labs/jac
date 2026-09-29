@@ -248,6 +248,12 @@ SETUP
                         flag=${flag#*:}
                         ;;
                 esac
+                # A library the build vendors (-lz, -lsqlite3) links its
+                # static archive, as the C modules' LIB*_LIBS do, never the
+                # system's copy.
+                case "$flag" in
+                    -l*) [ -f "$deps/lib/lib${flag#-l}.a" ] && flag="$deps/lib/lib${flag#-l}.a" ;;
+                esac
                 selected="$selected $flag"
                 # A flag naming an archive under Modules/ is one of CPython's
                 # own make targets (the vendored HACL* libraries). makesetup

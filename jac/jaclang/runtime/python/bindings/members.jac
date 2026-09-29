@@ -88,6 +88,11 @@ def record_set_int(record: ptr, offset: int, value: int) {
     ptr[i32](int(record) + offset).view(1)[0] = i32(value);
 }
 
+# A pointer field (Py_T_STRING's `const char *`) at `offset`.
+def record_set_address(record: ptr, offset: int, value: ptr) {
+    ptr[ptr](int(record) + offset).view(1)[0] = value;
+}
+
 def record_set_byte(record: ptr, offset: int, value: int) {
     ptr[i8](int(record) + offset).view(1)[0] = i8(value);
 }

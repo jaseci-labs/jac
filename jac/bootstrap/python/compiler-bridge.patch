@@ -337,6 +337,19 @@
 -		Python/symtable.o \
 @@ -523,1 +477,0 @@
 -		Objects/boolobject.o \
+@@ -528,2 +481,0 @@
+-		Objects/capsule.o \
+-		Objects/cellobject.o \
+@@ -534,1 +485,0 @@
+-		Objects/enumobject.o \
+@@ -543,1 +493,0 @@
+-		Objects/iterobject.o \
+@@ -551,1 +500,0 @@
+-		Objects/namespaceobject.o \
+@@ -555,1 +503,0 @@
+-		Objects/rangeobject.o \
+@@ -557,1 +504,0 @@
+-		Objects/sliceobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer

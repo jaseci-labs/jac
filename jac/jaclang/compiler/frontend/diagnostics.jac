@@ -418,6 +418,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A rule's payload says which names may cross; an alias belongs to"
          " the wire or module that imports the name."
      ),
+     E0097 = _err(
+         "E0097",
+         Category.SYNTAX,
+         "`return tail` needs a function call",
+         help="A guaranteed tail call replaces the current frame with the callee's, so its operand is a call: `return tail next_step(state);`."
+     ),
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
@@ -1170,8 +1176,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A C data symbol Jac defines is laid out at link time, so its"
          " initializer is a C constant: a literal, `None`, `ptr[T]()`, an integer"
          " address, `ptr[u8](\"text\")`, `addressof(symbol)`, a named function"
-         " for a callback field, or a constructor of a foreign struct whose"
-         " arguments are all of these.",
+         " for a callback field, `ptr(function)` for the address of a named"
+         " function, a `ptr[T](...)` cast of any of these addresses, or a"
+         " constructor of a foreign struct whose arguments are all of these."
+         " An array is a list literal of these, or for sized integer elements"
+         " a bytes literal of its little-endian elements.",
          blocks_codegen=True
      ),
      E1156 = _err(
@@ -2388,6 +2397,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Constructing '{cls}' would run '{owner}.postinit' on a Python shadow the native object cannot see",
          help="A native class over a Python-side base owns two halves: its own slots live in the native struct, the base's live on a Python shadow instance the bridge keeps beside it. Construction runs the base's `__post_init__` on that shadow, where the subclass's native slots do not exist and its method overrides are not on the shadow's class -- so a store the base initializer makes is invisible natively, and a call it dispatches reaches the base's body rather than the override. The object comes out with its declared defaults and nothing says so. Give '{cls}' a `postinit` of its own -- it suppresses the base's and can chain into it with `super.postinit()`, which does bridge -- or bring the base into the native unit so the whole chain lowers."
+     ),
+     E5113 = _err(
+         "E5113",
+         Category.CODEGEN,
+         "`return tail` cannot be a guaranteed tail call: {reason}",
+         help="A guaranteed tail call (LLVM `musttail`) reuses the caller's frame, so nothing may run after the call: the callee takes the caller's parameter list and return type and calling convention exactly, is not variadic, receives no address of a caller local, and the caller has no owned value, open region, `finally` or `with` block left to clean up at the return. Restructure so the call is the last thing the function does, or use a plain `return`."
      ),
      E5112 = _err(
          "E5112",

@@ -255,9 +255,10 @@ def native_arch_scope(mod_path: str) -> str {
     if memo is not None {
         return memo;
     }
+    import from jaclang.compiler.native_scope { binds_bare_arch_names }
     source = os.path.realpath(mod_path);
     out = "";
-    if not is_target_package_path(source) {
+    if not binds_bare_arch_names(source) {
         stem = os.path.basename(source);
         dot = stem.find(".");
         if dot > 0 {
@@ -639,13 +640,22 @@ def native_stdlib_root -> (str | None) {
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
 }
 
-def is_in_jaclang_package(file_path: str) -> bool {
+"""Is `file_path` a module of the toolchain rather than of a program?
+
+A module belongs to the unit root it is keyed by (`native_unit_root`): the
+jaclang package for the compiler, runtime and bundled stdlib, but a project
+with its own `jac.toml` (templates, examples, test fixtures) inside the
+package is a program like any other.
+"""
+def is_toolchain_unit(file_path: str) -> bool {
     import os;
     pkg = jaclang_pkg_root();
     if not file_path or not pkg {
         return False;
     }
-    return os.path.abspath(file_path).startswith(pkg + os.sep);
+    unit_root = native_unit_root(os.path.dirname(os.path.realpath(file_path)));
+    return unit_root is not None
+        and os.path.realpath(unit_root) == os.path.realpath(pkg);
 }
 
 def bundled_native_module_names -> list[str] {
@@ -842,6 +852,46 @@ def _native_variant_path(base_no_ext: str) -> (str | None) {
         return _plain;
     }
     return None;
+}
+
+glob NATIVE_VARIANT_OSES: frozenset[str] = frozenset(
+         {"darwin", "linux", "windows"}
+     ),
+     NATIVE_VARIANT_ARCHES: frozenset[str] = frozenset(
+         {"x86_64", "aarch64", "arm64", "i686", "riscv64", "wasm32"}
+     );
+
+def is_native_variant_path(path: str) -> bool {
+    """Is `path` a platform variant of a portable module beside it?
+
+    `<name>.<os>.<arch>.jac`, `<name>.<arch>.jac` and `<name>.<os>.jac` are the
+    spellings `_native_variant_path` chooses between, and each exists only to
+    be lowered natively in place of `<name>.jac`. A variant is reached through
+    native module resolution alone, never by an import the checker reads, so
+    no import edge carries the portable module's placement to it: the variant
+    is a native unit by what it is.
+    """;
+    import os;
+    name = os.path.basename(path);
+    if not name.endswith(".jac") {
+        return False;
+    }
+    parts = name[:-len(".jac")].split(".");
+    if len(parts) < 2 {
+        return False;
+    }
+    tail = parts[-2:] if len(parts) >= 3 else parts[-1:];
+    if len(tail) == 2
+        and not (tail[0] in NATIVE_VARIANT_OSES and tail[1] in NATIVE_VARIANT_ARCHES) {
+        tail = tail[-1:];
+    }
+    for part in tail {
+        if part not in NATIVE_VARIANT_OSES and part not in NATIVE_VARIANT_ARCHES {
+            return False;
+        }
+    }
+    stem = ".".join(parts[:len(parts) - len(tail)]);
+    return os.path.isfile(os.path.join(os.path.dirname(path), stem + ".jac"));
 }
 
 def native_variant_of(module_path: str) -> str {
