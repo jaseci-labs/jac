@@ -130,20 +130,75 @@ impl NaIRGenPass._region_unwind(depth: ir.Value) -> None {
     );
 }
 
+# Whether a region is open on this thread, inline: the thread's region block
+# (the slot accessor inlines to the key's readiness load and a TLS read) and,
+# when there is one, its current-region word. No kernel call on this path.
+impl NaIRGenPass._region_open_test -> ir.Value {
+    self._register_region_kernel();
+    b = self.builder;
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    fn = b.function;
+    blk = b.call(self.extern_funcs[REGION_TLS_GET], [], name="region.tls");
+    has_block = b.icmp_unsigned("!=", blk, zero, name="region.tls.set");
+    start = b.block;
+    read_bb = fn.append_basic_block("region.cur.read");
+    done_bb = fn.append_basic_block("region.cur.done");
+    b.cbranch(has_block, read_bb, done_bb);
+    b.position_at_end(read_bb);
+    cur = b.load(
+        b.inttoptr(blk, i64.as_pointer(), name="region.tls.cur"), name="region.cur"
+    );
+    is_open = b.icmp_unsigned("!=", cur, zero, name="region.cur.open");
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    opened = b.phi(ir.IntType(1), name="region.open");
+    opened.add_incoming(ir.Constant(ir.IntType(1), 0), start);
+    opened.add_incoming(is_open, read_bb);
+    return opened;
+}
+
+# A C-ABI entry leaves the caller's open region for the Jac body: when a
+# region is open, the kernel pushes the no-region entry and returns the depth
+# to restore; otherwise the entry costs the inline test and yields -1.
 impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
     if self._is_kernel_unit() {
         return None;
     }
-    return self.builder.call(
-        self._region_kernel_fn("__jac_region_escape"), [], name="region.escape"
+    b = self.builder;
+    i64 = ir.IntType(64);
+    opened = self._region_open_test();
+    start = b.block;
+    escape_bb = b.function.append_basic_block("region.escape");
+    join_bb = b.function.append_basic_block("region.escaped");
+    b.cbranch(opened, escape_bb, join_bb);
+    b.position_at_end(escape_bb);
+    depth = b.call(
+        self._region_kernel_fn("__jac_region_escape"), [], name="region.escape.depth"
     );
+    b.branch(join_bb);
+    b.position_at_end(join_bb);
+    saved = b.phi(i64, name="region.saved");
+    saved.add_incoming(ir.Constant(i64, -1), start);
+    saved.add_incoming(depth, escape_bb);
+    return saved;
 }
 
 impl NaIRGenPass._region_c_entry_restore(saved: (ir.Value | None)) -> None {
     if saved is None {
         return;
     }
-    self.builder.call(self._region_kernel_fn("__jac_region_restore"), [saved]);
+    b = self.builder;
+    escaped = b.icmp_signed(
+        ">=", saved, ir.Constant(ir.IntType(64), 0), name="region.did.escape"
+    );
+    restore_bb = b.function.append_basic_block("region.restore");
+    cont_bb = b.function.append_basic_block("region.restored");
+    b.cbranch(escaped, restore_bb, cont_bb);
+    b.position_at_end(restore_bb);
+    b.call(self._region_kernel_fn("__jac_region_restore"), [saved]);
+    b.branch(cont_bb);
+    b.position_at_end(cont_bb);
 }
 
 impl NaIRGenPass._region_alloc_object(
