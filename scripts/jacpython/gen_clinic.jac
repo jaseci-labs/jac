@@ -79,6 +79,12 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
          "&PyFloat_Type": ("jacpy_is_float", "float"),
          "&PyByteArray_Type": ("jacpy_is_bytearray", "bytearray")
      },
+     # Object converters typed by their C layout (format units S and Y); clinic
+     # checks them as object(subclass_of=...) over the same type.
+     TYPED_OBJECTS: dict[str, str] = {
+         "PyBytesObject": "&PyBytes_Type",
+         "PyByteArrayObject": "&PyByteArray_Type"
+     },
      # Unsigned converters with a range check: Jac type, limit, overflow text.
      BOUNDED: dict[str, tuple[str, int, str]] = {
          "unsigned_int": ("u32", 0xFFFFFFFF, "unsigned int"),
@@ -378,8 +384,10 @@ obj Emitter {
         accept_names = accepted(conv);
         # Clinic records bitwise=True only as the mask format unit it selects.
         bitwise = getattr(conv, "format_unit", "") in ("B", "H", "I", "k", "K");
-        if kind == "object" {
-            subclass = getattr(conv, "subclass_of", "");
+        if kind == "object" or kind in TYPED_OBJECTS {
+            subclass = TYPED_OBJECTS[kind]
+                if kind in TYPED_OBJECTS
+                else getattr(conv, "subclass_of", "");
             if not subclass {
                 return ("ptr[PyObject]", "value", []);
             }

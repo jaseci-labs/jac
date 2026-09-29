@@ -56,7 +56,8 @@ glob OPAQUE: list[str] = [
          "PyModuleDef",
          "PyType_Spec",
          "PyCompilerFlags",
-         "PyBytesWriter"
+         "PyBytesWriter",
+         "PyMutex"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
