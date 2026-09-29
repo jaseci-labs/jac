@@ -47,7 +47,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMem_Realloc,
     PyModule_AddIntConstant,
     PyModule_AddObjectRef,
-    _PyNamespace_New,
     PyObject,
     PyObject_Call,
     PyStructSequence_GetItem,
@@ -115,6 +114,7 @@ import from jaclang.runtime.python.modules.time_platform {
     pthread_getcpuclockid
 }
 import from jaclang.runtime.python.modules.errno_constants { EINTR }
+import from jaclang.runtime.python.object_model.namespace { _PyNamespace_New }
 import from c {
     def clock -> i64;  def clock_gettime(clock: i32, value: &mut timespec) -> i32;  def clock_settime(
         clock: i32, value: &timespec

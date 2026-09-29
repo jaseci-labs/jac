@@ -289,7 +289,7 @@ Objects/mimalloc/segment.c
 Objects/mimalloc/static.c
 Objects/mimalloc/stats.c
 Objects/moduleobject.c
-Objects/namespaceobject.c
+# Objects/namespaceobject.c  # removed: 332 source lines
 Objects/object.c
 Objects/obmalloc.c
 Objects/odictobject.c

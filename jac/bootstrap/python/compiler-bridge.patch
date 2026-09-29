@@ -339,6 +339,8 @@
 -		Objects/boolobject.o \
 @@ -529,1 +482,0 @@
 -		Objects/cellobject.o \
+@@ -551,1 +503,0 @@
+-		Objects/namespaceobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
