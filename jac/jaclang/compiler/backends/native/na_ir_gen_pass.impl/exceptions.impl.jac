@@ -253,8 +253,24 @@ impl NaIRGenPass._emit_runtime_raise(
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     func = self.builder.function;
+    # The raise of one exception and message is one block per function when
+    # nothing is released on the way out: every check branches to it, so a
+    # function of many checks (C memory views, conversions) stays small
+    # enough to inline.
+    shared = not release_on_error and not self._slot_lowering_active();
+    key = f"{func.name}|{exc_type_name}|{msg}";
+    cached = self._shared_raise_blocks.get(key) if shared else None;
+    if cached is not None and cached.function is func {
+        ok_bb = func.append_basic_block(name=f"ok.{exc_type_name}");
+        self.builder.cbranch(self._to_bool(is_error), cached, ok_bb);
+        self.builder.position_at_end(ok_bb);
+        return;
+    }
     raise_bb = func.append_basic_block(name=f"raise.{exc_type_name}");
     ok_bb = func.append_basic_block(name=f"ok.{exc_type_name}");
+    if shared {
+        self._shared_raise_blocks[key] = raise_bb;
+    }
 
     is_error = self._to_bool(is_error);
     self.builder.cbranch(is_error, raise_bb, ok_bb);

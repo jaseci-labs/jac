@@ -264,6 +264,7 @@ walker NaIRGenPass(CompilerPass) {
         clib_globals: dict[str, tuple[ir.GlobalVariable, any]] = {},
         _clib_definitions: dict[str, uni.Ability] = {},
         _foreign_clib_abilities: dict[str, uni.Ability] = {},
+        _shared_raise_blocks: dict[str, ir.Block] = {},
         _clib_exports: dict[str, ir.Function] = {},
         _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
         _c_strings: dict[str, ir.GlobalVariable] = {},
@@ -957,6 +958,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_vararg(arg: uni.Expr) -> (ir.Value | None);
     def _c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None);
     def _c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None);
+    def _final_scalar_value(nd: uni.Name, value_type: ir.Type) -> (ir.Value | None);
     def _va_abi -> str;
     def _va_storage_type(abi: str) -> ir.Type;
     def _c_va_start(nd: uni.UniNode) -> (ir.Value | None);

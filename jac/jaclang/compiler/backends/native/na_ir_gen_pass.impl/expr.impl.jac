@@ -640,6 +640,10 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     }
     if var_name in self.global_vars {
         global_var = self.global_vars[var_name];
+        folded = self._final_scalar_value(nd, global_var.type.pointee);
+        if folded is not None {
+            return folded;
+        }
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
     if var_name == "__file__" and self.module?.loc and self.module.loc.mod_path {
@@ -3035,4 +3039,37 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
     }
     arch = owner.find_parent_of_type(uni.Archetype);
     return self._arch_key(arch) if arch is not None else None;
+}
+
+# A read of a Final glob whose value is a C scalar constant is that constant,
+# in every unit that reads it: a layout offset or flag folds into the code
+# instead of a load of another module's global.
+impl NaIRGenPass._final_scalar_value(
+    nd: uni.Name, value_type: ir.Type
+) -> (ir.Value | None) {
+    import from jaclang.compiler.c_interop { c_scalar_constant, final_glob_value }
+    value = final_glob_value(nd);
+    if value is None {
+        return None;
+    }
+    (ok, folded) = c_scalar_constant(value);
+    if not ok {
+        return None;
+    }
+    if isinstance(value_type, ir.IntType)
+        and value_type.width > 1
+        and isinstance(folded, int)
+        and not isinstance(folded, bool) {
+        bits = folded & ((1 << value_type.width) - 1);
+        if bits >= (1 << (value_type.width - 1)) {
+            bits -= 1 << value_type.width;
+        }
+        return ir.Constant(value_type, bits);
+    }
+    if isinstance(value_type, (ir.DoubleType, ir.FloatType))
+        and isinstance(folded, (int, float))
+        and not isinstance(folded, bool) {
+        return ir.Constant(value_type, float(folded));
+    }
+    return None;
 }
