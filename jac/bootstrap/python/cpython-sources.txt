@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 85 C files / 136,306 lines; 57 headers / 23,940 lines.
-#   Total: 142 files / 160,246 source lines.
+#   Excluded: 93 C files / 152,952 lines; 70 headers / 55,040 lines.
+#   Total: 163 files / 207,992 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -331,7 +331,7 @@ Modules/_ctypes/clinic/cfield.c.h
 Modules/_ctypes/ctypes.h
 Modules/_ctypes/malloc_closure.c
 Modules/_ctypes/stgdict.c
-Modules/_datetimemodule.c
+# Modules/_datetimemodule.c  # removed: 7,787 source lines
 Modules/_decimal/_decimal.c
 Modules/_decimal/docstrings.h
 Modules/_elementtree.c
@@ -401,7 +401,7 @@ Modules/_io/textio.c
 # Modules/_json.c  # removed: 1,974 source lines
 Modules/_localemodule.c
 # Modules/_lsprof.c  # removed: 1,146 source lines
-Modules/_lzmamodule.c
+# Modules/_lzmamodule.c  # removed: 1,664 source lines
 Modules/_math.h
 # Modules/_multiprocessing/clinic/multiprocessing.c.h  # removed: 167 source lines
 # Modules/_multiprocessing/clinic/posixshmem.c.h  # removed: 89 source lines
@@ -468,18 +468,18 @@ Modules/_threadmodule.c
 # Modules/_typingmodule.c  # removed: 99 source lines
 # Modules/_uuidmodule.c  # removed: 154 source lines
 # Modules/_weakref.c  # removed: 187 source lines
-Modules/_zoneinfo.c
-Modules/_zstd/_zstdmodule.c
-Modules/_zstd/_zstdmodule.h
-Modules/_zstd/buffer.h
-Modules/_zstd/clinic/_zstdmodule.c.h
-Modules/_zstd/clinic/compressor.c.h
-Modules/_zstd/clinic/decompressor.c.h
-Modules/_zstd/clinic/zstddict.c.h
-Modules/_zstd/compressor.c
-Modules/_zstd/decompressor.c
-Modules/_zstd/zstddict.c
-Modules/_zstd/zstddict.h
+# Modules/_zoneinfo.c  # removed: 2,817 source lines
+# Modules/_zstd/_zstdmodule.c  # removed: 767 source lines
+# Modules/_zstd/_zstdmodule.h  # removed: 61 source lines
+# Modules/_zstd/buffer.h  # removed: 108 source lines
+# Modules/_zstd/clinic/_zstdmodule.c.h  # removed: 429 source lines
+# Modules/_zstd/clinic/compressor.c.h  # removed: 295 source lines
+# Modules/_zstd/clinic/decompressor.c.h  # removed: 225 source lines
+# Modules/_zstd/clinic/zstddict.c.h  # removed: 227 source lines
+# Modules/_zstd/compressor.c  # removed: 798 source lines
+# Modules/_zstd/decompressor.c  # removed: 717 source lines
+# Modules/_zstd/zstddict.c  # removed: 275 source lines
+# Modules/_zstd/zstddict.h  # removed: 29 source lines
 Modules/addrinfo.h
 # Modules/arraymodule.c  # removed: 3,359 source lines
 # Modules/atexitmodule.c  # removed: 361 source lines
@@ -510,14 +510,14 @@ Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_codecsmodule.c.h  # removed: 2,807 source lines
 # Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
 # Modules/clinic/_csv.c.h  # removed: 210 source lines
-Modules/clinic/_datetimemodule.c.h
+# Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
 Modules/clinic/_elementtree.c.h
 # Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
 Modules/clinic/_hashopenssl.c.h
 # Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
 Modules/clinic/_localemodule.c.h
 # Modules/clinic/_lsprof.c.h  # removed: 479 source lines
-Modules/clinic/_lzmamodule.c.h
+# Modules/clinic/_lzmamodule.c.h  # removed: 337 source lines
 # Modules/clinic/_opcode.c.h  # removed: 779 source lines
 # Modules/clinic/_operator.c.h  # removed: 1,510 source lines
 # Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
@@ -534,7 +534,7 @@ Modules/clinic/_threadmodule.c.h
 # Modules/clinic/_tracemalloc.c.h  # removed: 217 source lines
 # Modules/clinic/_typingmodule.c.h  # removed: 12 source lines
 # Modules/clinic/_weakref.c.h  # removed: 115 source lines
-Modules/clinic/_zoneinfo.c.h
+# Modules/clinic/_zoneinfo.c.h  # removed: 450 source lines
 # Modules/clinic/arraymodule.c.h  # removed: 777 source lines
 # Modules/clinic/binascii.c.h  # removed: 791 source lines
 # Modules/clinic/blake2module.c.h  # removed: 505 source lines
@@ -561,7 +561,7 @@ Modules/clinic/socketmodule.c.h
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
 Modules/clinic/termios.c.h
 # Modules/clinic/timemodule.c.h  # removed: 74 source lines
-Modules/clinic/unicodedata.c.h
+# Modules/clinic/unicodedata.c.h  # removed: 552 source lines
 # Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
 # Modules/cmathmodule.c  # removed: 1,315 source lines
 Modules/config.c.in
@@ -603,9 +603,9 @@ Modules/socketmodule.h
 # Modules/syslogmodule.c  # removed: 469 source lines
 Modules/termios.c
 # Modules/timemodule.c  # removed: 2,398 source lines
-Modules/unicodedata.c
-Modules/unicodedata_db.h
-Modules/unicodename_db.h
+# Modules/unicodedata.c  # removed: 1,821 source lines
+# Modules/unicodedata_db.h  # removed: 8,358 source lines
+# Modules/unicodename_db.h  # removed: 19,502 source lines
 # Modules/winreparse.h  # pruned: 59 source lines
 # Modules/xxmodule.c  # pruned: 413 source lines
 # Modules/zlibmodule.c  # removed: 2,181 source lines

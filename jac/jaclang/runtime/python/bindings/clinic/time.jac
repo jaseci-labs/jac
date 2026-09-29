@@ -10,21 +10,13 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    invoke
-}
+import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.modules.time {
     convert_time_clockid_converter,
     time_clock_gettime_impl,
     time_clock_gettime_ns_impl
 }
-
-glob:priv time_clock_gettime_signature = CallSignature(
-         "clock_gettime", ["clk_id"], 1, 1, 1
-     );
 
 def:priv time_clock_gettime_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -34,16 +26,10 @@ def:priv time_clock_gettime_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv time_clock_gettime_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        time_clock_gettime_signature, args, kwargs, time_clock_gettime_bound, receiver
-    );
+    return invoke_given(value, time_clock_gettime_bound, receiver);
 }
-
-glob:priv time_clock_gettime_ns_signature = CallSignature(
-         "clock_gettime_ns", ["clk_id"], 1, 1, 1
-     );
 
 def:priv time_clock_gettime_ns_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -53,29 +39,23 @@ def:priv time_clock_gettime_ns_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv time_clock_gettime_ns_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        time_clock_gettime_ns_signature,
-        args,
-        kwargs,
-        time_clock_gettime_ns_bound,
-        receiver
-    );
+    return invoke_given(value, time_clock_gettime_ns_bound, receiver);
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "clock_gettime",
-             MethodCallbacks(keywords=time_clock_gettime_call),
+             MethodCallbacks(positional=time_clock_gettime_call),
              "clock_gettime($module, clk_id, /)\n--\n\nReturn the time of the specified clock clk_id as a float.",
-             3
+             8
          ),
          MethodDefinition(
              "clock_gettime_ns",
-             MethodCallbacks(keywords=time_clock_gettime_ns_call),
+             MethodCallbacks(positional=time_clock_gettime_ns_call),
              "clock_gettime_ns($module, clk_id, /)\n--\n\nReturn the time of the specified clock clk_id as nanoseconds (int).",
-             3
+             8
          ),
 
      ];

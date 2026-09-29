@@ -166,7 +166,29 @@ impl NaIRGenPass._transfer_own_args(
 
 impl NaIRGenPass._callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None) {
     import from jaclang.compiler.symbol_utils { resolved_callee }
-    return resolved_callee(nd);
+    decl = resolved_callee(nd);
+    return self._native_variant_decl(decl) if decl is not None else None;
+}
+
+impl NaIRGenPass._native_variant_decl(decl: uni.Ability) -> uni.Ability {
+    import os;
+    import from jaclang.compiler.frontend.codeinfo { native_variant_of }
+    mod = decl.find_parent_of_type(uni.Module);
+    if mod is None
+        or mod.loc is None
+        or not mod.loc.mod_path
+        or decl.name_ref is None {
+        return decl;
+    }
+    variant = os.path.realpath(native_variant_of(mod.loc.mod_path));
+    if variant == os.path.realpath(mod.loc.mod_path) {
+        return decl;
+    }
+    variant_mod = self.prog.mod.hub.get(variant);
+    if variant_mod is None {
+        return decl;
+    }
+    return NaIRGenPass._module_ability(variant_mod, decl.name_ref.sym_name) or decl;
 }
 
 impl NaIRGenPass._linked_callee_decl(
@@ -2579,7 +2601,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     self._release_owned_args(release_args, op="call_arg");
-    self._emit_err_check(self._callee_ability_of(nd) or self._linked_callee_decl(func));
+    self._emit_err_check(
+        self._callee_ability_of(nd) or self._linked_callee_decl(func), site=nd
+    );
 
     if _is_foreign {
         foreign_decl = self._foreign_fns().get(func_name);

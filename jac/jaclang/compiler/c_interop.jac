@@ -386,6 +386,18 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     return literal_string_value(expr);
 }
 
+"""The function a C constant `ptr(name)` takes the address of: the def `nd`
+names, local or imported, or None when it names anything else."""
+def named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
+    import from jaclang.compiler.frontend.unitree { Ability, Name }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    decl = resolved_decl_of(nd.sym);
+    owner = decl.name_of if decl is not None else None;
+    return owner if isinstance(owner, Ability) else None;
+}
+
 def final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
     import from jaclang.compiler.frontend.unitree { Name }
     if not isinstance(nd, Name) or nd.sym is None {
@@ -506,4 +518,60 @@ def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None) {
     }
     args = cls.private.type_args if cls.private else None;
     return args[0] if args else None;
+}
+
+# The bytes of a bytes literal (`b"..."`, or adjacent ones), else None.
+def c_bytes_literal(expr: (UniNode | None)) -> (bytes | None) {
+    import from jaclang.compiler.frontend.unitree { MultiString, String }
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, (String, MultiString)) {
+        return None;
+    }
+    try {
+        value = expr.lit_value;
+    } except ValueError {
+        return None;
+    }
+    return value if isinstance(value, bytes) else None;
+}
+
+# (width in bytes, signed) of a C array element a bytes literal can lay out:
+# a sized integer type (u8 .. i64); None for any other element type.
+def c_bytes_elem_shape(elem: (TypeBase | None)) -> (tuple[int, bool] | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    cls = _class_of(elem);
+    if cls is None or cls._shared is None or not cls.is_builtin() {
+        return None;
+    }
+    shape = JAC_TYPE_REGISTRY.shape_of(cls.shared.class_name);
+    if shape is None or not shape.sized or shape.is_float {
+        return None;
+    }
+    return (shape.size_bytes(), shape.signed);
+}
+
+# The elements a bytes literal gives a C integer array: consecutive
+# little-endian groups of the element width, so one literal is the same
+# array on every target. The length is a multiple of the width.
+def c_bytes_array_values(data: bytes, width: int, signed: bool) -> list[int] {
+    return [
+        int.from_bytes(data[i:i + width], "little", signed=signed)
+        for i in range(0, len(data), width)
+    ];
+}
+
+# A C data definition of an array from a bytes literal, which the C-constant
+# check (E1155) validates in place of ordinary assignability.
+def c_bytes_array_definition(assign: Assignment, ctype: (TypeBase | None)) -> bool {
+    import from jaclang.compiler.frontend.unitree { MultiString, String }
+    value = assign.value;
+    while isinstance(value, AtomUnit) and isinstance(value.value, Expr) {
+        value = value.value;
+    }
+    return isinstance(value, (String, MultiString))
+        and c_array_elem(ctype) is not None
+        and clib_import_of(assign) is not None
+        and c_bytes_literal(value) is not None;
 }

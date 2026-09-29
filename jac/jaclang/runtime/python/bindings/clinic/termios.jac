@@ -13,7 +13,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_POSITIONAL,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -32,10 +34,6 @@ import from jaclang.runtime.python.modules.termios {
     termios_tcsetwinsize_impl
 }
 
-glob:priv termios_tcgetattr_signature = CallSignature(
-         "tcgetattr", ["fd"], 1, 1, 1
-     );
-
 def:priv termios_tcgetattr_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -44,15 +42,13 @@ def:priv termios_tcgetattr_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcgetattr_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcgetattr_signature, args, kwargs, termios_tcgetattr_bound, receiver
-    );
+    return invoke_given(value, termios_tcgetattr_bound, receiver);
 }
 
 glob:priv termios_tcsetattr_signature = CallSignature(
-         "tcsetattr", ["fd", "when", "attributes"], 3, 3, 3
+         "tcsetattr", ["fd", "when", "attributes"], 3, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv termios_tcsetattr_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -67,15 +63,20 @@ def:priv termios_tcsetattr_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcsetattr_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcsetattr_signature, args, kwargs, termios_tcsetattr_bound, receiver
+    return invoke_vector(
+        termios_tcsetattr_signature,
+        args,
+        nargs,
+        NULL,
+        termios_tcsetattr_bound,
+        receiver
     );
 }
 
 glob:priv termios_tcsendbreak_signature = CallSignature(
-         "tcsendbreak", ["fd", "duration"], 2, 2, 2
+         "tcsendbreak", ["fd", "duration"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv termios_tcsendbreak_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -88,14 +89,18 @@ def:priv termios_tcsendbreak_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcsendbreak_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcsendbreak_signature, args, kwargs, termios_tcsendbreak_bound, receiver
+    return invoke_vector(
+        termios_tcsendbreak_signature,
+        args,
+        nargs,
+        NULL,
+        termios_tcsendbreak_bound,
+        receiver
     );
 }
 
-glob:priv termios_tcdrain_signature = CallSignature("tcdrain", ["fd"], 1, 1, 1);
 def:priv termios_tcdrain_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -104,15 +109,13 @@ def:priv termios_tcdrain_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcdrain_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcdrain_signature, args, kwargs, termios_tcdrain_bound, receiver
-    );
+    return invoke_given(value, termios_tcdrain_bound, receiver);
 }
 
 glob:priv termios_tcflush_signature = CallSignature(
-         "tcflush", ["fd", "queue"], 2, 2, 2
+         "tcflush", ["fd", "queue"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv termios_tcflush_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -125,15 +128,15 @@ def:priv termios_tcflush_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcflush_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcflush_signature, args, kwargs, termios_tcflush_bound, receiver
+    return invoke_vector(
+        termios_tcflush_signature, args, nargs, NULL, termios_tcflush_bound, receiver
     );
 }
 
 glob:priv termios_tcflow_signature = CallSignature(
-         "tcflow", ["fd", "action"], 2, 2, 2
+         "tcflow", ["fd", "action"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv termios_tcflow_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -146,16 +149,12 @@ def:priv termios_tcflow_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcflow_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcflow_signature, args, kwargs, termios_tcflow_bound, receiver
+    return invoke_vector(
+        termios_tcflow_signature, args, nargs, NULL, termios_tcflow_bound, receiver
     );
 }
-
-glob:priv termios_tcgetwinsize_signature = CallSignature(
-         "tcgetwinsize", ["fd"], 1, 1, 1
-     );
 
 def:priv termios_tcgetwinsize_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -165,19 +164,13 @@ def:priv termios_tcgetwinsize_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcgetwinsize_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        termios_tcgetwinsize_signature,
-        args,
-        kwargs,
-        termios_tcgetwinsize_bound,
-        receiver
-    );
+    return invoke_given(value, termios_tcgetwinsize_bound, receiver);
 }
 
 glob:priv termios_tcsetwinsize_signature = CallSignature(
-         "tcsetwinsize", ["fd", "winsize"], 2, 2, 2
+         "tcsetwinsize", ["fd", "winsize"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv termios_tcsetwinsize_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -190,12 +183,13 @@ def:priv termios_tcsetwinsize_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv termios_tcsetwinsize_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         termios_tcsetwinsize_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         termios_tcsetwinsize_bound,
         receiver
     );
@@ -204,51 +198,51 @@ def:priv termios_tcsetwinsize_call(
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "tcgetattr",
-             MethodCallbacks(keywords=termios_tcgetattr_call),
+             MethodCallbacks(positional=termios_tcgetattr_call),
              "tcgetattr($module, fd, /)\n--\n\nGet the tty attributes for file descriptor fd.\n\nReturns a list [iflag, oflag, cflag, lflag, ispeed, ospeed, cc]\nwhere cc is a list of the tty special characters (each a string of\nlength 1, except the items with indices VMIN and VTIME, which are\nintegers when these fields are defined).  The interpretation of the\nflags and the speeds as well as the indexing in the cc array must be\ndone using the symbolic constants defined in this module.",
-             3
+             8
          ),
          MethodDefinition(
              "tcsetattr",
-             MethodCallbacks(keywords=termios_tcsetattr_call),
+             MethodCallbacks(fast=termios_tcsetattr_call),
              "tcsetattr($module, fd, when, attributes, /)\n--\n\nSet the tty attributes for file descriptor fd.\n\nThe attributes to be set are taken from the attributes argument, which\nis a list like the one returned by tcgetattr(). The when argument\ndetermines when the attributes are changed: termios.TCSANOW to\nchange immediately, termios.TCSADRAIN to change after transmitting all\nqueued output, or termios.TCSAFLUSH to change after transmitting all\nqueued output and discarding all queued input.",
-             3
+             128
          ),
          MethodDefinition(
              "tcsendbreak",
-             MethodCallbacks(keywords=termios_tcsendbreak_call),
+             MethodCallbacks(fast=termios_tcsendbreak_call),
              "tcsendbreak($module, fd, duration, /)\n--\n\nSend a break on file descriptor fd.\n\nA zero duration sends a break for 0.25-0.5 seconds; a nonzero duration\nhas a system dependent meaning.",
-             3
+             128
          ),
          MethodDefinition(
              "tcdrain",
-             MethodCallbacks(keywords=termios_tcdrain_call),
+             MethodCallbacks(positional=termios_tcdrain_call),
              "tcdrain($module, fd, /)\n--\n\nWait until all output written to file descriptor fd has been transmitted.",
-             3
+             8
          ),
          MethodDefinition(
              "tcflush",
-             MethodCallbacks(keywords=termios_tcflush_call),
+             MethodCallbacks(fast=termios_tcflush_call),
              "tcflush($module, fd, queue, /)\n--\n\nDiscard queued data on file descriptor fd.\n\nThe queue selector specifies which queue: termios.TCIFLUSH for the input\nqueue, termios.TCOFLUSH for the output queue, or termios.TCIOFLUSH for\nboth queues.",
-             3
+             128
          ),
          MethodDefinition(
              "tcflow",
-             MethodCallbacks(keywords=termios_tcflow_call),
+             MethodCallbacks(fast=termios_tcflow_call),
              "tcflow($module, fd, action, /)\n--\n\nSuspend or resume input or output on file descriptor fd.\n\nThe action argument can be termios.TCOOFF to suspend output,\ntermios.TCOON to restart output, termios.TCIOFF to suspend input,\nor termios.TCION to restart input.",
-             3
+             128
          ),
          MethodDefinition(
              "tcgetwinsize",
-             MethodCallbacks(keywords=termios_tcgetwinsize_call),
+             MethodCallbacks(positional=termios_tcgetwinsize_call),
              "tcgetwinsize($module, fd, /)\n--\n\nGet the tty winsize for file descriptor fd.\n\nReturns a tuple (ws_row, ws_col).",
-             3
+             8
          ),
          MethodDefinition(
              "tcsetwinsize",
-             MethodCallbacks(keywords=termios_tcsetwinsize_call),
+             MethodCallbacks(fast=termios_tcsetwinsize_call),
              "tcsetwinsize($module, fd, winsize, /)\n--\n\nSet the tty winsize for file descriptor fd.\n\nThe winsize to be set is taken from the winsize argument, which\nis a two-item tuple (ws_row, ws_col) like the one returned by\ntcgetwinsize().",
-             3
+             128
          ),
 
      ];

@@ -28,7 +28,8 @@ import from jaclang.runtime.python.bindings.module {
 import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     BoundArguments,
-    invoke
+    invoke,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.modules.binascii { jacpy_binascii_convert }
@@ -232,8 +233,10 @@ def:priv crc_hqx_bound(args: BoundArguments) -> ptr[PyObject] {
     return convert(args.context, args.values[0], 8, [args.values[1]]);
 }
 
-def:priv crc_hqx_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(crc_hqx_signature, args, NULL, crc_hqx_bound, module);
+def:priv crc_hqx_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(crc_hqx_signature, args, nargs, NULL, crc_hqx_bound, module);
 }
 
 glob:priv crc32_signature = CallSignature("crc32", ["data", "crc"], 1, 2, 2);
@@ -241,8 +244,10 @@ def:priv crc32_bound(args: BoundArguments) -> ptr[PyObject] {
     return convert(args.context, args.values[0], 9, [args.values[1]]);
 }
 
-def:priv crc32_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(crc32_signature, args, NULL, crc32_bound, module);
+def:priv crc32_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(crc32_signature, args, nargs, NULL, crc32_bound, module);
 }
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
@@ -324,15 +329,15 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "crc_hqx",
-                 MethodCallbacks(positional=crc_hqx_call),
+                 MethodCallbacks(fast=crc_hqx_call),
                  "crc_hqx($module, data, crc, /)\n--\n\nCompute CRC.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "crc32",
-                 MethodCallbacks(positional=crc32_call),
+                 MethodCallbacks(fast=crc32_call),
                  "crc32($module, data, crc=0, /)\n--\n\nCompute CRC.",
-                 flags=1
+                 flags=128
              )
          ],
          ModuleHooks(execute=execute),

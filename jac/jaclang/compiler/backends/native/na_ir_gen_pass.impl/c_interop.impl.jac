@@ -1,6 +1,9 @@
 import from jaclang.compiler.c_interop {
     c_array_elem,
     c_builtin_kind,
+    c_bytes_array_values,
+    c_bytes_elem_shape,
+    c_bytes_literal,
     c_variadic_param,
     is_va_list_type,
     c_scalar_constant,
@@ -15,7 +18,7 @@ import from jaclang.compiler.c_interop {
     is_ptr_type,
     is_ptr_view_type,
     foreign_field_of,
-    named_function
+    named_function_of
 }
 
 impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
@@ -832,9 +835,14 @@ impl NaIRGenPass._declare_clib_global(
     elem = c_array_elem(ctype);
     elem_info = self._c_elem_info(elem) if elem is not None else None;
     if elem_info is not None {
-        count = len(assign.value.values)
-            if isinstance(assign.value, uni.ListVal) and owner is self.module
-            else 0;
+        count = 0;
+        if owner is self.module and isinstance(assign.value, uni.ListVal) {
+            count = len(assign.value.values);
+        } elif owner is self.module
+            and (data := c_bytes_literal(assign.value)) is not None
+            and (shape := c_bytes_elem_shape(elem)) is not None {
+            count = len(data) // shape[0];
+        }
         llt = ir.ArrayType(elem_info[0], count);
     } elif llt is None {
         llt = self.struct_types[sname] if sname is not None else ir.IntType(8);
@@ -877,7 +885,7 @@ impl NaIRGenPass._emit_clib_data_inits -> None {
                 node_override=value,
                 kind="C data definition",
                 name=gv.name,
-                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, `ptr(f)` for a named function's address, and constructors of foreign structs made of these."
+                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, `ptr(f)` for a named function's address, `ptr[T](...)` casts of these addresses, constructors of foreign structs made of these, and for an integer array a bytes literal of its little-endian elements."
             );
             continue;
         }
@@ -913,6 +921,17 @@ impl NaIRGenPass._c_const_init(
     }
     elem = c_array_elem(ctype);
     if elem is not None and isinstance(llt, ir.ArrayType) {
+        data = c_bytes_literal(expr);
+        if data is not None {
+            shape = c_bytes_elem_shape(elem);
+            if shape is None or len(data) != shape[0] * llt.count {
+                return None;
+            }
+            if shape[0] == 1 {
+                return ir.Constant(llt, bytearray(data));
+            }
+            return ir.Constant(llt, c_bytes_array_values(data, shape[0], shape[1]));
+        }
         if not isinstance(expr, uni.ListVal) {
             return None;
         }
@@ -942,7 +961,8 @@ impl NaIRGenPass._c_const_init(
         if isinstance(expr, uni.Name) and expr.sym_name in self._clib_exports {
             return self._clib_exports[expr.sym_name].bitcast(llt) as ir.Constant;
         }
-        if not self._c_abi_same(target.function_type, llt.pointee) {
+        if not self._c_abi_same(target.function_type, llt.pointee)
+            or not self._c_calls_directly(target) {
             target = self._emit_clib_c_trampoline(target, llt);
         }
         return target.bitcast(llt) as ir.Constant;
@@ -1059,7 +1079,8 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if named {
                 return address;
             }
-            return self._c_const_scalar(arg, i64);
+            # A cast `ptr[T](address)` of any C constant address.
+            return self._c_const_address(arg);
         }
         return None;
     }
@@ -1095,16 +1116,17 @@ impl NaIRGenPass._c_address_of_value(value: (ir.Value | None)) -> (ir.Value | No
 # `ptr(f)` for a named function `f`: the address C calls it at, as C casts a
 # function to a data or generic function pointer (`(void *)f`,
 # `_PyCFunction_CAST(f)`). A C function defined in a C library import yields its
-# C-ABI entry; any other function its own body, whose parameters and result
-# must then be C scalars or pointers so C can call it directly. The first item
-# is False when `expr` names no function.
+# C-ABI entry and a C function its symbol. A Jac function's parameters and
+# result must be C scalars or pointers; C calls it through a trampoline of its
+# own type that leaves the open region (kernel units call it directly). The
+# first item is False when `expr` names no function.
 impl NaIRGenPass._c_function_address(
     expr: uni.Expr
 ) -> tuple[bool, (ir.Constant | None)] {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
-    if named_function(expr) is None {
+    if named_function_of(expr) is None {
         return (False, None);
     }
     i64 = ir.IntType(64);
@@ -1138,7 +1160,17 @@ impl NaIRGenPass._c_function_address(
         );
         return (True, None);
     }
+    if not self._c_calls_directly(target) {
+        target = self._emit_clib_c_trampoline(target, ftype.as_pointer());
+    }
     return (True, target.ptrtoint(i64) as ir.Constant);
+}
+
+# Whether C may call `target` without a C-entry trampoline: a C function, or
+# any function of a kernel unit (which allocates on the heap, so the open
+# region's extent never needs cutting at the foreign frame).
+impl NaIRGenPass._c_calls_directly(target: ir.Function) -> bool {
+    return self._is_kernel_unit() or self.clib_extern_fns.get(target.name) is target;
 }
 
 impl NaIRGenPass._clib_global_of(

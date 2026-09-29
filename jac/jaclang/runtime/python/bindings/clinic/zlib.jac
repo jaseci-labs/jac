@@ -13,7 +13,10 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    PARSE_NO_ARGUMENTS,
+    PARSE_POSITIONAL,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -55,7 +58,7 @@ import from jaclang.runtime.python.modules.zlib {
 }
 
 glob:priv zlib_compress_signature = CallSignature(
-         "compress", ["data", "level", "wbits"], 1, 3, 1
+         "compress", ["data", "level", "wbits"], 1, 3, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_compress_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -76,13 +79,18 @@ def:priv zlib_compress_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_compress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(zlib_compress_signature, args, kwargs, zlib_compress_bound, receiver);
+    return invoke_vector(
+        zlib_compress_signature, args, nargs, kwnames, zlib_compress_bound, receiver
+    );
 }
 
 glob:priv zlib_decompress_signature = CallSignature(
-         "decompress", ["data", "wbits", "bufsize"], 1, 3, 1
+         "decompress", ["data", "wbits", "bufsize"], 1, 3, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_decompress_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -103,10 +111,13 @@ def:priv zlib_decompress_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_decompress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        zlib_decompress_signature, args, kwargs, zlib_decompress_bound, receiver
+    return invoke_vector(
+        zlib_decompress_signature, args, nargs, kwnames, zlib_decompress_bound, receiver
     );
 }
 
@@ -115,7 +126,8 @@ glob:priv zlib_compressobj_signature = CallSignature(
          ["level", "method", "wbits", "memLevel", "strategy", "zdict"],
          0,
          6,
-         0
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_compressobj_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -156,15 +168,23 @@ def:priv zlib_compressobj_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_compressobj_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        zlib_compressobj_signature, args, kwargs, zlib_compressobj_bound, receiver
+    return invoke_vector(
+        zlib_compressobj_signature,
+        args,
+        nargs,
+        kwnames,
+        zlib_compressobj_bound,
+        receiver
     );
 }
 
 glob:priv zlib_decompressobj_signature = CallSignature(
-         "decompressobj", ["wbits", "zdict"], 0, 2, 0
+         "decompressobj", ["wbits", "zdict"], 0, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_decompressobj_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -183,15 +203,23 @@ def:priv zlib_decompressobj_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_decompressobj_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        zlib_decompressobj_signature, args, kwargs, zlib_decompressobj_bound, receiver
+    return invoke_vector(
+        zlib_decompressobj_signature,
+        args,
+        nargs,
+        kwnames,
+        zlib_decompressobj_bound,
+        receiver
     );
 }
 
 glob:priv zlib_adler32_signature = CallSignature(
-         "adler32", ["data", "value"], 1, 2, 2
+         "adler32", ["data", "value"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv zlib_adler32_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -216,13 +244,15 @@ def:priv zlib_adler32_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_adler32_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(zlib_adler32_signature, args, kwargs, zlib_adler32_bound, receiver);
+    return invoke_vector(
+        zlib_adler32_signature, args, nargs, NULL, zlib_adler32_bound, receiver
+    );
 }
 
 glob:priv zlib_crc32_signature = CallSignature(
-         "crc32", ["data", "value"], 1, 2, 2
+         "crc32", ["data", "value"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv zlib_crc32_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -247,13 +277,15 @@ def:priv zlib_crc32_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_crc32_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(zlib_crc32_signature, args, kwargs, zlib_crc32_bound, receiver);
+    return invoke_vector(
+        zlib_crc32_signature, args, nargs, NULL, zlib_crc32_bound, receiver
+    );
 }
 
 glob:priv zlib_Compress_compress_signature = CallSignature(
-         "compress", ["data"], 1, 1, 1
+         "compress", ["data"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_Compress_compress_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -267,19 +299,23 @@ def:priv zlib_Compress_compress_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Compress_compress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Compress_compress_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Compress_compress_bound,
         receiver
     );
 }
 
 glob:priv zlib_Compress_flush_signature = CallSignature(
-         "flush", ["mode"], 0, 1, 1
+         "flush", ["mode"], 0, 1, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_Compress_flush_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -296,14 +332,25 @@ def:priv zlib_Compress_flush_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Compress_flush_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        zlib_Compress_flush_signature, args, kwargs, zlib_Compress_flush_bound, receiver
+    return invoke_vector(
+        zlib_Compress_flush_signature,
+        args,
+        nargs,
+        kwnames,
+        zlib_Compress_flush_bound,
+        receiver
     );
 }
 
-glob:priv zlib_Compress_copy_signature = CallSignature("copy", [], 0, 0, 0);
+glob:priv zlib_Compress_copy_signature = CallSignature(
+         "copy", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
+     );
+
 def:priv zlib_Compress_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, Compress_token);
@@ -313,15 +360,23 @@ def:priv zlib_Compress_copy_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Compress_copy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        zlib_Compress_copy_signature, args, kwargs, zlib_Compress_copy_bound, receiver
+    return invoke_vector(
+        zlib_Compress_copy_signature,
+        args,
+        nargs,
+        kwnames,
+        zlib_Compress_copy_bound,
+        receiver
     );
 }
 
 glob:priv zlib_Compress___copy___signature = CallSignature(
-         "__copy__", [], 0, 0, 0
+         "__copy__", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
      );
 
 def:priv zlib_Compress___copy___bound(args: BoundArguments) -> ptr[PyObject] {
@@ -333,19 +388,23 @@ def:priv zlib_Compress___copy___bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Compress___copy___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Compress___copy___signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Compress___copy___bound,
         receiver
     );
 }
 
 glob:priv zlib_Compress___deepcopy___signature = CallSignature(
-         "__deepcopy__", ["memo"], 1, 1, 1
+         "__deepcopy__", ["memo"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_Compress___deepcopy___bound(args: BoundArguments) -> ptr[PyObject] {
@@ -359,19 +418,23 @@ def:priv zlib_Compress___deepcopy___bound(args: BoundArguments) -> ptr[PyObject]
 }
 
 def:priv zlib_Compress___deepcopy___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Compress___deepcopy___signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Compress___deepcopy___bound,
         receiver
     );
 }
 
 glob:priv zlib_Decompress_decompress_signature = CallSignature(
-         "decompress", ["data", "max_length"], 1, 2, 1
+         "decompress", ["data", "max_length"], 1, 2, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_Decompress_decompress_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -390,18 +453,25 @@ def:priv zlib_Decompress_decompress_bound(args: BoundArguments) -> ptr[PyObject]
 }
 
 def:priv zlib_Decompress_decompress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Decompress_decompress_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Decompress_decompress_bound,
         receiver
     );
 }
 
-glob:priv zlib_Decompress_copy_signature = CallSignature("copy", [], 0, 0, 0);
+glob:priv zlib_Decompress_copy_signature = CallSignature(
+         "copy", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
+     );
+
 def:priv zlib_Decompress_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, Decompress_token);
@@ -411,19 +481,23 @@ def:priv zlib_Decompress_copy_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Decompress_copy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Decompress_copy_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Decompress_copy_bound,
         receiver
     );
 }
 
 glob:priv zlib_Decompress___copy___signature = CallSignature(
-         "__copy__", [], 0, 0, 0
+         "__copy__", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
      );
 
 def:priv zlib_Decompress___copy___bound(args: BoundArguments) -> ptr[PyObject] {
@@ -435,19 +509,23 @@ def:priv zlib_Decompress___copy___bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Decompress___copy___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Decompress___copy___signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Decompress___copy___bound,
         receiver
     );
 }
 
 glob:priv zlib_Decompress___deepcopy___signature = CallSignature(
-         "__deepcopy__", ["memo"], 1, 1, 1
+         "__deepcopy__", ["memo"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_Decompress___deepcopy___bound(args: BoundArguments) -> ptr[PyObject] {
@@ -461,19 +539,23 @@ def:priv zlib_Decompress___deepcopy___bound(args: BoundArguments) -> ptr[PyObjec
 }
 
 def:priv zlib_Decompress___deepcopy___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Decompress___deepcopy___signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Decompress___deepcopy___bound,
         receiver
     );
 }
 
 glob:priv zlib_Decompress_flush_signature = CallSignature(
-         "flush", ["length"], 0, 1, 1
+         "flush", ["length"], 0, 1, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_Decompress_flush_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -490,19 +572,23 @@ def:priv zlib_Decompress_flush_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv zlib_Decompress_flush_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_Decompress_flush_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_Decompress_flush_bound,
         receiver
     );
 }
 
 glob:priv zlib_ZlibDecompressor_decompress_signature = CallSignature(
-         "decompress", ["data", "max_length"], 1, 2, 0
+         "decompress", ["data", "max_length"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv zlib_ZlibDecompressor_decompress_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -520,12 +606,16 @@ def:priv zlib_ZlibDecompressor_decompress_bound(args: BoundArguments) -> ptr[PyO
 }
 
 def:priv zlib_ZlibDecompressor_decompress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         zlib_ZlibDecompressor_decompress_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         zlib_ZlibDecompressor_decompress_bound,
         receiver
     );
@@ -534,114 +624,114 @@ def:priv zlib_ZlibDecompressor_decompress_call(
 glob Compress_methods: list[MethodDefinition] = [
          MethodDefinition(
              "compress",
-             MethodCallbacks(keywords=zlib_Compress_compress_call),
+             MethodCallbacks(fast_keywords=zlib_Compress_compress_call),
              "compress($self, data, /)\n--\n\nReturns a bytes object containing compressed data.\n\n  data\n    Binary data to be compressed.\n\nAfter calling this function, some of the input data may still\nbe stored in internal buffers for later processing.\nCall the flush() method to clear these buffers.",
-             3
+             130
          ),
          MethodDefinition(
              "flush",
-             MethodCallbacks(keywords=zlib_Compress_flush_call),
+             MethodCallbacks(fast_keywords=zlib_Compress_flush_call),
              "flush($self, mode=zlib.Z_FINISH, /)\n--\n\nReturn a bytes object containing any remaining compressed data.\n\n  mode\n    One of the constants Z_SYNC_FLUSH, Z_FULL_FLUSH, Z_FINISH.\n    If mode == Z_FINISH, the compressor object can no longer be\n    used after calling the flush() method.  Otherwise, more data\n    can still be compressed.",
-             3
+             130
          ),
          MethodDefinition(
              "copy",
-             MethodCallbacks(keywords=zlib_Compress_copy_call),
+             MethodCallbacks(fast_keywords=zlib_Compress_copy_call),
              "copy($self, /)\n--\n\nReturn a copy of the compression object.",
-             3
+             130
          ),
          MethodDefinition(
              "__copy__",
-             MethodCallbacks(keywords=zlib_Compress___copy___call),
+             MethodCallbacks(fast_keywords=zlib_Compress___copy___call),
              "__copy__($self, /)\n--\n\n",
-             3
+             130
          ),
          MethodDefinition(
              "__deepcopy__",
-             MethodCallbacks(keywords=zlib_Compress___deepcopy___call),
+             MethodCallbacks(fast_keywords=zlib_Compress___deepcopy___call),
              "__deepcopy__($self, memo, /)\n--\n\n",
-             3
+             130
          ),
 
      ],
      Decompress_methods: list[MethodDefinition] = [
          MethodDefinition(
              "decompress",
-             MethodCallbacks(keywords=zlib_Decompress_decompress_call),
+             MethodCallbacks(fast_keywords=zlib_Decompress_decompress_call),
              "decompress($self, data, /, max_length=0)\n--\n\nReturn a bytes object containing the decompressed version of the data.\n\n  data\n    The binary data to decompress.\n  max_length\n    The maximum allowable length of the decompressed data.\n    Unconsumed input data will be stored in\n    the unconsumed_tail attribute.\n\nAfter calling this function, some of the input data may still be\nstored in internal buffers for later processing.\nCall the flush() method to clear these buffers.",
-             3
+             130
          ),
          MethodDefinition(
              "copy",
-             MethodCallbacks(keywords=zlib_Decompress_copy_call),
+             MethodCallbacks(fast_keywords=zlib_Decompress_copy_call),
              "copy($self, /)\n--\n\nReturn a copy of the decompression object.",
-             3
+             130
          ),
          MethodDefinition(
              "__copy__",
-             MethodCallbacks(keywords=zlib_Decompress___copy___call),
+             MethodCallbacks(fast_keywords=zlib_Decompress___copy___call),
              "__copy__($self, /)\n--\n\n",
-             3
+             130
          ),
          MethodDefinition(
              "__deepcopy__",
-             MethodCallbacks(keywords=zlib_Decompress___deepcopy___call),
+             MethodCallbacks(fast_keywords=zlib_Decompress___deepcopy___call),
              "__deepcopy__($self, memo, /)\n--\n\n",
-             3
+             130
          ),
          MethodDefinition(
              "flush",
-             MethodCallbacks(keywords=zlib_Decompress_flush_call),
+             MethodCallbacks(fast_keywords=zlib_Decompress_flush_call),
              "flush($self, length=zlib.DEF_BUF_SIZE, /)\n--\n\nReturn a bytes object containing any remaining decompressed data.\n\n  length\n    the initial size of the output buffer.",
-             3
+             130
          ),
 
      ],
      ZlibDecompressor_methods: list[MethodDefinition] = [
          MethodDefinition(
              "decompress",
-             MethodCallbacks(keywords=zlib_ZlibDecompressor_decompress_call),
+             MethodCallbacks(fast_keywords=zlib_ZlibDecompressor_decompress_call),
              "decompress($self, /, data, max_length=-1)\n--\n\nDecompress *data*, returning uncompressed data as bytes.\n\nIf *max_length* is nonnegative, returns at most *max_length* bytes\nof decompressed data.  If this limit is reached and further output\ncan be produced, *self.needs_input* will be set to ``False``.  In\nthis case, the next call to *decompress()* may provide *data* as b''\nto obtain more of the output.\n\nIf all of the input data was decompressed and returned (either\nbecause this was less than *max_length* bytes, or because\n*max_length* was negative), *self.needs_input* will be set to True.\n\nAttempting to decompress data after the end of stream is reached\nraises an EOFError.  Any data found after the end of the stream is\nignored and saved in the unused_data attribute.",
-             3
+             130
          ),
 
      ],
      module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "compress",
-             MethodCallbacks(keywords=zlib_compress_call),
+             MethodCallbacks(fast_keywords=zlib_compress_call),
              "compress($module, data, /, level=Z_DEFAULT_COMPRESSION, wbits=MAX_WBITS)\n--\n\nReturns a bytes object containing compressed data.\n\n  data\n    Binary data to be compressed.\n  level\n    Compression level, in 0-9 or -1.\n  wbits\n    The window buffer size and container format.",
-             3
+             130
          ),
          MethodDefinition(
              "decompress",
-             MethodCallbacks(keywords=zlib_decompress_call),
+             MethodCallbacks(fast_keywords=zlib_decompress_call),
              "decompress($module, data, /, wbits=MAX_WBITS, bufsize=DEF_BUF_SIZE)\n--\n\nReturns a bytes object containing the uncompressed data.\n\n  data\n    Compressed data.\n  wbits\n    The window buffer size and container format.\n  bufsize\n    The initial output buffer size.",
-             3
+             130
          ),
          MethodDefinition(
              "compressobj",
-             MethodCallbacks(keywords=zlib_compressobj_call),
+             MethodCallbacks(fast_keywords=zlib_compressobj_call),
              "compressobj($module, /, level=Z_DEFAULT_COMPRESSION, method=DEFLATED,\n            wbits=MAX_WBITS, memLevel=DEF_MEM_LEVEL,\n            strategy=Z_DEFAULT_STRATEGY, zdict=<unrepresentable>)\n--\n\nReturn a compressor object.\n\n  level\n    The compression level (an integer in the range 0-9 or -1; default is\n    currently equivalent to 6).  Higher compression levels are slower,\n    but produce smaller results.\n  method\n    The compression algorithm.  If given, this must be DEFLATED.\n  wbits\n    +9 to +15: The base-two logarithm of the window size.  Include a zlib\n        container.\n    -9 to -15: Generate a raw stream.\n    +25 to +31: Include a gzip container.\n  memLevel\n    Controls the amount of memory used for internal compression state.\n    Valid values range from 1 to 9.  Higher values result in higher memory\n    usage, faster compression, and smaller output.\n  strategy\n    Used to tune the compression algorithm.  Possible values are\n    Z_DEFAULT_STRATEGY, Z_FILTERED, and Z_HUFFMAN_ONLY.\n  zdict\n    The predefined compression dictionary - a sequence of bytes\n    containing subsequences that are likely to occur in the input data.",
-             3
+             130
          ),
          MethodDefinition(
              "decompressobj",
-             MethodCallbacks(keywords=zlib_decompressobj_call),
+             MethodCallbacks(fast_keywords=zlib_decompressobj_call),
              "decompressobj($module, /, wbits=MAX_WBITS, zdict=b'')\n--\n\nReturn a decompressor object.\n\n  wbits\n    The window buffer size and container format.\n  zdict\n    The predefined compression dictionary.  This must be the same\n    dictionary as used by the compressor that produced the input data.",
-             3
+             130
          ),
          MethodDefinition(
              "adler32",
-             MethodCallbacks(keywords=zlib_adler32_call),
+             MethodCallbacks(fast=zlib_adler32_call),
              "adler32($module, data, value=1, /)\n--\n\nCompute an Adler-32 checksum of data.\n\n  value\n    Starting value of the checksum.\n\nThe returned checksum is an integer.",
-             3
+             128
          ),
          MethodDefinition(
              "crc32",
-             MethodCallbacks(keywords=zlib_crc32_call),
+             MethodCallbacks(fast=zlib_crc32_call),
              "crc32($module, data, value=0, /)\n--\n\nCompute a CRC-32 checksum of data.\n\n  value\n    Starting value of the checksum.\n\nThe returned checksum is an integer.",
-             3
+             128
          ),
 
      ];

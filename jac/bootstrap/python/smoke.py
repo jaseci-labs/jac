@@ -85,6 +85,26 @@ if required_compiler is not None:
         replacement = importlib.import_module(name)
         assert name in sys.builtin_module_names, name
         assert replacement.__spec__.origin == "built-in", name
+    # A native module first imported inside a compile request, as the
+    # tokenizer imports unicodedata to decode \N{...}, allocates outside the
+    # request's region: its state outlives the request and the collector
+    # traverses it.
+    subprocess.run(
+        [sys.executable, "-I", "-X", "faulthandler", "-c",
+         "import gc, sys\n"
+         "assert 'unicodedata' not in sys.modules\n"
+         "namespace = {}\n"
+         "exec(compile(r\"x = '\\N{GRINNING FACE}'\", '<escape>', 'exec'), namespace)\n"
+         "assert namespace['x'] == chr(0x1F600) and 'unicodedata' in sys.modules\n"
+         "gc.collect()\n"
+         "import unicodedata\n"
+         "assert unicodedata.ucd_3_2_0.unidata_version == '3.2.0'\n"
+         "assert unicodedata.ucd_3_2_0.category('\\u2028') == 'Zl'\n"
+         "del unicodedata, sys.modules['unicodedata']\n"
+         "gc.collect()\n"
+         "assert eval(r\"'\\N{LATIN SMALL LETTER A}'\") == 'a'\n"],
+        check=True,
+    )
     # Startup imports itertools and functools; each native module must also
     # support an isolated interpreter with its own interpreter lock.
     from concurrent import interpreters

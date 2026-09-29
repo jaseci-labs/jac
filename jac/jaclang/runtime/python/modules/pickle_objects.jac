@@ -123,9 +123,6 @@ def mapped_names(
 def find_global(
     module: ptr[PyObject], name: ptr[PyObject], protocol: int, fix_imports: bool
 ) -> ptr[PyObject] {
-    if jacpy_is_unicode(module) == 0 or jacpy_is_unicode(name) == 0 {
-        builtin_stream_error(PyExc_TypeError, "module and name must be strings");
-    }
     checked(i64(PySys_Audit("pickle.find_class", "OO", module, name)));
     names: ptr[PyObject] = NULL;
     mapped_module: ptr[PyObject] = NULL;

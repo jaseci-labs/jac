@@ -13,7 +13,10 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    PARSE_NO_ARGUMENTS,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -30,7 +33,10 @@ import from jaclang.runtime.python.modules.md5 {
     _md5_md5_impl
 }
 
-glob:priv MD5Type_copy_signature = CallSignature("copy", [], 0, 0, 0);
+glob:priv MD5Type_copy_signature = CallSignature(
+         "copy", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
+     );
+
 def:priv MD5Type_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, MD5Type_token);
@@ -40,40 +46,38 @@ def:priv MD5Type_copy_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv MD5Type_copy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(MD5Type_copy_signature, args, kwargs, MD5Type_copy_bound, receiver);
+    return invoke_vector(
+        MD5Type_copy_signature, args, nargs, kwnames, MD5Type_copy_bound, receiver
+    );
 }
 
-glob:priv MD5Type_digest_signature = CallSignature("digest", [], 0, 0, 0);
 def:priv MD5Type_digest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return MD5Type_digest_impl(receiver);
 }
 
 def:priv MD5Type_digest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        MD5Type_digest_signature, args, kwargs, MD5Type_digest_bound, receiver
-    );
+    return invoke_given(NULL, MD5Type_digest_bound, receiver);
 }
 
-glob:priv MD5Type_hexdigest_signature = CallSignature("hexdigest", [], 0, 0, 0);
 def:priv MD5Type_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return MD5Type_hexdigest_impl(receiver);
 }
 
 def:priv MD5Type_hexdigest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        MD5Type_hexdigest_signature, args, kwargs, MD5Type_hexdigest_bound, receiver
-    );
+    return invoke_given(NULL, MD5Type_hexdigest_bound, receiver);
 }
 
-glob:priv MD5Type_update_signature = CallSignature("update", ["obj"], 1, 1, 1);
 def:priv MD5Type_update_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -82,15 +86,13 @@ def:priv MD5Type_update_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv MD5Type_update_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        MD5Type_update_signature, args, kwargs, MD5Type_update_bound, receiver
-    );
+    return invoke_given(value, MD5Type_update_bound, receiver);
 }
 
 glob:priv _md5_md5_signature = CallSignature(
-         "md5", ["data", "usedforsecurity", "string"], 0, 1, 0
+         "md5", ["data", "usedforsecurity", "string"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _md5_md5_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -114,44 +116,49 @@ def:priv _md5_md5_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _md5_md5_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(_md5_md5_signature, args, kwargs, _md5_md5_bound, receiver);
+    return invoke_vector(
+        _md5_md5_signature, args, nargs, kwnames, _md5_md5_bound, receiver
+    );
 }
 
 glob MD5Type_methods: list[MethodDefinition] = [
          MethodDefinition(
              "copy",
-             MethodCallbacks(keywords=MD5Type_copy_call),
+             MethodCallbacks(fast_keywords=MD5Type_copy_call),
              "copy($self, /)\n--\n\nReturn a copy of the hash object.",
-             3
+             130
          ),
          MethodDefinition(
              "digest",
-             MethodCallbacks(keywords=MD5Type_digest_call),
+             MethodCallbacks(positional=MD5Type_digest_call),
              "digest($self, /)\n--\n\nReturn the digest value as a bytes object.",
-             3
+             4
          ),
          MethodDefinition(
              "hexdigest",
-             MethodCallbacks(keywords=MD5Type_hexdigest_call),
+             MethodCallbacks(positional=MD5Type_hexdigest_call),
              "hexdigest($self, /)\n--\n\nReturn the digest value as a string of hexadecimal digits.",
-             3
+             4
          ),
          MethodDefinition(
              "update",
-             MethodCallbacks(keywords=MD5Type_update_call),
+             MethodCallbacks(positional=MD5Type_update_call),
              "update($self, obj, /)\n--\n\nUpdate this hash object's state with the provided string.",
-             3
+             8
          ),
 
      ],
      module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "md5",
-             MethodCallbacks(keywords=_md5_md5_call),
+             MethodCallbacks(fast_keywords=_md5_md5_call),
              "md5($module, /, data=b'', *, usedforsecurity=True, string=None)\n--\n\nReturn a new MD5 hash object; optionally initialized with a string.",
-             3
+             130
          ),
 
      ];

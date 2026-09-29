@@ -62,13 +62,16 @@ import from jaclang.runtime.python.bindings.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
+    PARSE_FORMAT_KEYWORDS,
     invoke,
-    index_value
+    invoke_vector,
+    index_value,
+    keywords_of_dict
 }
+import from jaclang.runtime.python.bindings.converters { bad_argument }
 import from jaclang.runtime.python.capi {
     text_object,
     object_error,
-    type_name,
     boundary_failure,
     required
 }
@@ -311,7 +314,7 @@ def:priv no_keywords(type: ptr[PyObject], kind: int, kwargs: ptr[PyObject]) -> b
             != PyType_GetSlot(base, i32(TypeSlot.INIT.value)) {
         return True;
     }
-    object_error(PyExc_TypeError, f"{type_name(type)}() takes no keyword arguments");
+    object_error(PyExc_TypeError, f"{clinic_name(kind)}() takes no keyword arguments");
     return False;
 }
 
@@ -445,6 +448,16 @@ def:priv fail(
     return NULL;
 }
 
+# The name itertoolsmodule.c's argument errors use for a type: its clinic
+# name, which is teedataobject for _tee_dataobject.
+def:priv clinic_name(kind: int) -> str {
+    return "teedataobject" if kind == Kind.TEE_DATA.value else names[kind];
+}
+
+glob:priv PRODUCT_KEYWORDS = CallSignature(
+         "product", ["repeat"], 0, 1, 0, parser=PARSE_FORMAT_KEYWORDS
+     );
+
 def:priv bind(
     signature: CallSignature, args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> (BoundArguments | None) {
@@ -507,12 +520,24 @@ def:priv create_iterator(
         if kind == Kind.PRODUCT.value {
             held.references[0] = Py_NewRef(args);
             if kwargs != 0 and jacpy_dict_size(kwargs) != 0 {
-                held.references[1] = keyword(kwargs, "repeat");
-                if held.references[1] == 0 or jacpy_dict_size(kwargs) != 1 {
-                    return fail("product() takes at most 1 keyword argument");
-                }
-                width = PyLong_AsSsize_t(held.references[1]);
-                if width == -1 and jacpy_error_pending() != 0 {
+                # PyArg_ParseTupleAndKeywords((), kwds, "|n:product", {"repeat"}).
+                repeat = BoundArguments([NULL]);
+                try {
+                    if not PRODUCT_KEYWORDS.bind_values(
+                        repeat, [], keywords_of_dict(kwargs)
+                    ) {
+                        return NULL;
+                    }
+                    repeat.reach(0);
+                    if repeat.values[0] != 0 {
+                        converted = index_value(repeat.values[0]);
+                        if converted is None {
+                            return NULL;
+                        }
+                        width = converted;
+                    }
+                    repeat.reach(1);
+                } except boundary_failure {
                     return NULL;
                 }
             }
@@ -861,7 +886,11 @@ def:priv data_bound(args: BoundArguments) -> ptr[PyObject] {
     values = args.values[1];
     next = args.values[2];
     if jacpy_is_list(values) == 0 {
-        return fail("_tee_dataobject() argument 2 must be list");
+        try {
+            bad_argument("teedataobject", "argument 2", "list", values);
+        } except boundary_failure {
+            return NULL;
+        }
     }
     if next != Py_None {
         if jacpy_list_size(values) != 57
@@ -886,7 +915,7 @@ def:priv data_new(
         return NULL;
     }
     return invoke(
-        CallSignature("_tee_dataobject", ["iterable", "values", "next"], 3, 3, 3),
+        CallSignature("teedataobject", ["iterable", "values", "next"], 3, 3, 3),
         args,
         NULL,
         data_bound,
@@ -933,10 +962,13 @@ def:priv tee_call_bound(args: BoundArguments) -> ptr[PyObject] {
     );
 }
 
-def:priv tee_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(
+def:priv tee_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(
         CallSignature("tee", ["iterable", "n"], 1, 2, 2),
         args,
+        nargs,
         NULL,
         tee_call_bound,
         module
@@ -1099,9 +1131,9 @@ glob:priv definition = ModuleDefinition(
          [
              MethodDefinition(
                  "tee",
-                 MethodCallbacks(positional=tee_call),
+                 MethodCallbacks(fast=tee_call),
                  "tee($module, iterable, n=2, /)\n--\n\nReturn n independent iterators.",
-                 flags=1
+                 flags=128
              )
          ],
          hooks=ModuleHooks(execute=execute),

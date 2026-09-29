@@ -31,6 +31,12 @@ import from c {
         keywords:
             Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
         positional: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+        fast: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+        fast_keywords:
+            Callable[
+                [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
+                ptr[PyObject]
+            ],
         flags: i64,
         doc: str
     ) -> i64;  def jacpy_binding_discard(handle: ptr);  def jacpy_binding_init(
@@ -108,11 +114,21 @@ def free_state(module: ptr[PyObject]) {
     clear_state(module);
 }
 
+# A PyMethodDef's C function, one per calling convention: `keywords` for
+# METH_VARARGS|METH_KEYWORDS, `positional` for METH_VARARGS, METH_NOARGS and
+# METH_O, `fast` for METH_FASTCALL and `fast_keywords` for
+# METH_FASTCALL|METH_KEYWORDS. The flags select which one CPython calls.
 import from c {
     obj MethodCallbacks {
         has keywords:
             Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
-            positional: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0;
+            positional: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
+            fast: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0,
+            fast_keywords:
+                Callable[
+                    [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
+                    ptr[PyObject]
+                ] = 0;
     }
 }
 
@@ -132,6 +148,95 @@ import from c {
             ml_flags: i32 = 0,
             ml_doc: ptr[u8] = ptr[u8]();
     }
+}
+
+import from c {
+    # A PyMethodDef whose callback takes (self, args, kwargs)
+    # (METH_VARARGS | METH_KEYWORDS).
+    obj KeywordMethodRecord {
+        has ml_name: ptr[u8] = ptr[u8](),
+            ml_meth:
+                Callable[
+                    [ptr[PyObject], ptr[PyObject], ptr[PyObject]],
+                    ptr[PyObject]
+                ] = 0,
+            ml_flags: i32 = 0,
+            ml_doc: ptr[u8] = ptr[u8]();
+    }
+    # A PyMethodDef whose callback takes (self, args, nargs) (METH_FASTCALL).
+    obj FastMethodRecord {
+        has ml_name: ptr[u8] = ptr[u8](),
+            ml_meth:
+                Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0,
+            ml_flags: i32 = 0,
+            ml_doc: ptr[u8] = ptr[u8]();
+    }
+    # A PyMethodDef whose callback takes (self, args, nargs, kwnames)
+    # (METH_FASTCALL | METH_KEYWORDS).
+    obj FastKeywordMethodRecord {
+        has ml_name: ptr[u8] = ptr[u8](),
+            ml_meth:
+                Callable[
+                    [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
+                    ptr[PyObject]
+                ] = 0,
+            ml_flags: i32 = 0,
+            ml_doc: ptr[u8] = ptr[u8]();
+    }
+}
+
+# A NULL-terminated PyMethodDef table of `methods` for a static type's
+# tp_methods: an object-model port defines its types as C data and fills
+# their method tables, clinic glue included, before readying them. Like a
+# static table it lives for the process lifetime; an empty doc is C's NULL.
+# NULL with MemoryError when allocation fails.
+def method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef] {
+    count = len(methods);
+    table = ptr[PyMethodDef](PyMem_RawCalloc(u64(count + 1), 32));
+    if table.is_null() {
+        PyErr_NoMemory();
+        return table;
+    }
+    for index in range(count) {
+        method = methods[index];
+        name = c_string_copy(method.name);
+        doc = c_string_copy(method.doc) if method.doc else ptr[u8]();
+        if name.is_null() or (method.doc and doc.is_null()) {
+            PyErr_NoMemory();
+            return ptr[PyMethodDef]();
+        }
+        slot = table + index;
+        # The flags select the callback's shape, as jacpy_binding_method()
+        # does: METH_FASTCALL (0x80), then METH_KEYWORDS (0x2).
+        fastcall = (method.flags & 0x80) != 0;
+        keywords = (method.flags & 2) != 0;
+        if fastcall and keywords {
+            fast_keyword = ptr[FastKeywordMethodRecord](slot).view(1);
+            fast_keyword[0].ml_name = name;
+            fast_keyword[0].ml_meth = method.callbacks.fast_keywords;
+            fast_keyword[0].ml_flags = i32(method.flags);
+            fast_keyword[0].ml_doc = doc;
+        } elif fastcall {
+            fast = ptr[FastMethodRecord](slot).view(1);
+            fast[0].ml_name = name;
+            fast[0].ml_meth = method.callbacks.fast;
+            fast[0].ml_flags = i32(method.flags);
+            fast[0].ml_doc = doc;
+        } elif keywords {
+            keyword = ptr[KeywordMethodRecord](slot).view(1);
+            keyword[0].ml_name = name;
+            keyword[0].ml_meth = method.callbacks.keywords;
+            keyword[0].ml_flags = i32(method.flags);
+            keyword[0].ml_doc = doc;
+        } else {
+            positional = ptr[PositionalMethodRecord](slot).view(1);
+            positional[0].ml_name = name;
+            positional[0].ml_meth = method.callbacks.positional;
+            positional[0].ml_flags = i32(method.flags);
+            positional[0].ml_doc = doc;
+        }
+    }
+    return table;
 }
 
 # PyCFunction_New(): a builtin function over a positional callback, bound to
@@ -160,6 +265,8 @@ def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
             method.name,
             method.callbacks.keywords,
             method.callbacks.positional,
+            method.callbacks.fast,
+            method.callbacks.fast_keywords,
             method.flags,
             method.doc
         )
@@ -170,6 +277,10 @@ def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
     return True;
 }
 
+# A module definition. Its state (`state_count` references and any native
+# state) is traversed and cleared by traverse_state() and clear_state(); a
+# module whose teardown does more gives `own_lifecycle` and its own
+# traverse, clear and free hooks, which call those two for the state.
 obj ModuleDefinition {
     has handle: ptr = NULL;
 
@@ -178,14 +289,17 @@ obj ModuleDefinition {
         doc: str,
         methods: list[MethodDefinition],
         hooks: ModuleHooks = ModuleHooks(),
-        state_count: int = 0
+        state_count: int = 0,
+        own_lifecycle: bool = False
     ) {
-        lifecycle = ModuleHooks(
-            execute=hooks.execute,
-            traverse=traverse_state,
-            clear=clear_state,
-            free=free_state
-        );
+        lifecycle = hooks
+            if own_lifecycle
+            else ModuleHooks(
+                execute=hooks.execute,
+                traverse=traverse_state,
+                clear=clear_state,
+                free=free_state
+            );
         self.handle = jacpy_binding_module(
             name, doc, i64(len(methods)), lifecycle, i64(state_count)
         );

@@ -50,6 +50,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E5091,
     E5092,
     E5095,
+    E5113,
+    E1145,
     E9001,
     E9002
 }
@@ -301,6 +303,7 @@ walker NaIRGenPass(CompilerPass) {
         _aos_deciding: set[str] = set(),
         _self_owned: bool = False,
         _slot_try_stack: list[NativeErrorHandler] = [],
+        _tail_call_site: (uni.UniNode | None) = None,
         _finally_stack: list[NativeFinalizer] = [],
         _caught_error_stack:
             list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]] = [],
@@ -494,6 +497,7 @@ walker NaIRGenPass(CompilerPass) {
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _glob_import_sources: dict[str, str] = {},
+        _native_import_items: list[tuple[uni.ModuleItem, str, str]] = [],
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
         _lowered_type_cache: dict[tuple[TypeBase, str], ir.Type] = {},
@@ -579,6 +583,8 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_region_leaves(count: int) -> None;
     def _region_depth -> ir.Value;
     def _region_unwind(depth: ir.Value) -> None;
+    def _region_c_entry_escape -> (ir.Value | None);
+    def _region_c_entry_restore(saved: (ir.Value | None)) -> None;
     def _region_alloc_object(
         hdl: ir.Value, size: ir.Value, type_name: (str | None)
     ) -> ir.Value;
@@ -975,6 +981,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_const_address(expr: uni.Expr) -> (ir.Constant | None);
     def _c_function_address(expr: uni.Expr) -> tuple[bool, (ir.Constant | None)];
     def _c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool;
+    def _c_calls_directly(target: ir.Function) -> bool;
     def _c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None);
     def _reads_c_callback(nd: uni.Expr) -> bool;
     def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);
@@ -1264,6 +1271,10 @@ walker NaIRGenPass(CompilerPass) {
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
+    def _check_native_import_names(
+        imported_mods: list[tuple[str, uni.Module]]
+    ) -> None;
+
     def _declare_clib_struct(decl: uni.Archetype) -> (str | None);
     def _lower_clib_struct(decl: uni.Archetype) -> None;
     def _adopt_foreign_struct(t: any) -> (str | None);
@@ -1725,6 +1736,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Function | None);
 
     def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
+    static def _module_ability(
+        mod: uni.Module, func_name: str
+    ) -> (uni.Ability | None);
+
     def _register_enums(module: uni.Module) -> None;
     def _register_globals(module: uni.Module) -> None;
     def _quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type | None);
@@ -2598,6 +2613,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
+    def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
+    def _tail_frame_blocker -> (str | None);
+    def _tail_call_mismatch(call: ir.CallInstr, func: ir.Function) -> (str | None);
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -> None;
     def _del_target_holds_graph(target: uni.Expr) -> bool;
@@ -3118,6 +3137,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_take(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_swap(nd: uni.FuncCall) -> (ir.Value | None);
     def _callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _native_variant_decl(decl: uni.Ability) -> uni.Ability;
     def _transfer_own_args(
         nd: uni.FuncCall,
         func: (ir.Function | None),
@@ -3138,7 +3158,10 @@ walker NaIRGenPass(CompilerPass) {
     def _slot_lowering_active -> bool;
     def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
     def _emit_finalizers(loop_depth: int = 0) -> bool;
-    def _emit_err_check(callee: (uni.Ability | None)) -> None;
+    def _emit_err_check(
+        callee: (uni.Ability | None), site: (uni.UniNode | None) = None
+    ) -> None;
+
     def _emit_pending_error_check -> None;
     def _emit_err_propagate(loc: str = "") -> None;
     def _codegen_raise_slot(payload: ir.Value, type_id: int, msg: ir.Value) -> None;

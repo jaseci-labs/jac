@@ -54,9 +54,9 @@ glob OPAQUE: list[str] = [
          "PyInterpreterState",
          "PyUnicodeWriter",
          "PyModuleDef",
-         "PyType_Spec",
          "PyCompilerFlags",
          "PyBytesWriter",
+         "PyMutex",
          "_Py_freelists"
      ],
      OBJECT_LAYOUTS: set[str] = {
@@ -93,6 +93,12 @@ glob OPAQUE: list[str] = [
          "PyMemberDef": (
              "obj PyMemberDef { has name: ptr[u8] = ptr[u8](), type_: i32 = 0, "
              + "offset: i64 = 0, flags: i32 = 0, doc: ptr[u8] = ptr[u8](); }"
+         ),
+         # A heap type's spec, for PyType_FromModuleAndSpec from C data.
+         "PyType_Slot": "obj PyType_Slot { has slot: i32 = 0, pfunc: ptr = ptr(); }",
+         "PyType_Spec": (
+             "obj PyType_Spec { has name: ptr[u8] = ptr[u8](), basicsize: i32 = 0, "
+             + "itemsize: i32 = 0, flags: u32 = 0, slots: ptr[PyType_Slot] = ptr[PyType_Slot](); }"
          ),
          "_PyTimeFraction": "obj _PyTimeFraction { has numer: i64 = 0, denom: i64 = 0; }",
          "_Py_clock_info_t": (
@@ -185,6 +191,7 @@ glob OPAQUE: list[str] = [
      # Pointer typedefs passed through opaquely; a function pointer typedef
      # here can be passed NULL but not a Jac callback.
      POINTER_TYPEDEFS: dict[str, str] = {
+         "PyCapsule_Destructor": "ptr",
          "PyThread_type_lock": "ptr",
          "Py_tracefunc": "ptr"
      },
@@ -238,6 +245,7 @@ glob OPAQUE: list[str] = [
      # out-pointer takes `&mut T | None`, so None passes NULL.
      NULLABLE_PARAMETERS: dict[str, set[int]] = {
          "PyBytes_DecodeEscape": {2, 4},
+         "PyCapsule_New": {1},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
          "PyErr_WarnExplicit": {4},
@@ -265,7 +273,8 @@ glob OPAQUE: list[str] = [
          "_PyLong_UnsignedShort_Converter": {1: "&mut u16"},
          "_PyLong_UnsignedInt_Converter": {1: "&mut u32"},
          "_PyLong_UInt16_Converter": {1: "&mut u16"},
-         "_PyLong_UInt32_Converter": {1: "&mut u32"}
+         "_PyLong_UInt32_Converter": {1: "&mut u32"},
+         "_PyLong_UInt64_Converter": {1: "&mut u64"}
      },
      # `void *` parameters of a PyArg converter (`int conv(PyObject *, void *)`)
      # that receive the converted object.

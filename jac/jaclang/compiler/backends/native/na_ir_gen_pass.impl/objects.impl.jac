@@ -3318,7 +3318,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
     _demoted = False;
-    if func is None {
+    if func is None or not _is_mono_method {
         if f"{type_name}.{method_name}" in self._native_skipped_methods {
             _demoted = True;
         } else {
@@ -3329,21 +3329,21 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             }
         }
     }
+    if _demoted {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="method",
+            name=f"{type_name}.{method_name}",
+            help_text=(
+                f"'{method_name}' has no native lowering and was demoted to "
+                f"its Python implementation; it cannot be called from native "
+                f"code. Call it from a Python/@sv context instead."
+            )
+        );
+        return None;
+    }
     if func is None {
-        if _demoted {
-            self.emit(
-                E5092,
-                node_override=nd,
-                kind="method",
-                name=f"{type_name}.{method_name}",
-                help_text=(
-                    f"'{method_name}' has no native lowering and was demoted to "
-                    f"its Python implementation; it cannot be called from native "
-                    f"code. Call it from a Python/@sv context instead."
-                )
-            );
-            return None;
-        }
         if self._pyb_base_of(type_name) is not None {
             return self._codegen_pyb_method_call(nd, type_name, method_name);
         }
@@ -3400,7 +3400,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
 
     self._release_owned_args(_release, op="call_arg");
-    self._emit_err_check(self._callee_ability_of(nd) or self._linked_callee_decl(func));
+    self._emit_err_check(
+        self._callee_ability_of(nd) or self._linked_callee_decl(func), site=nd
+    );
 
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
@@ -4806,7 +4808,7 @@ impl NaIRGenPass._emit_class_routed_call(
     _sr = self.builder.call(_sfunc, _sargs, name=f"scall.{method_name}");
     self._release_owned_args(_release, op="call_arg");
     self._emit_err_check(
-        self._callee_ability_of(nd) or self._linked_callee_decl(_sfunc)
+        self._callee_ability_of(nd) or self._linked_callee_decl(_sfunc), site=nd
     );
     if isinstance(_sfunc.return_value.type, ir.VoidType) {
         return None;

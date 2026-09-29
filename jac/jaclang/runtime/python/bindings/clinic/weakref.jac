@@ -13,7 +13,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_POSITIONAL,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -28,10 +30,6 @@ import from jaclang.runtime.python.modules.weakref {
     _weakref_proxy_impl
 }
 
-glob:priv _weakref_getweakrefcount_signature = CallSignature(
-         "getweakrefcount", ["object"], 1, 1, 1
-     );
-
 def:priv _weakref_getweakrefcount_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -40,19 +38,13 @@ def:priv _weakref_getweakrefcount_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _weakref_getweakrefcount_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _weakref_getweakrefcount_signature,
-        args,
-        kwargs,
-        _weakref_getweakrefcount_bound,
-        receiver
-    );
+    return invoke_given(value, _weakref_getweakrefcount_bound, receiver);
 }
 
 glob:priv _weakref__remove_dead_weakref_signature = CallSignature(
-         "_remove_dead_weakref", ["dct", "key"], 2, 2, 2
+         "_remove_dead_weakref", ["dct", "key"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _weakref__remove_dead_weakref_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -68,20 +60,17 @@ def:priv _weakref__remove_dead_weakref_bound(args: BoundArguments) -> ptr[PyObje
 }
 
 def:priv _weakref__remove_dead_weakref_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _weakref__remove_dead_weakref_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _weakref__remove_dead_weakref_bound,
         receiver
     );
 }
-
-glob:priv _weakref_getweakrefs_signature = CallSignature(
-         "getweakrefs", ["object"], 1, 1, 1
-     );
 
 def:priv _weakref_getweakrefs_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -91,19 +80,13 @@ def:priv _weakref_getweakrefs_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _weakref_getweakrefs_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _weakref_getweakrefs_signature,
-        args,
-        kwargs,
-        _weakref_getweakrefs_bound,
-        receiver
-    );
+    return invoke_given(value, _weakref_getweakrefs_bound, receiver);
 }
 
 glob:priv _weakref_proxy_signature = CallSignature(
-         "proxy", ["object", "callback"], 1, 2, 2
+         "proxy", ["object", "callback"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _weakref_proxy_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -119,37 +102,37 @@ def:priv _weakref_proxy_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _weakref_proxy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _weakref_proxy_signature, args, kwargs, _weakref_proxy_bound, receiver
+    return invoke_vector(
+        _weakref_proxy_signature, args, nargs, NULL, _weakref_proxy_bound, receiver
     );
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getweakrefcount",
-             MethodCallbacks(keywords=_weakref_getweakrefcount_call),
+             MethodCallbacks(positional=_weakref_getweakrefcount_call),
              "getweakrefcount($module, object, /)\n--\n\nReturn the number of weak references to 'object'.",
-             3
+             8
          ),
          MethodDefinition(
              "_remove_dead_weakref",
-             MethodCallbacks(keywords=_weakref__remove_dead_weakref_call),
+             MethodCallbacks(fast=_weakref__remove_dead_weakref_call),
              "_remove_dead_weakref($module, dct, key, /)\n--\n\nAtomically remove key from dict if it points to a dead weakref.",
-             3
+             128
          ),
          MethodDefinition(
              "getweakrefs",
-             MethodCallbacks(keywords=_weakref_getweakrefs_call),
+             MethodCallbacks(positional=_weakref_getweakrefs_call),
              "getweakrefs($module, object, /)\n--\n\nReturn a list of all weak reference objects pointing to 'object'.",
-             3
+             8
          ),
          MethodDefinition(
              "proxy",
-             MethodCallbacks(keywords=_weakref_proxy_call),
+             MethodCallbacks(fast=_weakref_proxy_call),
              "proxy($module, object, callback=None, /)\n--\n\nCreate a proxy object that weakly references 'object'.\n\n'callback', if given, is called with a reference to the\nproxy when 'object' is about to be finalized.",
-             3
+             128
          ),
 
      ];

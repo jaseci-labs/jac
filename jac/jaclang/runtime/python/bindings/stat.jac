@@ -2,7 +2,6 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyBool_FromLong,
     PyExc_ImportError,
     PyLong_FromUnsignedLong,
     PyModule_AddIntConstant,

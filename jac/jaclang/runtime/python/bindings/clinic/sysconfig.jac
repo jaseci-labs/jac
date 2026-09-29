@@ -10,17 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    invoke
-}
+import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.modules.sysconfig { _sysconfig_config_vars_impl }
-
-glob:priv _sysconfig_config_vars_signature = CallSignature(
-         "config_vars", [], 0, 0, 0
-     );
 
 def:priv _sysconfig_config_vars_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -28,23 +20,17 @@ def:priv _sysconfig_config_vars_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _sysconfig_config_vars_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _sysconfig_config_vars_signature,
-        args,
-        kwargs,
-        _sysconfig_config_vars_bound,
-        receiver
-    );
+    return invoke_given(NULL, _sysconfig_config_vars_bound, receiver);
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "config_vars",
-             MethodCallbacks(keywords=_sysconfig_config_vars_call),
+             MethodCallbacks(positional=_sysconfig_config_vars_call),
              "config_vars($module, /)\n--\n\nReturns a dictionary containing build variables intended to be exposed by sysconfig.",
-             3
+             4
          ),
 
      ];

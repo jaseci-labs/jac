@@ -130,6 +130,22 @@ impl NaIRGenPass._region_unwind(depth: ir.Value) -> None {
     );
 }
 
+impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
+    if self._is_kernel_unit() {
+        return None;
+    }
+    return self.builder.call(
+        self._region_kernel_fn("__jac_region_escape"), [], name="region.escape"
+    );
+}
+
+impl NaIRGenPass._region_c_entry_restore(saved: (ir.Value | None)) -> None {
+    if saved is None {
+        return;
+    }
+    self.builder.call(self._region_kernel_fn("__jac_region_restore"), [saved]);
+}
+
 impl NaIRGenPass._region_alloc_object(
     hdl: ir.Value, size: ir.Value, type_name: (str | None)
 ) -> ir.Value {

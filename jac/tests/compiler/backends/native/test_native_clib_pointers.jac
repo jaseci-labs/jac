@@ -457,6 +457,74 @@ with entry {
     assert "final 17 4 3.0 1099511627778" in out.splitlines() , out;
 }
 
+test "a bytes literal lays out a C integer array's little-endian elements" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    glob bytes_u8: list[u8] = b"\\x01\\xff" b"A",
+         bytes_u16: list[u16] = b"\\x34\\x12\\xff\\xff",
+         bytes_i32: list[i32] = b"\\xfe\\xff\\xff\\xff\\x00\\x00\\x00\\x01";
+}
+with entry {
+    small = addressof(bytes_u8).view(3);
+    wide = addressof(bytes_u16).view(2);
+    signed = addressof(bytes_i32).view(2);
+    print("bytes", small[0], small[1], small[2], wide[0], wide[1], signed[0], signed[1]);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code));
+    }
+    assert "bytes 1 255 65 4660 65535 -2 16777216" in out.splitlines() , out;
+}
+
+test "a bytes literal initializes only a sized integer array of whole elements" {
+    code = DECLS
+        + '''
+import from "CLIB_POINTERS_LIBRARY" {
+    glob odd_u16: list[u16] = b"\\x01\\x02\\x03",
+         reals: list[f64] = b"\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00";
+}
+''';
+    assert checker_codes(code) == ["E1155", "E1155"];
+}
+
+test "a Jac function C calls runs outside the caller's open region" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr[CpVec3];
+    }
+    def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;
+    glob kept_recipe: CpRecipe = CpRecipe(count=i32(1), scale=remember);
+}
+obj Kept {
+    has value: i32;
+
+    def drop {}
+}
+def remember(v: i32) -> i32 {
+    item = Kept(value=v);
+    doubled = item.value * i32(2);
+    print("callback on heap", region_of(item) is None);
+    return doubled;
+}
+with entry {
+    r: own Region = Region();
+    in r {
+        opened = Kept(value=i32(1));
+        print("open", region_of(opened) is None);
+        print("run", cp_recipe_run(addressof(kept_recipe), i32(20)));
+    }
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code));
+    }
+    lines = out.splitlines();
+    assert "open False" in lines , out;
+    assert "callback on heap True" in lines , out;
+    assert "run 41" in lines , out;
+}
+
 test "only Final globs are C constants" {
     code = DECLS
         + '''
@@ -564,6 +632,90 @@ with entry {
     }
     assert "twice 42" in out.splitlines() , out;
     assert "variadic 321" in out.splitlines() , out;
+}
+
+glob FUNCTION_ADDRESS_LIBRARY: str = '''#include <stdint.h>
+typedef struct { const char *name; void *code; int32_t arity; } FaEntry;
+int64_t fa_call(const FaEntry *record, int64_t value) {
+    if (record->arity == 1) return ((int64_t (*)(int64_t))record->code)(value);
+    return ((int64_t (*)(int64_t, int64_t))record->code)(value, 3);
+}
+''',
+     FUNCTION_ADDRESS_PROGRAM: str = '''import from "FA_LIBRARY" {
+    obj FaEntry { has name: ptr[u8], code: ptr, arity: i32; }
+    def fa_call(record: ptr[FaEntry], value: i64) -> i64;
+    def fa_c_twice(value: i64) -> i64 {
+        return value * 2;
+    }
+    glob fa_table: list[FaEntry] = [
+             FaEntry(name=ptr[u8]("inc"), code=ptr(fa_inc), arity=1),
+             FaEntry(name=ptr[u8]("scale"), code=ptr(fa_scale), arity=2),
+             FaEntry(name=ptr[u8]("twice"), code=ptr(fa_c_twice), arity=1),
+             FaEntry(name=ptr[u8](), code=ptr(), arity=0)
+         ],
+         fa_first: ptr[u8] = ptr[u8](addressof(fa_table));
+}
+def fa_inc(value: i64) -> i64 {
+    return value + 1;
+}
+def fa_scale(value: i64, factor: i64) -> i64 {
+    return value * factor;
+}
+with entry {
+    table = addressof(fa_table);
+    print("inc", fa_call(table, 41));
+    print("scale", fa_call(table + 1, 5));
+    print("twice", fa_call(table + 2, 21));
+    print("end", (table + 3).view(1)[0].code.is_null());
+    print("cast", int(fa_first) == int(table));
+}
+''';
+
+test "a C data pointer field takes a named function's address" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        library = str(Path(directory) / "libfa.so");
+        source = Path(directory) / "fa.c";
+        source.write_text(FUNCTION_ADDRESS_LIBRARY);
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", "-O1", str(source), "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        program = Path(directory) / "fa.jac";
+        program.write_text(FUNCTION_ADDRESS_PROGRAM.replace("FA_LIBRARY", library));
+        for memory in ("nogc", "rc", "managed") {
+            binary = str(Path(directory) / f"fa.{memory}");
+            native_build(str(program), binary, memory=memory);
+            lines = native_run(binary).splitlines();
+            for expected in [
+                "inc 42",
+                "scale 15",
+                "twice 42",
+                "end True",
+                "cast True"
+            ] {
+                assert expected in lines , f"{memory}: missing {expected!r} in {lines}";
+            }
+        }
+    }
+}
+
+test "only a named function's address is a C constant pointer" {
+    code = DECLS
+        + '''
+glob plain_address: int = 64;
+import from "CLIB_POINTERS_LIBRARY" {
+    obj FaSlot { has code: ptr; }
+    glob fa_bad: FaSlot = FaSlot(code=ptr(plain_address));
+}
+''';
+    assert checker_codes(code) == ["E1155"];
 }
 
 test "C function definitions take and return C data" {

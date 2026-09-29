@@ -22,7 +22,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_TYPE,
     _PyArg_CheckPositional,
-    PyBool_FromLong,
     PyDict_New,
     PyDict_SetItemString,
     PyErr_CheckSignals,
@@ -88,6 +87,7 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicodeWriter_WriteStr,
     PyUnicodeWriter_WriteSubstring
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi {
     boundary_failure,
     c_string_text,
@@ -127,6 +127,8 @@ import from c {
     ) -> u64;
 }
 import from c { def time(result: ptr) -> i64;  }
+
+# The error handler tm_zone decodes with, as a C string for the process.
 
 glob:priv SEC_TO_NS: i64 = 1000000000,
      INT_MAX: int = 2147483647,

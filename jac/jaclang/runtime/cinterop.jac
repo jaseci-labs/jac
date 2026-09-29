@@ -2,7 +2,9 @@ import ctypes;
 import json;
 import os;
 import sys;
+import from ctypes.util { find_library }
 import from jaclang.runtime.scalars { numeric_shapes }
+import from jaclang.runtime.region { escape_regions, restore_regions }
 
 def _scalar_ctypes -> dict[str, any] {
     out: dict[str, any] = {};
@@ -609,7 +611,12 @@ def _callback_trampoline(spec: list[any], fn: any, scope: any) -> any {
             _callback_arg(params[i], raw[i], scope) if i < len(params) else raw[i]
             for i in range(len(raw))
         ];
-        result = fn(*args);
+        saved = escape_regions();
+        try {
+            result = fn(*args);
+        } finally {
+            restore_regions(saved);
+        }
         if ret[0] == "ptr" {
             return result._addr if isinstance(result, JacPtr) else None;
         }
@@ -657,7 +664,12 @@ def _lib_candidates(desc: dict[str, any], module_file: str) -> list[str] {
     if desc.get("level", 0) > 0 or len(names) > 1 {
         return [os.path.join(module_dir, rel)];
     }
-    return [fname, os.path.join(module_dir, fname)];
+    out = [fname, os.path.join(module_dir, fname)];
+    soname = find_library(base);
+    if soname and soname not in out {
+        out.append(soname);
+    }
+    return out;
 }
 
 def _load_library(desc: dict[str, any], module_file: str) -> any {
@@ -841,6 +853,15 @@ class CGlobal {
         if kind == "array" {
             self._keep = value;
             elem = _field_ctype(self._spec[1], self._scope);
+            if isinstance(value, bytes) {
+                # A bytes literal holds the array's little-endian elements.
+                width = ctypes.sizeof(elem);
+                signed = elem(-1).value < 0;
+                value = [
+                    int.from_bytes(value[i:i + width], "little", signed=signed)
+                    for i in range(0, len(value), width)
+                ];
+            }
             items = [
                 item._addr if isinstance(item, JacPtr) else item for item in value
             ];

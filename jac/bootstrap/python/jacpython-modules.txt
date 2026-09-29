@@ -49,6 +49,8 @@ _weakref        test.test_weakref
 _tracemalloc    test.test_tracemalloc
 zlib            test.test_zlib                          -lz
 _bz2            test.test_bz2                           -lbz2
+_lzma           test.test_lzma                          -llzma
+_zstd           test.test_zstd                          -lzstd
 errno           test.test_errno
 syslog          test.test_syslog
 resource        test.test_resource
@@ -72,3 +74,6 @@ _posixshmem     test.test_multiprocessing_spawn.test_misc   linux:-lrt
 _abc            test.test_abc,test.test_isinstance
 _codecs         test.test_codecs,test.test_codeccallbacks
 _locale         test.test_locale,test.test__locale
+_zoneinfo       test.test_zoneinfo
+unicodedata     test.test_unicodedata,test.test_ucn
+_datetime       test.test_datetime

@@ -68,8 +68,12 @@ import from jaclang.runtime.python.bindings.references { ReferenceState, owned_t
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    PARSE_NO_ARGUMENTS,
+    invoke,
+    invoke_vector
 }
+import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.capi {
     builtin_kind,
     builtin_type,
@@ -602,13 +606,73 @@ def:priv find_bound(args: BoundArguments) -> ptr[PyObject] {
         else NULL;
 }
 
-def:priv find_class(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(
-        CallSignature("find_class", ["module", "name"], 2, 2, 2),
-        args,
-        NULL,
-        find_bound,
-        instance
+# Unpickler's and Pickler's defining-class methods are METH_METHOD|
+# METH_FASTCALL|METH_KEYWORDS: their arguments go through
+# _PyArg_UnpackKeywords.
+glob:priv find_class_signature = CallSignature(
+         "find_class", ["module_name", "global_name"], 2, 2, 2, parser=PARSE_KEYWORDS
+     ),
+     persistent_load_signature = CallSignature(
+         "persistent_load", ["pid"], 1, 1, 1, parser=PARSE_KEYWORDS
+     ),
+     load_method_signature = CallSignature("load", [], 0, 0, parser=PARSE_NO_ARGUMENTS),
+     dump_method_signature = CallSignature(
+         "dump", ["obj"], 1, 1, 1, parser=PARSE_KEYWORDS
+     );
+
+def:priv find_class(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        find_class_signature, args, nargs, kwnames, find_bound, instance
+    );
+}
+
+def:priv persistent_load_bound(args: BoundArguments) -> ptr[PyObject] {
+    return persistent_load(args.context, args.values[0]);
+}
+
+def:priv persistent_load_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        persistent_load_signature, args, nargs, kwnames, persistent_load_bound, instance
+    );
+}
+
+def:priv load_method_bound(args: BoundArguments) -> ptr[PyObject] {
+    return load(args.context, NULL);
+}
+
+def:priv load_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        load_method_signature, args, nargs, kwnames, load_method_bound, instance
+    );
+}
+
+def:priv dump_method_bound(args: BoundArguments) -> ptr[PyObject] {
+    return dump(args.context, args.values[0]);
+}
+
+def:priv dump_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        dump_method_signature, args, nargs, kwnames, dump_method_bound, instance
     );
 }
 
@@ -926,7 +990,7 @@ def:priv module_dumps(
     return invoke(dumps_signature, args, kwargs, dumps_bound, module);
 }
 
-def:priv module_load(
+def:priv unpickle(
     module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     held = ReferenceState(
@@ -940,6 +1004,11 @@ def:priv module_load(
 }
 
 def:priv loads_bound(args: BoundArguments) -> ptr[PyObject] {
+    # _Unpickler_SetStringInput(): the data must export a buffer.
+    data = BufferArgument();
+    if not data.acquire(args.values[0]) {
+        return NULL;
+    }
     fix = flag(args.values[1]);
     if fix < 0 {
         return NULL;
@@ -964,7 +1033,31 @@ def:priv loads_bound(args: BoundArguments) -> ptr[PyObject] {
             [held.references[4], held.references[0], held.references[1], args.values[4]]
         )
     );
-    return module_load(args.context, held.references[3], held.references[5]);
+    return unpickle(args.context, held.references[3], held.references[5]);
+}
+
+# load(file, *, fix_imports=True, encoding="ASCII", errors="strict",
+# buffers=()): its own signature, then an Unpickler over `file`.
+def:priv load_bound(args: BoundArguments) -> ptr[PyObject] {
+    names = ["fix_imports", "encoding", "errors", "buffers"];
+    given: list[str] = [];
+    values: list[ptr[PyObject]] = [];
+    for i in range(4) {
+        if args.values[i + 1] != 0 {
+            given.append(names[i]);
+            values.append(args.values[i + 1]);
+        }
+    }
+    held = ReferenceState(references=[NULL, NULL]);
+    held.references[0] = required(owned_tuple([Py_NewRef(args.values[0])]));
+    held.references[1] = required(keywords(given, values));
+    return unpickle(args.context, held.references[0], held.references[1]);
+}
+
+def:priv module_load(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke(load_signature, args, kwargs, load_bound, module);
 }
 
 def:priv module_loads(
@@ -974,7 +1067,7 @@ def:priv module_loads(
 }
 
 glob:priv pickler_signature = CallSignature(
-         "Pickler", ["file", "protocol", "fix_imports", "buffer_callback"], 1, 2
+         "Pickler", ["file", "protocol", "fix_imports", "buffer_callback"], 1, 4
      ),
      unpickler_signature = CallSignature(
          "Unpickler", ["file", "fix_imports", "encoding", "errors", "buffers"], 1, 1
@@ -986,14 +1079,19 @@ glob:priv pickler_signature = CallSignature(
          "dumps", ["obj", "protocol", "fix_imports", "buffer_callback"], 1, 2
      ),
      loads_signature = CallSignature(
-         "loads", ["data", "fix_imports", "encoding", "errors", "buffers"], 1, 1
+         "loads", ["data", "fix_imports", "encoding", "errors", "buffers"], 1, 1, 1
+     ),
+     load_signature = CallSignature(
+         "load", ["file", "fix_imports", "encoding", "errors", "buffers"], 1, 1
      ),
      flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
      pickler_type = TypeDefinition(
          "_pickle.Pickler",
          "",
          [
-             MethodDefinition("dump", MethodCallbacks(positional=dump), "", flags=8),
+             MethodDefinition(
+                 "dump", MethodCallbacks(fast_keywords=dump_call), "", flags=130
+             ),
              MethodDefinition(
                  "clear_memo", MethodCallbacks(positional=clear_memo), "", flags=4
              ),
@@ -1038,15 +1136,17 @@ glob:priv pickler_signature = CallSignature(
          "_pickle.Unpickler",
          "",
          [
-             MethodDefinition("load", MethodCallbacks(positional=load), "", flags=4),
              MethodDefinition(
-                 "find_class", MethodCallbacks(positional=find_class), "", flags=1
+                 "load", MethodCallbacks(fast_keywords=load_call), "", flags=130
+             ),
+             MethodDefinition(
+                 "find_class", MethodCallbacks(fast_keywords=find_class), "", flags=130
              ),
              MethodDefinition(
                  "persistent_load",
-                 MethodCallbacks(positional=persistent_load),
+                 MethodCallbacks(fast_keywords=persistent_load_call),
                  "",
-                 flags=8
+                 flags=130
              ),
              MethodDefinition(
                  "__sizeof__", MethodCallbacks(positional=size_of), "", flags=4

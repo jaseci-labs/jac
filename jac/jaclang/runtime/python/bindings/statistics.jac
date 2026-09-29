@@ -9,7 +9,7 @@ import from jaclang.runtime.python.bindings.module {
 import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     BoundArguments,
-    invoke
+    invoke_vector
 }
 import from jaclang.runtime.python.modules.statistics { jacpy_statistics_inv_cdf }
 
@@ -23,8 +23,10 @@ def:priv inv_cdf_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_statistics_inv_cdf(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv inv_cdf_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(inv_cdf_signature, args, NULL, inv_cdf_bound);
+def:priv inv_cdf_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(inv_cdf_signature, args, nargs, NULL, inv_cdf_bound);
 }
 
 glob:priv definition = ModuleDefinition(
@@ -33,9 +35,9 @@ glob:priv definition = ModuleDefinition(
          [
              MethodDefinition(
                  "_normal_dist_inv_cdf",
-                 MethodCallbacks(positional=inv_cdf_call),
+                 MethodCallbacks(fast=inv_cdf_call),
                  "_normal_dist_inv_cdf($module, p, mu, sigma, /)\n--\n\n",
-                 1
+                 128
              )
          ]
      );

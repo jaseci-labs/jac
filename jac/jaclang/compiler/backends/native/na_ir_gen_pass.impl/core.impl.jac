@@ -959,6 +959,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
     self._glob_import_sources = {};
+    self._native_import_items = [];
 
     entry_base = os.path.dirname(os.path.abspath(self.module.loc.mod_path))
         if (self.module?.loc)
@@ -1011,6 +1012,11 @@ impl NaIRGenPass._register_imported_struct_types -> None {
                     if isinstance(_it, uni.ModuleItem) and _it.alias is None {
                         self._glob_import_sources[_it.name.value] = os.path.realpath(
                             _bound_path
+                        );
+                    }
+                    if isinstance(_it, uni.ModuleItem) {
+                        self._native_import_items.append(
+                            (_it, os.path.realpath(_bound_path), mod_name)
                         );
                     }
                 }
@@ -1187,6 +1193,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         for (_gname, _gpath) in self._glob_import_sources.items()
         if _gname in _defined.get(_gpath, set())
     };
+    self._check_native_import_names(imported_mods);
 
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
@@ -1739,6 +1746,48 @@ impl NaIRGenPass._imported_function_demotions(
         return set(iface.demoted);
     }
     return None;
+}
+
+impl NaIRGenPass._check_native_import_names(
+    imported_mods: list[tuple[str, uni.Module]]
+) -> None {
+    """Refuse a name imported from a Jac module that does not define it.
+
+    A use of an imported global lowers to a load of the defining unit's
+    symbol. A name the module never defines has no symbol, and every use of
+    it used to lower to nothing: a call argument or a glob initializer took a
+    NULL in its place and the binary crashed wherever that value was read.
+    The module's own scope is the whole answer (its globals, functions,
+    archetypes, enums and the names it imports); a module that absorbs
+    another (`include`, `*`) is left to the checker.
+    """;
+    import os;
+    import from jaclang.compiler.types.type_utils { lookup_symtab }
+    by_path: dict[str, uni.Module] = {};
+    for (_, _mod) in imported_mods {
+        if _mod?.loc and _mod.loc.mod_path {
+            by_path[os.path.realpath(_mod.loc.mod_path)] = _mod;
+        }
+    }
+    for (item, path, mod_name) in self._native_import_items {
+        name = item.name.value if item.name else None;
+        src = by_path.get(path);
+        if name is None or name == "*" or src is None or not path.endswith(".jac") {
+            continue;
+        }
+        if any(
+            _imp.is_absorb
+                or any(
+                    isinstance(_i, uni.ModuleItem) and _i.name.value == "*"
+                    for _i in (_imp.items or [])
+                ) for _imp in src.get_all_sub_nodes(uni.Import)
+        ) {
+            continue;
+        }
+        if lookup_symtab(src, name, None) is None {
+            self.emit(E1145, node_override=item, name=name, module=mod_name);
+        }
+    }
 }
 
 impl NaIRGenPass._declare_clib_struct(decl: uni.Archetype) -> (str | None) {

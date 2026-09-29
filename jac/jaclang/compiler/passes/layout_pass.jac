@@ -137,7 +137,7 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
 }
 
 glob NON_DISPATCHED_METHODS: frozenset[str] = frozenset(
-         {"init", "postinit", "__init__", "__post_init__"}
+         {"init", "postinit", "__init__", "__post_init__", "drop"}
      );
 
 def open_dispatch(arch: Archetype) -> bool {
@@ -151,7 +151,9 @@ def open_dispatch(arch: Archetype) -> bool {
     class cannot be named, so cannot be subclassed, outside its module, whose
     registry is therefore complete for it. A foreign (C-layout) struct is
     plain data, and constructors, static and class methods never dispatch
-    through an instance.
+    through an instance. A `drop` hook alone does not open a class either: it
+    runs only when the owner lets go, and a class whose only behavior is its
+    hook stays flat so a headerless build can embed it inline in an own field.
     """;
     import from jaclang.compiler.frontend.constant { SymbolAccess }
     import from jaclang.compiler.c_interop { is_clib_archetype }

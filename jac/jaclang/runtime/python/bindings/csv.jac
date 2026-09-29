@@ -64,6 +64,7 @@ import from jaclang.runtime.python.bindings.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
+    PARSE_FORMAT_KEYWORDS,
     invoke
 }
 import from jaclang.runtime.python.modules.csv {
@@ -158,9 +159,14 @@ glob:priv option_names = [
          "skipinitialspace",
          "strict"
      ],
-     dialect_signature = CallSignature("Dialect", ["dialect"] + option_names, 0, 9);
+     # PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOOOOOOO", ...): no
+     # function name, so its errors read "function" and "this function".
+     dialect_signature = CallSignature(
+         "", ["dialect"] + option_names, 0, 9, parser=PARSE_FORMAT_KEYWORDS
+     );
 
 def:priv dialect_create_bound(args: BoundArguments) -> ptr[PyObject] {
+    args.reach(9);
     module = jacpy_binding_owner(args.context, definition.handle);
     if module == 0 {
         return NULL;
