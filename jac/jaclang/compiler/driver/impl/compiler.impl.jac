@@ -124,13 +124,25 @@ impl JacCompiler._check_native_abi(
 }
 
 impl JacCompiler.get_bytecode(
-    full_target: str, target_program: JacProgram, skip_analysis: bool = False
+    full_target: str,
+    target_program: JacProgram,
+    skip_analysis: bool = False,
+    options: (CompileOptions | None) = None
 ) -> (types.CodeType | None) {
     import from jaclang.compiler.driver.compilation_context {
         compilation_scope,
         owner_scope_options
     }
-    if full_target.endswith('.py') {
+    if options is None {
+        options = CompileOptions();
+    }
+    gm_setting: bool = options.graphmend is True;
+    if gm_setting {
+        import from jaclang.compiler.driver.jir { read_source_shared }
+        src_probe = read_source_shared(full_target);
+        gm_setting = (src_probe is not None) and ('torch' in src_probe);
+    }
+    if full_target.endswith('.py') and not gm_setting {
         import builtins;
         import from jaclang.project.textio { read_file_with_encoding }
         return builtins.compile(
@@ -138,13 +150,56 @@ impl JacCompiler.get_bytecode(
         );
     }
     actual = self.product_program(full_target, target_program, execution=True);
-    with compilation_scope(owner_scope_options(actual)) {
-        return self._get_bytecode(full_target, actual, skip_analysis);
+    real_target = "";
+    gm_region = "";
+    if gm_setting {
+        resolved = self.selfhost.resolve(full_target, actual, execution=True);
+        gm_setting = not self.selfhost.is_selfhost(resolved);
+        if gm_setting {
+            import from jaclang.compiler.passes.graphmend.scope_facts {
+                region_context_probe
+            }
+            real_target = os.path.realpath(full_target);
+            probe_key = region_context_probe(resolved, real_target);
+            gm_setting = probe_key is not None;
+            gm_region = probe_key or "";
+        }
+    }
+    gm_active = gm_setting;
+    if full_target.endswith('.py') and not gm_active {
+        import builtins;
+        import from jaclang.project.textio { read_file_with_encoding }
+        return builtins.compile(
+            read_file_with_encoding(full_target), full_target, 'exec'
+        );
+    }
+    gm_variant = "";
+    if gm_active {
+        gm_variant = ";".join(
+            [
+                "graphmend",
+                "disable=" + ",".join(sorted(options.graphmend_disable or [])),
+                "claimed="
+                    + str(int((real_target in target_program.graphmend_claimed))),
+                "region=" + gm_region
+            ]
+        );
+    }
+    prev_variant = swap_graphmend_cache_variant(gm_variant);
+    try {
+        with compilation_scope(owner_scope_options(actual)) {
+            return self._get_bytecode(full_target, actual, skip_analysis, gm_active);
+        }
+    } finally {
+        swap_graphmend_cache_variant(prev_variant);
     }
 }
 
 impl JacCompiler._get_bytecode(
-    full_target: str, target_program: JacProgram, skip_analysis: bool = False
+    full_target: str,
+    target_program: JacProgram,
+    skip_analysis: bool = False,
+    gm_active: bool = False
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program, execution=True);
     (rebuild, no_precompile) = cache_mode();
@@ -186,7 +241,7 @@ impl JacCompiler._get_bytecode(
         return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
     }
 
-    if not rebuild {
+    if (not gm_active) and (not rebuild) {
         sealed = self._sealed_jir_data(full_target);
         if sealed is not None {
             import from jaclang.compiler.driver.jir { PRECOMPILE_SENTINEL }
@@ -211,7 +266,14 @@ impl JacCompiler._get_bytecode(
     }
 
     cache_path = get_module_cache_path(full_target);
-    if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
+    cache_hit = False;
+    if not rebuild {
+        cache_hit = is_module_cache_valid(full_target, cache_path);
+        if gm_active and (not cache_hit) {
+            cache_hit = is_module_cache_valid_gm_noop(full_target, cache_path);
+        }
+    }
+    if cache_hit {
         try {
             jir_data = cache_path.read_bytes();
             magic_bytes: any = SECTIONS_MAGIC;
@@ -249,7 +311,11 @@ impl JacCompiler._get_bytecode(
     }
 
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    precompiled = (
+        None
+            if gm_active
+            else self._get_precompiled_jir_bytecode(full_target, allow_unsealed)
+    );
     if precompiled is not None {
         (precompiled_bc, precompiled_ctdeps) = precompiled;
         try {
@@ -292,7 +358,8 @@ impl JacCompiler._get_bytecode(
     }
     options = CompileOptions(
         skip_native_engine=not self._wants_native_engine(full_target, actual_program),
-        skip_analysis=skip_analysis
+        skip_analysis=skip_analysis,
+        graphmend=gm_active
     );
     if not is_internal {
         (handled, adopted) = self._adopt_kernel_compile(
@@ -311,7 +378,19 @@ impl JacCompiler._get_bytecode(
         );
         if result.gen.py_bytecode {
             actual_program.hub_cache_stamp(full_target);
-            self._persist_module_cache(full_target, result, actual_program);
+            gm_facts = result.gen.graphmend_facts;
+            if gm_active and (gm_facts is not None) and gm_facts.noop {
+                gm_v = swap_graphmend_cache_variant("");
+                try {
+                    self._persist_module_cache(
+                        full_target, result, actual_program, gm_noop_variant=gm_v
+                    );
+                } finally {
+                    swap_graphmend_cache_variant(gm_v);
+                }
+            } else {
+                self._persist_module_cache(full_target, result, actual_program);
+            }
             if is_internal {
                 note_compiler_source_failure(full_target, '');
             }
@@ -826,7 +905,10 @@ impl JacCompiler.closure_options -> (CompileOptions | None) {
 }
 
 impl JacCompiler._persist_module_cache(
-    full_target: str, result: uni.Module, actual_program: JacProgram
+    full_target: str,
+    result: uni.Module,
+    actual_program: JacProgram,
+    gm_noop_variant: (str | None) = None
 ) -> None {
     import from jaclang.compiler.driver.jir {
         get_module_cache_path,
@@ -834,7 +916,8 @@ impl JacCompiler._persist_module_cache(
     }
     try {
         _pmc_path = get_module_cache_path(full_target);
-        if is_module_cache_valid(full_target, _pmc_path) {
+        if (gm_noop_variant is None)
+            and is_module_cache_valid(full_target, _pmc_path) {
             _pmc_data = _pmc_path.read_bytes();
             _pmc_client_done = (
                 not result.gen.js
@@ -854,6 +937,9 @@ impl JacCompiler._persist_module_cache(
     }
     try {
         sections = unit_sections(unit_products(result, actual_program), cache_bc);
+        if gm_noop_variant is not None {
+            sections[SEC_GM_NOOP] = gm_noop_variant.encode('utf-8');
+        }
         registry = actual_program.native_units();
         if registry.record_module(result, actual_program.options) is not None {
             sections.update(registry.product_sections(full_target));

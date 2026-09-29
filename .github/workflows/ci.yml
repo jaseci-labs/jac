@@ -55,6 +55,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
+      graphmend: ${{ steps.filter.outputs.graphmend }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -118,6 +119,31 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
+            # NARROWING filter, same shape as `native`. Everything outside
+            # graphmend/** can move the graph count with every source-text test
+            # still green, so a miss here is worse than an extra run.
+            graphmend:
+              # The transforms themselves.
+              - 'jac/jaclang/compiler/passes/graphmend/**'
+              # The helpers that run inside the traced region.
+              - 'jac/jaclang/runtime/impl/runtime.impl.jac'
+              - 'jac/jaclang/runtime/runtime.jac'
+              - 'jac/jaclang/lib/jaclib.jac'
+              - 'jac/jaclang/compiler/frontend/constant.jac'
+              # Whether a module is transformed and which artifact is served; a
+              # bug here feeds untransformed bytecode to a still-green run.
+              - 'jac/jaclang/compiler/driver/impl/compiler.impl.jac'
+              - 'jac/jaclang/compiler/driver/compile_options.jac'
+              - 'jac/jaclang/compiler/driver/jir.jac'
+              - 'jac/jaclang/compiler/driver/module_compile.jac'
+              - 'jac/jaclang/meta_importer.py'
+              # Emits the helper imports; dropping one is a NameError at exec time.
+              - 'jac/jaclang/compiler/backends/py/jcir_gen_pass.impl/module.impl.jac'
+              # The suites and their fixtures, and the lane's own definition.
+              - 'jac/tests/compiler/passes/test_graphmend_*.jac'
+              - 'jac/tests/compiler/passes/fixtures/graphmend/**'
+              - '.github/actions/graphmend-torch/**'
+              - '.github/workflows/ci.yml'
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -762,6 +788,56 @@ jobs:
           done 3< jac/bootstrap/python/jacpython-modules.txt
 
   # Everything except the compiler tests.
+  # The graph-count claim is a runtime metric only the four *_integration
+  # suites assert, and each of their tests skips when torch is missing. This
+  # lane installs CPU-only torch and fails if any of them skips.
+  test-graphmend-torch:
+    name: GraphMend Graph Counts
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.graphmend == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      # PINNED, not floored: the assertion is an exact graph count. The nightly
+      # canary runs the same suites unpinned, so drift surfaces there.
+      TORCH_VERSION: "2.14.1"
+      # torch warns on import without it, and the suites run under
+      # `filterwarnings = error`.
+      NUMPY_VERSION: "2.5.2"
+    steps:
+      - uses: actions/checkout@v5
+      # torch is installed with --global into the binary's runtime site under
+      # the cache dir; pin it outside $HOME like test-runtime does so the
+      # install and the run agree on one site.
+      - name: Pin the runtime cache outside $HOME
+        run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
+      # Dev lane: the suites drive JacProgram in-process, so this runs THIS
+      # checkout's compiler, which is what the graph-count claim is about;
+      # nightly's canary covers the same suites on the sealed artifact.
+      - uses: ./.github/actions/jac-kit
+
+      # Restore/save split with the SAVE GATED TO MAIN, matching every other
+      # big read-mostly cache here. The wheel set is ~250 MB and its key only
+      # moves on a TORCH_VERSION bump; PR branches cross-restore main's entry
+      # rather than each parking their own copy in the shared 10 GB pool.
+      - name: Restore cached torch CPU wheels
+        uses: actions/cache/restore@v4
+        with:
+          path: .pip-cache
+          key: torch-cpu-${{ runner.os }}-${{ runner.arch }}-${{ env.TORCH_VERSION }}-np${{ env.NUMPY_VERSION }}
+
+      - name: Install torch and run the graph-count suites
+        uses: ./.github/actions/graphmend-torch
+        with:
+          specs: torch==${{ env.TORCH_VERSION }} numpy==${{ env.NUMPY_VERSION }}
+          expected-tests: "18"
+
+      - name: Save cached torch CPU wheels
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .pip-cache
+          key: torch-cpu-${{ runner.os }}-${{ runner.arch }}-${{ env.TORCH_VERSION }}-np${{ env.NUMPY_VERSION }}
+
   test-runtime:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -1897,6 +1973,7 @@ jobs:
       - contribution-checks
       - test-compiler
       - test-runtime
+      - test-graphmend-torch
       - test-in-package-sealed
       - test-client
       - test-managed-android

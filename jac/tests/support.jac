@@ -11,6 +11,7 @@ Imported as `from tests.support`, which resolves identically under the single
 """
 
 import ctypes;
+import os;
 
 import from pathlib { Path }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -21,6 +22,103 @@ import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
+
+# Checked-in fixtures for the graphmend compiler-pass tests.
+glob GRAPHMEND_FIXTURES: str = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "fixtures", "graphmend"
+     );
+
+"""Compile a source file with the given options and program (each defaulted
+when omitted) and return its generated Python source and bytecode."""
+def graphmend_compile_opts(
+    path: str, opts: any = None, prog: any = None
+) -> tuple[str, any] {
+    import ast;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.program { JacProgram }
+    use_opts = CompileOptions() if opts is None else opts;
+    use_prog: JacProgram = JacProgram() if prog is None else prog;
+    mod = use_prog.compile(file_path=path, options=use_opts);
+    pa = mod.gen.py_ast;
+    mod_ast: any = pa[0] if isinstance(pa, list) else pa;
+    return (ast.unparse(mod_ast), mod.gen.py_bytecode);
+}
+
+"""Compile a source file under the given graphmend setting and return its
+generated Python source."""
+def graphmend_compile_path(path: str, gm: bool) -> str {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    (src, _bc) = graphmend_compile_opts(path, CompileOptions(graphmend=gm));
+    return src;
+}
+
+"""Compile a checked-in graphmend .jac fixture and return its generated
+Python source."""
+def graphmend_pysrc(name: str, gm: bool) -> str {
+    return graphmend_compile_path(os.path.join(GRAPHMEND_FIXTURES, name), gm);
+}
+
+"""Compile a graphmend fixture with the transforms on and list the detection
+tags recorded on the compiled module's facts."""
+def graphmend_break_kinds(name: str) -> list[str] {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.program { JacProgram }
+    mod = JacProgram().compile(
+        file_path=os.path.join(GRAPHMEND_FIXTURES, name),
+        options=CompileOptions(graphmend=True)
+    );
+    facts = mod.gen.graphmend_facts;
+    if facts is None {
+        return [];
+    }
+    return [k.value for k in facts.breaks.values()];
+}
+
+"""Bytecode for a source file, served through the program's compiler."""
+def graphmend_bytecode(prog: any, path: str) -> any {
+    return prog._get_compiler().get_bytecode(full_target=path, target_program=prog);
+}
+
+"""The on-disk cache path the compiler keys a source file under for this
+program: the path carries the options projection of the active compile scope,
+so it must be read inside the same scope get_bytecode opens."""
+def graphmend_cache_path(prog: any, path: str) -> any {
+    import from jaclang.compiler.driver.compilation_context {
+        compilation_scope,
+        owner_scope_options
+    }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    actual = prog._get_compiler().product_program(path, prog, execution=True);
+    with compilation_scope(owner_scope_options(actual)) {
+        return get_module_cache_path(path);
+    }
+}
+
+"""Cache validity for a source file, judged inside the compiler's scope."""
+def graphmend_cache_valid(prog: any, path: str) -> bool {
+    import from jaclang.compiler.driver.compilation_context {
+        compilation_scope,
+        owner_scope_options
+    }
+    import from jaclang.compiler.driver.jir { is_module_cache_valid }
+    actual = prog._get_compiler().product_program(path, prog, execution=True);
+    with compilation_scope(owner_scope_options(actual)) {
+        return is_module_cache_valid(path, graphmend_cache_path(prog, path));
+    }
+}
+
+"""True when the code object (or any nested one) references the symbol."""
+def code_mentions_symbol(code: any, symbol: str) -> bool {
+    if symbol in code.co_names {
+        return True;
+    }
+    for const in code.co_consts {
+        if hasattr(const, "co_names") and code_mentions_symbol(const, symbol) {
+            return True;
+        }
+    }
+    return False;
+}
 
 """Environment overrides isolating every machine-wide cache family."""
 def cache_env(cache_dir: Path | str) -> dict[str, str] {

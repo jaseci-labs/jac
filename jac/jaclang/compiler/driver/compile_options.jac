@@ -1,3 +1,44 @@
+glob _serving_probe: list[bool] = [False],
+     GM_DEFER_BUFFERS_THREAD_SCOPED: bool = False;
+
+def mark_process_serving {
+    _serving_probe[0] = True;
+}
+
+def process_is_serving -> bool {
+    return _serving_probe[0];
+}
+
+def defer_declines_here -> bool {
+    return (not GM_DEFER_BUFFERS_THREAD_SCOPED) and process_is_serving();
+}
+
+def resolved_graphmend_setting -> bool {
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    return project.graphmend if project else True;
+}
+
+def resolved_graphmend_disable_setting -> list[str] {
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    raw = project.graphmend_disable if project else "";
+    out: list[str] = [];
+    for part in raw.split(',') {
+        stripped = part.strip().lower();
+        if stripped in ('trap', 'where', 'defer') and stripped not in out {
+            out.append(stripped);
+        }
+    }
+    return out;
+}
+
+def resolved_graphmend_claim_imports_setting -> bool {
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    return project.graphmend_claim_imports if project else False;
+}
+
 obj CancelToken {
     has requested: bool = False;
 
@@ -27,6 +68,9 @@ obj CompileOptions {
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
         aot_mode: bool = False,
+        graphmend: (bool | None) = None,
+        graphmend_claim_imports: (bool | None) = None,
+        graphmend_disable: (list[str] | None) = None,
         native_unit: bool = False,
         kernel_build: bool = False,
         native_link_mode: (str | None) = None,
@@ -61,6 +105,15 @@ obj CompileOptions {
     def postinit {
         import from jaclang.compiler.frontend.host { active_host }
         project = active_host().project_defaults();
+        if self.graphmend is None {
+            self.graphmend = resolved_graphmend_setting();
+        }
+        if self.graphmend_disable is None {
+            self.graphmend_disable = resolved_graphmend_disable_setting();
+        }
+        if self.graphmend_claim_imports is None {
+            self.graphmend_claim_imports = resolved_graphmend_claim_imports_setting();
+        }
         if self.native_require is None {
             self.native_require = list(project.native_require) if project else [];
         }

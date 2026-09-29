@@ -44,7 +44,10 @@ obj ProjectDefaults {
         memory_enforce: list[str],
         memory_exempt: list[str],
         check: CheckSettings,
-        client_framework: str = "react";
+        client_framework: str = "react",
+        graphmend: bool = True,
+        graphmend_claim_imports: bool = False,
+        graphmend_disable: str = "";
 }
 
 obj PathFacts {

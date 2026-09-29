@@ -675,8 +675,12 @@ def _precompile_unit(
     compiler = program._get_compiler();
 
     program.iface_registry().ensure(jac_path);
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
     code = compiler.get_bytecode(
-        full_target=jac_path, target_program=program, skip_analysis=skip_analysis
+        full_target=jac_path,
+        target_program=program,
+        skip_analysis=skip_analysis,
+        options=CompileOptions(graphmend=False)
     );
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);

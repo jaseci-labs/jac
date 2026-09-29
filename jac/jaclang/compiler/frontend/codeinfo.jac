@@ -1176,7 +1176,9 @@ obj CodeGenTarget {
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[(str, str)] = {},
         _exported_symbols: list[str] = [],
-        doc_comments: (NodeComments | None) = None;
+        doc_comments: (NodeComments | None) = None,
+        graphmend_facts: any = None,
+        graphmend_imports: list[str] = [];
 
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
