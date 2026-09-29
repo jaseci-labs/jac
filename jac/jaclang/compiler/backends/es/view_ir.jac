@@ -102,6 +102,24 @@ obj ViewElement {
         jac_node: (uni.UniNode | None);
 }
 
+def view_attr_node(
+    attr: (StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr)
+) -> (uni.UniNode | None) {
+    if isinstance(attr, StaticAttr) {
+        return attr.jac_node;
+    }
+    if isinstance(attr, DynamicAttr) {
+        return attr.jac_node;
+    }
+    if isinstance(attr, EventAttr) {
+        return attr.jac_node;
+    }
+    if isinstance(attr, RefAttr) {
+        return attr.jac_node;
+    }
+    return attr.jac_node;
+}
+
 obj ViewLocator {
     has anchor: (uni.UniNode | None) = None,
         locate: bool = True;

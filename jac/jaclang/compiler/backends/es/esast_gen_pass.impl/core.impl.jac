@@ -44,7 +44,11 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
             return None;
         }
         if byte_parts {
-            return b''.join(byte_parts);
+            joined = b'';
+            for part in byte_parts {
+                joined = joined + part;
+            }
+            return joined;
         }
         return ''.join(text_parts);
     }

@@ -4,7 +4,8 @@ import from jaclang.compiler.backends.es.view_ir {
     EventAttr,
     RefAttr,
     StaticAttr,
-    ViewLocator
+    ViewLocator,
+    view_attr_node
 }
 import from jaclang.compiler.backends.es.reactive_intent {
     StateField,
@@ -248,7 +249,7 @@ impl ReactBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expr
                         es.ObjectExpression(
                             properties=[self._view_attr_property(a, locator)]
                         ),
-                        jac_node=a.jac_node
+                        jac_node=view_attr_node(a)
                     )
                 );
             }

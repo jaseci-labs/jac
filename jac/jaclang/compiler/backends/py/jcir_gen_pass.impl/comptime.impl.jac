@@ -217,7 +217,13 @@ impl JcirGenPass._ct_order_key(v: CtValue) -> str {
         return "3" + v.value;
     }
     if isinstance(v, CtBytes) {
-        return "4" + v.value.hex();
+        digits = "0123456789abcdef";
+        hex_parts: list[str] = [];
+        for byte in v.value {
+            hex_parts.append(digits[byte // 16]);
+            hex_parts.append(digits[byte % 16]);
+        }
+        return "4" + "".join(hex_parts);
     }
     if isinstance(v, CtSet) and v.frozen {
         return "5" + "\x00".join(sorted([self._ct_order_key(x) for x in v.items]));
