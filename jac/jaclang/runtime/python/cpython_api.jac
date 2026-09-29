@@ -136,11 +136,13 @@ import from c {
         name: str, default_value: ptr[PyObject]
     ) -> ptr[PyObject];  def PyContextVar_Set(
         var: ptr[PyObject], value: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyDictProxy_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyDict_Clear(
-        mp: ptr[PyObject]
-    );  def PyDict_Contains(mp: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyDict_Copy(
-        mp: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyDict_DelItem(
+    ) -> ptr[PyObject];  def PyContext_CopyCurrent -> ptr[PyObject];  def PyContext_Enter(
+        arg0: ptr[PyObject]
+    ) -> i32;  def PyContext_Exit(arg0: ptr[PyObject]) -> i32;  def PyDictProxy_New(
+        arg0: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyDict_Clear(mp: ptr[PyObject]);  def PyDict_Contains(
+        mp: ptr[PyObject], key: ptr[PyObject]
+    ) -> i32;  def PyDict_Copy(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_DelItem(
         mp: ptr[PyObject], key: ptr[PyObject]
     ) -> i32;  def PyDict_GetItemRef(
         mp: ptr[PyObject], key: ptr[PyObject], result: &mut ptr[PyObject]
@@ -176,15 +178,19 @@ import from c {
         exception: ptr[PyObject], format_: str, *args: any
     ) -> ptr[PyObject];  def PyErr_FormatUnraisable(arg0: str, *args: any);  def PyErr_GetRaisedException -> ptr[
         PyObject
-    ];  def PyErr_NewException(
+    ];  def PyErr_GivenExceptionMatches(
+        arg0: ptr[PyObject], arg1: ptr[PyObject]
+    ) -> i32;  def PyErr_NewException(
         name: str, base: ptr[PyObject], dict_: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_NewExceptionWithDoc(
         name: str, doc: str, base: ptr[PyObject], dict_: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyErr_NoMemory -> ptr[PyObject];  def PyErr_Occurred -> ptr[
-        PyObject
-    ];  def PyErr_Print;  def PyErr_ResourceWarning(
+    ) -> ptr[PyObject];  def PyErr_NoMemory -> ptr[PyObject];  def PyErr_NormalizeException(
+        arg0: &mut ptr[PyObject], arg1: &mut ptr[PyObject], arg2: &mut ptr[PyObject]
+    );  def PyErr_Occurred -> ptr[PyObject];  def PyErr_Print;  def PyErr_ResourceWarning(
         source: ptr[PyObject], stack_level: i64, format_: str, *args: any
-    ) -> i32;  def PyErr_SetFromErrno(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObject(
+    ) -> i32;  def PyErr_Restore(
+        arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: ptr[PyObject]
+    );  def PyErr_SetFromErrno(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObject(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObjects(
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: ptr[PyObject]
@@ -205,7 +211,11 @@ import from c {
         category: ptr[PyObject], stack_level: i64, format_: str, *args: any
     ) -> i32;  def PyEval_RestoreThread(arg0: ptr[PyThreadState]);  def PyEval_SaveThread -> ptr[
         PyThreadState
-    ];  def PyFloat_AsDouble(arg0: ptr[PyObject]) -> f64;  def PyFloat_FromDouble(
+    ];  def PyException_GetTraceback(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyException_SetCause(
+        arg0: ptr[PyObject], arg1: ptr[PyObject]
+    );  def PyException_SetContext(arg0: ptr[PyObject], arg1: ptr[PyObject]);  def PyException_SetTraceback(
+        arg0: ptr[PyObject], arg1: ptr[PyObject]
+    ) -> i32;  def PyFloat_AsDouble(arg0: ptr[PyObject]) -> f64;  def PyFloat_FromDouble(
         arg0: f64
     ) -> ptr[PyObject];  def PyFloat_FromString(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyFrozenSet_New(
         arg0: ptr[PyObject]
@@ -221,10 +231,12 @@ import from c {
         arg0: ptr[PyInterpreterState]
     ) -> ptr[PyObject];  def PyInterpreterState_Main -> ptr[PyInterpreterState];  def PyIter_Check(
         arg0: ptr[PyObject]
-    ) -> i32;  def PyIter_Next(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyList_Append(
-        arg0: ptr[PyObject], arg1: ptr[PyObject]
-    ) -> i32;  def PyList_AsTuple(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyList_Clear(
-        self_: ptr[PyObject]
+    ) -> i32;  def PyIter_Next(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyIter_Send(
+        arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: &mut ptr[PyObject]
+    ) -> i32;  def PyList_Append(arg0: ptr[PyObject], arg1: ptr[PyObject]) -> i32;  def PyList_AsTuple(
+        arg0: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyList_Clear(self_: ptr[PyObject]) -> i32;  def PyList_Extend(
+        self_: ptr[PyObject], iterable: ptr[PyObject]
     ) -> i32;  def PyList_GetItem(arg0: ptr[PyObject], arg1: i64) -> ptr[PyObject];  def PyList_GetItemRef(
         arg0: ptr[PyObject], arg1: i64
     ) -> ptr[PyObject];  def PyList_GetSlice(
@@ -377,15 +389,17 @@ import from c {
         callable_: ptr[PyObject], args: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallOneArg(
         func: ptr[PyObject], arg: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_ClearWeakRefs(
+    ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_ClearManagedDict(
+        obj_: ptr[PyObject]
+    );  def PyObject_ClearWeakRefs(arg0: ptr[PyObject]);  def PyObject_DelAttrString(
+        v: ptr[PyObject], name: str
+    ) -> i32;  def PyObject_DelItem(o: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyObject_Dir(
         arg0: ptr[PyObject]
-    );  def PyObject_DelAttrString(v: ptr[PyObject], name: str) -> i32;  def PyObject_DelItem(
-        o: ptr[PyObject], key: ptr[PyObject]
-    ) -> i32;  def PyObject_Dir(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyObject_Free(
-        ptr_: ptr
-    );  def PyObject_GC_Del(arg0: ptr);  def PyObject_GC_IsTracked(
-        arg0: ptr[PyObject]
-    ) -> i32;  def PyObject_GC_Track(arg0: ptr);  def PyObject_GC_UnTrack(arg0: ptr);  def PyObject_GenericGetAttr(
+    ) -> ptr[PyObject];  def PyObject_Free(ptr_: ptr);  def PyObject_GC_Del(
+        arg0: ptr
+    );  def PyObject_GC_IsTracked(arg0: ptr[PyObject]) -> i32;  def PyObject_GC_Track(
+        arg0: ptr
+    );  def PyObject_GC_UnTrack(arg0: ptr);  def PyObject_GenericGetAttr(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_GenericGetDict(
         arg0: ptr[PyObject], arg1: ptr
@@ -434,7 +448,14 @@ import from c {
         args: ptr[ptr[PyObject]],
         nargsf: u64,
         kwnames: ptr[PyObject]
-    ) -> ptr[PyObject];  def PySequence_Check(o: ptr[PyObject]) -> i32;  def PySequence_Concat(
+    ) -> ptr[PyObject];  def PyObject_VectorcallMethod(
+        name: ptr[PyObject],
+        args: ptr[ptr[PyObject]],
+        nargsf: u64,
+        kwnames: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyObject_VisitManagedDict(
+        obj_: ptr[PyObject], visit_: ptr, arg: ptr
+    ) -> i32;  def PySequence_Check(o: ptr[PyObject]) -> i32;  def PySequence_Concat(
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PySequence_Contains(
         seq: ptr[PyObject], ob: ptr[PyObject]
@@ -663,7 +684,9 @@ import from c {
         tstate: ptr[PyThreadState], func: ptr, arg: ptr[PyObject]
     ) -> i32;  def _PyEval_SliceIndex(arg0: ptr[PyObject], arg1: &mut i64) -> i32;  def _PyException_AddNote(
         exc: ptr[PyObject], note: ptr[PyObject]
-    ) -> i32;  def _PyGen_SetStopIterationValue(arg0: ptr[PyObject]) -> i32;  def _PyImport_SetModule(
+    ) -> i32;  def _PyGen_FetchStopIterationValue(arg0: &mut ptr[PyObject]) -> i32;  def _PyGen_SetStopIterationValue(
+        arg0: ptr[PyObject]
+    ) -> i32;  def _PyImport_SetModule(
         name: ptr[PyObject], module: ptr[PyObject]
     ) -> i32;  def _PyLong_AsByteArray(
         v: ptr[PyObject],
@@ -827,6 +850,12 @@ import from c {
         fd: i32, buf: ptr, count: u64
     ) -> i64;  def jacpy_ast_kind(handle: ptr[PyObject]) -> i64;  def jacpy_ast_new(
         kind: i64
+    ) -> ptr[PyObject];  def jacpy_asyncio_add_tasks(
+        tasks: ptr[PyObject], node_offset: i64, all_threads: i64
+    ) -> i64;  def jacpy_asyncio_running_loop -> ptr[ptr[PyObject]];  def jacpy_asyncio_running_task -> ptr[
+        ptr[PyObject]
+    ];  def jacpy_asyncio_tasks_head -> ptr;  def jacpy_asyncio_thread_task(
+        loop: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_atexit_callbacks(
         interp: ptr[PyInterpreterState]
     ) -> ptr[ptr[PyObject]];  def jacpy_atexit_detach(
@@ -1077,6 +1106,7 @@ import from c {
          PyExc_ArithmeticError: ptr[PyObject],
          PyExc_AssertionError: ptr[PyObject],
          PyExc_AttributeError: ptr[PyObject],
+         PyExc_BaseException: ptr[PyObject],
          PyExc_BufferError: ptr[PyObject],
          PyExc_DeprecationWarning: ptr[PyObject],
          PyExc_EOFError: ptr[PyObject],
@@ -1085,6 +1115,7 @@ import from c {
          PyExc_IndentationError: ptr[PyObject],
          PyExc_IndexError: ptr[PyObject],
          PyExc_KeyError: ptr[PyObject],
+         PyExc_KeyboardInterrupt: ptr[PyObject],
          PyExc_LookupError: ptr[PyObject],
          PyExc_MemoryError: ptr[PyObject],
          PyExc_NotImplementedError: ptr[PyObject],
@@ -1099,6 +1130,7 @@ import from c {
          PyExc_SyntaxError: ptr[PyObject],
          PyExc_SyntaxWarning: ptr[PyObject],
          PyExc_SystemError: ptr[PyObject],
+         PyExc_SystemExit: ptr[PyObject],
          PyExc_TabError: ptr[PyObject],
          PyExc_TimeoutError: ptr[PyObject],
          PyExc_TypeError: ptr[PyObject],

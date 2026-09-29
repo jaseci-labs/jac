@@ -197,6 +197,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_OBJECT_SIZE", "sizeof(PyObject)", "i64"),
          ("PY_TUPLE_OBJECT_SIZE", "sizeof(PyTupleObject)", "i64"),
          ("Py_TPFLAGS_IMMUTABLETYPE", "Py_TPFLAGS_IMMUTABLETYPE", "u64"),
+         ("Py_TPFLAGS_MANAGED_DICT", "Py_TPFLAGS_MANAGED_DICT", "u64"),
+         ("Py_TPFLAGS_MANAGED_WEAKREF", "Py_TPFLAGS_MANAGED_WEAKREF", "u64"),
          (
              "Py_TPFLAGS_DISALLOW_INSTANTIATION",
              "Py_TPFLAGS_DISALLOW_INSTANTIATION",
@@ -256,6 +258,16 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("Py_pymethodobjects_MAXFREELIST", "Py_pymethodobjects_MAXFREELIST", "i64"),
+         (
+             "_Py_freelists_FUTUREITERS",
+             "offsetof(struct _Py_freelists, futureiters)",
+             "i64"
+         ),
+         ("Py_futureiters_MAXFREELIST", "Py_futureiters_MAXFREELIST", "i64"),
+         # PySendResult, the result of an am_send slot and PyIter_Send().
+         ("PYGEN_RETURN", "PYGEN_RETURN", "i32"),
+         ("PYGEN_ERROR", "PYGEN_ERROR", "i32"),
+         ("PYGEN_NEXT", "PYGEN_NEXT", "i32"),
          # Type flags, member types and call and buffer constants of the
          # second object wave.
          ("Py_TPFLAGS_HAVE_VECTORCALL", "Py_TPFLAGS_HAVE_VECTORCALL", "u64"),
@@ -368,6 +380,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("Py_tp_init", "Py_tp_init", "i32"),
          ("Py_tp_token", "Py_tp_token", "i32"),
          ("Py_tp_finalize", "Py_tp_finalize", "i32"),
+         ("Py_tp_call", "Py_tp_call", "i32"),
+         ("Py_tp_iternext", "Py_tp_iternext", "i32"),
+         ("Py_am_await", "Py_am_await", "i32"),
+         ("Py_am_send", "Py_am_send", "i32"),
          ("Py_mp_length", "Py_mp_length", "i32"),
          ("Py_mp_subscript", "Py_mp_subscript", "i32"),
          ("Py_mp_ass_subscript", "Py_mp_ass_subscript", "i32"),

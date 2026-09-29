@@ -121,6 +121,7 @@ import from jaclang.runtime.python.bindings.codecs_tw { PyInit__codecs_tw }
 import from jaclang.runtime.python.bindings.socket { PyInit__socket }
 import from jaclang.runtime.python.bindings.hashopenssl { PyInit__hashlib }
 import from jaclang.runtime.python.bindings.ssl { PyInit__ssl }
+import from jaclang.runtime.python.bindings.asyncio { PyInit__asyncio }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

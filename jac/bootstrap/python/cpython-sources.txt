@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 127 C files / 203,195 lines; 111 headers / 96,010 lines.
-#   Total: 238 files / 299,205 source lines.
+#   Excluded: 128 C files / 207,627 lines; 112 headers / 98,246 lines.
+#   Total: 240 files / 305,873 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -315,7 +315,7 @@ Modules/Setup
 Modules/Setup.bootstrap.in
 Modules/Setup.stdlib.in
 # Modules/_abc.c  # removed: 997 source lines
-Modules/_asynciomodule.c
+# Modules/_asynciomodule.c  # removed: 4,432 source lines
 # Modules/_bisectmodule.c  # removed: 484 source lines
 # Modules/_bz2module.c  # removed: 843 source lines
 # Modules/_codecsmodule.c  # removed: 1,101 source lines
@@ -504,7 +504,7 @@ Modules/addrinfo.h
 # Modules/cjkcodecs/multibytecodec.c  # removed: 2,145 source lines
 # Modules/cjkcodecs/multibytecodec.h  # removed: 152 source lines
 # Modules/clinic/_abc.c.h  # removed: 164 source lines
-Modules/clinic/_asynciomodule.c.h
+# Modules/clinic/_asynciomodule.c.h  # removed: 2,236 source lines
 # Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
 # Modules/clinic/_bz2module.c.h  # removed: 241 source lines
 # Modules/clinic/_codecsmodule.c.h  # removed: 2,807 source lines

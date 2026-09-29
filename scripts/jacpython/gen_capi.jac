@@ -200,8 +200,9 @@ glob OPAQUE: list[str] = [
          "PyTime_t": "i64",
          "time_t": "i64",
          "_PyTime_round_t": "i32",
-         # An enum of C int values.
+         # Enums of C int values.
          "PyGILState_STATE": "i32",
+         "PySendResult": "i32",
          "wchar_t": "i32",
          "Py_UCS4": "u32",
          "Py_UCS1": "u8",
@@ -219,7 +220,9 @@ glob OPAQUE: list[str] = [
          "PyCapsule_Destructor": "ptr",
          "PyThread_type_lock": "ptr",
          "vectorcallfunc": "ptr",
-         "Py_tracefunc": "ptr"
+         "Py_tracefunc": "ptr",
+         # A tp_traverse visitor, passed on as received.
+         "visitproc": "ptr"
      },
      # A `const char *` parameter is a NUL-terminated C string (Jac `str`) unless
      # the function reads a sized payload; those take raw memory as `bytes`.
