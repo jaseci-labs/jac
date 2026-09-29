@@ -46,3 +46,4 @@ cmath
 math
 _operator
 array
+_struct
