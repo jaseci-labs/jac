@@ -116,7 +116,9 @@ import from c {
         object_: ptr[PyObject], encoding: ptr[u8], errors: ptr[u8]
     ) -> ptr[PyObject];  def PyCodec_LookupError(name: str) -> ptr[PyObject];  def PyCodec_Register(
         search_function: ptr[PyObject]
-    ) -> i32;  def PyCodec_RegisterError(name: str, error: ptr[PyObject]) -> i32;  def PyCodec_Unregister(
+    ) -> i32;  def PyCodec_RegisterError(name: str, error: ptr[PyObject]) -> i32;  def PyCodec_StrictErrors(
+        exc: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyCodec_Unregister(
         search_function: ptr[PyObject]
     ) -> i32;  def PyComplex_AsCComplex(op: ptr[PyObject]) -> Py_complex;  def PyComplex_FromDoubles(
         real: f64, imag: f64
@@ -424,7 +426,9 @@ import from c {
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PySequence_Index(
         o: ptr[PyObject], value: ptr[PyObject]
-    ) -> i64;  def PySequence_List(o: ptr[PyObject]) -> ptr[PyObject];  def PySequence_Repeat(
+    ) -> i64;  def PySequence_Length(o: ptr[PyObject]) -> i64;  def PySequence_List(
+        o: ptr[PyObject]
+    ) -> ptr[PyObject];  def PySequence_Repeat(
         o: ptr[PyObject], count: i64
     ) -> ptr[PyObject];  def PySequence_Size(o: ptr[PyObject]) -> i64;  def PySequence_Tuple(
         o: ptr[PyObject]
@@ -477,9 +481,19 @@ import from c {
         arg0: ptr[PyObject]
     ) -> u64;  def PyType_GetModule(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyType_GetSlot(
         arg0: ptr[PyObject], arg1: i32
-    ) -> ptr;  def PyType_IsSubtype(arg0: ptr[PyObject], arg1: ptr[PyObject]) -> i32;  def PyUnicodeWriter_Create(
-        length: i64
-    ) -> ptr[PyUnicodeWriter];  def PyUnicodeWriter_Discard(
+    ) -> ptr;  def PyType_IsSubtype(arg0: ptr[PyObject], arg1: ptr[PyObject]) -> i32;  def PyUnicodeDecodeError_Create(
+        encoding: ptr, object_: ptr, length: i64, start: i64, end: i64, reason: str
+    ) -> ptr[PyObject];  def PyUnicodeDecodeError_SetEnd(
+        arg0: ptr[PyObject], arg1: i64
+    ) -> i32;  def PyUnicodeDecodeError_SetReason(
+        exc: ptr[PyObject], reason: str
+    ) -> i32;  def PyUnicodeDecodeError_SetStart(
+        arg0: ptr[PyObject], arg1: i64
+    ) -> i32;  def PyUnicodeEncodeError_SetEnd(arg0: ptr[PyObject], arg1: i64) -> i32;  def PyUnicodeEncodeError_SetReason(
+        exc: ptr[PyObject], reason: str
+    ) -> i32;  def PyUnicodeEncodeError_SetStart(
+        arg0: ptr[PyObject], arg1: i64
+    ) -> i32;  def PyUnicodeWriter_Create(length: i64) -> ptr[PyUnicodeWriter];  def PyUnicodeWriter_Discard(
         writer: ptr[PyUnicodeWriter]
     );  def PyUnicodeWriter_Finish(writer: ptr[PyUnicodeWriter]) -> ptr[PyObject];  def PyUnicodeWriter_WriteASCII(
         writer: ptr[PyUnicodeWriter], str_: str, size: i64
@@ -489,7 +503,7 @@ import from c {
         writer: ptr[PyUnicodeWriter], obj_: ptr[PyObject]
     ) -> i32;  def PyUnicodeWriter_WriteSubstring(
         writer: ptr[PyUnicodeWriter], str_: ptr[PyObject], start: i64, end: i64
-    ) -> i32;  def PyUnicode_AppendAndDel(
+    ) -> i32;  def PyUnicode_Append(pleft: &mut ptr[PyObject], right: ptr[PyObject]);  def PyUnicode_AppendAndDel(
         pleft: &mut ptr[PyObject], right: ptr[PyObject]
     );  def PyUnicode_AsEncodedString(
         unicode: ptr[PyObject], encoding: str, errors: str
@@ -563,7 +577,9 @@ import from c {
         separator: ptr[PyObject], seq: ptr[PyObject]
     ) -> ptr[PyObject];  def PyUnicode_ReadChar(
         unicode: ptr[PyObject], index: i64
-    ) -> u32;  def PyUnicode_Substring(
+    ) -> u32;  def PyUnicode_Splitlines(
+        s: ptr[PyObject], keepends: i32
+    ) -> ptr[PyObject];  def PyUnicode_Substring(
         str_: ptr[PyObject], start: i64, end: i64
     ) -> ptr[PyObject];  def PyUnicode_WriteChar(
         unicode: ptr[PyObject], index: i64, character: u32
@@ -609,13 +625,20 @@ import from c {
         tstate: ptr[PyThreadState], func: ptr, arg: ptr[PyObject]
     ) -> i32;  def _PyEval_SliceIndex(arg0: ptr[PyObject], arg1: &mut i64) -> i32;  def _PyException_AddNote(
         exc: ptr[PyObject], note: ptr[PyObject]
-    ) -> i32;  def _PyGen_SetStopIterationValue(arg0: ptr[PyObject]) -> i32;  def _PyLong_AsTime_t(
-        obj_: ptr[PyObject]
-    ) -> i64;  def _PyLong_DivmodNear(
+    ) -> i32;  def _PyGen_SetStopIterationValue(arg0: ptr[PyObject]) -> i32;  def _PyLong_AsByteArray(
+        v: ptr[PyObject],
+        bytes_: ptr[u8],
+        n: u64,
+        little_endian: i32,
+        is_signed: i32,
+        with_exceptions: i32
+    ) -> i32;  def _PyLong_AsTime_t(obj_: ptr[PyObject]) -> i64;  def _PyLong_DivmodNear(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
-    ) -> ptr[PyObject];  def _PyLong_Frexp(a: ptr[PyObject], e: &mut i64) -> f64;  def _PyLong_FromGid(
+    ) -> ptr[PyObject];  def _PyLong_Frexp(a: ptr[PyObject], e: &mut i64) -> f64;  def _PyLong_FromByteArray(
+        bytes_: ptr[u8], n: u64, little_endian: i32, is_signed: i32
+    ) -> ptr[PyObject];  def _PyLong_FromGid(arg0: u32) -> ptr[PyObject];  def _PyLong_FromUid(
         arg0: u32
-    ) -> ptr[PyObject];  def _PyLong_FromUid(arg0: u32) -> ptr[PyObject];  def _PyLong_GCD(
+    ) -> ptr[PyObject];  def _PyLong_GCD(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyLong_NumBits(v: ptr[PyObject]) -> i64;  def _PyLong_UInt16_Converter(
         arg0: ptr[PyObject], arg1: &mut u16

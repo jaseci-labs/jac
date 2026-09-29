@@ -2,6 +2,7 @@
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_dict_size,
+    jacpy_is_bytes,
     jacpy_error_pending,
     jacpy_is_unicode,
     jacpy_list_size,
@@ -718,9 +719,9 @@ obj ArgumentValue {
 
 # PyArg_ParseTuple() and PyArg_ParseTupleAndKeywords() over formats of
 # single units, with Python/getargs.c's conversions and messages. Units:
-# "O" object, "O!" object of a type (taken in order from `types`), "U" str,
-# "s" str without NUL, "C" a str of one character (its code point in
-# `signed`), "i" int, "h" short, "l" long, "L" long long, "n" Py_ssize_t,
+# "O" object, "O!" object of a type (taken in order from `types`), "S"
+# bytes, "U" str, "s" str without NUL, "C" a str of one character (its code
+# point in `signed`), "i" int, "h" short, "l" long, "L" long long, "n" Py_ssize_t,
 # "p" predicate, and the bitfields "B", "H", "I", "k", "K"; "|" starts the
 # optional arguments and "$" the keyword-only ones. `name` is the text after
 # a format's ':' ("" for none), `message` the text after its ';', which
@@ -803,6 +804,12 @@ obj ArgumentFormat {
     ) -> ArgumentValue {
         result = ArgumentValue(given=True, object=value);
         if unit == "O" {
+            return result;
+        }
+        if unit == "S" {
+            if jacpy_is_bytes(value) == 0 {
+                self.mismatch(position, "bytes", value);
+            }
             return result;
         }
         if unit == "O!" {

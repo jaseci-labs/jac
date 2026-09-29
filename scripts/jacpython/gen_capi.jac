@@ -243,6 +243,7 @@ glob OPAQUE: list[str] = [
          "PyMember_SetOne": {0},
          "PyUnicode_DecodeASCII": {0},
          "PyUnicode_DecodeCharmap": {0},
+         "PyUnicodeDecodeError_Create": {0, 1},
          "PyUnicode_DecodeLatin1": {0},
          "PyUnicode_DecodeLocale": {0},
          "PyUnicode_DecodeLocaleAndSize": {0},
@@ -517,7 +518,7 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         out = OUT_POINTERS.get(ctype, OUT_POINTERS.get(base));
         return f"{out} | None" if nullable else out;
     }
-    hit = re.match(r"^(\w+) \*$", base);
+    hit = re.match(r"^(\w+(?: \w+)*) \*$", base);
     if hit {
         pointee = hit.group(1);
         if pointee in OBJECT_LAYOUTS {

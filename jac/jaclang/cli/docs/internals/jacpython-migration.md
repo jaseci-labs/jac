@@ -65,7 +65,14 @@ writes `modules/unicodedata_db.jac` and `modules/unicodename_db.jac`, and its
 `--check` fails when they are stale. The tables are the bytes the C arrays
 hold, laid out at link time, so the binary's size and start-up are
 unchanged; the two functions `unicodedata_db.h` carries become data (a
-shift and a list of case pairs).
+shift and a list of case pairs). `scripts/jacpython/gen_cjkcodecs.jac` does
+the same for the CJK codecs' `Modules/cjkcodecs/mappings_*.h`, writing
+`modules/cjkcodecs_mappings_<locale>.jac`: each code array is a bytes
+literal (`common.jac`'s `bytes_literal()`), each 256-row index a u32 array
+packing a row's offset and bounds, and each `MAPPING_*` entry a `DbcsMap`
+record the module publishes as its `__map_<charset>` capsule. The codecs
+themselves are `MultibyteCodec` records whose entry points are named Jac
+functions, which `_multibytecodec` calls through the record as C does.
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant

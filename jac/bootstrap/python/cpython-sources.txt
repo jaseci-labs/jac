@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 102 C files / 159,460 lines; 85 headers / 58,343 lines.
-#   Total: 187 files / 217,803 source lines.
+#   Excluded: 109 C files / 164,799 lines; 96 headers / 77,037 lines.
+#   Total: 205 files / 241,836 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -485,24 +485,24 @@ Modules/addrinfo.h
 # Modules/atexitmodule.c  # removed: 361 source lines
 # Modules/binascii.c  # removed: 1,337 source lines
 # Modules/blake2module.c  # removed: 1,074 source lines
-Modules/cjkcodecs/_codecs_cn.c
-Modules/cjkcodecs/_codecs_hk.c
-Modules/cjkcodecs/_codecs_iso2022.c
-Modules/cjkcodecs/_codecs_jp.c
-Modules/cjkcodecs/_codecs_kr.c
-Modules/cjkcodecs/_codecs_tw.c
-Modules/cjkcodecs/alg_jisx0201.h
-Modules/cjkcodecs/cjkcodecs.h
-Modules/cjkcodecs/clinic/multibytecodec.c.h
-Modules/cjkcodecs/emu_jisx0213_2000.h
-Modules/cjkcodecs/mappings_cn.h
-Modules/cjkcodecs/mappings_hk.h
-Modules/cjkcodecs/mappings_jisx0213_pair.h
-Modules/cjkcodecs/mappings_jp.h
-Modules/cjkcodecs/mappings_kr.h
-Modules/cjkcodecs/mappings_tw.h
-Modules/cjkcodecs/multibytecodec.c
-Modules/cjkcodecs/multibytecodec.h
+# Modules/cjkcodecs/_codecs_cn.c  # removed: 470 source lines
+# Modules/cjkcodecs/_codecs_hk.c  # removed: 190 source lines
+# Modules/cjkcodecs/_codecs_iso2022.c  # removed: 1,153 source lines
+# Modules/cjkcodecs/_codecs_jp.c  # removed: 770 source lines
+# Modules/cjkcodecs/_codecs_kr.c  # removed: 468 source lines
+# Modules/cjkcodecs/_codecs_tw.c  # removed: 143 source lines
+# Modules/cjkcodecs/alg_jisx0201.h  # removed: 65 source lines
+# Modules/cjkcodecs/cjkcodecs.h  # removed: 525 source lines
+# Modules/cjkcodecs/clinic/multibytecodec.c.h  # removed: 701 source lines
+# Modules/cjkcodecs/emu_jisx0213_2000.h  # removed: 54 source lines
+# Modules/cjkcodecs/mappings_cn.h  # removed: 4,104 source lines
+# Modules/cjkcodecs/mappings_hk.h  # removed: 2,379 source lines
+# Modules/cjkcodecs/mappings_jisx0213_pair.h  # removed: 60 source lines
+# Modules/cjkcodecs/mappings_jp.h  # removed: 4,766 source lines
+# Modules/cjkcodecs/mappings_kr.h  # removed: 3,253 source lines
+# Modules/cjkcodecs/mappings_tw.h  # removed: 2,635 source lines
+# Modules/cjkcodecs/multibytecodec.c  # removed: 2,145 source lines
+# Modules/cjkcodecs/multibytecodec.h  # removed: 152 source lines
 # Modules/clinic/_abc.c.h  # removed: 164 source lines
 Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
