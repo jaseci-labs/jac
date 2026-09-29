@@ -2,6 +2,7 @@
 
 import from jaclang.runtime.python.cpython_api {
     jacpy_dict_size,
+    jacpy_is_bytes,
     jacpy_error_pending,
     jacpy_is_unicode,
     jacpy_list_size,
@@ -18,6 +19,8 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Size,
     PyErr_NoMemory,
     PyErr_Occurred,
+    PyErr_WarnEx,
+    PyExc_DeprecationWarning,
     PyExc_OverflowError,
     PyExc_TypeError,
     PyExc_ValueError,
@@ -42,17 +45,21 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_SetItem,
     PyTuple_Size,
+    PyType_IsSubtype,
+    Py_TYPE,
     PyUnicode_AsUTF8AndSize,
     PyUnicode_FromString,
     PyUnicode_ReadChar
 }
 import from jaclang.runtime.python.capi {
     boundary_failure,
+    c_string_text,
     required,
     object_error,
     text_value,
     type_name
 }
+import from jaclang.runtime.python.layouts { PyTypeObject }
 
 # A call's arguments bound to parameters, as new references (NULL for an
 # omitted one). A parser that converts while it binds (PARSE_FORMAT_KEYWORDS)
@@ -63,7 +70,8 @@ obj BoundArguments {
         context: ptr[PyObject] = NULL,
         keywords: ptr[PyObject] = NULL,
         failure: str = "",
-        failure_at: int = -1;
+        failure_at: int = -1,
+        nargs: int = 0;
 
     def fail_at(index: int, message: str) {
         self.failure = message;
@@ -197,7 +205,11 @@ def plural(count: int) -> str {
 # max_pos, `positional_only` its pos_only and `keyword_required` its
 # min_kw_only. The positional parsers refuse keywords first, as
 # _PyArg_NoKeywords() does for tp_new and tp_init (a METH_FASTCALL call
-# never passes any).
+# never passes any). Parameters clinic deprecates with `[from X.Y]` warn as
+# its parser does: `positional_warning` before binding when
+# low < nargs <= high of `positional_warn_range`, `keyword_warning` after it
+# when the parameter at `keyword_warn_required` or a given one of
+# `keyword_warn_optional` came by keyword.
 obj CallSignature {
     has name: str,
         names: list[str],
@@ -206,7 +218,48 @@ obj CallSignature {
         positional_only: int = 0,
         keyword_required: int = 0,
         parser: int = PARSE_AUTO,
-        interned: list[ptr[PyObject]] = [];
+        interned: list[ptr[PyObject]] = [],
+        positional_warning: str = "",
+        positional_warn_range: tuple[int, int] = (0, 0),
+        keyword_warning: str = "",
+        keyword_warn_required: int = -1,
+        keyword_warn_optional: list[int] = [];
+
+    def warn(message: str) -> bool {
+        return PyErr_WarnEx(PyExc_DeprecationWarning, message, 1) == 0;
+    }
+
+    # Bind the arguments and apply the deprecation warnings around it.
+    def bind_values(
+        result: BoundArguments,
+        positional: list[ptr[PyObject]],
+        keywords: KeywordArguments
+    ) -> bool {
+        count = len(positional);
+        result.nargs = count;
+        if self.positional_warning
+            and self.positional_warn_range[0] < count
+            and count <= self.positional_warn_range[1]
+            and not self.warn(self.positional_warning) {
+            return False;
+        }
+        if not self.bind_arguments(result, positional, keywords) {
+            return False;
+        }
+        if self.keyword_warning {
+            passed = self.keyword_warn_required >= 0
+                and count < self.keyword_warn_required + 1;
+            for index in self.keyword_warn_optional {
+                if count < index + 1 and result.values[index] != NULL {
+                    passed = True;
+                }
+            }
+            if passed and not self.warn(self.keyword_warning) {
+                return False;
+            }
+        }
+        return True;
+    }
 
     # getargs' "%.200s%s" of fname: an empty name (a format without ':name')
     # reads "function".
@@ -244,7 +297,7 @@ obj CallSignature {
 
     # Bind borrowed positional and keyword arguments to result.values as
     # new references; False with the TypeError set on a mismatch.
-    def bind_values(
+    def bind_arguments(
         result: BoundArguments,
         positional: list[ptr[PyObject]],
         keywords: KeywordArguments
@@ -901,7 +954,7 @@ obj ArgumentValue {
 # the index of the first optional one and of the first keyword-only one
 # (the unit count when absent), and whether it has a '|'.
 obj FormatPlan {
-    has kinds: str,
+    has kinds: list[str],
         minimum: int,
         maximum: int,
         optional: bool;
@@ -915,14 +968,35 @@ def format_plan(units: str) -> FormatPlan {
     if units in FORMAT_PLANS {
         return FORMAT_PLANS[units];
     }
-    kinds = units.replace("|", "").replace("$", "");
-    minimum = units.replace("$", "").find("|");
-    maximum = units.replace("|", "").find("$");
+    # "O!" is one unit.
+    format: list[str] = [];
+    for character in units {
+        if character == "!" and format and format[-1] == "O" {
+            format[-1] = "O!";
+        } else {
+            format.append(character);
+        }
+    }
+    kinds = [
+        unit
+        for unit in format
+        if unit != "|" and unit != "$"
+    ];
+    optional = [
+        unit
+        for unit in format
+        if unit != "$"
+    ];
+    positional = [
+        unit
+        for unit in format
+        if unit != "|"
+    ];
     plan = FormatPlan(
         kinds=kinds,
-        minimum=len(kinds) if minimum < 0 else minimum,
-        maximum=len(kinds) if maximum < 0 else maximum,
-        optional="|" in units
+        minimum=optional.index("|") if "|" in optional else len(kinds),
+        maximum=positional.index("$") if "$" in positional else len(kinds),
+        optional="|" in format
     );
     FORMAT_PLANS[units] = plan;
     return plan;
@@ -930,15 +1004,18 @@ def format_plan(units: str) -> FormatPlan {
 
 # PyArg_ParseTuple() and PyArg_ParseTupleAndKeywords() over formats of
 # single units, with Python/getargs.c's conversions and messages. Units:
-# "O" object, "U" str, "s" str without NUL, "i" int, "h" short, "l" long,
-# "L" long long, "n" Py_ssize_t, "p" predicate, and the bitfields "B",
-# "H", "I", "k", "K"; "|" starts the optional arguments and "$" the
-# keyword-only ones. `name` is the text after a format's ':' ("" for none),
-# `message` the text after its ';', which replaces the arity and "must be"
-# messages. A failure sets the exception and raises boundary_failure.
+# "O" object, "O!" object of a type (taken in order from `types`), "S"
+# bytes, "U" str, "s" str without NUL, "C" a str of one character (its code
+# point in `signed`), "i" int, "h" short, "l" long, "L" long long, "n" Py_ssize_t,
+# "p" predicate, and the bitfields "B", "H", "I", "k", "K"; "|" starts the
+# optional arguments and "$" the keyword-only ones. `name` is the text after
+# a format's ':' ("" for none), `message` the text after its ';', which
+# replaces the arity and "must be" messages. A failure sets the exception and
+# raises boundary_failure.
 obj ArgumentFormat {
     has name: str = "",
-        message: str = "";
+        message: str = "",
+        types: list[ptr[PyObject]] = [];
 
     def caller -> str {
         return f"{self.name}()" if self.name else "function";
@@ -946,17 +1023,47 @@ obj ArgumentFormat {
 
     # seterror(): "<name>() argument <position> must be <expected>, not <type>".
     def mismatch(position: int, expected: str, value: ptr[PyObject]) {
+        shown = "None" if value == Py_None else type_name(value);
+        self.reject(position, f"must be {expected}, not {shown}");
+    }
+
+    # seterror() with converterr()'s or convertcharerr()'s `detail`.
+    def reject(position: int, detail: str) {
         if self.message {
             object_error(PyExc_TypeError, self.message);
             raise boundary_failure();
         }
-        shown = "None" if value == Py_None else type_name(value);
         caller = f"{self.name}() " if self.name else "";
-        object_error(
-            PyExc_TypeError,
-            f"{caller}argument {position} must be {expected}, not {shown}"
-        );
+        object_error(PyExc_TypeError, f"{caller}argument {position} {detail}");
         raise boundary_failure();
+    }
+
+    # The units of `format`, "O!" as one, with the "|" and "$" markers.
+    def units_of(format: str) -> list[str] {
+        units: list[str] = [];
+        for character in format {
+            if character == "!" and units and units[-1] == "O" {
+                units[-1] = "O!";
+            } else {
+                units.append(character);
+            }
+        }
+        return units;
+    }
+
+    # The type each "O!" unit of `kinds` checks against, NULL for the others.
+    def expected_types(kinds: list[str]) -> list[ptr[PyObject]] {
+        expected: list[ptr[PyObject]] = [];
+        next_type = 0;
+        for unit in kinds {
+            if unit == "O!" {
+                expected.append(self.types[next_type]);
+                next_type += 1;
+            } else {
+                expected.append(NULL);
+            }
+        }
+        return expected;
     }
 
     def failed -> bool {
@@ -975,10 +1082,46 @@ obj ArgumentFormat {
         return value;
     }
 
-    # convertsimple(): one unit of the format applied to `value`.
-    def convert(unit: str, value: ptr[PyObject], position: int) -> ArgumentValue {
+    # convertsimple(): one unit of the format applied to `value`; `type` is
+    # the type an "O!" unit requires.
+    def convert(
+        unit: str, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
+    ) -> ArgumentValue {
         result = ArgumentValue(given=True, object=value);
         if unit == "O" {
+            return result;
+        }
+        if unit == "S" {
+            if jacpy_is_bytes(value) == 0 {
+                self.mismatch(position, "bytes", value);
+            }
+            return result;
+        }
+        if unit == "O!" {
+            if PyType_IsSubtype(Py_TYPE(value), type) == 0 {
+                expected = required(
+                    c_string_text(ptr[PyTypeObject](type).view(1)[0].tp_name)
+                );
+                try {
+                    self.mismatch(position, text_value(expected), value);
+                } finally {
+                    jacpy_release(expected);
+                }
+            }
+            return result;
+        }
+        if unit == "C" {
+            if jacpy_is_unicode(value) == 0 {
+                self.mismatch(position, "a unicode character", value);
+            }
+            length = jacpy_unicode_size(value);
+            if length != 1 {
+                self.reject(
+                    position,
+                    f"must be a unicode character, not a string of length {length}"
+                );
+            }
+            result.signed = PyUnicode_ReadChar(value, 0);
             return result;
         }
         if unit == "U" or unit == "s" {
@@ -1088,11 +1231,14 @@ obj ArgumentFormat {
     def parse(args: ptr[PyObject], units: str) -> list[ArgumentValue] {
         plan = format_plan(units);
         kinds = plan.kinds;
+        expected = self.expected_types(kinds);
         items = self.unpack(args, plan.minimum, len(kinds));
         values: list[ArgumentValue] = [];
         for i in range(len(kinds)) {
             values.append(
-                self.convert(kinds[i], items[i], i + 1) if i < len(items) else ABSENT
+                self.convert(kinds[i], items[i], i + 1, expected[i])
+                    if i < len(items)
+                    else ABSENT
             );
         }
         return values;
@@ -1105,6 +1251,7 @@ obj ArgumentFormat {
     ) -> list[ArgumentValue] {
         plan = format_plan(units);
         kinds = plan.kinds;
+        expected = self.expected_types(kinds);
         count = len(keywords);
         minimum = plan.minimum;
         maximum = plan.maximum;
@@ -1160,7 +1307,7 @@ obj ArgumentFormat {
             }
             if current {
                 try {
-                    values[i] = self.convert(kinds[i], current, i + 1);
+                    values[i] = self.convert(kinds[i], current, i + 1, expected[i]);
                 } finally {
                     if owned {
                         jacpy_release(current);

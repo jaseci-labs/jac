@@ -467,6 +467,7 @@ class Tokens(StrEnum) {
         KW_SKIP = 'KW_SKIP';
         KW_REPORT = 'KW_REPORT';
         KW_RETURN = 'KW_RETURN';
+        KW_TAIL = 'KW_TAIL';
         KW_DELETE = 'KW_DELETE';
         KW_TRY = 'KW_TRY';
         KW_EXCEPT = 'KW_EXCEPT';

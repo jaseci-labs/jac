@@ -23,6 +23,10 @@ Struct bodies are read from the headers of the pinned archive through a small
 preprocessor that evaluates `#if` blocks for the release build every supported
 platform shares (64-bit, little-endian, GIL-enabled, 30-bit digits); the
 generated asserts are what make that assumption checked rather than trusted.
+An object struct a `.c` file keeps private (`rangeobject`, `PyCapsule`) is read
+from that file in OBJECT_SOURCES: its port defines the layout from then on, and
+layouts_check.c repeats the upstream definition so the Jac layout is checked
+against it as a header's would be.
 Constant values are read back from the configured headers of a local JacPython
 build, as gen_constants.jac reads system headers.
 """
@@ -54,7 +58,33 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/object.h",
          "Include/cpython/longintrepr.h",
          "Include/cpython/tupleobject.h",
-         "Include/cpython/initconfig.h"
+         "Include/cpython/initconfig.h",
+         "Include/pycapsule.h",
+         "Include/descrobject.h",
+         "Include/cpython/cellobject.h",
+         "Include/sliceobject.h",
+         "Include/internal/pycore_range.h",
+         "Include/internal/pycore_freelist_state.h",
+         "Include/datetime.h"
+     ],
+     # Object files whose private object structs are layouts: the ports of
+     # these files define the objects, so the structs are no header's.
+     OBJECT_SOURCES: list[str] = [
+         "Objects/namespaceobject.c",
+         "Objects/capsule.c",
+         "Objects/iterobject.c",
+         "Objects/enumobject.c",
+         "Objects/rangeobject.c"
+     ],
+     # Headers the constant probe and layouts_check.c include after Python.h
+     # (datetime.h is not part of it).
+     INCLUDES: list[str] = [
+         "internal/pycore_long.h",
+         "internal/pycore_time.h",
+         "datetime.h",
+         "internal/pycore_abstract.h",
+         "internal/pycore_freelist_state.h",
+         "internal/pycore_range.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -67,7 +97,33 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyLongValue", "_PyLongValue"),
          ("PyLongObject", "struct _longobject"),
          ("PyTupleObject", "PyTupleObject"),
-         ("PyStatus", "PyStatus")
+         ("PyStatus", "PyStatus"),
+         ("PyAsyncMethods", "PyAsyncMethods"),
+         ("PySequenceMethods", "PySequenceMethods"),
+         ("PyMappingMethods", "PyMappingMethods"),
+         ("PyGetSetDef", "struct PyGetSetDef"),
+         ("PyCellObject", "PyCellObject"),
+         ("PySliceObject", "PySliceObject"),
+         ("_PyRangeIterObject", "_PyRangeIterObject"),
+         ("_Py_freelist", "struct _Py_freelist"),
+         ("_PyNamespaceObject", "_PyNamespaceObject"),
+         ("PyCapsule", "PyCapsule"),
+         ("seqiterobject", "seqiterobject"),
+         ("calliterobject", "calliterobject"),
+         ("anextawaitableobject", "anextawaitableobject"),
+         ("enumobject", "enumobject"),
+         ("reversedobject", "reversedobject"),
+         ("rangeobject", "rangeobject"),
+         ("longrangeiterobject", "longrangeiterobject"),
+         ("PyDateTime_Delta", "PyDateTime_Delta"),
+         ("PyDateTime_TZInfo", "PyDateTime_TZInfo"),
+         ("_PyDateTime_BaseTZInfo", "_PyDateTime_BaseTZInfo"),
+         ("_PyDateTime_BaseTime", "_PyDateTime_BaseTime"),
+         ("PyDateTime_Time", "PyDateTime_Time"),
+         ("PyDateTime_Date", "PyDateTime_Date"),
+         ("_PyDateTime_BaseDateTime", "_PyDateTime_BaseDateTime"),
+         ("PyDateTime_DateTime", "PyDateTime_DateTime"),
+         ("PyDateTime_CAPI", "PyDateTime_CAPI")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -80,6 +136,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ),
          ("Py_TPFLAGS_DEFAULT", "Py_TPFLAGS_DEFAULT", "u64"),
          ("Py_TPFLAGS_TUPLE_SUBCLASS", "Py_TPFLAGS_TUPLE_SUBCLASS", "u64"),
+         ("Py_TPFLAGS_HAVE_GC", "Py_TPFLAGS_HAVE_GC", "u64"),
+         ("Py_TPFLAGS_BASETYPE", "Py_TPFLAGS_BASETYPE", "u64"),
+         ("Py_TPFLAGS_SEQUENCE", "Py_TPFLAGS_SEQUENCE", "u64"),
          ("_PyLong_FALSE_TAG", "_PyLong_FALSE_TAG", "u64"),
          ("_PyLong_TRUE_TAG", "_PyLong_TRUE_TAG", "u64"),
          (
@@ -90,7 +149,125 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyLong_DIGIT_SIZE", "sizeof(digit)", "i64"),
          ("_PyStatus_TYPE_OK", "_PyStatus_TYPE_OK", "u32"),
          ("_PyStatus_TYPE_ERROR", "_PyStatus_TYPE_ERROR", "u32"),
-         ("PY_BUFFER_SIZE", "sizeof(Py_buffer)", "u64")
+         ("PY_BUFFER_SIZE", "sizeof(Py_buffer)", "u64"),
+         ("PY_OBJECT_SIZE", "sizeof(PyObject)", "i64"),
+         ("PY_TUPLE_OBJECT_SIZE", "sizeof(PyTupleObject)", "i64"),
+         ("Py_TPFLAGS_IMMUTABLETYPE", "Py_TPFLAGS_IMMUTABLETYPE", "u64"),
+         (
+             "Py_TPFLAGS_DISALLOW_INSTANTIATION",
+             "Py_TPFLAGS_DISALLOW_INSTANTIATION",
+             "u64"
+         ),
+         # Method table flags, member types and rich comparison operators.
+         ("METH_VARARGS", "METH_VARARGS", "i32"),
+         ("METH_KEYWORDS", "METH_KEYWORDS", "i32"),
+         ("METH_NOARGS", "METH_NOARGS", "i32"),
+         ("METH_O", "METH_O", "i32"),
+         ("METH_CLASS", "METH_CLASS", "i32"),
+         ("Py_T_OBJECT_EX", "Py_T_OBJECT_EX", "i32"),
+         ("_Py_T_OBJECT", "_Py_T_OBJECT", "i32"),
+         ("Py_READONLY", "Py_READONLY", "i32"),
+         ("Py_LT", "Py_LT", "i32"),
+         ("Py_LE", "Py_LE", "i32"),
+         ("Py_EQ", "Py_EQ", "i32"),
+         ("Py_NE", "Py_NE", "i32"),
+         ("Py_GT", "Py_GT", "i32"),
+         ("Py_GE", "Py_GE", "i32"),
+         ("PY_ITERSEARCH_COUNT", "PY_ITERSEARCH_COUNT", "i32"),
+         ("PY_ITERSEARCH_INDEX", "PY_ITERSEARCH_INDEX", "i32"),
+         ("PY_ITERSEARCH_CONTAINS", "PY_ITERSEARCH_CONTAINS", "i32"),
+         # Object sizes (tp_basicsize) and member offsets (PyMemberDef).
+         ("PyTupleObject_ITEMS", "offsetof(PyTupleObject, ob_item)", "i64"),
+         ("PyCellObject_SIZE", "sizeof(PyCellObject)", "i64"),
+         ("PySliceObject_SIZE", "sizeof(PySliceObject)", "i64"),
+         ("PySliceObject_START", "offsetof(PySliceObject, start)", "i64"),
+         ("PySliceObject_STOP", "offsetof(PySliceObject, stop)", "i64"),
+         ("PySliceObject_STEP", "offsetof(PySliceObject, step)", "i64"),
+         ("_PyRangeIterObject_SIZE", "sizeof(_PyRangeIterObject)", "i64"),
+         ("_PyNamespaceObject_SIZE", "sizeof(_PyNamespaceObject)", "i64"),
+         ("_PyNamespaceObject_NS_DICT", "offsetof(_PyNamespaceObject, ns_dict)", "i64"),
+         ("PyCapsule_SIZE", "sizeof(PyCapsule)", "i64"),
+         ("seqiterobject_SIZE", "sizeof(seqiterobject)", "i64"),
+         ("calliterobject_SIZE", "sizeof(calliterobject)", "i64"),
+         ("anextawaitableobject_SIZE", "sizeof(anextawaitableobject)", "i64"),
+         ("enumobject_SIZE", "sizeof(enumobject)", "i64"),
+         ("reversedobject_SIZE", "sizeof(reversedobject)", "i64"),
+         ("rangeobject_SIZE", "sizeof(rangeobject)", "i64"),
+         ("rangeobject_START", "offsetof(rangeobject, start)", "i64"),
+         ("rangeobject_STOP", "offsetof(rangeobject, stop)", "i64"),
+         ("rangeobject_STEP", "offsetof(rangeobject, step)", "i64"),
+         ("longrangeiterobject_SIZE", "sizeof(longrangeiterobject)", "i64"),
+         # The interpreter's freelists: where each list sits in
+         # struct _Py_freelists and how many objects it keeps.
+         ("_Py_freelists_SLICES", "offsetof(struct _Py_freelists, slices)", "i64"),
+         ("_Py_freelists_RANGES", "offsetof(struct _Py_freelists, ranges)", "i64"),
+         (
+             "_Py_freelists_RANGE_ITERS",
+             "offsetof(struct _Py_freelists, range_iters)",
+             "i64"
+         ),
+         ("Py_slices_MAXFREELIST", "Py_slices_MAXFREELIST", "i64"),
+         ("Py_ranges_MAXFREELIST", "Py_ranges_MAXFREELIST", "i64"),
+         ("Py_range_iters_MAXFREELIST", "Py_range_iters_MAXFREELIST", "i64"),
+         ("METH_STATIC", "METH_STATIC", "i32"),
+         ("METH_FASTCALL", "METH_FASTCALL", "i32"),
+         ("Py_T_INT", "Py_T_INT", "i32"),
+         ("Py_tp_dealloc", "Py_tp_dealloc", "i32"),
+         ("Py_tp_doc", "Py_tp_doc", "i32"),
+         ("Py_tp_getset", "Py_tp_getset", "i32"),
+         ("Py_tp_methods", "Py_tp_methods", "i32"),
+         ("Py_tp_new", "Py_tp_new", "i32"),
+         ("Py_tp_repr", "Py_tp_repr", "i32"),
+         ("Py_tp_traverse", "Py_tp_traverse", "i32"),
+         ("Py_tp_clear", "Py_tp_clear", "i32"),
+         ("Py_tp_getattro", "Py_tp_getattro", "i32"),
+         ("Py_tp_setattro", "Py_tp_setattro", "i32"),
+         ("Py_tp_hash", "Py_tp_hash", "i32"),
+         ("Py_tp_str", "Py_tp_str", "i32"),
+         ("Py_tp_richcompare", "Py_tp_richcompare", "i32"),
+         ("Py_tp_iter", "Py_tp_iter", "i32"),
+         ("Py_tp_init", "Py_tp_init", "i32"),
+         ("Py_tp_token", "Py_tp_token", "i32"),
+         ("Py_mp_length", "Py_mp_length", "i32"),
+         ("Py_mp_subscript", "Py_mp_subscript", "i32"),
+         ("Py_mp_ass_subscript", "Py_mp_ass_subscript", "i32"),
+         ("Py_nb_add", "Py_nb_add", "i32"),
+         ("Py_nb_subtract", "Py_nb_subtract", "i32"),
+         ("Py_nb_multiply", "Py_nb_multiply", "i32"),
+         ("Py_nb_remainder", "Py_nb_remainder", "i32"),
+         ("Py_nb_divmod", "Py_nb_divmod", "i32"),
+         ("Py_nb_power", "Py_nb_power", "i32"),
+         ("Py_nb_negative", "Py_nb_negative", "i32"),
+         ("Py_nb_positive", "Py_nb_positive", "i32"),
+         ("Py_nb_absolute", "Py_nb_absolute", "i32"),
+         ("Py_nb_bool", "Py_nb_bool", "i32"),
+         ("Py_nb_int", "Py_nb_int", "i32"),
+         ("Py_nb_float", "Py_nb_float", "i32"),
+         ("Py_nb_floor_divide", "Py_nb_floor_divide", "i32"),
+         ("Py_nb_true_divide", "Py_nb_true_divide", "i32"),
+         ("PY_DATETIME_DELTA_SIZE", "sizeof(PyDateTime_Delta)", "i64"),
+         ("PY_DATETIME_TZINFO_SIZE", "sizeof(PyDateTime_TZInfo)", "i64"),
+         ("PY_DATETIME_DATE_SIZE", "sizeof(PyDateTime_Date)", "i64"),
+         ("PY_DATETIME_BASE_TIME_SIZE", "sizeof(_PyDateTime_BaseTime)", "i64"),
+         ("PY_DATETIME_TIME_SIZE", "sizeof(PyDateTime_Time)", "i64"),
+         ("PY_DATETIME_BASE_DATETIME_SIZE", "sizeof(_PyDateTime_BaseDateTime)", "i64"),
+         ("PY_DATETIME_DATETIME_SIZE", "sizeof(PyDateTime_DateTime)", "i64"),
+         ("PY_DATETIME_DATA_OFFSET", "offsetof(PyDateTime_Date, data)", "i64"),
+         ("PY_DATETIME_DELTA_DAYS_OFFSET", "offsetof(PyDateTime_Delta, days)", "i64"),
+         (
+             "PY_DATETIME_DELTA_SECONDS_OFFSET",
+             "offsetof(PyDateTime_Delta, seconds)",
+             "i64"
+         ),
+         (
+             "PY_DATETIME_DELTA_MICROSECONDS_OFFSET",
+             "offsetof(PyDateTime_Delta, microseconds)",
+             "i64"
+         ),
+         ("Py_CONSTANT_ONE", "Py_CONSTANT_ONE", "u32"),
+         ("Py_CONSTANT_EMPTY_STR", "Py_CONSTANT_EMPTY_STR", "u32"),
+         ("_PyTime_ROUND_FLOOR", "_PyTime_ROUND_FLOOR", "i32"),
+         ("_PyTime_ROUND_HALF_EVEN", "_PyTime_ROUND_HALF_EVEN", "i32")
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every
      # supported release build (linux and darwin, x86_64 and aarch64).
@@ -131,7 +308,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "uintptr_t": ("u64", False),
          "intptr_t": ("i64", True),
          "double": ("f64", True),
-         "float": ("f32", True)
+         "float": ("f32", True),
+         # An enum with a negative enumerator is an int.
+         "PySendResult": ("i32", True)
      },
      SIZES: dict[str, int] = {
          "i8": 1,
@@ -153,14 +332,21 @@ obj FunctionType {
 }
 
 """One generated field: Jac name and type, the C member it mirrors, its
-offset and size, and for integers whether the C type is signed."""
+offset and size, and for integers whether the C type is signed. `member` is
+the C designator the asserts use: an element of a fixed array
+(`data[3]`) when that differs from the Jac name."""
 obj Field {
     has name: str,
         jac: str,
         offset: int,
         size: int,
         signed: (bool | None) = None,
-        array: bool = False;
+        array: bool = False,
+        member: str = "";
+
+    def designator -> str {
+        return self.member or self.name;
+    }
 }
 
 """One generated struct with its computed layout."""
@@ -175,6 +361,7 @@ obj Layout {
 """What the headers declare once their active `#if` branches are kept."""
 obj Headers {
     has bodies: dict[str, str] = {},
+        private: dict[str, str] = {},
         aliases: dict[str, str] = {},
         functions: dict[str, FunctionType] = {};
 }
@@ -278,11 +465,46 @@ def closing(text: str, start: int) -> int {
     sys.exit("gen_layouts: unbalanced braces in the headers");
 }
 
+# The parameter C types of a function declarator's parameter list, with any
+# parameter names dropped.
+def parameter_types(raw: str) -> list[str] {
+    params: list[str] = [];
+    raw = " ".join(raw.split());
+    if raw and raw != "void" {
+        for piece in raw.split(",") {
+            piece = piece.strip();
+            # Drop a parameter name; keep the type.
+            named = re.match(r"^(.*?[\s\*])(\w+)$", piece);
+            if named is not None and named.group(2) not in SCALARS {
+                piece = named.group(1);
+            }
+            params.append(" ".join(piece.split()));
+        }
+    }
+    return params;
+}
+
+# `[NAME]` with NAME an integer macro (datetime.h's
+# `data[_PyDateTime_DATETIME_DATASIZE]`) as the literal it defines.
+def array_bounds(text: str, defines: dict[str, str]) -> str {
+    pieces: list[str] = [];
+    last = 0;
+    for hit in re.finditer(r"\[\s*([A-Za-z_]\w*)\s*\]", text) {
+        body = defines.get(hit.group(1), "").strip();
+        if re.fullmatch(r"\d+", body) {
+            pieces.append(text[last:hit.start()] + f"[{body}]");
+            last = hit.end();
+        }
+    }
+    pieces.append(text[last:]);
+    return "".join(pieces);
+}
+
 def read_headers(found: Headers) -> None {
-    texts = archive_texts(tuple(HEADERS));
+    texts = archive_texts(tuple(HEADERS + OBJECT_SOURCES));
     missing = [
         h
-        for h in HEADERS
+        for h in HEADERS + OBJECT_SOURCES
         if h not in texts
     ];
     if missing {
@@ -290,12 +512,39 @@ def read_headers(found: Headers) -> None {
     }
     defines: dict[str, str] = {};
     text = preprocess([texts[h] for h in HEADERS], defines);
-    # Expand the object-like macros struct bodies use (PyObject_HEAD).
-    for (name, body) in defines.items() {
-        if body.strip().endswith(";") {
-            text = re.sub(rf"\b{name}\b", body, text);
+    # A source's own macros stay out of the headers' namespace; its typedef'd
+    # structs are kept verbatim for layouts_check.c.
+    for source in OBJECT_SOURCES {
+        body = preprocess([texts[source]], dict(defines));
+        for hit in re.finditer(r"\btypedef\s+struct\s*\{", body) {
+            end = closing(body, hit.end() - 1);
+            alias = re.match(r"\s*(\w+)\s*;", body[end:]);
+            if alias is not None {
+                found.private[alias.group(1)] = " ".join(
+                    body[hit.start():end + alias.end()].split()
+                );
+            }
         }
+        text += "\n" + body;
     }
+    # Expand the object-like macros struct bodies use (PyObject_HEAD), and the
+    # ones those expand to (datetime.h's _PyTZINFO_HEAD names PyObject_HEAD).
+    heads = {
+        name: body
+        for (name, body) in defines.items()
+        if body.strip().endswith(";")
+    };
+    for _ in range(8) {
+        expanded = text;
+        for (name, body) in heads.items() {
+            expanded = re.sub(rf"\b{name}\b", body, expanded);
+        }
+        if expanded == text {
+            break;
+        }
+        text = expanded;
+    }
+    text = array_bounds(text, defines);
     for hit in re.finditer(r"\b(typedef\s+)?struct\s*(\w*)\s*\{", text) {
         start = hit.end() - 1;
         end = closing(text, start);
@@ -313,21 +562,8 @@ def read_headers(found: Headers) -> None {
     for hit in re.finditer(
         r"\btypedef\s+([\w\s\*]+?)\s*\(\s*\*\s*(\w+)\s*\)\s*\(([^;]*?)\)\s*;", text
     ) {
-        params: list[str] = [];
-        raw = " ".join(hit.group(3).split());
-        if raw and raw != "void" {
-            for piece in raw.split(",") {
-                piece = piece.strip();
-                # Drop a parameter name; keep the type.
-                named = re.match(r"^(.*?[\s\*])(\w+)$", piece);
-                if named is not None and named.group(2) not in SCALARS {
-                    piece = named.group(1);
-                }
-                params.append(" ".join(piece.split()));
-            }
-        }
         found.functions[hit.group(2)] = FunctionType(
-            returns=" ".join(hit.group(1).split()), params=params
+            returns=" ".join(hit.group(1).split()), params=parameter_types(hit.group(3))
         );
     }
     for hit in re.finditer(r"\btypedef\s+([\w\s]+?)\s+(\w+)\s*;", text) {
@@ -425,13 +661,32 @@ def size_align(jac: str) -> tuple[int, int] {
     return (layout.size, layout.align);
 }
 
-# The member declarations of a struct body: (C type, member name). An anonymous
-# union contributes its first member, which the size asserts prove is its
-# widest; an array member `T name[1]` contributes one T (see layouts.jac). A
-# member of an inline enum type (`PyStatus._type`) is the enum's integer type,
-# unsigned int for enumerators that are all non-negative, which the kind and
-# signedness asserts prove.
-def members(body: str) -> list[tuple[str, str, bool]] {
+# The array declarator of an element count ("" for a scalar member).
+def bounds(count: int) -> str {
+    return "[" + str(count) + "]" if count else "";
+}
+
+# The name a function-pointer member's signature is recorded under in
+# `headers.functions`, as if the header had a typedef for it.
+def member_function(returns: str, raw: str) -> str {
+    function = FunctionType(
+        returns=" ".join(returns.split()), params=parameter_types(raw)
+    );
+    signature = function.returns + "_" + "_".join(function.params);
+    name = "__member_fn_" + re.sub(r"\W+", "_", signature.replace("*", "P"));
+    headers.functions[name] = function;
+    return name;
+}
+
+# The member declarations of a struct body: (C type, member name, element
+# count), the count 0 for a member that is not an array. An anonymous union
+# contributes its first member, which the size asserts prove is its widest; an
+# array member `T name[N]` is N elements of T (see layouts.jac). A member of
+# an inline enum type (`PyStatus._type`) is the enum's integer type, unsigned
+# int for enumerators that are all non-negative, which the kind and signedness
+# asserts prove. A function-pointer member (`PyObject *(*f)(int)`) is typed as
+# its signature.
+def members(body: str) -> list[tuple[str, str, int]] {
     body = body.replace("__extension__", " ");
     while True {
         hit = re.search(r"\benum\s*\{", body);
@@ -455,15 +710,26 @@ def members(body: str) -> list[tuple[str, str, bool]] {
             sys.exit("gen_layouts: only anonymous nested unions are supported");
         }
         inner = members(body[hit.end():end - 1]);
-        replacement = f"{inner[0][0]} {inner[0][1]}{'[1]' if inner[0][2] else ''};"
+        replacement = f"{inner[0][0]} {inner[0][1]}{bounds(inner[0][2])};"
             if hit.group(1) == "union"
-            else " ".join(f"{t} {n}{'[1]' if a else ''};" for (t, n, a) in inner);
+            else " ".join(f"{t} {n}{bounds(a)};" for (t, n, a) in inner);
         body = body[:hit.start()] + replacement + body[end + len(tail.group(0)):];
     }
-    found: list[tuple[str, str, bool]] = [];
+    found: list[tuple[str, str, int]] = [];
     for statement in body.split(";") {
         statement = " ".join(statement.split());
         if not statement {
+            continue;
+        }
+        pointer = re.match(r"^(.*?)\(\s*\*\s*(\w+)\s*\)\s*\((.*)\)$", statement);
+        if pointer is not None {
+            found.append(
+                (
+                    member_function(pointer.group(1), pointer.group(3)),
+                    pointer.group(2),
+                    0
+                )
+            );
             continue;
         }
         declared = re.match(
@@ -472,23 +738,26 @@ def members(body: str) -> list[tuple[str, str, bool]] {
         if declared is None {
             sys.exit(f"gen_layouts: cannot read member {statement!r}");
         }
-        base = declared.group(1).strip();
+        # The stars before the first name are its declarator's, as the stars
+        # of every later name are (`PyObject *start, *stop, *step;`).
+        declared_type = declared.group(1).strip();
+        lead = "*" * (len(declared_type) - len(declared_type.rstrip("*")));
+        base = declared_type.rstrip("*").strip() + " ";
+        first = True;
         for name in declared.group(2).split(",") {
-            name = name.strip();
+            name = (lead if first else "") + name.strip();
+            first = False;
             array = re.match(r"^(\**\w+)\s*\[\s*(\d+)\s*\]$", name);
+            count = 0;
             if array is not None {
-                if array.group(2) != "1" {
-                    sys.exit(
-                        f"gen_layouts: fixed array member {name} is not supported"
-                    );
-                }
+                count = int(array.group(2));
                 name = array.group(1);
             }
             stars = re.match(r"^(\**)(\w+)$", name);
             if stars is None {
                 sys.exit(f"gen_layouts: cannot read member name {name!r}");
             }
-            found.append((base + stars.group(1), stars.group(2), array is not None));
+            found.append((base + stars.group(1), stars.group(2), count));
         }
     }
     return found;
@@ -514,7 +783,7 @@ def require(name: str) -> None {
     layout = Layout(name=name, ctype=ctype, fields=[], size=0, align=1);
     emitted[name] = layout;
     offset = 0;
-    for (member_type, member, array) in members(body) {
+    for (member_type, member, count) in members(body) {
         jac = jac_type(member_type);
         (size, align) = size_align(jac);
         offset = (offset + align - 1) // align * align;
@@ -526,17 +795,23 @@ def require(name: str) -> None {
         signed = scalar[1]
             if scalar is not None and jac in SIZES and not jac.startswith("f")
             else None;
-        layout.fields.append(
-            Field(
-                name=member,
-                jac=jac,
-                offset=offset,
-                size=size,
-                signed=signed,
-                array=array
-            )
-        );
-        offset += size;
+        # `T name[1]` is one T field; a fixed array `T name[N]` is N fields,
+        # `name` for element 0 and `name_<i>` for element i, so the members
+        # after it keep their offsets.
+        for index in range(max(count, 1)) {
+            layout.fields.append(
+                Field(
+                    name=member if index == 0 else f"{member}_{index}",
+                    jac=jac,
+                    offset=offset,
+                    size=size,
+                    signed=signed,
+                    array=count == 1,
+                    member=f"{member}[{index}]" if count > 1 else ""
+                )
+            );
+            offset += size;
+        }
         layout.align = max(layout.align, align);
     }
     layout.size = (offset + layout.align - 1) // layout.align * layout.align;
@@ -577,7 +852,9 @@ def render_jac(values: dict[str, int]) -> str {
         "the same offset, size and alignment: element 0 is that field, and the",
         "object's further elements follow it in memory, reached by pointer",
         "arithmetic from the field's offset exactly as C indexes past the declared",
-        "bound. Pointers to records no port reads yet are opaque.",
+        "bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T",
+        "fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.",
+        "Pointers to records no port reads yet are opaque.",
         '"""',
         f"import from jaclang.runtime.python.cpython_api {{ {', '.join(from_capi)} }}",
         "",
@@ -594,6 +871,15 @@ def render_jac(values: dict[str, int]) -> str {
         lines.append(f"glob {name}: Final[{jac}] = {values[name]};");
     }
     return "\n".join(lines) + "\n";
+}
+
+# The upstream definitions of the private structs among the layouts.
+def private_definitions -> list[str] {
+    return [
+        headers.private[name]
+        for name in order
+        if name in headers.private
+    ];
 }
 
 # GCC's and Clang's __builtin_classify_type class of a field's Jac type.
@@ -616,10 +902,20 @@ def render_check(values: dict[str, int]) -> str {
         "#ifndef Py_BUILD_CORE",
         "#define Py_BUILD_CORE 1",
         "#endif",
-        "#include \"Python.h\"",
-        "#include \"internal/pycore_long.h\"",
-        "#include <stddef.h>",
-        "",
+        "#include \"Python.h\""
+    ]
+        + [f"#include \"{header}\"" for header in INCLUDES]
+        + ["#include <stddef.h>", ""];
+    private = private_definitions();
+    if private {
+        lines += [
+            "/* The private object structs of the ported Objects/ files, as the",
+            " * pinned sources define them. */"
+        ]
+            + private
+            + [""];
+    }
+    lines += [
         "#define FIELD(type, field, offset, size) \\",
         "    _Static_assert(offsetof(type, field) == (offset), #type \".\" #field \" offset\"); \\",
         "    _Static_assert(sizeof(((type *)0)->field) == (size), #type \".\" #field \" size\")",
@@ -642,18 +938,18 @@ def render_check(values: dict[str, int]) -> str {
         lines.append(f"/* {name} */");
         for field in layout.fields {
             lines.append(
-                f"FIELD({ctype}, {field.name}, {field.offset}, {field.size});"
+                f"FIELD({ctype}, {field.designator()}, {field.offset}, {field.size});"
             );
             lines.append(
-                f"KIND({ctype}, {field.name}{'[0]' if field.array else ''}, {type_class(
+                f"KIND({ctype}, {field.designator()}{'[0]' if field.array else ''}, {type_class(
                     field.jac
                 )});"
             );
             if field.signed is not None {
                 lines.append(
-                    f"SIGNED({ctype}, {field.name}{'[0]' if field.array else ''}, {1
-                        if field.signed
-                        else 0});"
+                    f"SIGNED({ctype}, {field.designator()}{'[0]'
+                        if field.array
+                        else ''}, {1 if field.signed else 0});"
                 );
             }
         }
@@ -688,12 +984,10 @@ def probe_flags(headers_dir: Path) -> list[str] {
 
 # Constant values as the compiler folds them against the configured headers.
 def extract(headers_dir: Path, compiler: list[str]) -> dict[str, int] {
-    lines = [
-        "#define Py_BUILD_CORE 1",
-        "#include \"Python.h\"",
-        "#include \"internal/pycore_long.h\"",
-        "#include <stddef.h>"
-    ];
+    lines = ["#define Py_BUILD_CORE 1", "#include \"Python.h\""]
+        + [f"#include \"{header}\"" for header in INCLUDES]
+        + ["#include <stddef.h>"]
+        + private_definitions();
     for (name, expression, _) in CONSTANTS {
         lines.append(
             f"const long long __jac_layout_{name} = (long long)({expression});"

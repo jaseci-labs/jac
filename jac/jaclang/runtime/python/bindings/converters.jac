@@ -48,6 +48,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_AsFileDescriptor,
     PyObject_IsTrue,
     PyType_GetSlot,
+    PyArg_Parse,
     PyUnicode_AsUTF8AndSize
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
@@ -225,11 +226,13 @@ def convert_unsigned_long_long(
 def convert_unsigned_bounded(
     value: ptr[PyObject], bitwise: bool, limit: u64, kind: str, fname: str, label: str
 ) -> u64 {
+    # Clinic's B, H and I units mask without an index check, as getargs does.
     if bitwise {
-        if PyIndex_Check(value) == 0 {
-            bad_argument(fname, label, "int", value);
+        masked = PyLong_AsUnsignedLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
         }
-        return PyLong_AsUnsignedLongMask(value) & limit;
+        return masked & limit;
     }
     wide = convert_long(value);
     if wide < 0 {
@@ -341,12 +344,35 @@ def convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObjec
 
 def convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
     convert_unicode(value, fname, label);
+    # The UTF-8 encoding clinic reads: a lone surrogate is a UnicodeEncodeError.
+    size: i64 = 0;
+    if PyUnicode_AsUTF8AndSize(value, &mut size).is_null() {
+        raise boundary_failure();
+    }
     text = text_value(value);
     if "\x00" in text {
         object_error(PyExc_ValueError, "embedded null character");
         raise boundary_failure();
     }
     return text;
+}
+
+# A C string and its size, as the "s#" unit passes them to an _impl function.
+obj SizedText {
+    has data: ptr[u8] = ptr[u8](),
+        size: i64 = 0;
+}
+
+# str(accept={str, robuffer}, zeroes=True), the "s#" unit of a METH_O
+# function: a str's UTF-8 or a read-only buffer's bytes, with embedded NULs.
+# Clinic parses it with PyArg_Parse(arg, "s#:<name>"), so getargs.c does here.
+def convert_sized_str(value: ptr[PyObject], fname: str, label: str) -> SizedText {
+    data = ptr[u8]();
+    size: i64 = 0;
+    if PyArg_Parse(value, f"s#:{fname}", &mut data, &mut size) == 0 {
+        raise boundary_failure();
+    }
+    return SizedText(data=data, size=size);
 }
 
 # str(accept={str, NoneType}): None is passed through as the absent value.

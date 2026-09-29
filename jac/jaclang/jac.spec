@@ -392,7 +392,7 @@ literal_for_mapping ::= INT | FLOAT | multistring | "-" (INT | FLOAT)?
 
 class_pattern_args ::= "(" (((NAME | KWESC_NAME) "=" pattern | pattern) ","?)* ")"
 
-return_stmt ::= "return" expression? ";"
+return_stmt ::= "return" NAME? expression? ";"
 
 yield_stmt ::= "yield" "from"? expression?
 

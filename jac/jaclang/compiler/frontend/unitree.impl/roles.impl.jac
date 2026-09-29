@@ -2520,9 +2520,14 @@ impl ReportStmt.init(*, expr: Expr, kid: Sequence[UniNode] = []) -> None {
 }
 
 impl ReturnStmt.init(
-    *, expr: (Expr | None), is_implicit: bool = False, kid: Sequence[UniNode] = []
+    *,
+    expr: (Expr | None),
+    is_implicit: bool = False,
+    is_tail: bool = False,
+    kid: Sequence[UniNode] = []
 ) -> None {
     self.is_implicit = is_implicit;
+    self.is_tail = is_tail;
     self._link(kid, {ExprRole: expr});
     self.postinit();
 }

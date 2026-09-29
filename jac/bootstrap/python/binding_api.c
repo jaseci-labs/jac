@@ -189,6 +189,7 @@ typedef struct {
     void (*release_buffer)(PyObject *, Py_buffer *);
     PyObject *(*get_attribute)(PyObject *, PyObject *);
     int32_t (*set_attribute)(PyObject *, PyObject *, PyObject *);
+    PyObject *(*string)(PyObject *);
     void (*finalize)(PyObject *);
 } JacTypeHooks;
 
@@ -212,7 +213,7 @@ enum {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[40];
+    PyType_Slot slots[44];
     vectorcallfunc vectorcall;
     int instance_dict;
     /* The C fields published as member descriptors, then
@@ -313,6 +314,7 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(release_buffer, Py_bf_releasebuffer);
     SLOT(get_attribute, Py_tp_getattro);
     SLOT(set_attribute, Py_tp_setattro);
+    SLOT(string, Py_tp_str);
     SLOT(finalize, Py_tp_finalize);
     if (!hooks.get_attribute && (options & JAC_TYPE_GENERIC_GETATTR))
         spec->slots[slot++] = (PyType_Slot){Py_tp_getattro, PyObject_GenericGetAttr};

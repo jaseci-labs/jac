@@ -57,6 +57,22 @@ library's archive as its linker flag: `_md5` lists
 makesetup rule depends on the archive; `build.sh` makes every such target
 before linking the interpreter. The Jac module declares the library's
 functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
+Data tables CPython generates into headers become C data definitions a
+generator writes from the pinned headers, not a data-only C object:
+`scripts/jacpython/gen_unicodedata.jac` reads `Modules/unicodedata_db.h` and
+`Modules/unicodename_db.h` (Tools/unicode/makeunicodedata.py output) and
+writes `modules/unicodedata_db.jac` and `modules/unicodename_db.jac`, and its
+`--check` fails when they are stale. The tables are the bytes the C arrays
+hold, laid out at link time, so the binary's size and start-up are
+unchanged; the two functions `unicodedata_db.h` carries become data (a
+shift and a list of case pairs). `scripts/jacpython/gen_cjkcodecs.jac` does
+the same for the CJK codecs' `Modules/cjkcodecs/mappings_*.h`, writing
+`modules/cjkcodecs_mappings_<locale>.jac`: each code array is a bytes
+literal (`common.jac`'s `bytes_literal()`), each 256-row index a u32 array
+packing a row's offset and bounds, and each `MAPPING_*` entry a `DbcsMap`
+record the module publishes as its `__map_<charset>` capsule. The codecs
+themselves are `MultibyteCodec` records whose entry points are named Jac
+functions, which `_multibytecodec` calls through the record as C does.
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant
@@ -106,6 +122,22 @@ descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
 in the instance and `jacpy_binding_record()` gives their address
 (`select.kevent`, `_multiprocessing.SemLock`).
 
+A module whose types are static in C because a C API exposes them keeps
+them static. `_datetime` defines `PyDateTime_DateType` and the other types,
+the immortal `utc_timezone` and the `PyDateTime_CAPI` capsule record as C
+data under their C names, with the layouts of `Include/datetime.h` from
+`layouts.jac`, so `_zoneinfo` and other C extensions read the objects
+through the header's macros. `_PyDateTime_InitTypes()`, which
+`pylifecycle.c` calls, fills each type's `tp_methods` with
+`method_table()` from its `MethodDefinition` list (clinic glue included)
+before readying it; its IsoCalendarDate heap type is a `PyType_Spec` of C
+data whose slots are `ptr(function)`.
+
+Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
+`PyMethodDef` tables are C data whose callbacks are `ptr(function)`, and a
+`Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
+token for `PyType_GetBaseByToken()`, as in C.
+
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
 `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini` in an
@@ -127,7 +159,19 @@ time with a bound `self`, like `_abc`'s weakref callback, comes from a
 Jac converter's return type. A `PyBytesObject` or `PyByteArrayObject`
 parameter (format unit `S` or `Y`) is checked as `object(subclass_of=...)`
 over bytes or bytearray. A module built from several C files (`_zstd`'s
-`Modules/_zstd/`) gets one glue file for all of them.
+`Modules/_zstd/`) gets one glue file for all of them. A default read from the
+module state or the receiver's C fields (`clinic_state()->ConnectionType`,
+`((pysqlite_Cursor *)self)->arraysize`) is a module function over the
+receiver (`clinic_state_ConnectionType(receiver)`, `self_arraysize(receiver)`),
+and an optional argument of a module's own converter (`_sqlite3`'s
+`Autocommit`) keeps the C default when omitted. A parameter clinic deprecates
+with `[from X.Y]` warns as its parser does: the `CallSignature` carries the
+message and the argument counts that trigger it. A clinic block whose `_impl`
+the C file never defines, a clone kept for its docstring and method table
+entry (`_sqlite3.connect`), contributes only `<c_basename>_doc`, and the
+binding supplies the function. `TypeHooks(finalize=...)` is `tp_finalize`; a
+dealloc calls `PyObject_CallFinalizerFromDealloc()` first, as
+`sqlite3.Connection` does.
 
 The public surface comes from the same source as the parsing. Besides the
 clinic tables, the glue carries every other docstring of the C files as a
@@ -201,13 +245,14 @@ while threads park on it, and calls `PyMutex_Lock`/`PyMutex_Unlock` (`_zstd`).
 
 ## Language gaps
 
-The ports so far needed these. Gaps 1 to 6 are closed in the language; use
+The ports so far needed these. All seven are closed in the language; use
 the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
    C: `p + n` and `p - n` step n elements of T (bytes for bare `ptr` or an
-   opaque T), `p - q` is the distance in elements, `p += n` works, `int(p)` is
-   the address and `ptr[T](n)` makes a pointer from one. zlib's output window
+   opaque T), `p - q` is the distance in elements, `p += n` works, `p < q`
+   (and `<=`, `>`, `>=`) orders two pointers of one pointee type by unsigned
+   address, `int(p)` is the address and `ptr[T](n)` makes a pointer from one. zlib's output window
    writes `window.next += visible` and `data_end - next_in`.
 2. **Field access through a pointer.** `p.view(1)[0].field` reads and
    `p.view(1)[0].field = v` writes a C-layout struct in place.
@@ -225,9 +270,18 @@ the Jac form, not a C helper:
    symbol: `glob PyBool_Type: PyTypeObject = PyTypeObject(...);` is C-layout
    storage exported under that name (unless `glob:priv`), built at link time
    from C constants (literals, `ptr[u8]("text")`, `addressof(symbol)`, named
-   functions for callback fields, nested struct constructors). A
-   `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
-   `addressof(table)` is its first element.
+   functions for callback fields, nested struct constructors, and `ptr[T](...)`
+   casts of these addresses). A `list[T]` symbol is a C array, such as a
+   `PyMethodDef` table, and `addressof(table)` is its first element. `ptr(f)`
+   is the address of the named function `f`, as C's `_PyCFunction_CAST(f)`
+   erases its type, for a bare `ptr` field such as `PyMethodDef.ml_meth` or
+   `PyType_Slot.pfunc`: a method table's `ml_meth` takes `ptr(range_count)` or
+   `ptr(namespace_replace)` whatever the calling convention. An array of sized
+   integers may instead be initialized with a bytes literal of its
+   little-endian elements (`glob t: list[u16] = b"\x34\x12";`), one token
+   per line of a large generated table rather than one expression per
+   element; the unicodedata port lays out its 700 KB of Unicode database
+   tables this way.
 
 5. **Varargs.** A call to a variadic C function passes each extra argument
    with C's default promotions, and a borrowed one (`&mut x`) as the
@@ -246,9 +300,13 @@ the Jac form, not a C helper:
    other modules call it as any C function. CPython's API functions a port
    defines (`PyBool_FromLong`) are written this way.
 
-Still open:
-
-7. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
+7. **Tail calls.** `return tail f(args);` is a guaranteed tail call: the
+   native backend lowers it to `musttail`, so the evaluator's tail-call
+   dispatch (`Py_MUSTTAIL return (INSTRUCTION_TABLE[op])(TAIL_CALL_ARGS);`)
+   is `return tail table.view(1)[0].handler(frame, stack, tstate, next,
+   oparg);` from one C function defined in Jac to the next, in constant
+   stack at every optimization level. The handlers share one signature;
+   a call that cannot reuse the frame is `E5113` naming why.
 
 ## Object model (`Objects/`, 143k lines)
 
@@ -261,16 +319,24 @@ pilot port; it established the pieces below.
 
 **Layouts are generated and verified.** `scripts/jacpython/gen_layouts.jac`
 writes `runtime/python/layouts.jac`: one C-layout struct per layout it lists
-(`_object`, `PyVarObject`, `PyTypeObject`, `PyNumberMethods`, `_PyLongValue`,
-`PyLongObject`, `PyTupleObject` so far), read from the pinned headers through
+(`_object`, `PyVarObject`, `PyTypeObject`, the slot tables, `PyGetSetDef`,
+`PyLongObject`, `PyTupleObject`, `PyCellObject`, `PySliceObject`,
+`_PyRangeIterObject`, and datetime.h's `PyDateTime_DateTime` and
+`PyDateTime_CAPI`, ...), read from the pinned headers through
 a small preprocessor that keeps the `#if` branches of the release build
-(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots are
-`Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
+(64-bit, little-endian, GIL-enabled, 30-bit digits). An object struct a `.c`
+file keeps private (`rangeobject`, `PyCapsule`, `enumobject`) is read from that
+file (`OBJECT_SOURCES`); the port owns it from then on, and the check below
+repeats the upstream definition so the Jac layout is still asserted against C.
+Function-pointer slots and members are `Callable[...]` fields, pointers to
+listed layouts are `ptr[Layout]`, and
 pointers to records no port reads yet are opaque. `PyObject` stays the opaque
 handle of `cpython_api.jac`; its layout is `_object`, reached by casting a
 handle (`ptr[_object](op).view(1)[0].ob_type`). The 3.14 refcount union is its
 widest member, `ob_refcnt_full: i64`; a trailing C array `T name[1]` is one
-`T` field, and further elements are reached by pointer arithmetic. The same
+`T` field, and further elements are reached by pointer arithmetic. A fixed
+array `T name[N]` is N fields, `name` and `name_1` to `name_<N-1>`, so
+`_zoneinfo` reads a datetime's year as `(data << 8) | data_1`. The same
 script writes the header constants initializers need (`Py_TPFLAGS_*`, the
 immortal refcount, `_PyLong_*_TAG`, `offsetof`/`sizeof` values) as `Final`
 globs, read back from a configured build's headers.
@@ -331,6 +397,41 @@ What boolobject needed beyond the layouts:
   `import from c` block instead (`def PyBool_FromLong(ok: i64) ->
   ptr[PyObject] { ... }`), which exports the exact C name with the C ABI.
 
+The leaf types (`cellobject.c`, `namespaceobject.c`, `capsule.c`,
+`iterobject.c`, `enumobject.c`, `sliceobject.c`, `rangeobject.c`) followed,
+as `object_model/cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
+`enumerate.jac`, `slice.jac` and `range.jac`. Every exported function and the
+interpreter-internal ones other C files call (`_PyBuildSlice_ConsumeRefs`,
+`_PySlice_GetLongIndices`, `PyAnextAwaitable_New`, `_PyNamespace_New`) are C
+definitions under their names; tables and types are C data. What they added:
+
+- Method tables are `list[PyMethodDef]` C data. `ml_meth` is a `ptr`, and
+  `ptr(f)` is the address of the named function `f` whatever its calling
+  convention, as `_PyCFunction_CAST(f)` erases it in C (`ptr(range_count)`,
+  `ptr(namespace_replace)`, `ptr(Py_GenericAlias)`). Slots and callback fields
+  may name functions other modules define (`tp_getattro=PyObject_GenericGetAttr`).
+  A C function fills a slot directly when only Jac's integer representation of
+  pointers differs, so the interpreter's slot comparisons hold; a Jac function
+  is reached through a C-entry trampoline that leaves the open region.
+- A callback field read as an address, `int(cap.view(1)[0].destructor)`,
+  tests or returns the pointer C stored (`PyCapsule_GetDestructor`,
+  `tp_iternext == NULL`); an address is stored with `field = int(p)`.
+- `tp_traverse` implementations take the visitor as a `ptr` and visit with
+  `bindings/module.jac`'s `visit_reference` (Py_VISIT).
+- The slice and range freelists are `struct _Py_freelists` fields of the
+  interpreter state; `jacpy_freelists()` in `object_api.c` returns that
+  struct, and `header.jac`'s `freelist_pop` / `freelist_push` implement
+  `_Py_FREELIST_POP` / `_Py_FREELIST_FREE` over the `_Py_freelists_*` offsets
+  gen_layouts asserts.
+- `header.jac` also holds `Py_REFCNT`, the tuple item macros,
+  `_PyTuple_Recycle`, `PyObject_TypeCheck`, `Py_RETURN_RICHCOMPARE` and
+  `_PyEval_GetBuiltin(&_Py_ID(name))` (by interning, as bool_repr does).
+- Unsigned C arithmetic (the range length formula, the slice hash) uses
+  `u64.wrap` and the `wrapping_*` builtins; sized-int arithmetic otherwise
+  traps on overflow, which C leaves undefined and the ports never reach.
+- `enumerate.__new__` parses with `PyArg_ParseTupleAndKeywords` over a C data
+  keyword array, as the clinic glue's messages are getargs.c's.
+
 Refcounting from Jac is still a call into C (`Py_IncRef`, `jacpy_release`);
 with `_object` declared, inline immortality-aware reference operations in Jac
 are the next shared helper. `jacpython.o` enters the link as machine code,
@@ -338,10 +439,7 @@ so a call into C costs a call ThinLTO cannot remove; emitting it as bitcode
 for the ThinLTO link removes that boundary if Jac's LLVM and Zig's LLVM agree
 on the bitcode version.
 
-Order after `boolobject.c`: leaf types with little behaviour
-(`cellobject.c` 212, `namespaceobject.c` 332, `capsule.c` 366,
-`iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
-`rangeobject.c` 1,317), then containers (`tupleobject.c`, `listobject.c`,
+Order after the leaf types: containers (`tupleobject.c`, `listobject.c`,
 `setobject.c`, `dictobject.c`), then numbers and text (`floatobject.c`,
 `complexobject.c`, `longobject.c`, `bytesobject.c`, `unicodeobject.c`), and
 `typeobject.c` (12,312 lines) last. `mimalloc` and `obmalloc.c` stay the
@@ -361,8 +459,8 @@ general C translator. Requirements beyond the object model:
 - tagged stack references (`_PyStackRef` stores tag bits in the pointer):
   pointer/integer conversion and bit operations (gap 1);
 - the tail-call dispatch the release build requires
-  (`Py_TAIL_CALL_INTERP`, checked by `smoke.py`): `musttail` calls in the
-  native backend;
+  (`Py_TAIL_CALL_INTERP`, checked by `smoke.py`): `return tail` calls
+  (gap 7);
 - frames, the thread state and the interpreter state are C structs the rest
   of the runtime reads (C-layout structs with in-place writes, gap 2);
 - the performance gate in `scripts/python_evaluator_bench.py`.

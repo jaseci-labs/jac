@@ -127,6 +127,27 @@ def:pub __jac_region_leave {
     __jac_region_unwind(__mem_load_i64(blk + TLS_DEPTH) - 1);
 }
 
+# A call from C into Jac runs outside any region the thread has open: the
+# open's extent does not cross the foreign frame, whose caller may keep what
+# the callee allocates. Returns the depth __jac_region_restore goes back to,
+# or -1 when no region is open.
+def:pub __jac_region_escape -> int {
+    blk = __jac_region_tls_get();
+    if blk == 0 or __mem_load_i64(blk + TLS_CUR) == 0 {
+        return -1;
+    }
+    depth = __mem_load_i64(blk + TLS_DEPTH);
+    _stack_push(blk, 0);
+    __mem_store_i64(blk + TLS_CUR, 0);
+    return depth;
+}
+
+def:pub __jac_region_restore(depth: int) {
+    if depth >= 0 {
+        __jac_region_unwind(depth);
+    }
+}
+
 def _lock(hdl: int) {
     spins = 0;
     while __atomic_xchg_i64(hdl + RGN_LOCK, 1) != 0 {

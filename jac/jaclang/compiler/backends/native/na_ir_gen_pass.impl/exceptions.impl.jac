@@ -10,6 +10,7 @@ impl NaIRGenPass._get_exception_state_type -> ir.Type {
         ir.IntType(8).as_pointer(),
         ir.IntType(32),
         ir.IntType(8).as_pointer(),
+        ir.IntType(8).as_pointer(),
         ir.IntType(8).as_pointer()
     );
     self._exc_state_type = exc_state;
@@ -100,6 +101,11 @@ impl NaIRGenPass._emit_exc_push_helper -> None {
 
     msg_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="msg.ptr");
     b.store(ir.Constant(i8p, None), msg_ptr);
+
+    saved_top = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 5)], name="unwind.saved"
+    );
+    b.store(b.load(self._unwind_top_slot(b), name="unwind.top"), saved_top);
 
     b.store(state, handler_slot);
     b.ret_void();
@@ -195,6 +201,37 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     );
     b.store(msg_val, msg_slot);
 
+    saved_top = b.load(
+        b.gep(cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 5)]),
+        name="unwind.saved"
+    );
+    top_slot = self._unwind_top_slot(b);
+    node_ty = self._unwind_node_type();
+    cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
+    walk_bb = func.append_basic_block("unwind.walk");
+    run_bb = func.append_basic_block("unwind.run");
+    jump_bb = func.append_basic_block("unwind.jump");
+    b.branch(walk_bb);
+    b.position_at_end(walk_bb);
+    top = b.load(top_slot, name="unwind.top");
+    b.cbranch(
+        b.icmp_unsigned("==", top, saved_top, name="unwind.done"), jump_bb, run_bb
+    );
+    b.position_at_end(run_bb);
+    link = b.bitcast(top, node_ty.as_pointer(), name="unwind.node");
+    prev = b.load(
+        b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="unwind.prev"
+    );
+    b.store(prev, top_slot);
+    cleanup = b.load(
+        b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 1)]), name="unwind.fn"
+    );
+    env = b.load(
+        b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 2)]), name="unwind.env"
+    );
+    b.call(b.bitcast(cleanup, cleanup_ty.as_pointer(), name="unwind.fnp"), [env]);
+    b.branch(walk_bb);
+    b.position_at_end(jump_bb);
     env_ptr = b.gep(
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
     );
@@ -450,6 +487,18 @@ impl NaIRGenPass._store_exc_message(
         return False;
     }
     i32 = ir.IntType(32);
+    copied = False;
+    if self._nogc_headerless() and not self._is_owned(text) {
+        i8p = ir.IntType(8).as_pointer();
+        text = self._mark_owned(
+            self._call_str_dup(
+                self.builder,
+                self._coerce_type(self._str_norm(text), i8p),
+                name="exc.msg.own"
+            )
+        );
+        copied = True;
+    }
     text = self._coerce_type(
         text, self.struct_field_types[type_name][EXC_MESSAGE_FIELD]
     );
@@ -467,7 +516,7 @@ impl NaIRGenPass._store_exc_message(
             name="field.exc.msg"
         )
     );
-    if moved {
+    if moved and not copied {
         self._nogc_consume_local(args[0]);
     }
     return True;
@@ -570,6 +619,12 @@ impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) ->
     if self._slot_lowering_active() {
         for (slot, value) in zip(self._nogc_err_slot(), values) {
             self.builder.store(value, slot);
+        }
+        held = self._slot_caught_drops.get(id(values));
+        if held is not None {
+            (drop_slot, handed_back) = held;
+            self.builder.store(handed_back, self._nogc_err_drop_slot());
+            self.builder.store(ir.Constant(handed_back.type, None), drop_slot);
         }
         self._emit_err_propagate(loc="reraise");
     } else {
@@ -882,6 +937,10 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     if exc_msg is None {
         return;
     }
+    exc_drop: (ir.Value | None) = None;
+    if self._slot_lowering_active() and self._nogc_headerless() {
+        exc_drop = self._raise_payload_drop(exc_payload, exc_msg, exc_type_name);
+    }
 
     if isinstance(exc_msg.type, ir.PointerType) and exc_msg.type != i8p {
         exc_msg = self.builder.bitcast(exc_msg, i8p, name="exc.msg.cast");
@@ -894,7 +953,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
 
     self._register_exc_lineage(nd.cause, exc_type_id);
     if self._slot_lowering_active() {
-        self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg);
+        self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg, exc_drop);
         return;
     }
     self.builder.call(
@@ -1101,12 +1160,19 @@ impl NaIRGenPass._codegen_try_unwind(
                     bound_val = self.builder.bitcast(
                         handler_exc_obj, _exc_sp_ty, name="exc.bound.typed"
                     );
-                    alloca = self._entry_alloca(_exc_sp_ty, var_name);
+                    alloca = self._exc_binding_slot(var_name, _exc_sp_ty);
                 } else {
                     bound_val = self.builder.load(exc_msg_slot, name="exc.bound.msg");
-                    alloca = self._entry_alloca(i8p, var_name);
+                    alloca = self._exc_binding_slot(var_name, i8p);
                 }
+                _rebind = not self._nogc_headerless() and not _in_gen;
+                _bound_old = self.builder.load(alloca, name="exc.bound.old")
+                    if _rebind
+                    else None;
                 self.builder.store(bound_val, alloca);
+                if _bound_old is not None {
+                    self._emit_rc_release_typed(_bound_old, op="overwrite");
+                }
                 self.local_vars[var_name] = alloca;
             }
 
@@ -1124,6 +1190,18 @@ impl NaIRGenPass._codegen_try_unwind(
             self._finally_stack.pop();
             if except_node.name is not None {
                 self._exc_bindings.pop();
+            } elif not self.builder.block.is_terminated
+                and not _in_gen
+                and not self._nogc_headerless() {
+                self._emit_rc_release_typed(
+                    self.builder.load(
+                        self.builder.gep(
+                            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)]
+                        ),
+                        name="exc.unbound.obj"
+                    ),
+                    op="scope_exit"
+                );
             }
             self._caught_error_stack.pop();
             if not self.builder.block.is_terminated {
@@ -1169,7 +1247,7 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    context_type = ir.LiteralStructType([i32, i8p, i8p, i8p]);
+    context_type = ir.LiteralStructType([i32, i8p, i8p, i8p, i8p]);
     context_ptr = context_type.as_pointer();
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     (get_fn, set_fn) = self._emit_tls_slot(
@@ -1204,6 +1282,190 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     return func;
 }
 
+impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value {
+    """The local an `except ... as name` binds, shared by every handler of the name.
+
+    Each handler used to take a fresh slot for the name, so scope exit (which
+    releases the slot the name maps to last) never released what an earlier
+    handler bound: one caught exception leaked per function per such handler.
+    """;
+    existing = self.local_vars.get(var_name);
+    if not self._nogc_headerless()
+        and self._gen_ctx is None
+        and isinstance(existing, ir.AllocaInstr)
+        and existing.type == slot_type.as_pointer()
+        and existing.parent is self.builder.function.entry_basic_block {
+        return existing;
+    }
+    return self._entry_alloca(slot_type, var_name);
+}
+
+impl NaIRGenPass._unwind_top_slot(b: ir.IRBuilder) -> ir.Value {
+    """The thread's unwind chain head: the newest frame that owns rc locals.""";
+    context = b.call(self._get_exception_context_fn(), []);
+    return b.gep(
+        context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 4)]
+    );
+}
+
+impl NaIRGenPass._unwind_node_type -> ir.Type {
+    """`{prev, cleanup, env}`: one frame's link in the unwind chain.""";
+    i8p = ir.IntType(8).as_pointer();
+    return ir.LiteralStructType([i8p, i8p, i8p]);
+}
+
+impl NaIRGenPass._register_unwind_cleanup -> None {
+    """Let a raise that crosses this frame release its owned locals.
+
+    A raise reaches its handler with `longjmp`, which skips every frame in
+    between, and with them the scope cleanup each frame would have run on a
+    normal return: every rc object those frames held leaked, once per raise.
+    A frame that owns such locals now links a node into the thread's unwind
+    chain on entry (its local slots and a cleanup function built from the
+    same scope cleanup a return runs) and unlinks it on every return. The
+    raise walks the chain down to the handler's saved head, releasing each
+    crossed frame's locals, before it jumps. A frame whose locals need no
+    cleanup (scalars, borrowed values, parameters) links nothing.
+    """;
+    if self._builder is None or self._gen_ctx is not None {
+        return;
+    }
+    func = self._builder.function;
+    if func is None
+        or not func.blocks
+        or any(not blk.is_terminated for blk in func.blocks)
+        or bool(getattr(self.module.gen, "nogc_enforced", False))
+        or "wasm" in str(self.llvm_module.triple) {
+        return;
+    }
+    slots: list[tuple[str, ir.Value]] = [];
+    for (name, slot) in self.local_vars.items() {
+        if isinstance(slot, ir.AllocaInstr)
+            and slot.parent is func.entry_basic_block
+            and name not in self.param_vars
+            and name not in self.borrowed_vars
+            and name not in self.closure_cell_handles
+            and name not in self.region_handle_vars {
+            slots.append((name, slot));
+        }
+    }
+    if not slots {
+        return;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    saved = (
+        self._builder,
+        self.local_vars,
+        self.region_open_stack,
+        self.closure_cell_handles
+    );
+    probe = func.append_basic_block(name="unwind.probe");
+    try {
+        self._builder = ir.IRBuilder(probe);
+        self.local_vars = dict(slots);
+        self.region_open_stack = [];
+        self.closure_cell_handles = {};
+        self._emit_scope_cleanup(skip_var=None, loc="unwind");
+        pending = len(probe.instructions) > 0;
+    } finally {
+        func.blocks.remove(probe);
+        (
+            self._builder,
+            self.local_vars,
+            self.region_open_stack,
+            self.closure_cell_handles
+        ) = saved;
+    }
+    if not pending {
+        return;
+    }
+    cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
+    cleanup = ir.Function(self.llvm_module, cleanup_ty, name=f"{func.name}.__unwind");
+    cleanup.linkage = "private";
+    env_ty = ir.ArrayType(i8p, len(slots));
+    try {
+        cb = ir.IRBuilder(cleanup.append_basic_block("entry"));
+        env = cb.bitcast(cleanup.args[0], env_ty.as_pointer(), name="env");
+        mapped: dict[str, ir.Value] = {};
+        for (k, (name, slot)) in enumerate(slots) {
+            raw = cb.load(
+                cb.gep(env, [ir.Constant(i32, 0), ir.Constant(i32, k)]),
+                name=f"unwind.{name}"
+            );
+            mapped[name] = cb.bitcast(raw, slot.type, name=f"unwind.{name}.slot");
+        }
+        self._builder = cb;
+        self.local_vars = mapped;
+        self.region_open_stack = [];
+        self.closure_cell_handles = {};
+        self._emit_scope_cleanup(skip_var=None, loc="unwind");
+        cb.ret_void();
+    } finally {
+        (
+            self._builder,
+            self.local_vars,
+            self.region_open_stack,
+            self.closure_cell_handles
+        ) = saved;
+    }
+    entry_blk = func.entry_basic_block;
+    anchor: any = None;
+    for inst in entry_blk.instructions {
+        if isinstance(inst, ir.AllocaInstr) {
+            continue;
+        }
+        if isinstance(inst, ir.StoreInstr)
+            and isinstance(inst.operands[1], ir.AllocaInstr)
+            and isinstance(inst.operands[0], ir.Constant) {
+            continue;
+        }
+        anchor = inst;
+        break;
+    }
+    b = ir.IRBuilder(entry_blk);
+    if anchor is not None {
+        b.position_before(anchor);
+    } else {
+        b.position_at_end(entry_blk);
+    }
+    env_slot = b.alloca(env_ty, name="unwind.env");
+    for (k, (_name, slot)) in enumerate(slots) {
+        b.store(
+            b.bitcast(slot, i8p),
+            b.gep(env_slot, [ir.Constant(i32, 0), ir.Constant(i32, k)])
+        );
+    }
+    node_ty = self._unwind_node_type();
+    link = b.alloca(node_ty, name="unwind.node");
+    top_slot = self._unwind_top_slot(b);
+    prev = b.load(top_slot, name="unwind.prev");
+    b.store(prev, b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
+    b.store(
+        b.bitcast(cleanup, i8p), b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 1)])
+    );
+    b.store(
+        b.bitcast(env_slot, i8p),
+        b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 2)])
+    );
+    b.store(b.bitcast(link, i8p), top_slot);
+    for blk in list(func.blocks) {
+        term = blk.instructions[-1] if blk.instructions else None;
+        if not isinstance(term, ir.Ret) {
+            continue;
+        }
+        at: any = term;
+        if len(blk.instructions) >= 2 {
+            before = blk.instructions[-2];
+            if isinstance(before, ir.CallInstr) and before.tail == "musttail" {
+                at = before;
+            }
+        }
+        b.position_before(at);
+        b.store(prev, top_slot);
+    }
+}
+
 impl NaIRGenPass._exception_handler_slot(b: ir.IRBuilder) -> ir.Value {
     context = b.call(self._get_exception_context_fn(), []);
     slot = b.gep(
@@ -1220,6 +1482,143 @@ impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
         for i in range(3)
     ];
     return (fields[0], fields[1], fields[2]);
+}
+
+impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
+    """The error record's drop slot: how to free the pending payload.
+
+    A raise that hands its payload to the record stores the function that
+    frees it here, and null when the payload is not the record's to free (a
+    static message, or an object someone else still owns). Whoever takes the
+    error off the record takes this with it.
+    """;
+    i32 = ir.IntType(32);
+    context = self.builder.call(self._get_exception_context_fn(), []);
+    return self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
+}
+
+impl NaIRGenPass._raise_payload_drop(
+    payload: (ir.Value | None), msg: ir.Value, type_name: str
+) -> (ir.Value | None) {
+    """The drop a raise hands to the error record with its payload, if any.
+
+    Only a value the raise owns outright is handed over: a freshly built
+    exception object is dropped through its class's drop (which reads the
+    object's own vtable for a subclass), and a freshly built message string
+    is freed. A borrowed object or a static message gets no drop.
+    """;
+    i8p = ir.IntType(8).as_pointer();
+    if payload is not None and payload is not msg {
+        if not self._is_owned(payload) or type_name not in self.struct_types {
+            return None;
+        }
+        drop_fn = self._emit_struct_drop_fn(type_name);
+        if drop_fn is None {
+            return None;
+        }
+        return self.builder.bitcast(drop_fn, i8p, name="exc.drop.obj");
+    }
+    if msg.type != i8p or not self._is_owned(msg) {
+        return None;
+    }
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    return self.builder.bitcast(free_fn, i8p, name="exc.drop.msg");
+}
+
+impl NaIRGenPass._emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> None {
+    """Drop the exception a handler took off the error record, then forget it.""";
+    i8p = ir.IntType(8).as_pointer();
+    func = self.builder.function;
+    drop = self.builder.load(drop_slot, name="exc.drop");
+    call_bb = func.append_basic_block("exc.drop.call");
+    done_bb = func.append_basic_block("exc.drop.done");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "!=", drop, ir.Constant(i8p, None), name="exc.drop.set"
+        ),
+        call_bb,
+        done_bb
+    );
+    self.builder.position_at_end(call_bb);
+    drop_ty = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
+    self.builder.call(
+        self.builder.bitcast(drop, drop_ty, name="exc.drop.fn"),
+        [self.builder.load(obj_slot, name="exc.drop.obj")]
+    );
+    self.builder.store(ir.Constant(i8p, None), drop_slot);
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+}
+
+impl NaIRGenPass._exc_binding_escapes(handler: uni.Except) -> bool {
+    """Can the exception bound by `except ... as e` outlive its handler?
+
+    The handler drops the caught exception when it ends, so every use of the
+    binding must only read it: an argument to a plain function call, an
+    operand of arithmetic, comparison or `not`, an f-string part, a branch
+    condition, a statement of its own, or `raise e`, reached directly or
+    through attribute, index and method-call chains rooted at `e`. Anything
+    else -- storing it, returning it, putting it in a container, handing it to
+    a method, capturing it in a closure -- may keep a reference past the
+    drop, so the handler leaves such an exception undropped.
+    """;
+    if not isinstance(handler.name, uni.Name) {
+        return False;
+    }
+    bound = handler.name.value;
+    for stmt in handler.body or [] {
+        for use in stmt.get_all_sub_nodes(typ=uni.Name) {
+            if use.value != bound or use is handler.name {
+                continue;
+            }
+            scope = use.parent;
+            while scope is not None and scope is not handler {
+                if isinstance(scope, (uni.LambdaExpr, uni.Ability)) {
+                    return True;
+                }
+                scope = scope.parent;
+            }
+            cur: uni.UniNode = use;
+            while (isinstance(cur.parent, uni.AtomTrailer) and cur.parent.target is cur)
+                or (
+                    isinstance(cur.parent, uni.FuncCall) and cur.parent.target is cur
+                ) {
+                cur = cur.parent;
+            }
+            up = cur.parent;
+            if isinstance(up, uni.KWPair) {
+                cur = up;
+                up = up.parent;
+            }
+            if isinstance(up, uni.FuncCall) {
+                if isinstance(up.target, uni.Name) and cur in list(up.params or []) {
+                    continue;
+                }
+                return True;
+            }
+            if isinstance(
+                up, (uni.ExprStmt, uni.FormattedValue, uni.BinaryExpr, uni.CompareExpr)
+            ) {
+                continue;
+            }
+            if isinstance(up, uni.UnaryExpr)
+                and isinstance(up.op, uni.Token)
+                and up.op.name == Tok.NOT {
+                continue;
+            }
+            if isinstance(up, (uni.IfStmt, uni.WhileStmt)) and up.condition is cur {
+                continue;
+            }
+            if isinstance(up, uni.RaiseStmt) and up.cause is cur and cur is use {
+                continue;
+            }
+            if isinstance(up, uni.Assignment) and cur in list(up.target) {
+                continue;
+            }
+            return True;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
@@ -1256,8 +1655,17 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     }
 }
 
-impl NaIRGenPass._emit_err_check(callee: (uni.Ability | None)) -> None {
-    if callee is not None {
+impl NaIRGenPass._emit_err_check(
+    callee: (uni.Ability | None), site: (uni.UniNode | None) = None
+) -> None {
+    """Propagate a raise the callee left pending, unless the call is a tail call.
+
+    A `return tail` call returns the callee's result straight to this
+    function's caller, which checks the pending error itself; the frame has no
+    handler and nothing to clean up (the tail lowering refuses otherwise), so
+    propagating here would return the same fallback one frame earlier.
+    """;
+    if callee is not None and (site is None or site is not self._tail_call_site) {
         self._emit_pending_error_check();
     }
 }
@@ -1283,7 +1691,7 @@ impl NaIRGenPass._emit_pending_error_check -> None {
 }
 
 impl NaIRGenPass._codegen_raise_slot(
-    payload: ir.Value, type_id: int, msg: ir.Value
+    payload: ir.Value, type_id: int, msg: ir.Value, drop: (ir.Value | None) = None
 ) -> None {
     i32 = ir.IntType(32);
     (tglob, oglob, mglob) = self._nogc_err_slot();
@@ -1291,6 +1699,10 @@ impl NaIRGenPass._codegen_raise_slot(
     self.builder.store(ir.Constant(i32, type_id + 1), tglob);
     self.builder.store(payload, oglob);
     self.builder.store(msg, mglob);
+    if self._nogc_headerless() {
+        i8p = ir.IntType(8).as_pointer();
+        self.builder.store(drop or ir.Constant(i8p, None), self._nogc_err_drop_slot());
+    }
     self._emit_err_propagate(loc="raise");
 }
 
@@ -1304,11 +1716,20 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     finally_bb = func.append_basic_block("finally");
     merge_bb = func.append_basic_block("try.merge");
     error_bb = func.append_basic_block("finally.error");
+    exc_drop: (tuple[ir.Value, ir.Value] | None) = None;
+    if self._nogc_headerless() {
+        exc_drop = (
+            self._entry_alloca(i8p, "try.exc.drop"),
+            self._entry_alloca(i8p, "try.exc.obj")
+        );
+        self.builder.store(ir.Constant(i8p, None), exc_drop[0]);
+    }
     frame = NativeFinalizer(
         body=nd.finally_body,
         function=func,
         loop_depth=len(self.loop_stack),
-        handler_depth=len(self._slot_try_stack)
+        handler_depth=len(self._slot_try_stack),
+        exc_drop=exc_drop
     );
     self._finally_stack.append(frame);
     kind = self._entry_alloca(i32, "try.kind");
@@ -1363,10 +1784,32 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         );
         self._caught_error_stack.append((func, caught_values));
         self.builder.store(ir.Constant(i32, 0), tglob);
+        handler_drops = False;
+        if exc_drop is not None {
+            drop_field = self._nogc_err_drop_slot();
+            taken = self.builder.load(drop_field, name="exc.drop.taken");
+            self.builder.store(ir.Constant(i8p, None), drop_field);
+            handed_back: ir.Value = ir.Constant(i8p, None);
+            if except_node.name is None or not self._exc_binding_escapes(except_node) {
+                self.builder.store(taken, exc_drop[0]);
+                self.builder.store(caught_values[1], exc_drop[1]);
+                handed_back = taken;
+                handler_drops = True;
+            }
+            self._slot_caught_drops[id(caught_values)] = (exc_drop[0], handed_back);
+        }
+        var_name = "";
+        shadowed: (ir.Value | None) = None;
+        was_borrowed = False;
         if except_node.name is not None {
             var_name = except_node.name.value
                 if isinstance(except_node.name, uni.Name)
                 else str(except_node.name);
+            shadowed = self.local_vars.get(var_name);
+            was_borrowed = var_name in self.borrowed_vars;
+            if handler_drops {
+                self.borrowed_vars.add(var_name);
+            }
             if caught is not None {
                 _exc_sp_ty = self.struct_types[caught].as_pointer();
                 bound_val = self.builder.bitcast(
@@ -1388,7 +1831,18 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         }
         if except_node.name is not None {
             self._exc_bindings.pop();
+            if handler_drops {
+                if not was_borrowed {
+                    self.borrowed_vars.discard(var_name);
+                }
+                if shadowed is not None {
+                    self.local_vars[var_name] = shadowed;
+                } else {
+                    self.local_vars.pop(var_name, None);
+                }
+            }
         }
+        self._slot_caught_drops.pop(id(caught_values), None);
         self._caught_error_stack.pop();
         if not self.builder.block.is_terminated {
             self.builder.store(ir.Constant(i32, 0), kind);
@@ -1403,6 +1857,11 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     self.builder.store(ir.Constant(i32, 1), kind);
     self.builder.branch(finally_bb);
     self.builder.position_at_end(finally_bb);
+    pending_drop: (ir.Value | None) = None;
+    if exc_drop is not None {
+        self._emit_caught_drop(exc_drop[0], exc_drop[1]);
+        pending_drop = self.builder.load(self._nogc_err_drop_slot(), name="err.drop");
+    }
     pending = (
         self.builder.load(tglob),
         self.builder.load(oglob),
@@ -1424,6 +1883,9 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         for (slot, value) in zip(self._nogc_err_slot(), pending) {
             self.builder.store(value, slot);
         }
+        if pending_drop is not None {
+            self.builder.store(pending_drop, self._nogc_err_drop_slot());
+        }
         self._emit_err_propagate(loc="try.propagate");
     }
     self.builder.position_at_end(merge_bb);
@@ -1443,6 +1905,9 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
             self._slot_try_stack = saved_handlers[:frame.handler_depth];
             if frame.pop_handler {
                 self.builder.call(self._exc_pop_fn, []);
+            }
+            if frame.exc_drop is not None {
+                self._emit_caught_drop(frame.exc_drop[0], frame.exc_drop[1]);
             }
             if frame.context_exit is not None {
                 (cm, exit_fn) = frame.context_exit;
