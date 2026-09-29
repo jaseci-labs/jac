@@ -47,6 +47,8 @@ import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
     jacpy_binding_native_present,
+    jacpy_binding_own_get,
+    jacpy_binding_own_present,
     traverse_payload,
     clear_payload,
     dispose_payload,
@@ -267,12 +269,11 @@ def kind_for(type: ptr[PyObject]) -> int {
 # The instance's state through its type's own binding definition: every
 # itertools type keeps one payload, so no kind lookup is needed.
 def state_for(instance: ptr[PyObject]) -> (NativeState | None) {
-    handle = jacpy_binding_token(Py_TYPE(instance));
-    if handle == 0 or jacpy_binding_native_present(instance, handle) == 0 {
+    if jacpy_binding_own_present(instance) == 0 {
         object_error(PyExc_RuntimeError, "uninitialized native iterator");
         return None;
     }
-    return jacpy_binding_native_get(instance, handle);
+    return jacpy_binding_own_get(instance);
 }
 
 def wrap(type: ptr[PyObject], state: NativeState) -> ptr[PyObject] {
@@ -336,6 +337,15 @@ def iterator_dealloc(instance: ptr[PyObject]) {
 
 def data_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_dealloc_guard(instance, data_dealloc, iterator_dealloc);
+}
+
+# tp_iternext of the pipeline kinds (accumulate through zip_longest).
+def pipeline_iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if isinstance(state, PipelineState) {
+        return jacpy_pipeline_next(state.native);
+    }
+    return NULL;
 }
 
 def iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {

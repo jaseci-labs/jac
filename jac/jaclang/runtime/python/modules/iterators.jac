@@ -336,7 +336,8 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
     if kind == pipeline_kind.ZIP_LONGEST.value {
         return pipeline_zip(state);
     }
-    # repeat cannot fail: it runs outside the exception region.
+    # repeat cannot fail: it stays out of the exception region, which keeps
+    # a function from being optimized.
     if kind == pipeline_kind.REPEAT.value {
         if state.stop == 0 {
             return NULL;
@@ -346,6 +347,11 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
         }
         return Py_NewRef(state.value);
     }
+    return pipeline_advance(state, kind);
+}
+
+# The kinds whose step can fail, inside the exception region.
+def:priv pipeline_advance(state: pipeline_state, kind: i64) -> ptr[PyObject] {
     item: ptr[PyObject] = NULL;
     good: ptr[PyObject] = NULL;
     result: ptr[PyObject] = NULL;

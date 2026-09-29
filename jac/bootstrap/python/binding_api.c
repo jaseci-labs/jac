@@ -406,6 +406,17 @@ void *jacpy_binding_token(PyObject *type) {
     return NULL;
 }
 
+static void **native_payload(PyObject *object, void *definition);
+
+/* The state of an instance of any binding type, through its type's own
+ * nearest definition: one call where a kind lookup, a presence check and a
+ * read took three. */
+int64_t jacpy_binding_own_present(PyObject *object) {
+    void *definition = jacpy_binding_token((PyObject *)Py_TYPE(object));
+    void **slot = definition ? native_payload(object, definition) : NULL;
+    return slot && *slot;
+}
+
 /* An instance of the definition's own type (the common case) has its
  * payload at its type's data, without the MRO search and base reference. */
 static void **native_payload(PyObject *object, void *definition) {
@@ -442,6 +453,14 @@ int64_t jacpy_binding_module_native_present(PyObject *module) {
     return state && state->native;
 }
 
+/* jacpy_binding_own_present()'s state, as an owned reference. */
+void *jacpy_binding_own_get(PyObject *object) {
+    void *definition = jacpy_binding_token((PyObject *)Py_TYPE(object));
+    void **slot = definition ? native_payload(object, definition) : NULL;
+    void *state = slot ? *slot : NULL;
+    if (state) jac_retain(state);
+    return state;
+}
 void *jacpy_binding_native_get(PyObject *object, void *definition) {
     void **slot = native_payload(object, definition);
     if (!slot) return NULL;

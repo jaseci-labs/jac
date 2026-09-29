@@ -69,6 +69,7 @@ import from jaclang.runtime.python.modules.itertools {
     iterator_dealloc,
     iterator_new,
     iterator_next,
+    pipeline_iterator_next,
     iterator_repr,
     iterator_self,
     iterator_traverse,
@@ -155,6 +156,9 @@ def:priv make_types -> list[TypeDefinition] {
             hooks.create = itertools__tee_new;
         } elif kind == Kind.TEE_DATA.value {
             hooks.create = itertools_teedataobject_new;
+        }
+        if kind <= Kind.ZIP_LONGEST.value {
+            hooks.next = pipeline_iterator_next;
         }
         if kind <= Kind.GROUPBY.value {
             flags = flags | u64(TypeFlags.BASETYPE.value);
