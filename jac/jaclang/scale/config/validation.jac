@@ -9,3 +9,6 @@ def _scheduler_bound_findings(raw: dict[str, any]) -> list[str];
 def _as_number(raw: any) -> float | None;
 def scheduler_min_interval(raw: any) -> float | None;
 def scheduler_job_cap(raw: any) -> int | None;
+def _jobs_bound_findings(raw: dict[str, any]) -> list[str];
+def jobs_concurrency(raw: any) -> int | None;
+def jobs_lease_seconds(raw: any) -> float | None;

@@ -25,6 +25,35 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
     )
     """
      ],
+     JOBS_SCHEMA_SQL: list[str] = [
+         """
+    CREATE TABLE IF NOT EXISTS jac_jobs (
+        id           text PRIMARY KEY,
+        queue        text NOT NULL,
+        target       text NOT NULL,
+        args         jsonb NOT NULL DEFAULT '{}'::jsonb,
+        key          text UNIQUE,
+        status       text NOT NULL,
+        run_at       timestamptz NOT NULL DEFAULT now(),
+        attempts     integer NOT NULL DEFAULT 0,
+        max_attempts integer NOT NULL DEFAULT 3,
+        timeout_s    double precision NOT NULL DEFAULT 0,
+        lease_owner  text NOT NULL DEFAULT '',
+        lease_until  timestamptz,
+        last_error   text NOT NULL DEFAULT '',
+        created_at   timestamptz NOT NULL DEFAULT now(),
+        updated_at   timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_jac_jobs_due
+        ON jac_jobs (queue, status, run_at)
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_jac_jobs_lease
+        ON jac_jobs (lease_until) WHERE status = 'running'
+    """
+     ],
      _SCHEMA_SQL: list[str] = [
          """
     CREATE TABLE IF NOT EXISTS anchors (
@@ -97,7 +126,8 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
         ON jac_docs (collection, (doc->>'user_id'))
     """
      ]
-         + OUTBOX_SCHEMA_SQL;
+         + OUTBOX_SCHEMA_SQL
+         + JOBS_SCHEMA_SQL;
 
 
 impl ConnInfo.dsn -> str {
