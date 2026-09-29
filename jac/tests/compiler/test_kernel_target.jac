@@ -89,11 +89,16 @@ test "a kernel target retargets the package predicates at a staging copy" {
         unitree_self = os.path.join(
             jaclang_pkg_root(), "compiler", "frontend", "unitree.jac"
         );
-        # Without a spec the copy is a foreign tree: its classes would be
-        # renamed with a per-file scope suffix.
+        # Runtime units keep bare struct names because the backend addresses
+        # them by name; every other package module is module-scoped.
+        osp_copy = os.path.join(copy, "runtime", "osp_kernel.jac");
+        osp_self = os.path.join(jaclang_pkg_root(), "runtime", "osp_kernel.jac");
+        # Without a spec the copy is a foreign tree: even its runtime units
+        # would be renamed with a per-file scope suffix.
         assert target_pkg_root() == jaclang_pkg_root();
-        assert native_arch_scope(unitree_copy) != "";
-        assert native_arch_scope(unitree_self) == "";
+        assert native_arch_scope(osp_copy) != "";
+        assert native_arch_scope(osp_self) == "";
+        assert native_arch_scope(unitree_self) != "";
         identity = native_unit_identity(unitree_self);
 
         set_kernel_target(running_kernel_target(copy));
@@ -104,9 +109,10 @@ test "a kernel target retargets the package predicates at a staging copy" {
         }
         assert is_target_package_path(unitree_copy);
         assert not is_target_package_path(unitree_self);
-        assert native_arch_scope(unitree_copy) == "";
+        assert native_arch_scope(osp_copy) == "";
+        assert native_arch_scope(unitree_copy) == native_arch_scope(unitree_self);
         assert native_unit_identity(unitree_copy) == identity;
-        assert is_kernel_unit_path(os.path.join(copy, "runtime", "osp_kernel.jac"));
+        assert is_kernel_unit_path(osp_copy);
         assert os.path.realpath(str(native_stdlib_root())).startswith(real_copy);
         assert native_only(os.path.join(copy, "compiler", "jc_unit.jac"));
         (resolved, lang) = resolve_module(
@@ -120,7 +126,7 @@ test "a kernel target retargets the package predicates at a staging copy" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
     assert target_pkg_root() == jaclang_pkg_root();
-    assert native_arch_scope(unitree_copy) != "";
+    assert native_arch_scope(os.path.join(copy, "runtime", "osp_kernel.jac")) != "";
 }
 
 test "only a kernel target's units share module cache files across trees" {
