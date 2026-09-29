@@ -74,6 +74,20 @@ test "a named own local moved into an inline-flattened own field drops once" {
         == ["drop node 0", "h.slot.v=2", "drop node 2", "done"] , out;
 }
 
+test "an own field held by pointer drops the object each store replaces" {
+    out = assert_native_identity(_fixture("pointer_field_move.jac"));
+    assert out.splitlines()
+        == [
+            "before=0",
+            "drop node 0",
+            "h.slot.v=2",
+            "drop node 2",
+            "h.slot.v=3",
+            "drop node 3",
+            "done"
+        ] , out;
+}
+
 test "an owned singly linked list with take() and swap() behaves identically" {
     out = assert_native_identity(_fixture("linked_list.jac"));
     assert out.strip() == "10409" , out;

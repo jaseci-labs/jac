@@ -2121,6 +2121,10 @@ walker NaIRGenPass(CompilerPass) {
     def _arch_has_vtable(arch_name: str) -> bool;
     def _devirt_closed_world(arch_name: str) -> bool;
     def _hasvar_is_own(var: uni.UniNode) -> bool;
+    def _nogc_drop_replaced_field(
+        ftype: ir.Type, old_val: ir.Value, new_val: ir.Value, type_name: str
+    ) -> None;
+
     def _store_inline_field(
         type_name: str,
         fname: str,
