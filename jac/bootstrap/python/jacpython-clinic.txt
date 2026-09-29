@@ -38,3 +38,4 @@ _heapq
 _random
 _statistics
 binascii
+_queue
