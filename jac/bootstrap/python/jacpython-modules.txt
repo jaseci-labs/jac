@@ -86,3 +86,4 @@ _codecs_iso2022 test.test_codecencodings_iso2022
 _codecs_jp      test.test_codecencodings_jp,test.test_codecmaps_jp
 _codecs_kr      test.test_codecencodings_kr,test.test_codecmaps_kr
 _codecs_tw      test.test_codecencodings_tw,test.test_codecmaps_tw
+_sre            test.test_re

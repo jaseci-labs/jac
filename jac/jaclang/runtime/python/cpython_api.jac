@@ -100,14 +100,16 @@ import from c {
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: str, arg3: ptr, *args: any
     ) -> i32;  def PyArg_UnpackTuple(
         arg0: ptr[PyObject], arg1: str, arg2: i64, arg3: i64, *args: any
-    ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyByteArray_FromObject(
-        arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyByteArray_Resize(
+    ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyBuffer_Release(
+        view: ptr[Py_buffer]
+    );  def PyByteArray_FromObject(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyByteArray_Resize(
         arg0: ptr[PyObject], arg1: i64
     ) -> i32;  def PyBytes_AsString(arg0: ptr[PyObject]) -> ptr[u8];  def PyBytes_DecodeEscape(
         arg0: ptr, arg1: i64, arg2: ptr[u8], arg3: i64, arg4: ptr[u8]
-    ) -> ptr[PyObject];  def PyBytes_FromStringAndSize(
+    ) -> ptr[PyObject];  def PyBytes_FromObject(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyBytes_FromStringAndSize(
         arg0: bytes, arg1: i64
+    ) -> ptr[PyObject];  def PyBytes_Join(
+        sep: ptr[PyObject], iterable: ptr[PyObject]
     ) -> ptr[PyObject];  def PyBytes_Size(arg0: ptr[PyObject]) -> i64;  def PyCFunction_NewEx(
         arg0: ptr[PyMethodDef], arg1: ptr[PyObject], arg2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyCallable_Check(arg0: ptr[PyObject]) -> i32;  def PyCodec_Decode(
@@ -130,9 +132,11 @@ import from c {
         name: str, default_value: ptr[PyObject]
     ) -> ptr[PyObject];  def PyContextVar_Set(
         var: ptr[PyObject], value: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyDict_Clear(mp: ptr[PyObject]);  def PyDict_Contains(
-        mp: ptr[PyObject], key: ptr[PyObject]
-    ) -> i32;  def PyDict_Copy(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_DelItem(
+    ) -> ptr[PyObject];  def PyDictProxy_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyDict_Clear(
+        mp: ptr[PyObject]
+    );  def PyDict_Contains(mp: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyDict_Copy(
+        mp: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyDict_DelItem(
         mp: ptr[PyObject], key: ptr[PyObject]
     ) -> i32;  def PyDict_GetItemRef(
         mp: ptr[PyObject], key: ptr[PyObject], result: &mut ptr[PyObject]
@@ -363,11 +367,11 @@ import from c {
         callable_: ptr[PyObject], args: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallOneArg(
         func: ptr[PyObject], arg: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_DelAttrString(
-        v: ptr[PyObject], name: str
-    ) -> i32;  def PyObject_DelItem(o: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyObject_Free(
-        ptr_: ptr
-    );  def PyObject_GC_Del(arg0: ptr);  def PyObject_GC_IsTracked(
+    ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_ClearWeakRefs(
+        arg0: ptr[PyObject]
+    );  def PyObject_DelAttrString(v: ptr[PyObject], name: str) -> i32;  def PyObject_DelItem(
+        o: ptr[PyObject], key: ptr[PyObject]
+    ) -> i32;  def PyObject_Free(ptr_: ptr);  def PyObject_GC_Del(arg0: ptr);  def PyObject_GC_IsTracked(
         arg0: ptr[PyObject]
     ) -> i32;  def PyObject_GC_Track(arg0: ptr);  def PyObject_GC_UnTrack(arg0: ptr);  def PyObject_GenericGetAttr(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
@@ -575,7 +579,7 @@ import from c {
         unicode: ptr[PyObject]
     ) -> i64;  def PyUnicode_InternFromString(u: str) -> ptr[PyObject];  def PyUnicode_Join(
         separator: ptr[PyObject], seq: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyUnicode_ReadChar(
+    ) -> ptr[PyObject];  def PyUnicode_New(size: i64, maxchar: u32) -> ptr[PyObject];  def PyUnicode_ReadChar(
         unicode: ptr[PyObject], index: i64
     ) -> u32;  def PyUnicode_Splitlines(
         s: ptr[PyObject], keepends: i32
@@ -652,11 +656,11 @@ import from c {
         arg0: ptr[PyObject], arg1: &mut u16
     ) -> i32;  def _PyMem_Strdup(str_: ptr) -> ptr[u8];  def _PyNumber_Index(
         o: ptr[PyObject]
-    ) -> ptr[PyObject];  def _PyObject_GC_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def _PyObject_GetState(
-        arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def _PyObject_HasLen(o: ptr[PyObject]) -> i32;  def _PyObject_IsAbstract(
-        arg0: ptr[PyObject]
-    ) -> i32;  def _PyObject_LookupSpecial(
+    ) -> ptr[PyObject];  def _PyObject_GC_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def _PyObject_GC_NewVar(
+        arg0: ptr[PyObject], arg1: i64
+    ) -> ptr[PyObject];  def _PyObject_GetState(arg0: ptr[PyObject]) -> ptr[PyObject];  def _PyObject_HasLen(
+        o: ptr[PyObject]
+    ) -> i32;  def _PyObject_IsAbstract(arg0: ptr[PyObject]) -> i32;  def _PyObject_LookupSpecial(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyObject_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def _PyST_GetScope(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
@@ -728,13 +732,21 @@ import from c {
         unicode: ptr[PyObject], base64SetO: i32, base64WhiteSpace: i32, errors: ptr[u8]
     ) -> ptr[PyObject];  def _PyUnicode_EqualToASCIIString(
         left: ptr[PyObject], right: str
-    ) -> i32;  def _PyUnicode_IsPrintable(ch: u32) -> i32;  def _PyUnicode_IsWhitespace(
+    ) -> i32;  def _PyUnicode_IsAlpha(ch: u32) -> i32;  def _PyUnicode_IsDecimalDigit(
         ch: u32
-    ) -> i32;  def _PyUnicode_IsXidContinue(ch: u32) -> i32;  def _PyUnicode_IsXidStart(
+    ) -> i32;  def _PyUnicode_IsDigit(ch: u32) -> i32;  def _PyUnicode_IsLinebreak(
         ch: u32
-    ) -> i32;  def _PyUnicode_ToDecimalDigit(ch: u32) -> i32;  def _PyUnicode_ToDigit(
+    ) -> i32;  def _PyUnicode_IsNumeric(ch: u32) -> i32;  def _PyUnicode_IsPrintable(
         ch: u32
-    ) -> i32;  def _PyUnicode_ToNumeric(ch: u32) -> f64;  def _PyWeakref_GetWeakrefCount(
+    ) -> i32;  def _PyUnicode_IsWhitespace(ch: u32) -> i32;  def _PyUnicode_IsXidContinue(
+        ch: u32
+    ) -> i32;  def _PyUnicode_IsXidStart(ch: u32) -> i32;  def _PyUnicode_JoinArray(
+        separator: ptr[PyObject], items: ptr[ptr[PyObject]], seqlen: i64
+    ) -> ptr[PyObject];  def _PyUnicode_ToDecimalDigit(ch: u32) -> i32;  def _PyUnicode_ToDigit(
+        ch: u32
+    ) -> i32;  def _PyUnicode_ToLowercase(ch: u32) -> u32;  def _PyUnicode_ToNumeric(
+        ch: u32
+    ) -> f64;  def _PyUnicode_ToUppercase(ch: u32) -> u32;  def _PyWeakref_GetWeakrefCount(
         obj_: ptr[PyObject]
     ) -> i64;  def _PyWeakref_IsDead(weakref: ptr[PyObject]) -> i32;  def _Py_CalculateSuggestions(
         dir: ptr[PyObject], name: ptr[PyObject]

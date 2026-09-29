@@ -73,6 +73,22 @@ packing a row's offset and bounds, and each `MAPPING_*` entry a `DbcsMap`
 record the module publishes as its `__map_<charset>` capsule. The codecs
 themselves are `MultibyteCodec` records whose entry points are named Jac
 functions, which `_multibytecodec` calls through the record as C does.
+Code a C file generates by including a template header more than once is
+generated the same way: sre.c includes `sre_lib.h` once per character
+width, and `scripts/jacpython/gen_sre.jac` writes the Jac template
+`scripts/jacpython/sre_lib.jac.in` as `modules/sre_ucs1.jac`,
+`sre_ucs2.jac` and `sre_ucs4.jac` (with `sre_constants.jac` from
+`Modules/_sre/sre_constants.h`). The matcher keeps sre_lib.h's explicit
+stack of match contexts and is one function, as the C is: an opcode
+dispatch loop whose `match` lowers to a jump table, inside a loop over the
+C's other labels (a context's exit, the label a DO_JUMP resumes at, the
+head of a loop a DO_JUMP interrupts), with the template spelling the C's
+control macros and the generator expanding them. A `match`-in-a-loop
+dispatcher is not threaded through the loop header by LLVM, so the opcode
+loop is its own loop and only jumps between labels pass the step switch.
+The calls a regular expression makes most bind their positional arguments
+directly and fall back to the generated clinic glue for keywords or
+conversions, so error messages stay the C module's.
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant
