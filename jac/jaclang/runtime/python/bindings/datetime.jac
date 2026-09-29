@@ -11,7 +11,6 @@ See ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     jacpy_release,
     NULL,
-    PyCapsule_New,
     PyDict_SetItemString,
     PyInterpreterState,
     PyInterpreterState_Get,
@@ -31,6 +30,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyStaticType_InitForExtension,
     _PyType_GetDict
 }
+import from jaclang.runtime.python.object_model.capsule { PyCapsule_New }
 import from jaclang.runtime.python.layouts {
     METH_CLASS,
     METH_FASTCALL,

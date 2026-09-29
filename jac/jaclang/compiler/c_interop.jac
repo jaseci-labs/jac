@@ -355,21 +355,6 @@ def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
     return clib_global_assignment(resolved_decl_of(sym)) if sym is not None else None;
 }
 
-"""The function `expr` names, following imports, or None. A callback field and
-`ptr(f)` take a named function: its address is a C constant."""
-def named_function(expr: (UniNode | None)) -> (Ability | None) {
-    import from jaclang.compiler.frontend.unitree { Ability, Name }
-    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
-        expr = expr.value;
-    }
-    if not isinstance(expr, Name) or expr.sym is None {
-        return None;
-    }
-    decl = resolved_decl_of(expr.sym);
-    owner = decl.name_of if decl is not None else None;
-    return owner if isinstance(owner, Ability) else None;
-}
-
 def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     import from jaclang.compiler.frontend.unitree {
         FString,
@@ -390,6 +375,9 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None) {
 names, local or imported, or None when it names anything else."""
 def named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
     import from jaclang.compiler.frontend.unitree { Ability, Name }
+    while isinstance(nd, AtomUnit) and isinstance(nd.value, Expr) {
+        nd = nd.value;
+    }
     if not isinstance(nd, Name) or nd.sym is None {
         return None;
     }

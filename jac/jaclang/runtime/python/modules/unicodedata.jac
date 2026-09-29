@@ -18,7 +18,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_GetConstant,
     Py_NewRef,
     Py_TYPE,
-    PyCapsule_New,
     PyErr_Format,
     PyErr_NoMemory,
     PyExc_KeyError,
@@ -41,6 +40,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyUnicode_ToDigit,
     _PyUnicode_ToNumeric
 }
+import from jaclang.runtime.python.object_model.capsule { PyCapsule_New }
 import from jaclang.runtime.python.capi { c_string_length, c_string_text, object_error }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.state { NativeState }

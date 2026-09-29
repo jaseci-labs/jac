@@ -225,7 +225,7 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         c_variadic_param,
         is_builtin_pin_call,
         is_ptr_type,
-        named_function
+        named_function_of
     }
     callee_type = nd.target.type if nd.target is not None else None;
     cast_args = list(nd.params or []);
@@ -233,7 +233,7 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         and callee_type is not None
         and not callee_type.is_instance()
         and len(cast_args) == 1
-        and named_function(cast_args[0]) is not None {
+        and named_function_of(cast_args[0]) is not None {
         # `ptr(f)`: a C callback for the named function, kept alive for good.
         call = self.outs(nd)[0] if self.outs(nd) else None;
         if isinstance(call, CgNode) and call.cls == 'Call' {
