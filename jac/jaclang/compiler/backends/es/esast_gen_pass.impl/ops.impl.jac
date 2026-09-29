@@ -519,8 +519,8 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         here.gen.es_ast = self._build_osp_disconnect_call(here, left, right);
         return;
     }
-    op_name_str = here.op?.name;
-    op_name = op_name_str;
+    op = here.op;
+    op_name = op.name if isinstance(op, uni.Token) else None;
     if (op_name == Tok.KW_SPAWN) {
         local_spawn = self._build_local_osp_spawn(here, left, right);
         if local_spawn is not None {

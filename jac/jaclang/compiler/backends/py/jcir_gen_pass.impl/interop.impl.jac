@@ -470,14 +470,17 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
         CrossAppKind,
         classify_cross_app_import
     }
-    if isinstance(expr, BinaryExpr) and expr.op?.name == Tok.KW_SPAWN {
-        for side in (expr.right, expr.left) {
-            found = self._sv_bridge_walker_call(side);
-            if found is not None {
-                return found;
+    if isinstance(expr, BinaryExpr) {
+        op = expr.op;
+        if isinstance(op, Token) and op.name == Tok.KW_SPAWN {
+            for side in (expr.right, expr.left) {
+                found = self._sv_bridge_walker_call(side);
+                if found is not None {
+                    return found;
+                }
             }
+            return None;
         }
-        return None;
     }
     if not isinstance(expr, FuncCall) or not isinstance(expr.target, Name) {
         return None;
