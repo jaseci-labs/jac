@@ -1610,7 +1610,8 @@ def _build_types_runtime_js -> str {
         ESEmitCtx,
         es_sized_cast
     }
-    emitter = ESBuiltinEmitter();
+    import from jaclang.compiler.backends.common.primitives { PrimitiveEmitter }
+    emitter: PrimitiveEmitter[(str, ESEmitCtx)] = ESBuiltinEmitter();
     ctx = ESEmitCtx(unparser=JSCodeGenerator());
     entries: list[str] = [];
     for (tok, name) in sorted(TOKEN_MAP.items()) {
