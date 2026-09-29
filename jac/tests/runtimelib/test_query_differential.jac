@@ -23,7 +23,7 @@ node DB {
     has tag: str = "";
 }
 
-edge DE {
+edge DE: any --> any {
     has w: int = 0;
 }
 

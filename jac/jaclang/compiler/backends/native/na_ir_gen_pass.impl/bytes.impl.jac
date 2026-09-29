@@ -498,3 +498,219 @@ impl NaIRGenPass._bytes_repr_fn -> ir.Function {
     self._bytes_repr_function = fn;
     return fn;
 }
+
+impl NaIRGenPass._emit_bytes_needle(
+    needle: ir.Value
+) -> (tuple[ir.Value, ir.Value, ir.Value] | None) {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    if self._is_bytes_value(needle) {
+        return (
+            self._bytes_data_ptr(needle),
+            self._bytes_len_val(needle),
+            ir.Constant(i64, 0)
+        );
+    }
+    if not isinstance(needle.type, ir.IntType) {
+        return None;
+    }
+    byte = self._coerce_type(needle, i64);
+    self._emit_runtime_raise(
+        self.builder.icmp_unsigned(
+            ">", byte, ir.Constant(i64, 255), name="by.nd.range"
+        ),
+        "ValueError",
+        "byte must be in range(0, 256)"
+    );
+    return (ir.Constant(i8p, None), ir.Constant(i64, 1), byte);
+}
+
+impl NaIRGenPass._emit_bytes_search(
+    target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
+) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    modes = {"find": 0, "rfind": 1, "count": 2};
+    if not args or len(args) > 3 or mode not in modes {
+        return None;
+    }
+    for bound in args[1:] {
+        if not isinstance(bound.type, ir.IntType) {
+            return None;
+        }
+    }
+    parts = self._emit_bytes_needle(args[0]);
+    if parts is None {
+        return None;
+    }
+    (data, size, byte) = parts;
+    start = self._coerce_type(args[1], i64) if len(args) > 1 else ir.Constant(i64, 0);
+    end = self._coerce_type(args[2], i64)
+        if len(args) > 2
+        else self._bytes_len_val(target);
+    result = self.builder.call(
+        self._bytes_search_fn(),
+        [target, data, size, byte, start, end, ir.Constant(i64, modes[mode])],
+        name=f"by.{mode}"
+    );
+    if missing {
+        self._emit_runtime_raise(
+            self.builder.icmp_signed("<", result, ir.Constant(i64, 0), name="by.miss"),
+            "ValueError",
+            missing
+        );
+    }
+    return result;
+}
+
+impl NaIRGenPass._bytes_search_fn -> ir.Function {
+    if self._bytes_search_function is not None {
+        return self._bytes_search_function;
+    }
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    minus_one = ir.Constant(i64, -1);
+    bt_ptr = self._get_bytes_struct_type().as_pointer();
+    fnty = ir.FunctionType(i64, [bt_ptr, i8p, i64, i64, i64, i64, i64]);
+    fn = ir.Function(self.llvm_module, fnty, name="__jac_bytes_search");
+    fn.linkage = "private";
+    (hay, needle, needle_len, byte, raw_start, raw_end, mode) = fn.args;
+    for (arg, name) in zip(
+        fn.args, ["hay", "needle", "needle_len", "byte", "start", "end", "mode"]
+    ) {
+        arg.name = name;
+    }
+    memmem_fn = self._get_or_declare_extern("memmem", i8p, [i8p, i64, i8p, i64]);
+    memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    byte_slot = b.alloca(i8, name="s.byte");
+    b.store(b.trunc(byte, i8), byte_slot);
+    length = b.load(
+        b.gep(hay, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="s.len"
+    );
+    data = b.bitcast(
+        b.gep(hay, [ir.Constant(i32, 0), ir.Constant(i32, 1)]), i8p, name="s.data"
+    );
+    is_byte = b.icmp_unsigned("==", needle, ir.Constant(i8p, None), name="s.isbyte");
+    nd = b.select(is_byte, byte_slot, needle, name="s.nd");
+    nd_len = b.select(is_byte, one, needle_len, name="s.ndlen");
+    end_hi = b.select(
+        b.icmp_signed(">", raw_end, length), length, raw_end, name="s.end.hi"
+    );
+    end_w = b.select(
+        b.icmp_signed("<", end_hi, zero), b.add(end_hi, length), end_hi, name="s.end.w"
+    );
+    end = b.select(b.icmp_signed("<", end_w, zero), zero, end_w, name="s.end");
+    start_w = b.select(
+        b.icmp_signed("<", raw_start, zero),
+        b.add(raw_start, length),
+        raw_start,
+        name="s.start.w"
+    );
+    start = b.select(b.icmp_signed("<", start_w, zero), zero, start_w, name="s.start");
+    span = b.sub(end, start, name="s.span");
+    empty = b.icmp_signed("==", nd_len, zero, name="s.empty");
+    too_short = b.icmp_signed("<", span, nd_len, name="s.short");
+
+    find_bb = fn.append_basic_block("find");
+    find_scan = fn.append_basic_block("find.scan");
+    rfind_bb = fn.append_basic_block("rfind");
+    rfind_scan = fn.append_basic_block("rfind.scan");
+    rfind_loop = fn.append_basic_block("rfind.loop");
+    rfind_body = fn.append_basic_block("rfind.body");
+    rfind_hit = fn.append_basic_block("rfind.hit");
+    count_bb = fn.append_basic_block("count");
+    count_scan = fn.append_basic_block("count.scan");
+    count_loop = fn.append_basic_block("count.loop");
+    count_probe = fn.append_basic_block("count.probe");
+    count_hit = fn.append_basic_block("count.hit");
+    miss_bb = fn.append_basic_block("miss");
+    by_mode = b.switch(mode, count_bb);
+    by_mode.add_case(ir.Constant(i64, 0), find_bb);
+    by_mode.add_case(ir.Constant(i64, 1), rfind_bb);
+
+    b.position_at_end(miss_bb);
+    b.ret(minus_one);
+
+    b.position_at_end(find_bb);
+    empty_hit = fn.append_basic_block("find.empty");
+    b.cbranch(too_short, miss_bb, empty_hit);
+    b.position_at_end(empty_hit);
+    empty_ret = fn.append_basic_block("find.empty.ret");
+    b.cbranch(empty, empty_ret, find_scan);
+    b.position_at_end(empty_ret);
+    b.ret(start);
+    b.position_at_end(find_scan);
+    found = b.call(
+        memmem_fn, [b.gep(data, [start]), span, nd, nd_len], name="find.ptr"
+    );
+    find_hit = fn.append_basic_block("find.hit");
+    b.cbranch(b.icmp_unsigned("==", found, ir.Constant(i8p, None)), miss_bb, find_hit);
+    b.position_at_end(find_hit);
+    b.ret(b.sub(b.ptrtoint(found, i64), b.ptrtoint(data, i64), name="find.idx"));
+
+    b.position_at_end(rfind_bb);
+    rfind_nonempty = fn.append_basic_block("rfind.nonempty");
+    rfind_empty = fn.append_basic_block("rfind.empty");
+    b.cbranch(too_short, miss_bb, rfind_nonempty);
+    b.position_at_end(rfind_nonempty);
+    b.cbranch(empty, rfind_empty, rfind_scan);
+    b.position_at_end(rfind_empty);
+    b.ret(end);
+    b.position_at_end(rfind_scan);
+    first = b.sub(end, nd_len, name="rfind.first");
+    b.branch(rfind_loop);
+    b.position_at_end(rfind_loop);
+    pos = b.phi(i64, name="rfind.pos");
+    pos.add_incoming(first, rfind_scan);
+    b.cbranch(b.icmp_signed("<", pos, start), miss_bb, rfind_body);
+    b.position_at_end(rfind_body);
+    window = b.gep(data, [pos], name="rfind.window");
+    same = b.call(memcmp_fn, [window, nd, nd_len], name="rfind.cmp");
+    pos.add_incoming(b.sub(pos, one, name="rfind.prev"), rfind_body);
+    b.cbranch(b.icmp_signed("==", same, ir.Constant(i32, 0)), rfind_hit, rfind_loop);
+    b.position_at_end(rfind_hit);
+    b.ret(pos);
+
+    b.position_at_end(count_bb);
+    count_ok = fn.append_basic_block("count.ok");
+    count_empty = fn.append_basic_block("count.empty");
+    count_none = fn.append_basic_block("count.none");
+    b.cbranch(b.icmp_signed("<", span, zero), count_none, count_ok);
+    b.position_at_end(count_none);
+    b.ret(zero);
+    b.position_at_end(count_ok);
+    b.cbranch(empty, count_empty, count_scan);
+    b.position_at_end(count_empty);
+    b.ret(b.add(span, one, name="count.slots"));
+    b.position_at_end(count_scan);
+    b.branch(count_loop);
+    b.position_at_end(count_loop);
+    cursor = b.phi(i64, name="count.cursor");
+    total = b.phi(i64, name="count.total");
+    cursor.add_incoming(start, count_scan);
+    total.add_incoming(zero, count_scan);
+    count_done = fn.append_basic_block("count.done");
+    rest = b.sub(end, cursor, name="count.rest");
+    b.cbranch(b.icmp_signed("<", rest, nd_len), count_done, count_probe);
+    b.position_at_end(count_probe);
+    hit = b.call(
+        memmem_fn, [b.gep(data, [cursor]), rest, nd, nd_len], name="count.ptr"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", hit, ir.Constant(i8p, None)), count_done, count_hit
+    );
+    b.position_at_end(count_hit);
+    offset = b.sub(b.ptrtoint(hit, i64), b.ptrtoint(data, i64), name="count.at");
+    cursor.add_incoming(b.add(offset, nd_len, name="count.next"), count_hit);
+    total.add_incoming(b.add(total, one, name="count.inc"), count_hit);
+    b.branch(count_loop);
+    b.position_at_end(count_done);
+    b.ret(total);
+
+    self._bytes_search_function = fn;
+    return fn;
+}

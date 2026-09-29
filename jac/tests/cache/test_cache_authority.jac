@@ -19,7 +19,7 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from tests.support { cache_env }
 import from jaclang.cache.locking { FileLock }
-import from jaclang.toolchains.store { InstallLock }
+import from jaclang.jac0core.cache_paths { FileLock as InstallLock }
 import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
 import from jaclang.cache.home {
     CACHEDIR_TAG,
@@ -54,8 +54,8 @@ glob DAY: float = 86400.0,
          "jir-modules",
          "jir-bootstrap",
          "jir-stubcat",
-         "jir-kernel-units",
          "jir-digests",
+         "stage0",
          "apps",
          "scale-binaries",
          "models",
@@ -129,6 +129,10 @@ test "every pre-bootstrap path derives from the one root" {
         assert bucket("jir-modules").path() == base / "jir" / "modules";
         assert bucket("apps").path() == base / "apps";
         assert bucket("rt").path() == base / "rt";
+        import from jaclang.compiler.backends.native.stage0_build { stage0_dir }
+        assert Path(stage0_dir("a" * 40)).parent == bucket("stage0").path();
+        assert bucket("stage0").policy.matches("a" * 40);
+        assert not bucket("stage0").policy.matches("a" * 40 + ".lock");
     }
 }
 
@@ -448,14 +452,16 @@ test "inspection and purge include staging while unknown JIR content remains vis
         with patch(
             "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
         ) {
-            dry = purge(dry_run=True);
+            # Lazy compiler imports can populate other buckets in this private root.
+            # Account for the fixture buckets only, including the unmanaged JIR.
+            dry = purge(["toolchains-installed", "rt", "jir-digests"], dry_run=True);
         }
         assert dry.reclaimed_bytes == 2048;
         assert install.exists() and runtime.exists();
         with patch(
             "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
         ) {
-            result = purge();
+            result = purge(["toolchains-installed", "rt", "jir-digests"]);
         }
         assert result.reclaimed_bytes == 2048;
         assert not install.exists() and not runtime.exists();

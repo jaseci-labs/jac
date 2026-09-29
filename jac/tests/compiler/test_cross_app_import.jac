@@ -9,6 +9,7 @@ workspace: a web-app entry, a social service entry, a cli app and a
 pair of mutually-importing services that close an app cycle.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -92,15 +93,23 @@ test "server-context import of another serving app is SERVICE_BRIDGE" {
     assert greet is not None and greet.provider_app == "social";
     walker_binding = manifest.bindings.get("Greet");
     assert walker_binding is not None and walker_binding.kind == "walker" , (
-        "a plain (non-:pub) walker bridges like any archetype"
+        "an exposed (:protect) walker bridges like a :pub one"
     );
     assert "E5106" not in codes(prog) , f"{[str(e) for e in prog.errors_had]}";
     assert "E5104" not in codes(prog);
 }
 
+test "bridging to a plain (private) walker of another app is E5106" {
+    (prog, mod) = compile_fixture(fixture("web", "bad_walker_bridge.jac"));
+    found = codes(prog);
+    assert "E5106" in found , (
+        f"expected E5106 for a private walker, got {[str(e) for e in prog.errors_had]}"
+    );
+}
+
 test "SERVICE_BRIDGE stubs are typed-async and keyed by the owner app" {
     (prog, mod) = compile_fixture(fixture("web", "main.jac"), cgen=True);
-    py = mod.gen.py;
+    py = generated_python(mod.gen);
     assert "async def greet(" in py , py;
     assert "await __jac_sv_client.call('social', 'greet'" in py , py;
     assert "__jac_provider_app__ = 'social'" in py , py;
@@ -119,7 +128,7 @@ test "cli app importing a service walker is a SERVICE_BRIDGE consumer" {
     imp = import_of(mod, "social_app");
     assert classify_cross_app_import(imp, None) == CrossAppKind.SERVICE_BRIDGE;
     assert ("cli", "social") in mod.gen.interop_manifest.app_edges;
-    assert "spawn_walker('social', 'Greet'" in mod.gen.py;
+    assert "spawn_walker('social', 'Greet'" in generated_python(mod.gen);
     assert "E5106" not in codes(prog) , f"{[str(e) for e in prog.errors_had]}";
 }
 
@@ -210,7 +219,8 @@ test "a generator-returning SERVICE_BRIDGE stub is a coroutine until awaited" {
     );
     (prog, mod) = compile_fixture(fixture("web", "stream_awaited.jac"), cgen=True);
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    assert "await __jac_sv_client.call('social', 'narrate'" in mod.gen.py , mod.gen.py;
+    assert "await __jac_sv_client.call('social', 'narrate'"
+        in generated_python(mod.gen) , generated_python(mod.gen);
 }
 
 test "spawning a bridged walker types as the stub's coroutine, not E1114" {
@@ -231,15 +241,15 @@ test "spawning a bridged walker types as the stub's coroutine, not E1114" {
     );
     assert len(prog.errors_had) == 1 , [str(e) for e in prog.errors_had];
     import re;
-    assert re.search(r"(?<![\w.])spawn\(", mod.gen.py) is None , (
-        "the runtime spawn must not wrap a bridged stub:\n" + mod.gen.py
+    assert re.search(r"(?<![\w.])spawn\(", generated_python(mod.gen)) is None , (
+        "the runtime spawn must not wrap a bridged stub:\n" + generated_python(mod.gen)
     );
 }
 
 test "a bridged obj imported alone mirrors as a boundary type, not an RPC stub" {
     (prog, mod) = compile_fixture(fixture("web", "only_profile.jac"), cgen=True);
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    py = mod.gen.py;
+    py = generated_python(mod.gen);
     assert "async def Profile" not in py , (
         "a data type must never lower to a coroutine stub; got:\n" + py
     );
@@ -277,7 +287,7 @@ test "a provider's import of a shared pure helper is not an app edge" {
     import from pathlib { Path }
     compiler = prog._get_compiler();
     feed_path = fixture("feed_app.jac");
-    feed = compiler.parse_str(Path(feed_path).read_text(), feed_path, JacProgram());
+    feed = JacProgram().parse_source(Path(feed_path).read_text(), feed_path);
     assert feed is not None;
     imp = import_of(feed, "shared_fmt");
     assert symbol_linked_source_module(imp) is None , (
@@ -288,7 +298,7 @@ test "a provider's import of a shared pure helper is not an app edge" {
         "shared_fmt carries no walker, node or edge: importing it bridges nowhere"
     );
     ui_path = fixture("shared_ui.jac");
-    ui = compiler.parse_str(Path(ui_path).read_text(), ui_path, JacProgram());
+    ui = JacProgram().parse_source(Path(ui_path).read_text(), ui_path);
     assert ui is not None;
     assert import_provider_app(import_of(ui, "feed_app")) == "feed" , (
         "the walker import still bridges to its owner when the binding is unlinked"

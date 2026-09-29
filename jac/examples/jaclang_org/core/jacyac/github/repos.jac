@@ -1,8 +1,6 @@
 import from jaclang.data.contracts { JsonEndpoint }
-import from core.github_contracts { GithubRepository, GithubUser }
+
 import from urllib.parse { quote }
-import from core.github { fetch }
-import from .auth { github_id }
 
 obj GithubRepo {
     has full: str,
@@ -79,7 +77,7 @@ def:pub github_repositories(session_token: str, page: int = 1) -> GithubRepos {
     }
 }
 
-def verified_owner(full: str, session_token: str) -> bool {
+def:protect verified_owner(full: str, session_token: str) -> bool {
     external_id = github_id(session_token);
     if not external_id {
         return False;

@@ -49,7 +49,7 @@ def code_sample(files: dict[str, str]) -> str {
     return "\n\n".join(chunks);
 }
 
-def optional_review(files: dict[str, str]) -> CodeReview | None {
+def:protect optional_review(files: dict[str, str]) -> CodeReview | None {
     try {
         return review_sample(code_sample(files));
     } except Exception {

@@ -1,8 +1,4 @@
 import from "@jac/mobui" { Image, View, Text }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.identity { avatar_of }
-import from core.jacyac.format { initial_of, handle_of }
 
 def:pub Avatar(username: str, size: int, avatars: dict[str, str]) -> JsxElement {
     theme = useTheme();

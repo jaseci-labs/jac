@@ -1,7 +1,14 @@
 import from jaclang.scale._optdeps.kubernetes { client, ApiException, AutoscalingV2Api }
+import from jaclang.scale.models.resource_status { ResourceStatus }
 import from jaclang.scale.deploy.autoscale.autoscaler {
     Autoscaler,
+    AutoscalerRuntimeStatus,
     AutoscalerSpec,
+    AutoscalerTransition,
+    transition_from,
+    condition,
+    normalize_conditions,
+    tristate,
     Trigger,
     TriggerAuth,
     DEFAULT_CPU_UTILIZATION_TARGET,
@@ -74,6 +81,34 @@ obj KEDAAutoscaler(Autoscaler) {
     ) -> None;
 
     def resource_name_for(target: str) -> str;
+    def get_runtime_status(
+        scale_target_name: str, namespace: str, autoscaler_name: (str | None) = None
+    ) -> AutoscalerRuntimeStatus;
+
+    def _read_scaled_object(
+        target: str, namespace: str, autoscaler_name: (str | None) = None
+    ) -> (dict[str, any] | None);
+
+    def _read_hpa(scaled_object: dict[str, any], namespace: str) -> (any | None);
+    def _apply_autoscaler_view(
+        status: AutoscalerRuntimeStatus
+    ) -> AutoscalerRuntimeStatus;
+
+    def watch_scale_targets(
+        namespace: str,
+        label_selector: (str | None) = None,
+        timeout_seconds: (int | None) = None
+    ) -> any;
+
+    def _list_scale_targets(
+        namespace: str, label_selector: (str | None) = None
+    ) -> tuple[dict[str, str], str];
+
+    def _target_of(scaled_object: dict[str, any]) -> str;
+    def _transition_for_event(
+        event: dict[str, any], namespace: str, last: dict[str, any]
+    ) -> (AutoscalerTransition | None);
+
     def _validate_http_activation_spec(spec: HTTPActivationSpec) -> None;
     def _build_routing_rules(rules: list[HTTPRoutingRule]) -> list[dict[str, any]];
     def _build_interceptor_route(spec: HTTPActivationSpec) -> dict[str, any];

@@ -52,6 +52,13 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
                  help="Scaffold the full jaclang.org site (landing, docs, leaderboard, socialize, wasm game) as your project"
              ),
              Arg.create(
+                 "awetiny",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="Scaffold Tiny JacYac (web, mobile, desktop, CLI, feed and scoring services) as your project"
+             ),
+             Arg.create(
                  "list",
                  typ=bool,
                  `default=False,
@@ -151,6 +158,10 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
                  "jac create mysite --awesome",
                  "Dump the entire jaclang.org site as your project"
              ),
+             (
+                 "jac create mysocial --awetiny",
+                 "Create the Tiny JacYac social app workspace"
+             ),
              ("jac create --force", "Reinitialize existing project"),
              ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
              ("jac create --use https://example.com/t.jacpack", "Create from URL"),
@@ -169,6 +180,7 @@ def create(
     path: str = "",
     use: str = "default",
     awesome: bool = False,
+    awetiny: bool = False,
     `list: bool = False,
     pack: str = "",
     pack_output: str = "",

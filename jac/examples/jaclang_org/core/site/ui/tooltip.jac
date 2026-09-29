@@ -1,5 +1,4 @@
 import from "radix-ui" { Tooltip as TooltipPrimitive }
-import from ....core.utils { cn }
 
 def:pub TooltipProvider(props: any) -> JsxElement {
     delayDuration = props["delayDuration"] or 0;

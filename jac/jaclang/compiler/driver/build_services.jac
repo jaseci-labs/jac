@@ -43,6 +43,13 @@ obj CompilerBuildServices(BuildServices) {
         return prepare_application(entry_path, program, project_root);
     }
 
+    def prepare_dynamic_module(
+        path: str, program: JacProgram, application: PreparedApplication
+    ) -> PreparedApplication {
+        import from jaclang.compiler.driver.application { prepare_dynamic_module }
+        return prepare_dynamic_module(path, program, application);
+    }
+
     def hot_reloader(base_path: str, module_name: str) -> HotReloader {
         import from jaclang.server.hmr { HotReloader }
         import from jaclang.server.watcher { JacFileWatcher }

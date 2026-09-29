@@ -1,12 +1,10 @@
 import os;
-import math as _pymath;
-import platform as _platform;
-import sys;
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
     AssertStmt,
     Assignment,
+    AstImplNeedingNode,
     AtomTrailer,
     AtomUnit,
     BinaryExpr,
@@ -65,6 +63,7 @@ import from jaclang.compiler.frontend.unitree {
     TypeParam,
     UnaryExpr,
     UniNode,
+    UniScopeNode,
     WhileStmt
 }
 import from jaclang.compiler.frontend.constant {
@@ -76,12 +75,86 @@ import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
 import from jaclang.runtime.scalars { shape_of }
 import from jaclang.compiler.types.ct_value {
     CT_DEFERRED,
+    CT_NONE,
+    CtBool,
+    CtBound,
+    CtBuiltin,
+    CtBytes,
+    CtCaller,
     CtDeferred,
+    CtDeferredSignal,
+    CtDict,
     CtEnumMember,
+    CtEnvironment,
+    CtError,
+    CtExc,
+    CtFloat,
     CtFunc,
+    CtInt,
+    CtList,
+    CtMethod,
+    CtModule,
+    CtNone,
+    CtNotComptime,
+    CtRaise,
+    CtRange,
     CtRecord,
+    CtSet,
+    CtStr,
+    CtTuple,
     CtType,
-    CtValue
+    CtValue,
+    CtView,
+    as_ct_int,
+    ascii_escape,
+    ct_eq,
+    ct_exc,
+    ct_exc_is,
+    ct_iter,
+    ct_repr,
+    ct_str,
+    ct_truthy,
+    ct_type_name,
+    dict_set,
+    mk_bool,
+    mk_bytes,
+    mk_dict,
+    mk_float,
+    mk_int,
+    mk_list,
+    mk_set,
+    mk_str,
+    mk_tuple,
+    range_len,
+    set_add
+}
+import from jaclang.compiler.types.ct_ops {
+    ct_compare,
+    ct_getitem,
+    ct_getslice,
+    ct_int_literal,
+    ct_setitem,
+    ct_symbol,
+    ct_unary,
+    int_add,
+    int_cmp
+}
+import from jaclang.compiler.types.ct_format {
+    ct_binary,
+    ct_convert,
+    ct_format,
+    ct_inplace
+}
+import from jaclang.compiler.types.ct_builtins {
+    CT_BUILTIN_EXCEPTIONS,
+    CT_BUILTIN_FUNCS,
+    CT_BUILTIN_TYPES,
+    ct_call_builtin,
+    ct_call_method,
+    ct_call_method_value,
+    ct_construct_builtin,
+    ct_type_attr,
+    ct_value_attr
 }
 import from jaclang.compiler.types.types {
     ClassType,
@@ -89,21 +162,9 @@ import from jaclang.compiler.types.types {
     TypeBase,
     UnknownType
 }
+import from jaclang.compiler.types.stubcat.reader { CatModule }
 import from jaclang.compiler.types.type_utils { lookup_symtab }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-
-class CtNotComptime(Exception) {}
-
-class CtError(Exception) {}
-
-class CtDeferredSignal(Exception) {}
-
-class CtRaise(Exception) {}
-
-obj CtBound {
-    has self_val: any,
-        ability: Ability;
-}
 
 glob CT_FUEL_DEFAULT: int = 50000000,
      CT_MODULE_SUFFIX: str = "jaclang/comptime.jac",
@@ -126,44 +187,43 @@ glob CT_FUEL_DEFAULT: int = 50000000,
              "alignof"
          }
      ),
-     CT_PY_TYPES: dict[str, type] = {
-         "int": int,
-         "float": float,
-         "str": str,
-         "bool": bool,
-         "bytes": bytes,
-         "list": list,
-         "dict": dict,
-         "set": set,
-         "tuple": tuple,
-         "frozenset": frozenset,
-         "type": type,
-         "object": object
+     CT_AUG_OPS: dict[str, str] = {
+         "ADD_EQ": "+",
+         "SUB_EQ": "-",
+         "MUL_EQ": "*",
+         "DIV_EQ": "/",
+         "FLOOR_DIV_EQ": "//",
+         "MOD_EQ": "%",
+         "STAR_POW_EQ": "**",
+         "BW_AND_EQ": "&",
+         "BW_OR_EQ": "|",
+         "BW_XOR_EQ": "^",
+         "LSHIFT_EQ": "<<",
+         "RSHIFT_EQ": ">>"
      },
-     CT_PY_EXCEPTIONS: dict[str, type] = {
-         "Exception": Exception,
-         "ValueError": ValueError,
-         "TypeError": TypeError,
-         "KeyError": KeyError,
-         "IndexError": IndexError,
-         "AttributeError": AttributeError,
-         "ZeroDivisionError": ZeroDivisionError,
-         "RuntimeError": RuntimeError,
-         "AssertionError": AssertionError,
-         "NotImplementedError": NotImplementedError,
-         "LookupError": LookupError,
-         "ArithmeticError": ArithmeticError,
-         "StopIteration": StopIteration
+     CT_CMP_OPS: dict[str, str] = {
+         "EE": "==",
+         "NE": "!=",
+         "LT": "<",
+         "LTE": "<=",
+         "GT": ">",
+         "GTE": ">=",
+         "KW_IN": "in",
+         "KW_NIN": "not in",
+         "KW_IS": "is",
+         "KW_ISN": "is not"
+     },
+     CT_UNARY_OPS: dict[str, str] = {
+         "MINUS": "-",
+         "PLUS": "+",
+         "NOT": "not",
+         "BW_NOT": "~"
      };
 
-def _host_os -> str {
-    if sys.platform.startswith("win") {
-        return "windows";
+def ct_read_host_file(path: str) -> bytes {
+    with open(path, "rb") as fh {
+        return fh.read();
     }
-    if sys.platform == "darwin" {
-        return "darwin";
-    }
-    return "linux";
 }
 
 def _norm_path(p: str) -> str {
@@ -184,7 +244,7 @@ def _mod_dotted(mod: (Module | None)) -> str {
     return module_dotted_name(mod.loc.mod_path if mod.loc else "", str(mod.name));
 }
 
-def _scope_of(nd: UniNode) -> any {
+def _scope_of(nd: UniNode) -> (UniScopeNode | None) {
     try {
         return nd.sym_tab;
     } except ValueError {
@@ -193,9 +253,16 @@ def _scope_of(nd: UniNode) -> any {
 }
 
 def _impl_body(nd: UniNode) -> list[UniNode] {
-    body = nd?.body;
+    if not isinstance(nd, AstImplNeedingNode) {
+        return [];
+    }
+    body = nd.body;
     if isinstance(body, ImplDef) {
-        body = body.body;
+        inner = body.body;
+        if isinstance(inner, list) {
+            return inner;
+        }
+        return [];
     }
     if isinstance(body, list) {
         return body;
@@ -203,10 +270,17 @@ def _impl_body(nd: UniNode) -> list[UniNode] {
     return [];
 }
 
-obj CtEvaluator {
+def _is_builtin_name(name: str) -> bool {
+    return name in CT_BUILTIN_TYPES
+        or name in CT_BUILTIN_EXCEPTIONS
+        or name in CT_BUILTIN_FUNCS;
+}
+
+obj CtEvaluator(CtCaller) {
     has evaluator: TypeEvaluator,
+        env: CtEnvironment = CtEnvironment(),
         fuel: int = CT_FUEL_DEFAULT,
-        frames: list[dict[str, any]] = [],
+        frames: list[dict[str, CtValue]] = [],
         barriers: list[bool] = [],
         call_stack: list[str] = [],
         last_error: (str | None) = None,
@@ -214,80 +288,9 @@ obj CtEvaluator {
         _failed: set[int] = set(),
         _active: set[tuple[str, int]] = set(),
         _enum_cache: dict[int, list[CtEnumMember]] = {},
-        _ret: any = None,
-        _ct_root: (Module | None) = None,
-        _builtins: dict[str, any] = {};
-
-    def postinit {
-        self._builtins = {
-            "len": len,
-            "str": str,
-            "int": int,
-            "float": float,
-            "bool": bool,
-            "bytes": bytes,
-            "repr": repr,
-            "sorted": sorted,
-            "range": range,
-            "enumerate": self._ct_enumerate,
-            "list": list,
-            "dict": dict,
-            "set": set,
-            "tuple": tuple,
-            "frozenset": frozenset,
-            "min": min,
-            "max": max,
-            "sum": sum,
-            "abs": abs,
-            "any": any,
-            "all": all,
-            "zip": self._ct_zip,
-            "reversed": self._ct_reversed,
-            "round": round,
-            "divmod": divmod,
-            "ord": ord,
-            "chr": chr,
-            "hex": hex,
-            "bin": bin,
-            "oct": oct,
-            "format": format,
-            "map": self._ct_map,
-            "filter": self._ct_filter,
-            "isinstance": self._ct_isinstance,
-            "hash": hash
-        };
-    }
-
-    def _ct_enumerate(it: any, start: int = 0) -> list[tuple[int, any]] {
-        return `list(enumerate(it, start));
-    }
-
-    def _ct_zip(*its: any) -> list[tuple[any, ...]] {
-        return `list(zip(*its));
-    }
-
-    def _ct_reversed(it: any) -> list[any] {
-        return `list(reversed(it));
-    }
-
-    def _ct_map(fn: any, *its: any) -> list[any] {
-        out: list[any] = [];
-        for items in zip(*its) {
-            out.append(self._call_value(fn, `list(items), {}));
-        }
-        return out;
-    }
-
-    def _ct_filter(fn: any, it: any) -> list[any] {
-        out: list[any] = [];
-        for item in it {
-            keep = bool(item) if fn is None else self._call_value(fn, [item], {});
-            if keep {
-                out.append(item);
-            }
-        }
-        return out;
-    }
+        _handling: list[CtExc] = [],
+        _ret: CtValue = CT_NONE,
+        _ct_root: (Module | None) = None;
 
     def _enter_root(nd: UniNode) -> (Module | None) {
         prev = self._ct_root;
@@ -302,16 +305,7 @@ obj CtEvaluator {
         if owner is None or not path {
             return;
         }
-        owner_path = _norm_path(owner.loc.mod_path if owner.loc else "");
-        if owner_path and os.path.realpath(owner_path) == path {
-            return;
-        }
-        if path not in owner.ct_file_deps {
-            owner.ct_file_deps.append(path);
-        }
-        if body and path not in owner.ct_body_deps {
-            owner.ct_body_deps.append(path);
-        }
+        owner.record_comptime_dependency(path, body);
     }
 
     def _note_producer(home: (Module | None), body: bool = False) {
@@ -337,15 +331,16 @@ obj CtEvaluator {
         saved_frames = self.frames;
         saved_barriers = self.barriers;
         saved_demand = self.demand;
+        saved_handling = self._handling;
         saved_root = self._enter_root(nd);
         self.frames = [];
         self.barriers = [];
+        self._handling = [];
         self.demand = demand;
         try {
-            v = self._eval_inner(nd);
-            return CtValue(v=v);
+            return self._eval_inner(nd);
         } except CtDeferredSignal {
-            return CtValue(v=CT_DEFERRED);
+            return CT_DEFERRED;
         } except CtNotComptime {
             self._failed.add(id(nd));
             return None;
@@ -354,7 +349,11 @@ obj CtEvaluator {
             self._failed.add(id(nd));
             return None;
         } except CtRaise as e {
-            self.last_error = f"comptime code raised {e}";
+            if e.user {
+                self.last_error = f"comptime code raised {ct_str(e.exc)}";
+            } else {
+                self.last_error = f"{e.exc.kind}: {ct_str(e.exc)}";
+            }
             self._failed.add(id(nd));
             return None;
         } except RecursionError {
@@ -370,11 +369,12 @@ obj CtEvaluator {
             self.frames = saved_frames;
             self.barriers = saved_barriers;
             self.demand = saved_demand;
+            self._handling = saved_handling;
             self._ct_root = saved_root;
         }
     }
 
-    def eval_with_bindings(nd: Expr, bindings: dict[str, any]) -> any {
+    def eval_with_bindings(nd: Expr, bindings: dict[str, CtValue]) -> CtValue {
         saved_demand = self.demand;
         saved_root = self._enter_root(nd);
         try {
@@ -412,27 +412,28 @@ obj CtEvaluator {
         self.barriers.pop();
     }
 
-    def bind(name: str, v: any) {
+    def bind(name: str, v: CtValue) {
         if self.frames {
             self.frames[-1][name] = v;
         }
     }
 
-    def frame_lookup(name: str) -> tuple[bool, any] {
+    def frame_lookup(name: str) -> (CtValue | None) {
         idx = len(self.frames) - 1;
         while idx >= 0 {
-            if name in self.frames[idx] {
-                return (True, self.frames[idx][name]);
+            got = self.frames[idx].get(name);
+            if got is not None {
+                return got;
             }
             if self.barriers[idx] {
                 break;
             }
             idx -= 1;
         }
-        return (False, None);
+        return None;
     }
 
-    def assign_name(name: str, v: any) {
+    def assign_name(name: str, v: CtValue) {
         idx = len(self.frames) - 1;
         while idx >= 0 {
             if name in self.frames[idx] {
@@ -451,12 +452,12 @@ obj CtEvaluator {
         }
     }
 
-    def eval(nd: UniNode) -> any {
+    def eval(nd: UniNode) -> CtValue {
         self.burn();
         if isinstance(nd, Expr) {
             cv = nd.ct_value;
             if cv is not None and not cv.is_deferred {
-                return cv.v;
+                return cv;
             }
             if not self.frames {
                 if cv is not None {
@@ -470,7 +471,15 @@ obj CtEvaluator {
         return self._eval_inner(nd);
     }
 
-    def _eval_inner(nd: UniNode) -> any {
+    def truthy(nd: UniNode) -> bool {
+        v = self.eval(nd);
+        if isinstance(v, CtDeferred) {
+            raise CtDeferredSignal();
+        }
+        return ct_truthy(v);
+    }
+
+    def _eval_inner(nd: UniNode) -> CtValue {
         if isinstance(nd, SpecialVarRef) {
             return self._eval_special(nd);
         }
@@ -480,20 +489,36 @@ obj CtEvaluator {
         if isinstance(nd, Name) {
             return self._eval_name(nd);
         }
-        if isinstance(nd, (Int, Float, Bool, String)) {
-            return nd.lit_value;
+        if isinstance(nd, Int) {
+            return ct_int_literal(nd.value);
+        }
+        if isinstance(nd, Float) {
+            return mk_float(nd.lit_value);
+        }
+        if isinstance(nd, Bool) {
+            return mk_bool(nd.lit_value);
+        }
+        if isinstance(nd, String) {
+            lit = nd.lit_value;
+            if isinstance(lit, bytes) {
+                return mk_bytes(lit);
+            }
+            return mk_str(lit);
         }
         if isinstance(nd, Null) {
-            return None;
+            return CT_NONE;
         }
         if isinstance(nd, MultiString) {
             return self._eval_multistring(nd);
         }
         if isinstance(nd, FString) {
-            return self._eval_fstring(nd);
+            return mk_str(self._eval_fstring(nd));
         }
-        if isinstance(nd, (AtomUnit, CfgExpr)) {
-            return self.eval(nd.value if isinstance(nd, AtomUnit) else nd.expr);
+        if isinstance(nd, AtomUnit) {
+            return self.eval(nd.value);
+        }
+        if isinstance(nd, CfgExpr) {
+            return self.eval(nd.expr);
         }
         if isinstance(nd, CastExpr) {
             return self.eval(nd.value);
@@ -511,44 +536,46 @@ obj CtEvaluator {
             return self._eval_unary(nd);
         }
         if isinstance(nd, IfElseExpr) {
-            if self.eval(nd.condition) {
+            if self.truthy(nd.condition) {
                 return self.eval(nd.value);
             }
             return self.eval(nd.else_value);
         }
         if isinstance(nd, ListVal) {
-            return [self.eval(v) for v in nd.values];
+            return mk_list([self.eval(v) for v in nd.values]);
         }
         if isinstance(nd, TupleVal) {
-            out: list[any] = [];
+            out: list[CtValue] = [];
             for v in nd.values {
                 if isinstance(v, KWPair) {
                     raise CtError("keyword pairs are not values in comptime tuples");
                 }
                 out.append(self.eval(v));
             }
-            return `tuple(out);
+            return mk_tuple(out);
         }
         if isinstance(nd, SetVal) {
-            return {self.eval(v) for v in (nd.values or [])};
+            return mk_set([self.eval(v) for v in (nd.values or [])]);
         }
         if isinstance(nd, DictVal) {
             return self._eval_dict(nd);
         }
         if isinstance(nd, DictCompr) {
             pairs = self._compr_items(nd.compr, 0, None, nd.kv_pair);
-            out2: dict[any, any] = {};
-            for (k, v) in pairs {
-                out2[k] = v;
+            out2 = mk_dict();
+            for pair in pairs {
+                if isinstance(pair, CtTuple) {
+                    dict_set(out2, pair.items[0], pair.items[1]);
+                }
             }
             return out2;
         }
         if isinstance(nd, ListCompr) {
             items = self._compr_items(nd.compr, 0, nd.out_expr, None);
             if isinstance(nd, SetCompr) {
-                return `set(items);
+                return mk_set(items);
             }
-            return items;
+            return mk_list(items);
         }
         if isinstance(nd, AtomTrailer) {
             return self._eval_trailer(nd);
@@ -562,29 +589,76 @@ obj CtEvaluator {
         raise CtError(f"'{type(nd).__name__}' is not supported in comptime code");
     }
 
-    def _eval_special(nd: SpecialVarRef) -> any {
-        (found, v) = self.frame_lookup(nd.value);
-        if found {
-            return v;
+    def _eval_special(nd: SpecialVarRef) -> CtValue {
+        got = self.frame_lookup(nd.value);
+        if got is not None {
+            return got;
         }
         raise CtNotComptime();
     }
 
     def _builtin_type(name: str) -> CtType {
-        pref = self.evaluator.prefetch;
-        typ: (TypeBase | None) = None;
-        if pref is not None {
-            typ = getattr(pref, f"{name}_class", None);
-        }
-        return CtType(name=name, module="builtins", typ=typ);
+        return CtType(name=name, module="builtins", typ=self._prefetched_class(name));
     }
 
-    def _eval_multistring(nd: MultiString) -> any {
-        out = "";
-        for p in (nd.strings or []) {
-            out += str(self.eval(p));
+    def _prefetched_class(name: str) -> (ClassType | None) {
+        pref = self.evaluator.prefetch;
+        if pref is None {
+            return None;
         }
-        return out;
+        if name == "int" {
+            return pref.int_class;
+        }
+        if name == "float" {
+            return pref.float_class;
+        }
+        if name == "str" {
+            return pref.str_class;
+        }
+        if name == "bool" {
+            return pref.bool_class;
+        }
+        if name == "bytes" {
+            return pref.bytes_class;
+        }
+        if name == "list" {
+            return pref.list_class;
+        }
+        if name == "dict" {
+            return pref.dict_class;
+        }
+        if name == "set" {
+            return pref.set_class;
+        }
+        if name == "tuple" {
+            return pref.tuple_class;
+        }
+        if name == "type" {
+            return pref.type_class;
+        }
+        if name == "object" {
+            return pref.object_class;
+        }
+        return None;
+    }
+
+    def _eval_multistring(nd: MultiString) -> CtValue {
+        parts: list[str] = [];
+        is_bytes = False;
+        chunks: list[bytes] = [];
+        for p in (nd.strings or []) {
+            v = self.eval(p);
+            if isinstance(v, CtBytes) {
+                is_bytes = True;
+                chunks.append(v.value);
+            } else {
+                parts.append(ct_str(v));
+            }
+        }
+        if is_bytes and not parts {
+            return mk_bytes(b"".join(chunks));
+        }
+        return mk_str("".join(parts));
     }
 
     def _eval_fstring(nd: FString) -> str {
@@ -594,40 +668,53 @@ obj CtEvaluator {
                 out += str(p.lit_value);
             } elif isinstance(p, FormattedValue) {
                 v = self.eval(p.format_part);
+                if isinstance(v, CtDeferred) {
+                    raise CtDeferredSignal();
+                }
                 conv = p.conversion;
                 if conv == ord("r") {
-                    v = repr(v);
+                    v = ct_convert(v, "r");
                 } elif conv == ord("s") {
-                    v = str(v);
+                    v = ct_convert(v, "s");
                 } elif conv == ord("a") {
-                    v = ascii(v);
+                    v = ct_convert(v, "a");
                 }
                 spec = "";
                 if p.format_spec is not None {
-                    spec = str(self.eval(p.format_spec));
+                    spec = ct_str(self.eval(p.format_spec));
                 }
-                out += format(v, spec);
+                out += ct_format(v, spec);
             } else {
-                out += str(self.eval(p));
+                out += ct_str(self.eval(p));
             }
         }
         return out;
     }
 
-    def _eval_dict(nd: DictVal) -> dict[any, any] {
-        out: dict[any, any] = {};
+    def _eval_dict(nd: DictVal) -> CtDict {
+        out = mk_dict();
         for kv in nd.kv_pairs {
             if kv.key is None {
                 spread = self.eval(kv.value);
-                if not isinstance(spread, dict) {
+                if not isinstance(spread, CtDict) {
                     raise CtError("dict spread of a non-dict in comptime code");
                 }
-                out.update(spread);
+                for (i, k) in enumerate(spread.keys) {
+                    dict_set(out, k, spread.vals[i]);
+                }
                 continue;
             }
-            out[self.eval(kv.key)] = self.eval(kv.value);
+            key = self.eval(kv.key);
+            dict_set(out, key, self.eval(kv.value));
         }
         return out;
+    }
+
+    def iterate(coll: CtValue) -> list[CtValue] {
+        if isinstance(coll, CtDeferred) {
+            raise CtDeferredSignal();
+        }
+        return ct_iter(coll);
     }
 
     def _compr_items(
@@ -635,7 +722,7 @@ obj CtEvaluator {
         depth: int,
         out_expr: (Expr | None),
         kv_pair: (KVPair | None)
-    ) -> list[any] {
+    ) -> list[CtValue] {
         if depth >= len(comprs) {
             if kv_pair is not None {
                 key_expr = kv_pair.key;
@@ -643,7 +730,8 @@ obj CtEvaluator {
                 if key_expr is None or val_expr is None {
                     raise CtNotComptime();
                 }
-                return [(self.eval(key_expr), self.eval(val_expr), )];
+                k = self.eval(key_expr);
+                return [mk_tuple([k, self.eval(val_expr)])];
             }
             if out_expr is None {
                 raise CtNotComptime();
@@ -652,14 +740,14 @@ obj CtEvaluator {
         }
         c: InnerCompr = comprs[depth];
         coll = self.eval(c.collection);
-        out: list[any] = [];
-        for item in coll {
+        out: list[CtValue] = [];
+        for item in self.iterate(coll) {
             self.burn(2);
             self.push_frame();
             self._bind_target(c.target, item);
             keep = True;
             for cond in (c.conditional or []) {
-                if not self.eval(cond) {
+                if not self.truthy(cond) {
                     keep = False;
                     break;
                 }
@@ -672,7 +760,15 @@ obj CtEvaluator {
         return out;
     }
 
-    def _bind_target(tgt: UniNode, v: any) {
+    def _unpack(v: CtValue, count: int) -> list[CtValue] {
+        vals = self.iterate(v);
+        if len(vals) != count {
+            raise CtError("comptime destructuring arity mismatch");
+        }
+        return vals;
+    }
+
+    def _bind_target(tgt: UniNode, v: CtValue) {
         if isinstance(tgt, Name) {
             self.bind(tgt.value, v);
             return;
@@ -682,10 +778,7 @@ obj CtEvaluator {
             return;
         }
         if isinstance(tgt, (TupleVal, ListVal)) {
-            vals = `list(v);
-            if len(tgt.values) != len(vals) {
-                raise CtError("comptime destructuring arity mismatch");
-            }
+            vals = self._unpack(v, len(tgt.values));
             for (i, t) in enumerate(tgt.values) {
                 self._bind_target(t, vals[i]);
             }
@@ -694,7 +787,7 @@ obj CtEvaluator {
         raise CtError(f"'{type(tgt).__name__}' target not supported in comptime code");
     }
 
-    def _assign_target(tgt: UniNode, v: any) {
+    def _assign_target(tgt: UniNode, v: CtValue) {
         if isinstance(tgt, Name) {
             self.assign_name(tgt.value, v);
             return;
@@ -704,10 +797,7 @@ obj CtEvaluator {
             return;
         }
         if isinstance(tgt, (TupleVal, ListVal)) {
-            vals = `list(v);
-            if len(tgt.values) != len(vals) {
-                raise CtError("comptime destructuring arity mismatch");
-            }
+            vals = self._unpack(v, len(tgt.values));
             for (i, t) in enumerate(tgt.values) {
                 self._assign_target(t, vals[i]);
             }
@@ -725,7 +815,7 @@ obj CtEvaluator {
             if isinstance(tgt.right, IndexSlice) and len(tgt.right.slices) == 1 {
                 s0 = tgt.right.slices[0];
                 if not tgt.right.is_range and s0.start is not None {
-                    base[self.eval(s0.start)] = v;
+                    ct_setitem(base, self.eval(s0.start), v);
                     return;
                 }
             }
@@ -735,11 +825,11 @@ obj CtEvaluator {
         );
     }
 
-    def _tok_name(op: any) -> str {
+    def _tok_name(op: (UniNode | None)) -> str {
         return op.name if isinstance(op, Token) else "";
     }
 
-    def _eval_binary(nd: BinaryExpr) -> any {
+    def _eval_binary(nd: BinaryExpr) -> CtValue {
         opn = self._tok_name(nd.op);
         l = self.eval(nd.left);
         r = self.eval(nd.right);
@@ -747,108 +837,64 @@ obj CtEvaluator {
         return self._binop_by_name(opn, l, r, display_name=op_text);
     }
 
-    def _cmp(opn: str, l: any, r: any) -> bool {
-        if opn == Tok.EE.value {
-            return l == r;
+    def _cmp(opn: str, l: CtValue, r: CtValue) -> bool {
+        sym = CT_CMP_OPS.get(opn);
+        if sym is None {
+            raise CtError(f"comparison '{opn}' is not supported in comptime code");
         }
-        if opn == Tok.NE.value {
-            return l != r;
+        if isinstance(l, CtDeferred) or isinstance(r, CtDeferred) {
+            raise CtDeferredSignal();
         }
-        if opn == Tok.LT.value {
-            return l < r;
-        }
-        if opn == Tok.LTE.value {
-            return l <= r;
-        }
-        if opn == Tok.GT.value {
-            return l > r;
-        }
-        if opn == Tok.GTE.value {
-            return l >= r;
-        }
-        if opn == Tok.KW_IN.value {
-            return l in r;
-        }
-        if opn == Tok.KW_NIN.value {
-            return l not in r;
-        }
-        if opn == Tok.KW_IS.value {
-            if isinstance(l, (CtType, CtEnumMember, CtFunc)) {
-                return l == r;
-            }
-            return l is r;
-        }
-        if opn == Tok.KW_ISN.value {
-            if isinstance(l, (CtType, CtEnumMember, CtFunc)) {
-                return l != r;
-            }
-            return l is not r;
-        }
-        raise CtError(f"comparison '{opn}' is not supported in comptime code");
+        return ct_compare(sym, l, r);
     }
 
-    def _eval_compare(nd: CompareExpr) -> bool {
+    def _eval_compare(nd: CompareExpr) -> CtValue {
         left = self.eval(nd.left);
         for (i, right_nd) in enumerate(nd.rights) {
             right = self.eval(right_nd);
             if not self._cmp(self._tok_name(nd.ops[i]), left, right) {
-                return False;
+                return mk_bool(False);
             }
             left = right;
         }
-        return True;
+        return mk_bool(True);
     }
 
-    def _eval_bool(nd: BoolExpr) -> any {
+    def _eval_bool(nd: BoolExpr) -> CtValue {
         opn = self._tok_name(nd.op);
-        r: any = None;
-        if opn == Tok.KW_AND.value {
-            r = True;
-            for v in nd.values {
-                r = self.eval(v);
-                if not r {
-                    return r;
-                }
-            }
-            return r;
-        }
-        r = False;
+        r: CtValue = mk_bool(opn == Tok.KW_AND.value);
+        want_stop = opn != Tok.KW_AND.value;
         for v in nd.values {
             r = self.eval(v);
-            if r {
+            if isinstance(r, CtDeferred) {
+                raise CtDeferredSignal();
+            }
+            if ct_truthy(r) == want_stop {
                 return r;
             }
         }
         return r;
     }
 
-    def _eval_unary(nd: UnaryExpr) -> any {
+    def _eval_unary(nd: UnaryExpr) -> CtValue {
         opn = self._tok_name(nd.op);
         v = self.eval(nd.operand);
-        if opn == Tok.MINUS.value {
-            return -v;
-        }
-        if opn == Tok.PLUS.value {
-            return +v;
-        }
-        if opn == Tok.NOT.value {
-            return not v;
-        }
-        if opn == Tok.BW_NOT.value {
-            return ~v;
+        sym = CT_UNARY_OPS.get(opn);
+        if sym is not None {
+            return ct_unary(sym, v);
         }
         if nd.ownership != OwnershipKind.NONE or opn == Tok.BW_AND.value {
             return v;
         }
-        op_text = getattr(nd.op, "value", opn);
+        op_text = nd.op.value if isinstance(nd.op, Token) else opn;
         raise CtError(f"unary operator '{op_text}' is not supported in comptime code");
     }
 
-    def _eval_name(nd: Name) -> any {
+    def _eval_name(nd: Name) -> CtValue {
         name = nd.value;
-        (found, v) = self.frame_lookup(name);
-        if found {
-            return v;
+        got = self.frame_lookup(name);
+        if got is not None {
+            return got;
         }
         sym: (Symbol | None) = nd.sym;
         if sym is None {
@@ -859,11 +905,9 @@ obj CtEvaluator {
             }
         }
         if sym is None {
-            if name in CT_PY_TYPES or name in CT_PY_EXCEPTIONS {
-                return self._builtin_type(name);
-            }
-            if name in self._builtins {
-                return self._builtins[name];
+            builtin = self._builtin_value(name);
+            if builtin is not None {
+                return builtin;
             }
             if shape_of(name) is not None {
                 return CtType(name=name, module="jaclang.runtime.scalars");
@@ -871,6 +915,16 @@ obj CtEvaluator {
             raise CtNotComptime();
         }
         return self._eval_symbol(sym, nd);
+    }
+
+    def _builtin_value(name: str) -> (CtValue | None) {
+        if name in CT_BUILTIN_TYPES or name in CT_BUILTIN_EXCEPTIONS {
+            return self._builtin_type(name);
+        }
+        if name in CT_BUILTIN_FUNCS {
+            return CtBuiltin(name=name);
+        }
+        return None;
     }
 
     def _is_stub_module(mod: (Module | None)) -> bool {
@@ -884,7 +938,7 @@ obj CtEvaluator {
     def _demand_tree(sym: Symbol) -> Symbol {
         decl = sym.decl;
         home = decl.find_parent_of_type(Module) if decl is not None else None;
-        if home is None or not hasattr(home, "cat_kids") {
+        if home is None or not isinstance(home, CatModule) {
             return sym;
         }
         path = _norm_path(home.loc.mod_path if home.loc else "");
@@ -902,21 +956,22 @@ obj CtEvaluator {
         } except Exception {
             return sym;
         }
-        if real is None or hasattr(real, "cat_kids") {
+        if real is None or isinstance(real, CatModule) {
             return sym;
         }
-        target: any = real;
+        target: UniScopeNode = real;
         for name in reversed(chain) {
-            target = target.find_scope(name);
-            if target is None {
+            nxt = target.find_scope(name);
+            if nxt is None {
                 return sym;
             }
+            target = nxt;
         }
         found = target.names_in_scope.get(sym.sym_name);
         return found if found is not None else sym;
     }
 
-    def _eval_symbol(sym: Symbol, use: UniNode) -> any {
+    def _eval_symbol(sym: Symbol, use: UniNode) -> CtValue {
         skey = ("sym", id(sym));
         if skey in self._active {
             raise CtNotComptime();
@@ -935,11 +990,9 @@ obj CtEvaluator {
                 home_path = _norm_path(home.loc.mod_path if home.loc else "");
                 if home is self.evaluator.builtins_module
                     or home_path.endswith("/builtins.pyi") {
-                    if nm in CT_PY_TYPES or nm in CT_PY_EXCEPTIONS {
-                        return self._builtin_type(nm);
-                    }
-                    if nm in self._builtins {
-                        return self._builtins[nm];
+                    builtin = self._builtin_value(nm);
+                    if builtin is not None {
+                        return builtin;
                     }
                 }
                 if isinstance(node_, Archetype) and shape_of(nm) is not None {
@@ -966,14 +1019,13 @@ obj CtEvaluator {
                 raise CtNotComptime();
             }
             if isinstance(node_, ModulePath) {
-                path = ".".join([p.value for p in (node_.path or [])]);
-                if path == "math" {
-                    return _pymath;
-                }
-                raise CtNotComptime();
+                return self._module_value(node_);
             }
             if isinstance(node_, Name) {
                 par = node_.parent;
+                if isinstance(par, ModulePath) {
+                    return self._module_value(par);
+                }
                 if isinstance(par, ModuleItem) {
                     return self._resolve_module_item(par, use);
                 }
@@ -992,21 +1044,29 @@ obj CtEvaluator {
                 if self._is_comptime_loop_target(node_) {
                     raise CtDeferredSignal();
                 }
-                if node_.value in self._builtins
+                if node_.value in CT_BUILTIN_FUNCS
                     and sym.parent_tab is not None
                     and sym.parent_tab is self.evaluator.builtins_module {
-                    return self._builtins[node_.value];
+                    return CtBuiltin(name=node_.value);
                 }
                 raise CtNotComptime();
             }
-            decl_name = getattr(decl, "sym_name", "");
-            if decl_name and decl_name in self._builtins {
-                return self._builtins[decl_name];
+            decl_name = decl.sym_name if decl is not None else "";
+            if decl_name and decl_name in CT_BUILTIN_FUNCS {
+                return CtBuiltin(name=decl_name);
             }
             raise CtNotComptime();
         } finally {
             self._active.discard(skey);
         }
+    }
+
+    def _module_value(mp: ModulePath) -> CtModule {
+        path = ".".join([p.value for p in (mp.path or [])]);
+        if path == "math" {
+            return CtModule(name="math");
+        }
+        raise CtNotComptime();
     }
 
     def _symbol_via_module_item(item: ModuleItem) -> (Symbol | None) {
@@ -1042,7 +1102,7 @@ obj CtEvaluator {
         raise CtNotComptime();
     }
 
-    def _resolve_module_item(item: ModuleItem, use: UniNode) -> any {
+    def _resolve_module_item(item: ModuleItem, use: UniNode) -> CtValue {
         target = self._symbol_via_module_item(item);
         if target is None {
             raise CtNotComptime();
@@ -1060,20 +1120,20 @@ obj CtEvaluator {
         return _is_comptime_module(asn.find_parent_of_type(Module));
     }
 
-    def _ct_module_glob(name: str, use: UniNode) -> any {
+    def _ct_module_glob(name: str, use: UniNode) -> CtValue {
         if name == "codespace" {
             ctx = use.codespace();
             return CtEnumMember(
                 enum_name="Codespace",
                 member=ctx.name,
-                value=ctx.value,
+                value=mk_str(ctx.value),
                 module="jaclang.comptime"
             );
         }
         return CtRecord(
             class_name="TargetInfo",
             module="jaclang.comptime",
-            fields={"os": _host_os(), "arch": _platform.machine()}
+            fields={"os": mk_str(self.env.os), "arch": mk_str(self.env.arch)}
         );
     }
 
@@ -1087,7 +1147,7 @@ obj CtEvaluator {
         return isinstance(par, InForStmt) and par.is_comptime and par.target is cur;
     }
 
-    def _eval_binding(asn: Assignment) -> any {
+    def _eval_binding(asn: Assignment) -> CtValue {
         self._note_producer(asn.find_parent_of_type(Module));
         if asn.value is None {
             raise CtError("comptime binding has no initializer");
@@ -1097,8 +1157,8 @@ obj CtEvaluator {
             if cv.is_deferred {
                 raise CtDeferredSignal();
             }
-            self._stamp_home(cv.v, asn);
-            return cv.v;
+            self._stamp_home(cv, asn);
+            return cv;
         }
         key = ("node", id(asn));
         if key in self._active {
@@ -1120,11 +1180,11 @@ obj CtEvaluator {
             self.demand = saved_demand;
         }
         self._stamp_home(v, asn);
-        asn.value.ct_value = CtValue(v=v);
+        asn.value.ct_value = v;
         return v;
     }
 
-    def _stamp_home(v: any, asn: Assignment) {
+    def _stamp_home(v: CtValue, asn: Assignment) {
         if isinstance(v, CtRecord) and not v.home {
             v.home = _mod_dotted(asn.find_parent_of_type(Module));
         }
@@ -1168,7 +1228,7 @@ obj CtEvaluator {
         out: list[CtEnumMember] = [];
         mod = _mod_dotted(nd.find_parent_of_type(Module));
         enum_type = self.evaluator.get_type_of_enum(nd);
-        running: any = None;
+        running: (CtInt | None) = None;
         for stmt in _impl_body(nd) {
             if not (isinstance(stmt, Assignment) and stmt.is_enum_stmt) {
                 continue;
@@ -1177,7 +1237,7 @@ obj CtEvaluator {
             if not isinstance(tgt, Name) {
                 continue;
             }
-            val: any = None;
+            val: CtValue = CT_NONE;
             if stmt.value is not None {
                 saved_frames = self.frames;
                 saved_barriers = self.barriers;
@@ -1189,11 +1249,15 @@ obj CtEvaluator {
                     self.frames = saved_frames;
                     self.barriers = saved_barriers;
                 }
+            } elif running is None {
+                val = CtInt(small=1);
             } else {
-                val = 1 if running is None else running + 1;
+                val = int_add(running, CtInt(small=1));
             }
-            if isinstance(val, int) and not isinstance(val, bool) {
-                running = val if running is None or val > running else running;
+            if isinstance(val, CtInt) {
+                if running is None or int_cmp(val, running) > 0 {
+                    running = val;
+                }
             }
             out.append(
                 CtEnumMember(
@@ -1230,7 +1294,7 @@ obj CtEvaluator {
         raise CtNotComptime();
     }
 
-    def _class_type_of(v: any) -> (ClassType | None) {
+    def _class_type_of(v: CtValue) -> (ClassType | None) {
         if isinstance(v, CtType) and isinstance(v.typ, ClassType) {
             return v.typ;
         }
@@ -1267,7 +1331,7 @@ obj CtEvaluator {
         raise CtNotComptime();
     }
 
-    def ct_type_of_value(v: any) -> CtType {
+    def ct_type_of_value(v: CtValue) -> CtType {
         if isinstance(v, CtRecord) {
             return CtType(
                 name=v.class_name, module=v.module, typ=v.class_type, ct_args=v.ct_args
@@ -1279,66 +1343,102 @@ obj CtEvaluator {
         if isinstance(v, CtType) {
             return self._builtin_type("type");
         }
-        if isinstance(v, bool) {
-            return self._builtin_type("bool");
-        }
-        if isinstance(v, int) {
-            return self._builtin_type("int");
-        }
-        if isinstance(v, float) {
-            return self._builtin_type("float");
-        }
-        if isinstance(v, str) {
-            return self._builtin_type("str");
-        }
-        if isinstance(v, bytes) {
-            return self._builtin_type("bytes");
-        }
-        if isinstance(v, list) {
-            return self._builtin_type("list");
-        }
-        if isinstance(v, dict) {
-            return self._builtin_type("dict");
-        }
-        if isinstance(v, tuple) {
-            return self._builtin_type("tuple");
-        }
-        if isinstance(v, set) {
-            return self._builtin_type("set");
-        }
-        if v is None {
+        if isinstance(v, CtNone) {
             return CtType(name="NoneType", module="builtins");
         }
-        raise CtError(f"no comptime type for {v!r}");
+        if isinstance(v, CtExc) {
+            return self._builtin_type(v.kind);
+        }
+        if isinstance(
+            v,
+            (
+                CtBool,
+                CtInt,
+                CtFloat,
+                CtStr,
+                CtBytes,
+                CtList,
+                CtDict,
+                CtTuple,
+                CtSet,
+                CtRange
+            )
+        ) {
+            return self._builtin_type(ct_type_name(v));
+        }
+        raise CtError(f"no comptime type for {ct_repr(v)}");
     }
 
-    def _ct_isinstance(v: any, t: any) -> bool {
-        if isinstance(t, tuple) {
-            for alt in t {
-                if self._ct_isinstance(v, alt) {
+    def _builtin_isinstance(v: CtValue, name: str) -> bool {
+        if name == "object" {
+            return True;
+        }
+        if name == "int" {
+            return isinstance(v, CtInt);
+        }
+        if name == "bool" {
+            return isinstance(v, CtBool);
+        }
+        if name == "float" {
+            return isinstance(v, CtFloat);
+        }
+        if name == "str" {
+            return isinstance(v, CtStr);
+        }
+        if name == "bytes" {
+            return isinstance(v, CtBytes);
+        }
+        if name == "list" {
+            return isinstance(v, CtList);
+        }
+        if name == "dict" {
+            return isinstance(v, CtDict);
+        }
+        if name == "tuple" {
+            return isinstance(v, CtTuple);
+        }
+        if name == "set" {
+            return isinstance(v, CtSet) and not v.frozen;
+        }
+        if name == "frozenset" {
+            return isinstance(v, CtSet) and v.frozen;
+        }
+        if name == "type" {
+            return isinstance(v, CtType);
+        }
+        if name in CT_BUILTIN_EXCEPTIONS {
+            return isinstance(v, CtExc) and ct_exc_is(v.kind, name);
+        }
+        return False;
+    }
+
+    def ct_isinstance(v: CtValue, t: CtValue) -> bool {
+        if isinstance(v, CtDeferred) or isinstance(t, CtDeferred) {
+            raise CtDeferredSignal();
+        }
+        if isinstance(t, CtTuple) {
+            for alt in t.items {
+                if self.ct_isinstance(v, alt) {
                     return True;
                 }
             }
             return False;
         }
         if isinstance(t, CtType) {
-            if t.module == "builtins" and t.name in CT_PY_TYPES {
-                if t.name == "int" and isinstance(v, bool) {
-                    return False;
-                }
-                return isinstance(v, CT_PY_TYPES[t.name]);
+            if t.module == "builtins"
+                and (t.name in CT_BUILTIN_TYPES or t.name in CT_BUILTIN_EXCEPTIONS) {
+                return self._builtin_isinstance(v, t.name);
             }
-            vt = self.ct_type_of_value(v);
-            return self._is_subtype(vt, t);
-        }
-        if isinstance(t, type) {
-            return isinstance(v, t);
+            if isinstance(v, (CtRecord, CtEnumMember)) {
+                return self._is_subtype(self.ct_type_of_value(v), t);
+            }
+            return False;
         }
         raise CtError("isinstance needs a type in comptime code");
     }
 
     def _is_subtype(t: CtType, u: CtType) -> bool {
-        if t == u {
+        if ct_eq(t, u) {
             return True;
         }
         ct = self._class_type_of(t);
@@ -1374,63 +1474,48 @@ obj CtEvaluator {
         return out;
     }
 
-    def _has_custom_init(ct: ClassType) -> bool {
-        for cls in ct.shared.mro {
-            tab = cls.shared.symbol_table;
-            if not isinstance(tab, Archetype) {
-                continue;
-            }
-            if self._is_stub_module(tab.find_parent_of_type(Module)) {
-                continue;
-            }
-            for m in tab.get_methods() {
-                nm = m.name_ref.sym_name if m.name_ref else "";
-                if nm in ("init", "__init__", "postinit", "__post_init__") {
-                    return True;
-                }
-            }
+    def _field_type_of(hv: HasVar) -> (CtType | None) {
+        if hv.type_tag is None or hv.type_tag.tag is None {
+            return None;
         }
-        return False;
+        try {
+            return self.ct_type_of_class(
+                self.evaluator._convert_to_instance(
+                    self.evaluator.get_type_of_expression(hv.type_tag.tag)
+                )
+            );
+        } except Exception {
+            return None;
+        }
     }
 
     def _field_info(hv: HasVar, sym: (Symbol | None)) -> CtRecord {
-        ftype: any = None;
-        if hv.type_tag is not None and hv.type_tag.tag is not None {
-            try {
-                ftype = self.ct_type_of_class(
-                    self.evaluator._convert_to_instance(
-                        self.evaluator.get_type_of_expression(hv.type_tag.tag)
-                    )
-                );
-            } except Exception {
-                ftype = None;
-            }
-        }
-        dflt: any = None;
+        ftype = self._field_type_of(hv);
+        dflt: CtValue = CT_NONE;
         hval = hv.value;
         has_dflt = hval is not None;
         if hval is not None {
             try {
                 dflt = self.eval(hval);
             } except Exception {
-                dflt = None;
+                dflt = CT_NONE;
             }
         }
-        sem_text = getattr(hv, "semstr", "") or (sym.semstr if sym is not None else "");
+        sem_text = hv.semstr or (sym.semstr if sym is not None else "");
         return CtRecord(
             class_name="FieldInfo",
             module="jaclang.comptime",
             fields={
-                "name": hv.name.value,
-                "type": ftype,
-                "has_default": has_dflt,
+                "name": mk_str(hv.name.value),
+                "type": ftype if ftype is not None else CT_NONE,
+                "has_default": mk_bool(has_dflt),
                 "default": dflt,
-                "semstr": sem_text
+                "semstr": mk_str(sem_text)
             }
         );
     }
 
-    def intrinsic_fields(t: any) -> list[CtRecord] {
+    def intrinsic_fields(t: CtValue) -> CtList {
         if isinstance(t, CtDeferred) {
             raise CtDeferredSignal();
         }
@@ -1438,17 +1523,17 @@ obj CtEvaluator {
         if ct is None {
             raise CtError("fields() needs an archetype type");
         }
-        out: list[CtRecord] = [];
+        out: list[CtValue] = [];
         for hv in self._has_vars_of(ct) {
             if hv.accessors {
                 continue;
             }
             out.append(self._field_info(hv, hv.sym));
         }
-        return out;
+        return mk_list(out);
     }
 
-    def intrinsic_members(t: any) -> list[CtEnumMember] {
+    def intrinsic_members(t: CtValue) -> CtList {
         if isinstance(t, CtDeferred) {
             raise CtDeferredSignal();
         }
@@ -1456,10 +1541,18 @@ obj CtEvaluator {
         if not isinstance(node_, Enum) {
             raise CtError("members() needs an enum type");
         }
-        return `list(self._enum_members(node_));
+        items: list[CtValue] = [];
+        for m in self._enum_members(node_) {
+            items.append(m);
+        }
+        return mk_list(items);
     }
 
-    def intrinsic_semstr(t: any, field: str = "") -> (str | None) {
+    def _semstr_of_name(nd: Name) -> str {
+        return nd.semstr or (nd.sym.semstr if nd.sym else "");
+    }
+
+    def intrinsic_semstr(t: CtValue, field: str = "") -> CtValue {
         if isinstance(t, CtEnumMember) {
             node_ = self._arch_node_of(t.enum_type);
             if node_ is not None {
@@ -1467,14 +1560,12 @@ obj CtEvaluator {
                     if isinstance(stmt, Assignment) and stmt.is_enum_stmt {
                         tgt = stmt.target[0] if stmt.target else None;
                         if isinstance(tgt, Name) and tgt.value == t.member {
-                            got = getattr(tgt, "semstr", "")
-                                or (tgt.sym.semstr if tgt.sym else "");
-                            return got;
+                            return mk_str(self._semstr_of_name(tgt));
                         }
                     }
                 }
             }
-            return None;
+            return CT_NONE;
         }
         ct = self._class_type_of(t);
         node_ = self._arch_node_of(ct);
@@ -1482,44 +1573,54 @@ obj CtEvaluator {
             raise CtError("semstr() needs an archetype, enum, or enum member");
         }
         if not field {
-            got = getattr(node_, "semstr", "")
-                or (node_.name.sym.semstr if node_.name.sym else "");
-            return got;
+            return mk_str(
+                node_.semstr or (node_.name.sym.semstr if node_.name.sym else "")
+            );
         }
         if isinstance(ct, ClassType) {
             for hv in self._has_vars_of(ct) {
                 if hv.name.value == field {
-                    got = getattr(hv, "semstr", "")
-                        or (hv.sym.semstr if hv.sym else "");
-                    return got;
+                    return mk_str(hv.semstr or (hv.sym.semstr if hv.sym else ""));
                 }
             }
         }
-        return None;
+        return CT_NONE;
+    }
+
+    def _str_arg(v: CtValue, what: str) -> str {
+        if isinstance(v, CtStr) {
+            return v.value;
+        }
+        raise CtError(f"{what} needs a str argument");
     }
 
     def _intrinsic(
-        name: str, nd: FuncCall, args: list[any], kwargs: dict[str, any]
-    ) -> any {
+        name: str, nd: FuncCall, args: list[CtValue], kwargs: dict[str, CtValue]
+    ) -> CtValue {
         if name == "set_fuel" {
-            if len(args) != 1 or not isinstance(args[0], int) {
+            fuel_arg = as_ct_int(args[0]) if len(args) == 1 else None;
+            if fuel_arg is None or isinstance(args[0], CtBool) {
                 raise CtError("set_fuel() takes one int argument");
             }
-            self.fuel = max(self.fuel, int(args[0]));
-            return None;
+            if not fuel_arg.mag {
+                self.fuel = max(self.fuel, fuel_arg.small);
+            } elif not fuel_arg.neg {
+                self.fuel = max(self.fuel, 4611686018427387903);
+            }
+            return CT_NONE;
         }
         if name in ("embed_file", "embed_bytes") {
-            if len(args) != 1 or not isinstance(args[0], str) {
+            if len(args) != 1 or not isinstance(args[0], CtStr) {
                 raise CtError(f"{name}() takes one str path argument");
             }
-            return self._embed(nd, args[0], name == "embed_bytes");
+            return self._embed(nd, args[0].value, name == "embed_bytes");
         }
         if name in ("sizeof", "alignof") {
             if len(args) != 1 {
                 raise CtError(f"{name}() takes one type argument");
             }
             (size, align) = self._size_align(args[0]);
-            return size if name == "sizeof" else align;
+            return mk_int(size if name == "sizeof" else align);
         }
         if name == "typeof" {
             if len(args) != 1 {
@@ -1530,6 +1631,9 @@ obj CtEvaluator {
                 raise CtDeferredSignal();
             }
             return self.ct_type_of_value(v);
+        }
+        if not args {
+            raise CtError(f"{name}() needs an argument");
         }
         if name == "fields" {
             return self.intrinsic_fields(args[0]);
@@ -1542,64 +1646,90 @@ obj CtEvaluator {
             if ct is None {
                 raise CtError("has_field() needs an archetype type");
             }
-            return `any(hv.name.value == args[1] for hv in self._has_vars_of(ct));
+            want = self._str_arg(args[1], "has_field()") if len(args) > 1 else "";
+            for hv in self._has_vars_of(ct) {
+                if hv.name.value == want {
+                    return mk_bool(True);
+                }
+            }
+            return mk_bool(False);
         }
         if name == "get_field" {
             holder = args[0];
             if isinstance(holder, CtRecord) {
-                if args[1] in holder.fields {
-                    return holder.fields[args[1]];
+                fname = self._str_arg(args[1], "get_field()") if len(args) > 1 else "";
+                if fname in holder.fields {
+                    return holder.fields[fname];
                 }
-                raise CtError(f"{holder.class_name} has no field '{args[1]}'");
+                raise CtError(f"{holder.class_name} has no field '{fname}'");
             }
             raise CtDeferredSignal();
         }
         if name == "set_field" {
             holder = args[0];
             if isinstance(holder, CtRecord) {
-                holder.fields[args[1]] = args[2];
-                return None;
+                if len(args) < 3 {
+                    raise CtError(
+                        "set_field() takes a target, a field name, and a value"
+                    );
+                }
+                holder.fields[self._str_arg(args[1], "set_field()")] = args[2];
+                return CT_NONE;
             }
             raise CtDeferredSignal();
         }
         if name == "semstr" {
-            fld = kwargs.get("field", args[1] if len(args) > 1 else "");
-            return self.intrinsic_semstr(args[0], fld);
+            fld_v: CtValue = kwargs.get(
+                "field", args[1] if len(args) > 1 else mk_str("")
+            );
+            return self.intrinsic_semstr(args[0], self._str_arg(fld_v, "semstr()"));
         }
         if name == "name" {
             v = args[0];
             if isinstance(v, CtType) {
-                return v.name;
+                return mk_str(v.name);
             }
             if isinstance(v, CtEnumMember) {
-                return v.member;
+                return mk_str(v.member);
             }
             if isinstance(v, CtFunc) {
-                return v.qualname.split(".")[-1];
+                return mk_str(v.qualname.split(".")[-1]);
             }
             raise CtError("name() needs a type, enum member, or function");
         }
         if name == "is_subtype" {
-            if isinstance(args[0], CtType) and isinstance(args[1], CtType) {
-                return self._is_subtype(args[0], args[1]);
+            if len(args) == 2
+                and isinstance(args[0], CtType)
+                and isinstance(args[1], CtType) {
+                return mk_bool(self._is_subtype(args[0], args[1]));
             }
             raise CtError("is_subtype() needs two types");
         }
         if name == "module_of" {
             v = args[0];
             if isinstance(v, CtRecord) and v.home {
-                return v.home;
+                return mk_str(v.home);
             }
-            first = (nd.params or [None])[0];
-            bound = isinstance(first, Name) and self.frame_lookup(first.value)[0];
+            first: (UniNode | None) = nd.params[0] if nd.params else None;
+            bound = isinstance(first, Name)
+                and self.frame_lookup(first.value) is not None;
             home = self._defining_module_of(first)
                 if first is not None and not bound
                 else None;
             if home {
-                return home;
+                return mk_str(home);
             }
-            if isinstance(v, (CtType, CtFunc, CtRecord, CtEnumMember)) {
-                return v.module;
+            if isinstance(v, CtType) {
+                return mk_str(v.module);
+            }
+            if isinstance(v, CtFunc) {
+                return mk_str(v.module);
+            }
+            if isinstance(v, CtRecord) {
+                return mk_str(v.module);
+            }
+            if isinstance(v, CtEnumMember) {
+                return mk_str(v.module);
             }
             raise CtError("module_of() needs a type, function, enum member, or record");
         }
@@ -1663,23 +1793,28 @@ obj CtEvaluator {
         return _mod_dotted(sym.decl.find_parent_of_type(Module));
     }
 
-    def _call_args(nd: FuncCall) -> tuple[list[any], dict[str, any]] {
-        args: list[any] = [];
-        kwargs: dict[str, any] = {};
+    def _call_args(nd: FuncCall) -> tuple[list[CtValue], dict[str, CtValue]] {
+        args: list[CtValue] = [];
+        kwargs: dict[str, CtValue] = {};
         for p in (nd.params or []) {
             if isinstance(p, KWPair) {
                 if p.key is None {
                     spread = self.eval(p.value);
-                    if not isinstance(spread, dict) {
+                    if not isinstance(spread, CtDict) {
                         raise CtError("** spread of a non-dict in comptime code");
                     }
-                    kwargs.update(spread);
+                    for (i, k) in enumerate(spread.keys) {
+                        if not isinstance(k, CtStr) {
+                            raise ct_exc("TypeError", "keywords must be strings");
+                        }
+                        kwargs[k.value] = spread.vals[i];
+                    }
                 } else {
                     kwargs[p.key.sym_name] = self.eval(p.value);
                 }
             } elif isinstance(p, UnaryExpr)
                 and self._tok_name(p.op) == Tok.STAR_MUL.value {
-                args.extend(`list(self.eval(p.operand)));
+                args.extend(self.iterate(self.eval(p.operand)));
             } else {
                 args.append(self.eval(p));
             }
@@ -1687,7 +1822,7 @@ obj CtEvaluator {
         return (args, kwargs);
     }
 
-    def _eval_call(nd: FuncCall) -> any {
+    def _eval_call(nd: FuncCall) -> CtValue {
         if nd.genai_call is not None {
             raise CtError("'by llm' calls cannot run at compile time");
         }
@@ -1702,13 +1837,13 @@ obj CtEvaluator {
             and tgt.is_attr
             and isinstance(tgt.right, Name) {
             recv = self.eval(tgt.target);
-            if tgt.is_null_ok and recv is None {
-                return None;
+            if tgt.is_null_ok and isinstance(recv, CtNone) {
+                return CT_NONE;
             }
             return self._call_attr(recv, tgt.right.value, args, kwargs);
         }
         callee = self.eval(tgt);
-        return self._call_value(callee, args, kwargs);
+        return self.call_value(callee, args, kwargs);
     }
 
     def _class_binding(ct: (ClassType | None), name: str) -> (Assignment | None) {
@@ -1743,7 +1878,7 @@ obj CtEvaluator {
             vals = [head];
         }
         node_ = self._arch_node_of(self._class_type_of(base));
-        ct_args: dict[str, any] = `dict(base.ct_args or {});
+        ct_args: dict[str, CtValue] = `dict(base.ct_args or {});
         if isinstance(node_, Archetype) {
             for (i, tp) in enumerate(node_.type_params or []) {
                 if tp.is_comptime and i < len(vals) {
@@ -1777,20 +1912,20 @@ obj CtEvaluator {
     }
 
     def _call_attr(
-        recv: any, attr: str, args: list[any], kwargs: dict[str, any]
-    ) -> any {
+        recv: CtValue, attr: str, args: list[CtValue], kwargs: dict[str, CtValue]
+    ) -> CtValue {
         if isinstance(recv, CtDeferred) {
             raise CtDeferredSignal();
         }
         if isinstance(recv, CtType) {
             m = self._find_method(self._class_type_of(recv), attr);
             if m is None {
+                if recv.module == "builtins" and not attr.startswith("_") {
+                    return self.call_value(ct_type_attr(recv.name, attr), args, kwargs);
+                }
                 raise CtError(f"{recv.name} has no method '{attr}'");
             }
-            if m.is_static or m.is_comptime {
-                return self.call_ability(m, args, kwargs, self_val=recv);
-            }
-            if m.is_classmethod {
+            if m.is_static or m.is_comptime or m.is_classmethod {
                 return self.call_ability(m, args, kwargs, self_val=recv);
             }
             raise CtError(
@@ -1808,22 +1943,23 @@ obj CtEvaluator {
             return self.call_ability(m, args, kwargs, self_val=recv);
         }
         if isinstance(recv, (CtEnumMember, CtFunc)) {
-            raise CtError(f"'{attr}' is not callable on {recv!r} in comptime code");
+            raise CtError(
+                f"'{attr}' is not callable on {ct_repr(recv)} in comptime code"
+            );
         }
         if attr.startswith("_") {
             raise CtError(f"access to '{attr}' is not allowed in comptime code");
         }
-        fn = getattr(recv, attr, None);
-        if fn is None or not callable(fn) {
-            raise CtError(
-                f"'{type(recv).__name__}' has no callable attribute '{attr}'"
-            );
+        if isinstance(recv, CtModule) {
+            return self.call_value(ct_value_attr(recv, attr), args, kwargs);
         }
         self.burn(10);
-        return fn(*args, **kwargs);
+        return ct_call_method(self, recv, attr, args, kwargs);
     }
 
-    def _call_value(callee: any, args: list[any], kwargs: dict[str, any]) -> any {
+    def call_value(
+        callee: CtValue, args: list[CtValue], kwargs: dict[str, CtValue]
+    ) -> CtValue {
         if isinstance(callee, CtDeferred) {
             raise CtDeferredSignal();
         }
@@ -1841,24 +1977,33 @@ obj CtEvaluator {
         if isinstance(callee, CtType) {
             return self._construct(callee, args, kwargs);
         }
-        if isinstance(callee, (CtRecord, CtEnumMember)) {
-            raise CtError(f"{callee!r} is not callable");
-        }
-        if callable(callee) {
+        if isinstance(callee, CtBuiltin) {
             self.burn(10);
-            return callee(*args, **kwargs);
+            return ct_call_builtin(self, callee.name, args, kwargs);
         }
-        raise CtError(f"{callee!r} is not callable in comptime code");
+        if isinstance(callee, CtMethod) {
+            self.burn(10);
+            return ct_call_method_value(self, callee, args, kwargs);
+        }
+        if isinstance(callee, (CtRecord, CtEnumMember)) {
+            raise CtError(f"{ct_repr(callee)} is not callable");
+        }
+        raise CtError(f"{ct_repr(callee)} is not callable in comptime code");
     }
 
-    def _construct(t: CtType, args: list[any], kwargs: dict[str, any]) -> any {
+    def _construct(
+        t: CtType, args: list[CtValue], kwargs: dict[str, CtValue]
+    ) -> CtValue {
         if t.module == "builtins" {
-            if t.name in CT_PY_TYPES {
-                self.burn(5);
-                return CT_PY_TYPES[t.name](*args, **kwargs);
+            if t.name == "type" {
+                if len(args) != 1 or kwargs {
+                    raise CtError("type() takes exactly one argument in comptime code");
+                }
+                return self.ct_type_of_value(args[0]);
             }
-            if t.name in CT_PY_EXCEPTIONS {
-                return CT_PY_EXCEPTIONS[t.name](*args, **kwargs);
+            if t.name in CT_BUILTIN_TYPES or t.name in CT_BUILTIN_EXCEPTIONS {
+                self.burn(5);
+                return ct_construct_builtin(t.name, args, kwargs);
             }
             raise CtError(f"cannot construct builtin '{t.name}' at compile time");
         }
@@ -1869,11 +2014,11 @@ obj CtEvaluator {
                 raise CtError(f"{t.name}(...) takes exactly one value");
             }
             for m in self._enum_members(node_) {
-                if m.value == args[0] {
+                if ct_eq(m.value, args[0]) {
                     return m;
                 }
             }
-            raise CtError(f"{args[0]!r} is not a value of {t.name}");
+            raise CtError(f"{ct_repr(args[0])} is not a value of {t.name}");
         }
         if ct is None or node_ is None {
             raise CtError(f"cannot construct '{t.name}' at compile time");
@@ -1884,7 +2029,7 @@ obj CtEvaluator {
             if not hv.accessors
         ];
         self._note_producer(node_.find_parent_of_type(Module), body=True);
-        fields: dict[str, any] = {};
+        fields: dict[str, CtValue] = {};
         init_ab = self._user_method(ct, "init") or self._user_method(ct, "__init__");
         if init_ab is not None {
             for hv in hvs {
@@ -1902,18 +2047,19 @@ obj CtEvaluator {
             self.call_ability(init_ab, args, kwargs, self_val=rec);
             return rec;
         }
+        remaining: dict[str, CtValue] = `dict(kwargs);
         ai = 0;
         for hv in hvs {
             nm = hv.name.value;
             if ai < len(args) {
                 fields[nm] = args[ai];
                 ai += 1;
-            } elif nm in kwargs {
-                fields[nm] = kwargs.pop(nm);
+            } elif nm in remaining {
+                fields[nm] = remaining.pop(nm);
             } elif hv.value is not None {
                 fields[nm] = self.eval(hv.value);
             } elif hv.defer {
-                fields[nm] = None;
+                fields[nm] = CT_NONE;
             } else {
                 raise CtError(f"{t.name}() is missing field '{nm}'");
             }
@@ -1923,8 +2069,8 @@ obj CtEvaluator {
                 f"{t.name}() got {len(args) - ai} extra positional argument(s)"
             );
         }
-        if kwargs {
-            raise CtError(f"{t.name}() got unexpected field(s) {sorted(kwargs)}");
+        if remaining {
+            raise CtError(f"{t.name}() got unexpected field(s) {sorted(remaining)}");
         }
         rec = CtRecord(
             class_name=t.name,
@@ -1950,8 +2096,11 @@ obj CtEvaluator {
     }
 
     def call_ability(
-        ability: Ability, args: list[any], kwargs: dict[str, any], self_val: any = None
-    ) -> any {
+        ability: Ability,
+        args: list[CtValue],
+        kwargs: dict[str, CtValue],
+        self_val: (CtValue | None) = None
+    ) -> CtValue {
         self.burn(20);
         if not self.frames and not self.demand {
             raise CtNotComptime();
@@ -1978,7 +2127,7 @@ obj CtEvaluator {
             raise CtError("comptime call stack exceeded 200 frames");
         }
         params = ability.signature.get_parameters();
-        kw = `dict(kwargs);
+        kw: dict[str, CtValue] = `dict(kwargs);
         self._note_producer(ability.find_parent_of_type(Module), body=True);
         self.push_frame(barrier=True);
         self.call_stack.append(name);
@@ -2006,12 +2155,16 @@ obj CtEvaluator {
                 }
                 first = False;
                 if p.is_vararg {
-                    self.bind(pname, `tuple(args[ai:]));
+                    self.bind(pname, mk_tuple(args[ai:]));
                     ai = len(args);
                     continue;
                 }
                 if p.is_kwargs {
-                    self.bind(pname, `dict(kw));
+                    spread = mk_dict();
+                    for (kk, kv) in kw.items() {
+                        dict_set(spread, mk_str(kk), kv);
+                    }
+                    self.bind(pname, spread);
                     kw = {};
                     continue;
                 }
@@ -2034,10 +2187,10 @@ obj CtEvaluator {
             if kw {
                 raise CtError(f"{name}() got unexpected keyword(s) {sorted(kw)}");
             }
-            self._ret = None;
+            self._ret = CT_NONE;
             self._exec_block(body);
             out = self._ret;
-            self._ret = None;
+            self._ret = CT_NONE;
             return out;
         } finally {
             self.call_stack.pop();
@@ -2045,15 +2198,13 @@ obj CtEvaluator {
         }
     }
 
-    def _embed(nd: FuncCall, rel: str, as_bytes: bool) -> any {
+    def _embed(nd: FuncCall, rel: str, as_bytes: bool) -> CtValue {
         mod = nd.find_parent_of_type(Module);
         base = os.path.dirname(mod.loc.mod_path) if mod is not None and mod.loc else "";
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
         try {
-            with open(path, "rb") as fh {
-                data = fh.read();
-            }
+            data = ct_read_host_file(path);
         } except OSError as e {
             raise CtError(f"embed_file: cannot read {path}: {e}");
         }
@@ -2063,20 +2214,17 @@ obj CtEvaluator {
         self._note_ct_path(path);
         self.burn(len(data) // 64 + 1);
         if as_bytes {
-            return data;
+            return mk_bytes(data);
         }
         try {
-            return data.decode("utf-8");
+            return mk_str(data.decode("utf-8"));
         } except UnicodeDecodeError {
             raise CtError(f"embed_file: {path} is not UTF-8 text; use embed_bytes");
         }
     }
 
-    def _scalar_size_align(t: any) -> (tuple[int, int] | None) {
-        name = t.name if isinstance(t, CtType) else str(t);
-        if isinstance(t, `type) {
-            name = t.__name__;
-        }
+    def _scalar_size_align(t: CtValue) -> (tuple[int, int] | None) {
+        name = t.name if isinstance(t, CtType) else ct_str(t);
         if name == "bool" {
             return (1, 1, );
         }
@@ -2091,7 +2239,7 @@ obj CtEvaluator {
         return None;
     }
 
-    def _size_align(t: any) -> tuple[int, int] {
+    def _size_align(t: CtValue) -> tuple[int, int] {
         if isinstance(t, CtDeferred) {
             raise CtDeferredSignal();
         }
@@ -2110,27 +2258,25 @@ obj CtEvaluator {
             if hv.accessors {
                 continue;
             }
-            inner: (tuple[int, int] | None) = None;
-            if hv.type_tag is not None and hv.type_tag.tag is not None {
-                try {
-                    ftype = self.ct_type_of_class(
-                        self.evaluator._convert_to_instance(
-                            self.evaluator.get_type_of_expression(hv.type_tag.tag)
-                        )
-                    );
-                    inner = self._scalar_size_align(ftype);
-                } except Exception {
-                    inner = None;
+            sz = 8;
+            al = 8;
+            ftype = self._field_type_of(hv);
+            if ftype is not None {
+                inner = self._scalar_size_align(ftype);
+                if inner is not None {
+                    sz = inner[0];
+                    al = inner[1];
                 }
             }
-            (sz, al) = inner if inner is not None else (8, 8, );
             off = (off + al - 1) // al * al + sz;
-            top = max(top, al);
+            if al > top {
+                top = al;
+            }
         }
         return ((off + top - 1) // top * top, top, );
     }
 
-    def _self_type_of(self_val: any, ability: Ability) -> (CtType | None) {
+    def _self_type_of(self_val: (CtValue | None), ability: Ability) -> (CtType | None) {
         if isinstance(self_val, CtType) {
             return self_val;
         }
@@ -2154,6 +2300,57 @@ obj CtEvaluator {
         return 0;
     }
 
+    def _for_item(coll: CtValue, items: list[CtValue], idx: int) -> (CtValue | None) {
+        if isinstance(coll, CtList) {
+            return coll.items[idx] if idx < len(coll.items) else None;
+        }
+        if isinstance(coll, CtRange) {
+            return mk_int(coll.start + idx * coll.step)
+                if idx < range_len(coll)
+                else None;
+        }
+        return items[idx] if idx < len(items) else None;
+    }
+
+    def _exec_for(nd: InForStmt) -> int {
+        coll = self.eval(nd.collection);
+        if isinstance(coll, CtDeferred) {
+            raise CtDeferredSignal();
+        }
+        broke = False;
+        idx = 0;
+        items: list[CtValue] = [];
+        if not isinstance(coll, (CtList, CtRange)) {
+            items = self.iterate(coll);
+        }
+        while True {
+            item = self._for_item(coll, items, idx);
+            if item is None {
+                break;
+            }
+            idx += 1;
+            self.burn(2);
+            self.push_frame();
+            try {
+                self._bind_target(nd.target, item);
+                sig = self._exec_block(`list(nd.body));
+            } finally {
+                self.pop_frame();
+            }
+            if sig == 1 {
+                return 1;
+            }
+            if sig == 2 {
+                broke = True;
+                break;
+            }
+        }
+        if not broke and isinstance(nd.else_body, ElseStmt) {
+            return self._exec_stmt(nd.else_body);
+        }
+        return 0;
+    }
+
     def _exec_stmt(nd: UniNode) -> int {
         self.burn();
         if isinstance(nd, Semi) {
@@ -2167,7 +2364,7 @@ obj CtEvaluator {
             return 0;
         }
         if isinstance(nd, IfStmt) {
-            if self.eval(nd.condition) {
+            if self.truthy(nd.condition) {
                 return self._exec_block(`list(nd.body));
             }
             if nd.else_body is not None {
@@ -2179,7 +2376,7 @@ obj CtEvaluator {
             return self._exec_block(`list(nd.body));
         }
         if isinstance(nd, WhileStmt) {
-            while self.eval(nd.condition) {
+            while self.truthy(nd.condition) {
                 self.burn(2);
                 sig = self._exec_block(`list(nd.body));
                 if sig == 1 {
@@ -2192,32 +2389,10 @@ obj CtEvaluator {
             return 0;
         }
         if isinstance(nd, InForStmt) {
-            coll = self.eval(nd.collection);
-            broke = False;
-            for item in coll {
-                self.burn(2);
-                self.push_frame();
-                try {
-                    self._bind_target(nd.target, item);
-                    sig = self._exec_block(`list(nd.body));
-                } finally {
-                    self.pop_frame();
-                }
-                if sig == 1 {
-                    return 1;
-                }
-                if sig == 2 {
-                    broke = True;
-                    break;
-                }
-            }
-            if not broke and isinstance(nd.else_body, ElseStmt) {
-                return self._exec_stmt(nd.else_body);
-            }
-            return 0;
+            return self._exec_for(nd);
         }
         if isinstance(nd, ReturnStmt) {
-            self._ret = self.eval(nd.expr) if nd.expr is not None else None;
+            self._ret = self.eval(nd.expr) if nd.expr is not None else CT_NONE;
             return 1;
         }
         if isinstance(nd, CtrlStmt) {
@@ -2231,8 +2406,10 @@ obj CtEvaluator {
             raise CtError(f"'{nd.ctrl.value}' is not supported in comptime code");
         }
         if isinstance(nd, AssertStmt) {
-            if not self.eval(nd.condition) {
-                msg = str(self.eval(nd.error_msg)) if nd.error_msg is not None else "";
+            if not self.truthy(nd.condition) {
+                msg = ct_str(self.eval(nd.error_msg))
+                    if nd.error_msg is not None
+                    else "";
                 detail = ": " + msg if msg else "";
                 raise CtError(f"assertion failed{detail}");
             }
@@ -2240,9 +2417,18 @@ obj CtEvaluator {
         }
         if isinstance(nd, RaiseStmt) {
             if nd.cause is None {
-                raise CtRaise("re-raise");
+                if self._handling {
+                    raise CtRaise(exc=self._handling[-1], user=True);
+                }
+                raise CtRaise(
+                    exc=CtExc(
+                        kind="RuntimeError",
+                        args=[mk_str("No active exception to reraise")]
+                    ),
+                    user=True
+                );
             }
-            raise CtRaise(self.eval(nd.cause));
+            raise CtRaise(exc=self._as_exception(self.eval(nd.cause)), user=True);
         }
         if isinstance(nd, TryStmt) {
             return self._exec_try(nd);
@@ -2253,34 +2439,36 @@ obj CtEvaluator {
         raise CtError(f"'{type(nd).__name__}' is not supported in comptime code");
     }
 
+    def _as_exception(v: CtValue) -> CtExc {
+        if isinstance(v, CtDeferred) {
+            raise CtDeferredSignal();
+        }
+        if isinstance(v, CtExc) {
+            return v;
+        }
+        if isinstance(v, CtType)
+            and v.module == "builtins"
+            and v.name in CT_BUILTIN_EXCEPTIONS {
+            return CtExc(kind=v.name, args=[]);
+        }
+        return CtExc(kind="RuntimeError", args=[mk_str(ct_str(v))]);
+    }
+
     def _exec_assignment(nd: Assignment) -> int {
         if nd.value is None {
             return 0;
         }
         val = self.eval(nd.value);
         if nd.aug_op is not None {
-            opn = nd.aug_op.name;
-            cur = self.eval(nd.target[0]);
-            table = {
-                Tok.ADD_EQ.value: Tok.PLUS.value,
-                Tok.SUB_EQ.value: Tok.MINUS.value,
-                Tok.MUL_EQ.value: Tok.STAR_MUL.value,
-                Tok.DIV_EQ.value: Tok.DIV.value,
-                Tok.FLOOR_DIV_EQ.value: Tok.FLOOR_DIV.value,
-                Tok.MOD_EQ.value: Tok.MOD.value,
-                Tok.STAR_POW_EQ.value: Tok.STAR_POW.value,
-                Tok.BW_AND_EQ.value: Tok.BW_AND.value,
-                Tok.BW_OR_EQ.value: Tok.BW_OR.value,
-                Tok.BW_XOR_EQ.value: Tok.BW_XOR.value,
-                Tok.LSHIFT_EQ.value: Tok.LSHIFT.value,
-                Tok.RSHIFT_EQ.value: Tok.RSHIFT.value
-            };
-            if opn not in table {
+            sym = CT_AUG_OPS.get(nd.aug_op.name);
+            if sym is None {
                 raise CtError(f"'{nd.aug_op.value}' is not supported in comptime code");
             }
-            self._assign_target(
-                nd.target[0], self._binop_by_name(table[opn], cur, val)
-            );
+            cur = self.eval(nd.target[0]);
+            if isinstance(cur, CtDeferred) or isinstance(val, CtDeferred) {
+                raise CtDeferredSignal();
+            }
+            self._assign_target(nd.target[0], ct_inplace(sym, cur, val));
             return 0;
         }
         for t in nd.target {
@@ -2290,81 +2478,50 @@ obj CtEvaluator {
     }
 
     def _binop_by_name(
-        opn: str, l: any, r: any, display_name: str | None = None
-    ) -> any {
-        if opn == Tok.PLUS.value {
-            return l + r;
+        opn: str, l: CtValue, r: CtValue, display_name: (str | None) = None
+    ) -> CtValue {
+        sym = ct_symbol(opn);
+        if sym == opn or sym in ("<", "<=", ">", ">=") {
+            raise CtError(
+                f"operator '{display_name
+                    if display_name is not None
+                    else opn}' is not supported in comptime code"
+            );
         }
-        if opn == Tok.MINUS.value {
-            return l - r;
-        }
-        if opn == Tok.STAR_MUL.value {
-            return l * r;
-        }
-        if opn == Tok.DIV.value {
-            return l / r;
-        }
-        if opn == Tok.FLOOR_DIV.value {
-            return l // r;
-        }
-        if opn == Tok.MOD.value {
-            return l % r;
-        }
-        if opn == Tok.STAR_POW.value {
-            return l ** r;
-        }
-        if opn == Tok.BW_AND.value {
-            return l & r;
-        }
-        if opn == Tok.BW_OR.value {
-            return l | r;
-        }
-        if opn == Tok.BW_XOR.value {
-            return l ^ r;
-        }
-        if opn == Tok.LSHIFT.value {
-            return l << r;
-        }
-        if opn == Tok.RSHIFT.value {
-            return l >> r;
-        }
-        raise CtError(
-            f"operator '{display_name
-                if display_name is not None
-                else opn}' is not supported in comptime code"
-        );
+        return ct_binary(sym, l, r);
     }
 
-    def _exc_matches(handler_type: any, exc: Exception) -> bool {
-        if isinstance(handler_type, tuple) {
-            return `any(self._exc_matches(h, exc) for h in handler_type);
-        }
-        if isinstance(handler_type, CtType) {
-            if handler_type.module == "builtins"
-                and handler_type.name in CT_PY_EXCEPTIONS {
-                return isinstance(exc, CT_PY_EXCEPTIONS[handler_type.name]);
+    def _exc_matches(handler_type: CtValue, exc: CtExc) -> bool {
+        if isinstance(handler_type, CtTuple) {
+            for h in handler_type.items {
+                if self._exc_matches(h, exc) {
+                    return True;
+                }
             }
             return False;
         }
-        if isinstance(handler_type, type) {
-            return isinstance(exc, handler_type);
+        if isinstance(handler_type, CtType)
+            and handler_type.module == "builtins"
+            and handler_type.name in CT_BUILTIN_EXCEPTIONS {
+            return ct_exc_is(exc.kind, handler_type.name);
         }
         return False;
     }
 
     def _exec_try(nd: TryStmt) -> int {
+        pending: (CtRaise | None) = None;
+        sig = 0;
         try {
             sig = self._exec_block(`list(nd.body));
+            if sig == 0 and isinstance(nd.else_body, ElseStmt) {
+                sig = self._exec_block(`list(nd.else_body.body));
+            }
         } except CtRaise as raised {
-            payload = raised.args[0] if raised.args else None;
-            exc: Exception = payload
-                if isinstance(payload, Exception)
-                else RuntimeError(str(payload));
-            return self._dispatch_except(nd, exc);
-        } except (CtError, CtNotComptime, CtDeferredSignal) {
-            raise;
-        } except Exception as e {
-            return self._dispatch_except(nd, e);
+            try {
+                sig = self._run_handlers(nd, raised);
+            } except CtRaise as again {
+                pending = again;
+            }
         }
         if nd.finally_body is not None {
             fin = self._exec_block(`list(nd.finally_body.body));
@@ -2372,35 +2529,37 @@ obj CtEvaluator {
                 return fin;
             }
         }
+        if pending is not None {
+            raise pending;
+        }
         return sig;
     }
 
-    def _dispatch_except(nd: TryStmt, exc: Exception) -> int {
+    def _run_handlers(nd: TryStmt, raised: CtRaise) -> int {
+        exc = raised.exc;
         for h in nd.excepts {
-            ht = self.eval(h.ex_type) if h.ex_type is not None else Exception;
-            if self._exc_matches(ht, exc) {
+            matched = True;
+            if h.ex_type is not None {
+                matched = self._exc_matches(self.eval(h.ex_type), exc);
+            }
+            if matched {
                 self.push_frame();
+                self._handling.append(exc);
                 try {
                     if h.name is not None {
                         self.bind(h.name.value, exc);
                     }
-                    sig = self._exec_block(`list(h.body));
+                    return self._exec_block(`list(h.body));
                 } finally {
+                    self._handling.pop();
                     self.pop_frame();
                 }
-                if nd.finally_body is not None {
-                    fin = self._exec_block(`list(nd.finally_body.body));
-                    if fin != 0 {
-                        return fin;
-                    }
-                }
-                return sig;
             }
         }
-        raise CtRaise(exc);
+        raise raised;
     }
 
-    def _attr_get(base: any, name: str) -> any {
+    def _attr_get(base: CtValue, name: str) -> CtValue {
         if isinstance(base, CtDeferred) {
             raise CtDeferredSignal();
         }
@@ -2421,16 +2580,16 @@ obj CtEvaluator {
         }
         if isinstance(base, CtEnumMember) {
             if name == "name" {
-                return base.member;
+                return mk_str(base.member);
             }
             if name == "value" {
                 return base.value;
             }
             if base.enum_name == "Codespace"
                 and name in ("is_server", "is_client", "is_native") {
-                return base.value == name[3:];
+                return mk_bool(ct_eq(base.value, mk_str(name[3:])));
             }
-            raise CtError(f"'{name}' is not available on enum member {base!r}");
+            raise CtError(f"'{name}' is not available on enum member {ct_repr(base)}");
         }
         if isinstance(base, CtType) {
             node_ = self._arch_node_of(self._class_type_of(base));
@@ -2452,9 +2611,9 @@ obj CtEvaluator {
                 return CtBound(self_val=base, ability=meth);
             }
             if base.module == "builtins"
-                and base.name in CT_PY_TYPES
+                and base.name in CT_BUILTIN_TYPES
                 and not name.startswith("_") {
-                return getattr(CT_PY_TYPES[base.name], name);
+                return ct_type_attr(base.name, name);
             }
             raise CtError(f"{base.name} has no comptime attribute '{name}'");
         }
@@ -2464,17 +2623,13 @@ obj CtEvaluator {
         if name.startswith("_") {
             raise CtError(f"access to '{name}' is not allowed in comptime code");
         }
-        try {
-            return getattr(base, name);
-        } except AttributeError {
-            raise CtError(f"'{type(base).__name__}' has no attribute '{name}'");
-        }
+        return ct_value_attr(base, name);
     }
 
-    def _eval_trailer(nd: AtomTrailer) -> any {
+    def _eval_trailer(nd: AtomTrailer) -> CtValue {
         base = self.eval(nd.target);
-        if nd.is_null_ok and base is None {
-            return None;
+        if nd.is_null_ok and isinstance(base, CtNone) {
+            return CT_NONE;
         }
         right = nd.right;
         if nd.is_attr and isinstance(right, Name) {
@@ -2497,12 +2652,12 @@ obj CtEvaluator {
                 lo = self.eval(s0.start) if s0.start is not None else None;
                 hi = self.eval(s0.stop) if s0.stop is not None else None;
                 st = self.eval(s0.step) if s0.step is not None else None;
-                return base[slice(lo, hi, st)];
+                return ct_getslice(base, lo, hi, st);
             }
             if s0.start is None {
                 raise CtError("empty index in comptime code");
             }
-            return base[self.eval(s0.start)];
+            return ct_getitem(base, self.eval(s0.start));
         }
         if isinstance(right, FuncCall) {
             inner = right.target;

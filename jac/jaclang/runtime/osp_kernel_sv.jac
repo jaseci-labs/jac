@@ -11,10 +11,10 @@ import from jaclang.runtime.archetype {
 }
 import from jaclang.runtime.osp_graph_sv { cls_of_tag, tag_of_cls }
 import from jaclang.runtime.osp_kernel {
-    Slot,
-    WalkerDesc,
-    NodeDesc,
-    WalkScope,
+    OspSlot,
+    OspWalkerDesc,
+    OspNodeDesc,
+    OspWalkScope,
     OspRuntime,
     UNTYPED
 }
@@ -60,7 +60,7 @@ obj _ContextStack {
 }
 
 with entry {
-    _kernel.DEFAULT.stack = cast(list[WalkScope], _ContextStack());
+    _kernel.DEFAULT.stack = cast(list[OspWalkScope], _ContextStack());
 }
 
 def isolate_request_walk_stack {
@@ -69,7 +69,7 @@ def isolate_request_walk_stack {
     }
 }
 
-glob _desc_of_cls: dict[(any, WalkerDesc)] = {};
+glob _desc_of_cls: dict[(any, OspWalkerDesc)] = {};
 
 def _trigger_members(trig: any) -> list[type] {
     if trig is None {
@@ -84,15 +84,15 @@ def _trigger_members(trig: any) -> list[type] {
     return [trig];
 }
 
-def _slots_from(funcs: list[ObjectSpatialFunction]) -> list[Slot] {
-    slots: list[Slot] = [];
+def _slots_from(funcs: list[ObjectSpatialFunction]) -> list[OspSlot] {
+    slots: list[OspSlot] = [];
     for f in funcs {
         members = _trigger_members(f.trigger);
         if not members {
-            slots.append(Slot(trig_tag=UNTYPED, fn=f.func));
+            slots.append(OspSlot(trig_tag=UNTYPED, fn=f.func));
         } else {
             for m in members {
-                slots.append(Slot(trig_tag=tag_of_cls(m), fn=f.func));
+                slots.append(OspSlot(trig_tag=tag_of_cls(m), fn=f.func));
             }
         }
     }
@@ -112,11 +112,11 @@ def _mro_funcs(cls: any, attr: str) -> list[any] {
     return `list(merged.values());
 }
 
-def desc_for(cls: any) -> WalkerDesc {
+def desc_for(cls: any) -> OspWalkerDesc {
     if cls in _desc_of_cls {
         return _desc_of_cls[cls];
     }
-    desc = WalkerDesc(
+    desc = OspWalkerDesc(
         type_tag=tag_of_cls(cls),
         `entry=_slots_from(
             cast(list[ObjectSpatialFunction], _mro_funcs(cls, '_jac_entry_funcs_'))
@@ -139,24 +139,24 @@ def _sv_is_a(tag: int, base: int) -> bool {
     return tc is not None and bc is not None and issubclass(tc, bc);
 }
 
-glob _ndesc_of_cls: dict[type, NodeDesc] = {};
+glob _ndesc_of_cls: dict[type, OspNodeDesc] = {};
 
-def _sv_node_desc(tag: int) -> NodeDesc {
+def _sv_node_desc(tag: int) -> OspNodeDesc {
     cls = cls_of_tag(tag);
     if cls is None {
-        return NodeDesc(type_tag=tag, `entry=[], `exit=[]);
+        return OspNodeDesc(type_tag=tag, `entry=[], `exit=[]);
     }
     cached = _ndesc_of_cls.get(cls);
     if cached is not None {
         return cached;
     }
     d = desc_for(cls);
-    nd = NodeDesc(type_tag=d.type_tag, `entry=d.`entry, `exit=d.`exit);
+    nd = OspNodeDesc(type_tag=d.type_tag, `entry=d.`entry, `exit=d.`exit);
     _ndesc_of_cls[cls] = nd;
     return nd;
 }
 
-def _sv_on_complete(scope: WalkScope, ok: bool) {
+def _sv_on_complete(scope: OspWalkScope, ok: bool) {
     if isinstance(scope.wlk, WalkerArchetype) {
         anch = scope.wlk.__jac__;
         walked: list[(NodeAnchor | EdgeAnchor)] = [];
@@ -178,10 +178,10 @@ def _sv_on_complete(scope: WalkScope, ok: bool) {
         scope.wlk.reports = scope.reports;
     }
 
-    import from jaclang.runtime.runtime { JacRuntime, _request_context }
+    import from jaclang.runtime.runtime { JacRuntime }
     ctx = None;
     try {
-        ctx = _request_context.get() or JacRuntime.exec_ctx;
+        ctx = JacRuntime.peek_context();
         if ctx is None {
             return;
         }
@@ -209,7 +209,7 @@ def make_sv_runtime -> OspRuntime {
 }
 
 async def osp_spawn_async(
-    rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[any]
+    rt: OspRuntime, wlk: any, wdesc: OspWalkerDesc, starts: list[any]
 ) -> any {
     eng = _kernel.DEFAULT;
     scope = eng.begin(wlk, starts);

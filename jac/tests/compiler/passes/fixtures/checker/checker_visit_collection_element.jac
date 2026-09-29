@@ -16,11 +16,11 @@ node City {
     has population: int;
 }
 
-edge Friend {
+edge Friend : any --> any {
     has since: int = 0;
 }
 
-edge Road {
+edge Road : any --> any {
     has length: int = 0;
 }
 

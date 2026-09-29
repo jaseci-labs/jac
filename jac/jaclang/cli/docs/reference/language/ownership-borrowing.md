@@ -29,6 +29,7 @@ The checker is one of the compiler's required analyses on the native pathway: it
 | Scope allocation and graph lifetime | Named/anonymous Region, `in`, `region_of`, elision, reboxing, seal, partition/reabsorb, inferred regions | [Regions](#regions-first-class-region-handles-and-in-opens) |
 | Traverse or parallelize borrowed data | Reference loops, affine walkers, moved/frozen payloads, join-bounded lends, `flow for`, chunks, reductions | [Reference loops](#reference-yielding-loops), [walkers](#affine-walkers), [parallel loops](#flow-for-the-disjoint-partition-loop) |
 | Control cleanup and memory policy | `drop`, local inference, exception cleanup, managed/RC/nogc profiles | [Cleanup](#the-drop-hook), [inference](#local-inference-under-enforcement), [errors](#errors-without-unwinding), [zero-RC](#zero-rc-native-builds) |
+| Hand memory to C | `&`/`&mut` clib parameters, `PtrView` of C memory, `Pinned[T]` | [Borrows to C](#borrows-to-c-views-of-c-memory-and-pinned-payloads) |
 
 The checker is gradual and conservative, not a proof of arbitrary aliases hidden in managed storage or opaque foreign handles. Shared views prevent mutation through checked loans; an `imm` annotation alone cannot prevent writes through a separately obtained managed alias. Use the freeze operator when uniqueness is needed. See the [checker contract](../../internals/ownership-checker-spec.md) for analysis boundaries.
 
@@ -151,6 +152,34 @@ with entry {
     use1(v);      # error[E1304]: 'a' is destroyed while still borrowed
 }
 ```
+
+## Borrowing through managed values
+
+`&` also borrows a place reached from a **managed** value, which is what ordinary (RC/GC) code is made of. The binding is a local view: it does not hold its referent alive, so reading it costs no refcount traffic, and a walk that rebinds it costs none either:
+
+```jac
+def check(p: parser, rule_type: int) -> memo | None {
+    head: &memo | None = &p.tokens[p.mark].memo_head;
+    while head is not None {
+        if head.rule_type == rule_type {
+            p.mark = head.end_mark;
+            return head;            # handed back as an ordinary managed value
+        }
+        head = &head.next;          # reborrow along the same path
+    }
+    return None;
+}
+```
+
+Three rules make that safe, and the checker enforces them:
+
+1. **The borrow starts where the value outlives it.** The start of the path is a parameter, `self`, an `own` or `imm` binding, or another borrow. An ordinary local or a module global can be released while the borrow is still in use, so starting there is [`E1323`](../diagnostics.md#ownership-borrow-errors).
+2. **Nothing writes the fields the borrow was reached through.** The borrow above walked `tokens`, an element, `memo_head` and `next`. While it is live, assigning any of those fields, on any object, is [`E1321`](../diagnostics.md#ownership-borrow-errors), and a call that may write one of them is [`E1322`](../diagnostics.md#ownership-borrow-errors). What a function writes is inferred from its body and its callees; a call the compiler cannot resolve is assumed to write anything. Fields off the path, such as `p.mark` above, are free to change.
+3. **`&` stays read-only.** Assigning a field through a shared borrow is [`E1320`](../diagnostics.md#ownership-borrow-errors); take the borrow with `&mut` when the walk writes what it finds.
+
+Handing the borrowed value where a managed value is expected, such as the `return head` above or a store into a field, gives back an ordinary managed reference. That is not an escape ([`E1306`](../diagnostics.md#ownership-borrow-errors) is about borrows of owners, which cannot outlive them).
+
+The payoff is in walks over managed structures: on the native backend a borrowed local holds no reference, so rebinding it emits no retain and no release, and only the value that leaves the function is retained.
 
 ## Escaping borrows
 
@@ -806,6 +835,14 @@ Outside regions, the Python backend does not invoke `def drop` automatically yet
 ## Zero-RC native builds
 
 On the native backend, full ownership coverage is what lets the memory-management runtime disappear from the artifact entirely. A **nogc-enforced** module (`jac build --native --memory nogc`, or `jac.toml [memory]` patterns) must keep every heap-typed contract position -- parameter, return type, `has` field -- in the owned world, with violations reported as hard [`E1401`-`E1407`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. Compiled with `--memory nogc`, such a module gets **headerless owned codegen**: allocations and frees at statically determined points (a bare `malloc` at construction, a direct `__drop_<T>` call after last use), no reference counting, and no collector -- and a build with `--memory nogc` fails if the emitted IR contains any RC/collector machinery, making the absence checkable in the binary. When incrementally enforcing modules under managed/RC profiles, `managed(...)` marks transfers into managed storage. A whole-artifact nogc build rejects managed allocation; preserve owned/borrowed contracts throughout that artifact. The full model -- memory profiles, the enforcement contract, and the `rc-stats` coverage report -- lives in [Zero-RC ownership compilation](native-pathway.md#zero-rc-ownership-compilation).
+
+## Borrows to C, views of C memory, and pinned payloads
+
+The same borrows reach C. A [C library](native-pathway.md#c-library-interop) parameter typed `&T` or `&mut T` receives the address of the argument's storage for the duration of the call, and the caller writes the ordinary `&x` / `&mut x`: the borrow's extent is the call, so every rule above applies unchanged and nothing new is checked. What C writes through a `&mut` pointer is visible in the Jac value afterwards.
+
+`p.view(n)` over a [C pointer](native-pathway.md#c-pointers-ptrt) is a [local view](#views-and-zero-copy-current-state-and-direction) of memory the checker cannot see, so it has no owner to tie a lifetime to: it may be passed down, never returned, stored, placed in a container, bound `own`, or sent across `flow` (`E1315`). A foreign struct read out of C storage -- a nested struct field, a view element -- is a fresh copy, so under enforcement it binds `own`, not as a borrow.
+
+A pointer C keeps after the call returns needs storage that never moves: [`Pinned[T]`](native-pathway.md#pointers-c-keeps-pinnedt), made by `pin(value)`, is an owned box whose payload address is stable. Moving the handle never moves the payload, dropping it frees the payload (at its static drop point under `nogc`, at the last reference under `rc`/`managed`), and it seals into managed storage through the normal membrane. A clib parameter typed `&mut Pinned[T]` accepts only a pinned value, so a stack local cannot be registered with C by mistake. Keeping the pin alive for as long as C holds the pointer remains the program's obligation.
 
 ## What `&x` compiles to
 

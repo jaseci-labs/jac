@@ -217,10 +217,11 @@ impl forget_database(conn: any, database: str) -> None {
 }
 
 
-def _records_sql(predicate: str) -> str {
+def _records_sql(predicate: str, with_size: bool = True) -> str {
+    size_expr = 'pg_database_size(d.datname)' if with_size else '0';
     return f"""
         SELECT d.datname,
-               pg_database_size(d.datname),
+               {size_expr},
                r.database IS NOT NULL,
                coalesce(r.kind, ''),
                coalesce(r.owner_path, ''),
@@ -264,11 +265,13 @@ def _record_of(row: any) -> DbRecord {
 }
 
 
-impl list_databases(conn: any) -> list[DbRecord] {
+impl list_databases(
+    conn: any, prefix: str = DB_PREFIX, with_size: bool = True
+) -> list[DbRecord] {
     ensure_registry(conn);
     rows = conn.run(
-        _records_sql('d.datname LIKE :pattern'),
-        pattern=DB_PREFIX.replace('_', '\\_') + '%'
+        _records_sql('d.datname LIKE :pattern', with_size=with_size),
+        pattern=prefix.replace('_', '\\_') + '%'
     )
         or [];
     return [_record_of(row) for row in rows];

@@ -10,7 +10,7 @@ node MyNode {
     }
 }
 
-edge MyEdge {
+edge MyEdge : any --> any {
     has path: int;
 
     can ability3 with MyWalker entry {

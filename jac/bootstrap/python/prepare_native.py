@@ -29,35 +29,77 @@ output.mkdir(parents=True, exist_ok=True)
 import jaclang
 from jaclang.compiler.driver.program import JacProgram
 from jaclang.compiler.driver.compile_options import CompileOptions
-from jaclang.compiler.backends.native.na_compile_pass import (
-    native_linked_ir_text, require_native_ir,
+from jaclang.compiler.backends.native.na_compile_pass import require_native_ir
+from jaclang.compiler.backends.native.link_glue import init_object_codegen
+from jaclang.compiler.backends.native.link_plan import (
+    ArtifactKind, build_link_plan, whole_program_module,
+    internalize_native_implementation, _platform_of,
 )
-from jaclang.compiler.backends.native.shared_emit import emit_shared_object
+import jaclang.compiler.backends.native.llvm.binding as llvm
 
 program = JacProgram()
 entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
-module = program.compile(file_path=str(entry), options=CompileOptions(
-    aot_mode=True, default_codespace="native", force_target_program=True,
+options = CompileOptions(
+    aot_mode=True, default_codespace="native", skip_native_engine=True,
     native_required=True,
     memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
-))
+)
+plan = build_link_plan(program, [str(entry)], options)
 if program.errors_had:
     for error in program.errors_had:
         print(error.pretty_print(), file=sys.stderr)
     raise RuntimeError("JacPython native compilation failed")
-if module is None:
-    raise RuntimeError("JacPython native compilation produced no module")
-ir_text = native_linked_ir_text(module)
-require_native_ir(ir_text)
-object_bytes = emit_shared_object(
-    ir_text,
-    module.gen.interop_manifest,
-    list(module.gen._exported_symbols),
-    triple,
-    opt_level=2,
-).code
+init_object_codegen()
+spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
+compiled, runtime_exports = whole_program_module(plan, spec)
+require_native_ir(str(compiled))
+internalize_native_implementation(
+    compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
+)
+compiled.verify()
+machine = llvm.Target.from_triple(triple).create_target_machine(
+    opt=2, reloc="pic", codemodel="small",
+)
+# Units are optimized one at a time; the merged module is where bindings,
+# algorithms and object-API calls from different units can inline. The object
+# reaches the CPython link as machine code, so ThinLTO cannot do this later.
+builder = llvm.create_pass_builder(
+    machine, llvm.create_pipeline_tuning_options(speed_level=2),
+)
+builder.getModulePassManager().run(compiled, builder)
+compiled.verify()
+object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
+
+
+def lowered_sources():
+    """Every source the object was lowered from, relative to the jac root: the
+    plan's units, their annexes and their compile-time inputs. A dependency can
+    only be added by editing one of these, so they key the object exactly."""
+    from jaclang.compiler.driver.jir import _related_files, _ct_dep_rows, _ct_row_path
+    registry = program.native_units()
+    paths = set()
+    for unit in plan.units:
+        real = os.path.realpath(unit.path)
+        paths.add(real)
+        for rel, _digest in _related_files(unit.path):
+            paths.add(os.path.realpath(os.path.join(os.path.dirname(real), rel)))
+        ent = registry.entries.get(real)
+        if ent is not None and ent.compile_deps:
+            for dep, _digest, _body in _ct_dep_rows(ent.compile_deps.decode("utf-8")):
+                paths.add(os.path.realpath(_ct_row_path(dep, ent.compile_deps_base)))
+    jac_root = os.path.realpath(str(root))
+    rels = []
+    for path in sorted(paths):
+        rel = os.path.relpath(path, jac_root)
+        if rel.startswith(".."):
+            raise RuntimeError(f"JacPython lowered a source outside the jac root: {path}")
+        rels.append(rel.replace(os.sep, "/"))
+    return rels
+
+
+(output / "sources").write_text("".join(rel + "\n" for rel in lowered_sources()))
 print("JacPython: built native compiler object; no interpreted demotions", flush=True)
 # This one-shot emitter has closed both artifact files. Let the OS reclaim its
 # compiler graph and LLVM context rather than traversing them again at Python

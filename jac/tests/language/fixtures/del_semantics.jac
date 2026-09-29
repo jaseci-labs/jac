@@ -15,11 +15,11 @@ node N {
     has t: str;
 }
 
-edge E {
+edge E : N --> N {
     has w: int = 1;
 }
 
-edge F {}
+edge F : N --> N {}
 
 obj Holder {
     has slot: N | None = None;

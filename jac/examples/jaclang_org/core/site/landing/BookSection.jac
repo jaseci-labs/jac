@@ -1,7 +1,3 @@
-import from core.site.ui.badge { Badge }
-import from core.site.ui.button { buttonVariants }
-import from core.utils { cn }
-import from .Reveal { Reveal }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     ArrowUpRight01Icon,

@@ -36,6 +36,9 @@ Kept deliberately tiny; each carries a `jac wasm_rt transform` comment:
    machinery into every module), and `fabsl` is mapped to `fabs` alongside
    upstream's `frexpl`/`copysignl`/... mappings (unmapped it pulls fp128
    compiler-rt into every module).
+3. `vendor/math/fma.c`: musl includes its arch-specific `atomic.h` only for
+   `a_clz_64`; wasm has no musl arch layer, so the generic bit-twiddle from
+   musl 1.2.5 `src/internal/atomic.h` is inlined in its place.
 
 ## Building
 

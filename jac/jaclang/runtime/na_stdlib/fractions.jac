@@ -1,20 +1,4 @@
-def _gcd(a: int, b: int) -> int {
-    x: int = a;
-    if x < 0 {
-        x = -x;
-    }
-    y: int = b;
-    if y < 0 {
-        y = -y;
-    }
-    while y != 0 {
-        t: int = y;
-        y = x % y;
-        x = t;
-    }
-    return x;
-}
-
+import from math { gcd }
 
 obj:pub Fraction {
     has numerator: int = 0,
@@ -30,7 +14,7 @@ obj:pub Fraction {
             n = -n;
             d = -d;
         }
-        g: int = _gcd(n, d);
+        g: int = gcd(n, d);
         self.numerator = n // g;
         self.denominator = d // g;
     }

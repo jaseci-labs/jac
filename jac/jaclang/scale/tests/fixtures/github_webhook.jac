@@ -6,7 +6,7 @@ is empty (see the [scale.webhook] block in the fixture jac.toml)."""
 """No api key; the runtime verifies X-Hub-Signature-256 over the raw body and
 copies X-GitHub-Event / X-GitHub-Delivery into `event` / `delivery`."""
 @restspec(protocol=APIProtocol.WEBHOOK, scheme="github")
-walker GithubEvent {
+walker:protect GithubEvent {
     has event: str = "",
         delivery: str = "",
         action: str = "",
@@ -26,7 +26,7 @@ walker GithubEvent {
 
 """The default scheme, side by side with the github one."""
 @restspec(protocol=APIProtocol.WEBHOOK)
-walker KeyedEvent {
+walker:protect KeyedEvent {
     has note: str = "";
 
     can process with Root entry {

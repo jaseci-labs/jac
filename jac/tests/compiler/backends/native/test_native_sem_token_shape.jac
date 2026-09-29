@@ -35,7 +35,12 @@ Refs #8039, #8052
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
+import from tests.support {
+    TESTS_DIR,
+    native_address,
+    native_force_opts,
+    native_str_func
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -81,7 +86,7 @@ def _compile -> object {
 
 """ctypes handle for an (int) -> int function in the JIT engine."""
 def _get(eng: any, name: str) -> object {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }

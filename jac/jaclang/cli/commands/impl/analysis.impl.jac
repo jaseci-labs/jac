@@ -125,6 +125,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     }
     try {
         (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
+        parity_view: any = None;
         if opts.get("parse_only") {
             import from jaclang.compiler.frontend.parser.frontend {
                 parse_diags,
@@ -135,7 +136,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 Parser as _SyntaxParser
             }
             import from jaclang.compiler.frontend.unitree { Source as _Src }
-            import from jaclang.project.source { read_file_with_encoding as _read_src }
+            import from jaclang.project.textio { read_file_with_encoding as _read_src }
             _src_txt = _read_src(file_path);
             (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
             if _pd or _ld {
@@ -147,8 +148,8 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             compile_options = CompileOptions(
                 no_cgen=not bool(opts.get("native_coverage")),
                 native_parity=True,
-                force_target_program=True,
                 iface_ok=True,
+                strict_dependencies=True,
                 suppress_codes=list(opts.get("suppress_codes") or []),
                 target_app=str(opts.get("target_app") or ""),
                 app_kind=str(opts.get("app_kind") or ""),
@@ -158,14 +159,52 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             );
             compile_options.entry_point = file_path;
             if opts.get('closure') {
-                import from jaclang.compiler.driver.pipeline { compile_application }
+                import from jaclang.compiler.driver.pipeline_runner {
+                    compile_application
+                }
                 compile_application(prog, file_path, compile_options);
             } else {
-                prog.compile(file_path, options=compile_options);
+                kernel_view: any = None;
+                if not opts.get("placements") and not opts.get("native_coverage") {
+                    import from jaclang.project.kernel_check { kernel_check }
+                    kernel_view = kernel_check(prog, file_path, compile_options);
+                }
+                adopted = kernel_view is not None and kernel_view.adopted;
+                if not adopted {
+                    prog.compile(file_path, options=compile_options);
+                    if kernel_view is not None and kernel_view.parity {
+                        parity_view = kernel_view;
+                    }
+                }
+                if opts.get("named") {
+                    project_dir = os.path.realpath(
+                        str(opts["project_root"])
+                            if opts.get("project_root")
+                            else os.path.dirname(file_path)
+                    );
+                    checked = os.path.realpath(file_path);
+                    reached_keys: list[str] = [str(key) for key in prog.mod.hub];
+                    if adopted {
+                        import from jaclang.project.kernel_check { reached_modules }
+                        reached_keys = reached_modules(kernel_view.outcome);
+                    }
+                    result['reached'] = sorted(
+                        {
+                            real
+                            for real in [os.path.realpath(key) for key in reached_keys]
+                            if real.endswith(".jac")
+                                and not real.endswith((".impl.jac", ".test.jac"))
+                                and real.startswith(project_dir + os.sep)
+                                and real != checked
+                        }
+                    );
+                }
             }
         }
         if opts.get("placements") {
-            import from jaclang.compiler.placement.placement { collect_placement_rows }
+            import from jaclang.compiler.placement.placement_export {
+                collect_placement_rows
+            }
             result['placements'] = collect_placement_rows(prog);
         }
         if opts.get("native_coverage") {
@@ -191,6 +230,24 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                     )
             );
         }
+        if parity_view is not None {
+            import from jaclang.project.kernel_check { report_parity }
+            report_parity(
+                parity_view,
+                file_path,
+                [
+                    e
+                    for e in new_errors
+                    if keep(e)
+                ],
+                [
+                    w
+                    for w in new_warnings
+                    if keep(w)
+                ],
+                keep
+            );
+        }
         result['errors'] = [
             _diag_wire(e)
             for e in new_errors
@@ -210,7 +267,12 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         result['success'] = False;
         return result;
     } finally {
-        prog.release_compile_closure(collect=bool(request.get("collect")));
+        if opts.get('closure') {
+            prog._get_compiler().release_compile_state(prog);
+            _CHECK_STATE['prog'] = None;
+        } else {
+            prog.release_compile_closure(collect=bool(request.get("collect")));
+        }
         _maybe_malloc_trim();
     }
 }
@@ -244,18 +306,18 @@ impl check(
     }
     import gc;
     import os;
-    import from jaclang.compiler.driver.compiler { COMPILE_GC_THRESHOLDS }
-    if (
-        not os.environ.get('JAC_GC_NO_COMPILE_BOOST')
-        and gc.get_threshold()[0] < COMPILE_GC_THRESHOLDS[0]
-    ) {
-        gc.set_threshold(*COMPILE_GC_THRESHOLDS);
+    import from jaclang.compiler.driver.compiler { CHECK_GC_THRESHOLDS }
+    if not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
+        gc.set_threshold(*CHECK_GC_THRESHOLDS);
     }
     if isinstance(paths, str) {
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore or []);
+    ignore_list = _normalize_ignore_patterns(
+        list(ignore or [])
+            + (_configured_check_excludes() if _is_project_wide_run(paths) else [])
+    );
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
         disable_error_code or []
     );
@@ -347,15 +409,15 @@ impl check(
                     selected_app = next(iter(f_ws.apps.values()), None);
                 }
             }
-            units.append(
-                _check_unit(
-                    f,
-                    selected_app.name if selected_app is not None else '',
-                    selected_app.kind if selected_app is not None else '',
-                    selected_app.name if selected_app is not None else '',
-                    f_ws.project_root if f_ws is not None else ''
-                )
+            file_unit = _check_unit(
+                f,
+                selected_app.name if selected_app is not None else '',
+                selected_app.kind if selected_app is not None else '',
+                selected_app.name if selected_app is not None else '',
+                f_ws.project_root if f_ws is not None else ''
             );
+            file_unit['named'] = os.path.realpath(f) in named_files;
+            units.append(file_unit);
         }
     }
     cfg = get_config();
@@ -398,6 +460,7 @@ impl check(
             job_opts['app_kind'] = unit['kind'];
             job_opts['project_root'] = unit['root_dir'];
             job_opts['closure'] = unit['closure'];
+            job_opts['named'] = bool(unit.get('named'));
             return {'opts': job_opts, 'collect': (not use_pool) and (idx < total - 1)};
         }
 
@@ -505,6 +568,31 @@ impl check(
     }
     if print_errs and len(warning_results) > 0 {
         print_section("WARNINGS", warning_results, nowarn);
+    }
+
+    file_units = [
+        r
+        for r in results
+        if r['_unit'].get('named')
+    ];
+    reached: set[str] = set();
+    for r in file_units {
+        reached.update(_wire_list(r.get('reached')));
+    }
+    reached -= {os.path.realpath(str(r['path'])) for r in file_units};
+    if reached and not parse_only {
+        count = len(file_units);
+        n = len(reached);
+        files_word = "file" if count == 1 else "files";
+        own_word = "its" if count == 1 else "their";
+        modules_word = "module" if n == 1 else "modules";
+        them_word = "it" if n == 1 else "them";
+        console.print(
+            f"Checked {count} {files_word} on {own_word} own; {n} imported "
+                + f"{modules_word} read as interfaces only, so type errors inside "
+                + f"{them_word} are not reported. Run 'jac check' with no paths in "
+                + "the project root to check the whole program."
+        );
     }
 
     elapsed = time() - start_time;
@@ -689,7 +777,7 @@ def _format_single_file_worker(
 ) -> dict[str, any] {
     import os;
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.textio { read_file_with_encoding }
     path_obj = Path(file_path);
 
     effective_logical = logical_path or file_path;
@@ -1228,7 +1316,8 @@ impl format(
 
 impl precommit(
     paths: (list[str] | None) = None,
-    staged: bool = False,
+    staged: bool = True,
+    all: bool = False,
     verify: bool = False,
     install: bool = False,
     force: bool = False,
@@ -1244,8 +1333,13 @@ impl precommit(
     }
     targets: list[str] = [];
     rel_targets: list[str] = [];
+    check_targets: list[str] = [];
     git_root = "";
-    if staged {
+    staged_mode = staged and not paths and not all;
+    if paths {
+        targets = list(paths);
+        check_targets = targets;
+    } elif staged_mode {
         try {
             git_root = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
@@ -1278,8 +1372,12 @@ impl precommit(
             console.success("No staged '.jac' files to check.");
             return 0;
         }
-    } elif paths {
-        targets = list(paths);
+        gate = _normalize_ignore_patterns(_configured_check_excludes());
+        check_targets = [
+            abs_t
+            for (rel, abs_t) in zip(rel_targets, targets)
+            if not _should_ignore(rel, gate)
+        ];
     } else {
         config = get_config();
         if config is not None and config.project_root {
@@ -1287,12 +1385,13 @@ impl precommit(
         } else {
             targets = ["."];
         }
+        check_targets = targets;
     }
 
     fmt_targets = targets;
     tmp_root: (str | None) = None;
     path_map: dict[str, str] = {};
-    if staged and verify {
+    if staged_mode and verify {
         dirty = _staged_dirty_files(git_root, rel_targets);
         if dirty {
             tmp_root = tempfile.mkdtemp(prefix="jac-precommit-");
@@ -1383,11 +1482,11 @@ impl precommit(
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
-    check_ret = check(targets);
+    check_ret = check(check_targets) if check_targets else 0;
 
     fixes_applied = (
         int(stats.get("changed", 0)) > 0
-        or (staged and _staged_dirty_files(git_root, rel_targets))
+        or (staged_mode and _staged_dirty_files(git_root, rel_targets))
         or fmt_ret != 0
     );
     if not verify and check_ret == 0 and fixes_applied {
@@ -1454,7 +1553,7 @@ def _install_precommit_hook(force: bool = False) -> int {
     precommit_body = (
         "#!/bin/sh\n"
         "# Installed by `jac precommit --install`\n"
-        "exec jac precommit --staged --verify\n"
+        "exec jac precommit --verify\n"
     );
     commit_msg_body = (
         "#!/bin/sh\n"
@@ -1472,7 +1571,6 @@ def _install_precommit_hook(force: bool = False) -> int {
         }
     }
     console.success(f"Installed git hooks in '{hooks_dir}': pre-commit, commit-msg.");
-    console.print("pre-commit runs: jac precommit --staged --verify");
     console.print("commit-msg blocks AI co-author attribution lines.");
     return 0;
 }
@@ -1703,12 +1801,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
     prog = JacProgram();
     mod = prog.compile(
         parser_path,
-        options=CompileOptions(
-            symtab_ir_only=True,
-            no_cgen=True,
-            need_full_ast=True,
-            force_target_program=True
-        )
+        options=CompileOptions(symtab_ir_only=True, no_cgen=True, need_full_ast=True)
     );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
@@ -1717,7 +1810,8 @@ impl grammar(output: str = "", strict: bool = False) -> int {
         }
         return 1;
     }
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+    import from jaclang.compiler.driver.pipeline_runner { run_utility }
+    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
     import from typing { cast }
     pass_ = cast(GrammarExtractPass, run_utility(UtilityProduct.GRAMMAR, mod, prog));
     if len(pass_.rules) == 0 {
@@ -1814,6 +1908,26 @@ def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
     return normalize_exclude_patterns(ignore);
 }
 
+def _configured_check_excludes -> list[str] {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    return list(config.check.exclude) if config is not None else [];
+}
+
+def _is_project_wide_run(paths: list[str]) -> bool {
+    import os;
+    import from jaclang.project.config { get_config }
+    if not paths {
+        return True;
+    }
+    config = get_config();
+    proj = str(config.project_root) if (config and config.project_root) else "";
+    if not proj or len(paths) != 1 {
+        return False;
+    }
+    return os.path.realpath(paths[0]) == os.path.realpath(proj);
+}
+
 def _drop_git_ignored(paths: list[str]) -> list[str] {
     import subprocess;
     if not paths {
@@ -1899,7 +2013,9 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
         return 0;
     }
     if topic == "placement" {
-        import from jaclang.compiler.placement.placement { collect_placement_rows }
+        import from jaclang.compiler.placement.placement_export {
+            collect_placement_rows
+        }
         import from jaclang.cli.check_report { print_placement_report }
         prog.compile(file_path=path);
         for err in prog.errors_had {
@@ -1914,9 +2030,7 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
     }
     mod = prog.compile(
         file_path=path,
-        options=CompileOptions(
-            aot_mode=True, default_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(aot_mode=True, default_codespace="native")
     );
     for err in prog.errors_had {
         console.print(err.pretty_print());

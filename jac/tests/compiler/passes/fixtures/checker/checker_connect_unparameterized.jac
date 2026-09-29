@@ -12,7 +12,7 @@ Diagnostic:
 """
 
 node Place { has name: str; }
-edge Road { has length: int = 0; }
+edge Road : any --> any { has length: int = 0; }
 
 def make_bare_list() -> list { return []; }
 def make_bare_tuple() -> tuple { return (); }

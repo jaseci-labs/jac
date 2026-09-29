@@ -24,7 +24,7 @@ def application_edges(
     seen: set[int] = set();
     while True {
         fresh: list[any] = [];
-        for hub in list(prog._search_hubs()) {
+        for hub in list(prog.execution_hubs()) {
             for mod in list(hub.values()) {
                 if id(mod) not in seen {
                     seen.add(id(mod));
@@ -43,7 +43,7 @@ def application_edges(
             if man is None {
                 continue;
             }
-            if not man.app_edges and not (man.walker_access or man.func_access) {
+            if not man.app_edges and not man.surface {
                 try {
                     require_product(prog, mod, CompilationProduct.BOUNDARIES);
                     man = mod.gen.interop_manifest;

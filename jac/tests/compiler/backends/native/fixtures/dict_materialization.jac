@@ -2,6 +2,7 @@
 
 import from jaclang.compiler.jc_materialize {
     CODE_NATDICT,
+    CODE_NATSET,
     CODE_OBJ,
     CODE_STR,
     Mz,
@@ -14,7 +15,8 @@ import from jaclang.runtime.osp_graph { osp_adj_pairs }
 
 node DictionaryOwner {
     has values: dict[str, str] = {},
-        children: dict[str, DictionaryOwner] = {};
+        children: dict[str, DictionaryOwner] = {},
+        names: set[str] = set();
 }
 
 def:pub copy_sparse_dictionary(key_off: int, data_off: int, order_off: int) -> int {
@@ -52,4 +54,16 @@ def:pub enqueue_sparse_dictionary(key_off: int, data_off: int, order_off: int) -
         if pending.q == [id(first), id(third), id(fifth)]
             and pending.q_hint == [42, 42, 42]
         else 0;
+}
+
+def:pub copy_sparse_set(key_off: int, order_off: int) -> int {
+    owner = DictionaryOwner();
+    owner.names.add("one");
+    owner.names.add("two");
+    owner.names.add("three");
+    owner.names.remove("two");
+    owner.names.add("four");
+    jc_reg_value(0, CODE_STR, 0, 0, 0, 0, 0);
+    jc_reg_value(2, CODE_NATSET, 0, 0, key_off, 0, order_off);
+    return _copy_value(Mz(), id(owner.names), 2);
 }

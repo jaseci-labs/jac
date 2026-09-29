@@ -5,20 +5,6 @@ import re;
 import from pathlib { Path }
 import from jaclang.cli.guide_store { NavPage, docs_dir, nav_pages, parse_guide }
 import from jaclang.cli.manifest_route { resolve_cli_version }
-import from core.timefmt { now_iso }
-import from .graph {
-    DocsHub,
-    DocVersion,
-    HasHub,
-    HasVersion,
-    NextPage,
-    _pretty,
-    _sweep_stale,
-    _version,
-    place_page,
-    rewrite_href,
-    toc_of
-}
 
 obj DocBundle {
     has pages: dict[str, str] = {},
@@ -46,4 +32,4 @@ def corpus_stale(bundle: DocBundle) -> bool;
 def ingest(bundle: DocBundle);
 
 @schedule(trigger=ScheduleTrigger.STATIC, interval=SYNC_TICK_S)
-def docs_sync_tick;
+def:protect docs_sync_tick;

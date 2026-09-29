@@ -164,3 +164,51 @@ impl HPAAutoscaler.destroy_collection{
 impl HPAAutoscaler.resource_name_for{
     return f"{target}-hpa";
 }
+
+impl HPAAutoscaler.get_runtime_status{
+    """The HPA's view, which has no trigger concept.
+
+    `trigger_active` stays None rather than False: a plain HPA scales on
+    resource utilisation and has nothing that corresponds to a trigger firing,
+    so reporting False would claim something the engine never measured. A
+    minReplicas of 0 is not expressible on an HPA either, so a workload here is
+    never legitimately at zero.
+    """;
+    name = autoscaler_name or self.resource_name_for(scale_target_name);
+    hpa = None;
+    try {
+        hpa = AutoscalingV2Api().read_namespaced_horizontal_pod_autoscaler(
+            name=name, namespace=namespace
+        );
+    } except ApiException as e {
+        if e.status not in (403, 404) {
+            raise;
+        }
+    }
+    if hpa is None {
+        return self.workload_runtime_status(scale_target_name, namespace);
+    }
+
+    floor = hpa?.spec?.min_replicas;
+    out = self.workload_runtime_status(
+        scale_target_name,
+        namespace,
+        replica_floor=int(floor) if floor is not None else 1
+    );
+    out.engine = "hpa";
+    out.autoscaler_name = name;
+    conditions = normalize_conditions(hpa?.status?.conditions);
+    out.conditions = conditions;
+    out.scaler_ready = tristate(conditions, "ScalingActive");
+    desired = hpa?.status?.desired_replicas;
+    if desired is not None {
+        out.replicas = int(desired);
+    }
+    if out.scaler_ready == False {
+        failing = condition(conditions, "ScalingActive");
+        out.status = ResourceStatus.DEGRADED;
+        out.reason = str((failing or {}).get("reason") or "ScalingInactive");
+        out.message = str((failing or {}).get("message") or "") or None;
+    }
+    return out;
+}

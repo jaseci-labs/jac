@@ -549,9 +549,74 @@ impl NaIRGenPass._make_range_iter(range_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
+impl NaIRGenPass._list_from_iter(
+    iter_val: ir.Value, iter_elem_type: ir.Type, list_elem_type: ir.Type
+) -> (ir.Value | None) {
+    spec = self._spec_from_container_ptr(self._lower_list_for_elem(list_elem_type));
+    helpers = self.list_helpers.get(spec) if spec is not None else None;
+    if helpers is None {
+        return None;
+    }
+    b = self.builder;
+    slot_type = ir.IntType(8).as_pointer()
+        if iter_elem_type == self._str_desc_ty
+        else iter_elem_type;
+    slot = self._entry_alloca(slot_type, "list.iter.element");
+    result = b.call(helpers["new"], [], name="list.iter.result");
+    func = b.basic_block.function;
+    condition = func.append_basic_block("list.iter.next");
+    body = func.append_basic_block("list.iter.append");
+    done = func.append_basic_block("list.iter.done");
+    b.branch(condition);
+    b.position_at_end(condition);
+    b.cbranch(self._emit_iter_advance(b, iter_val, slot), body, done);
+    b.position_at_end(body);
+    stored_type = helpers["elem_type"];
+    assert isinstance(stored_type, ir.Type);
+    b.call(helpers["append"], [result, self._coerce_type(b.load(slot), stored_type)]);
+    b.branch(condition);
+    b.position_at_end(done);
+    return result;
+}
+
+impl NaIRGenPass._emit_range_len(range_val: ir.Value) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    b = self.builder;
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    fields: list[ir.Value] = [];
+    for (idx, name) in [(0, "start"), (1, "stop"), (2, "step")] {
+        fields.append(
+            b.load(
+                b.gep(
+                    range_val,
+                    [ir.Constant(i32, 0), ir.Constant(i32, idx)],
+                    name=f"rlen.{name}.p"
+                ),
+                name=f"rlen.{name}"
+            )
+        );
+    }
+    (start, stop, step) = (fields[0], fields[1], fields[2]);
+    up = b.icmp_signed(">", step, zero, name="rlen.up");
+    span = b.select(
+        up,
+        b.sub(stop, start, name="rlen.span.up"),
+        b.sub(start, stop, name="rlen.span.down"),
+        name="rlen.span"
+    );
+    stride = b.select(up, step, b.neg(step, name="rlen.neg"), name="rlen.stride");
+    reach = b.add(b.sub(span, one, name="rlen.span1"), stride, name="rlen.reach");
+    count = b.sdiv(reach, stride, name="rlen.count");
+    empty = b.icmp_signed("<=", span, zero, name="rlen.empty");
+    return b.select(empty, zero, count, name="rlen.len");
+}
+
 impl NaIRGenPass._make_iter_from_value(
     val: ir.Value, expr: uni.UniNode
 ) -> (tuple[ir.Value, str, ir.Type] | None) {
+    self._ensure_iter_types();
     i8p = ir.IntType(8).as_pointer();
 
     _checked_list = self._list_spec_of(expr);
@@ -654,7 +719,7 @@ impl NaIRGenPass._adapter_callee(fn_expr: uni.UniNode) -> (NativeIterCallback | 
         lv = self._codegen_lambda(fn_expr);
         if self._pending_lambda_captures is not None {
             self._pending_lambda_captures = None;
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=fn_expr,
                 kind="expression",
@@ -1098,7 +1163,7 @@ impl NaIRGenPass._user_iter_next_fn(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="usr.env.i8p");
-    sj = b.call(self.extern_funcs["setjmp"], [env_i8p], name="usr.sj");
+    sj = b.call(self._exc_setjmp_fn(), [env_i8p], name="usr.sj");
     is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
     b.cbranch(is_exc, caught_bb, call_bb);
 
@@ -1194,15 +1259,33 @@ impl NaIRGenPass._make_user_iter_from_obj(
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
+    """`next(it)` / `next(it, default)`. An argument that is not already an
+    iterator (a list, a generator expression, a user iterable) gets a
+    temporary iterator, released once the element is taken.""";
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    if len(params) != 1 {
+    if not params
+        or len(params) > 2
+        or any(isinstance(p, uni.KWPair) for p in params) {
         self._emit_unsupported_builtin_call(nd, "next");
         return None;
     }
     arg = params[0];
     elem_type = self._iter_elem_llvm_of(arg);
-    iter_val = self._codegen_expr(arg);
-    if iter_val is None or elem_type is None {
+    owns_iter = elem_type is None;
+    iter_val: (ir.Value | None) = None;
+    if owns_iter {
+        built = self._build_iter_from_expr(arg);
+        if built is not None {
+            (iter_val, _kind, elem_type) = built;
+        }
+    } else {
+        iter_val = self._codegen_expr(arg);
+    }
+    result_type: (ir.Type | None) = elem_type;
+    if len(params) == 2 {
+        result_type = self._lower_type(nd.type) if nd.type is not None else None;
+    }
+    if iter_val is None or elem_type is None or result_type is None {
         self._emit_unsupported_builtin_call(nd, "next");
         return None;
     }
@@ -1218,47 +1301,107 @@ impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
     is_stop = self.builder.icmp_unsigned(
         "==", got, ir.Constant(i1, 0), name="next.stop"
     );
-    self._emit_runtime_raise(is_stop, "StopIteration", "");
-    _next_val = self.builder.load(out_slot, name="next.val");
-    if _out_is_desc {
-        _next_val = self._coerce_type(_next_val, elem_type);
+    if len(params) == 1 {
+        self._emit_runtime_raise(is_stop, "StopIteration", "");
+        taken = self._next_loaded(out_slot, elem_type);
+        if owns_iter {
+            self._emit_rc_release_simple(iter_val, op="next_iter");
+        }
+        return self._mark_reference_owned(taken);
     }
-    self._emit_take_ref(_next_val, op="next");
-    return self._mark_reference_owned(_next_val);
+    fn = self.builder.function;
+    got_bb = fn.append_basic_block("next.got");
+    default_bb = fn.append_basic_block("next.default");
+    merge_bb = fn.append_basic_block("next.merge");
+    self.builder.cbranch(is_stop, default_bb, got_bb);
+
+    self.builder.position_at_end(got_bb);
+    got_val = self._coerce_type(self._next_loaded(out_slot, elem_type), result_type);
+    if owns_iter {
+        self._emit_rc_release_simple(iter_val, op="next_iter");
+    }
+    got_end = self.builder.block;
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(default_bb);
+    if owns_iter {
+        self._emit_rc_release_simple(iter_val, op="next_iter");
+    }
+    default_val = self._codegen_expr(params[1]);
+    if default_val is None {
+        self._emit_unsupported_builtin_call(nd, "next");
+        return None;
+    }
+    self._emit_take_ref(default_val, op="next_default");
+    default_val = self._coerce_type(default_val, result_type);
+    default_end = self.builder.block;
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(merge_bb);
+    joined = self.builder.phi(result_type, name="next.result");
+    joined.add_incoming(got_val, got_end);
+    joined.add_incoming(default_val, default_end);
+    if self._is_reference_type(result_type)
+        or self._opt_ptr_payload_of(result_type) is not None {
+        return self._mark_owned(joined);
+    }
+    return joined;
 }
 
-impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
-    coll = nd.collection;
-    self._ensure_iter_types();
+impl NaIRGenPass._next_loaded(out_slot: ir.Value, elem_type: ir.Type) -> ir.Value {
+    value = self.builder.load(out_slot, name="next.val");
+    if self._str_desc_ty is not None and elem_type == self._str_desc_ty {
+        value = self._coerce_type(value, elem_type);
+    }
+    self._emit_take_ref(value, op="next");
+    return value;
+}
 
+impl NaIRGenPass._iter_source(
+    coll: uni.Expr
+) -> (tuple[ir.Value, ir.Type, bool] | None) {
+    self._ensure_iter_types();
     is_adapter_call = (
         isinstance(coll, uni.FuncCall)
         and self._get_name(coll.target) in ["map", "filter", "enumerate", "zip", "iter"]
         and coll.call_kind == "builtin"
     );
-
     _ustruct = self._struct_name_of(coll) if not is_adapter_call else None;
-    is_user_iterable = _ustruct is not None and self._arch_implements_iter(_ustruct);
-    built: (tuple[ir.Value, str, ir.Type] | None) = None;
-    owns_iter = False;
-    if is_adapter_call or is_user_iterable {
+    if is_adapter_call
+        or (_ustruct is not None and self._arch_implements_iter(_ustruct)) {
         built = self._build_iter_from_expr(coll);
-        owns_iter = True;
-    } else {
-        elem_t = self._iter_elem_llvm_of(coll);
-        if elem_t is not None {
-            iv = self._codegen_expr(coll);
-            if iv is not None {
-                ename = "tuple" if isinstance(elem_t, ir.LiteralStructType) else "iter";
-                built = (iv, ename, elem_t);
-                owns_iter = self._is_owned(iv);
-            }
-        }
+        return None if built is None else (built[0], built[2], True);
     }
-    if built is None {
+    elem_t = self._iter_elem_llvm_of(coll);
+    if elem_t is None {
+        is_range_call = (
+            isinstance(coll, uni.FuncCall)
+            and self._get_name(coll.target) == "range"
+            and coll.call_kind == "builtin"
+        );
+        if not is_range_call and self._type_key_of(coll) == "range" {
+            rv = self._codegen_expr(coll);
+            if rv is None {
+                return None;
+            }
+            made = self._make_iter_from_value(rv, coll);
+            return None if made is None else (made[0], made[2], True);
+        }
+        return None;
+    }
+    iv = self._codegen_expr(coll);
+    if iv is None {
+        return None;
+    }
+    return (iv, elem_t, self._is_owned(iv));
+}
+
+impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
+    source = self._iter_source(nd.collection);
+    if source is None {
         return False;
     }
-    (iter_val, elem_name, elem_type) = built;
+    (iter_val, elem_type, owns_iter) = source;
     i8p = ir.IntType(8).as_pointer();
     _loc = "iter_for";
     tuple_target = nd.target if isinstance(nd.target, uni.TupleVal) else None;

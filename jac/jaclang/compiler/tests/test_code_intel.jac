@@ -31,7 +31,7 @@ glob _MODEL = "\n".join(
              "}",
              "",
              '"""Authorship relationship."""',
-             "edge Wrote {}"
+             "edge Wrote: User --> Post {}"
          ]
      ),
      _WALKERS = "\n".join(

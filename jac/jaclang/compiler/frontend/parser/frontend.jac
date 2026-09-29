@@ -8,6 +8,11 @@ import from jaclang.compiler.passes.context { Alert }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.srcloc { Span }
 import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
+import from jaclang.compiler.passes.annex_weave {
+    WovenAnnex,
+    merge_annex_into,
+    prune_generated_imports
+}
 
 def _replay_diags(
     diags: list[SrcDiag], from_pass: type, prog: JacProgram, diag_src: Source
@@ -49,7 +54,7 @@ def parse(
     (tokens, comments, lex_diags, lex_errs) = na_lexer.tokenize_full(source, file_path);
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
     module = parser.parse();
-    had_error = _finish_parse(
+    had_error = finish_parse(
         module, parser.error_count, parser.diags, comments, lex_diags, lex_errs, prog
     );
     return (module, had_error);
@@ -68,7 +73,7 @@ def parse_expression(
     return (expression, had_error);
 }
 
-def _finish_parse(
+def finish_parse(
     module: Module,
     p_errs: int,
     p_diags: list[SrcDiag],
@@ -107,12 +112,10 @@ def _finish_parse(
     }
 
     if module.source {
-        import re;
-        ignore_pattern = re.compile(r'#\s*jac:ignore\[([^\]]+)\]');
         for comment in module.source.comments {
-            m = ignore_pattern.search(comment.value);
-            if m {
-                codes = {c.strip() for c in m.group(1).split(',')};
+            ignored = ignore_directive(comment.value);
+            if ignored is not None {
+                codes = {c.strip() for c in ignored.split(',')};
                 line = comment.line_no;
                 if line in module.source.inline_suppressions {
                     module.source.inline_suppressions[line].update(codes);
@@ -125,54 +128,37 @@ def _finish_parse(
     return p_errs > 0 or lex_errs > 0;
 }
 
-def _native_parse_woven(
-    source_str: str,
-    file_path: str,
-    prog: (JacProgram | None),
-    annexes: list[tuple[str, str]],
-    early_context: str = ""
-) -> (tuple[Module, bool] | None) {
-    import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded();
-    if kernel is None {
-        return None;
-    }
-    kernel.prepare_early(early_context if prog is not None else "");
-    for (a_src, a_path) in annexes {
-        kernel.annex(a_src, a_path);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = _finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, prog
-    );
-    if prog is not None {
-        results = kernel.take_pass_results();
-        if results {
-            prog.analysis.record_early(module, results);
+def ignore_directive(text: str) -> (str | None) {
+    marker = "jac:ignore[";
+    start = text.find("#");
+    while start >= 0 {
+        pos = start + 1;
+        while pos < len(text) and text[pos].isspace() {
+            pos += 1;
         }
+        if text.startswith(marker, pos) {
+            body_start = pos + len(marker);
+            body_end = text.find("]", body_start);
+            if body_end > body_start {
+                return text[body_start:body_end];
+            }
+        }
+        start = text.find("#", start + 1);
     }
-    return (module, had_error);
+    return None;
 }
 
 def parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list[tuple[str, str]],
+    annexes: list[WovenAnnex],
     early_context: str = ""
-) -> tuple[any, bool] {
-    nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
+) -> tuple[Module, bool] {
+    import from jaclang.compiler.frontend.host { active_host }
+    nat = active_host().native_parse(
+        source_str, file_path, prog, annexes, early_context
+    );
     if nat is not None {
         return nat;
     }
@@ -180,46 +166,59 @@ def parse_woven(
     if had_error or not annexes {
         return (module, had_error);
     }
-    import from jaclang.compiler.passes.annex_weave { merge_annex_into }
-    for (a_src, a_path) in annexes {
-        (a_mod, _a_err) = parse(a_src, a_path, prog=prog);
+    for annex in annexes {
+        (a_mod, _a_err) = parse(annex.source, annex.path, prog=prog);
         merge_annex_into(module, a_mod);
+    }
+    for annex in annexes {
+        if annex.consumer {
+            prune_generated_imports(module, annex.path, annex.consumer);
+        }
     }
     return (module, had_error);
 }
 
-def annex_sources(file_path: str) -> list[tuple[str, str]] {
+def annex_paths(file_path: str) -> list[str] {
     if not file_path.endswith(".jac") {
         return [];
     }
     try {
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_base_file
-        }
-        import from jaclang.project.source { read_file_with_encoding }
-        if discover_base_file(file_path) is not None {
+        import from jaclang.compiler.frontend.host { active_host }
+        host = active_host();
+        if host.base_file(file_path) is not None {
             return [];
         }
-        paths: list[str] = [
-            *discover_annex_files(file_path, ".impl.jac"),
-            *discover_annex_files(file_path, ".test.jac")
-        ];
+        found = host.annex_files(file_path, ".impl.jac")
+            + host.annex_files(file_path, ".test.jac");
     } except Exception {
         return [];
     }
-    out: list[tuple[str, str]] = [];
-    seen: set[str] = set();
-    for pth in paths {
-        if pth in seen {
-            continue;
+    unique: list[str] = [];
+    for path in found {
+        if path not in unique {
+            unique.append(path);
         }
-        seen.add(pth);
+    }
+    return unique;
+}
+
+def annex_sources(file_path: str) -> list[WovenAnnex] {
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
+    out: list[WovenAnnex] = [];
+    for pth in annex_paths(file_path) {
         try {
-            out.append((read_file_with_encoding(pth), pth, ));
+            out.append(WovenAnnex(source=host.read_source(pth), path=pth));
         } except Exception {
             continue;
         }
     }
+    try {
+        import from jaclang.compiler.driver.wiring { wiring_annex_for }
+        wired = wiring_annex_for(file_path);
+        if wired is not None {
+            out.append(wired);
+        }
+    } except Exception {}
     return out;
 }

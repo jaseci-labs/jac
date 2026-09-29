@@ -23,20 +23,27 @@ import json;
 import os;
 import struct;
 import subprocess;
+
+glob _PRELUDE_CWD: list[str] = [];
 import sys;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+import from jaclang.compiler.frontend.codeinfo {
+    JAC_ENTRY_SYMBOL,
+    native_symbol_name,
+    native_unit_prefix
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES = str(
          Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures"
      ),
-     _FIXTURE_SHADOW: list[str] = [];
+     _FIXTURE_SHADOW: list[str] = [],
+     _ENGINE_UNITS: dict[int, tuple[str, any]] = {};
 
 # -----------------------------------------------------------------------
 # Python reference helper
@@ -116,6 +123,25 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     return es_to_js(es_ir.gen.es_ast);
 }
 
+"""A directory where node can resolve the virtual `@jac/prelude` module.
+
+The `node -` runs below evaluate a bundle from stdin, so resolution is rooted
+at the working directory rather than at a file; staging once and running there
+is what lets the emitted prelude import resolve.
+"""
+def _prelude_cwd -> str {
+    import tempfile;
+    import from jaclang.compiler.backends.es.jac_runtime_js {
+        stage_jac_prelude_package
+    }
+    if not _PRELUDE_CWD {
+        stage = tempfile.mkdtemp(prefix="jac_xbackend_");
+        stage_jac_prelude_package(stage);
+        _PRELUDE_CWD.append(stage);
+    }
+    return _PRELUDE_CWD[0];
+}
+
 def run_js_function(js_code: str, func_name: str) -> dict[str, any] {
     # The bundle's own replacer, not a BigInt.prototype patch: this is the same
     # encoder the client transport uses, so what the harness reads is what a
@@ -129,7 +155,12 @@ def run_js_function(js_code: str, func_name: str) -> dict[str, any] {
             + "()));"
         );
     result = subprocess.run(
-        ["node", "-"], input=wrapper, capture_output=True, text=True, timeout=10
+        ["node", "-"],
+        input=wrapper,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        cwd=_prelude_cwd()
     );
     assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
     return json.loads(result.stdout.strip());
@@ -137,6 +168,9 @@ def run_js_function(js_code: str, func_name: str) -> dict[str, any] {
 
 def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
     import from tempfile { TemporaryDirectory }
+    import from jaclang.compiler.backends.es.jac_runtime_js {
+        stage_jac_prelude_package
+    }
     import from jaclang.client.jac_client_compiler { JacClientCompiler }
     import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
     prog = JacProgram();
@@ -145,7 +179,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
     assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
 
     def compile_module(path: Path) -> ClientArtifact {
-        artifact = prog.get_client_artifact(str(path));
+        artifact = prog._get_compiler().get_client_artifact(str(path), prog);
         assert artifact is not None , "\n".join(str(e) for e in prog.errors_had);
         return artifact;
     }
@@ -166,6 +200,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
         );
         source_root = Path(source.anchor);
         compiler.emit_dependencies(source, source_root=source_root);
+        stage_jac_prelude_package(str(output));
         (output / "package.json").write_text('{"type":"module"}');
         js_entry = compiler._output_path_for(source, source_root);
         with js_entry.open("a") as stream {
@@ -187,7 +222,12 @@ runtime itself rather than only on what a fixture function returns.
 def run_js_expr(js_code: str, expr: str) -> any {
     wrapper = js_code + "\nconsole.log(JSON.stringify(" + expr + "));";
     result = subprocess.run(
-        ["node", "-"], input=wrapper, capture_output=True, text=True, timeout=10
+        ["node", "-"],
+        input=wrapper,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        cwd=_prelude_cwd()
     );
     assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
     return json.loads(result.stdout.strip());
@@ -198,15 +238,51 @@ def run_js_expr(js_code: str, expr: str) -> any {
 # -----------------------------------------------------------------------
 def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple[any, ...] {
     prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(_fixture_shadow_dir(), fixture)),
-        options=CompileOptions(no_ir_cache=no_ir_cache)
-    );
+    path = str(os.path.join(_fixture_shadow_dir(), fixture));
+    ir = prog.compile(file_path=path, options=CompileOptions(no_ir_cache=no_ir_cache));
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
+    # The engine carries the link plan's ordered initializers
+    # (`static_init_symbols`) and runs them itself on the first address it
+    # hands out for a non-chained symbol; remember which unit it was built
+    # from so bare Jac names resolve to the unit's qualified symbols.
+    remember_engine_unit(eng, ir, path);
     return (eng, ir);
+}
+
+"""Pin the unit an engine was built from, so bare Jac names resolve to the
+unit's qualified symbols; every compile path that hands an engine to
+`get_func` calls this."""
+def remember_engine_unit(eng: object, ir: object, path: str = "") {
+    unit_path = ir.loc.mod_path if (ir?.loc and ir.loc.mod_path) else path;
+    _ENGINE_UNITS[id(eng)] = (unit_path, ir.gen.native_iface, );
+}
+
+"""The engine symbol for a Jac-level name.
+
+`jac_entry` is synthesized by the link plan and keeps its bare name, `:pub`
+symbols keep theirs, and every other external symbol of the unit lives
+under `native_unit_prefix(path)`; the unit's interface records the exact
+symbol when the compile produced one.
+"""
+def native_symbol_for(eng: object, name: str) -> str {
+    if name == JAC_ENTRY_SYMBOL {
+        return name;
+    }
+    found = _ENGINE_UNITS.get(id(eng));
+    if found is None {
+        return name;
+    }
+    (unit_path, iface) = found;
+    if iface is not None {
+        sym = iface.symbol_of(name);
+        if sym {
+            return sym;
+        }
+    }
+    return native_symbol_name(native_unit_prefix(unit_path), name);
 }
 
 def compile_native_errors(fixture: str) -> list[str] {
@@ -221,8 +297,13 @@ def compile_native_errors(fixture: str) -> list[str] {
 }
 
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
-    addr = eng.get_function_address(name);
-    assert addr != 0 , f"Function '{name}' not found in JIT engine";
+    symbol = native_symbol_for(eng, name);
+    addr = eng.get_function_address(symbol);
+    if addr == 0 and symbol != name {
+        # A `:pub` function the interface did not list keeps its bare name.
+        addr = eng.get_function_address(name);
+    }
+    assert addr != 0 , f"Function '{name}' ({symbol}) not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);
 }
@@ -331,6 +412,8 @@ def unbox_jacval(jv: JacVal) -> object {
         # bool: kept distinct from int (tag 0) so it round-trips as True/False
         # rather than 1/0, matching the Python reference exactly.
         return jv.payload != 0;
+    } elif jv.tag == 9 {
+        return ...;
     }
     return None;
 }
@@ -354,42 +437,14 @@ def run_native_function(
             ("order", ctypes.POINTER(ctypes.c_int64))
         ];
     }
-    # Run the module initializer first so module-level and `static has` globals
-    # whose values are not compile-time constants (strings, constructor calls)
-    # are populated before the fixture function reads them. Prefer jac_entry
-    # (chains __jac_glob_init across this module and every linked import); fall
-    # back to this module's __jac_glob_init when no `with entry` block emitted a
-    # jac_entry. Fixtures carry no entry block, so this only runs initializers.
-    init_addr = eng.get_function_address("jac_entry");
-    if init_addr != 0 {
-        ctypes.CFUNCTYPE(None)(init_addr)();
-    } else {
-        own_init = eng.get_function_address("__jac_glob_init");
-        if own_init != 0 {
-            ctypes.CFUNCTYPE(None)(own_init)();
-        }
-        # Without a jac_entry nothing has chained the glob inits of linked
-        # native imports (they are renamed to __jac_glob_init_<safe_sym> at
-        # link time), so run them here too -- otherwise an imported module's
-        # runtime-initialized globals (e.g. the bytes alphabets in
-        # na_stdlib/base64.jac) are read as null pointers and the JIT'd
-        # fixture segfaults.
-        manifest = ir.gen.interop_manifest if (ir is not None) else None;
-        sources = manifest.native_transitive_sources if manifest else [];
-        seen_srcs: set = set();
-        for src_mod in sources {
-            if src_mod is None or src_mod in seen_srcs {
-                continue;
-            }
-            seen_srcs.add(src_mod);
-            imp_init = eng.get_function_address(
-                "__jac_glob_init_" + native_safe_sym(src_mod)
-            );
-            if imp_init != 0 {
-                ctypes.CFUNCTYPE(None)(imp_init)();
-            }
-        }
-    }
+    # Module-level and `static has` globals whose values are not compile-time
+    # constants (strings, constructor calls) are populated by the unit
+    # initializers the link plan ordered onto the engine
+    # (`engine.static_init_symbols`, dependencies first). The engine runs
+    # them itself the first time it hands out the address of a non-chained
+    # symbol, so looking the fixture function up is what initializes this
+    # unit and every native import it links. `ir` is accepted for callers
+    # that still pass the module; nothing is read from it.
     f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
     dict_ptr = f();
     result: dict[str, any] = {};
@@ -419,6 +474,12 @@ def compare_results(
     for key in sorted(common_keys) {
         py_val = py_result[key];
         bk_val = backend_result[key];
+        if not label.endswith("[ES]")
+            and isinstance(py_val, float) != isinstance(bk_val, float) {
+            assert False , (
+                f"[{label}] Type mismatch on '{key}': py={py_val!r} backend={bk_val!r}"
+            );
+        }
         if isinstance(py_val, float) or isinstance(bk_val, float) {
             assert abs(float(py_val) - float(bk_val)) < tolerance , (
                 f"[{label}] Float mismatch on '{key}': py={py_val} backend={bk_val}"

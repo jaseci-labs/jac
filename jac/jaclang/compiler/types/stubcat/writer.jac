@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import os;
+import hashlib;
 import json;
 import struct;
 import from jaclang.compiler.frontend.unitree {
@@ -42,7 +43,7 @@ import from jaclang.compiler.types.types {
     UnionType,
     UnknownType
 }
-import from jaclang.compiler.frontend.constant { BindingKind }
+import from jaclang.compiler.frontend.constant { BindingKind, ImmutabilityKind }
 import from jaclang.compiler.types.stubcat.format {
     ACCESS_PRIVATE,
     ACCESS_PROTECTED,
@@ -77,12 +78,14 @@ import from jaclang.compiler.types.stubcat.format {
     SH_TYPEDDICT,
     SH_XREF,
     SYMF_DEFER,
+    SYMF_FINAL,
     SYMF_HAS_DEFAULT,
     SYMF_INSTANCE_METHOD,
     SYMF_NA_ESCAPES,
     SYMF_NA_REGION_HANDLE,
     SYMF_NA_STACK_OK,
     SYMF_PARAM_REBOUND,
+    SYMF_READONLY,
     TV_CLASS_PARAM,
     TV_CONTRAVARIANT,
     TV_COVARIANT,
@@ -298,7 +301,7 @@ obj CatalogWriter {
         pending_syms: list[int] postinit,
         type_ids: dict[any, int] postinit,
         _ident_visiting: set[int] postinit,
-        _type_ident_memo: dict[int, any] postinit,
+        _type_ident_memo: dict[int, tuple[TypeBase, any]] postinit,
         _canonical_paths: dict[str, str] postinit,
         types: list[TypeBase] postinit,
         pending_types: list[int] postinit,
@@ -413,7 +416,7 @@ obj CatalogWriter {
             return id(scope);
         }
         mod = module_of(scope);
-        if mod is None or not self.in_boundary(mod) {
+        if mod is None {
             return id(scope);
         }
         loc = scope.loc;
@@ -437,7 +440,7 @@ obj CatalogWriter {
         }
         home = home_scope(sym);
         mod = module_of(home);
-        if home is None or mod is None or not self.in_boundary(mod) {
+        if home is None or mod is None {
             return id(sym);
         }
         loc = sym.decl.loc if sym.decl else None;
@@ -464,8 +467,17 @@ obj CatalogWriter {
             tab = None;
         }
         mod = module_of(tab) if tab is not None else None;
-        if tab is None or mod is None or not self.in_boundary(mod) {
+        if tab is None or mod is None {
             return id(shared);
+        }
+        if not self.in_boundary(mod) {
+            return (
+                "xref",
+                self._mod_ident(mod),
+                self.scope_dotted_path(tab),
+                shared.class_name,
+                shared.canonical_key()
+            );
         }
         return (self._scope_ident(tab), shared.class_name, );
     }
@@ -757,7 +769,7 @@ obj CatalogWriter {
         }
         memo = self._type_ident_memo.get(tid);
         if memo is not None {
-            return memo;
+            return memo[1];
         }
         if tid in self._ident_visiting {
             return tid;
@@ -768,7 +780,7 @@ obj CatalogWriter {
         } finally {
             self._ident_visiting.discard(tid);
         }
-        self._type_ident_memo[tid] = key;
+        self._type_ident_memo[tid] = (t, key);
         return key;
     }
 
@@ -1185,6 +1197,11 @@ obj CatalogWriter {
         if self._jac_method_of(sym) is not None {
             symbits |= SYMF_INSTANCE_METHOD;
         }
+        if sym.immutability is ImmutabilityKind.FINAL {
+            symbits |= SYMF_FINAL;
+        } elif sym.immutability is ImmutabilityKind.READONLY {
+            symbits |= SYMF_READONLY;
+        }
         try {
             decl_node = sym.decl.name_of if sym.decl else None;
             if isinstance(decl_node, HasVar) {
@@ -1575,4 +1592,53 @@ obj CatalogWriter {
             "failure_log": list(self.failure_log)
         };
     }
+}
+
+class IncoherentInterface(RuntimeError) {
+    has mod_path: str,
+        orphans: list[str],
+        failures: list[str];
+
+    def init(
+        self: IncoherentInterface,
+        mod_path: str,
+        orphans: list[str],
+        failures: list[str] | None = None
+    ) {
+        RuntimeError.__init__(
+            self,
+            f"interface of {mod_path} references {len(orphans)} class scope(s) "
+            "with no live module: "
+                + ", ".join(orphans)
+                + (
+                    "; type evaluation failed: " + "; ".join(failures)
+                        if failures
+                        else ""
+                )
+        );
+        self.mod_path = mod_path;
+        self.orphans = list(orphans);
+        self.failures = list(failures or []);
+    }
+}
+
+def build_module_iface(
+    mod: Module,
+    evaluator: any,
+    pkg_dir: str,
+    path_mapper: Callable[[str], str] | None = None
+) -> bytes {
+    writer = CatalogWriter(
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
+    );
+    dotted = mod.name or "";
+    writer.add_module(mod, dotted);
+    writer.force_all();
+    key = mod.loc.mod_path if mod.loc else dotted;
+    body = writer.emit(writer.rel_of(key), {});
+    if writer.orphans or writer.failures {
+        raise IncoherentInterface(key, writer.orphans, writer.failure_log);
+    }
+    digest = hashlib.sha256(body).hexdigest();
+    return digest.encode("utf-8") + body;
 }

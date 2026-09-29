@@ -42,7 +42,7 @@ node ShoppingItem {
         carby: bool;
 }
 
-walker:priv AddTask {
+walker:protect AddTask {
     has title: str,
         reports: list[Task] = [];
 
@@ -53,7 +53,7 @@ walker:priv AddTask {
     }
 }
 
-walker:priv ListTasks {
+walker:protect ListTasks {
     has results: list[Task] = [],
         reports: list[list[Task]] = [];
 
@@ -70,7 +70,7 @@ walker:priv ListTasks {
     }
 }
 
-walker:priv ToggleTask {
+walker:protect ToggleTask {
     has task_id: str,
         reports: list[Task] = [];
 
@@ -87,7 +87,7 @@ walker:priv ToggleTask {
     }
 }
 
-walker:priv DeleteTask {
+walker:protect DeleteTask {
     has task_id: str;
 
     can search with Root entry {
@@ -103,7 +103,7 @@ walker:priv DeleteTask {
     }
 }
 
-walker:priv GenerateShoppingList {
+walker:protect GenerateShoppingList {
     has meal_description: str,
         reports: list[list[ShoppingItem]] = [];
 
@@ -127,7 +127,7 @@ walker:priv GenerateShoppingList {
     }
 }
 
-walker:priv GetShoppingList {
+walker:protect GetShoppingList {
     has items: list[ShoppingItem] = [],
         reports: list[list[ShoppingItem]] = [];
 
@@ -144,7 +144,7 @@ walker:priv GetShoppingList {
     }
 }
 
-walker:priv ClearShoppingList {
+walker:protect ClearShoppingList {
     can collect with Root entry {
         visit [-->];
     }

@@ -14,7 +14,7 @@ promotion. Names that resolve correctly must not emit E2018.
 """
 
 node N { has v: int = 0; }
-edge MyEdge { has w: int = 0; }
+edge MyEdge : N --> N { has w: int = 0; }
 walker GoodWalker { can ping with Root entry { ; } }
 
 walker BadWalker {

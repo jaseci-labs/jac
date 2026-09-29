@@ -145,7 +145,7 @@ node RoundTripNode {
     has label: str = "";
 }
 
-edge RoundTripEdge {
+edge RoundTripEdge: RoundTripNode --> RoundTripNode {
     has w: int = 0;
 }
 

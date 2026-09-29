@@ -268,3 +268,42 @@ test "a quota write commits on its own, whatever the shared connection is doing"
         js.close();
     }
 }
+
+
+test "a creator's job cap counts the jobs in this service only" {
+    # Services share one collection. Counting a creator's rows across all of
+    # them let a job in one service use up the cap in another.
+    store = _store();
+    if store is None {
+        return;
+    }
+    orders = PgJobStore(store=store, _collection='jobs_svc_quota', _service='orders');
+    billing = PgJobStore(store=store, _collection='jobs_svc_quota', _service='billing');
+    try {
+        assert orders.insert_within_quota(
+            _job('o-1', created_by='cap-user', service='orders'), 'cap-user', 1
+        );
+        assert billing.insert_within_quota(
+            _job('b-1', created_by='cap-user', service='billing'), 'cap-user', 1
+        ) , "a job in orders must not use billing's cap";
+        assert not orders.insert_within_quota(
+            _job('o-2', created_by='cap-user', service='orders'), 'cap-user', 1
+        );
+        assert not billing.insert_within_quota(
+            _job('b-2', created_by='cap-user', service='billing'), 'cap-user', 1
+        );
+
+        # A row written before jobs carried a service is visible to every
+        # service's scoped reads, so it counts against every service's cap.
+        orders.insert(_job('legacy-1', created_by='old-user'));
+        assert not orders.insert_within_quota(
+            _job('o-3', created_by='old-user', service='orders'), 'old-user', 1
+        );
+        assert not billing.insert_within_quota(
+            _job('b-3', created_by='old-user', service='billing'), 'old-user', 1
+        );
+    } finally {
+        orders.close();
+        billing.close();
+    }
+}

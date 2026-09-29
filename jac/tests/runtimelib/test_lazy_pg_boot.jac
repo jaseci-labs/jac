@@ -151,6 +151,175 @@ test "session construction is free and the first store read boots once" {
 }
 
 
+test "status probes and the unused-session lifecycle never boot the engine" {
+    probe = _BootProbe();
+    probe.install();
+    try {
+        with TemporaryDirectory() as td {
+            sess = Session(base_path=td, target_path=str(Path(td) / "app.jac"));
+            try {
+                loc = sess.data_location();
+                assert loc is not None , ("a status probe must still locate the data");
+                assert probe.calls == [] , (
+                    f"data_location booted the embedded engine: {probe.calls}"
+                );
+                assert "unbooted" in repr(sess) , (
+                    "repr must report boot state, not trigger it"
+                );
+                assert probe.calls == [] , f"repr booted the engine: {probe.calls}";
+                sess.commit();
+                assert probe.calls == [] , (
+                    f"committing nothing booted the engine: {probe.calls}"
+                );
+                assert sess.store is not None , "store access must boot the store";
+                assert sess.data_location() == loc , (
+                    f"boot moved the data location: {loc} -> {sess.data_location()}"
+                );
+            } finally {
+                sess.close();
+            }
+            assert probe.calls == [] , (
+                f"the whole lifecycle spawned the engine: {probe.calls}"
+            );
+        }
+    } finally {
+        probe.remove();
+    }
+}
+
+test "a failed stateless request stays unbooted" {
+    with TemporaryDirectory() as td {
+        sess = Session(base_path=td, target_path=str(Path(td) / "app.jac"));
+        try {
+            raised = False;
+            try {
+                sess.run_request(lambda { raise ValueError("probe"); });
+            } except ValueError {
+                raised = True;
+            }
+            assert raised , "the probe request must fail";
+            assert "unbooted" in repr(sess) , (
+                "a failed request with no database work must not boot the store"
+            );
+        } finally {
+            sess.close();
+        }
+    }
+}
+
+obj _RollbackOnlyStore {
+    has rollbacks: int = 0,
+        commits: int = 0,
+        closes: int = 0;
+
+    def rollback {
+        self.rollbacks += 1;
+    }
+
+    def commit {
+        self.commits += 1;
+    }
+
+    def close {
+        self.closes += 1;
+    }
+}
+
+
+test "a persistent conflict retries a bounded number of times" {
+    import from jaclang.server.session { MAX_RETRIES }
+
+    sess = Session();
+    fake = _RollbackOnlyStore();
+    sess._store = _as_any(fake);
+    calls: list[int] = [];
+
+    def body {
+        calls.append(1);
+        raise Exception({'C': '40001'});
+    }
+
+    raised = False;
+    try {
+        sess.run_request(body);
+    } except Exception {
+        raised = True;
+    }
+    assert raised , "a persistent conflict must still surface after retrying";
+    assert len(calls) == MAX_RETRIES + 1 , (
+        f"request body ran {len(calls)} times; expected "
+        f"{MAX_RETRIES + 1} (1 try + bounded retries)"
+    );
+    assert fake.rollbacks == MAX_RETRIES + 1 , (
+        f"abort() ran {fake.rollbacks} times; expected one per attempt"
+    );
+}
+
+
+test "an injected store is used instead of booting the embedded engine" {
+    probe = _BootProbe();
+    probe.install();
+    try {
+        with TemporaryDirectory() as td {
+            fake = _RollbackOnlyStore();
+            sess = Session(
+                _store=_as_any(fake),
+                base_path=td,
+                target_path=str(Path(td) / "app.jac")
+            );
+            try {
+                assert sess._store is fake , "the injected store was discarded";
+                assert sess.store is fake , (
+                    "store access must return the injected store, not boot"
+                );
+                assert probe.calls == [] , (
+                    f"an injected store still booted the engine: {probe.calls}"
+                );
+            } finally {
+                sess.close();
+            }
+        }
+    } finally {
+        probe.remove();
+    }
+}
+
+
+test "concurrent first store access boots one shared store" {
+    import threading;
+    with TemporaryDirectory() as td {
+        sess = Session(base_path=td, target_path=str(Path(td) / "app.jac"));
+        try {
+            seen: list[any] = [];
+            gate = threading.Barrier(2);
+
+            def racer {
+                gate.`wait(10);
+                seen.append(sess.store);
+            }
+
+            threads = [
+                threading.Thread(target=racer, name="jac-boot-racer") for _ in range(2)
+            ];
+            for t in threads {
+                t.start();
+            }
+            for t in threads {
+                t.join(30);
+            }
+            assert len(seen) == 2 , "racers did not both finish";
+            assert seen[0] is seen[1] , (
+                "two first-time readers got different stores; "
+                "the lazy boot is not serialized"
+            );
+            assert sess.store is seen[0];
+        } finally {
+            sess.close();
+        }
+    }
+}
+
+
 test "an unprivileged euid runs the embedded engine as-is" {
     import from jaclang.data.pgembed { PgPrivMode, pg_priv_plan }
 

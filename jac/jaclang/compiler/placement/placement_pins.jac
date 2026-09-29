@@ -1,20 +1,57 @@
 import from jaclang.compiler.driver.compilation_context { context_app }
-import json;
+import fnmatch;
 import os;
-import from jaclang.project.modresolver { find_jac_project_root }
-import from jaclang.project.workspace {
-    app_fact_digest,
-    kind_codespace,
-    workspace_for_path
+import from jaclang.compiler.frontend.host { NativeVerdict, active_host }
+import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.project.app_kinds { kind_codespace }
+
+glob PIN_SPACES: tuple[str, ...] = ('server', 'client', 'native');
+
+def validate_pins(pins: dict[str, str], toml_path: str) -> dict[str, str] {
+    for (key, space) in pins.items() {
+        if space not in PIN_SPACES {
+            raise ValueError(
+                f"[placement.pins] in {toml_path}: '{key}' pins to '{space}', "
+                    + f"expected one of {list(PIN_SPACES)}."
+            );
+        }
+    }
+    return pins;
 }
 
-import from jaclang.project.placement { validate_pins, match_pin }
+def module_dot_path(source_path: str, root_dir: str) -> str {
+    path = os.path.realpath(source_path);
+    relative = os.path.relpath(os.path.dirname(path), os.path.realpath(root_dir));
+    parent = relative.replace(os.sep, '.')
+        if relative != '.' and not relative.startswith('..')
+        else '';
+    stem = active_host().path_facts(path).module_stem;
+    if parent and stem {
+        return parent + '.' + stem;
+    }
+    return parent or stem;
+}
+
+def match_pin(
+    source_path: str, root_dir: str, pins: dict[str, str], element_name: str = ''
+) -> str {
+    module = module_dot_path(source_path, root_dir);
+    for (pattern, space) in pins.items() {
+        if element_name and fnmatch.fnmatchcase(f'{module}.{element_name}', pattern) {
+            return space;
+        }
+        if fnmatch.fnmatchcase(module, pattern) {
+            return space;
+        }
+    }
+    return '';
+}
 
 def config_pins_for(source_path: str) -> dict[str, str] {
     if not source_path {
         return {};
     }
-    ws = workspace_for_path(source_path);
+    ws = active_host().workspace(source_path);
     if ws is None {
         return {};
     }
@@ -28,7 +65,7 @@ def config_pin_for(source_path: str, element_name: str) -> str {
     if not source_path {
         return '';
     }
-    ws = workspace_for_path(source_path);
+    ws = active_host().workspace(source_path);
     if ws is None {
         return '';
     }
@@ -45,142 +82,36 @@ def config_module_pin(source_path: str) -> str {
 }
 
 
-glob _na_demotion_memo: dict[str, tuple[int, int] | None] = {},
-     _na_demotion_code: dict[str, str] = {},
-     _na_demotion_probed: set[str] = set();
+def module_native_demoted(source_path: str, prog: (JacProgram | None) = None) -> bool {
+    verdict = _native_verdict(source_path, prog);
+    return verdict is not None and verdict.demoted;
+}
 
+def native_demotion_code(source_path: str, prog: (JacProgram | None) = None) -> str {
+    verdict = _native_verdict(source_path, prog);
+    return verdict.code if verdict is not None else "";
+}
 
-def _demotion_sidecar(path: str) -> (str | None) {
-    try {
-        import from jaclang.compiler.driver.jir { get_module_cache_path }
-        return str(get_module_cache_path(path).with_suffix('.nademote'));
-    } except Exception {
-        return None;
-    }
+def _native_verdict(
+    source_path: str, prog: (JacProgram | None)
+) -> (NativeVerdict | None) {
+    return active_host().native_verdict(source_path, prog);
 }
 
 
-def _file_key(path: str) -> (tuple[int, int] | None) {
-    try {
-        st = os.stat(path);
-        return (st.st_mtime_ns, st.st_size);
-    } except OSError {
-        return None;
-    }
-}
-
-
-def _load_demotion(path: str) -> (tuple[int, int] | None) {
-    sidecar = _demotion_sidecar(path);
-    if sidecar is None {
-        return None;
-    }
-    try {
-        with open(sidecar, "r", encoding="utf-8") as f {
-            parts = f.read().split();
-        }
-        if len(parts) < 2 {
-            return None;
-        }
-        _na_demotion_code[path] = parts[2] if len(parts) > 2 else "";
-        return (int(parts[0]), int(parts[1]));
-    } except Exception {
-        return None;
-    }
-}
-
-
-def _remove_demotion_sidecar(path: str) {
-    sidecar = _demotion_sidecar(path);
-    if sidecar is None {
-        return;
-    }
-    try {
-        os.remove(sidecar);
-    } except OSError {}
-}
-
-
-def _is_demoted_native(path: str) -> bool {
-    key = _na_demotion_memo.get(path);
-    if key is None {
-        if path in _na_demotion_probed {
-            return False;
-        }
-        _na_demotion_probed.add(path);
-        key = _load_demotion(path);
-        if key is None {
-            return False;
-        }
-        _na_demotion_memo[path] = key;
-    }
-    if key == _file_key(path) {
-        return True;
-    }
-    del _na_demotion_memo[path];
-    _na_demotion_code.pop(path, None);
-    _remove_demotion_sidecar(path);
-    return False;
-}
-
-
-def _demoted_native_code(path: str) -> str {
-    if not _is_demoted_native(path) {
-        return "";
-    }
-    return _na_demotion_code.get(path, "");
-}
-
-
-def _mark_demoted_native(path: str, code: str = "") {
-    import from jaclang.compiler.native_scope {
-        in_native_scope_path,
-        scope_lowering_active
-    }
-    if scope_lowering_active() and in_native_scope_path(path) {
-        return;
-    }
-    key = _file_key(path);
-    if key is None {
-        return;
-    }
-    _na_demotion_memo[path] = key;
-    _na_demotion_code[path] = code;
-    _na_demotion_probed.discard(path);
-    sidecar = _demotion_sidecar(path);
-    if sidecar is None {
-        return;
-    }
-    try {
-        os.makedirs(os.path.dirname(sidecar), exist_ok=True);
-        tmp = f"{sidecar}.{os.getpid()}.tmp";
-        with open(tmp, "w", encoding="utf-8") as f {
-            f.write(f"{key[0]} {key[1]} {code}\n");
-        }
-        os.replace(tmp, sidecar);
-    } except OSError {}
-}
-
-
-def _clear_demoted_native(path: str) {
-    _na_demotion_memo.pop(path, None);
-    _na_demotion_code.pop(path, None);
-    _na_demotion_probed.discard(path);
-    _remove_demotion_sidecar(path);
-}
-
-
-def effective_pin_for(source_path: str, element_name: str) -> str {
+def effective_pin_for(
+    source_path: str, element_name: str, prog: (JacProgram | None) = None
+) -> str {
     pin = config_pin_for(source_path, element_name);
-    if pin == 'native' and _is_demoted_native(os.path.realpath(source_path)) {
+    if pin == 'native' and module_native_demoted(os.path.realpath(source_path), prog) {
         return '';
     }
     return pin;
 }
 
 
-def effective_module_pin(source_path: str) -> str {
-    return effective_pin_for(source_path, '');
+def effective_module_pin(source_path: str, prog: (JacProgram | None) = None) -> str {
+    return effective_pin_for(source_path, '', prog);
 }
 
 
@@ -201,11 +132,12 @@ def config_kind_space(source_path: str, fallback_kind: str = '') -> str {
 
 def pins_digest(source_path: str) -> str {
     pins = config_pins_for(source_path);
-    facts = app_fact_digest(context_app(source_path)) if source_path else '';
+    app = context_app(source_path) if source_path else None;
+    facts = app.fact_digest if app is not None else '';
     if not pins and not facts {
         return '';
     }
-    return json.dumps(pins, sort_keys=True) + facts;
+    return ";".join([f"{name}={pins[name]}" for name in sorted(pins.keys())]) + facts;
 }
 
 
@@ -213,7 +145,7 @@ def npm_dependency_names(source_path: str) -> set[str] {
     if not source_path {
         return set();
     }
-    ws = workspace_for_path(source_path);
+    ws = active_host().workspace(source_path);
     if ws is None {
         return set();
     }
@@ -221,42 +153,9 @@ def npm_dependency_names(source_path: str) -> set[str] {
     return set(app.npm_names) if app is not None else set(ws.base_npm_names);
 }
 
-glob _framework_cache: dict[str, tuple[float, str]] = {};
-
-
 def client_framework(source_path: str) -> str {
-    if not source_path {
-        return "react";
-    }
-    root_dir = find_jac_project_root(source_path);
-    if not root_dir {
-        return "react";
-    }
-    toml_path = os.path.join(root_dir, "jac.toml");
-    try {
-        mtime = os.path.getmtime(toml_path);
-    } except OSError {
-        return "react";
-    }
-    cached = _framework_cache.get(root_dir);
-    if cached is not None and cached[0] == mtime {
-        return cached[1];
-    }
-    import tomllib;
-    fw = "react";
-    try {
-        with open(toml_path, "rb") as f {
-            doc = tomllib.load(f);
-        }
-        client = doc.get("client", {});
-        if isinstance(client, dict) {
-            fw = str(client.get("framework", "react"));
-        }
-    } except Exception {
-        fw = "react";
-    }
-    _framework_cache[root_dir] = (mtime, fw);
-    return fw;
+    facts = active_host().project_facts(source_path) if source_path else None;
+    return facts.client_framework if facts is not None else "react";
 }
 
 glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
@@ -273,8 +172,22 @@ obj BareImportVerdict {
 }
 
 
+def npm_package_root(spec: str) -> str {
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if not parts {
+        return spec;
+    }
+    if (spec.startswith('@') and len(parts) >= 2) {
+        return parts[0] + '/' + parts[1];
+    }
+    return parts[0];
+}
+
 def _declared_npm_rule(spec: str, source_path: str) -> str {
-    import from jaclang.project.modresolver { npm_package_root }
     pkg_root = npm_package_root(spec);
     if pkg_root in npm_dependency_names(source_path) {
         return 'npm dependency ([dependencies.npm])';
@@ -288,8 +201,7 @@ def _declared_npm_rule(spec: str, source_path: str) -> str {
 
 
 def _installed_npm_rule(spec: str, source_path: str) -> str {
-    import from jaclang.project.modresolver { has_client_npm_package }
-    if has_client_npm_package(spec, source_path) {
+    if active_host().has_npm_package(spec, source_path) {
         return 'npm dependency (installed under .jac/client/node_modules)';
     }
     return '';
@@ -310,11 +222,10 @@ def classify_bare_import(spec: str, source_path: str) -> BareImportVerdict {
     if not spec {
         return BareImportVerdict();
     }
-    import from jaclang.project.modresolver { resolve_module }
     path = '';
     lang = '';
     try {
-        (path, lang) = resolve_module(spec, source_path);
+        (path, lang) = active_host().resolve_module(spec, source_path);
     } except Exception {
         path = '';
     }

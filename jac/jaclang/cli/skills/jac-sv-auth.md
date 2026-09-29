@@ -8,9 +8,9 @@ Jac's server auth is built on **per-user data isolation**: every registered user
 ## Endpoint auth semantics (canonical - verified against the live server)
 
 - **`def:pub` / `walker:pub`** - no auth required. An **anonymous** caller runs on the shared guest graph (`root` is `root.shared`); a caller who *does* send a valid token runs on **their own root**. So `root` inside a `:pub` endpoint is not one fixed graph - it depends on the caller's token.
-- **Plain `def` / `def:priv`** (and plain `walker` / `walker:priv`) - JWT required (`401 UNAUTHORIZED` without one); runs on the caller's own isolated root. **Plain and `:priv` behave identically** - secure by default; `:priv` is just the explicit spelling.
-- **`def:protect` / `walker:protect`** - for auth, identical to `:priv`: JWT required, own root. `:protect` is *not* a middle auth tier - **only `:pub` skips auth**. Its three-way gradient (`:pub`/`:protect`/`:priv`) is the *source-visibility* axis (module vs project vs world), not the auth axis. Don't pick `:protect` expecting lighter auth.
-- **`def _helper`** - underscore prefix keeps a function off the API entirely (underscore *walkers* become middleware - see `jac-sv-endpoints`).
+- **`def:protect` / `walker:protect`** - JWT required (`401 UNAUTHORIZED` without one); runs on the caller's own isolated root. This is the authenticated endpoint, and it bridges to clients and to other apps exactly like `:pub` does.
+- **Plain `def` / `def:priv`** (and plain `walker` / `walker:priv`) - **private**: never registered as an endpoint, never importable by client code, never on another app's bridge surface. A plain def is a server-side helper; a plain walker is spawned in-process or on a schedule. Nothing is served unless its declaration says so.
+- The declaration is the only source of truth: there is no `_`-prefix rule, no "name it in the entry import" rule, and no `[placement.pins]` trust-boundary form. `jac fix access` migrates code written for the old plain-means-authenticated rule.
 
 ```jac
 node Todo {
@@ -24,14 +24,19 @@ def:pub public_feed_size() -> int {
 }
 
 
-# AUTHENTICATED (plain def == def:priv) - per-user root, each caller
+# AUTHENTICATED (def:protect) - per-user root, each caller
 # sees only their own data. Same query code, different subgraph per user.
-def:priv my_todos() -> list[Todo] {
+def:protect my_todos() -> list[Todo] {
     return [root -->][?:Todo];
 }
 
-def:priv add_todo(title: str) -> Todo {
+def:protect add_todo(title: str) -> Todo {
     return root ++> Todo(title=title);
+}
+
+# PRIVATE (plain def) - a helper the endpoints above may call; never served.
+def open_count() -> int {
+    return len([root -->][?:Todo]);
 }
 ```
 
@@ -90,7 +95,7 @@ No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/G
 
 ## Pitfalls
 
-- **Wrong visibility = silent data leak.** Writing user-specific data from a `def:pub` endpoint puts anonymous users' data on the shared guest graph, and the same code does different things for token-holders. No compile or runtime error - it only surfaces when user B sees user A's data. User-specific data ⇒ authenticated endpoint (plain `def` or `def:priv`). Verify by logging in as two users and checking reads don't cross.
+- **Wrong visibility = silent data leak.** Writing user-specific data from a `def:pub` endpoint puts anonymous users' data on the shared guest graph, and the same code does different things for token-holders. No compile or runtime error - it only surfaces when user B sees user A's data. User-specific data ⇒ authenticated endpoint (`def:protect`). Verify by logging in as two users and checking reads don't cross.
 - Don't "fix" a 401 by making the endpoint `:pub` - that changes whose graph it runs on, not just who may call it.
 - `:pub` and authenticated endpoints can live in the same file - visibility is per-declaration.
 - Client calls to an authenticated endpoint without a session raise an error containing `"UNAUTHORIZED"` - catch and redirect to login (`jac-cl-auth`).

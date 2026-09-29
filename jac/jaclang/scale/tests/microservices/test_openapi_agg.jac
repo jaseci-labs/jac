@@ -14,7 +14,10 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 
 
-"""Serve `payload` as JSON on every GET after `delay` seconds; (server, port)."""
+glob _HANDLED: list[tuple[int, float, float]] = [];
+
+"""Serve `payload` as JSON on every GET after `delay` seconds; (server, port).
+Each handled request records (port, start, end) in `_HANDLED`."""
 def _serve_spec(payload: dict[str, any], delay: float = 0.0) -> tuple[any, ...] {
     import http.server;
     import json;
@@ -23,9 +26,13 @@ def _serve_spec(payload: dict[str, any], delay: float = 0.0) -> tuple[any, ...] 
     body = json.dumps(payload).encode();
 
     def _do_get(handler_self: any) {
+        began = time.monotonic();
         if delay {
             time.sleep(delay);
         }
+        _HANDLED.append(
+            (handler_self.server.server_address[1], began, time.monotonic())
+        );
         handler_self.send_response(200);
         handler_self.send_header("Content-Type", "application/json");
         handler_self.send_header("Content-Length", str(len(body)));
@@ -59,27 +66,53 @@ def _entry(name: str, prefix: str, port: int) -> ServiceEntry {
 }
 
 
+"""One undelayed aggregate first: the client's fetch path and the servers'
+request handling each import and warm up on first use. The collector then runs
+once and stays off for the timed window: a full collection of a test worker's
+heap stops the process for about two seconds, which CI showed landing before
+either request was sent. Neither cost is the fetch concurrency this compares."""
 test "service specs are fetched concurrently, not serially" {
     spec = {"openapi": "3.0.2", "paths": {"/walker/A": {"post": {}}}};
+    (srv_w, port_w) = _serve_spec(spec);
+    warm = ServiceRegistry();
+    warm.register(_entry("warm", "/warm", port_w));
+    try {
+        asyncio.run(aggregate_openapi(warm));
+    } finally {
+        srv_w.shutdown();
+    }
     (srv_a, port_a) = _serve_spec(spec, delay=1.5);
     (srv_b, port_b) = _serve_spec(spec, delay=1.5);
 
     reg = ServiceRegistry();
     reg.register(_entry("orders", "/orders", port_a));
     reg.register(_entry("billing", "/billing", port_b));
+    import gc;
+    import selectors;
+    import threading;
+    _HANDLED.clear();
+    gc.collect();
+    gc.disable();
     try {
         start = time.monotonic();
         doc = asyncio.run(aggregate_openapi(reg));
         elapsed = time.monotonic() - start;
     } finally {
+        gc.enable();
         srv_a.shutdown();
         srv_b.shutdown();
     }
     assert "/orders/walker/A" in doc["paths"];
     assert "/billing/walker/A" in doc["paths"];
+    timeline = [
+        f"port {port}: {began - start:.2f}s..{ended - start:.2f}s"
+        for (port, began, ended) in _HANDLED
+    ];
     assert elapsed < 2.5 , (
         f"two 1.5s fetches took {elapsed:.1f}s; serial fetching adds every "
-        f"slow service's latency to the docs endpoint"
+        f"slow service's latency to the docs endpoint. handled: {timeline}; "
+        f"selector {selectors.DefaultSelector.__name__}, "
+        f"threads {[t.name for t in threading.enumerate()]}"
     );
 }
 

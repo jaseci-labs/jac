@@ -24,7 +24,7 @@ to a native sequence, so the compare runs as a loop over a runtime length.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -58,14 +58,14 @@ def families_engine -> ExecutionEngine {
     assert not errors , f"isinstance_families.jac did not lower: {errors}";
     assert ir.gen.llvm_ir , "no native IR for isinstance_families.jac";
     eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for isinstance_families.jac";
+    assert isinstance(eng, ExecutionEngine) , "no native engine for isinstance_families.jac";
     _ENGINE.append(eng);
     return eng;
 }
 
 """A JIT-resident `int -> int` (or `-> int`) entry point as a callable."""
 def native_fn(name: str, argc: int = 1) -> any {
-    addr = families_engine().get_function_address(name);
+    addr = native_address(families_engine(), name);
     assert addr != 0 , f"'{name}' is not in the JIT engine";
     if argc == 0 {
         return ctypes.CFUNCTYPE(ctypes.c_int64)(addr);

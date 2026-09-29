@@ -2,7 +2,7 @@ node simple {
     has tag: str;
 }
 
-edge simple_edge {
+edge simple_edge : any --> any {
     has index: int = 0;
 }
 

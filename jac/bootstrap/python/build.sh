@@ -155,6 +155,11 @@ cpython() {
         cp "$recipe/binding_api.c" Python/jac_bindings.c
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
+    # cpython-sources.txt decides what the extracted tree holds; detach the
+    # upstream rules that still name pruned paths. This runs second because
+    # compiler-bridge.patch carries zero-context hunks, which match on line
+    # number alone and so must see pristine ones.
+    patch -f -F0 -p1 -i "$recipe/build-graph.patch"
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
         linux-*)
@@ -178,11 +183,22 @@ exec "$JAC_PYTHON_ZIG" cc -target "$JAC_PYTHON_TARGET" -isysroot "$JAC_PYTHON_SD
 SH
             # Keep the dylib relocatable and use the three-component versions
             # required by Zig's Mach-O linker (CPython supplies major.minor).
+            # Link the static modules' libraries into the dylib, as the Linux
+            # .so rule does. Upstream leaves them to -undefined dynamic_lookup,
+            # which only resolves against whatever else the process loaded.
             sed -e 's|-Wl,-install_name,$(prefix)/lib/|-Wl,-install_name,@rpath/|' \
                 -e 's/-compatibility_version,$(VERSION)/-compatibility_version,$(VERSION).0/g' \
                 -e 's/-current_version,$(VERSION)/-current_version,$(VERSION).0/g' \
+                -e 's/-o $@ $(LIBRARY_OBJS) $(DTRACE_OBJS) $(SHLIBS)/-o $@ $(LIBRARY_OBJS) $(DTRACE_OBJS) $(MODLIBS) $(SHLIBS)/' \
                 Makefile.pre.in > Makefile.pre.in.new
             mv Makefile.pre.in.new Makefile.pre.in
+            # configure passes ld64's -stack_size as bare hex ("1000000" means
+            # the 16 MiB it also gives THREAD_STACK_SIZE). Zig's Mach-O linker
+            # reads it as decimal, which leaves the main thread under 1 MiB.
+            sed 's/-Wl,-stack_size,\$stack_size/-Wl,-stack_size,0x$stack_size/g' \
+                configure > configure.new
+            mv configure.new configure
+            chmod +x configure
             ;;
     esac
     chmod +x "$work/bin/pycc"
@@ -209,26 +225,29 @@ _curses
 _curses_panel
 readline
 SETUP
+    archives=
     if [ -n "$host" ]; then
-        cat >> Modules/Setup.local <<'SETUP'
-*static*
-_bisect
-_heapq
-_random
-binascii
-_operator -lcrypto
-_queue
-_json
-_csv
-_struct
-cmath
-math
-_collections
-_functools
-itertools
-array
-_pickle
-SETUP
+        # Setup.local is read first and its first rule wins, so a registered
+        # module's PyInit resolves from jacpython.o even when Setup.bootstrap
+        # or Setup.stdlib still names the replaced C source.
+        registry=$recipe/jacpython-modules.txt
+        native_api=$root/jaclang/compiler/backends/py/jacpython/native_api.jac
+        echo '*static*' >> Modules/Setup.local
+        while read -r module tests flags; do
+            case "$module" in ''|'#'*) continue ;; esac
+            grep -qw "PyInit_$module" "$native_api" || {
+                echo "native_api.jac does not import PyInit_$module" >&2
+                exit 1
+            }
+            echo "$module $flags" >> Modules/Setup.local
+            # A flag naming an archive under Modules/ is one of CPython's own
+            # make targets (the vendored HACL* libraries). makesetup only puts
+            # it on the link line: a module without a C source has no rule
+            # that depends on it, so it is built before the interpreter.
+            for flag in $flags; do
+                case "$flag" in Modules/*.a) archives="$archives $flag" ;; esac
+            done
+        done < "$registry"
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
     # must not override the release interpreter's optimization settings.
@@ -244,6 +263,10 @@ SETUP
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
         --with-system-expat --with-system-libmpdec --without-readline
+    if [ -n "$archives" ]; then
+        # shellcheck disable=SC2086 # one make target per archive
+        python_make -j"$jobs" $archives
+    fi
     # Embed the same core objects in the executable: venv --copies must run
     # without a libpython next to the copied executable. Jac's launcher still
     # uses the separately built shared library. Neither needs libpython3.so.
@@ -251,16 +274,16 @@ SETUP
     # CPython's install targets create overlapping directories. BSD install
     # fails if another target creates the same directory after its check.
     python_make -j1 PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)' "COMPILEALL_OPTS=-j$jobs" install
-    if [ -n "$host" ]; then
-        # Check the completed build, including generated sources and objects.
-        sed -n 's/^# \([^ ]*\)  # removed:.*/\1/p' "$recipe/cpython-sources.txt" |
-        while IFS= read -r excluded; do
-            if [ -e "$excluded" ] || { [ "${excluded%.c}" != "$excluded" ] && [ -e "${excluded%.c}.o" ]; }; then
-                echo "Excluded compiler input reappeared: $excluded" >&2
-                exit 1
-            fi
-        done
-    fi
+    # Check the completed build, including generated sources and objects,
+    # against the paths this mode must not contain. build_python.zig writes
+    # that list; it owns the only parser for cpython-sources.txt. Redirect
+    # rather than pipe: a pipeline hides both a missing list and the exit.
+    while IFS= read -r excluded; do
+        if [ -e "$excluded" ] || { [ "${excluded%.c}" != "$excluded" ] && [ -e "${excluded%.c}.o" ]; }; then
+            echo "Excluded build input reappeared: $excluded" >&2
+            exit 1
+        fi
+    done < "$work/absent-inputs"
 }
 python_make() {
     if [ -n "$host" ]; then
@@ -305,6 +328,7 @@ cp "$deps/lib/"*.a "$work/python/build/lib/"
 if [ -n "$host" ]; then
     cp "$host/python/build/cacert.pem" "$work/python/build/cacert.pem"
     cp "$work/native/sha256" "$work/python/build/jacpython-native-sha256"
+    cp "$work/native/sources" "$work/python/build/jacpython-native-sources"
     rm -rf "$work/native"
 else
     # Only dependency headers/archives are reused by the target build. Host

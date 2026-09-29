@@ -1,16 +1,3 @@
-import from core.site.landing.Hero { Hero }
-import from core.site.landing.StatsBand { StatsBand }
-import from core.site.landing.WasmGame { WasmGame }
-import from core.site.landing.MobileShowcase { MobileShowcase }
-import from core.site.landing.WhyJac { WhyJac }
-import from core.site.landing.Showcase { Showcase }
-import from core.site.landing.Capabilities { Capabilities }
-import from core.site.landing.OneBinary { OneBinary }
-import from core.site.landing.Agents { Agents }
-import from core.site.landing.BookSection { BookSection }
-import from core.site.landing.ExplorerFinale { ExplorerFinale }
-import from core.site.ui.SectionRail { SectionRail }
-
 glob HOME_NAV: list[dict[str, any]] = [
          {"id": "h-arena", "label": "arena"},
          {"id": "h-mobile", "label": "mobile"},

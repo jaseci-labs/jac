@@ -112,6 +112,10 @@ import from ..parent.mod { SomeClass }
 # Include merges a module's namespace into the current scope
 include random;
 
+# Project-internal imports can live in arch.jac beside jac.toml instead:
+#   impl import core { util --> core.svc { now } }   # generates the import into core.svc
+# See reference/wiring.md
+
 # Cross-codespace imports are plain imports (see Full-Stack section below)
 # import from ...main { MyWalker }          # server import in client -> RPC bridge
 # import from "@jac/runtime" { Link }       # npm runtime import (client-only syntax)
@@ -810,7 +814,7 @@ node Person {
 }
 
 # Edges connect nodes and can carry data
-edge Friendship {
+edge Friendship: Person --> Person {
     has since: int = 0;
 }
 
@@ -834,7 +838,7 @@ node Employee(Person) {
 }
 
 # Edge with methods
-edge Weighted {
+edge Weighted: Person --> Person {
     has weight: float = 1.0;
 
     def normalize(max_w: float) -> float {

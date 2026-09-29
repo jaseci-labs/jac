@@ -44,7 +44,7 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
          "import sys\n"
          "import _jac_finder; _jac_finder.install()\n"
          "from jaclang.compiler.types.stubcat.build import main\n"
-         "sys.exit(main(sys.argv[1:]))\n"
+         "sys.exit(main(sys.argv[1:] + ['--cache']))\n"
      );
 
 obj MkPayloadOpts {
@@ -76,10 +76,12 @@ def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
+def strip_kernel_best_effort(site: str);
 def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool;
+def cached_stubcat(pkg_dir: str) -> str;
 def precompile(
     py: str,
     python_dir: str,

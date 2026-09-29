@@ -25,6 +25,12 @@ def _expose_backend(client: ScaleTestClient) -> tuple[any, ...] {
     import from jaclang.server.serving.server { ServingServer }
     backend = client._server;
     assert backend is not None , "client has no in-process server";
+    # Build the real spec before advertising the backend as healthy. Route
+    # discovery has a one-second budget; cold schema generation is not part
+    # of the routing behavior these tests exercise.
+    spec = client.get("/openapi.json");
+    assert spec.status_code == 200;
+    assert "/custom/walker" in spec.json()["paths"];
     server = ServingServer(app=backend.require_app(), host="127.0.0.1", port=0);
     server.serve_background();
     assert server.bound_port , "backend server did not start in time";

@@ -1,20 +1,4 @@
-import from .components.NinjaScores { NinjaScores }
-import from core.jacyac.state { useJacYac }
-import from core.jacyac.identity { name_of, avatar_of }
-
 import from "lucide-react" { Feather, ArrowLeft }
-import from core.site.ui.button { Button }
-import from .components.AuthForm { AuthForm }
-import from .components.Sidebar { Sidebar }
-import from .components.RightSidebar { RightSidebar }
-import from .components.MobileNav { MobileNav }
-import from .components.FeedTab { FeedTab }
-import from .components.ExploreTab { ExploreTab }
-import from .components.ChannelsTab { ChannelsTab }
-import from .components.ProfileHeader { ProfileHeader }
-import from .components.ProfileEditor { ProfileEditor }
-import from .components.ProjectsPanel { ProjectsPanel }
-import from .components.TweetCard { TweetCard }
 
 glob AVATAR_SIDE: int = 256;
 

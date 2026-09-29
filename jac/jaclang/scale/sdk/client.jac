@@ -1,6 +1,6 @@
 import os;
 import pathlib;
-import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.config.app_config { AppConfig, deployed_tree }
 import from jaclang.scale.deploy.target.factory {
     ensure_deploy_tooling,
     require_deploy_tooling
@@ -11,6 +11,12 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.models.resource_status { ResourceStatusInfo }
+import from jaclang.scale.deploy.autoscale.autoscaler {
+    AutoscalerRuntimeStatus,
+    AutoscalerTransition
+}
+import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
+import from jaclang.scale.runtime.context.util { k8s_safe_name }
 import from jaclang.scale.models.progress {
     CallbackSink,
     EventSink,
@@ -97,6 +103,59 @@ obj ScaleClient {
         app_name: str, namespace: str, target: str = 'auto'
     ) -> ResourceStatusInfo {
         return self._lifecycle_target(app_name, namespace, target).get_status(app_name);
+    }
+
+    def autoscaler_status(
+        app_name: str, namespace: str, service: str = '', target: str = 'auto'
+    ) -> AutoscalerRuntimeStatus {
+        """Why a workload is where it is, not just how many replicas it has.
+
+        `resource_status` reads the Deployment, which reports counts and never
+        the reason behind them: a target idled because no trigger is firing and
+        one stuck at zero because its scaler cannot reach its metric endpoint are
+        the same Deployment. This reads the autoscaler's own view, so
+        `scaler_ready` and the condition message behind a failure are answerable.
+
+        `service` names one member of a fleet; omitted, it reads the app's own
+        workload.
+        """;
+        return self._autoscaler_for(app_name, namespace, target).get_runtime_status(
+            self._scale_target_name(service or app_name), namespace
+        );
+    }
+
+    def watch_autoscaler_transitions(
+        app_name: str,
+        namespace: str,
+        label_selector: (str | None) = None,
+        timeout_seconds: (int | None) = None,
+        target: str = 'auto'
+    ) -> any {
+        """Stream deduplicated transitions instead of polling for them.
+
+        One call opens a bounded number of watches for one namespace and nothing
+        is shared between callers, so a consumer tracking many targets makes one
+        call and fans out in its own process rather than one watch per target.
+        """;
+        return self._autoscaler_for(app_name, namespace, target).watch_scale_targets(
+            namespace, label_selector=label_selector, timeout_seconds=timeout_seconds
+        );
+    }
+
+    def _scale_target_name(svc_name: str) -> str {
+        """The Deployment name the autoscaler scales, from a service name.
+
+        One derivation, matching what the manifest builder emitted, so a caller
+        never has to know the suffix to ask a question about its own app.
+        """;
+        return f"{k8s_safe_name(svc_name)}-deployment";
+    }
+
+    def _autoscaler_for(app_name: str, namespace: str, target: str) -> any {
+        k8s = self._lifecycle_target(app_name, namespace, target).k8s_config;
+        return AutoscalerFactory.create(
+            k8s.autoscaler_engine, k8s.to_dict(), self.logger
+        );
     }
 
     def service_url(
@@ -194,8 +253,10 @@ obj ScaleClient {
     }
 
     def _app_config(spec: DeploySpec) -> AppConfig {
-        (code_folder, file_name) = spec.resolve_entry();
-
+        (entry_folder, entry_name) = spec.resolve_entry();
+        (code_folder, file_name) = deployed_tree(
+            os.path.join(entry_folder, entry_name)
+        );
         posix_folder = pathlib.Path(os.path.relpath(code_folder)).as_posix();
         return AppConfig(
             code_folder=posix_folder, file_name=file_name, served_app=spec.app

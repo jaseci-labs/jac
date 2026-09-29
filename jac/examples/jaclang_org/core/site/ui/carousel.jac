@@ -2,8 +2,6 @@ import from "embla-carousel-react" { default as useEmblaCarousel }
 import from react { createContext, useContext, useEffect }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ArrowLeft01Icon, ArrowRight01Icon }
-import from .button { Button }
-import from ....core.utils { cn }
 
 glob CarouselContext: any = createContext(None);
 

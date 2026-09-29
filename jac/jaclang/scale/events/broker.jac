@@ -148,16 +148,16 @@ obj EventStreamBroker {
         _assert_signature_parity(cast(type, cls));
     }
 
-    def start -> None;
-    def stop(drain: bool = True) -> None;
-    def publish(topic: str, event: Event, key: str | None = None) -> None;
+    def start -> None abst;
+    def stop(drain: bool = True) -> None abst;
+    def publish(topic: str, event: Event, key: str | None = None) -> None abst;
     def register_handler(
         topic: str,
         handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = StreamPosition.LATEST.value
-    ) -> None;
+    ) -> None abst;
 
     def consume(
         topic: str,
@@ -165,8 +165,8 @@ obj EventStreamBroker {
         max_messages: int = 1,
         timeout_seconds: float = 5.0,
         start_from: str = StreamPosition.LATEST.value
-    ) -> list[Event];
+    ) -> list[Event] abst;
 
-    def ack(event: Event) -> None;
-    def health -> HealthStatus;
+    def ack(event: Event) -> None abst;
+    def health -> HealthStatus abst;
 }

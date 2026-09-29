@@ -1,9 +1,15 @@
 import from contextlib { contextmanager }
+import from pathlib { Path }
 import from collections.abc { Callable, Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
 import time;
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.types.types { ClassDetailsShared }
+import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
 import from jaclang.compiler.driver.jir {
+    DepRow,
     SEC_CTDEPS,
     SEC_DEPS,
     SEC_DIAG,
@@ -59,10 +65,11 @@ def iface_codec -> (IfaceCodec | None) {
             return None;
         }
     }
+    writer = sys.modules[_CODEC_MODULES[-2]];
     modiface = sys.modules[_CODEC_MODULES[-1]];
     try {
         codec = IfaceCodec(
-            build_module_iface=modiface.build_module_iface,
+            build_module_iface=writer.build_module_iface,
             open_module_iface=modiface.open_module_iface,
             read_iface_hash=modiface.read_iface_hash,
             iface_module=modiface.iface_module
@@ -181,7 +188,7 @@ obj EncodedInterface {
         paths: JirPaths | None = None;
 }
 
-obj IfaceRegistry {
+obj IfaceRegistry(CatalogResolver) {
     has prog: any,
         entries: dict[str, IfaceEntry] = {},
         building: set[str] postinit,
@@ -331,18 +338,21 @@ obj IfaceRegistry {
         return out;
     }
 
-    def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
+    def dep_rows(resolved_path: str, mod: any) -> list[DepRow] {
         bucket = self.direct_deps.get(resolved_path, {});
         client = self._client_edges(mod) if mod is not None else set();
-        out: list[tuple[str, str, str]] = [];
+        out: list[DepRow] = [];
         for (path, digest) in bucket.items() {
-            out.append((path, digest, "c" if path in client else "", ));
+            out.append(
+                DepRow(path=path, digest=digest, flags="c" if path in client else "")
+            );
         }
         return out;
     }
 
     def _entry_fresh(ent: IfaceEntry) -> bool {
         import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.frontend.host { active_host }
         try {
             if os.path.getmtime(ent.path) > ent.stamp {
                 return False;
@@ -351,6 +361,10 @@ obj IfaceRegistry {
                 if os.path.getmtime(related) > ent.stamp {
                     return False;
                 }
+            }
+            wiring = active_host().wiring_file(ent.path);
+            if wiring is not None and os.path.getmtime(wiring) > ent.stamp {
+                return False;
             }
             return True;
         } except OSError {
@@ -399,12 +413,9 @@ obj IfaceRegistry {
     def _compilation_scope -> Iterator[None] {
         import from jaclang.compiler.driver.compilation_context {
             compilation_scope,
-            context_identity
+            owner_scope_options
         }
-        identity = ''
-            if self.prog._get_compiler().selfhost.is_selfhost(self.prog)
-            else self.prog.context_key or context_identity(self.prog.options);
-        with compilation_scope(identity, self.prog.options) {
+        with compilation_scope(owner_scope_options(self.prog)) {
             yield ;
         }
     }
@@ -454,7 +465,7 @@ obj IfaceRegistry {
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
+            return self.prog._get_compiler()._precompiled_jir_data(resolved);
         } except Exception {
             return None;
         }
@@ -487,7 +498,9 @@ obj IfaceRegistry {
     }
 
     def _deps_match(data: bytes, base_dir: str = "") -> bool {
-        for (dep, recorded) in read_dep_hashes(data, base_dir) {
+        import from jaclang.compiler.driver.jir { read_dep_rows }
+        for row in read_dep_rows(data, base_dir) {
+            (dep, recorded) = (row.path, row.digest);
             if not recorded {
                 return False;
             }
@@ -602,9 +615,9 @@ obj IfaceRegistry {
             return;
         }
         try {
-            import from jaclang.compiler.placement.placement {
-                summary_from_bytes,
-                summary_store
+            import from jaclang.compiler.placement.placement { summary_store }
+            import from jaclang.compiler.placement.placement_export {
+                summary_from_bytes
             }
             restored = summary_from_bytes(
                 ent.placement,
@@ -617,7 +630,7 @@ obj IfaceRegistry {
     }
 
     def _prepare(ent: IfaceEntry, mod: any) {
-        self.prog._get_compiler().stamp_app_facts(mod, self.prog);
+        self.prog.stamp_app_facts(mod);
         self._restore_placement(ent);
         self.prog.analysis.analyses_run.mark(mod, _symtab_provides());
     }
@@ -835,19 +848,12 @@ obj IfaceRegistry {
     def analysis_profile(options: any) -> str {
         import hashlib;
         import json;
-        import from jaclang.compiler.driver.pass_driver {
-            config_for_app,
-            diagnostic_policy_for
-        }
-        config: any = None;
-        try {
-            import from jaclang.project.config { get_config }
-            config = get_config();
-        } except Exception {
-            config = None;
-        }
-        config = config_for_app(config, getattr(options, 'target_app', '') or '');
-        pol = diagnostic_policy_for(config, list(options.suppress_codes or []));
+        import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
+        import from jaclang.compiler.frontend.host { active_host }
+        pol = diagnostic_policy_for(
+            active_host().check_settings(getattr(options, 'target_app', '') or ''),
+            list(options.suppress_codes or [])
+        );
         ident = json.dumps(
             {
                 "no_cgen": bool(options.no_cgen),
@@ -887,7 +893,7 @@ obj IfaceRegistry {
     }
 
     def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None) {
-        import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
+        import from jaclang.compiler.types.stubcat.writer { IncoherentInterface }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
         try {
@@ -907,7 +913,8 @@ obj IfaceRegistry {
     }
 
     def _prepare_interface_in_context(resolved: str, mod: any) -> bool {
-        if mod.parse_failed
+        if self.verifying
+            or mod.parse_failed
             or mod.codespace_inferred
             or not _interface_source_path(resolved)
             or not os.path.isfile(resolved) {
@@ -940,7 +947,8 @@ obj IfaceRegistry {
     ) -> None {
         import json;
 
-        if mod is None
+        if self.verifying
+            or mod is None
             or mod.parse_failed
             or not _interface_source_path(resolved)
             or resolved in self._incoherent {
@@ -977,10 +985,8 @@ obj IfaceRegistry {
         }
         sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
         try {
-            import from jaclang.compiler.placement.placement {
-                get_module_summary,
-                summary_to_bytes
-            }
+            import from jaclang.compiler.placement.placement { get_module_summary }
+            import from jaclang.compiler.placement.placement_export { summary_to_bytes }
             sections[SEC_PLACEMENT] = summary_to_bytes(
                 get_module_summary(mod, self.prog)
             );
@@ -1106,16 +1112,16 @@ obj IfaceRegistry {
         }
         edges: list[str] = [];
         import from jaclang.compiler.driver.jir { read_dep_rows }
-        for (dep, _digest, flags) in read_dep_rows(data, base_dir) {
-            if "c" in flags {
-                edges.append(dep);
+        for row in read_dep_rows(data, base_dir) {
+            if "c" in row.flags {
+                edges.append(row.path);
             }
         }
         self._event("boundary_facts");
         return edges;
     }
 
-    def resolve_module(path: str) -> any {
+    def resolve_module(path: str) -> (Module | None) {
         if not path {
             return None;
         }
@@ -1133,7 +1139,9 @@ obj IfaceRegistry {
         }
     }
 
-    def resolve_shared(module_path: str, dotted: str, class_name: str) -> any {
+    def resolve_shared(
+        module_path: str, dotted: str, class_name: str
+    ) -> (ClassDetailsShared | None) {
         mod = self.resolve_module(module_path);
         if mod is None or not dotted {
             return None;
@@ -1168,23 +1176,25 @@ obj IfaceRegistry {
         return None;
     }
 
-    def _fresh_verify_program -> any {
+    def _fresh_verify_program -> JacProgram {
         import from jaclang.compiler.driver.program { JacProgram }
-        return JacProgram();
+        import copy;
+        prog = JacProgram();
+        prog.options = copy.copy(self.prog.options);
+        prog.iface_registry().verifying = True;
+        return prog;
     }
 
     def _verify_iface(resolved: str, ent: IfaceEntry) -> None {
+        prog2 = self._fresh_verify_program();
+        fresh: Module | None = None;
         self.verifying = True;
         try {
             import from jaclang.compiler.driver.compile_options { CompileOptions }
-            prog2 = self._fresh_verify_program();
             fresh = prog2.compile(
                 resolved,
                 options=CompileOptions(
-                    symtab_ir_only=True,
-                    no_cgen=True,
-                    force_target_program=True,
-                    need_full_ast=True
+                    symtab_ir_only=True, no_cgen=True, need_full_ast=True
                 )
             );
             served = ent.module;
@@ -1204,12 +1214,16 @@ obj IfaceRegistry {
             }
             codec = iface_codec();
             assert codec is not None;
-            fresh_digest = codec.read_iface_hash(
-                prog2.iface_registry()._encode_iface(
-                    codec, fresh, JirPaths(base_dir=os.path.dirname(resolved))
-                )
-            )
-                or "";
+            fresh_bytes = prog2.iface_registry()._encode_iface(
+                codec, fresh, JirPaths(base_dir=os.path.dirname(resolved))
+            );
+            if fresh_bytes is None {
+                raise RuntimeError(
+                    f"analysis-cache verify failed for {resolved}: fresh "
+                    "source has no coherent interface"
+                );
+            }
+            fresh_digest = codec.read_iface_hash(fresh_bytes) or "";
             if fresh_digest != ent.digest {
                 raise RuntimeError(
                     f"analysis-cache verify failed for {resolved}: the served "
@@ -1219,18 +1233,19 @@ obj IfaceRegistry {
             }
         } finally {
             self.verifying = False;
+            fresh = None;
+            prog2.release_compile_closure();
         }
     }
 
     def _verify_analysis(resolved: str, options: any, prof: dict[str, any]) {
+        prog2 = self._fresh_verify_program();
         self.verifying = True;
         try {
             import from jaclang.compiler.driver.compile_options { CompileOptions }
-            prog2 = self._fresh_verify_program();
             try {
                 import copy;
                 verified_options = copy.copy(options);
-                verified_options.force_target_program = True;
                 verified_options.need_full_ast = True;
                 prog2.compile(resolved, options=verified_options);
             } except Exception {}
@@ -1265,12 +1280,22 @@ obj IfaceRegistry {
             }
         } finally {
             self.verifying = False;
+            prog2.release_compile_closure();
         }
     }
 }
 
+def artifact_cache_path(path: str, program: JacProgram) -> Path {
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
+    selected = program_for(path, program);
+    owner_options = None if selected.internal else selected.options;
+    with cache_scope(owner_options) {
+        return get_module_cache_path(path);
+    }
+}
+
 def seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
     seeded = 0;
     scanned = 0;
     skip_dirs = {".git", ".jac", "node_modules", "__pycache__", ".venv", "venv"};

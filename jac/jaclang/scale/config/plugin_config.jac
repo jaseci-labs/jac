@@ -1268,7 +1268,7 @@ class JacScalePluginConfig {
                         "max_jobs_per_user": {
                             "type": "int",
                             "default": 25,
-                            "description": "Active scheduled jobs one non-admin may hold, as a whole number; 0 means unlimited"
+                            "description": "Active scheduled jobs one non-admin may hold in one service, as a whole number; 0 means unlimited"
                         }
                     }
                 },

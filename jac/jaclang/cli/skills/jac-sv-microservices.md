@@ -8,7 +8,7 @@ Services are declared with `[apps.<name>]`, `kind = "service"`, and a required
 entry forms a bridge. Ordinary helper imports inherit the current app context;
 directory layout does not create an app boundary.
 
-Once a module belongs to another app, **plain imports of its walkers and `def:pub` functions lower to typed-async bridge stubs**: the provider is never loaded as the consumer's own code; `await add(1, 2)` calls the `math` app (in-process when colocated, `POST /function/add` when it runs apart), and the source still reads like a normal import. Same code, three topologies: colocated (`jac run <app>`), local fleet (`--fleet`), deployed fleet (`jac scale deploy`). **The boundary is structural, the topology is profile.**
+Once a module belongs to another app, **plain imports of its exposed walkers and functions (`:pub` / `:protect`) lower to typed-async bridge stubs**: the provider is never loaded as the consumer's own code; `await add(1, 2)` calls the `math` app (in-process when colocated, `POST /function/add` when it runs apart), and the source still reads like a normal import. Same code, three topologies: colocated (`jac run <app>`), local fleet (`--fleet`), deployed fleet (`jac scale deploy`). **The boundary is structural, the topology is profile.**
 
 ```
 # jac.toml
@@ -56,7 +56,7 @@ curl -X POST http://localhost:8002/function/sum_list \
 
 **Bridge stubs are ASYNC in every context** - server-to-server as much as client-to-server. `result = add(1, 2)` without `await` is `E1042` from `jac check` (the type is a coroutine). Make the enclosing `def`/`can` `async`.
 
-**The bridge surface is walkers + `def:pub`.** A plain `def` is private to its app; importing it from another app is `E5106` at compile time (and a 404 `BridgeRejected` if you get past the checker some other way). `:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header but an anonymous chain has none.
+**The bridge surface is every exposed declaration: `def:pub` / `def:protect` and `walker:pub` / `walker:protect`.** A plain or `:priv` declaration is private to its app; importing it from another app is `E5106` at compile time (and a 404 `BridgeRejected` if you get past the checker some other way). `:protect` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header but an anonymous chain has none.
 
 **Shared source and state.** Ordinary shared modules compile in each importing
 app's context. To give several consumers access to one server's state, declare a
@@ -139,7 +139,7 @@ Gateway knobs: `[scale.gateway]` (`gateway_port`, `boot_health_timeout`, `boot_m
 ## Pitfalls
 
 - **`E1042` on a call you thought was local** = the target is owned by another app. `await` it; make the caller `async`.
-- **`E5106` / 404 `BridgeRejected`** = the element isn't on the bridge surface. `def:pub` it, or move it to shared code if both apps need it in-process.
+- **`E5106` / 404 `BridgeRejected`** = the element isn't on the bridge surface. Mark it `:protect` (or `:pub`), or move it to shared code if both apps need it in-process.
 - **Calls run in-process when you expected RPC** = they are colocated (the default) - that IS the bridge, just without sockets. `--fleet` to split; the code does not change.
 - **`E2039`** = an app reaching into another app's non-bridge declarations. Use the declared entry for the public API; helper imports are local to the consumer.
 - **`BridgeUnavailable: app 'x' is not registered`** = not colocated (no `[apps.x]` in this workspace) and no `JAC_APP_X_URL`.

@@ -260,6 +260,205 @@ test "a queued error is raised, and an empty queue says which call ran out" {
 }
 
 
+test "a reply names the model that answered, whole or streamed" {
+    params = {"model": "asked-model", "messages": []};
+    served = MockRawResponse(content="hi", model="served-model");
+    for (label, reply, expect) in [
+        ("no model on the reply", MockRawResponse(content="hi"), "asked-model"),
+        ("a fallback model on the reply", served, "served-model"),
+        ("the same, with usage attached", (served, {"total_tokens": 3}), "served-model")
+    ] {
+        whole: any = MockLLM(outputs=[reply]).model_call_no_stream(params);
+        assert whole.model == expect , f"{label}: the whole reply named {whole.model}";
+        named: set[str] = set();
+        for chunk in MockLLM(outputs=[reply]).model_call_with_stream(params) {
+            piece: any = chunk;
+            named.add(piece.model);
+        }
+        assert named == {expect} , f"{label}: the stream named {named}";
+    }
+}
+
+
+def _streamed_calls(stream: Iterable[object]) -> list[any] {
+    fragments: list[any] = [];
+    for chunk in stream {
+        piece: any = chunk;
+        if piece.choices {
+            for fragment in piece.choices[0].delta.tool_calls or [] {
+                fragments.append(fragment);
+            }
+        }
+    }
+    return fragments;
+}
+
+
+def _streamed_args(stream: Iterable[object]) -> str {
+    return "".join([str(f.function.arguments or "") for f in _streamed_calls(stream)]);
+}
+
+
+test "tool-call fragments name their call unless the reply says otherwise" {
+    args = '{"path": "a.jac", "content": "hello world"}';
+    for (label, unnamed, usage) in [
+        ("named", False, None),
+        ("unnamed", True, None),
+        ("unnamed, with usage attached", True, {"total_tokens": 3})
+    ] {
+        reply = MockRawResponse(
+            tool_calls=[MockToolCall(tool="write_file", args=args, call_id="c1")],
+            unnamed_fragments=unnamed
+        );
+        queued: object = (reply, usage) if usage is not None else reply;
+        fragments = _streamed_calls(
+            MockLLM(chunk_size=8, outputs=[queued]).model_call_with_stream(
+                {"model": "m", "messages": []}
+            )
+        );
+        assert len(fragments) > 1 , f"{label}: expected several fragments";
+        assert "".join([str(f.function.arguments or "") for f in fragments]) == args , (
+            f"{label}: the arguments must arrive whole"
+        );
+        named = [
+            f
+            for f in fragments
+            if f.id or f.function.name
+        ];
+        assert len(named) == (0 if unnamed else 1) , (
+            f"{label}: got {len(named)} fragments carrying an id or name"
+        );
+    }
+}
+
+
+test "a stream can drop partway through a reply, or after all of it" {
+    params = {"model": "asked-model", "messages": []};
+    args = '{"path": "a.jac", "content": "hello world"}';
+    tool_call = MockRawResponse(
+        tool_calls=[MockToolCall(tool="write_file", args=args, call_id="c1")]
+    );
+    dropped = RuntimeError("dropped");
+    # chunk_size=8 splits "hello world" into "hello wo" and "rld".
+    for (label, failing, expect_args, expect_text, expect_models) in [
+        (
+            "content, after=0 sends nothing",
+            MockError(error=dropped, content="hello world"),
+            "",
+            "",
+            set()
+        ),
+        (
+            "content, after=1 sends the first chunk",
+            MockError(error=dropped, content="hello world", after=1),
+            "",
+            "hello wo",
+            {"asked-model"}
+        ),
+        (
+            "content, after past the end sends it all",
+            MockError(error=dropped, content="hello world", after=5),
+            "",
+            "hello world",
+            {"asked-model"}
+        ),
+        (
+            "reply, a tool call",
+            MockError(error=dropped, reply=tool_call),
+            args,
+            "",
+            {"asked-model"}
+        ),
+        (
+            "reply, a queued string",
+            MockError(error=dropped, reply="hello world"),
+            "",
+            "hello world",
+            {"asked-model"}
+        ),
+        (
+            "reply, from a fallback model, with usage",
+            MockError(
+                error=dropped,
+                reply=(
+                    MockRawResponse(content="hi", model="served-model"),
+                    {"total_tokens": 3}
+                )
+            ),
+            "",
+            "hi",
+            {"served-model"}
+        )
+    ] {
+        delivered: list[object] = [];
+        raised = "";
+        try {
+            for chunk in MockLLM(
+                chunk_size=8, outputs=[failing]
+            ).model_call_with_stream(
+                params
+            ) {
+                delivered.append(chunk);
+            }
+        } except RuntimeError as e {
+            raised = str(e);
+        }
+        assert raised == "dropped" , f"{label}: the error must still fire, got {raised!r}";
+        texts: list[str] = [];
+        models: set[str] = set();
+        for chunk in delivered {
+            piece: any = chunk;
+            models.add(piece.model);
+            if piece.choices {
+                texts.append(str(piece.choices[0].delta.content or ""));
+            }
+        }
+        assert _streamed_args(delivered) == expect_args , f"{label}: tool arguments";
+        assert "".join(texts) == expect_text , f"{label}: text {texts}";
+        assert models == expect_models , f"{label}: the stream named {models}";
+    }
+
+    # content= and after= are the partial-text form; they do not combine with reply=.
+    for (label, bad) in [
+        (
+            "reply with content",
+            MockError(error=RuntimeError("x"), reply="a", content="partial")
+        ),
+        ("reply with after", MockError(error=RuntimeError("x"), reply="a", after=1)),
+        (
+            "a reply that is itself an error",
+            MockError(error=RuntimeError("x"), reply=MockError(error=RuntimeError("y")))
+        )
+    ] {
+        message = "";
+        try {
+            MockLLM(outputs=[bad]).model_call_no_stream(params);
+        } except ValueError as e {
+            message = str(e);
+        }
+        assert message , f"{label}: must be rejected when it is dequeued";
+    }
+}
+
+
+test "a stream carries litellm's logging object when given one" {
+    marker = object();
+    stream: any = MockLLM(logging_obj=marker, outputs=["hello"]).model_call_with_stream(
+        {"model": "m", "messages": []}
+    );
+    assert stream.logging_obj is marker , "the stream must carry the logging object";
+    first: any = next(stream);
+    texts: list[str] = [];
+    for chunk in [first, *stream] {
+        piece: any = chunk;
+        if piece.choices {
+            texts.append(str(piece.choices[0].delta.content or ""));
+        }
+    }
+    assert "".join(texts) == "hello" , "the stream must still deliver the reply";
+}
+
+
 test "MockRawResponse sends model text verbatim into the parser" {
     m = MockLLM(
         outputs=[

@@ -7,7 +7,7 @@ node N {
     has t: int;
 }
 
-edge E {}
+edge E : N --> N {}
 
 def del_edge_ref -> int {
     a = N(1);

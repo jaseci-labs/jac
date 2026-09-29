@@ -40,6 +40,15 @@ def run_jac_import(target: str, base_path: str) -> str {
     return buf.getvalue();
 }
 
+test "parameter name mismatch is an error" {
+    (out := JacProgram()).compile(os.path.join(FIXTURES, "defn_decl_param_name.jac"));
+    msgs = [e.msg for e in out.errors_had];
+    assert any(
+        "Parameter name mismatch" in m and "'name'" in m and "'who'" in m for m in msgs
+    ) , msgs;
+    assert not any("Parameter name mismatch" in w.msg for w in out.warnings_had) , "must not be a warning";
+}
+
 test "parameter count mismatch" {
     (out := JacProgram()).compile(os.path.join(FIXTURES, "defn_decl_mismatch.jac"));
 
@@ -342,7 +351,7 @@ test "E2026 bare re-declaring def in .impl.jac" {
     e2026_errors = [
         e
         for e in out.errors_had
-        if "E2026" in e.pretty_print()
+        if e.code is not None and e.code.code == "E2026"
     ];
     assert len(e2026_errors) == 1 , (
         f"Expected 1 E2026 error, got {len(e2026_errors)}"
@@ -352,4 +361,17 @@ test "E2026 bare re-declaring def in .impl.jac" {
     assert "E2026" in errors_output;
     assert "Definition 'foo' in .impl.jac file is not linked" in errors_output;
     assert "Use an `impl` block" in errors_output;
+}
+
+test "E2087 declaration without implementation" {
+    (out := JacProgram()).compile(os.path.join(FIXTURES, "unimplemented_decl.jac"));
+
+    e2086_errors = [
+        e
+        for e in out.errors_had
+        if e.code is not None and e.code.code == "E2087"
+    ];
+    reported = sorted([e.msg.split("'")[1] for e in e2086_errors]);
+    assert reported == ["doubled", "free_fn"] , (f"Unexpected E2087 set: {reported}");
+    assert "is declared but never implemented" in e2086_errors[0].pretty_print();
 }

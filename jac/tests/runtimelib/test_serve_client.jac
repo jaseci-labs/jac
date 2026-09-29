@@ -1085,27 +1085,26 @@ test "serve protected function with auth" {
     }
 }
 
-test "serve private function requires auth" {
+test "serve private function is not served without auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
         response = ac.post("/function/private_function", json={"secret": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        assert response.status_code in (404, 405) , response.status_code;
         ac.close();
     }
 }
 
-test "serve private function with auth" {
+test "serve private function is not served even with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
         ac.register_user("privuser", "pass456");
         response = ac.post("/function/private_function", json={"secret": "topsecret"});
-        assert response.ok;
-        data = response.data;
-        assert "result" in data;
-        assert data["result"] == "Private: topsecret";
+        assert not response.ok , ":priv is private, not an authenticated endpoint";
+        assert response.status_code in (404, 405) , response.status_code;
+        listing = ac.get("/functions");
+        assert "private_function" not in str(listing.data);
+        assert "protected_function" in str(listing.data);
         ac.close();
     }
 }
@@ -1145,26 +1144,25 @@ test "serve protected walker with auth" {
     }
 }
 
-test "serve private walker requires auth" {
+test "serve private walker is not served without auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
         response = ac.post("/walker/PrivateWalker", json={"secret": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        assert response.status_code in (404, 405) , response.status_code;
         ac.close();
     }
 }
 
-test "serve private walker with auth" {
+test "serve private walker is not served even with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
         ac.register_user("privwalk", "pass000");
         response = ac.post("/walker/PrivateWalker", json={"secret": "verysecret"});
-        assert response.ok;
-        data = response.data;
-        assert "result" in data or "reports" in data;
+        assert not response.ok , ":priv walkers are private, not authenticated endpoints";
+        listing = ac.get("/walkers");
+        assert "PrivateWalker" not in str(listing.data);
+        assert "ProtectedWalker" in str(listing.data);
         ac.close();
     }
 }
@@ -1203,10 +1201,9 @@ test "serve mixed access levels" {
         result3 = ac.post("/function/protected_function", json={"message": "test"});
         data3 = result3.data;
         assert "result" in data3;
-        # Private function with auth - should work
+        # Private function with auth - not an endpoint at all
         result4 = ac.post("/function/private_function", json={"secret": "test"});
-        data4 = result4.data;
-        assert "result" in data4;
+        assert not result4.ok;
         ac.close();
     }
 }
@@ -1298,12 +1295,12 @@ test "issue 6221: client-called def:pub endpoint registers without entry re-impo
     }
 }
 
-test "issue 6221: cross-boundary def:priv endpoint registers but requires auth" {
+test "issue 6221: cross-boundary def:protect endpoint registers but requires auth" {
     with TemporaryDirectory() as tmpdir {
         client = make_crossboundary_client(tmpdir);
-        # Reached via the same `sv import`, so it registers -- but its own `priv`
-        # access level must still be honored: rejected without auth, callable
-        # with auth (proving it is registered, just gated -- never auto-public).
+        # Reached via the same `sv import`, so it registers -- but its own
+        # `:protect` access level must still be honored: rejected without auth,
+        # callable with auth (registered, just gated -- never auto-public).
         unauth = client.post("/function/cross_priv", json={});
         assert not unauth.ok , "cross_priv must require auth";
         client.register_user("cb_user", "pw_12345678");
@@ -1314,15 +1311,15 @@ test "issue 6221: cross-boundary def:priv endpoint registers but requires auth" 
     }
 }
 
-test "issue 6221: uncalled def:pub endpoint is not auto-exposed" {
+test "issue 6221: an uncalled def:pub endpoint is still served (declaration decides)" {
     with TemporaryDirectory() as tmpdir {
         client = make_crossboundary_client(tmpdir);
-        # cross_orphan is def:pub but nothing calls it across the boundary and the
-        # entry never imports it. Path B is call-scoped (not "expose every pub"),
-        # so it must stay unregistered even for an authenticated caller.
-        client.register_user("cb_user2", "pw_12345678");
+        # cross_orphan is def:pub: nothing calls it across the boundary and the
+        # entry never imports it, but exposure is declared on the definition, not
+        # inferred from callers, so it is registered like every other :pub.
         response = client.post("/function/cross_orphan", json={});
-        assert not response.ok , "uncalled cross_orphan should not be registered";
+        assert response.ok , f"declared :pub must be served: {response.data}";
+        assert response.data["result"]["msg"] == "orphan";
         client.close();
     }
 }
@@ -1380,7 +1377,7 @@ test "bundled app: cross-boundary def:pub endpoint registers for jaclang-bundled
     # Regression for `jac ai --ui`: when the app lives under the jaclang package
     # root, its modules route to the self-host program, so the
     # cross-boundary bindings land there -- not in `Jac.program.mod.hub`. The
-    # serve collector must span both hubs (`_search_hubs`); before the fix it
+    # serve collector must span both hubs (`execution_hubs`); before the fix it
     # scanned only `Jac.program.mod.hub` (empty for a bundled app), so cross_pub
     # went unregistered and the client got a 404/405 instead of "pub-ok".
     bundled = make_bundled_crossboundary_client();
@@ -1439,14 +1436,15 @@ test "serve imported protected walker with auth" {
     }
 }
 
-test "serve imported default walker requires auth" {
+test "serve imported plain walker is private and not served" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/walker/DefaultImportedWalker", json={"value": 100});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        assert response.status_code in (404, 405) , f"plain walker must not be served: {response.status_code}";
+        iac.register_user("plainuser", "plainpass");
+        authed = iac.post("/walker/DefaultImportedWalker", json={"value": 100});
+        assert not authed.ok , f"plain walker stays unserved with auth: {authed.data}";
         iac.close();
     }
 }
@@ -1462,14 +1460,15 @@ test "serve local public walker without auth" {
     }
 }
 
-test "serve local default walker requires auth" {
+test "serve local plain walker is private and not served" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/walker/LocalDefaultWalker", json={"msg": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        assert response.status_code in (404, 405) , f"plain walker must not be served: {response.status_code}";
+        iac.register_user("plainuser", "plainpass");
+        authed = iac.post("/walker/LocalDefaultWalker", json={"msg": "test"});
+        assert not authed.ok , f"plain walker stays unserved with auth: {authed.data}";
         iac.close();
     }
 }
@@ -1504,9 +1503,9 @@ test "serve mixed local and imported access" {
         );
         assert result5.ok , f"Imported protected walker should work with auth: {result5.data}";
         result6 = iac.post("/walker/DefaultImportedWalker", json={"value": 42});
-        assert result6.ok , f"Imported default walker should work with auth: {result6.data}";
+        assert not result6.ok , f"Imported plain walker is private even with auth: {result6.data}";
         result7 = iac.post("/walker/LocalDefaultWalker", json={"msg": "auth test"});
-        assert result7.ok , f"Local default walker should work with auth: {result7.data}";
+        assert not result7.ok , f"Local plain walker is private even with auth: {result7.data}";
         iac.close();
     }
 }
@@ -1551,14 +1550,15 @@ test "serve imported protected function with auth" {
     }
 }
 
-test "serve imported default function requires auth" {
+test "serve imported plain function is private and not served" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/function/defaultImportedFunc", json={});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        assert response.status_code in (404, 405) , f"plain function must not be served: {response.status_code}";
+        iac.register_user("plainuser", "plainpass");
+        authed = iac.post("/function/defaultImportedFunc", json={});
+        assert not authed.ok , f"plain function stays unserved with auth: {authed.data}";
         iac.close();
     }
 }
@@ -1574,14 +1574,15 @@ test "serve local public function without auth" {
     }
 }
 
-test "serve local default function requires auth" {
+test "serve local plain function is private and not served" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/function/localDefaultFunc", json={});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        assert response.status_code in (404, 405) , f"plain function must not be served: {response.status_code}";
+        iac.register_user("plainuser", "plainpass");
+        authed = iac.post("/function/localDefaultFunc", json={});
+        assert not authed.ok , f"plain function stays unserved with auth: {authed.data}";
         iac.close();
     }
 }
@@ -1610,9 +1611,9 @@ test "serve mixed local and imported function access" {
         result5 = iac.post("/function/protectedImportedFunc", json={});
         assert result5.ok , f"Imported protected function should work with auth: {result5.data}";
         result6 = iac.post("/function/defaultImportedFunc", json={});
-        assert result6.ok , f"Imported default function should work with auth: {result6.data}";
+        assert not result6.ok , f"Imported plain function is private even with auth: {result6.data}";
         result7 = iac.post("/function/localDefaultFunc", json={});
-        assert result7.ok , f"Local default function should work with auth: {result7.data}";
+        assert not result7.ok , f"Local plain function is private even with auth: {result7.data}";
         iac.close();
     }
 }

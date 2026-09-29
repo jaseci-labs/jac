@@ -2,9 +2,9 @@ node MyNode {
     has Name: str;
 }
 
-edge a {}
+edge a : MyNode | Root --> MyNode | Root {}
 
-edge b {}
+edge b : Root --> MyNode {}
 
 with entry {
     Start = MyNode("Start");

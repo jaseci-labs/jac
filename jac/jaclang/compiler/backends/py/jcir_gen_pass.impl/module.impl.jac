@@ -162,6 +162,34 @@ impl JcirGenPass.exit_module with Module exit {
         );
     }
     body_items.extend(self.preamble);
+    if here.persistence {
+        body_items.append(
+            self.nod(
+                'Assign',
+                ['targets', 'value'],
+                [
+                    [
+                        self.nod(
+                            'Name',
+                            ['id', 'ctx'],
+                            ['__jac_persistence__', self.nod('Store', [], [])]
+                        )
+                    ],
+                    self.nod(
+                        'Tuple',
+                        ['elts', 'ctx'],
+                        [
+                            [
+                                self.nod('Constant', ['value'], [part])
+                                for part in here.persistence
+                            ],
+                            self.nod('Load', [], [])
+                        ]
+                    )
+                ]
+            )
+        );
+    }
     body_items.extend(self._drain_module_hoists());
     stub_node = self._interop_stub_node;
     if stub_node is not None {
@@ -205,6 +233,17 @@ impl JcirGenPass.exit_type_param with TypeParam exit {
     );
 }
 
+impl JcirGenPass._distinct_base_ast(nd: TypeAlias) -> (CgNode | None) {
+    base = nd.distinct_base;
+    if base is None {
+        return None;
+    }
+    if base in self._get_builtin_names() {
+        self.builtin_imports.add(base);
+    }
+    return self.name_load(base, nd);
+}
+
 impl JcirGenPass.exit_type_alias with TypeAlias exit {
     type_param_asts: list[CgNode] = [];
     for tp in here.type_params {
@@ -225,7 +264,7 @@ impl JcirGenPass.exit_type_alias with TypeAlias exit {
                         [here.name.sym_name, self.nod('Store', [], [])]
                     )
                 ],
-                value_ast
+                self._distinct_base_ast(here) or value_ast
             ]
         );
         self.set_out(here, [assign]);
@@ -419,6 +458,10 @@ impl JcirGenPass.exit_import with Import exit {
         self.set_out(here, []);
         return;
     }
+    if here.clib_decls {
+        self.set_out(here, self._gen_clib_binding(here));
+        return;
+    }
     if (here.from_loc and here.from_loc.path) {
         module_parts = [
             p.value
@@ -509,7 +552,11 @@ impl JcirGenPass.exit_import with Import exit {
 impl JcirGenPass.exit_module_path with ModulePath exit {
     if here.string_path_value is not None {
         import_node = here.parent_of_type(Import);
-        if (import_node and (import_node.code_context != CodeContext.CLIENT)) {
+        if (
+            import_node
+            and import_node.code_context != CodeContext.CLIENT
+            and not import_node.clib_decls
+        ) {
             self.ctx.emit(E5001, node_override=here, path=str(here.string_path_value));
         }
     }

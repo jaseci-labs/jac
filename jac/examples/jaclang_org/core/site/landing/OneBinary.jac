@@ -1,6 +1,3 @@
-import from core.site.ui.badge { Badge }
-import from .Reveal { Reveal }
-import from core.site.landing.diagrams.PolypilerDiagram { PolypilerDiagram }
 import from "@jac/runtime" { Link }
 
 glob _REPLACED: list[str] = [

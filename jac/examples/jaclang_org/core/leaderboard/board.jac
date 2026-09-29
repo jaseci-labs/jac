@@ -1,6 +1,3 @@
-import from core.github { parse_repo_url }
-import from core.leaderboard.scoring { RepoFeatures, ScoreBreakdown }
-
 node BoardHub {
     has created_at: str = "";
 }
@@ -30,4 +27,4 @@ node RepoEntry {
         scored_at: str = "";
 }
 
-edge OnBoard {}
+edge OnBoard: BoardHub --> RepoEntry {}

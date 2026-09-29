@@ -1,4 +1,8 @@
 impl TypeCheckPass.exit_special_var_ref with SpecialVarRef exit {
+    if here.name_of is not here
+        or (isinstance(here.parent, AtomTrailer) and here.parent.right is here) {
+        return;
+    }
     self.evaluator.get_type_of_expression(here);
 }
 
@@ -22,7 +26,7 @@ impl TypeCheckPass.exit_name with Name exit {
             return;
         }
 
-        if isinstance(here.parent, ModulePath) {
+        if isinstance(here.parent, (ModulePath, ImportRule, WireItem)) {
             return;
         }
         if isinstance(here.parent, JsxElementName) {
@@ -201,7 +205,6 @@ impl TypeCheckPass.exit_gen_compr with GenCompr exit {
 
 impl TypeCheckPass.exit_func_call with FuncCall exit {
     import from jaclang.compiler.symbol_utils {
-        CallKind,
         classify_call,
         ability_of_symbol,
         resolve_expr_symbol
@@ -214,16 +217,13 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
         return;
     }
     self.evaluator.get_type_of_expression(here);
+    self._check_c_interop_call(here);
 
     here.call_kind = classify_call(here).value;
 
     here.chunks_recv_type = _chunks_receiver_type(here);
 
     here.callee_decl = ability_of_symbol(resolve_expr_symbol(here.target));
-
-    if here.call_kind == CallKind.INTRINSIC.value {
-        self._check_intrinsic_call(here);
-    }
 
     if (
         here.callee_decl is not None
@@ -266,61 +266,6 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
                 }
             }
         }
-    }
-}
-
-impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
-    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
-
-    intrinsics = intrinsic_registry_if_ready();
-    name = nd.target.sym_name if isinstance(nd.target, Name) else None;
-    if intrinsics is None or name is None {
-        return;
-    }
-    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
-
-    if not isinstance(intrinsics, IntrinsicRegistry) {
-        return;
-    }
-    intr = intrinsics.get(name);
-    if intr is None {
-        return;
-    }
-    positional: list[Expr] = [];
-    has_kw = False;
-    for p in (nd.params or []) {
-        if isinstance(p, KWPair) {
-            has_kw = True;
-        } else {
-            positional.append(p);
-        }
-    }
-    if has_kw {
-        self.ctx.emit(
-            E5095,
-            node_override=nd,
-            name=intr.name,
-            reason="keyword arguments are not accepted"
-        );
-    } elif len(positional) != intr.arity() {
-        self.ctx.emit(
-            E5095,
-            node_override=nd,
-            name=intr.name,
-            reason=f"expected {intr.arity()} argument(s), got {len(positional)}"
-        );
-    }
-    if intr.result_spec != "none" {
-        if self.evaluator.na_builtins_module is not None {
-            result_cls = self.evaluator._get_type_from_module(
-                self.evaluator.na_builtins_module, intr.result_spec
-            );
-            if not isinstance(result_cls, UnknownType) {
-                nd.type = self.evaluator._convert_to_instance(result_cls);
-            }
-        }
-    } else {
-        nd.type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
     }
 }
 
@@ -417,6 +362,9 @@ impl TypeCheckPass.exit_binary_expr with BinaryExpr exit {
         return;
     }
     self.evaluator.get_type_of_expression(here);
+    if isinstance(here.op, Token) and here.op.name == Tok.WALRUS_EQ {
+        self._check_immutable_write(here.left);
+    }
 }
 
 impl TypeCheckPass.exit_atom_trailer with AtomTrailer exit {
@@ -453,6 +401,118 @@ impl TypeCheckPass.exit_atom_trailer with AtomTrailer exit {
     }
 }
 
+impl TypeCheckPass._write_leaves(target: (Expr | None)) -> list[Expr] {
+    if isinstance(target, (TupleVal, ListVal)) {
+        leaves: list[Expr] = [];
+        for v in target.values {
+            if isinstance(v, Expr) {
+                leaves.extend(self._write_leaves(v));
+            }
+        }
+        return leaves;
+    }
+    if isinstance(target, UnaryExpr) and target.op.name == Tok.STAR_MUL {
+        return self._write_leaves(target.operand);
+    }
+    return [target] if target is not None else [];
+}
+
+impl TypeCheckPass._check_immutable_write(
+    target: (Expr | None), rebind_scope: (UniNode | None) = None
+) -> None {
+    if target is not None {
+        self._deferred_writes.append((target, rebind_scope));
+    }
+}
+
+impl TypeCheckPass._flush_immutable_writes -> None {
+    pending = self._deferred_writes;
+    self._deferred_writes = [];
+    for (target, rebind_scope) in pending {
+        self._judge_immutable_write(target, rebind_scope);
+    }
+}
+
+impl TypeCheckPass._judge_immutable_write(
+    target: (Expr | None), rebind_scope: (UniNode | None) = None
+) -> None {
+    for leaf in self._write_leaves(target) {
+        if isinstance(leaf, AtomTrailer)
+            and leaf.is_attr
+            and isinstance(leaf.right, Name) {
+            self.evaluator.get_type_of_expression(leaf);
+            name = leaf.right;
+            sym = name.sym;
+        } elif isinstance(leaf, Name) {
+            name = leaf;
+            sym = self._rebound_enclosing_symbol(rebind_scope, leaf)
+                if rebind_scope is not None
+                else leaf.sym;
+        } else {
+            continue;
+        }
+        if sym is None or sym.decl is name {
+            continue;
+        }
+        decl_sym = self.evaluator.resolve_imported_symbols(sym);
+        self.evaluator.get_type_of_symbol(decl_sym);
+        if decl_sym.immutability == ImmutabilityKind.NONE
+            or self._is_initializer_write(leaf, decl_sym) {
+            continue;
+        }
+        kind = "read-only"
+            if decl_sym.immutability == ImmutabilityKind.READONLY
+            else "Final";
+        self.ctx.emit(
+            E1135,
+            node_override=leaf,
+            name=name.value,
+            kind=kind,
+            related=[(f"'{name.value}' declared {kind} here", decl_sym.decl)]
+        );
+    }
+}
+
+impl TypeCheckPass._rebound_enclosing_symbol(
+    scope: UniNode, leaf: Name
+) -> (Symbol | None) {
+    py_scope = find_python_scope_node_of(scope);
+    return py_scope.names_in_scope.get(leaf.value) if py_scope is not None else None;
+}
+
+impl TypeCheckPass._is_initializer_write(target: Expr, decl_sym: Symbol) -> bool {
+    field = decl_sym.decl.name_of;
+    if not (
+        isinstance(field, HasVar)
+        and field.value is None
+        and isinstance(target, AtomTrailer)
+        and isinstance(target.target, Name)
+    ) {
+        return False;
+    }
+    method = self.evaluator._get_enclosing_function(target);
+    return method is not None
+        and method.is_method
+        and not method.is_static
+        and method.sym_name in ("init", "__init__", "postinit", "__post_init__")
+        and method.method_owner is field.find_parent_of_type(Archetype)
+        and self._is_self_ref(target.target, method);
+}
+
+impl TypeCheckPass._is_self_ref(base: Name, method: Ability) -> bool {
+    if base.value == "self" {
+        return True;
+    }
+    sig = method.signature;
+    params = sig.params if isinstance(sig, FuncSignature) else None;
+    return (
+        params is not None
+        and len(params) > 0
+        and base.sym is not None
+        and base.sym is params[0].name.sym
+    );
+}
+
 impl TypeCheckPass.exit_assignment with Assignment exit {
     if here.is_enum_stmt {
         return;
@@ -465,6 +525,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
             f"initializer of comptime binding '{label}'",
             self.evaluator.ct_demand(here.value)
         );
+    }
+    for write_target in here.target {
+        self._check_immutable_write(write_target);
     }
     if ((len(here.target) == 1) and (here.value is not None)) {
         target = here.target[0];
@@ -502,6 +565,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
             if here.type_tag and here.type_tag.tag {
                 self._check_bare_generic(here.type_tag.tag, left_type);
                 self._check_explicit_any(here.type_tag.tag);
+                self._check_c_type_use(here.type_tag.tag);
             }
         } elif isinstance(target, (TupleVal, ListVal)) {
             self._eval_unpacking_names(target);
@@ -524,6 +588,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
 
                 self._check_bare_generic(here.type_tag.tag, declared_type);
                 self._check_explicit_any(here.type_tag.tag);
+                self._check_c_type_use(here.type_tag.tag);
 
                 declared_inst = self.evaluator._convert_to_instance(declared_type);
                 target.type = declared_inst;
@@ -568,7 +633,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                         } else {
                             declared = self.evaluator.get_type_of_symbol(target_sym);
                             if declared {
-                                left_type = declared;
+                                left_type = self.evaluator.class_member_store_type(
+                                    target, declared
+                                );
                             }
                         }
                     } elif isinstance(target.right, Name) {
@@ -757,6 +824,13 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                 }
                                 if promoted is not None {
                                     result = promoted;
+                                } elif base_op in COMPLEX_ARITH_OPS {
+                                    complex_result = get_complex_arith_result_type(
+                                        left_type, right_type
+                                    );
+                                    if complex_result is not None {
+                                        result = complex_result;
+                                    }
                                 }
                             }
                             if result is None {
@@ -817,6 +891,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
 
 impl TypeCheckPass.exit_import with Import exit {
     if here.clib_decls {
+        self._check_c_interop_import(here);
         return;
     }
     if here.from_loc {
@@ -898,6 +973,7 @@ impl TypeCheckPass.exit_ability with Ability exit {
         );
         self._check_bare_generic(here.signature.return_type, ret_ann_type);
         self._check_explicit_any(here.signature.return_type);
+        self._check_c_type_use(here.signature.return_type);
     }
 
     if (
@@ -1139,6 +1215,9 @@ impl TypeCheckPass._check_bare_generic(
     arg_nodes = self._written_type_args(at, ty);
     type_args: list[TypeBase] = ty.private.type_args if ty.private else [];
     if ty.shared.type_params and not type_args {
+        if arg_nodes is None and ty.is_builtin("ptr") {
+            return;
+        }
         if arg_nodes is None {
             if ty.is_builtin(BARE_GENERIC_REQUIRED) {
                 self.ctx.emit(E1036, node_override=ann_node, type=ty.shared.class_name);
@@ -1282,7 +1361,9 @@ impl TypeCheckPass.exit_type_alias with TypeAlias exit {
     if not isinstance(resolved, ClassType)
         or not JAC_TYPE_REGISTRY.is_primitive(resolved.shared.class_name) {
         self.ctx.emit(E1107, node_override=here.value, base=str(resolved));
+        return;
     }
+    here.distinct_base = resolved.shared.class_name;
 }
 
 impl TypeCheckPass.exit_archetype with Archetype exit {
@@ -1353,7 +1434,8 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
     if not nd.in_client_context() {
         return None;
     }
-    for probe in (nd.value, nd.type_tag.tag if nd.type_tag else None) {
+    probes: list[Expr | None] = [nd.value, nd.type_tag.tag if nd.type_tag else None];
+    for probe in probes {
         cur: (UniNode | None) = probe;
         while isinstance(cur, (FuncCall, AtomTrailer)) {
             cur = cur.target;
@@ -1401,18 +1483,26 @@ impl TypeCheckPass._install_client_state_setters -> None {
 
 impl TypeCheckPass.postinit -> None {
     self.evaluator = self.prog.get_type_evaluator();
+    self._deferred_writes = [];
 }
 
 impl TypeCheckPass.initialize with entry {
     if self.ctx.nested_depth {
         return;
     }
-    self.ctx.resources.callback(setattr, self.evaluator, '_pass', self.evaluator._pass);
-    self.ctx.resources.callback(
-        setattr, self.evaluator, 'ct_quiet', self.evaluator.ct_quiet
-    );
+    self._outer_pass = self.evaluator._pass;
+    self._outer_ct_quiet = self.evaluator.ct_quiet;
+    self._restores_evaluator = True;
     self.evaluator._pass = self.ctx;
     self.evaluator.ct_quiet = False;
+}
+
+impl TypeCheckPass.release -> None {
+    if self._restores_evaluator {
+        self.evaluator._pass = self._outer_pass;
+        self.evaluator.ct_quiet = self._outer_ct_quiet;
+        self._restores_evaluator = False;
+    }
 }
 
 impl TypeCheckPass.prepare with entry {
@@ -1424,6 +1514,7 @@ impl TypeCheckPass.prepare with entry {
 }
 
 impl TypeCheckPass.finish with exit {
+    self._flush_immutable_writes();
     if self.ctx.nested_depth {
         return;
     }
@@ -1443,6 +1534,7 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
         ) {
             self._check_bare_generic(here.type_tag.tag, declared_type);
             self._check_explicit_any(here.type_tag.tag);
+            self._check_c_type_use(here.type_tag.tag);
         }
         if here.value is not None and here.type_tag and here.type_tag.tag {
             default_type = self.evaluator.get_type_of_expression(
@@ -1481,6 +1573,7 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
         if here.type_tag and here.type_tag.tag {
             self._check_bare_generic(here.type_tag.tag, declared_type);
             self._check_explicit_any(here.type_tag.tag);
+            self._check_c_type_use(here.type_tag.tag);
         }
 
         self._check_walker_reports_shape(here, declared_type);
@@ -1611,6 +1704,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self._eval_unpacking_names(here.target);
         self.evaluator.get_type_of_expression(here.target);
     }
+    self._check_immutable_write(here.target, rebind_scope=here);
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);
 
@@ -1622,11 +1716,11 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
             and cv is not None
             and not cv.is_deferred
             and not self.evaluator.ct_quiet
-            and not hasattr(cv.v, "__iter__") {
+            and not ct_is_iterable(cv) {
             self.ctx.emit(
                 E0108,
                 node_override=here.collection,
-                reason=f"comptime for needs a sequence, got {type(cv.v).__name__}"
+                reason=f"comptime for needs a sequence, got {ct_type_name(cv)}"
             );
         }
     }
@@ -1702,28 +1796,15 @@ impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
 }
 
 impl TypeCheckPass.enter_with_stmt with WithStmt entry {
-    enter_method = "__aenter__" if here.is_async else "__enter__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
-        expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
-        if ctx_item.alias is None
-            or not isinstance(ctx_item.alias, Name)
-            or isinstance(expr_type, UnknownType) {
+        if ctx_item.alias is None or not isinstance(ctx_item.alias, Name) {
+            self.evaluator.get_type_of_expression(ctx_item.expr);
             continue;
         }
-
-        enter_ret = self.evaluator.get_type_of_magic_method_call(
-            expr_type, enter_method, [], ctx_item.expr
-        );
-        if enter_ret is not None {
-            if here.is_async {
-                enter_ret = self.evaluator._unwrap_awaitable_type(
-                    enter_ret, ctx_item.expr
-                );
-            }
-            ctx_item.alias.type = enter_ret;
-        } else {
-            ctx_item.alias.type = expr_type;
+        alias_type = self.evaluator.get_type_of_with_alias(ctx_item);
+        if not isinstance(alias_type, UnknownType) {
+            ctx_item.alias.type = alias_type;
         }
     }
 }
@@ -1751,7 +1832,7 @@ impl TypeCheckPass._resolve_comptime_if(nd: IfStmt) -> None {
     if cv is None or cv.is_deferred {
         return;
     }
-    taken = bool(cv.v);
+    taken = ct_truthy(cv);
     nd.ct_taken = taken;
     if taken {
         if nd.else_body is not None {
@@ -1879,6 +1960,7 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
     exit_method = "__aexit__" if here.is_async else "__exit__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
+        self._check_immutable_write(ctx_item.alias, rebind_scope=here);
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
         if not isinstance(expr_type, UnknownType) and not expr_type.is_any_instance() {
             enter_result = self.evaluator.get_type_of_magic_method_call(
@@ -1903,6 +1985,17 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
     }
 }
 
+impl TypeCheckPass.exit_except with Except exit {
+    if here.ex_type is not None {
+        self.evaluator.get_type_of_expression(here.ex_type);
+    }
+    self._check_immutable_write(here.name, rebind_scope=here);
+}
+
+impl TypeCheckPass.exit_match_as with MatchAs exit {
+    self._check_immutable_write(here.name, rebind_scope=here);
+}
+
 impl TypeCheckPass.exit_while_stmt with WhileStmt exit {
     self.evaluator.get_type_of_expression(here.condition);
 }
@@ -1919,14 +2012,14 @@ impl TypeCheckPass.exit_assert_stmt with AssertStmt exit {
     if self.evaluator.ct_site_error(here.condition, "comptime assert condition", cv) {
         return;
     }
-    if cv is None or cv.is_deferred or bool(cv.v) or self.evaluator.ct_quiet {
+    if cv is None or cv.is_deferred or ct_truthy(cv) or self.evaluator.ct_quiet {
         return;
     }
     message = "";
     if here.error_msg is not None {
         mv = self.evaluator.ct_demand(here.error_msg);
         if mv is not None and not mv.is_deferred {
-            message = f": {mv.v}";
+            message = f": {ct_str(mv)}";
         }
     }
     self.ctx.emit(E0109, node_override=here, message=message);
@@ -1988,6 +2081,7 @@ impl TypeCheckPass.exit_yield_expr with YieldExpr exit {
 impl TypeCheckPass.exit_delete_stmt with DeleteStmt exit {
     for target in here.targets {
         self.evaluator.get_type_of_expression(target);
+        self._check_immutable_write(target);
     }
     for leaf in here.leaf_targets() {
         if DeleteStmt.is_location(leaf)
@@ -2108,11 +2202,12 @@ impl TypeCheckPass.exit_impl_def with ImplDef exit {
 }
 
 impl TypeCheckPass.exit_sub_tag with SubTag exit {
-    if isinstance(here.tag, Expr) {
-        self.evaluator.validate_typevar_in_type_expr(here.tag);
+    tag = here.tag;
+    if isinstance(tag, Expr) {
+        self.evaluator.validate_typevar_in_type_expr(tag);
 
-        if here.tag?.type is None {
-            self.evaluator.get_type_of_expression(here.tag);
+        if tag.type is None {
+            self.evaluator.get_type_of_expression(tag);
         }
     }
 }
@@ -2171,4 +2266,229 @@ impl TypeCheckPass._provably_in_range(nd: Expr, name: str) -> bool {
         return interval_of_op("neg", interval_of_expr(nd.operand), (0, 0), name);
     }
     return False;
+}
+
+impl TypeCheckPass._c_instance_of(ann_node: (UniNode | None)) -> (TypeBase | None) {
+    if not isinstance(ann_node, Expr) {
+        return None;
+    }
+    declared = ann_node.type;
+    if declared is None {
+        declared = self.evaluator.get_type_of_expression(ann_node);
+    }
+    return self.evaluator._convert_to_instance(declared);
+}
+
+impl TypeCheckPass._c_plain_data(
+    t: (TypeBase | None), allow_callable: bool = False
+) -> bool {
+    import from jaclang.compiler.c_interop { foreign_struct_of_type, is_ptr_type }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if isinstance(t, FunctionType) {
+        return allow_callable;
+    }
+    if not isinstance(t, ClassType) {
+        return False;
+    }
+    if is_ptr_type(t) or foreign_struct_of_type(t) is not None {
+        return True;
+    }
+    return t.is_builtin() and JAC_TYPE_REGISTRY.is_numeric(t.shared.class_name);
+}
+
+impl TypeCheckPass._opaque_member(t: (TypeBase | None)) -> (Archetype | None) {
+    import from jaclang.compiler.c_interop { opaque_c_of_type }
+    if isinstance(t, UnionType) {
+        for member in t.types {
+            if (arch := opaque_c_of_type(member)) is not None {
+                return arch;
+            }
+        }
+        return None;
+    }
+    return opaque_c_of_type(t);
+}
+
+impl TypeCheckPass._check_c_type_use(ann_node: (UniNode | None)) -> None {
+    import from jaclang.compiler.c_interop { clib_import_of }
+    if ann_node is None or clib_import_of(ann_node) is not None {
+        return;
+    }
+    arch = self._opaque_member(self._c_instance_of(ann_node));
+    if arch is not None {
+        self.ctx.emit(
+            E1151, node_override=ann_node, name=arch.name.value, use="held by value"
+        );
+    }
+}
+
+impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
+    import from jaclang.compiler.c_interop {
+        foreign_struct_of_type,
+        is_foreign_struct_archetype,
+        is_pinned_type,
+        c_type_arg
+    }
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    for decl in imp.clib_decls or [] {
+        if isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
+            for hv in decl.get_has_vars() {
+                tag = hv.type_tag.tag if hv.type_tag else None;
+                ftype = self._c_instance_of(tag);
+                opaque = self._opaque_member(ftype);
+                if opaque is not None {
+                    self.ctx.emit(
+                        E1151,
+                        node_override=hv,
+                        name=opaque.name.value,
+                        use="stored by value in a struct field"
+                    );
+                } elif not self._c_plain_data(ftype, allow_callable=True) {
+                    self.ctx.emit(
+                        E1150,
+                        node_override=hv,
+                        field=hv.name.sym_name,
+                        name=decl.name.value,
+                        reason=f"has type {ftype}, which is not C plain data"
+                    );
+                } elif self._foreign_struct_contains(ftype, decl) {
+                    self.ctx.emit(
+                        E1150,
+                        node_override=hv,
+                        field=hv.name.sym_name,
+                        name=decl.name.value,
+                        reason=f"holds {ftype} by value, which contains '{decl.name.value}' again: a C struct cannot contain itself"
+                    );
+                }
+            }
+        } elif isinstance(decl, Ability)
+            and isinstance(decl.signature, FuncSignature) {
+            for param in decl.signature.get_parameters() {
+                tag = param.type_tag.tag if param.type_tag else None;
+                ptype = self._c_instance_of(tag);
+                borrowed = param.type_tag is not None
+                    and is_borrow_kind(param.type_tag.ownership);
+                if borrowed {
+                    pointee = ptype;
+                    if isinstance(ptype, UnionType) {
+                        members = [
+                            m
+                            for m in ptype.types
+                            if not (
+                                isinstance(m, ClassType)
+                                and m.shared.class_name in ("NoneType", "None")
+                            )
+                        ];
+                        pointee = members[0] if len(members) == 1 else None;
+                    }
+                    if is_pinned_type(pointee) {
+                        pointee = self._c_arg_instance(pointee);
+                    }
+                    if not self._c_plain_data(pointee) {
+                        self.ctx.emit(
+                            E1152,
+                            node_override=param,
+                            what=f"C borrow parameter '{param.name.value}'",
+                            type=str(ptype)
+                        );
+                    }
+                    continue;
+                }
+                opaque = self._opaque_member(ptype);
+                if opaque is not None {
+                    self.ctx.emit(
+                        E1151,
+                        node_override=param,
+                        name=opaque.name.value,
+                        use="passed by value"
+                    );
+                }
+            }
+            ret = decl.signature.return_type;
+            opaque_ret = self._opaque_member(self._c_instance_of(ret));
+            if opaque_ret is not None {
+                self.ctx.emit(
+                    E1151,
+                    node_override=ret,
+                    name=opaque_ret.name.value,
+                    use="returned by value"
+                );
+            }
+        }
+    }
+}
+
+impl TypeCheckPass._foreign_struct_contains(
+    t: (TypeBase | None), target: Archetype
+) -> bool {
+    import from jaclang.compiler.c_interop { foreign_struct_of_type }
+    seen: set[int] = set();
+    work: list[TypeBase | None] = [t];
+    while work {
+        cur = foreign_struct_of_type(work.pop());
+        if cur is None or id(cur) in seen {
+            continue;
+        }
+        if cur is target {
+            return True;
+        }
+        seen.add(id(cur));
+        for hv in cur.get_has_vars() {
+            tag = hv.type_tag.tag if hv.type_tag else None;
+            work.append(self._c_instance_of(tag));
+        }
+    }
+    return False;
+}
+
+impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
+    import from jaclang.compiler.c_interop {
+        c_type_arg,
+        is_builtin_pin_call,
+        is_ptr_type,
+        opaque_c_of_type
+    }
+    callee = nd.target.type;
+    if isinstance(callee, ClassType)
+        and callee.is_instantiable_class()
+        and (arch := opaque_c_of_type(callee)) is not None {
+        self.ctx.emit(E1151, node_override=nd, name=arch.name.value, use="constructed");
+        return;
+    }
+    if is_builtin_pin_call(nd) {
+        args = [
+            p
+            for p in (nd.params or [])
+            if not isinstance(p, KWPair)
+        ];
+        if args {
+            arg_type = self.evaluator._convert_to_instance(
+                self.evaluator.get_type_of_expression(args[0])
+            );
+            if not self._c_plain_data(arg_type) {
+                self.ctx.emit(
+                    E1152, node_override=args[0], what="pin(value)", type=str(arg_type)
+                );
+            }
+        }
+        return;
+    }
+    if isinstance(nd.target, AtomTrailer)
+        and nd.target.is_attr
+        and isinstance(nd.target.right, Name)
+        and nd.target.right.value == "view" {
+        recv = nd.target.target.type;
+        if is_ptr_type(recv) and not self._c_plain_data(self._c_arg_instance(recv)) {
+            self.ctx.emit(E1152, node_override=nd, what="view()", type=str(recv));
+        }
+    }
+}
+
+impl TypeCheckPass._c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None) {
+    import from jaclang.compiler.c_interop { c_type_arg }
+    arg = c_type_arg(t);
+    if not isinstance(arg, TypeBase) {
+        return None;
+    }
+    return self.evaluator._convert_to_instance(arg);
 }

@@ -19,7 +19,8 @@ import from pathlib { Path }
 import from jaclang.server.sealed_serve {
     client_dist_for,
     sealed_root_for,
-    serve_manifest_for
+    serve_manifest_for,
+    unlisted_image_root
 }
 import from .test_helpers { get_jac_command }
 
@@ -73,6 +74,16 @@ test "a sealed image's own_mod module resolves to the sealed root" {
         dist = client_dist_for(own_mod);
         assert dist is not None and any(dist.`glob("client.*.js"));
         assert serve_manifest_for(own_mod) is not None;
+        assert unlisted_image_root(own_mod) is None;
+        extra = os.path.join(img_root, "extra.jac");
+        with open(extra, "w", encoding="utf-8") as f {
+            f.write("with entry {}\n");
+        }
+        assert sealed_root_for(extra) is None;
+        assert unlisted_image_root(extra) == img_root , (
+            "a module of the image's own project that the manifest does not "
+            "list must name the image it missed"
+        );
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
@@ -89,6 +100,9 @@ test "a foreign project nested under a sealed root is not sealed" {
         with open(foreign, "w", encoding="utf-8") as f {
             f.write("with entry {}\n");
         }
+        with open(os.path.join(staged, "jac.toml"), "w", encoding="utf-8") as f {
+            f.write("[project]\nname = \"todo\"\n");
+        }
 
         assert sealed_root_for(foreign) is None , (
             "a module the sealed manifest does not list must not adopt the "
@@ -98,6 +112,10 @@ test "a foreign project nested under a sealed root is not sealed" {
             "the host image's prebuilt bundle leaked to a foreign project"
         );
         assert serve_manifest_for(foreign) is None;
+        assert unlisted_image_root(foreign) is None , (
+            "the host image is not the nested project's seal, so its boot "
+            "must not report a sealed miss"
+        );
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
@@ -116,6 +134,7 @@ test "an unreadable sealed manifest claims no modules" {
             f.write("{not json");
         }
         assert sealed_root_for(os.path.join(img_root, "main.jac")) is None;
+        assert unlisted_image_root(os.path.join(img_root, "main.jac")) == img_root;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }

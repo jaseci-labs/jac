@@ -199,11 +199,7 @@ impl BoundaryAnalysisPass.enter_import with Import entry {
                 self._register_sv_import(here, sv_module_name, InteropContext.SERVER);
             }
             if here.items and not is_sv {
-                if (facts and facts.pinned_server) {
-                    self._register_sv_import(
-                        here, from_loc.base_module_name, InteropContext.CLIENT
-                    );
-                } elif (facts and facts.client_native_edge) {
+                if (facts and facts.client_native_edge) {
                     self._register_na_client_import(here);
                 } else {
                     self._register_client_bridged_import(here);
@@ -317,6 +313,7 @@ impl BoundaryAnalysisPass._register_sv_import(
             }
         }
         if walker_node is not None {
+            self._check_provider_pub(nd, item);
             walker_mod = walker_node.find_parent_of_type(Module);
             self._collect_boundary_type(walker_node.sym_name, walker_mod);
             (param_names, param_types) = self._extract_walker_has_fields(walker_node);
@@ -385,7 +382,7 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import from jaclang.compiler.passes.wasm_contract {
         function_contract,
-        host_contracts
+        host_contract_dicts
     }
     import from jaclang.compiler.frontend.diagnostics { E5083, E5100 }
     if not nd.from_loc or not nd.items {
@@ -426,8 +423,8 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
         if decl is None {
             continue;
         }
-        contract = function_contract(decl);
-        manifest.native_host_imports[stem] = host_contracts(
+        contract = function_contract(decl).to_dict();
+        manifest.native_host_imports[stem] = host_contract_dicts(
             decl.find_parent_of_type(Module), self.prog
         );
         (ret_type, param_types, param_names) = self._signature_of_decl(decl);
@@ -690,10 +687,6 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
         module_app,
         import_provider_app
     }
-    import from jaclang.compiler.symbol_utils {
-        decl_has_access,
-        import_target_pinned_server
-    }
     import from jaclang.compiler.frontend.diagnostics { E5106 }
     provider_mod = self._provider_module_of(nd);
     if provider_mod is None {
@@ -707,9 +700,6 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
         }
     }
     if verdict != ClientImportVerdict.DEAD {
-        return;
-    }
-    if import_target_pinned_server(nd) and decl_has_access(provider_mod, item) {
         return;
     }
     consumer = module_app(self.module) or self.module.name;
@@ -1242,7 +1232,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             for item in body_items {
                 if isinstance(item, Assignment) {
                     member_name = '';
-                    member_val = None;
+                    member_val: (int | str | None) = None;
                     targets = item.target
                         if isinstance(item.target, list)
                         else [item.target];
@@ -1266,8 +1256,9 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                         } elif isinstance(item.value, Token) {
                             member_val = item.value.value;
                             try {
-                                member_val = int(item.value.value);
-                                next_auto = member_val + 1;
+                                explicit = int(item.value.value);
+                                member_val = explicit;
+                                next_auto = explicit + 1;
                             } except ValueError {}
                         }
                     } else {
@@ -1313,12 +1304,14 @@ impl BoundaryAnalysisPass._literal_default(
         val = expr.lit_value;
         return (True, val) if isinstance(val, str) else (False, None);
     }
-    if (
-        isinstance(expr, UnaryExpr)
-        and expr.op.value == '-'
-        and isinstance(expr.operand, (Int, Float))
-    ) {
-        return (True, -expr.operand.lit_value);
+    if isinstance(expr, UnaryExpr) and expr.op.value == '-' {
+        operand = expr.operand;
+        if isinstance(operand, Int) {
+            return (True, -operand.lit_value);
+        }
+        if isinstance(operand, Float) {
+            return (True, -operand.lit_value);
+        }
     }
     if isinstance(expr, (ListVal, TupleVal)) {
         items = [];
@@ -1494,23 +1487,26 @@ impl BoundaryAnalysisPass.finish with exit {
         binding.endpoint_id = endpoint_key(source, kind, binding.name);
     }
 
-    self._record_access_levels(manifest);
+    self._record_surface(manifest);
 }
 
-impl BoundaryAnalysisPass._record_access_levels(manifest: any) -> None {
+impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
     if not (self.module and self.module.body) {
         return;
     }
+    import from jaclang.runtime.surface { SurfaceEntry }
     for item in self.module.body {
-        if isinstance(item, Ability) and item?.sym_name {
-            is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
-            manifest.func_access[item.sym_name] = not is_pub;
-        } elif isinstance(item, Archetype) and item?.sym_name {
-            is_walker = bool(item?.arch_type) and item.arch_type?.name == Tok.KW_WALKER;
-            if is_walker {
-                is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
-                manifest.walker_access[item.sym_name] = not is_pub;
-            }
+        if isinstance(item, (Ability, Archetype))
+            and item.surface_kind
+            and item.sym_name {
+            manifest.surface[item.sym_name] = SurfaceEntry(
+                name=item.sym_name,
+                kind=item.surface_kind,
+                exposure=item.exposure.value,
+                placement=item.placement_name,
+                module=self.module.loc.mod_path,
+                explicit_access=item.access is not None
+            );
         }
     }
 }
@@ -1525,6 +1521,13 @@ impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
         if isinstance(target_type, ClassType)
         else None;
     if isinstance(scope, Archetype) and scope.in_native_context() {
+        import from jaclang.compiler.frontend.host { active_host }
+        declared = active_host().native_session_declares(
+            self.prog, scope.loc.mod_path, scope.sym_name
+        );
+        if declared is not None and not declared {
+            return;
+        }
         import from jaclang.compiler.frontend.diagnostics { E5112 }
         self.ctx.emit(E5112, node_override=here, name=scope.sym_name);
     }

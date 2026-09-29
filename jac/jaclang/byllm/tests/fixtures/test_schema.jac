@@ -1,4 +1,4 @@
-"""Fixture with module name ending in 'a' to test scope name resolution."""
+"""A module whose name ends in 'a', for scope name resolution."""
 
 import from jaclang.byllm.lib { Model }
 

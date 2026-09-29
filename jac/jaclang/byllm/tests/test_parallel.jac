@@ -46,10 +46,11 @@ import from jaclang.byllm.parallel {
     _PARALLEL_TOOL_HINT,
     _WORKER_POOL
 }
-import from jaclang.byllm.types { Tool, MockToolCall }
+import from jaclang.byllm.types { Message, MessageRole, Tool, MockToolCall }
 import from jaclang.byllm.llm { BaseLLM }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
+import from support { mk_run }
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -463,33 +464,6 @@ test "dispatch batch is callable and importable" {
 
 
 # ---------------------------------------------------------------------------
-# Mock MTRuntime for make_model_params tests
-# ---------------------------------------------------------------------------
-obj _MockMTRun {
-    has call_params: dict[str, any] = {},
-        tools: list[any] = [],
-        stream: bool = False,
-        mtir: any = None,
-        messages: list[any] = [];
-
-    def get_msg_list -> list[any] {
-        return list(self.messages);
-    }
-
-    def get_tool_list -> list[any] {
-        if not self.tools {
-            return [];
-        }
-        return [t.get_json_schema() for t in self.tools];
-    }
-
-    def get_output_schema -> any {
-        return None;
-    }
-}
-
-
-# ---------------------------------------------------------------------------
 # 22. _should_parallelize gate logic
 # ---------------------------------------------------------------------------
 test "parallel OFF by default without config or env" {
@@ -621,10 +595,11 @@ test "parallel-safe and sequential tags added to tool descriptions" {
     ft = Tool.make_finish_tool(str);
 
     model = Model(model_name="mockllm");
-    mt_run: any = _MockMTRun(
+    mt_run = mk_run(
         call_params={"parallelize": True},
         tools=[tool_a, tool_b, ft],
-        messages=[{"role": "system", "content": "You are helpful."}]
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
     );
 
     params = model.make_model_params(mt_run);
@@ -654,10 +629,11 @@ test "finish tool description is NOT tagged" {
     ft_original_desc = ft.description;
 
     model = Model(model_name="mockllm");
-    mt_run: any = _MockMTRun(
+    mt_run = mk_run(
         call_params={"parallelize": True},
         tools=[tool_a, ft],
-        messages=[{"role": "system", "content": "You are helpful."}]
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
     );
 
     params = model.make_model_params(mt_run);
@@ -688,10 +664,11 @@ test "scheduling hint injected when parallel plus tools plus parallel_hint" {
     ft = Tool.make_finish_tool(str);
 
     model = Model(model_name="mockllm");
-    mt_run: any = _MockMTRun(
+    mt_run = mk_run(
         call_params={"parallelize": True},
         tools=[tool_a, ft],
-        messages=[{"role": "system", "content": "You are helpful."}]
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
     );
 
     params = model.make_model_params(mt_run);
@@ -717,10 +694,11 @@ test "no annotations or hint when parallel is OFF" {
     ft = Tool.make_finish_tool(str);
 
     model = Model(model_name="mockllm");
-    mt_run: any = _MockMTRun(
+    mt_run = mk_run(
         call_params={},
         tools=[tool_a, ft],
-        messages=[{"role": "system", "content": "You are helpful."}]
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
     );
 
     params = model.make_model_params(mt_run);
@@ -751,10 +729,11 @@ test "parallel_hint=False suppresses hint even when parallel is on" {
     ft = Tool.make_finish_tool(str);
 
     model = Model(model_name="mockllm");
-    mt_run: any = _MockMTRun(
+    mt_run = mk_run(
         call_params={"parallelize": True, "parallel_hint": False},
         tools=[tool_a, ft],
-        messages=[{"role": "system", "content": "You are helpful."}]
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
     );
 
     params = model.make_model_params(mt_run);
@@ -878,10 +857,11 @@ test "serialize tool names listed in system prompt hint" {
     ft = Tool.make_finish_tool(str);
 
     model = Model(model_name="mockllm");
-    mt_run: any = _MockMTRun(
+    mt_run = mk_run(
         call_params={"parallelize": True},
         tools=[tool_a, tool_b, ft],
-        messages=[{"role": "system", "content": "You are helpful."}]
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
     );
 
     params = model.make_model_params(mt_run);

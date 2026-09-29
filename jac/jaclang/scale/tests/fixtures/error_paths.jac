@@ -9,7 +9,7 @@ def:pub boom_fn -> int {
 }
 
 @restspec(protocol=APIProtocol.WEBHOOK)
-walker BoomHook {
+walker:protect BoomHook {
     can go with Root entry {
         raise ValueError("boom");
     }

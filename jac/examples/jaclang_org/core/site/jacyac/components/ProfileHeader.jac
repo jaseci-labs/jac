@@ -7,11 +7,6 @@ import from "lucide-react" {
     Trash2,
     Pencil
 }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.button { Button }
-import from core.social_graph { ProfileBundle }
-import from core.jacyac.identity { name_of, avatar_of }
-import from core.jacyac.format { handle_of, initial_of }
 
 def:pub ProfileHeader(
     bundle: ProfileBundle,

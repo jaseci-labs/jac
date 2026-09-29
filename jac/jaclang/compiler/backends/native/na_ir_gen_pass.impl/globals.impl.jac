@@ -97,9 +97,12 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             }
         }
     }
+    import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
     for (var_name, var_type) in candidates.items() {
         try {
-            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+            global_var = ir.GlobalVariable(
+                self.llvm_module, var_type, name=native_def_symbol(var_name)
+            );
         } except Exception as _dup_err {
             continue;
         }
@@ -146,35 +149,34 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
+            _is_priv = bool(nd.access and nd.access.tag.name == Tok.KW_PRIV);
+            _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+            _symbol = self._symbol_for(var_name, None, _is_pub);
             try {
                 global_var = ir.GlobalVariable(
-                    self.llvm_module, var_type, name=var_name
+                    self.llvm_module, var_type, name=_symbol
                 );
             } except Exception as _dup_err {
                 _cur_path = self.module.loc.mod_path
                     if self.module?.loc
                     else "(current module)";
                 _origin = self._global_origins.get(var_name, "(imported module)");
-                self.ctx.emit(
-                    E5026,
-                    symbol=var_name,
-                    existing_module=_origin,
-                    new_module=_cur_path
+                self.emit(
+                    E5026, symbol=_symbol, existing_module=_origin, new_module=_cur_path
                 );
                 continue;
             }
 
-            _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
             if _is_priv {
                 global_var.linkage = "internal";
             } else {
                 global_var.linkage = "";
+                self._record_export(var_name, _symbol, "global", _is_pub);
             }
 
-            _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-            if _is_pub and self.module?.gen and var_name.isidentifier() {
-                if var_name not in self.module.gen._exported_symbols {
-                    self.module.gen._exported_symbols.append(var_name);
+            if _is_pub and self.module?.gen and _symbol.isidentifier() {
+                if _symbol not in self.module.gen._exported_symbols {
+                    self.module.gen._exported_symbols.append(_symbol);
                 }
             }
 
@@ -210,14 +212,16 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
     }
 
     if isinstance(value_node, uni.FuncCall) {
-        call_name = self._get_name(value_node.target);
+        call_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if call_name is not None and call_name in self.struct_types {
             return self.struct_types[call_name].as_pointer();
         }
     }
 
     if isinstance(value_node, uni.AtomTrailer) {
-        target_name = self._get_name(value_node.target);
+        target_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
         }
@@ -252,11 +256,16 @@ impl NaIRGenPass._codegen_const_expr(
         return ir.Constant(target_type, None);
     }
     cv = nd.ct_value if isinstance(nd, uni.Expr) else None;
-    if cv is not None and not cv.is_deferred and isinstance(cv.v, (bool, int, float)) {
-        if isinstance(cv.v, bool) {
-            return ir.Constant(target_type, 1 if cv.v else 0);
+    if cv is not None and not cv.is_deferred {
+        if isinstance(cv, CtBool) {
+            return ir.Constant(target_type, 1 if cv.value else 0);
         }
-        return ir.Constant(target_type, cv.v);
+        if isinstance(cv, CtInt) and not cv.mag {
+            return ir.Constant(target_type, cv.small);
+        }
+        if isinstance(cv, CtFloat) {
+            return ir.Constant(target_type, cv.value);
+        }
     }
     (ok, v) = fold_const(nd);
     if not ok {

@@ -87,7 +87,31 @@ for i in 1 2 3; do
     sleep 5
     [ "$i" = 3 ] && fail "browser failed to launch after 3 attempts"
 done
-jac browse wait '#top' || fail "landing #top never appeared"
+# Cold 4-vCPU runners transform the whole client graph on demand the first
+# time the dev server is hit, and vite re-runs dep optimization every time a
+# lazily imported package is discovered: each round bumps the dep hash,
+# serves 504s for stale generations, and forces a full page reload, so the
+# landing can be knocked down and restarted several times before anything
+# mounts (observed: 7+ distinct dep generations, >2 minutes on a cold cache;
+# later stops and the fleet pass reuse the warm cache). Poll patiently past
+# the churn instead of a fixed handful of waits, and re-open periodically so
+# a page wedged mid-boot on a stale dep generation gets a clean navigation.
+mount_ok=false
+landing_deadline=$(( $(date +%s) + 360 ))
+next_reopen=$(( $(date +%s) + 90 ))
+while [ "$(date +%s)" -lt "$landing_deadline" ]; do
+    if jac browse wait '#top'; then
+        mount_ok=true
+        break
+    fi
+    echo "landing not mounted yet; waiting out vite's cold dep optimization"
+    if [ "$(date +%s)" -ge "$next_reopen" ]; then
+        echo "re-opening the landing for a clean load"
+        jac browse open "$BASE_URL" || true
+        next_reopen=$(( $(date +%s) + 90 ))
+    fi
+done
+[ "$mount_ok" = true ] || fail "landing #top never appeared"
 # The headless profile persists localStorage between runs; start from a clean
 # slate so the JacYac journey always begins at the auth form.
 jac browse eval 'localStorage.clear(); sessionStorage.clear(); "storage cleared"' \

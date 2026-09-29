@@ -2,7 +2,7 @@ node MyNode {
     has val: int;
 }
 
-edge MyEdge {
+edge MyEdge : any --> any {
     has val: int;
 }
 

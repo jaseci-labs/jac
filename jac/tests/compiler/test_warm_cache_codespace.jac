@@ -36,14 +36,16 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.driver.pipeline {
     ANALYSIS_SCHED_DEPS,
-    CODEGEN_SCHED_DEPS,
     IR_SCHED_DEPS,
     get_analysis_sched,
     get_ir_gen_sched,
-    get_py_code_gen,
     get_symtab_ir_sched,
     providers_of,
     schedule_tier_reason
+}
+import from jaclang.compiler.driver.pipeline_runner {
+    CODEGEN_SCHED_DEPS,
+    get_py_code_gen
 }
 import from jaclang.compiler.driver.source_failures { bootstrap_tier_failure_details }
 import from jaclang.compiler.frontend.codeinfo {
@@ -309,6 +311,10 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
 
 
 test "a compile that re-enters the module being imported says so" {
+    # The kernel's early passes carry their own expr_keys, so only the
+    # bytecode frontend reaches the module this test holds mid-import.
+    import from unittest.mock { patch }
+    import jaclang.compiler.native_compiler as native_compiler;
     ek = sys.modules["jaclang.compiler.expr_keys"];
     saved_fn = ek.collect_assigned_symbols;
     sys.modules["jac_reentrant_probe"] = initializing_stub(EXPR_KEYS);
@@ -318,11 +324,13 @@ test "a compile that re-enters the module being imported says so" {
         compiler = prog._get_compiler();
         raised = False;
         try {
-            compiler.compile(
-                file_path=EXPR_KEYS,
-                target_program=compiler.selfhost.program,
-                options=CompileOptions(no_cgen=True)
-            );
+            with patch.object(native_compiler, "ensure_loaded", return_value=None) {
+                compiler.compile(
+                    file_path=EXPR_KEYS,
+                    target_program=compiler.selfhost.program,
+                    options=CompileOptions(no_cgen=True)
+                );
+            }
         } except CompilerSourceError as loud {
             raised = True;
             assert "re-entered" in str(loud) , str(loud);
@@ -373,5 +381,35 @@ test "a probe failure in the probed source still answers server" {
     } finally {
         program_mod.JacProgram = saved_program;
         _COLOR_CACHE.pop(os.path.abspath(fake), None);
+    }
+}
+
+
+test "a bootstrap frontend retains its codegen tier after imports finish" {
+    import marshal;
+    import tempfile;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.pipeline as pipeline_mod;
+    import from jaclang.compiler.driver.pipeline { get_bootstrap_ir_sched }
+    with tempfile.TemporaryDirectory() as directory {
+        source = str(Path(directory) / "bootstrap_tier.jac");
+        prog = JacProgram();
+        assert schedule_tier_reason() == "";
+        with patch.object(
+            pipeline_mod, "get_ir_gen_sched", return_value=get_bootstrap_ir_sched()
+        ) {
+            mod = prog.compile(
+                source,
+                use_str="glob answer: int = 42;\n",
+                options=CompileOptions(force_codespace="server")
+            );
+        }
+        assert not prog.errors_had , [str(error) for error in prog.errors_had];
+        assert mod.gen.py_bytecode is not None;
+        namespace: dict[str, any] = {"__name__": "bootstrap_tier", "__file__": source};
+        exec(marshal.loads(mod.gen.py_bytecode), namespace);
+        assert namespace["answer"] == 42;
+        assert "RcFactsPass" not in prog.analysis.pass_runs;
     }
 }

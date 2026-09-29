@@ -176,10 +176,8 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
     b = ir.IRBuilder(entry_bb);
     self._builder = b;
     if kind == "bool" {
-        t_g = self._make_global_string("True", name_prefix=".repr.true");
-        f_g = self._make_global_string("False", name_prefix=".repr.false");
         nz = b.icmp_signed("!=", v, ir.Constant(i64, 0), name="rp.b.nz");
-        sel: any = b.select(nz, t_g, f_g, name="rp.b.sel");
+        sel: any = self._bool_text(b, nz, "rp.b.sel");
         if self._nogc_headerless() {
             sel = self._call_str_dup(b, sel, name="rp.b.dup");
         }
@@ -850,7 +848,8 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
         (5, "set"),
         (6, "obj"),
         (7, "bool"),
-        (8, "none")
+        (8, "none"),
+        (JACVAL_ELLIPSIS_TAG, "ellipsis")
     ];
     for (_t, _label) in _cases {
         _hit_bb = fn.append_basic_block(f"jv.{_label}");
@@ -881,6 +880,8 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
             bh.ret(bh.call(_bool_fn, [payload], name="rp.jv.bool"));
         } elif _label == "none" {
             _ret_const(bh, "None", "none");
+        } elif _label == "ellipsis" {
+            _ret_const(bh, "Ellipsis", "ellipsis");
         } elif _label == "list" {
             _ret_const(bh, "[...]", "list");
         } elif _label in ("dict", "set") {
@@ -943,7 +944,8 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
         (5, "set"),
         (6, "obj"),
         (7, "bool"),
-        (8, "none")
+        (8, "none"),
+        (JACVAL_ELLIPSIS_TAG, "ellipsis")
     ];
     for (_t, _label) in _cases {
         _hit_bb = fn.append_basic_block(f"sjv.{_label}");
@@ -973,6 +975,8 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
             bh.ret(bh.call(_bool_fn, [payload], name="sj.bool"));
         } elif _label == "none" {
             _ret_const(bh, "None", "none");
+        } elif _label == "ellipsis" {
+            _ret_const(bh, "Ellipsis", "ellipsis");
         } elif _label == "list" {
             _ret_const(bh, "[...]", "list");
         } elif _label in ("dict", "set") {

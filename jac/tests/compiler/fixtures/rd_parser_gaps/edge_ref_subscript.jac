@@ -3,7 +3,7 @@ node Person {
     has name: str;
 }
 
-edge Knows;
+edge Knows: Person --> Person;
 
 glob people = root ++> Person(name="Alice"),
      friends = [people[0]->:Knows:->[?:Person]];

@@ -10,7 +10,7 @@ node Note {
     has text: str = "";
 }
 
-edge HasNote {}
+edge HasNote : Root --> Note {}
 
 walker:pub whereami {
     can run with Root entry {
@@ -61,7 +61,7 @@ node Bin {
     }
 }
 
-edge HasBin {}
+edge HasBin : Root --> Bin {}
 
 walker:pub leave_bin {
     has tag: str = "";

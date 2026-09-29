@@ -7,7 +7,7 @@ obj ProgressEvent {
 }
 
 class EventSink {
-    def emit(self: EventSink, event: ProgressEvent) -> None;
+    def emit(self: EventSink, event: ProgressEvent) -> None abst;
 }
 
 obj NoopSink(EventSink) {

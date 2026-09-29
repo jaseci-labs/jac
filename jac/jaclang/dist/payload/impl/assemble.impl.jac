@@ -1,5 +1,6 @@
 import io;
 import os;
+import sys;
 import tarfile;
 
 import from compression.zstd { CompressionParameter, compress, decompress }
@@ -105,6 +106,11 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(site, "jaclang"),
             skip_jaclang
         );
+        import from jaclang.compiler.driver.jir { write_compiler_identity }
+        _identity = write_compiler_identity(
+            os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang")
+        );
+        log(f"   compiler identity: {_identity}");
 
         copy_file(
             os.path.join(repo_root, "bootstrap", "pins.json"),
@@ -115,14 +121,21 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
         );
 
-        awesome_src = os.path.join(repo_root, "examples", "jaclang_org");
-        if os.path.isdir(awesome_src) {
-            log("==> bundling the jaclang.org site as the --awesome template");
-            copy_tree(
-                awesome_src, os.path.join(site, "awesome_template"), skip_site_template
-            );
-        } else {
-            log(f"==> no {awesome_src}; --awesome template not bundled");
+        for (name, example) in [
+            ("awesome", "jaclang_org"),
+            ("awetiny", "tiny_jacyac")
+        ] {
+            template_src = os.path.join(repo_root, "examples", example);
+            if os.path.isdir(template_src) {
+                log(f"==> bundling {example} as the --{name} template");
+                copy_tree(
+                    template_src,
+                    os.path.join(site, f"{name}_template"),
+                    skip_site_template
+                );
+            } else {
+                log(f"==> no {template_src}; --{name} template not bundled");
+            }
         }
     } else {
         log(
@@ -157,56 +170,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             " shipped binary both locate it by that exact path."
         );
     }
-
-    import sys;
-    jc_name = (
-        "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
-    );
-    jc_src = os.path.join(repo_root, "jaclang", "compiler", "jc_unit.jac");
-    jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
-    if not file_exists(jc_src) {
-        log("==> no compiler kernel unit in this tree; skipping kernel build");
-        _bundle_bun(site, opts);
-        return;
-    }
-    if os.environ.get("JAC_PAYLOAD_SKIP_KERNEL") == "1" {
-        log("==> skipping native compiler kernel (JAC_PAYLOAD_SKIP_KERNEL=1)");
-        _bundle_bun(site, opts);
-        return;
-    }
-    log(f"==> building native compiler kernel (jac build --native --lib {jc_src})");
-    jc_boot = (
-        "import os, sys\n"
-        + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
-        + "sys.path.insert(0, root)\n"
-        + "import _jac_finder\n"
-        + "_jac_finder.install()\n"
-        + "from jaclang.cli.commands.native_build import native_build\n"
-        + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
-        + "sys.stdout.flush()\n"
-        + "sys.stderr.flush()\n"
-        + "os._exit(rc)\n"
-    );
-    jc_env = clone_env();
-    jc_env["JAC_LLVM_SHIM"] = os.path.abspath(so);
-    jc_env["JAC_COMPILER_LIB"] = "off";
-    jc_env["JAC_NO_DEV_SOURCE"] = "1";
-    jc_env["JAC_STUBCAT_BUILDING"] = "1";
-    jc_ok = run_child(
-        [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst], jc_env, True
-    );
-    if (
-        not jc_ok or not file_exists(jc_dst) or not file_exists(jc_dst + ".layout.json")
-    ) {
-        raise PayloadDie(
-            f"mkpayload: native compiler kernel build failed; the shipped"
-            f" binary requires {jc_dst} and its .layout.json sidecar."
-        );
-    }
-
-    jc_tree = os.path.join(repo_root, "jaclang", "compiler", jc_name);
-    copy_file(jc_dst, jc_tree);
-    copy_file(jc_dst + ".layout.json", jc_tree + ".layout.json");
 
     _bundle_bun(site, opts);
 }
@@ -295,7 +258,33 @@ impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts)
     }
 }
 
+impl cached_stubcat(pkg_dir: str) -> str {
+    try {
+        import jaclang.compiler.types.stubcat.locate as locate;
+        saved = list(locate._DIGEST_CACHE);
+        locate._DIGEST_CACHE.clear();
+        try {
+            return locate.dev_catalog_path(pkg_dir);
+        } finally {
+            locate._DIGEST_CACHE.clear();
+            locate._DIGEST_CACHE.extend(saved);
+        }
+    } except Exception {
+        return "";
+    }
+}
+
 impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
+    cached = cached_stubcat(os.path.join(site, "jaclang"));
+    if cached and file_exists(cached) {
+        copy_file(cached, out);
+        log(
+            f"==> reused the stub catalog for this type system ({os.path.basename(
+                cached
+            )})"
+        );
+        return True;
+    }
     log("==> building the stub catalog (pre-resolved typeshed types)");
     boot = os.path.join(site, "stubcat_boot.py");
     write_text(boot, STUBCAT_BOOT_SRC);
@@ -340,6 +329,8 @@ impl precompile(
     debug_src: bool,
     skip_stubcat: bool = False
 ) {
+    import time;
+    compile_start = time.monotonic();
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
     if not file_exists(pc) {
         return;
@@ -374,7 +365,10 @@ impl precompile(
         );
     }
     delete_file(result);
-    log("   _precompiled: compile pass ran to completion");
+    log(
+        f"   _precompiled: compile pass completed in {time.monotonic()
+            - compile_start:.1f}s"
+    );
 
     if not seal {
         return;
@@ -384,6 +378,7 @@ impl precompile(
         fin.append("--debug-src");
     }
     log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
+    finalize_start = time.monotonic();
     if not run_child(fin, env, True) {
         die("mkpayload: seal-finalize failed (see log above).");
     }
@@ -393,7 +388,8 @@ impl precompile(
         );
     }
     log(
-        "   sealed: MANIFEST.json present; payload boots from JIR (sources ship for tracebacks, never compiled)."
+        f"   sealed in {time.monotonic()
+            - finalize_start:.1f}s: MANIFEST.json present; payload boots from JIR."
     );
 }
 
@@ -405,6 +401,7 @@ impl stage_python_bin(python_dir: str, stage: str) {
     dst = os.path.join(bin_dst, bare);
     copy_file(py, dst);
     os.chmod(dst, 0o755);
+    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else None);
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
 }
 
@@ -426,21 +423,18 @@ impl stage_tree(
     strip_best_effort(staged_lib);
 
     stage_stdlib(python_lib, lib_dst);
+    dynload = os.path.join(lib_dst, f"python{py_ver()}", "lib-dynload");
+    if os.path.isdir(dynload) {
+        for name in sorted(os.listdir(dynload)) {
+            if name.endswith(".so") {
+                strip_best_effort(os.path.join(dynload, name), ["--strip-debug"]);
+            }
+        }
+    }
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
     strip_best_effort(site_shim_path(os.path.join(stage, "site")));
-    import sys as _sys;
-    strip_best_effort(
-        os.path.join(
-            stage,
-            "site",
-            "jaclang",
-            "compiler",
-            "libjac_compiler.dylib"
-                if _sys.platform == "darwin"
-                else "libjac_compiler.so"
-        )
-    );
+    strip_kernel_best_effort(os.path.join(stage, "site"));
 
     stage_python_bin(python_dir, stage);
 
@@ -513,7 +507,9 @@ impl stage_floor(python_dir: str, stage: str) {
         if not file_exists(src) {
             continue;
         }
-        copy_file(src, os.path.join(floor_dst, name));
+        dst = os.path.join(floor_dst, name);
+        copy_file(src, dst);
+        strip_best_effort(dst, ["--strip-debug"]);
         staged += 1;
     }
     log(f"==> staged {staged} C-floor archive(s) -> python/floor/{osarch}");
@@ -799,5 +795,44 @@ impl prune_layer_cache(dir_path: str, keep: str) {
         if os.path.isfile(stale) {
             delete_file(stale);
         }
+    }
+}
+
+impl strip_kernel_best_effort(site: str) {
+    import hashlib;
+    import json;
+    manifest_path = os.path.join(site, "jaclang", "_precompiled", "MANIFEST.json");
+    if not file_exists(manifest_path) {
+        return;
+    }
+    manifest: dict[str, any] = {};
+    with open(manifest_path, "r", encoding="utf-8") as f {
+        manifest = dict(json.load(f));
+    }
+    native_rec: any = manifest.get("native") or {};
+    record: any = native_rec.get("artifact");
+    if not isinstance(record, dict) {
+        return;
+    }
+    lib: str = os.path.join(site, "jaclang", str(record["path"]));
+    if not file_exists(lib) {
+        return;
+    }
+    strip_best_effort(lib);
+    with open(lib, "rb") as lf {
+        record["sha256"] = hashlib.sha256(lf.read()).hexdigest();
+    }
+    sidecar_path = lib + ".layout.json";
+    if file_exists(sidecar_path) {
+        with open(sidecar_path, "r", encoding="utf-8") as sf {
+            sidecar = dict(json.load(sf));
+        }
+        sidecar["artifact_sha256"] = record["sha256"];
+        with open(sidecar_path, "w", encoding="utf-8") as sf {
+            sf.write(json.dumps(sidecar, sort_keys=True));
+        }
+    }
+    with open(manifest_path, "w", encoding="utf-8") as f {
+        f.write(json.dumps(manifest, sort_keys=True, indent=1) + "\n");
     }
 }

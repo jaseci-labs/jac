@@ -1,14 +1,4 @@
-import from core.brand.logo { logo_xml }
 import from pathlib { Path }
-import from core.brand.tokens {
-    Colors,
-    dark_palette,
-    light_palette,
-    spacing,
-    radii,
-    fonts,
-    font_family
-}
 
 def css(p: Colors) -> str {
     return "--background:"

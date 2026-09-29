@@ -8,6 +8,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     AssertStmt,
     AssignCompr,
+    AstAccessNode,
     Assignment,
     AstSymbolNode,
     AtomTrailer,
@@ -138,6 +139,7 @@ import from jaclang.compiler.frontend.constant {
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.runtime.scalars { shape_of }
+import type from jaclang.compiler.types.ct_value { CtRecord, CtValue }
 
 import from jaclang.compiler.backends.py.codegen_ir { CodegenIrWriter }
 import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, InteropBinding }
@@ -358,7 +360,8 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
         _interop_stub_node: (UniNode | None) = None,
         _sv_boundary_names: dict[str, str] = {},
         _sv_boundary_registry: str = "",
-        _sv_serializer: str = "";
+        _sv_serializer: str = "",
+        _c_temp_count: int = 0;
 
     with entry {}
 
@@ -400,6 +403,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def outs(nd: UniNode) -> list[CgItem];
     def set_out(nd: UniNode, items: list[CgItem]) -> None;
     def _apply_coercion(nd: Expr) -> None;
+    def _distinct_base_ast(nd: TypeAlias) -> (CgNode | None);
     def _apply_fw(nd: Expr) -> None;
     def _fw_helper(name: str) -> CgNode;
     def _fw_call_node(
@@ -417,14 +421,20 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _fw_as_load(item: any) -> any;
     def _fw_aug_assign(nd: Assignment, target: any, value: any) -> (CgNode | None);
     def val(nd: UniNode) -> CgNode;
+    def _clib_block_desc(imp: Import) -> dict[str, any];
+    def _gen_clib_binding(imp: Import) -> list[CgNode];
+    def _c_temp_name(role: str) -> str;
+    def _c_named(name: str, value: CgNode) -> CgNode;
+    def _c_interop_call_rewrite(nd: FuncCall) -> None;
+    def _c_copy_rewrite(nd: AtomTrailer) -> None;
     def const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode;
-    def _ct_kind(v: any) -> str;
-    def _ct_order_key(v: any) -> str;
-    def _ct_materializable(v: any) -> bool;
+    def _ct_kind(v: CtValue) -> str;
+    def _ct_order_key(v: CtValue) -> str;
+    def _ct_materializable(v: CtValue) -> bool;
     def _ct_concrete(nd: Expr) -> bool;
     def _is_comptime_only_name(nd: Name) -> bool;
     def _comptime_only_names -> set[str];
-    def _record_bypasses_init(v: any) -> bool;
+    def _record_bypasses_init(v: CtRecord) -> bool;
     def _is_ct_type_param(nd: Name) -> bool;
     def _ct_param_decls(cls_expr: Expr) -> (list[TypeParam] | None);
     def _ct_ctor_slots(nd: AtomTrailer) -> (list[tuple[str, UniNode]] | None);
@@ -432,7 +442,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _ct_param_fields(nd: Archetype) -> list[CgNode];
     def _import_ref(module: str, name: str, jac_node: UniNode) -> CgNode;
     def _class_ref(module: str, name: str, jac_node: UniNode) -> CgNode;
-    def _materialize(v: any, jac_node: UniNode) -> (CgNode | None);
+    def _materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None);
     def _comptime_if_out(nd: IfStmt) -> bool;
     def _if_out(nd: IfStmt) -> None;
     def name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode;
@@ -508,7 +518,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
         order_out: list[CgNode]
     ) -> tuple[list[CgNode], bool];
 
-    def _recipe_contains_root(v: any) -> bool;
+    def _recipe_ambient_names(v: any) -> list[str];
     def resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> CgNode;
     def resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem];
     def resolve_stmt_block(

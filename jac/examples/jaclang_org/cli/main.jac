@@ -1,10 +1,6 @@
 import argparse;
 import asyncio;
 import sys;
-import from .commands.common { EXIT_USAGE, warn }
-import from .commands.docs { run_docs }
-import from .commands.feed { run_feed, run_post }
-import from .commands.score { run_score }
 
 glob PROG: str = "jacorg",
      DEFAULT_LIMIT: int = 20;

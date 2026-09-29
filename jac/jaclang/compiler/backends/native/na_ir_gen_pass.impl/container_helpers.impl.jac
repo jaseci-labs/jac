@@ -235,7 +235,7 @@ impl NaIRGenPass._reject_ptr_into_raw_slot(
         return False;
     }
     if nd is not None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="expression",
@@ -243,7 +243,7 @@ impl NaIRGenPass._reject_ptr_into_raw_slot(
             help_text="A pointer value cannot be stored into a scalar container slot: the container would hold a raw address invisible to memory management. Declare the container with a matching element type, or mix element types so it lowers to tagged storage."
         );
     } else {
-        self.ctx.emit(E5092, kind="expression", name=what);
+        self.emit(E5092, kind="expression", name=what);
     }
     return True;
 }
@@ -333,7 +333,7 @@ impl NaIRGenPass._reject_spread_slot_mismatch(
     if isinstance(src_elem, ir.PointerType) and isinstance(dest_elem, ir.PointerType) {
         return False;
     }
-    self.ctx.emit(
+    self.emit(
         E5092,
         node_override=nd,
         kind="expression",

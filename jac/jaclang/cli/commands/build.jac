@@ -79,6 +79,14 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  help="With --native: 'host' (default), 'wasm32', or an LLVM triple"
              ),
              Arg.create(
+                 "link-mode",
+                 dest="native_link_mode",
+                 `default="",
+                 choices=["objects", "bitcode"],
+                 short="",
+                 help="With --native: reuse optimized objects (default) or optimize whole-program bitcode"
+             ),
+             Arg.create(
                  "debug",
                  typ=bool,
                  `default=False,
@@ -130,7 +138,10 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  "Borrow-checked, no runtime"
              ),
              ("jac build lib.jac --native --lib", "Compile a C-ABI shared library"),
-             ("jac build main.jac --native --target wasm32", "Compile to WebAssembly"),
+             (
+                 "jac build main.jac --native --target-triple wasm32",
+                 "Compile to WebAssembly"
+             ),
              ("jac build --fat", "Build a fat jab (Python deps vendored)"),
              ("jac build --as wheel", "Build a PyPI wheel"),
              ("jac build --as client web", "Build only the web app's browser bundle"),
@@ -164,5 +175,6 @@ def build(
     lib: bool = False,
     memory: str = "",
     native_target: str = "",
-    debug: bool = False
+    debug: bool = False,
+    native_link_mode: str = ""
 ) -> int;

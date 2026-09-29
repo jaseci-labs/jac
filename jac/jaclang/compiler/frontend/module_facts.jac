@@ -31,7 +31,7 @@ import from jaclang.compiler.frontend.constant {
 
 obj ModuleFacts {
     static def ability_is_generator(ability: Ability) -> bool {
-        pending = list(ModuleFacts.unwrap_body(ability) or []);
+        pending: list[UniNode] = list(ModuleFacts.unwrap_body(ability) or []);
         while pending {
             current = pending.pop();
             if current.ct_pruned {

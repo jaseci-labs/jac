@@ -1,5 +1,4 @@
 import from "@jac/runtime" { jacSetToken, __getLocalStorage, __setLocalStorage }
-import from .auth { begin_github, finish_github }
 
 async def:pub github_login -> bool {
     browser: any = window;

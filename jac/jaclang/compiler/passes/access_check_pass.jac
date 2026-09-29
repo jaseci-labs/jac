@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import os;
 import from jaclang.compiler.frontend.unitree {
     Archetype,
@@ -27,10 +27,8 @@ import from jaclang.compiler.frontend.diagnostics {
     W2039,
 }
 
-walker AccessCheckPass {
-    has ctx: CompileContext,
-        module: Module,
-        _enforce: bool = False,
+walker AccessCheckPass(CompilerPass) {
+    has _enforce: bool = False,
         _bridged_syms: set[int] = set(),
         _bridged_mods: set[str] = set();
 
@@ -46,6 +44,5 @@ walker AccessCheckPass {
     def _check_member(use_node: AstSymbolNode, sym: Symbol, owner: Archetype) -> None;
     def _declaring_archetype(sym: Symbol) -> (Archetype | None);
     def _declaring_module(sym: Symbol) -> (Module | None);
-    def _base_archetype(expr: UniNode) -> (Archetype | None);
     def _is_subclass_of(child: Archetype, ancestor: Archetype) -> bool;
 }

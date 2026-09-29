@@ -140,6 +140,62 @@ test "interpolate against a given environment instead of the process one" {
     }
 }
 
+test "config load records the references it could not resolve" {
+    config_mod._config = None;
+    var_name = "JAC_TEST_UNRESOLVED";
+    base = "[project]\nname = \"test-project\"\n\n";
+    cases = [
+        (
+            "a bare reference",
+            f"[scale.secrets]\nKEY = \"${{{var_name}}}\"\n",
+            [("scale.secrets.KEY", False, "")]
+        ),
+        (
+            "a required reference",
+            f"[scale.secrets]\nKEY = \"${{{var_name}:?export it}}\"\n",
+            [("scale.secrets.KEY", True, "export it")]
+        ),
+        ("a default", f"[scale.secrets]\nKEY = \"${{{var_name}:-x}}\"\n", []),
+        (
+            "a shell positional, which is not a variable name",
+            "[scripts]\ngreet = \"sh -c 'echo ${1}'\"\n",
+            []
+        ),
+        (
+            "a reference inside a list",
+            f"[serve]\ncors_origins = [\"${{{var_name}}}\"]\n",
+            [("serve.cors_origins[0]", False, "")]
+        ),
+        (
+            "a reference under an app",
+            "[apps.web]\nkind = \"web-app\"\nentry-point = \"main\"\n"
+                + f"[apps.web.dependencies.npm]\npkg = \"${{{var_name}}}\"\n",
+            [("apps.web.dependencies.npm.pkg", False, "")]
+        )
+    ];
+    previous = os.environ.pop(var_name, None);
+    try {
+        for (label, extra, expected) in cases {
+            with TemporaryDirectory() as tmpdir {
+                toml_path = Path(tmpdir) / "jac.toml";
+                toml_path.write_text(base + extra);
+                config = JacConfig.load(toml_path);
+                got = [
+                    (ref.path, ref.required, ref.message) for ref in config.unresolved
+                ];
+                assert got == expected , f"{label}: {got}";
+                for ref in config.unresolved {
+                    assert ref.var == var_name , label;
+                }
+            }
+        }
+    } finally {
+        if previous is not None {
+            os.environ[var_name] = previous;
+        }
+    }
+}
+
 test "interpolate non string passthrough" {
     config_mod._config = None;
     assert interpolate_env_vars(_as_any(123)) == 123;
@@ -956,6 +1012,23 @@ test "merge project kebab case" {
         overlay.write_text("[project]\nentry-point = \"app\"\n");
         cfg.merge_from_toml_file(overlay);
         assert cfg.project.entry_point == "app";
+    }
+}
+
+test "check exclude parses and defaults empty" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.check.exclude == [];
+        overlay = temp_project / "overlay.toml";
+        overlay.write_text(
+            "[check]\nexclude = [\"tests\", \"*_err.jac\"]\n\n"
+            "[check.lint]\nselect = [\"all\"]\n"
+        );
+        cfg.merge_from_toml_file(overlay);
+        assert cfg.check.exclude == ["tests", "*_err.jac"];
+        assert cfg.check.lint.select == ["all"];
     }
 }
 

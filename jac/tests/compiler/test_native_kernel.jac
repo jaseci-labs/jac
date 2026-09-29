@@ -161,6 +161,7 @@ test "kernel materialization releases every borrowed input reference" {
             == 0;
         mod = kernel.take_module();
         assert mod is not None;
+        assert mod.persistence == [] , "persistence facts are stamped after parsing";
         assert not kernel.take_diags();
         assert not kernel.take_lexdiags();
         kernel.take_comments();
@@ -220,5 +221,31 @@ test "kernel parses retain no native memory once the tree is handed over" {
                 "the parse region is not being dropped at the end of jc_run"
             );
         }
+    }
+}
+
+
+test "JAC_COMPILER_LIB=off selects the store parser: no kernel is resolved" {
+    # The explicit switch is the first step of `resolve_kernel`'s precedence
+    # (`kernel_resolve.jac`): `off` means no kernel, before a sealed image or
+    # the source tree is consulted, so `ensure_loaded` serves the store parser.
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        KERNEL_LIB_ENV,
+        resolve_kernel
+    }
+    import from jaclang.compiler.native_compiler { ensure_loaded, reset_loaded }
+    saved = os.environ.get(KERNEL_LIB_ENV);
+    reset_loaded();
+    try {
+        os.environ[KERNEL_LIB_ENV] = "off";
+        assert resolve_kernel() is None , "JAC_COMPILER_LIB=off must resolve no kernel";
+        assert ensure_loaded() is None , "ensure_loaded must serve no kernel under the off switch";
+    } finally {
+        if saved is None {
+            os.environ.pop(KERNEL_LIB_ENV, None);
+        } else {
+            os.environ[KERNEL_LIB_ENV] = saved;
+        }
+        reset_loaded();
     }
 }

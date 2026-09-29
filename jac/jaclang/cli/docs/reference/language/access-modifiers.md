@@ -8,9 +8,9 @@ The essential rule is that **the same three keywords mean different things depen
 |---|---|---|
 | [Member encapsulation](#member-encapsulation) | `has` / `def` declared **inside an archetype** | who may reference the member in source |
 | [Module and project visibility](#module-and-project-visibility) | top-level `glob` / `obj` / `def` / `enum` / `walker` | which modules may reference the symbol in source |
-| [Service auth](#service-auth) | served `def` / `walker` endpoints (`jac run`) | whether an HTTP caller must authenticate |
+| [Service auth](#service-auth) | top-level `def` / `walker` in an app with a server (`jac run`) | whether the symbol is served, and whether an HTTP caller must authenticate |
 
-The first two are **compile-time reference rules** enforced by `AccessCheckPass`. The third is a **runtime auth rule** applied by the server. They are independent: a single tag on a top-level `walker` is read by *both* the visibility rule and the auth rule, but they ask different questions.
+The first two are **compile-time reference rules** enforced by `AccessCheckPass`. The third is decided at compile time from the same tag and enforced by the server. A single tag on a top-level `walker` is read by *both* the visibility rule and the endpoint rule; they ask different questions but agree on direction: `:pub` is the most exposed, plain and `:priv` the most contained.
 
 ---
 
@@ -61,22 +61,22 @@ glob:priv    _cache = {};           # this module only
 
 A reference from the same module is always allowed regardless of tag.
 
-> **Note:** these are *visibility* rules -- they govern whether one symbol may legally reference another in source. They do **not** control which walkers/functions become HTTP endpoints; that is [service auth](#service-auth) below.
+> **Note:** these are *visibility* rules -- they govern whether one symbol may legally reference another in source. The same tag, read on the endpoint axis, also decides which top-level walkers/functions are served; that is [service auth](#service-auth) below.
 
 ---
 
 ## Service auth
 
-When a top-level `def` or `walker` is served via `jac run` (or `jac run --serve` to force serving), the modifier additionally decides whether an HTTP caller must authenticate. This axis is **secure-by-default** and only distinguishes `:pub` from everything else:
+For a top-level `def` or `walker` in an app that has a server, the modifier also decides **whether the symbol is an endpoint at all**, and if so whether an HTTP caller must authenticate. Exposure comes from the declaration alone; nothing is inferred from callers, entry imports, `_` prefixes, or `[placement.pins]`. The compiler records one verdict per declaration and the type checker, the client bundler, the server, and cross-app imports all read that same verdict.
 
-| tag on a served `def` / `walker` | auth required? | notes |
-|---|---|---|
-| `:pub` | **no** | open endpoint. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
-| `:protect` | **yes** | JWT required; runs on the caller's own isolated root. |
-| `:priv` | **yes** | JWT required; runs on the caller's own isolated root. |
-| (unmarked) | **yes** | identical to `:priv` -- secure by default. |
+| tag on a top-level `def` / `walker` | served? | auth required? | notes |
+|---|---|---|---|
+| `:pub` | **yes** | **no** | open endpoint. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
+| `:protect` | **yes** | **yes** | JWT required; runs on the caller's own isolated root. |
+| `:priv` | **no** | -- | private: not an endpoint, not importable by client code (`E5082`), not bridgeable from another app (`E5106`). |
+| (unmarked) | **no** | -- | identical to `:priv` -- private by default. |
 
-> **`:protect` is not a middle auth tier.** For endpoint auth, only `:pub` is exempt; `:protect`, `:priv`, and the unmarked default all require authentication and behave identically. The three-way gradient exists for the *visibility* axis above, not for auth. Don't reach for `:protect` expecting "lighter" auth -- there is no such thing.
+> **Plain is private.** A `def` or `walker` with no tag is an ordinary in-process symbol. To serve it, say so on the declaration: `def:protect` for an authenticated endpoint, `def:pub` for an anonymous one. Earlier releases served every plain walker and every entry-imported plain `def` with auth; `jac fix access` rewrites those to `:protect` (see [Breaking changes](../../community/breaking-changes.md)).
 
 See the [Scale Reference](../plugins/jac-scale.md) for the full serve/auth model, including per-user data isolation and permission grants (which are a *third*, separate concern from endpoint auth).
 

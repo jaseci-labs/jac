@@ -21,7 +21,14 @@ impl expr_primitive_name(expr_node: UniNode) -> str {
     while isinstance(expr_node, CfgExpr) {
         expr_node = expr_node.expr;
     }
-    return primitive_type_name_of(expr_node?.type) or "";
+    if not isinstance(expr_node, Expr) {
+        return "";
+    }
+    return expr_type_primitive_name(expr_node);
+}
+
+impl expr_type_primitive_name(expr_node: Expr) -> str {
+    return primitive_type_name_of(expr_node.type) or "";
 }
 
 impl get_generator_type_args(return_type: TypeBase) -> (list[TypeBase] | None) {
@@ -623,16 +630,16 @@ impl compute_mro_linearization(
     }
 }
 
-impl mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...] {
-    sig: list[tuple[int, int | str]] = [];
+impl mro_signature(cls: ClassType) -> list[tuple[int, str]] {
+    sig: list[tuple[int, str]] = [];
     for base in cls.shared.base_classes {
         if isinstance(base, ClassType) {
-            sig.append((id(base.shared), len(base.shared.mro)));
+            sig.append((id(base.shared), str(len(base.shared.mro))));
         } else {
             sig.append((0, type(base).__name__));
         }
     }
-    return tuple(sig);
+    return sig;
 }
 
 impl ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool {

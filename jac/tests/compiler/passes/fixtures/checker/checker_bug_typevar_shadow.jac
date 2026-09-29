@@ -4,7 +4,7 @@ Module-level T (bound=int) should NOT be substituted with inherited str.
 """
 
 class Transform[T] {
-    def get_input(self: Transform) -> T;
+    def get_input(self: Transform) -> T abst;
 }
 
 class StrTransform(Transform[str]) {}
@@ -14,10 +14,10 @@ glob T = TypeVar('T', bound=int);
 
 class MyPass(StrTransform) {
     # Uses module-level T, NOT inherited T from Transform
-    def sync(self: MyPass, value: T) -> T;
+    def sync(self: MyPass, value: T) -> T abst;
 }
 
-def test_typevar_shadow(p: MyPass) -> None {
+def test_typevar_shadow(p: MyPass) {
     # Should NOT error - sync returns T (bound=int), not str
     check: int = p.sync(42);
 

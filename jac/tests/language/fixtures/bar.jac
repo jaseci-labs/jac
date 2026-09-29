@@ -4,7 +4,7 @@ node Item {
 }
 
 # Define an edge type called `Link`
-edge Link {}
+edge Link : any --> any {}
 
 # Define the `bar` walker
 walker bar_walk {

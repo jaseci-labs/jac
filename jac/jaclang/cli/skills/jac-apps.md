@@ -34,7 +34,7 @@ Shared source can participate in several app contexts. Its syntax is reused,
 while semantic facts, artifacts, and runtime module globals remain app specific.
 Neither directory containment, `default-app`, nor placement pins assign global
 ownership. To share a server's state through an API, declare a service entry and
-import its public walkers or `def:pub` functions. Direct helper imports are local
+import its exposed walkers or functions (`:pub` or `:protect`). Direct helper imports are local
 to the selected app context.
 
 `E2039`/`W2039` report access to private declarations through another app's entry;
@@ -42,8 +42,8 @@ to the selected app context.
 
 ## The bridge surface and its laws
 
-- A **walker** or `def:pub` function is callable from any consumer app; everything else is private to its own server. Bridging to a non-`pub` element is **E5106**.
-- **E5108**: an app may not import another app's `node` or `edge`. Only walkers and `def:pub` bridge; an imported `obj` or `enum` mirrors as a boundary type.
+- An **exposed** declaration - `walker:pub` / `walker:protect` or `def:pub` / `def:protect` - is callable from any consumer app; plain and `:priv` declarations are private to their own server. Bridging to a private element is **E5106**.
+- **E5108**: an app may not import another app's `node` or `edge`. Only exposed walkers and functions bridge; an imported `obj` or `enum` mirrors as a boundary type.
 - Every bridged import is an edge consumer -> provider; the graph must be a DAG, providers boot first. **E5104** names the import that closes a cycle: move the code both need into shared code, or fold one app into the other.
 - **E5105**: a `.native.jac` platform variant disagrees with its base module's public surface.
 - A bridged call is a coroutine: `await` it, or the checker reports **E1042**. Failures raise the `BridgeError` family; an un-awaited walker spawn in statement position goes through the outbox (at-least-once, idempotent receipt). Details, colocation and the wire format: `jac-sv-microservices`.

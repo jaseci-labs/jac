@@ -1,17 +1,16 @@
-glob _config_probe: dict[str, bool] = {"active": False};
+obj CancelToken {
+    has requested: bool = False;
 
-def _project_config -> any {
-    if _config_probe["active"] {
-        return None;
+    def set {
+        self.requested = True;
     }
-    _config_probe["active"] = True;
-    try {
-        config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
-        return config_mod.get_config();
-    } except Exception {
-        return None;
-    } finally {
-        _config_probe["active"] = False;
+
+    def clear {
+        self.requested = False;
+    }
+
+    def is_set -> bool {
+        return self.requested;
     }
 }
 
@@ -23,12 +22,13 @@ obj CompileOptions {
         native_require: (list[str] | None) = None,
         iface_ok: bool = False,
         need_full_ast: bool = False,
+        skip_analysis: bool = False,
         skip_native_engine: bool = False,
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
-        force_target_program: bool = False,
         aot_mode: bool = False,
-        kernel_unit: bool = False,
+        native_unit: bool = False,
+        native_link_mode: (str | None) = None,
         force_codespace: str = "",
         memory_profile: (str | None) = None,
         na_gc_mode: (str | None) = None,
@@ -53,17 +53,18 @@ obj CompileOptions {
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
-        cancel_token: any = None;
+        strict_dependencies: bool = False,
+        package_canonical: bool = False,
+        cancel_token: (CancelToken | None) = None;
 
     def postinit {
-        cfg = _project_config();
-        mem_cfg = cfg.memory if cfg is not None else None;
-        native_cfg = cfg.native if cfg is not None else None;
+        import from jaclang.compiler.frontend.host { active_host }
+        project = active_host().project_defaults();
         if self.native_require is None {
-            self.native_require = list(native_cfg.require) if native_cfg else [];
+            self.native_require = list(project.native_require) if project else [];
         }
         if self.memory_profile is None {
-            self.memory_profile = mem_cfg.profile if mem_cfg else "managed";
+            self.memory_profile = project.memory_profile if project else "managed";
         }
         if self.memory_profile not in ("managed", "rc", "nogc") {
             raise ValueError(
@@ -79,26 +80,26 @@ obj CompileOptions {
             self.nogc_enforce_all = self.memory_profile == "nogc";
         }
         if self.memory_enforce is None {
-            self.memory_enforce = list(mem_cfg.enforce) if mem_cfg else [];
+            self.memory_enforce = list(project.memory_enforce) if project else [];
         }
         if self.memory_exempt is None {
-            self.memory_exempt = list(mem_cfg.exempt) if mem_cfg else [];
+            self.memory_exempt = list(project.memory_exempt) if project else [];
         }
         if self.native_target is None {
             import from jaclang.compiler.frontend.codeinfo { effective_native_target }
             self.native_target = effective_native_target();
         }
         if self.native_debug is None {
-            self.native_debug = native_cfg.debug if native_cfg else False;
+            self.native_debug = project.native_debug if project else False;
         }
         if self.rc_debug_codegen is None {
             self.rc_debug_codegen = bool(self.native_debug);
         }
         if self.opt_level is None {
-            self.opt_level = native_cfg.opt if native_cfg else 2;
+            self.opt_level = project.native_opt if project else 2;
         }
         if self.native_threads is None {
-            self.native_threads = native_cfg.threads if native_cfg else 4;
+            self.native_threads = project.native_threads if project else 4;
         }
         if self.dump_ir_path is None {
             self.dump_ir_path = "";
@@ -115,6 +116,23 @@ obj CompileOptions {
         if self.na_debug is None {
             self.na_debug = env_na_debug();
         }
+        if self.native_link_mode is None {
+            self.native_link_mode = project.native_link_mode if project else "objects";
+        }
+        if self.native_link_mode not in NATIVE_LINK_MODES {
+            raise ValueError(
+                f"native_link_mode must be one of {NATIVE_LINK_MODES}, "
+                f"got {self.native_link_mode!r}"
+            );
+        }
+    }
+
+    def effective_triple -> str {
+        if self.native_target {
+            return str(self.native_target);
+        }
+        import from jaclang.compiler.frontend.host { active_host }
+        return active_host().default_target_triple();
     }
 
     def codegen_identity -> str {
@@ -130,9 +148,9 @@ obj CompileOptions {
                 f"target={self.native_target}",
                 f"native_debug={int(bool(self.native_debug))}",
                 f"opt={self.opt_level}",
+                f"threads={self.native_threads}",
                 f"app={self.target_app}",
-                f"app_kind={self.app_kind}",
-                f"kernel_unit={int(bool(self.kernel_unit))}"
+                f"app_kind={self.app_kind}"
             ]
         );
     }
@@ -155,12 +173,57 @@ obj CompileOptions {
                 f"app={self.target_app}",
                 f"app_kind={self.app_kind}"
             ]
-        );
+        )
+            + (";strict_deps=1" if self.strict_dependencies else "");
     }
 
     def analysis_fingerprint -> str {
         import hashlib;
         return hashlib.sha256(self.analysis_identity().encode()).hexdigest()[:12];
+    }
+
+    def base_codegen_identity -> str {
+        """The codegen identity every unit shares. The placement policy is
+        left out: its patterns name modules, and a unit's own identity records
+        only whether the policy names that unit.""";
+        return ";".join(
+            [
+                f"gc={self.na_gc_mode}",
+                f"nogc_all={int(bool(self.nogc_enforce_all))}",
+                "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
+                "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
+                f"rc_debug={int(bool(self.rc_debug_codegen))}",
+                f"target={self.native_target}",
+                f"native_debug={int(bool(self.native_debug))}",
+                f"opt={self.opt_level}",
+                f"threads={self.native_threads}"
+            ]
+        );
+    }
+
+    def unit_codegen_identity(path: str) -> str {
+        """What decides one unit's native products. A unit built under a
+        project's placement policy and the same unit built without it differ
+        only when the policy names the unit, so a stamp records that bit and
+        not the policy; the consumer's application never shapes a unit's code
+        and is left out too. Products a kit sealed under its build policy
+        therefore serve every consumer whose memory model and target agree.""";
+        required = int(self.native_required_for(path)) if path else 0;
+        return self.base_codegen_identity() + f";required={required}";
+    }
+
+    def module_projection -> str {
+        return ";".join(
+            [
+                self.analysis_identity(),
+                self.codegen_identity(),
+                f"aot={int(bool(self.aot_mode))}",
+                f"force_cs={self.force_codespace}",
+                f"default_cs={self.default_codespace}",
+                f"ui={self.ui}",
+                f"root={self.project_root or ''}"
+            ]
+        );
     }
 
     def for_symbols(need_tree: bool = False) -> CompileOptions {
@@ -171,22 +234,25 @@ obj CompileOptions {
         result.iface_ok = not need_tree;
         result.need_full_ast = need_tree;
         result.native_parity = False;
-        result.force_target_program = False;
+
         return result;
     }
 
     def clone_for_native_import -> CompileOptions {
         return CompileOptions(
+            need_full_ast=True,
             skip_native_engine=True,
+            no_ir_cache=self.no_ir_cache,
             native_required=self.native_required,
             native_require=list(self.native_require or []),
             aot_mode=True,
             default_codespace='native',
-            force_target_program=True,
-            no_ir_cache=self.no_ir_cache,
+            native_unit=self.native_unit,
+            native_link_mode=self.native_link_mode,
             na_gc_mode=self.na_gc_mode,
             nogc_enforce_all=self.nogc_enforce_all,
             memory_profile=self.memory_profile,
+            native_threads=self.native_threads,
             memory_enforce=list(self.memory_enforce or []),
             memory_exempt=list(self.memory_exempt or []),
             rc_debug_codegen=self.rc_debug_codegen,
@@ -241,6 +307,10 @@ obj CompileOptions {
         return False;
     }
 }
+
+glob NATIVE_LINK_MODE_OBJECTS: str = "objects",
+     NATIVE_LINK_MODE_BITCODE: str = "bitcode",
+     NATIVE_LINK_MODES: tuple[str, str] = ("objects", "bitcode");
 
 def effective_codegen_fingerprint -> str {
     return CompileOptions().codegen_fingerprint();

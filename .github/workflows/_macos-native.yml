@@ -98,6 +98,18 @@ jobs:
         run: >-
           jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
+      # The same registry loop as test-compiler's passes-native chunk. On
+      # darwin it is what exercises the per-OS records and generated constant
+      # tables (pwd/grp, resource, _stat, errno, syslog) against CPython.
+      - name: Check native standard-library replacements against CPython (darwin)
+        run: |
+          jac install "hypothesis>=6,<7" --global
+          while read -r module tests _ <&3; do
+            case "$module" in ''|'#'*) continue ;; esac
+            for test in $(printf '%s' "$tests" | tr ',' ' '); do
+              jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module"
+            done
+          done 3< jac/bootstrap/python/jacpython-modules.txt
       - name: Provision managed Ruby, CocoaPods, and native Node
         env:
           JAC_TOOLCHAIN_USE_SYSTEM: "0"

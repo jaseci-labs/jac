@@ -76,7 +76,38 @@ test "jac0 type filters preserve order and avoid capturing a type name" {
 }
 
 test "jac0 erases edge endpoint annotations without evaluating their types" {
-    plain = compile_jac("edge Link {}", "endpoints.jac");
+    plain = compile_jac("edge Link: any --> any {}", "endpoints.jac");
     typed = compile_jac("edge Link: Source --> Target {}", "endpoints.jac");
     assert plain == typed;
+}
+
+test "jac0 erases casts without loading their annotations" {
+    src = "def select(value: any) -> any {\n"
+    " return (value) as list[Missing | None];\n}\n"
+    "def optional(value: any) -> any { return value as (Missing | None); }\n"
+    "def chained(value: any) -> any { return value as Missing as Other; }\n"
+    "def nested(value: any) -> any { return [(value as Missing), value as Other]; }\n";
+    namespace: dict[str, any] = {};
+    exec(
+        compile(compile_jac(src, "seed_cast.jac"), "seed_cast.jac", "exec"), namespace
+    );
+    value = [1, 2];
+    for name in ["select", "optional", "chained"] {
+        assert namespace[name](value) is value;
+    }
+    assert namespace["nested"](value) == [value, value];
+}
+
+test "jac0 casts do not erase context manager or exception aliases" {
+    src = "import from contextlib { nullcontext }\n"
+    "def probe -> str {\n"
+    " with nullcontext('kept') as value {\n"
+    "  try { raise ValueError(value); }\n"
+    "  except ValueError as err { return str(err); }\n"
+    " }\n return '';\n}\n";
+    namespace: dict[str, any] = {};
+    exec(
+        compile(compile_jac(src, "seed_alias.jac"), "seed_alias.jac", "exec"), namespace
+    );
+    assert namespace["probe"]() == "kept";
 }

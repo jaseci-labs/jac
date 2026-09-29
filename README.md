@@ -75,6 +75,8 @@ jac run                       # builds the frontend + wasm, serves on http://loc
 
 One language spans all three codespaces in this single codebase: the pages and components compile to JavaScript, the endpoints compile to Python and serve over RPC, and the arcade game in `game/arena.jac` compiles through LLVM to in-browser WebAssembly -- fully borrow-checked, with zero reference counting in the artifact. The docs reader serves the language corpus straight from a real graph, the Ninja Leaderboard persists scores through walkers with no database, and the whole thing is one typechecked, contiguous, synechic codebase. The same tree is the site's source of truth at [jac/examples/jaclang_org](jac/examples/jaclang_org), and it is what CI runs as its full-stack smoke test.
 
+For a smaller example, `jac create mysocial --awetiny` scaffolds [Tiny JacYac](jac/examples/tiny_jacyac): web, mobile, desktop, and CLI clients sharing feed and scoring services. Run it with `cd mysocial` then `jac run --serve --fleet web`.
+
 > Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://www.jaclang.org/docs/latest/quick-guide/install) for versions, upgrading, and IDE setup.
 
 ## Why Jac exists

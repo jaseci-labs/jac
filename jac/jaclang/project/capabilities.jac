@@ -52,7 +52,7 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          "llm": {
              "context": "runtime",
              "deps": {
-                 "litellm": ">=1.75.2,<=1.82.6",
+                 "litellm": ">=1.102.1,<1.103.0",
                  "pillow": ">=12.0.0,<13.0.0",
                  "httpx": ">=0.27.0",
                  "loguru": ">=0.7.2,<0.8.0"
@@ -376,15 +376,16 @@ def missing_capability_dists(capability: str) -> list[str] {
 def ensure_global_capability(capability: str) -> bool {
     import importlib;
     import subprocess;
-    import sys;
+    import from jaclang.project.pyvenv { pip_command, pip_python, pip_env }
     missing = missing_capability_dists(capability);
     if not missing {
         return get_capability(capability) is not None;
     }
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
+        pip_command(pip_python(), ["install", "--quiet"] + missing),
         capture_output=True,
-        text=True
+        text=True,
+        env=pip_env()
     );
     importlib.invalidate_caches();
     if result.returncode != 0 {

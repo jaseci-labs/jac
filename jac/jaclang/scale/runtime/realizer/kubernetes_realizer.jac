@@ -5,7 +5,7 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.config.project_env { load_project_env }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.config.app_config { AppConfig, deployed_tree }
 import from jaclang.scale.runtime.fleet {
     FleetSpec,
     fleet_from_config,
@@ -112,7 +112,7 @@ obj KubernetesRealizer {
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'");
         }
-        code_folder = os.path.dirname(filename) or '.';
+        (code_folder, entry_file) = deployed_tree(filename);
         if target in ("kubernetes", "kubernetes-microservice") {
             self.fleet = self._resolve_fleet(code_folder);
             self._print_fleet_banner(self.fleet);
@@ -178,15 +178,12 @@ obj KubernetesRealizer {
 
         code_folder = os.path.relpath(code_folder);
         code_folder = pathlib.Path(code_folder).as_posix();
-        base_file_path = os.path.basename(filename);
         if isinstance(deployment_target, KubernetesTargetBase) {
             deployment_target.secrets = scale_config.get_secrets_config();
         }
 
         app_config = AppConfig(
-            code_folder=code_folder,
-            file_name=base_file_path,
-            served_app=self.served_app
+            code_folder=code_folder, file_name=entry_file, served_app=self.served_app
         );
         console.warning(
             "Copying local source into the cluster via PVC and installing "

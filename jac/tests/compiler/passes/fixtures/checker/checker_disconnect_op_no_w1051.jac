@@ -13,7 +13,7 @@ node NodeB {
     has name: str = "x";
 }
 
-edge MyEdge {
+edge MyEdge : NodeA --> NodeB {
     has weight: int = 0;
 }
 

@@ -51,6 +51,10 @@ def _publish_home_module -> (object | None) {
     setattr(shim, '_EarlyNode', _EarlyNode);
     setattr(shim, '_EarlyChild', _EarlyChild);
     previous = sys.modules.get(_EarlyNode.__module__);
+    facts = getattr(previous, '__jac_persistence__', ());
+    if facts {
+        setattr(shim, '__jac_persistence__', facts);
+    }
     sys.modules[_EarlyNode.__module__] = shim;
     return previous;
 }
@@ -235,15 +239,25 @@ test "an anchor whose class is not registered round-trips instead of dropping" {
 }
 
 
-test "_get_class resolves an unregistered archetype from its own module" {
+test "_get_class resolves an unregistered archetype from its durable identity" {
+    import from jaclang.data.type_identity { type_module, TypeResolutionError }
     key = _key(_EarlyChild);
     saved = Serializer._registry.pop(key, None);
     previous_home = _publish_home_module();
     Serializer._reset_warn_cache();
     try {
-        resolved = Serializer._get_class(_EarlyChild.__module__, "_EarlyChild");
+        resolved = Serializer._get_class(type_module(_EarlyChild), "_EarlyChild");
         assert resolved is _EarlyChild , (
             f"resolution refused a live class: {resolved}"
+        );
+        refused = '';
+        try {
+            Serializer._get_class(_EarlyChild.__module__, "_EarlyChild");
+        } except TypeResolutionError as error {
+            refused = str(error);
+        }
+        assert 'archetype_alias' in refused , (
+            "a runtime module name for a class with a durable identity was accepted"
         );
     } finally {
         _restore_home_module(previous_home);

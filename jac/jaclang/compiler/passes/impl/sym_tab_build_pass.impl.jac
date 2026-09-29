@@ -141,6 +141,7 @@ impl SymTabBuildPass._import_absorbed_symbol(
     binding = scope.def_insert(declaration, single_decl='import absorb', imported=True);
     if binding is not None {
         binding.provider = symbol.provider;
+        binding.imported_from = symbol;
     }
 }
 
@@ -196,11 +197,8 @@ impl SymTabBuildPass.exit_module_path with ModulePath exit {
     } elif (
         here.path
         and not here.is_import_from
-        and here.parent_of_type(Import)
-        and not (
-            here.parent_of_type(Import).from_loc
-            and here.parent_of_type(Import).jac_detected
-        )
+        and (owner := here.find_parent_of_type(Import)) is not None
+        and not (owner.from_loc and owner.jac_detected)
     ) {
         if isinstance(here.path[0], Name) {
             self.import_binding_scope(here.path[0]).def_insert(
@@ -208,7 +206,11 @@ impl SymTabBuildPass.exit_module_path with ModulePath exit {
             );
         }
     } else {}
-    if (here.path and (here.is_import_from or here.alias)) {
+    if (
+        here.path
+        and isinstance(here.parent, Import)
+        and (here.is_import_from or here.alias)
+    ) {
         self._bind_import_path_symbols(here);
     }
 }

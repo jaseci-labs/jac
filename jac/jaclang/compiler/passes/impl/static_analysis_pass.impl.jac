@@ -140,6 +140,10 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             continue;
         }
 
+        if name_nd.find_parent_of_type(ImplImport) is not None {
+            continue;
+        }
+
         if not name_nd.is_kwesc {
             position = self._osp_shape_position(name_nd);
             if position is not None {
@@ -154,9 +158,46 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         suggestion = self._literal_case_suggestion(name_nd.value);
         if suggestion is not None {
             hint = f"Jac uses Python-style literals -- did you mean `{suggestion}`?";
+        } else {
+            hint = self._enclosing_class_member(name_nd);
         }
         self.ctx.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
     }
+}
+
+impl StaticAnalysisPass._enclosing_class_member(name_nd: Name) -> (str | None) {
+    method: (Ability | None) = None;
+    cur = name_nd.parent;
+    while cur is not None {
+        owner: (UniNode | None) = cur;
+        if isinstance(cur, Ability) and method is None {
+            method = cur;
+        }
+        if isinstance(cur, ImplDef) and cur.decl_link is not None {
+            if method is None and isinstance(cur.decl_link, Ability) {
+                method = cur.decl_link;
+            }
+            owner = cur.decl_link.find_parent_of_type(Archetype);
+        }
+        if isinstance(owner, Archetype) and name_nd.value in owner.names_in_scope {
+            receiver = "self";
+            if method is not None
+                and (
+                    method.is_classmethod
+                    or any(
+                        isinstance(dec, Name) and dec.value == "classmethod"
+                        for dec in (method.decorators or [])
+                    )
+                ) {
+                receiver = "cls";
+            } elif method is not None and method.is_static {
+                receiver = owner.sym_name;
+            }
+            return f"`{name_nd.value}` is a member of `{owner.sym_name}`, and a method body does not see its class's names; refer to it as `{receiver}.{name_nd.value}`.";
+        }
+        cur = cur.parent;
+    }
+    return None;
 }
 
 impl StaticAnalysisPass._literal_case_suggestion(name: str) -> (str | None) {
@@ -233,8 +274,8 @@ impl StaticAnalysisPass._check_unreachable_code(mod: Module) -> None {
     }
 
     for container in containers {
-        body = container?.body;
-        if not body or not isinstance(body, Sequence) {
+        body: list[UniNode] = [container->:BodyRole:->];
+        if not body {
             continue;
         }
         found_terminator = False;
@@ -403,13 +444,17 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
     }
 
     for nd in mod.get_all_sub_nodes(typ=Archetype) {
-        if nd.src_endpoint is not None and nd.arch_kind != "edge" {
-            self.ctx.emit(
-                E2027,
-                node_override=nd.src_endpoint,
-                arch_type=(nd.arch_kind or nd.arch_type.value),
-                name=nd.name.value
-            );
+        if nd.arch_kind != "edge" {
+            if nd.src_endpoint is not None {
+                self.ctx.emit(
+                    E2027,
+                    node_override=nd.src_endpoint,
+                    arch_type=(nd.arch_kind or nd.arch_type.value),
+                    name=nd.name.value
+                );
+            }
+        } elif not nd.declares_endpoints() {
+            self.ctx.emit(E2086, node_override=nd.name, name=nd.name.value);
         }
     }
 }
@@ -422,8 +467,6 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
     import from jaclang.compiler.symbol_utils {
         ClientImportVerdict,
         classify_client_import_item,
-        decl_has_access,
-        import_target_pinned_server,
         is_client_boundary_import,
         report_dead_client_import,
         resolve_import_source_module
@@ -475,7 +518,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             }
             import os;
             import from jaclang.compiler.frontend.diagnostics { W1106 }
-            import from jaclang.project.modresolver { is_path_alias_import }
+            import from jaclang.compiler.frontend.host { active_host }
             import from jaclang.compiler.placement.placement_pins {
                 in_client_npm_world
             }
@@ -483,7 +526,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             sibling_file = os.path.join(os.path.dirname(mod_path), spv);
             if (
                 not in_client_npm_world(spv, mod_path)
-                and not is_path_alias_import(spv, mod_path)
+                and not active_host().is_path_alias(spv, mod_path)
                 and not os.path.isfile(sibling_file)
             ) {
                 self.ctx.emit(W1106, node_override=spv_node, name=spv);
@@ -496,14 +539,12 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
         if source_mod is None {
             continue;
         }
-        pinned_server = import_target_pinned_server(nd);
         for item in nd.items {
             if not isinstance(item, ModuleItem) {
                 continue;
             }
             verdict = classify_client_import_item(source_mod, item);
-            if verdict == ClientImportVerdict.DEAD
-                and not (pinned_server and decl_has_access(source_mod, item)) {
+            if verdict == ClientImportVerdict.DEAD {
                 report_dead_client_import(self, nd, item);
             }
         }

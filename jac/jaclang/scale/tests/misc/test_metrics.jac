@@ -1,3 +1,6 @@
+import logging;
+import os;
+import tempfile;
 import from jaclang.scale.observability.metrics { NoOpMetricsCollector }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.observability { prometheus_metrics }
@@ -436,4 +439,101 @@ test "noop read-tier retry is a no-op" {
     collector = NoOpMetricsCollector();
     collector.record_read_tier_retry("walker:app.place_order");
     assert collector.expose() == b"";
+}
+
+
+class _CaptureLogs(logging.Handler) {
+    def init(self: _CaptureLogs) {
+        logging.Handler.__init__(self);
+        self.records = [];
+    }
+
+    def emit(self: _CaptureLogs, record: any) {
+        self.records.append(record);
+    }
+}
+
+
+def _collector_for_fleet(workers: int, multiproc_dir: str) -> tuple[any, list[any]] {
+    handler = _CaptureLogs();
+    previous_level = prometheus_metrics.logger.level;
+    previous_disable = logging.root.manager.disable;
+    prometheus_metrics.logger.addHandler(handler);
+    prometheus_metrics.logger.setLevel(logging.ERROR);
+    logging.disable(logging.NOTSET);
+    if multiproc_dir {
+        os.environ["PROMETHEUS_MULTIPROC_DIR"] = multiproc_dir;
+    }
+    try {
+        collector = PrometheusMetricsCollector(
+            config=ENABLED_CONFIG, worker_count=workers
+        );
+    } finally {
+        if multiproc_dir {
+            del os.environ["PROMETHEUS_MULTIPROC_DIR"];
+        }
+        prometheus_metrics.logger.removeHandler(handler);
+        prometheus_metrics.logger.setLevel(previous_level);
+        logging.disable(previous_disable);
+    }
+    return (collector, handler.records);
+}
+
+
+"""A fleet whose entry point never opened the shared directory would count into
+per-worker memory and answer each scrape from whichever worker took it, so the
+collector has to say that in the serving log."""
+test "a fleet with no metrics directory is reported" {
+    (collector, records) = _collector_for_fleet(2, "");
+    messages = [r.getMessage() for r in records];
+    assert len(messages) == 1 , f"expected one error, got {messages}";
+    assert "PROMETHEUS_MULTIPROC_DIR is unset with 2 workers" in messages[0] , (
+        messages[0]
+    );
+    collector.record_request("GET", "/walker/Ping", 200, 0.01);
+    assert b"test_app_http_requests_total" in collector.expose();
+}
+
+
+"""#9190 in miniature: the directory is set but prometheus_client already fixed
+its values in memory, which is what a later import reorder would do. The
+collector must name that and still expose what this process recorded, rather
+than scraping an empty directory and answering nothing."""
+test "a fleet whose values were fixed before the directory was set is reported" {
+    tmp = tempfile.mkdtemp(prefix="jac-metrics-test-");
+    try {
+        (collector, records) = _collector_for_fleet(2, tmp);
+        messages = [r.getMessage() for r in records];
+        assert len(messages) == 1 , f"expected one error, got {messages}";
+        assert "had already chosen in-memory values" in messages[0] , messages[0];
+        collector.record_request("GET", "/walker/Ping", 200, 0.01);
+        assert b"test_app_http_requests_total" in collector.expose();
+    } finally {
+        import shutil;
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+"""A single-worker app is the ordinary case and must stay quiet."""
+test "a single worker collector reports nothing" {
+    (_collector, records) = _collector_for_fleet(1, "");
+    assert records == [] , [r.getMessage() for r in records];
+}
+
+
+"""`jac test` runs whole files back to back in one process, so a helper that
+widens the process-wide logging cutoff to read a record has to put it back or
+the next file silently loses its own logging."""
+test "capturing collector logs leaves the global logging cutoff alone" {
+    previous = logging.root.manager.disable;
+    logging.disable(logging.CRITICAL);
+    try {
+        _collector_for_fleet(1, "");
+        assert logging.root.manager.disable == logging.CRITICAL , (
+            f"cutoff left at {logging.root.manager.disable}"
+        );
+    } finally {
+        logging.disable(previous);
+    }
 }

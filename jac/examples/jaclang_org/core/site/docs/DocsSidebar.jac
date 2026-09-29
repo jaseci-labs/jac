@@ -1,17 +1,5 @@
-import from core.docs.graph { TreeNode, VersionInfo }
 import from "@jac/runtime" { Link }
-import from core.utils { cn }
-import from .DocsGraphFloat { DocsGraphFloat }
-import from core.site.ui.select {
-    Select,
-    SelectContent,
-    SelectGroup,
-    SelectItem,
-    SelectTrigger,
-    SelectValue
-}
-import from core.site.ui.skeleton { Skeleton }
-import from core.site.ui.input { Input }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ArrowRight01Icon, BookOpen01Icon }
 

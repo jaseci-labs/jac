@@ -62,6 +62,7 @@ class JacClientCompiler {
         self: JacClientCompiler, runtime_filename: str
     ) -> tuple[str, list[str]];
 
+    def emit_prelude(self: JacClientCompiler) -> Path;
     def compile_pwa_runtime(self: JacClientCompiler) -> tuple[str, list[str]];
     def compile_mobui_utils(self: JacClientCompiler) -> tuple[str, list[str]];
     def emit_dependencies(

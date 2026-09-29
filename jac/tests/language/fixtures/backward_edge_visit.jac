@@ -6,7 +6,7 @@ node MyNode {
     }
 }
 
-edge MyEdge {
+edge MyEdge : MyNode | Root --> MyNode {
     has path: int;
 
     can do with MyWalker entry {

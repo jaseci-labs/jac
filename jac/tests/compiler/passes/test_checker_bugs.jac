@@ -30,6 +30,8 @@ Bug index:
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
+  #WITHAS-2 - a `with ... as x` alias read before the checker walked its `with` (a
+              native import's interface build) was Unknown and stayed cached
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
@@ -39,6 +41,10 @@ Bug index:
                       Unknown when the included submodule imported back from its
                       own package (circular self-import); poisoned the vendored
                       llvm ir/binding surface and every native pass (#7163)
+  #UNBOUND-1 - an instance method read through its class and used as a value
+               (`m = Cls.method; m(obj, x)`, a Callable argument) lost its
+               receiver parameter; only a direct `Cls.method(obj, x)` call
+               bound it
   #LOOPHDR-1 - loop-header back-edge detection used find_parent_of_type(<same
                kind>), so a back edge originating inside a nested loop of the
                SAME kind was treated as a loop-entry pred and destroyed the
@@ -117,6 +123,10 @@ Bug index:
                the declaration path widens literals, so an annotated
                `list[str]` local was narrowed to `list[LiteralString]` anyway
                (#8982 item 12)
+  #PROTOOVL-1 - a protocol member implemented by an overloaded method solved
+                the protocol's type variable from the first overload only, so
+                `round(x, 3)` on a float matched `_SupportsRound2[_T]` against
+                `float.__round__`'s ndigits-less overload and typed as `int`
 """
 
 import os;
@@ -777,12 +787,36 @@ test "bug_subscript_index_narrowing" {
 test "bug_subscript_index_narrowing_negative" {
     program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
 
-    assert len(program.errors_had) >= 5 , (
-        "Variable index, range slice, and post-narrow subscript writes "
-        "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
-        "Expected at least 5 E1099 errors but got "
-        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    # The reads after a range slice and after each subscript write
+    # (items[0]=, items[-1]=, config["host"]=) are re-widened and must error.
+    # The writes themselves are valid: the container accepts `Other`, so a
+    # narrowed read type must not reject them (#9286). The variable-index read
+    # (`items[i].value`) is not flagged yet; before #9286 the count below was
+    # met only because the three writes were wrongly rejected.
+    e1099 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1099"
+    ];
+    lines = sorted(
+        [
+            e.loc.first_line
+            for e in e1099
+            if e.loc
+        ]
     );
+    for expected in [13, 22, 30, 38] {
+        assert expected in lines , (
+            f"Range slice and post-narrow subscript reads must error: no E1099 at "
+            f"line {expected}; got {[str(e) for e in program.errors_had]}"
+        );
+    }
+    write_errors = [
+        e
+        for e in program.errors_had
+        if "Cannot assign Other to Item" in str(e)
+    ];
+    assert not write_errors , f"writes to a narrowed slot were rejected: {write_errors}";
 }
 
 test "bug_cast_union_instance" {
@@ -1040,6 +1074,71 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #WITHAS-2: the alias type was only ever set by the checker pass as it
+# entered the `with` statement. A native module analyses its imports in full,
+# and each import's interface is built first, typing the import's function
+# bodies before the checker walks them: the alias read as Unknown there, the
+# Unknown stayed cached on the use, and `jac check` reported E1032 inside the
+# import (the bundled native `zipfile` among them) and then failed with
+# "Native dependency analysis failed". The evaluator now derives the alias
+# from `__enter__` whenever it is read.
+test "bug_withas_2_alias_typed_before_checker_walks_with" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    failure = "";
+    try {
+        program.compile(
+            os.path.join(CHECKER_FIXTURES, "checker_with_alias_native_dep.jac"),
+            options=CompileOptions(
+                no_cgen=True,
+                native_parity=True,
+                iface_ok=True,
+                strict_dependencies=True
+            )
+        );
+    } except RuntimeError as e {
+        failure = str(e);
+    }
+    assert failure == "" and program.errors_had == [] , (
+        "Bug #WITHAS-2: a `with ... as` alias in a native module's import must "
+        f"type through __enter__. Got failure {failure!r}, errors: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+}
+
+# The same reads with no pass running at all: a native module's `open` resolves
+# to the native builtin by the module it is written in (not by whichever node a
+# running pass happens to be on), and the alias binds through `__enter__`.
+test "bug_withas_2_native_alias_typed_outside_a_pass" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.frontend.unitree as uni;
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_with_alias_outside_pass.jac"),
+        options=CompileOptions(symtab_ir_only=True, force_codespace="native")
+    );
+    evaluator = program.get_type_evaluator();
+    opens = [
+        call
+        for call in mod.get_all_sub_nodes(uni.FuncCall)
+        if isinstance(call.target, uni.Name) and call.target.value == "open"
+    ];
+    uses = [
+        name
+        for name in mod.get_all_sub_nodes(uni.Name)
+        if name.value == "stream" and name.sym is not None and name.sym.decl is not name
+    ];
+    assert len(opens) == 1 and len(uses) == 1 , f"fixture shape changed: {opens} {uses}";
+    open_type = str(evaluator.get_type_of_expression(opens[0]));
+    alias_type = str(evaluator.get_type_of_expression(uses[0]));
+    assert open_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: native `open(path, \"rb\")` typed {open_type}, not BinaryFile"
+    );
+    assert alias_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: the `with` alias typed {alias_type}, not BinaryFile"
     );
 }
 
@@ -2043,5 +2142,45 @@ test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
     );
     assert len(program.errors_had) == 0 , "\n".join(
         e.pretty_print() for e in program.errors_had
+    );
+}
+
+test "assignment narrowing preserves contextual container element types" {
+    program = compile_and_check("checker_contextual_container_assignment.jac");
+    errors = [e.pretty_print() for e in program.errors_had];
+    assert len(errors) == 1 , '\n'.join(errors);
+    assert 'not a Base' in errors[0] , errors[0];
+}
+
+test "bug_protoovl1_overloaded_protocol_member_picks_fitting_overload" {
+    program = compile_and_check("checker_protocol_overloaded_member.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert len(program.errors_had) == 2 , (
+        "Bug #PROTOOVL-1: only the two deliberate mismatches may fire. Got: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+    assert "Cannot assign float to int" in by_line.get(10, "") , (
+        "Bug #PROTOOVL-1: round(float, ndigits) must type as float. Line 10 "
+        f"reported: {by_line.get(10)}"
+    );
+    assert "Cannot assign int to str" in by_line.get(11, "") , (
+        "Bug #PROTOOVL-1: round(float) must still type as int. Line 11 "
+        f"reported: {by_line.get(11)}"
+    );
+}
+
+# Bug #UNBOUND-1: `Cls.method` read as a value is a function taking the
+# receiver first. The type now carries that (FunctionTypeFlags.UnboundMethod
+# with an explicit self), so a call through a name, a list element or a
+# Callable parameter binds the receiver as a direct `Cls.method(obj, x)` does.
+test "bug_unbound_1_method_through_class_as_value" {
+    program = compile_and_check("checker_unbound_method_value.jac");
+    assert program.errors_had == [] , (
+        "Bug #UNBOUND-1: an unbound method used as a value must take its "
+        f"receiver. Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

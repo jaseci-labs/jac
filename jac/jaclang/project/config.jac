@@ -1,3 +1,4 @@
+import from jaclang.project.persistence { PersistenceConfig }
 import os;
 import re;
 import sys;
@@ -49,11 +50,16 @@ obj RunConfig {
 }
 
 obj NativeConfig {
-    has require: list[str] = [],
+    has link_mode: str = "objects",
+        require: list[str] = [],
         target: str = "",
         opt: int = 2,
         debug: bool = False,
         threads: int = 4;
+}
+
+obj ArchConfig {
+    has closed: list[str] = [];
 }
 
 obj MemoryConfig {
@@ -189,10 +195,12 @@ obj LintConfig {
 obj CheckConfig {
     has print_errs: bool = True,
         lint: LintConfig = LintConfig(),
+        exclude: list[str] = [],
         suppress: list[str] = [],
         suppress_categories: list[str] = [],
         enforce_access: bool = False,
-        warn_native_seams: bool = True;
+        warn_native_seams: bool = True,
+        untyped_external: str = "warning";
 }
 
 obj DotConfig {
@@ -241,7 +249,29 @@ obj DevConfig {
         fmt_jobs: str = "";
 }
 
-def interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> str;
+obj UnresolvedRef {
+    has path: str = "",
+        var: str = "",
+        raw: str = "",
+        required: bool = False,
+        message: str = "";
+
+    def describe -> str;
+}
+
+def interpolate_env_vars(
+    value: str,
+    environ: dict[str, str] | None = None,
+    sink: list[UnresolvedRef] | None = None
+) -> str;
+
+def resolve_env_refs(
+    data: any, environ: dict[str, str] | None = None, path: str = ""
+) -> tuple[any, list[UnresolvedRef]];
+
+def report_env_findings(
+    refs: list[UnresolvedRef], context: str, hint: str = ""
+) -> None;
 
 def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 
@@ -252,10 +282,12 @@ def serialize_toml(data: dict[str, any], prefix: str = "") -> str;
 def toml_value(value: any) -> str;
 
 obj JacConfig {
-    has project: ProjectConfig = ProjectConfig(),
+    has persistence: PersistenceConfig = PersistenceConfig(),
+        project: ProjectConfig = ProjectConfig(),
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
         native: NativeConfig = NativeConfig(),
+        arch: ArchConfig = ArchConfig(),
         memory: MemoryConfig = MemoryConfig(),
         placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),
@@ -288,7 +320,8 @@ obj JacConfig {
         apps: dict[str, AppConfig] = {},
         is_workspace: bool = False,
         _base_data: dict[str, any] = {},
-        _layers: list[tuple[str, str]] = [];
+        _layers: list[tuple[str, str]] = [],
+        unresolved: list[UnresolvedRef] = [];
 
     has default_app: str { getter; }
 

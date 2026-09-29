@@ -4,14 +4,14 @@ node AbortItem {
     has name: str = "";
 }
 
-walker CreateAndFail {
+walker:protect CreateAndFail {
     can go with Root entry {
         here ++> AbortItem(name="ghost");
         raise Exception("intentional failure after mutation");
     }
 }
 
-walker DeleteAndFail {
+walker:protect DeleteAndFail {
     can go with Root entry {
         for nbr in [-->] {
             del nbr;
@@ -20,7 +20,7 @@ walker DeleteAndFail {
     }
 }
 
-walker CreateOk {
+walker:protect CreateOk {
     has name: str = "kept";
 
     can go with Root entry {
@@ -29,7 +29,7 @@ walker CreateOk {
     }
 }
 
-walker CountItems {
+walker:protect CountItems {
     can go with Root entry {
         report {"count": len([-->])};
     }

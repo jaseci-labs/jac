@@ -4,12 +4,14 @@ import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     ScalingMode
 }
 import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
+import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 import from jaclang.scale.deploy.target.kubernetes.target {
     KubernetesTarget,
     apply_http_activations_for_bundle,
     reap_stale_scaling_resources_for_bundle
 }
 import unittest.mock;
+import from types { SimpleNamespace }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -20,6 +22,7 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     Trigger,
     TriggerAuth
 }
+import from jaclang.scale.models.resource_status { ResourceStatus }
 import from jaclang.scale.deploy.autoscale.http_activation {
     HTTPRoutingRule,
     HTTPPathMatch,
@@ -173,6 +176,8 @@ test "_resolve_scaling: an http_activation service is HTTP_ACTIVATION, carries t
     # Mutual exclusion: activation replaces the metric autoscaler, never coexists
     # (KEDA rejects a second ScaledObject on an HPA-managed target).
     assert plan["autoscaler"] == {};
+    # Scale-to-zero is legal here, so the plan's replica floor is 0.
+    assert plan["replica_floor"] == 0;
 }
 
 test "_resolve_scaling: the gateway never inherits http_activation even when the top-level default enables it" {
@@ -228,6 +233,15 @@ test "generate_manifests never activates the gateway, even though every microser
         bundle = b.generate_manifests(AppConfig(code_folder=project, app_name="t"), "");
         # The microservice picks up the shared default unchanged...
         assert bundle["scaling"]["billing_ops"]["mode"] == ScalingMode.HTTP_ACTIVATION;
+        # ...and its Deployment carries that intent for every status reader.
+        assert bundle["deployments"]["billing_ops"]["metadata"]["annotations"][
+            REPLICA_FLOOR_ANNOTATION
+        ]
+            == "0";
+        assert bundle["deployments"][GATEWAY_NAME]["metadata"]["annotations"][
+            REPLICA_FLOOR_ANNOTATION
+        ]
+            == "1";
         # ...but the gateway, present in every bundle regardless of the routes
         # table, never does - it is the ingress entry point and must stay warm.
         assert bundle["scaling"][GATEWAY_NAME]["mode"] != ScalingMode.HTTP_ACTIVATION;
@@ -244,6 +258,47 @@ test "_resolve_scaling: a plain service with the default hpa is METRIC, not acti
     assert plan["autoscaler"] != {};
     assert plan["http_activation"] == {};
     assert plan["scale_target_name"] == "worker-deployment";
+    assert plan["replica_floor"] == plan["autoscaler"]["min"];
+
+    # KEDA's idle_replicas is the floor that matters for scale-to-zero; under
+    # the HPA engine it is inert, so the floor stays at min.
+    keda = _builder(
+        {"worker": {}},
+        k8s_config=KubernetesConfig(
+            app_name="t", namespace="t-ns", autoscaler_engine="keda", idle_replicas=0
+        )
+    );
+    assert keda._resolve_scaling(
+        "worker", _dep("worker-deployment"), _svc("worker-service")
+    )["replica_floor"]
+        == 0;
+    hpa = _builder(
+        {"worker": {}},
+        k8s_config=KubernetesConfig(app_name="t", namespace="t-ns", idle_replicas=0)
+    );
+    assert hpa._resolve_scaling(
+        "worker", _dep("worker-deployment"), _svc("worker-service")
+    )["replica_floor"]
+        == 1;
+
+    # The resolved idle_replicas rides on the plan, so the ScaledObject KEDA
+    # gets and the floor every status reader trusts cannot drift apart.
+    worker_plan = keda._resolve_scaling(
+        "worker", _dep("worker-deployment"), _svc("worker-service")
+    );
+    assert worker_plan["idle_replicas"] == 0;
+    assert hpa._resolve_scaling(
+        "worker", _dep("worker-deployment"), _svc("worker-service")
+    )["idle_replicas"]
+        is None;
+
+    # ...and the gateway is exempt from idle_replicas=0 for the same reason it
+    # is exempt from http_activation: nothing wakes the ingress entry point.
+    gw_plan = keda._resolve_scaling(
+        GATEWAY_NAME, _dep("gateway-deployment"), _svc("gateway-service")
+    );
+    assert gw_plan["replica_floor"] == gw_plan["autoscaler"]["min"] , gw_plan;
+    assert gw_plan["idle_replicas"] is None , gw_plan;
 }
 
 
@@ -466,13 +521,32 @@ test "generate_manifests raises when two services inherit the shared catch-all r
 # HTTP activation's "a redeploy doesn't reset a scaled-to-zero target" guarantee
 # depends entirely on _apply_or_replace sending patch_body (with replicas
 # stripped) to `update` instead of the full manifest, while a fresh `create`
-# still gets the full manifest. Pin that contract directly so a future change
-# to _apply_or_replace can't silently break it.
+# still gets the full manifest. Pin that contract directly, and the decision
+# that produces the patch_body with it, so neither can go back to being keyed to
+# HTTP activation alone.
 
 def _target -> KubernetesTarget {
     return KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
 }
 
+
+test "every autoscaled mode gives up spec.replicas, not just HTTP activation" {
+    manifest = {
+        "metadata": {"name": "svc-deployment"},
+        "spec": {"replicas": 3, "template": {}}
+    };
+    for mode in [ScalingMode.METRIC, ScalingMode.HTTP_ACTIVATION] {
+        body = _target()._deployment_patch_body(manifest, {"mode": mode});
+        assert body is not None , mode;
+        assert "replicas" not in body["spec"] , mode;
+        assert body["spec"]["template"] == {} , mode;
+    }
+    # No autoscaler, or no plan at all: the manifest still owns the field.
+    assert _target()._deployment_patch_body(manifest, {"mode": ScalingMode.NONE})
+        is None;
+    assert _target()._deployment_patch_body(manifest, {}) is None;
+    assert "replicas" in manifest["spec"] , "the source manifest must not be mutated";
+}
 
 test "_apply_or_replace sends patch_body, not the full manifest, to update when the target exists" {
     mock_api = unittest.mock.MagicMock();
@@ -1420,4 +1494,424 @@ test "discover_capabilities caches per (cluster, service-address, client-identit
         raised = True;
     }
     assert not raised , "preflight must report a 403 as a warning, not an unhandled exception";
+}
+
+
+# --- Section H: get_runtime_status -- what the Deployment alone cannot say ---
+# The Deployment reports how many pods exist, never why. These drive the real
+# KEDAAutoscaler.get_runtime_status against a mocked API client and pin the
+# three answers only the ScaledObject and its HPA carry: a scaler that cannot
+# reach its metric, a trigger that has fired before any pod is up, and the
+# replica floor the controller is actually enforcing.
+def _so(
+    ready: str = "True",
+    active: str = "False",
+    idle: (int | None) = 0,
+    hpa_name: str = "",
+    ready_reason: str = "ScaledObjectReady",
+    ready_message: str = ""
+) -> dict[str, any] {
+    spec: dict[str, any] = {"minReplicaCount": 1, "maxReplicaCount": 5};
+    if idle is not None {
+        spec["idleReplicaCount"] = idle;
+    }
+    status: dict[str, any] = {
+        "conditions": [
+            {
+                "type": "Ready",
+                "status": ready,
+                "reason": ready_reason,
+                "message": ready_message
+            },
+            {"type": "Active", "status": active, "reason": "", "message": ""}
+        ]
+    };
+    if hpa_name {
+        status["hpaName"] = hpa_name;
+    }
+    return {
+        "metadata": {"name": "worker-scaledobject", "resourceVersion": "4211"},
+        "spec": spec,
+        "status": status
+    };
+}
+
+
+def _dep_at(replicas: int, ready: int, annotated: bool = False) -> any {
+    # Plain data, not a mock: this is what the apiserver reports, and a mock
+    # here would be asserting the shape we assumed rather than the one we read.
+    return SimpleNamespace(
+        metadata=SimpleNamespace(
+            resource_version="991",
+            generation=2,
+            annotations={"jac-scale.replica-floor": "1"} if annotated else None
+        ),
+        spec=SimpleNamespace(replicas=replicas),
+        status=SimpleNamespace(
+            observed_generation=2,
+            replicas=replicas,
+            ready_replicas=ready,
+            available_replicas=ready,
+            updated_replicas=replicas,
+            conditions=[]
+        )
+    );
+}
+
+
+def _status_apis(
+    scaled_object: (dict[str, any] | None), dep: any, so_error: (int | None) = None
+) -> tuple[any, any, any] {
+    custom = unittest.mock.MagicMock();
+    if so_error is not None {
+        custom.get_namespaced_custom_object.side_effect = ApiException(status=so_error);
+    } else {
+        custom.get_namespaced_custom_object.return_value = scaled_object;
+    }
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = dep;
+    return (custom, apps, unittest.mock.MagicMock());
+}
+
+
+test "the ScaledObject decides what the workload's replica count means" {
+    # Each row is one live ScaledObject over the same zero-replica Deployment.
+    # Reading only the Deployment, every row looks identical.
+    cases: list[tuple[dict[str, any], str, str, str]] = [
+        (
+            _so(
+                ready="False",
+                ready_reason="ScalerFailed",
+                ready_message="prometheus scaler: dial tcp: no such host"
+            ),
+            "degraded",
+            "ScalerFailed",
+            "a scaler that cannot reach its metric is broken, not idle"
+        ),
+        (
+            _so(active="True"),
+            "activating",
+            "ScalerActivating",
+            "a fired trigger with no pod up yet is a scale-up in progress"
+        ),
+        (
+            _so(active="False"),
+            "inactive",
+            "Idle",
+            "a quiet trigger at a zero floor is the resting state"
+        ),
+        (
+            _so(idle=None),
+            "degraded",
+            "ScaledBelowFloor",
+            "no idleReplicaCount means the floor is minReplicaCount, so zero is wrong"
+        )
+    ];
+    for (scaled_object, expected, reason, why) in cases {
+        (custom, apps, v2) = _status_apis(scaled_object, _dep_at(0, 0));
+        out = KEDAAutoscaler(
+            _custom_api=custom, _apps_api=apps, _v2_api=v2
+        ).get_runtime_status(
+            "worker-deployment", "ns"
+        );
+        assert out.status.value == expected , f"{why}: got {out.status.value}";
+        assert out.reason == reason , f"{why}: got {out.reason}";
+    }
+
+    # The live ScaledObject is the authority on the floor, so a Deployment with
+    # no replica-floor annotation is still judged correctly.
+    (custom, apps, v2) = _status_apis(_so(idle=0), _dep_at(0, 0, annotated=False));
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert out.replica_floor == 0 , out.replica_floor;
+    assert out.is_settled();
+    assert out.trigger_active == False and out.scaler_ready == True;
+}
+
+
+test "an idled target is not degraded just because its HPA stopped scaling" {
+    # KEDA's HPA reports ScalingActive False whenever the target sits at zero,
+    # so reading that as a failure calls every resting scale-to-zero workload
+    # broken. The earlier HPA test only modelled a real metric failure, which is
+    # why a live cluster was the thing that caught this.
+    (custom, apps, v2) = _status_apis(
+        _so(ready="True", idle=0, hpa_name="keda-hpa-worker"), _dep_at(0, 0)
+    );
+    v2.read_namespaced_horizontal_pod_autoscaler.return_value = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=0,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="ScalingDisabled",
+                    message="scaling is disabled since the replica count of the target is zero"
+                )
+            ]
+        )
+    );
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.status == ResourceStatus.INACTIVE , out.status;
+    assert out.reason == "Idle" , out.reason;
+    assert out.is_settled();
+
+    # The HPA and the Deployment are separate objects read moments apart, so just
+    # after a deploy the HPA already reports ScalingDisabled while the Deployment
+    # still reads its pre-idle count. Comparing replica counts to decide this
+    # loses that race; the reason is what settles it.
+    (c1, a1, v21) = _status_apis(
+        _so(ready="True", idle=0, hpa_name="keda-hpa-worker"), _dep_at(1, 1)
+    );
+    v21.read_namespaced_horizontal_pod_autoscaler.return_value = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=0,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="ScalingDisabled",
+                    message="scaling is disabled since the replica count of the target is zero"
+                )
+            ]
+        )
+    );
+    racing = KEDAAutoscaler(
+        _custom_api=c1, _apps_api=a1, _v2_api=v21
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert racing.status != ResourceStatus.DEGRADED , racing.status;
+
+    # Above its floor the same HPA condition is a genuine failure to scale.
+    (c2, a2, v22) = _status_apis(
+        _so(ready="True", idle=None, hpa_name="keda-hpa-worker"), _dep_at(2, 2)
+    );
+    v22.read_namespaced_horizontal_pod_autoscaler.return_value = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=2,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="FailedGetExternalMetric",
+                    message="unable to get external metric"
+                )
+            ]
+        )
+    );
+    live = KEDAAutoscaler(_custom_api=c2, _apps_api=a2, _v2_api=v22).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert live.status == ResourceStatus.DEGRADED , live.status;
+    # The reason must name the condition that failed, not the healthy Ready one.
+    assert live.reason == "FailedGetExternalMetric" , live.reason;
+}
+
+
+test "the caller passes a target, not an autoscaler name, whichever ScaledObject is live" {
+    # An HTTP-activated target's ScaledObject has a different name. A caller
+    # that had to supply the name would first have to derive the scaling mode,
+    # which is the derivation get_runtime_status exists to do.
+    custom = unittest.mock.MagicMock();
+    http_so = _so(idle=0);
+    http_so["metadata"]["name"] = "worker-deployment-http-scaledobject";
+
+    def _by_name(**kwargs: any) -> dict[str, any] {
+        if kwargs["name"] == "worker-deployment-http-scaledobject" {
+            return http_so;
+        }
+        raise ApiException(status=404);
+    }
+    custom.get_namespaced_custom_object.side_effect = _by_name;
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = _dep_at(0, 0);
+
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=unittest.mock.MagicMock()
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.autoscaler_name == "worker-deployment-http-scaledobject" , out.autoscaler_name;
+    assert out.status == ResourceStatus.INACTIVE , out.status;
+    tried = [c[1]["name"] for c in custom.get_namespaced_custom_object.call_args_list];
+    assert tried
+        == [
+            "worker-deployment-scaledobject",
+            "worker-deployment-http-scaledobject"
+        ] , tried;
+}
+
+
+test "RBAC denial falls back to the workload's own state instead of failing" {
+    # A pod whose Role predates the keda.sh rule gets a 403 here, and a status
+    # read must degrade to the Deployment-only verdict rather than raise.
+    (custom, apps, v2) = _status_apis(
+        None, _dep_at(2, 2, annotated=True), so_error=403
+    );
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.status == ResourceStatus.ACTIVE , out.status;
+    assert out.scaler_ready is None , "a 403 is not evidence the scaler failed";
+    assert out.trigger_active is None;
+}
+
+
+test "a failed external metric on the HPA overrides KEDA's own Ready condition" {
+    # KEDA can report Ready while its generated HPA cannot fetch the metric, so
+    # the HPA has to be consulted rather than trusted to agree.
+    (custom, apps, v2) = _status_apis(
+        _so(ready="True", hpa_name="keda-hpa-worker"), _dep_at(1, 1, annotated=True)
+    );
+    hpa = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=1,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="FailedGetExternalMetric",
+                    message="unable to get external metric"
+                )
+            ]
+        )
+    );
+    v2.read_namespaced_horizontal_pod_autoscaler.return_value = hpa;
+
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.status == ResourceStatus.DEGRADED , out.status;
+    assert out.reason == "FailedGetExternalMetric" , out.reason;
+    assert out.scaler_ready == False;
+    # The HPA name comes from KEDA's own status, never rebuilt from a convention.
+    assert v2.read_namespaced_horizontal_pod_autoscaler.call_args[1]["name"]
+        == "keda-hpa-worker";
+}
+
+
+# --- Section I: watch_scale_targets -- what counts as a transition -----------
+# The watch itself is a long-lived connection and only a real apiserver
+# exercises its reconnect paths. What is decidable here is the rule that makes
+# the stream usable: an event only becomes a transition when the target's state
+# actually moved, which is also what stops a relist replaying history.
+def _so_event(kind: str, target: str, active: str = "False") -> dict[str, any] {
+    body = _so(active=active);
+    body["spec"]["scaleTargetRef"] = {"kind": "Deployment", "name": target};
+    return {"type": kind, "object": body};
+}
+
+
+test "an event is a transition only when the state actually moved" {
+    (custom, apps, v2) = _status_apis(_so(active="False"), _dep_at(0, 0));
+    keda = KEDAAutoscaler(_custom_api=custom, _apps_api=apps, _v2_api=v2);
+    seen: dict[str, any] = {};
+
+    # First sighting of a target the cache has never held is a transition, and
+    # it reports no previous state rather than inventing one.
+    first = keda._transition_for_event(
+        _so_event("ADDED", "worker-deployment"), "ns", seen
+    );
+    assert first is not None;
+    assert first.state == ResourceStatus.INACTIVE , first.state;
+    assert first.previous_state is None;
+    assert first.scale_target_name == "worker-deployment";
+    assert first.observed_at , "a transition records when this observer saw it";
+
+    # The same state again is what a relist replays, and it must stay silent.
+    assert keda._transition_for_event(
+        _so_event("MODIFIED", "worker-deployment"), "ns", seen
+    )
+        is None , "an unchanged state must not re-emit";
+
+    # A real move does emit, carrying where it came from.
+    custom.get_namespaced_custom_object.return_value = _so(active="True");
+    moved = keda._transition_for_event(
+        _so_event("MODIFIED", "worker-deployment", active="True"), "ns", seen
+    );
+    assert moved is not None;
+    assert moved.previous_state == ResourceStatus.INACTIVE , moved.previous_state;
+    assert moved.state == ResourceStatus.ACTIVATING , moved.state;
+
+    # A delete drops the cache entry and is not itself a transition, so the
+    # target re-registers cleanly if it comes back.
+    assert keda._transition_for_event(
+        _so_event("DELETED", "worker-deployment"), "ns", seen
+    )
+        is None;
+    assert "worker-deployment" not in seen;
+}
+
+
+test "a scaler failure is a transition the Deployment could never report" {
+    # The whole reason this watches the ScaledObject: replica counts do not move.
+    (custom, apps, v2) = _status_apis(_so(active="False"), _dep_at(0, 0));
+    keda = KEDAAutoscaler(_custom_api=custom, _apps_api=apps, _v2_api=v2);
+    seen: dict[str, any] = {};
+    keda._transition_for_event(_so_event("ADDED", "worker-deployment"), "ns", seen);
+
+    custom.get_namespaced_custom_object.return_value = _so(
+        ready="False",
+        ready_reason="ScalerFailed",
+        ready_message="prometheus scaler: dial tcp: no such host"
+    );
+    broke = keda._transition_for_event(
+        _so_event("MODIFIED", "worker-deployment"), "ns", seen
+    );
+    assert broke is not None , "a scaler failure must surface as a transition";
+    assert broke.state == ResourceStatus.DEGRADED , broke.state;
+    assert broke.reason == "ScalerFailed";
+    assert "no such host" in (broke.message or "");
+}
+
+
+test "the opening list seeds the cache instead of replaying it as transitions" {
+    # An observer that has just started has witnessed nothing. Emitting current
+    # state as a transition invents history and floods every restart.
+    listing = {
+        "metadata": {"resourceVersion": "8800"},
+        "items": [
+            {
+                "metadata": {"name": "worker-scaledobject"},
+                "spec": {"scaleTargetRef": {"name": "worker-deployment"}}
+            }
+        ]
+    };
+    custom = unittest.mock.MagicMock();
+    custom.list_namespaced_custom_object.return_value = listing;
+    custom.get_namespaced_custom_object.return_value = _so(active="False");
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = _dep_at(0, 0);
+    keda = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=unittest.mock.MagicMock()
+    );
+
+    (targets, version) = keda._list_scale_targets("ns");
+    assert targets == {"worker-deployment": "worker-scaledobject"} , targets;
+    assert version == "8800" , "a watch resumes from the list's version, not an object's";
+
+    # Seeded from that list, the first event for an unchanged target is silent.
+    seeded: dict[str, any] = {};
+    for t in targets {
+        seeded[t] = keda.get_runtime_status(t, "ns").status;
+    }
+    assert keda._transition_for_event(
+        _so_event("ADDED", "worker-deployment"), "ns", seeded
+    )
+        is None , "a seeded target must not emit a phantom transition";
 }

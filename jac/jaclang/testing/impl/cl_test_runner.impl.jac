@@ -45,6 +45,11 @@ impl _point_at_staged_runtime(js: str) -> str {
     );
 }
 
+impl _point_at_staged_prelude(js: str) -> str {
+    import from jaclang.compiler.backends.es.jac_runtime_js { point_jac_prelude_at }
+    return point_jac_prelude_at(js);
+}
+
 impl _stub_npm_imports(
     entry_js: str, staged: dict[str, str]
 ) -> tuple[str, dict[str, str], str, bool] {
@@ -445,6 +450,16 @@ impl _run_harness(
 
         staged: dict[str, str] = {};
 
+        import from jaclang.compiler.backends.es.jac_runtime_js {
+            JAC_PRELUDE_BASENAME,
+            build_jac_prelude_module
+        }
+        staged[JAC_PRELUDE_BASENAME] = build_jac_prelude_module();
+        module_js = _point_at_staged_prelude(module_js);
+        for dep_name in list(dep_files.keys()) {
+            dep_files[dep_name] = _point_at_staged_prelude(dep_files[dep_name]);
+        }
+
         if ("@jac/runtime" in imports) or ("@jac/runtime" in dep_imports) {
             import from jaclang.client.client_surface { prepend_active_runtime_globals }
             module_js = _point_at_staged_runtime(
@@ -469,8 +484,11 @@ impl _run_harness(
                 runtime_src,
                 allow_runtime=True
             );
+            for support_name in list(support.keys()) {
+                support[support_name] = _point_at_staged_prelude(support[support_name]);
+            }
             staged.update(support);
-            staged["jac_runtime.js"] = runtime_js;
+            staged["jac_runtime.js"] = _point_at_staged_prelude(runtime_js);
         }
 
         for (dep_name, dep_js) in dep_files.items() {

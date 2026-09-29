@@ -53,7 +53,7 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
                  "paths",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Paths to .jac files or directories (none = the workspace gate)"
+                 help="Paths to .jac files or directories (none = the workspace gate, which checks each app as a whole program; a file on its own reads its imports as interfaces only)"
              ),
              Arg.create(
                  "print_errs",
@@ -133,10 +133,13 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
          examples=[
              (
                  "jac check",
-                 "Check every app of the workspace, then the files no app reaches"
+                 "Check every app of the workspace as a whole program, then the files no app reaches"
              ),
              ("jac check --app web", "Check one app of the workspace"),
-             ("jac check myprogram.jac", "Check a single file"),
+             (
+                 "jac check myprogram.jac",
+                 "Check a single file; its imports are read as interfaces only"
+             ),
              (
                  "jac check . --native-coverage",
                  "Rank modules by native compile outcome"
@@ -262,13 +265,19 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
                  "paths",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Paths to .jac files or directories (default: project root)"
+                 help="Paths to .jac files or directories (default: staged .jac files; use --all for the project)"
              ),
              Arg.create(
                  "staged",
                  typ=bool,
+                 `default=True,
+                 help="Only process git-staged .jac files (default)"
+             ),
+             Arg.create(
+                 "all",
+                 typ=bool,
                  `default=False,
-                 help="Only process git-staged .jac files"
+                 help="Process the whole project when no paths are supplied"
              ),
              Arg.create(
                  "verify",
@@ -292,8 +301,9 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
 
          ],
          examples=[
-             ("jac precommit", "Format (lintfix) and check the whole project"),
-             ("jac precommit --staged", "Run on staged '.jac' files only"),
+             ("jac precommit", "Format and check staged '.jac' files"),
+             ("jac precommit --verify", "Verify staged '.jac' files without rewriting"),
+             ("jac precommit --all", "Format and check the whole project"),
              ("jac precommit --install", "Install the pre-commit + commit-msg hooks"),
              (
                  "jac precommit --install --force",
@@ -307,7 +317,8 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
 
 def precommit(
     paths: (list[str] | None) = None,
-    staged: bool = False,
+    staged: bool = True,
+    all: bool = False,
     verify: bool = False,
     install: bool = False,
     force: bool = False,

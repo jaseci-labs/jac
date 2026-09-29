@@ -403,10 +403,37 @@ impl PgStore._main -> any {
 
 impl PgStore._side -> any {
     self._ensure_ready();
-    if self._side_conn is None {
-        self._side_conn = self._connect();
+    cached: any = self._side_conn;
+    if cached is not None and not getattr(cached, '_closed', False) {
+        return cached;
     }
-    return self._side_conn;
+    fresh: any = self._connect();
+    self._side_conn = fresh;
+    if self._side_listened {
+        for lst in list(self._listeners) {
+            fresh.run(f"LISTEN {_quote_channel(lst.ident)}");
+        }
+    }
+    return fresh;
+}
+
+
+impl PgStore._side_run(sql: str, params: dict[str, any]) -> list[any] {
+    with self._lock {
+        conn: any = self._side();
+        try {
+            return conn.run(sql, **params) or [];
+        } except Exception as e {
+            if not _conn_dead(e) {
+                raise;
+            }
+            try {
+                conn.close();
+            } except Exception {}
+            self._side_conn = None;
+            return self._side().run(sql, **params) or [];
+        }
+    }
 }
 
 
@@ -1106,24 +1133,17 @@ impl PgStore.kv_put(key: str, value: str) -> None {
 
 
 impl PgStore.kv_put_ttl(key: str, value: str, ttl_seconds: int) -> None {
-    with self._lock {
-        conn: any = self._side();
-        conn.run(
-            """
-            INSERT INTO kv_state (key, value, expires_at, updated_at)
-            VALUES (
-                :k, :v, now() + make_interval(secs => CAST(:ttl AS int)), now()
-            )
-            ON CONFLICT (key) DO UPDATE SET
-                value = EXCLUDED.value,
-                expires_at = EXCLUDED.expires_at,
-                updated_at = now()
-            """,
-            k=key,
-            v=value,
-            ttl=ttl_seconds
-        );
-    }
+    self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, :v, now() + make_interval(secs => CAST(:ttl AS int)), now())
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            expires_at = EXCLUDED.expires_at,
+            updated_at = now()
+        """,
+        {'k': key, 'v': value, 'ttl': ttl_seconds}
+    );
 }
 
 
@@ -1133,41 +1153,51 @@ impl PgStore.kv_delete(key: str) -> None {
 
 
 impl PgStore.kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool {
-    with self._lock {
-        conn: any = self._side();
-        rows = conn.run(
-            """
-            INSERT INTO kv_state (key, value, expires_at, updated_at)
-            VALUES (
-                :k, :o, now() + make_interval(secs => CAST(:ttl AS int)), now()
-            )
-            ON CONFLICT (key) DO UPDATE SET
-                value = EXCLUDED.value,
-                expires_at = EXCLUDED.expires_at,
-                updated_at = now()
-            WHERE kv_state.value = :o
-                  OR kv_state.expires_at IS NULL
-                  OR kv_state.expires_at <= now()
-            RETURNING key
-            """,
-            k=f"lease:{key}",
-            o=owner,
-            ttl=ttl_seconds
-        );
-    }
+    rows = self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, :o, now() + make_interval(secs => CAST(:ttl AS int)), now())
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            expires_at = EXCLUDED.expires_at,
+            updated_at = now()
+        WHERE kv_state.value = :o
+              OR kv_state.expires_at IS NULL
+              OR kv_state.expires_at <= now()
+        RETURNING key
+        """,
+        {'k': f"lease:{key}", 'o': owner, 'ttl': ttl_seconds}
+    );
     return bool(rows);
 }
 
 
 impl PgStore.kv_release_lease(key: str, owner: str) -> bool {
-    with self._lock {
-        conn: any = self._side();
-        rows = conn.run(
-            'DELETE FROM kv_state WHERE key = :k AND value = :o RETURNING key',
-            k=f"lease:{key}",
-            o=owner
-        );
-    }
+    rows = self._side_run(
+        'DELETE FROM kv_state WHERE key = :k AND value = :o RETURNING key',
+        {'k': f"lease:{key}", 'o': owner}
+    );
+    return bool(rows);
+}
+
+
+impl PgStore.kv_claim_tick(key: str, tick: int) -> bool {
+    rows = self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, CAST(:t AS bigint)::text, NULL, now())
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            updated_at = now()
+        WHERE CASE
+            WHEN kv_state.value ~ '^[0-9]+$'
+            THEN kv_state.value::bigint < CAST(:t AS bigint)
+            ELSE true
+        END
+        RETURNING key
+        """,
+        {'k': f"tick:{key}", 't': int(tick)}
+    );
     return bool(rows);
 }
 
@@ -1194,15 +1224,11 @@ impl PgStore.quarantine(
 
 
 impl PgStore.notify(channel: str, payload: str) -> None {
-    with self._lock {
-        ident = _channel_ident(channel);
-        conn: any = self._side();
-        conn.run(
-            'SELECT pg_notify(:c, :p)',
-            c=ident,
-            p=_channel_wire_payload(channel, ident, payload)
-        );
-    }
+    ident = _channel_ident(channel);
+    self._side_run(
+        'SELECT pg_notify(:c, :p)',
+        {'c': ident, 'p': _channel_wire_payload(channel, ident, payload)}
+    );
 }
 
 

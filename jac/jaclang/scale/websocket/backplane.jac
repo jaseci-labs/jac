@@ -4,11 +4,11 @@ import logging;
 glob logger = logging.getLogger(__name__);
 
 obj BaseBackplane {
-    async def start -> None;
-    async def publish(channel: str, message: dict[str, any]) -> None;
-    async def subscribe(channel: str, handler: any) -> None;
-    async def unsubscribe(channel: str, handler: any) -> None;
-    async def close -> None;
+    async def start -> None abst;
+    async def publish(channel: str, message: dict[str, any]) -> None abst;
+    async def subscribe(channel: str, handler: any) -> None abst;
+    async def unsubscribe(channel: str, handler: any) -> None abst;
+    async def close -> None abst;
 }
 
 obj MemoryBackplane(BaseBackplane) {

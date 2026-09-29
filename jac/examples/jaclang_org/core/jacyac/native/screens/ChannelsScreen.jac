@@ -1,12 +1,4 @@
 import from "@jac/mobui" { View, Text, Pressable, TextInput, ScrollView, Modal }
-import from core.social_graph { ChannelBundle, Tweet }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.format { count_label }
-import from core.jacyac.native.icon { Icon }
-import from core.jacyac.native.components.Composer { Composer }
-import from core.jacyac.native.components.TweetCard { TweetCard }
-import from core.jacyac.native.components.StatusView { EmptyState, LoadingRows }
 
 def ChannelDetail(
     avatars: dict[str, str],

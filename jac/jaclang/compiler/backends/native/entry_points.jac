@@ -161,32 +161,3 @@ def _inject_entry_pe(llvm_ir_str: str) -> str {
         + '    ret void\n'
         + '}\n';
 }
-
-def finalize_native_ir(
-    llvm_ir_str: str,
-    triple: str,
-    clib_paths: list[str],
-    manifest: any,
-    shared: bool,
-    is_windows: bool,
-    is_macos: bool,
-    static_musl: bool
-) -> tuple[str, list[str]] {
-    import from jaclang.compiler.backends.native.shared_emit {
-        aarch64_floor_atomics_ir,
-        inject_shared_init
-    }
-    extra_exports: list[str] = [];
-    if shared {
-        (llvm_ir_str, extra_exports) = inject_shared_init(llvm_ir_str, manifest);
-    } elif is_windows {
-        llvm_ir_str = _inject_entry_pe(llvm_ir_str);
-    } elif is_macos {
-        llvm_ir_str = inject_main(llvm_ir_str);
-    } elif static_musl {
-        llvm_ir_str = inject_main(llvm_ir_str);
-    } else {
-        llvm_ir_str = _inject_entry_elf(llvm_ir_str);
-    }
-    return (llvm_ir_str + aarch64_floor_atomics_ir(triple, clib_paths), extra_exports);
-}

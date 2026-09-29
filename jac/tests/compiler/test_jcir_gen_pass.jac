@@ -35,7 +35,7 @@ import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline { get_py_code_gen }
+import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
@@ -67,7 +67,7 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any
 """The same double emission, for a fixture that must be compiled from disk."""
 def dual_compile_file(path: str) -> tuple[any, ...] {
     prog = JacProgram();
-    mod = prog.compile(path, options=CompileOptions(no_ir_cache=True));
+    mod = prog.compile(path, options=CompileOptions());
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
     emitter = run_walker(JcirGenPass, module=mod);
@@ -751,7 +751,7 @@ node Spot {
     has name: str = "";
 }
 
-edge Road {}
+edge Road : Spot --> Spot {}
 
 walker Traveler {
     has seen: list[str] = [],

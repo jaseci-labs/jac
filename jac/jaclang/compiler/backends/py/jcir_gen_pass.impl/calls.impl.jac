@@ -7,10 +7,10 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
         here.is_attr
         and trailer_cv is not None
         and self._ct_concrete(here)
-        and self._ct_kind(trailer_cv.v) in ("scalar", "CtEnumMember")
+        and self._ct_kind(trailer_cv) in ("scalar", "CtEnumMember")
         and self._trailer_reaches_ct_class(here)
     ) {
-        folded = self._materialize(trailer_cv.v, here);
+        folded = self._materialize(trailer_cv, here);
         if folded is not None {
             self.set_out(here, [folded]);
             return;
@@ -217,6 +217,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
             ]
         );
     }
+    self._c_copy_rewrite(here);
 }
 
 impl JcirGenPass.exit_atom_unit with AtomUnit exit {
@@ -254,6 +255,7 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]
 
 impl JcirGenPass.exit_func_call with FuncCall exit {
     self._exit_func_call_impl(here);
+    self._c_interop_call_rewrite(here);
 }
 
 impl JcirGenPass._place_parts(arg: UniNode) -> (tuple[str, any, any] | None) {
@@ -431,7 +433,7 @@ impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
         and call_cv is not None
         and self._ct_concrete(nd)
     ) {
-        folded = self._materialize(call_cv.v, nd);
+        folded = self._materialize(call_cv, nd);
         if folded is not None {
             self.set_out(nd, [folded]);
             return;

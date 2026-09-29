@@ -16,10 +16,10 @@ c has nothing.
 node N {
     has v: int = 0;
 }
-edge E {
+edge E : N --> N {
     has w: int = 0;
 }
-edge F {}
+edge F : N --> N {}
 
 def disc_between_py() -> dict[str, any] {
     a = N(v=1);

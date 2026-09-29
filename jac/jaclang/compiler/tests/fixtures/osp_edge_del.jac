@@ -15,7 +15,7 @@ node Area {
 node Entity {
     has eid: int = 0;
 }
-edge In {}
+edge In : Entity --> Area {}
 
 # --- py reference (sv runtime) ---
 def move_to_area(ent: Entity, new_area: Area) {

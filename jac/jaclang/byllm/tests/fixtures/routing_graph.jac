@@ -10,7 +10,7 @@ decision, `leaky` passes routing-control params alongside a real one.
 
 glob llm: any = None;
 
-edge Route {
+edge Route : any --> any {
     has priority: str = "low";
 }
 

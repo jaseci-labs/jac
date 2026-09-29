@@ -3,6 +3,7 @@ import json;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def _pkg_root -> Path {
     import jaclang;
@@ -143,7 +144,8 @@ def _compile_runtime_module(
                 ir,
                 directory,
                 Path('native') / path.relative_to(pkg_root).with_suffix('.py'),
-                emit_source=native_sources
+                emit_source=native_sources,
+                program=prog
             );
             native['record'] = record;
             native['path'] = record['source'] if native_sources else record['output'];
@@ -153,6 +155,25 @@ def _compile_runtime_module(
     return py_out;
 }
 
+
+def _runtime_module_options(path: Path) -> CompileOptions {
+    """A vendored runtime module takes the codespace the running compiler gives
+    its own package: the server codespace, unless the module is native by policy
+    (a bundled native library or a shared runtime module), which keeps the
+    placement an application gives it. Placement inference over the rest of the
+    package would try to lower every runtime module the application reaches, and
+    almost none of them can.""";
+    import from jaclang.compiler.frontend.codeinfo {
+        is_native_by_location,
+        is_shared_runtime_module
+    }
+    import from jaclang.compiler.placement.placement_facts { SPACE_SERVER }
+    source = str(path);
+    if is_native_by_location(source) or is_shared_runtime_module(source) {
+        return CompileOptions();
+    }
+    return CompileOptions(default_codespace=SPACE_SERVER);
+}
 
 def build_runtime_closure(
     user_codes: list[str],
@@ -187,8 +208,13 @@ def build_runtime_closure(
         _runtime_dependencies(pkg_root, sources['jaclang'], 'jaclang', True)
     );
     processed: set[str] = {'jaclang'};
-    program = JacProgram();
     modules: list[dict[str, any]] = [];
+    """One program serves the whole closure: a fresh program per module
+    re-hydrates the type catalog and evaluator for every runtime module, which
+    turned a ten-minute export into an hour. The program's options change per
+    module (server codespace unless native by policy) and the compile state
+    is released once the closure is complete.""";
+    program = JacProgram();
     while pending {
         module = min(pending);
         pending.remove(module);
@@ -230,6 +256,7 @@ def build_runtime_closure(
             continue;
         }
         native: dict[str, any] = {};
+        program.options = _runtime_module_options(path);
         source = _compile_runtime_module(
             pkg_root, path, program, native, native_sources
         );
@@ -276,6 +303,9 @@ def build_runtime_closure(
         pending.update(
             _runtime_dependencies(pkg_root, tree, module, package) - processed
         );
+    }
+    if program.contexts {
+        program._get_compiler().release_compile_state(program);
     }
     for relative in [
         name

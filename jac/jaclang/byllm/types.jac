@@ -93,13 +93,16 @@ obj MockRawResponse {
     has content: str = "",
         tool_calls: list[MockToolCall] = [],
         usage: dict[str, any] | None = None,
-        finish_reason: str = "";
+        finish_reason: str = "",
+        model: str = "",
+        unnamed_fragments: bool = False;
 }
 
 obj MockError {
     has error: Exception,
         content: str = "",
-        after: int = 0;
+        after: int = 0,
+        reply: object = None;
 }
 
 obj CompletionResult {

@@ -15,7 +15,7 @@ import from jaclang.compiler.driver.compile_options {
 }
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
+import from tests.support { TESTS_DIR, jac_command, source_spelled }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -44,7 +44,7 @@ def _compile_ir_headerless -> str {
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
+        return source_spelled(str(ir.gen.llvm_ir));
     } finally {
         pop_native_target(prev);
     }

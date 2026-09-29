@@ -1,6 +1,6 @@
 import from jaclang.runtime.runtime { JacRuntime }
 import from core.github { RepoMeta }
-import from core.leaderboard.scoring { RepoAnalysis, RepoFeatures, ScoreBreakdown }
+import from core.leaderboard.scoring { RepoAnalysis, RepoFeatures }
 import os;
 import from unittest.mock { patch }
 import from tempfile { mkdtemp }

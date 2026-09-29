@@ -7,7 +7,7 @@ obj Alpha(Node) {}
 obj Beta(Node) {}
 
 obj Carrier[T: Node, R: Node] {
-    def move(x: T) -> R;
+    def move(x: T) -> R abst;
 }
 
 glob T = TypeVar('T', bound=Node);
@@ -28,7 +28,7 @@ obj Leaf(Mid) {
     }
 }
 
-def use(nd: Node, lf: Leaf) -> None {
+def use(nd: Node, lf: Leaf) {
     for a in Leaf.pick(nd, Alpha) {
         print(a);
     }

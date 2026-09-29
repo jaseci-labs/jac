@@ -10,7 +10,7 @@ node N {
     has tag: int = 0;
 }
 
-edge Portal {}
+edge Portal : any --> any {}
 
 walker W {
     has v: int = 0;

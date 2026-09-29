@@ -398,7 +398,33 @@ impl EsastGenPass.exit_enum with uni.Enum exit {
 }
 
 impl EsastGenPass.exit_type_alias with uni.TypeAlias exit {
-    here.gen.es_ast = [];
+    base_ref = self._primitive_type_ref(here.distinct_base, here)
+        if here.is_distinct and here.distinct_base is not None
+        else None;
+    if base_ref is None {
+        here.gen.es_ast = [];
+        return;
+    }
+    if here.code_context == CodeContext.CLIENT {
+        self.client_manifest.has_client = True;
+        is_pub = here.access and (here.access.tag.name == Tok.KW_PUB);
+        if is_pub or here.codespace_dual {
+            self.client_manifest.exports.append(here.name.sym_name);
+        }
+    }
+    self.needs_jac_runtime = True;
+    var_id = self.sync_loc(es.Identifier(name=here.name.sym_name), jac_node=here.name);
+    here.gen.es_ast = self.sync_loc(
+        es.VariableDeclaration(
+            declarations=[
+                self.sync_loc(
+                    es.VariableDeclarator(id=var_id, `init=base_ref), jac_node=here
+                )
+            ],
+            kind='const'
+        ),
+        jac_node=here
+    );
 }
 
 impl EsastGenPass.exit_type_param with uni.TypeParam exit {

@@ -1,12 +1,12 @@
 """Module with functions and walkers to be imported for serve testing."""
 
 # An importable function
-def multiply_numbers(a: int, b: int) -> int {
+def:protect multiply_numbers(a: int, b: int) -> int {
     return a * b;
 }
 
 # Another importable function
-def format_message(prefix: str, message: str) -> str {
+def:protect format_message(prefix: str, message: str) -> str {
     return f"{prefix}: {message}";
 }
 
@@ -17,7 +17,7 @@ node ImportedItem {
 }
 
 # An importable walker
-walker ImportedWalker {
+walker:protect ImportedWalker {
     has item_name: str;
 
     can create_item with Root entry {
@@ -27,7 +27,7 @@ walker ImportedWalker {
 }
 
 # Another importable walker
-walker ImportedCounter {
+walker:protect ImportedCounter {
     has count: int = 0;
 
     can count_items with Root entry {

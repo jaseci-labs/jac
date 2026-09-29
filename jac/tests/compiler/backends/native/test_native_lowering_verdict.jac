@@ -8,14 +8,15 @@ import from jaclang.compiler.backends.native.lowering {
 import from jaclang.compiler.backends.native.na_compile_pass {
     native_demoted_ir_symbols
 }
-import from tests.support { compile_native }
+import from tests.support { compile_native, native_arch }
 
 test "method demotion is visible without changing the method ABI name" {
     (_, module) = compile_native("partial_native.jac");
     text = str(module.gen.llvm_ir);
     issues = native_lowering_issues(text);
-    assert any(issue.symbol == "Literal.evaluate" for issue in issues);
-    assert "Literal.evaluate" in native_demoted_ir_symbols(text);
+    symbol = f"{native_arch('partial_native.jac', 'Literal')}.evaluate";
+    assert any(issue.symbol == symbol for issue in issues);
+    assert symbol in native_demoted_ir_symbols(text);
 }
 
 test "lowering records retain details through bitcode and linking" {
@@ -83,7 +84,6 @@ test "native-only checking rejects a method that mixed compilation demotes" {
                 native_parity=checking,
                 aot_mode=not checking,
                 native_required=True,
-                force_target_program=True
             )
         );
         assert program.errors_had , "Native-only compilation accepted eval fallback";
@@ -120,8 +120,11 @@ test "native-only checks link providers outside the entry directory" {
     import from pathlib { Path }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_linked_ir_text
+    import from jaclang.compiler.backends.native.link_plan {
+        ArtifactKind,
+        build_link_plan,
+        whole_program_module,
+        _platform_of
     }
     with tempfile.TemporaryDirectory() as directory {
         fixture_dir = Path(directory);
@@ -149,7 +152,6 @@ test "native-only checks link providers outside the entry directory" {
                     native_parity=checking,
                     aot_mode=not checking,
                     native_required=True,
-                    force_target_program=True
                 )
             );
             assert not program.errors_had , str(program.errors_had);
@@ -157,10 +159,18 @@ test "native-only checks link providers outside the entry directory" {
                 error.code is not None and error.code.code == "W5023"
                 for error in program.warnings_had
             );
-            text = native_linked_ir_text(module);
-            linked = llvm.parse_assembly(text);
+            plan = build_link_plan(program, [str(entry_file)], program.options);
+            (linked, _) = whole_program_module(
+                plan,
+                plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
+            );
+            provider = next(
+                unit
+                for unit in plan.units
+                if unit.path.endswith("/nested/numbers.jac")
+            );
             import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
-            function = linked.get_function("increment");
+            function = linked.get_function(provider.iface.exports["increment"].symbol);
             assert isinstance(function, ValueRef);
             assert not function.is_declaration;
         }

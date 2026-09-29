@@ -83,15 +83,19 @@ glob JS_GLOBALS: dict[str, str] = {
      _NATIVE_DECORATOR_HELP: str = (
          "Native lowers decorators only on module-level, non-generator "
          "functions, and only when each decorator is a plain name resolving "
-         "to a native function (applied at module glob-init). Method, "
-         "archetype, and dynamically-computed decorators would silently run "
-         "the undecorated body; remove the decorator or move the definition "
-         "to a @sv/Python context."
+         "to a native function (applied at module glob-init), plus "
+         "`@contextmanager` (from `import from contextlib { contextmanager }`) "
+         "on a generator function or method, which the calling `with` drives. "
+         "Other method, archetype, and dynamically-computed decorators would "
+         "silently run the undecorated body; remove the decorator or move the "
+         "definition to a @sv/Python context."
      ),
      _NATIVE_UNPACK_HELP: str = (
-         "Unpacking arguments at a native call site is not lowered yet; "
-         "pass the elements explicitly or move the call to a @sv/Python "
-         "context."
+         "A `**` spread lowers natively only into a callee whose signature is "
+         "statically known (a declared function or method, or a class-value "
+         "constructor), because its keys bind against the declared "
+         "parameters; pass the arguments explicitly or move the call to a "
+         "@sv/Python context."
      );
 
 impl classify_native_import(item: UniNode) -> tuple[((str | None), bool)] {
@@ -231,7 +235,10 @@ impl static_fstring_spec_text(spec: UniNode) -> (str | None) {
     return None;
 }
 
-impl call_has_kwargs_sink(call: FuncCall) -> bool {
+impl call_binds_kwargs_spread(call: FuncCall) -> bool {
+    if call_constructs_class_value(call) {
+        return True;
+    }
     tgt = call.target;
     sym = None;
     if isinstance(tgt, Name) {
@@ -243,11 +250,33 @@ impl call_has_kwargs_sink(call: FuncCall) -> bool {
         return False;
     }
     owner = sym.decl.name_of;
-    if not isinstance(owner, Ability)
-        or not isinstance(owner.signature, FuncSignature) {
+    return isinstance(owner, Ability) and isinstance(owner.signature, FuncSignature);
+}
+
+impl call_constructs_class_value(call: FuncCall) -> bool {
+    tgt = call.target;
+    typ = tgt.type if isinstance(tgt, Expr) else None;
+    if not isinstance(typ, ClassType) {
         return False;
     }
-    return owner.signature.kwargs is not None;
+    sym = None;
+    if isinstance(tgt, Name) {
+        sym = tgt.sym;
+    } elif isinstance(tgt, AtomTrailer) and isinstance(tgt.right, Name) {
+        sym = tgt.right.sym;
+    }
+    if sym is not None
+        and sym.decl is not None
+        and isinstance(sym.decl.name_of, Archetype) {
+        return False;
+    }
+    if typ.is_builtin("type") {
+        args = typ.private.type_args or [];
+        return bool(args)
+            and isinstance(args[0], ClassType)
+            and not args[0].is_builtin();
+    }
+    return typ.is_instantiable() and not typ.is_instance() and not typ.is_builtin();
 }
 
 impl native_capability_violations(
@@ -334,15 +363,23 @@ impl native_capability_violations(
                     continue;
                 }
                 if _stdlib_help is None {
+                    import from jaclang.compiler.frontend.codeinfo {
+                        bundled_native_module_names
+                    }
                     _supported_list = ", ".join(
                         f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
+                    );
+                    _bundled_list = ", ".join(
+                        f"`import {m}`" for m in bundled_native_module_names()
                     );
                     _stdlib_help = (
                         f"Native compilation supports these stdlib imports: "
                         f"{_supported_list}; C-library imports "
                         f"(`import from \"lib\" {{...}}`); and other Jac "
                         f"modules on the native pathway (`import mod` or "
-                        f"`import from mod {{...}}`). Move "
+                        f"`import from mod {{...}}`). The bundled native "
+                        f"standard library also provides "
+                        f"{_bundled_list}. Move "
                         f"Python-dependent code to a @sv/Python context."
                     );
                 }
@@ -431,6 +468,23 @@ impl native_capability_violations(
                     }
                 }
                 if not _dec_static_fn {
+                    import from jaclang.compiler.erased_imports {
+                        contextmanager_ability,
+                        is_contextmanager_decorator
+                    }
+                    if isinstance(nd, Ability) {
+                        _dec_static_fn = contextmanager_ability(nd);
+                    } elif isinstance(nd, ImplDef) {
+                        _dec_static_fn = True;
+                        for _dexpr in nd.decorators {
+                            if not is_contextmanager_decorator(_dexpr, nd.decl_link) {
+                                _dec_static_fn = False;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if not _dec_static_fn {
                     _dec_owner = "?";
                     if isinstance(nd, Ability) and nd.name_ref {
                         _dec_owner = nd.name_ref.sym_name;
@@ -497,10 +551,16 @@ impl native_capability_violations(
                     );
                     continue;
                 }
+                _vp_mod = nd.find_parent_of_type(Module);
                 if (
                     _vp_encl is not None
                     and _vp_encl.access is not None
                     and _vp_encl.access.tag.name == Tok.KW_PUB
+                    and not (
+                        _vp_mod is not None
+                        and _vp_mod.loc
+                        and is_native_by_location(_vp_mod.loc.mod_path)
+                    )
                 ) {
                     out.append(
                         (
@@ -524,7 +584,7 @@ impl native_capability_violations(
                 and nd.op.name == Tok.STAR_POW
                 and isinstance(nd.parent, FuncCall)
                 and nd in (nd.parent.params or [])
-                and not call_has_kwargs_sink(nd.parent) {
+                and not call_binds_kwargs_spread(nd.parent) {
                 out.append(
                     (nd, "call argument unpacking", nd.op.value, _NATIVE_UNPACK_HELP)
                 );
@@ -534,7 +594,7 @@ impl native_capability_violations(
             if isinstance(nd, KWPair)
                 and nd.key is None
                 and isinstance(nd.parent, FuncCall)
-                and not call_has_kwargs_sink(nd.parent) {
+                and not call_binds_kwargs_spread(nd.parent) {
                 out.append((nd, "call argument unpacking", "**", _NATIVE_UNPACK_HELP));
                 continue;
             }
@@ -582,7 +642,8 @@ impl native_capability_violations(
                 and nd.is_attr
                 and isinstance(nd.right, Name)
                 and (nd.target.type is not None)
-                and nd.target.type.is_any_type() {
+                and nd.target.type.is_any_type()
+                and not _class_bounded_typevar(nd.target.type) {
                 _fld = nd.right.value;
                 if (
                     _fld == "environ"
@@ -791,6 +852,9 @@ impl PortabilityWarnPass._check_js_globals(mod: Module) -> None {
         if name_nd.find_parent_of_type(Import) is not None {
             continue;
         }
+        if name_nd.find_parent_of_type(ImplImport) is not None {
+            continue;
+        }
         if name_nd.value in JS_GLOBALS {
             self.ctx.emit(
                 W6001,
@@ -926,4 +990,9 @@ impl NativeCapabilityCheckPass.run_walk with Module entry {
 
 impl ClientCapabilityCheckPass.run_walk with Module entry {
     self.module = self._run_impl(here);
+}
+
+impl _class_bounded_typevar(t: object) -> bool {
+    import from jaclang.compiler.types.types { ClassType, TypeVarType }
+    return isinstance(t, TypeVarType) and isinstance(t.bound, ClassType);
 }

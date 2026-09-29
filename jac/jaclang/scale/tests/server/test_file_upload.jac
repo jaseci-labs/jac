@@ -286,3 +286,151 @@ test "upload large file" {
         client.close();
     }
 }
+
+"""The first report of a walker response."""
+def _first_report(response: any) -> dict[str, any] {
+    result = extract_data(response.json());
+    if isinstance(result, dict) and "reports" in result {
+        return result["reports"][0];
+    }
+    return result;
+}
+
+# A list field receives every file posted under its name. Classification used to
+# read the field's type NAME, and `list[UploadFile].__name__` is "list", so the
+# field was treated as a JSON body field: 422 when required, [] when defaulted.
+test "several files under one field name bind to a list field" {
+    client = make_client();
+    try {
+        token = client.register_and_login("many_files_user", "testpass123");
+        response = client.post(
+            "/walker/UploadManyFiles",
+            headers={"Authorization": f"Bearer {token}"},
+            files=[
+                ("files", ("a.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv")),
+                ("files", ("b.csv", io.BytesIO(b"c,d\n3,4\n"), "text/csv"))
+            ]
+        );
+        assert response.status_code == 200;
+        assert _first_report(response)["filenames"] == ["a.csv", "b.csv"];
+    } finally {
+        client.close();
+    }
+}
+
+test "one file binds to a list field as a one-item list" {
+    client = make_client();
+    try {
+        token = client.register_and_login("one_in_list_user", "testpass123");
+        (filename, file_obj) = _create_test_file("only.txt", b"only");
+        response = client.post(
+            "/walker/UploadManyFiles",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"files": (filename, file_obj, "text/plain")}
+        );
+        assert response.status_code == 200;
+        assert _first_report(response)["filenames"] == ["only.txt"];
+    } finally {
+        client.close();
+    }
+}
+
+test "a defaulted list field collects the posted files, and is empty without them" {
+    client = make_client();
+    try {
+        token = client.register_and_login("default_list_user", "testpass123");
+        headers = {"Authorization": f"Bearer {token}"};
+        response = client.post(
+            "/walker/UploadManyFilesOptional",
+            headers=headers,
+            files=[
+                ("files", ("a.txt", io.BytesIO(b"a"), "text/plain")),
+                ("files", ("b.txt", io.BytesIO(b"b"), "text/plain"))
+            ]
+        );
+        assert response.status_code == 200;
+        assert _first_report(response)["count"] == 2;
+        response = client.post(
+            "/walker/UploadManyFilesOptional", headers=headers, json={}
+        );
+        assert response.status_code == 200;
+        assert _first_report(response)["count"] == 0;
+    } finally {
+        client.close();
+    }
+}
+
+test "an optional single file binds when sent and is None when not" {
+    client = make_client();
+    try {
+        token = client.register_and_login("optional_file_user", "testpass123");
+        headers = {"Authorization": f"Bearer {token}"};
+        (filename, file_obj) = _create_test_file("maybe.txt", b"maybe");
+        response = client.post(
+            "/walker/UploadOptionalFile",
+            headers=headers,
+            files={"attachment": (filename, file_obj, "text/plain")}
+        );
+        assert response.status_code == 200;
+        assert _first_report(response)["filename"] == "maybe.txt";
+        response = client.post("/walker/UploadOptionalFile", headers=headers, json={});
+        assert response.status_code == 200;
+        assert _first_report(response)["filename"] is None;
+    } finally {
+        client.close();
+    }
+}
+
+# A union with a non-file branch is not a file-only field: a string sent in the
+# JSON body or as a multipart form field binds to it, and a file still does.
+test "a file-or-string field binds a string from JSON, a form field, or a file" {
+    client = make_client();
+    try {
+        token = client.register_and_login("note_or_text_user", "testpass123");
+        headers = {"Authorization": f"Bearer {token}"};
+        response = client.post(
+            "/walker/UploadNoteOrText", headers=headers, json={"note": "hello"}
+        );
+        assert response.status_code == 200;
+        assert _first_report(response) == {"kind": "text", "value": "hello"};
+        (filename, file_obj) = _create_test_file("extra.txt", b"extra");
+        response = client.post(
+            "/walker/UploadNoteOrText",
+            headers=headers,
+            data={"note": "from form"},
+            files={"extra": (filename, file_obj, "text/plain")}
+        );
+        assert response.status_code == 200;
+        assert _first_report(response) == {"kind": "text", "value": "from form"};
+        (filename, file_obj) = _create_test_file("note.txt", b"note");
+        response = client.post(
+            "/walker/UploadNoteOrText",
+            headers=headers,
+            files={"note": (filename, file_obj, "text/plain")}
+        );
+        assert response.status_code == 200;
+        assert _first_report(response) == {"kind": "file", "value": "note.txt"};
+    } finally {
+        client.close();
+    }
+}
+
+test "a files-or-string field binds every posted file as a list" {
+    client = make_client();
+    try {
+        token = client.register_and_login("docs_or_text_user", "testpass123");
+        headers = {"Authorization": f"Bearer {token}"};
+        response = client.post(
+            "/walker/UploadDocsOrText",
+            headers=headers,
+            files=[
+                ("docs", ("a.txt", io.BytesIO(b"a"), "text/plain")),
+                ("docs", ("b.txt", io.BytesIO(b"b"), "text/plain"))
+            ]
+        );
+        assert response.status_code == 200;
+        assert _first_report(response) == {"files": ["a.txt", "b.txt"], "text": None};
+    } finally {
+        client.close();
+    }
+}

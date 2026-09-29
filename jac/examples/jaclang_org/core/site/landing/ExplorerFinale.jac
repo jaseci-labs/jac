@@ -1,8 +1,3 @@
-import from core.site.ui.badge { Badge }
-import from core.site.ui.button { buttonVariants }
-import from .Reveal { Reveal }
-import from core.site.source.SourceBrowser { SourceBrowser }
-import from .CopyCommand { CopyCommandBlock }
 import from "@jac/runtime" { Link }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {

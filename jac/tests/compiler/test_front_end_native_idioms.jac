@@ -35,9 +35,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
     prog.compile(
         file_path=os.path.join(FIXTURES, f"_idiom_{label}.jac"),
         use_str=code,
-        options=CompileOptions(
-            no_cgen=True, force_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace="native")
     );
     return prog;
 }
@@ -132,9 +130,12 @@ test "native_safe_sym treats non-ASCII letters as unsafe" {
     assert safe_sym_stem("naïve_mod") == "na_ve_mod";
 }
 
-test "native_safe_sym keeps the kernel modules unhashed" {
-    assert native_safe_sym("osp_kernel") == "osp_kernel";
-    assert native_safe_sym("fmt_kernel") == "fmt_kernel";
+test "native_safe_sym hashes the kernel modules like every other unit" {
+    # Every native module is a unit named by its module key; the toolchain
+    # units carry no fixed link names any more.
+    assert native_safe_sym("osp_kernel") != "osp_kernel";
+    assert native_safe_sym("osp_kernel").startswith("osp_kernel_");
+    assert native_safe_sym("fmt_kernel").startswith("fmt_kernel_");
 }
 
 test "native_safe_sym keeps distinct sources distinct after sanitizing" {
@@ -165,7 +166,9 @@ test "helpers module scope binds no Python modules" {
 # are type errors, and a type error in a native module refuses the module --
 # there is no callable to demote a signature to. Every one of them is fixed
 # or demotable now, so the module reaches the backend and the constructs that
-# genuinely cannot lower become seams instead of a whole-module refusal.
+# genuinely cannot lower become seams instead of a whole-module refusal. The
+# encoding-probing file reader now lives in `project.textio`, the host-side
+# text I/O module, so none of the helpers here has to demote at all.
 test "source helpers lower when a native unit reaches them" {
     import jaclang;
     import from jaclang.compiler.driver.na_coverage {
@@ -177,10 +180,7 @@ test "source helpers lower when a native unit reaches them" {
     );
     prog = JacProgram();
     opts = CompileOptions(
-        aot_mode=True,
-        force_codespace='native',
-        force_target_program=True,
-        no_ir_cache=True
+        aot_mode=True, force_codespace='native'
     ).clone_for_native_import();
     na_coverage_begin();
     try {
@@ -199,15 +199,12 @@ test "source helpers lower when a native unit reaches them" {
     rec = coverage.get(os.path.realpath(helpers_path));
     assert rec is not None , "the coverage recorded nothing for project/source.jac";
     seams = [str(s) for s in (rec["seams"] or [])];
-    reader = [
+    own_seams = [
         s
         for s in seams
-        if s.startswith("read_file_with_encoding: ")
+        if os.path.join("project", "source.jac") in s
     ];
-    assert len(reader) == 1 and "open" in reader[0] , (
-        f"`open(path, encoding=...)` has to demote its own function and name "
-        f"the construct it refused, got: {seams}"
-    );
+    assert not own_seams , f"project/source.jac demoted its own helpers: {own_seams}";
 }
 
 test "helpers no longer exports the moved symbols" {
@@ -335,7 +332,8 @@ test "version-condition comparisons match the operator table they replaced" {
     import sys;
     import ast as py_ast;
     import from jaclang.compiler.frontend.unitree { IfStmt, PythonModuleAst, Source }
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+    import from jaclang.compiler.driver.pipeline_runner { run_utility }
+    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
     import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
     code = "import sys\n"
     "if sys.version_info >= (3, 11):\n    a = 1\n"
@@ -347,11 +345,12 @@ test "version-condition comparisons match the operator table they replaced" {
     "if sys.version_info >= (99, 0):\n    g = 1\n"
     "if sys.platform == 'linux':\n    h = 1\n";
     prog = JacProgram();
-    mod = run_walker(
-        PyastBuildPass,
-        module=PythonModuleAst(
+    mod = run_utility(
+        UtilityProduct.PYTHON_AST,
+        PythonModuleAst(
             py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
-        )
+        ),
+        prog
     ).module;
     got = [
         evaluate_version_condition(nd.condition)

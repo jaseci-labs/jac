@@ -567,7 +567,6 @@ impl Lexer.scan_string(quote: str) -> LexToken {
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    value = "";
 
     prefix = "";
     pp = start_pos - 1;
@@ -581,29 +580,37 @@ impl Lexer.scan_string(quote: str) -> LexToken {
 
     if self.peek() == quote and self.peek(2) == quote {
         triple = True;
-        value += self.advance();
-        value += self.advance();
-        value += self.advance();
+        self.advance();
+        self.advance();
+        self.advance();
     } else {
-        value += self.advance();
+        self.advance();
     }
     while not self.at_end() {
         ch = self.current();
 
         if triple {
             if ch == quote and self.peek() == quote and self.peek(2) == quote {
-                value += self.advance();
-                value += self.advance();
-                value += self.advance();
+                self.advance();
+                self.advance();
+                self.advance();
                 return self.make_token(
-                    TokenKind.STRING, value, start_line, start_col, start_pos
+                    TokenKind.STRING,
+                    self._slice(start_pos, self.pos),
+                    start_line,
+                    start_col,
+                    start_pos
                 );
             }
         } else {
             if ch == quote {
-                value += self.advance();
+                self.advance();
                 return self.make_token(
-                    TokenKind.STRING, value, start_line, start_col, start_pos
+                    TokenKind.STRING,
+                    self._slice(start_pos, self.pos),
+                    start_line,
+                    start_col,
+                    start_pos
                 );
             }
             if ch == "\n" {
@@ -615,7 +622,11 @@ impl Lexer.scan_string(quote: str) -> LexToken {
                     code_str="E0100"
                 );
                 return self.make_token(
-                    TokenKind.ERROR, value, start_line, start_col, start_pos
+                    TokenKind.ERROR,
+                    self._slice(start_pos, self.pos),
+                    start_line,
+                    start_col,
+                    start_pos
                 );
             }
         }
@@ -624,10 +635,10 @@ impl Lexer.scan_string(quote: str) -> LexToken {
             esc_line = self.line;
             esc_col = self.col;
             esc_pos = self.pos;
-            value += self.advance();
+            self.advance();
             if not self.at_end() {
                 esc = self.current();
-                value += self.advance();
+                self.advance();
 
                 if (not is_raw and not is_bytes and esc == "N") {
                     self.error(
@@ -656,7 +667,7 @@ impl Lexer.scan_string(quote: str) -> LexToken {
                 }
             }
         } else {
-            value += self.advance();
+            self.advance();
         }
     }
     self.error(
@@ -666,7 +677,13 @@ impl Lexer.scan_string(quote: str) -> LexToken {
         start_pos,
         code_str="E0100"
     );
-    return self.make_token(TokenKind.ERROR, value, start_line, start_col, start_pos);
+    return self.make_token(
+        TokenKind.ERROR,
+        self._slice(start_pos, self.pos),
+        start_line,
+        start_col,
+        start_pos
+    );
 }
 
 impl Lexer.scan_fstring(prefix: str) -> LexToken {

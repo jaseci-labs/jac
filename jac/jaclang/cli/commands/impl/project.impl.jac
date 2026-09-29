@@ -25,6 +25,7 @@ impl create(
     path: str = "",
     use: str = "default",
     awesome: bool = False,
+    awetiny: bool = False,
     `list: bool = False,
     pack: str = "",
     pack_output: str = "",
@@ -53,6 +54,7 @@ impl create(
             path,
             use,
             awesome,
+            awetiny,
             `list,
             `skip or bool(os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL")),
             style,
@@ -82,6 +84,7 @@ def _create_body(
     app_path: str,
     use: str,
     awesome: bool,
+    awetiny: bool,
     list_kinds: bool,
     skip_deps: bool,
     style: str | None,
@@ -153,9 +156,9 @@ def _create_body(
 
     explicit_use = use != "default";
     if app_name {
-        if awesome or explicit_use {
+        if awesome or awetiny or explicit_use {
             console.error(
-                "--app scaffolds a built-in kind inside the current project; drop --awesome/--use.",
+                "--app scaffolds a built-in kind inside the current project; drop --awesome/--awetiny/--use.",
                 hint="jac create --app <name> --kind <kind>"
             );
             return 1;
@@ -169,26 +172,32 @@ def _create_body(
         );
         return 1;
     }
-    if awesome and (kind or explicit_use) {
+    if awesome and awetiny {
+        console.error("Use either --awesome or --awetiny, not both.");
+        return 1;
+    }
+    bundled = "awetiny" if awetiny else "awesome";
+    if (awesome or awetiny) and (kind or explicit_use) {
         console.error(
-            "--awesome is a complete template; drop --kind/--use.",
-            hint="jac create <name> --awesome"
+            f"--{bundled} is a complete template; drop --kind/--use.",
+            hint=f"jac create <name> --{bundled}"
         );
         return 1;
     }
-    if awesome {
-        tmpl = _resolve_awesome_template();
+    if awesome or awetiny {
+        example = "tiny_jacyac" if awetiny else "jaclang_org";
+        tmpl = _resolve_bundled_template(bundled, example);
         if tmpl is None {
             console.error(
-                "The awesome template is not available in this jac build.",
-                hint="It ships inside the released binary's payload (awesome_template beside the jaclang package) or a source checkout's examples/jaclang_org."
+                f"The {bundled} template is not available in this jac build.",
+                hint=f"It ships inside the released binary's payload ({bundled}_template beside the jaclang package) or a source checkout's examples/{example}."
             );
             return 1;
         }
         if "apps" not in tmpl.config {
             console.error(
-                "The awesome template has no [apps] table; the flagship is a workspace.",
-                hint="examples/jaclang_org/jac.toml declares [apps.*]; refresh the bundled awesome_template."
+                f"The {bundled} template has no [apps] table; this template is a workspace.",
+                hint=f"examples/{example}/jac.toml declares [apps.*]; refresh the bundled {bundled}_template."
             );
             return 1;
         }
@@ -554,14 +563,11 @@ def _project_name_from_cwd(cwd: Path) -> str {
     return cwd.resolve().name;
 }
 
-def _resolve_awesome_template -> ProjectTemplate | None {
+def _resolve_bundled_template(name: str, example: str) -> ProjectTemplate | None {
     import jaclang;
     import from jaclang.project.template_loader { load_template_from_directory }
     pkg = Path(jaclang.__file__).parent;
-    candidates = [
-        pkg.parent / "awesome_template",
-        pkg.parent / "examples" / "jaclang_org"
-    ];
+    candidates = [pkg.parent / f"{name}_template", pkg.parent / "examples" / example];
     for cand in candidates {
         if not (cand / "jac.toml").exists() {
             continue;

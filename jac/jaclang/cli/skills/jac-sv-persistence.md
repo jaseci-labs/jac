@@ -13,7 +13,7 @@ node Post {
     has published: bool = False;
 }
 
-edge Wrote { has at: str = ""; }
+edge Wrote: User --> Post { has at: str = ""; }
 
 # CREATE - typed edge from user to the new post
 def:pub write_post(user_id: str, title: str) -> Post | None {
@@ -79,17 +79,52 @@ indexes = { Post = ["at", "published"], Msg = ["at", "seq"] }
 
 Without this a `[?:Post, -at]` still returns the right rows -- correctness never depends on the declaration -- it just sorts the whole set to do it.
 
+**Owning content as a group.** A minted `Root()` is created unowned - grant
+yourself `WRITE` on it in the same function that mints it, or nothing can ever
+reach it. Then create content under it with `save(obj, owner=...)`, and one
+grant on that root covers all of it:
+
+```jac
+node Item { has label: str; }
+
+import from jaclang { JacRuntime as Jac }
+import from uuid { UUID }
+
+def make_org_item(member_root_id: UUID) -> Item {
+    org = Root();
+    Jac.save(org);
+    Jac.allow_root(org, UUID(jid(root)), AccessLevel.WRITE);   # jac:ignore[E1053]
+
+    item = Item(label="x");
+    Jac.save(item, owner=UUID(jid(org)));   # owned by the org, not by the caller
+    Jac.allow_root(org, member_root_id, AccessLevel.READ);   # jac:ignore[E1053]
+    return item;
+}
+```
+
+`save(obj, owner=r)` requires `WRITE` on `r` (`PermissionError` otherwise) and
+raises `ValueError` when `r` is not an existing root or the object is already
+saved under another owner; it never silently falls back to the caller.
+`Jac.owner_of(obj)` reads which root owns an anchor.
+
+Why own it by the org rather than by its creator: the owning root always has
+`WRITE`, checked before any grant or `__jac_access__` hook. A record a member
+created under their own root stays writable by them after they leave the org.
+A record owned by the org root follows the grants on that root, so
+`Jac.disallow_root(org, member_id)` ends the member's access to all of it at
+once.
+
 **Sharing: name a group, not every grantee.** `allow_root(obj, root_id)` writes one entry per grantee into the object's own permission map, so sharing with an audience of N costs N entries on that object -- re-serialised on every write to it. `allow_group(obj, group_id, level)` is one entry, and membership is an edge:
 
 ```
 node Team { has name: str; }
-edge MemberOf {}
+edge MemberOf: Node --> Team {}
 
 user +>:MemberOf():+> team;                  # joining costs one edge
 allow_group(doc, jid(team), AccessLevel.READ);   # sharing costs one entry
 ```
 
-Both forms compose -- an existing per-root grant still applies, and a group grant only raises the level. The permission test compiles into the query for the standard model (owner, granted-to-all, granted-to-you, granted-to-your-group), so a gated read costs the rows you may see rather than every candidate. An archetype that overrides `__jac_access__` decides access with arbitrary Jac, which has no SQL form: those keep the object-space filter, correctly but at full cost.
+Both forms compose -- an existing per-root grant still applies, and a group grant only raises the level. The permission test compiles into the query for the standard model (owner, granted-to-all, granted-to-you, granted-to-your-group, granted on the owning root), so a gated read costs the rows you may see rather than every candidate. An archetype that overrides `__jac_access__` decides access with arbitrary Jac, which has no SQL form: those keep the object-space filter, correctly but at full cost.
 
 Edge-type filter / creation / deletion syntax, and the ordering-term rules: see `jac-node-edge-patterns`.
 

@@ -24,13 +24,13 @@ walker:pub CustomPathWalker {
 
 """Function with GET method via restspec decorator."""
 @restspec(method=HTTPMethod.GET)
-def get_func -> dict[str, any] {
+def:protect get_func -> dict[str, any] {
     return {"message": "get_func executed", "method": "GET"};
 }
 
 """Function with custom path."""
 @restspec(method=HTTPMethod.GET, path="/custom/func")
-def custom_path_func -> dict[str, any] {
+def:protect custom_path_func -> dict[str, any] {
     return {"message": "custom_path_func executed", "path": "/custom/func"};
 }
 
@@ -51,12 +51,12 @@ walker:pub DefaultWalker {
 
 """Function with POST method via restspec decorator."""
 @restspec(method=HTTPMethod.POST)
-def post_func -> dict[str, any] {
+def:protect post_func -> dict[str, any] {
     return {"message": "post_func executed", "method": "POST"};
 }
 
 """Function with default method (POST)."""
-def default_func -> dict[str, any] {
+def:protect default_func -> dict[str, any] {
     return {"message": "default_func executed", "method": "DEFAULT"};
 }
 
@@ -77,7 +77,7 @@ walker:pub GetWalkerWithParams {
 
 """Function with GET method and parameters."""
 @restspec(method=HTTPMethod.GET)
-def get_func_with_params(name: str, age: int) -> dict[str, any] {
+def:protect get_func_with_params(name: str, age: int) -> dict[str, any] {
     return {"message": "get_func_with_params executed", "name": name, "age": age};
 }
 
@@ -86,13 +86,13 @@ def get_func_with_params(name: str, age: int) -> dict[str, any] {
 # ============================================================================
 """Function with a single path parameter."""
 @restspec(method=HTTPMethod.GET, path="/items/{item_id}")
-def get_item(item_id: str) -> dict[str, any] {
+def:protect get_item(item_id: str) -> dict[str, any] {
     return {"message": "get_item executed", "item_id": item_id};
 }
 
 """Function with a path parameter plus additional query parameters."""
 @restspec(method=HTTPMethod.GET, path="/users/{user_id}/orders")
-def get_user_orders(user_id: str, status: str = "all") -> dict[str, any] {
+def:protect get_user_orders(user_id: str, status: str = "all") -> dict[str, any] {
     return {
         "message": "get_user_orders executed",
         "user_id": user_id,
@@ -102,13 +102,13 @@ def get_user_orders(user_id: str, status: str = "all") -> dict[str, any] {
 
 """Function with multiple path parameters."""
 @restspec(method=HTTPMethod.GET, path="/orgs/{org_id}/repos/{repo_id}")
-def get_org_repo(org_id: str, repo_id: str) -> dict[str, any] {
+def:protect get_org_repo(org_id: str, repo_id: str) -> dict[str, any] {
     return {"message": "get_org_repo executed", "org_id": org_id, "repo_id": repo_id};
 }
 
 """POST function with a path parameter and body parameters."""
 @restspec(method=HTTPMethod.POST, path="/resources/{resource_id}/update")
-def update_resource(resource_id: str, name: str, value: int) -> dict[str, any] {
+def:protect update_resource(resource_id: str, name: str, value: int) -> dict[str, any] {
     return {
         "message": "update_resource executed",
         "resource_id": resource_id,
@@ -241,7 +241,7 @@ walker:pub CreateUsers {
 # ============================================================================
 """Function with a custom obj body parameter."""
 @restspec(method=HTTPMethod.POST, path="/func/create_user")
-def create_user_func(user: UserBody) -> dict[str, any] {
+def:protect create_user_func(user: UserBody) -> dict[str, any] {
     return {
         "message": "create_user_func executed",
         "name": user.name,
@@ -252,7 +252,7 @@ def create_user_func(user: UserBody) -> dict[str, any] {
 
 """Function with a nested custom obj body parameter."""
 @restspec(method=HTTPMethod.POST, path="/func/create_user_with_address")
-def create_user_with_address_func(user: UserWithAddress) -> dict[str, any] {
+def:protect create_user_with_address_func(user: UserWithAddress) -> dict[str, any] {
     return {
         "message": "create_user_with_address_func executed",
         "name": user.name,
@@ -264,7 +264,7 @@ def create_user_with_address_func(user: UserWithAddress) -> dict[str, any] {
 
 """Function with a list of custom objs."""
 @restspec(method=HTTPMethod.POST, path="/func/create_users")
-def create_users_func(users: list[UserBody]) -> dict[str, any] {
+def:protect create_users_func(users: list[UserBody]) -> dict[str, any] {
     return {
         "message": "create_users_func executed",
         "count": len(users),
@@ -281,11 +281,11 @@ obj TreeNode {
         children: list[TreeNode] = [];
 }
 
-def _tree_depth(n: TreeNode) -> int {
+def:protect _tree_depth(n: TreeNode) -> int {
     return 1 + max([_tree_depth(c) for c in n.children], `default=0);
 }
 
-def _tree_count(n: TreeNode) -> int {
+def:protect _tree_count(n: TreeNode) -> int {
     return 1 + sum([_tree_count(c) for c in n.children]);
 }
 
@@ -309,7 +309,7 @@ walker:pub CreateTreeWalker {
 
 """Function taking a recursive tree as a body parameter."""
 @restspec(method=HTTPMethod.POST, path="/func/create_tree")
-def create_tree_func(`root: TreeNode) -> dict[str, any] {
+def:protect create_tree_func(`root: TreeNode) -> dict[str, any] {
     return {
         "message": "create_tree_func executed",
         "root_name": `root.name,
@@ -385,6 +385,6 @@ def:pub still_enveloped -> str {
 """Function with a custom path and NO method= (#8000 f3): must default to
 POST and register a live route instead of an unroutable "" method."""
 @restspec(path="/custom/no-method-func")
-def no_method_func -> dict[str, any] {
+def:protect no_method_func -> dict[str, any] {
     return {"message": "no_method_func executed"};
 }

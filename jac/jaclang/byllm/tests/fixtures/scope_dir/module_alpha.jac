@@ -1,4 +1,4 @@
-"""Fixture module_alpha with process_data function for scope resolution test."""
+"""module_alpha's `process_data`, which shares its name with module_beta's."""
 
 import from jaclang.byllm.lib { MockLLM }
 
@@ -7,8 +7,8 @@ obj AlphaResult {
 }
 
 glob llm = MockLLM(
-    model_name="mockllm",
-    config={"outputs": [AlphaResult(value="alpha_result")], "verbose": False}
-);
+         model_name="mockllm",
+         config={"outputs": [AlphaResult(value="alpha_result")], "verbose": False}
+     );
 
 def process_data -> AlphaResult by llm();

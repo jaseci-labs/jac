@@ -19,27 +19,49 @@ unit no longer names `prog` at all -- the last of the eight driver names
 """
 
 import os;
+import subprocess;
+import tempfile;
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.boundary_classify { native_only_import_target }
+import from jaclang.compiler.driver.boundary_classify {
+    import_bound_names,
+    native_only_import_target,
+    python_side_name_refs
+}
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, jac_command }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      PINNED_IMPORTER = "na_py_interop_multi.jac",
-     PKG_PATH = Path(jaclang.__file__).parent;
+     PKG_PATH = Path(jaclang.__file__).parent,
+     ANCHOR_LIB = (
+         "import from c { def strlen(s: str) -> i64; }\n\n"
+         + "obj Counter {\n    has n: int = 0;\n\n"
+         + "    def bump(s: str) {\n        self.n += strlen(s);\n    }\n}\n"
+     ),
+     ANCHOR_USER = (
+         "import from anchor_lib { Counter }\n\n"
+         + "obj Holder {\n    has c: Counter = Counter();\n}\n\n"
+         + "def fresh_count -> int {\n    return Holder().c.n;\n}\n"
+     ),
+     ANCHOR_MAIN = (
+         "import from anchor_user { fresh_count }\n\n"
+         + "with entry {\n    print(fresh_count());\n}\n"
+     );
 
 
-"""Compile a fixture the ordinary way and hand back (program, module)."""
+"""Compile a fixture as a server module with pinned native sections and hand
+back (program, module): the shape whose python side omits the native
+functions, so an import only they use has nothing to bind there."""
 def _compiled(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, fixture),
-        options=CompileOptions(no_ir_cache=True)
+        options=CompileOptions(default_codespace='server')
     );
     return (prog, mod, );
 }
@@ -64,10 +86,12 @@ test "the driver stamps every import before the emitter reads it" {
 
 test "the stamped verdict is the computation it replaced" {
     (prog, mod) = _compiled(PINNED_IMPORTER);
+    py_refs = python_side_name_refs(mod);
     for imp in mod.get_all_sub_nodes(uni.Import) {
         target = native_only_import_target(imp, prog);
         expected = target is not None
-            and (os.sep + "jaclang" + os.sep) not in os.path.abspath(target);
+            and (os.sep + "jaclang" + os.sep) not in os.path.abspath(target)
+            and not any(name in py_refs for name in import_bound_names(imp));
         assert imp.native_only_drop == expected , (
             f"the stamp and the retired computation disagree for the "
             f"import at line {imp.loc.first_line}: stamped "
@@ -76,6 +100,99 @@ test "the stamped verdict is the computation it replaced" {
     }
 }
 
+"""Write the anchored-library project: `anchor_lib` declares a C import, so it
+is native-only; `anchor_user` is inferred native and names `Counter` in a field
+default its Python side evaluates; `main` is pinned to the server."""
+def _anchor_project(proj: str) {
+    files = {
+        "jac.toml": '[project]\nname = "anchor"\n\n[placement.pins]\nmain = "server"\n',
+        "anchor_lib.jac": ANCHOR_LIB,
+        "anchor_user.jac": ANCHOR_USER,
+        "main.jac": ANCHOR_MAIN
+    };
+    for (name, text) in files.items() {
+        Path(proj, name).write_text(text, encoding="utf-8");
+    }
+}
+
+test "an import the python side names survives in an inferred-native module" {
+    with tempfile.TemporaryDirectory() as proj {
+        _anchor_project(proj);
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=os.path.join(proj, "anchor_user.jac"), options=CompileOptions()
+        );
+        imports = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if "Counter" in import_bound_names(imp)
+        ];
+        assert len(imports) == 1 , "anchor_user imports Counter once";
+        assert mod.decided_codespace == "native" , (
+            f"anchor_user must infer native to exercise the drop; decided "
+            f"{mod.decided_codespace!r}"
+        );
+        assert native_only_import_target(imports[0], prog) is not None , (
+            "anchor_lib's C import must make it a native-only target"
+        );
+        assert not imports[0].native_only_drop , (
+            "the python side of anchor_user evaluates `Counter()` in a field "
+            "default, so dropping the import leaves the name unbound there"
+        );
+    }
+}
+
+"""Run the anchored project's server-pinned `main` from `proj_dir` and return
+its last stdout line."""
+def _run_anchor_main(proj_dir: str) -> str {
+    proc = subprocess.run(
+        jac_command("run", os.path.join(proj_dir, "main.jac")),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=proj_dir
+    );
+    assert proc.returncode == 0 , proc.stderr[-1200:];
+    lines = proc.stdout.strip().splitlines();
+    return lines[-1] if lines else "";
+}
+
+test "a C-anchored module infers native under a server default" {
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    with tempfile.TemporaryDirectory() as proj {
+        _anchor_project(proj);
+        prior = get_effective_default_codespace_override();
+        set_effective_default_codespace('server');
+        try {
+            prog = JacProgram();
+            options = CompileOptions(default_codespace='server', no_cgen=True);
+            lib = prog.compile(
+                file_path=os.path.join(proj, "anchor_lib.jac"), options=options
+            );
+            user = prog.compile(
+                file_path=os.path.join(proj, "anchor_user.jac"), options=options
+            );
+        } finally {
+            set_effective_default_codespace(prior);
+        }
+        assert lib.decided_codespace == "native" , (
+            "anchor_lib's C import pins it native whatever the default, so it "
+            f"keeps its python side; decided {lib.decided_codespace!r}"
+        );
+        assert user.decided_codespace != "native" , "anchor_user has no anchor of its own";
+    }
+}
+
+test "a python caller reaches an inferred-native module's python side" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _anchor_project(proj);
+        assert _run_anchor_main(proj) == "0";
+    }
+}
 
 test "the emitter unit no longer names the driver" {
     impl_dir = PKG_PATH / "compiler" / "backends" / "py" / "jcir_gen_pass.impl";

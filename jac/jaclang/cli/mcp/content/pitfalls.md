@@ -384,10 +384,14 @@ walker MyWalker {
 ### 18. Edge definitions
 
 ```jac
-edge MyEdge {
+node Waypoint { has name: str = ""; }
+
+edge MyEdge: Waypoint --> Waypoint {
     has weight: float = 1.0;
 }
 ```
+
+An edge must name the node types it connects (`E2086` otherwise). Write `any --> any` when it really does connect anything.
 
 ### 19. Graph construction with spawn
 

@@ -21,10 +21,11 @@ call, and a nested loop with `break`/`continue` over the tuple.
 Mixed tuples use the union of their element types and the shared tagged-value
 representation, so narrowing in the loop observes the current member.
 """
+import from tests.support { unit_symbol }
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -74,7 +75,7 @@ def _engine -> any {
 
 """ctypes handle for an (int) -> int function in the JIT engine."""
 def _get(name: str) -> any {
-    addr = _engine().get_function_address(name);
+    addr = native_address(_engine(), name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
@@ -154,14 +155,14 @@ test "mixed tuple iteration retains values and narrowing" {
     eng = mod.gen.native_engine;
     assert eng is not None;
     for name in ["mixed_tuple", "mixed_list"] {
-        address = eng.get_function_address(name);
+        address = eng.get_function_address(unit_symbol(mod, name));
         assert address != 0 , name;
         fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
         for seed in SEEDS {
             assert fn(seed) == seed * 125 + 38 , name;
         }
     }
-    address = eng.get_function_address("optional_tuple");
+    address = eng.get_function_address(unit_symbol(mod, "optional_tuple"));
     assert address != 0;
     fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
     assert fn(11) == 22;

@@ -23,14 +23,14 @@ import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 These helpers manage the client authentication flow. The server still enforces endpoint access, and the application must handle unsuccessful signup and login attempts. This lesson verifies isolation using two accounts.
 
-**`def:priv` -- Per-User Endpoints**
+**`def:protect` -- Per-User Endpoints**
 
-Remember from Part 2 that `root` is a self-referential pointer to the *current runner* of the program. In Parts 3-5, you used `def:pub` to create public endpoints where all users shared the same `root`. Now that you have authentication, you want each user's data to be private. For these endpoints, replace `def:pub` with `def:priv`:
+Remember from Part 2 that `root` is a self-referential pointer to the *current runner* of the program. In Parts 3-5, you used `def:pub` to create public endpoints where all users shared the same `root`. Now that you have authentication, you want each user's data to be private. For these endpoints, replace `def:pub` with `def:protect`:
 
 - **`def:pub`** -- public endpoint, shared data (no authentication required)
-- **`def:priv`** -- private endpoint, requires authentication, operates on the user's **own `root`**
+- **`def:protect`** -- protected endpoint, requires authentication, operates on the user's **own `root`** (a plain `def` is private: not an endpoint at all)
 
-With `def:priv`, each authenticated user gets their own isolated graph with its own `root`. User A's tasks are completely invisible to User B -- same code, isolated data, enforced by the runtime. This is the payoff of the `root` abstraction you learned earlier: because all your code already references `root` rather than a global variable, switching to per-user isolation requires no changes to your business logic.
+With `def:protect`, each authenticated user gets their own isolated graph with its own `root`. User A's tasks are completely invisible to User B -- same code, isolated data, enforced by the runtime. This is the payoff of the `root` abstraction you learned earlier: because all your code already references `root` rather than a global variable, switching to per-user isolation requires no changes to your business logic.
 
 **Multi-File Organization**
 
@@ -210,19 +210,19 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Task Endpoints ---
 
     """Add a task with AI categorization."""
-    def:priv add_task(title: str) -> Task {
+    def:protect add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
         task = root ++> Task(title=title, category=category);
         return task;
     }
 
     """Get all tasks."""
-    def:priv get_tasks -> list[Task] {
+    def:protect get_tasks -> list[Task] {
         return [root-->][?:Task];
     }
 
     """Toggle a task's done status."""
-    def:priv toggle_task(id: str) -> Task | None {
+    def:protect toggle_task(id: str) -> Task | None {
         for task in [root-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
@@ -233,7 +233,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Delete a task."""
-    def:priv delete_task(id: str) -> dict[str, str] {
+    def:protect delete_task(id: str) -> dict[str, str] {
         for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
@@ -246,7 +246,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Shopping List Endpoints ---
 
     """Generate a shopping list from a meal description."""
-    def:priv generate_list(meal: str) -> list[ShoppingItem] {
+    def:protect generate_list(meal: str) -> list[ShoppingItem] {
         for item in [root-->][?:ShoppingItem] {
             del item;
         }
@@ -264,12 +264,12 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Get the current shopping list."""
-    def:priv get_shopping_list -> list[ShoppingItem] {
+    def:protect get_shopping_list -> list[ShoppingItem] {
         return [root-->][?:ShoppingItem];
     }
 
     """Clear the shopping list."""
-    def:priv clear_shopping_list -> dict[str, bool] {
+    def:protect clear_shopping_list -> dict[str, bool] {
         for item in [root-->][?:ShoppingItem] {
             del item;
         }
@@ -792,17 +792,17 @@ Open [http://localhost:8000](http://localhost:8000). You should see a login scre
 2. **Add tasks** -- they auto-categorize just like Part 5
 3. **Try the meal planner** -- type "spaghetti bolognese for 4" and click Generate
 4. **Refresh the page** -- your data persists (it's in the graph)
-5. **Log out and sign up as a different user** -- you'll see a completely empty app. Each user gets their own graph thanks to `def:priv`.
+5. **Log out and sign up as a different user** -- you'll see a completely empty app. Each user gets their own graph thanks to `def:protect`.
 6. **Restart the server** -- all data persists for both users
 
 !!! tip "Visualize per-user graphs"
     Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see the graph for the currently logged-in user. Log in as different users and compare -- each has their own isolated graph with their own `root`, tasks, and shopping items.
 
-Step back and consider what you've built: a **complete, fully functional application** with authentication, per-user data isolation, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. In a traditional stack, this would require a web framework, an ORM, a database, an authentication library, a frontend build system, and AI integration code. In Jac, it's built with `def:priv` endpoints, nodes, and edges.
+Step back and consider what you've built: a **complete, fully functional application** with authentication, per-user data isolation, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. In a traditional stack, this would require a web framework, an ORM, a database, an authentication library, a frontend build system, and AI integration code. In Jac, it's built with `def:protect` endpoints, nodes, and edges.
 
 **What You Learned**
 
-- **`def:priv`** -- private endpoints with per-user data isolation (each user gets their own `root`)
+- **`def:protect`** -- private endpoints with per-user data isolation (each user gets their own `root`)
 - **`jacSignup`**, **`jacLogin`**, **`jacLogout`**, **`jacIsLoggedIn`** -- built-in auth functions
 - **`import from "@jac/runtime"`** -- import Jac's built-in client-side utilities
 - **Component files** -- each component in its own `.jac` file; the JSX makes it client code, nothing to annotate

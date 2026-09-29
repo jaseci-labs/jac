@@ -391,6 +391,7 @@ test "a pinned release runs without the deploying jac's compiler redirects" {
         "JAC_DEV_SOURCE",
         "JAC_EXECUTABLE",
         "JAC_NO_PRECOMPILE",
+        "JAC_PRECOMPILE_REQUIRED",
         "PYTHONPATH",
         "PYTHONHOME"
     ] {

@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
+    AtomTrailer,
     BinaryExpr,
     ConnectOp,
     DisconnectOp,
@@ -35,6 +36,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1118
 }
 import from .fixed_width {
+    arithmetic_result_type,
     both_numeric,
     folded_number,
     numeric_name_of,
@@ -131,7 +133,14 @@ def _has_gradual_type_args(t: TypeBase) -> bool {
     return False;
 }
 
-glob BITWISE_OPERATORS: set[str] = {Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR},
+glob COMPLEX_ARITH_OPS: set[str] = {
+         Tok.PLUS,
+         Tok.MINUS,
+         Tok.STAR_MUL,
+         Tok.DIV,
+         Tok.STAR_POW
+     },
+     BITWISE_OPERATORS: set[str] = {Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR},
      SHIFT_OPERATORS: set[str] = {Tok.LSHIFT, Tok.RSHIFT};
 
 def get_numeric_promotion_type(
@@ -154,9 +163,10 @@ def get_numeric_promotion_type(
         if not is_int_kind_type(left_type) or not is_int_kind_type(right_type) {
             return None;
         }
-        return shift_result_type(
+        shifted = shift_result_type(
             evaluator, left_type, right_type, left_node, right_node
         );
+        return None if shifted is None else arithmetic_result_type(evaluator, shifted);
     }
     if op in BITWISE_OPERATORS
         and not (is_int_kind_type(left_type) and is_int_kind_type(right_type)) {
@@ -177,7 +187,10 @@ def get_numeric_promotion_type(
     if op == Tok.DIV {
         return evaluator._convert_to_instance(float_class);
     }
-    return unified;
+    if op in BITWISE_OPERATORS {
+        return unified;
+    }
+    return arithmetic_result_type(evaluator, unified);
 }
 
 def is_int_kind_type(t: TypeBase) -> bool {
@@ -185,6 +198,29 @@ def is_int_kind_type(t: TypeBase) -> bool {
     name = numeric_name_of(t);
     return name is not None
         and JAC_TYPE_REGISTRY.numeric_kind_of(name) == NumericKind.IntKind;
+}
+
+def _is_builtin_instance_named(t: TypeBase, name: str) -> bool {
+    return isinstance(t, ClassType)
+        and t.is_builtin()
+        and t.is_instance()
+        and t.shared.class_name == name;
+}
+
+def get_complex_arith_result_type(
+    left_type: TypeBase, right_type: TypeBase
+) -> TypeBase | None {
+    l_complex = _is_builtin_instance_named(left_type, "complex");
+    r_complex = _is_builtin_instance_named(right_type, "complex");
+    if not (l_complex or r_complex) {
+        return None;
+    }
+    other = right_type if l_complex else left_type;
+    if _is_builtin_instance_named(other, "complex")
+        or numeric_name_of(other) is not None {
+        return left_type if l_complex else right_type;
+    }
+    return None;
 }
 
 def get_pow_result_type(
@@ -197,6 +233,10 @@ def get_pow_result_type(
 ) -> (TypeBase | None) {
     import from jaclang.compiler.frontend.const_fold { fold_const }
     float_class = evaluator.prefetch.float_class;
+    complex_type = get_complex_arith_result_type(left_type, right_type);
+    if complex_type is not None {
+        return complex_type;
+    }
     if float_class is None or not both_numeric(left_type, right_type) {
         return None;
     }
@@ -241,6 +281,17 @@ def is_annotation_type(evaluator: TypeEvaluator, ty: TypeBase) -> bool {
         return ty.shared.same_class(none_type_class.shared);
     }
     return False;
+}
+
+def _is_literal_form(operand: Expr) -> bool {
+    if not isinstance(operand, AtomTrailer) or operand.is_attr {
+        return False;
+    }
+    head = operand.target;
+    if isinstance(head, AtomTrailer) and head.is_attr {
+        head = head.right;
+    }
+    return isinstance(head, Name) and head.value == "Literal";
 }
 
 def get_type_of_binary_operation(
@@ -353,8 +404,11 @@ def get_type_of_binary_operation(
 
     if (isinstance(expr.op, Token) and (expr.op.name in BINARY_OPERATOR_MAP)) {
         if expr.op.name == Tok.BW_OR {
-            if is_annotation_type(evaluator, left_type)
-                and is_annotation_type(evaluator, right_type) {
+            if (is_annotation_type(evaluator, left_type) or _is_literal_form(expr.left))
+                and (
+                    is_annotation_type(evaluator, right_type)
+                    or _is_literal_form(expr.right)
+                ) {
                 return UnionType(
                     types=[
                         evaluator._convert_to_instance(left_type),
@@ -368,6 +422,12 @@ def get_type_of_binary_operation(
         if expr.op.name in ARITHMETIC_OPERATORS
             or expr.op.name in BITWISE_OPERATORS
             or expr.op.name in SHIFT_OPERATORS {
+            if expr.op.name in COMPLEX_ARITH_OPS and expr.op.name != Tok.STAR_POW {
+                complex_type = get_complex_arith_result_type(left_type, right_type);
+                if complex_type is not None {
+                    return complex_type;
+                }
+            }
             if expr.op.name == Tok.STAR_POW {
                 pow_type = get_pow_result_type(
                     evaluator, left_type, right_type, expr.right, expr.left, expr
@@ -572,6 +632,16 @@ def get_type_of_binary_operation(
                             }
                         }
                     }
+                }
+                if not isinstance(conn_type, UnknownType) {
+                    evaluator._check_connect_endpoints(
+                        conn_type,
+                        expr.op.edge_dir,
+                        expr.left,
+                        left_type,
+                        expr.right,
+                        right_type
+                    );
                 }
             }
 

@@ -16,8 +16,8 @@ node City {
     has val: int;
 }
 
-edge Road {}
-edge Rail {}
+edge Road : City --> City {}
+edge Rail : City --> City {}
 
 walker Router {
     has seen: list[any] = [];

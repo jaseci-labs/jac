@@ -24,3 +24,24 @@ def test_no_widen_list -> int {
     }
     return 0;
 }
+
+obj Node {}
+obj Token(Node) {}
+obj Statement(Node) {}
+
+def test_contextual_list_in_branch(flag: bool) {
+    if flag {
+        nodes: list[Node] = [Token()];
+        statements: list[Statement] = [Statement()];
+        nodes.extend(statements);
+        nodes.append(Statement());
+    }
+}
+
+def test_contextual_list_reassignment(flag: bool) {
+    nodes: list[Node] = [];
+    if flag {
+        nodes = [Token()];
+        nodes.extend([Statement()]);
+    }
+}

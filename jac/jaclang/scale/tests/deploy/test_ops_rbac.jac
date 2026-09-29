@@ -35,6 +35,26 @@ test "build_ops_rbac: read-only Role (no mutating verbs) bound to the SA" {
 }
 
 
+test "build_ops_rbac: the read-only Role can read and watch KEDA's own resources" {
+    # Without this an autoscaler runtime status cannot be read from inside a pod:
+    # the ScaledObject carries the trigger and scaler conditions, and `watch` is
+    # what a namespace observer needs, so granting it later means a second RBAC
+    # change and a redeploy.
+    role = build_ops_rbac("myapp", "myns", "myapp-sa", False)["role"];
+    keda = [
+        r
+        for r in role["rules"]
+        if "keda.sh" in r["apiGroups"]
+    ];
+    assert len(keda) == 1 , role["rules"];
+    assert sorted(keda[0]["resources"]) == ["scaledobjects", "triggerauthentications"];
+    for verb in ["get", "list", "watch"] {
+        assert verb in keda[0]["verbs"] , keda[0];
+    }
+    assert "patch" not in keda[0]["verbs"] and "delete" not in keda[0]["verbs"];
+}
+
+
 test "build_ops_rbac: mutations append patch/delete verbs" {
     ro = build_ops_rbac("a", "n", "sa", False);
     mut_rb = build_ops_rbac("a", "n", "sa", True);

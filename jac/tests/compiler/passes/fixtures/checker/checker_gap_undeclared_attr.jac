@@ -44,7 +44,7 @@ node MyNode {
 }
 
 # --- edge: no monkey patching allowed ---
-edge MyEdge {
+edge MyEdge : any --> any {
     has weight: float;
 
     def init(weight: float) -> None {

@@ -1,19 +1,4 @@
 import from "lucide-react" { Users, FolderGit2 }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.button { Button }
-import from core.site.ui.skeleton { Skeleton }
-import from core.site.ui.empty {
-    Empty,
-    EmptyHeader,
-    EmptyMedia,
-    EmptyTitle,
-    EmptyDescription
-}
-import from core.utils { cn }
-import from .ProjectCard { ProjectCard }
-import from core.social_graph { Profile, Project }
-import from core.jacyac.identity { name_of, avatar_of }
-import from core.jacyac.format { handle_of, initial_of }
 
 def:pub ExploreTab(
     mode: str,

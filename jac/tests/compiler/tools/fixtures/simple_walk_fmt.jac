@@ -4,7 +4,7 @@ node Item {
     has value: int = 1;
 }
 
-edge Checking {}
+edge Checking: any --> any {}
 
 walker Creator {
     has count: int = 0;
@@ -19,8 +19,8 @@ walker Creator {
 }
 
 walker Walk {
-    has count: int = 0;
-    has value: int = 0;
+    has count: int = 0,
+        value: int = 0;
 
     can skip_root with Root entry {
         visit [-->];

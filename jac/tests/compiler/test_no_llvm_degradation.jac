@@ -71,7 +71,7 @@ test "native availability probes do not load code generators or LLVM bindings" {
     script = """
 import os, sys, tempfile
 from pathlib import Path
-from jaclang.compiler.driver.pipeline import native_pipeline_available, _native_env_memo
+from jaclang.compiler.driver.toolchain import native_pipeline_available, _native_env_memo
 heavy = ('jaclang.compiler.backends.native.na_ir_gen_pass',
          'jaclang.compiler.backends.native.na_compile_pass',
          'jaclang.compiler.backends.native.llvm.binding')

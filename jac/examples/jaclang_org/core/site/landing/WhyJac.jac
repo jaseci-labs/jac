@@ -1,17 +1,3 @@
-import from core.site.ui.badge { Badge }
-import from core.site.ui.carousel {
-    Carousel,
-    CarouselContent,
-    CarouselItem,
-    CarouselPrevious,
-    CarouselNext,
-    CarouselDots
-}
-import from .Reveal { Reveal }
-import from core.site.landing.diagrams.SynechicDiagram { SynechicDiagram }
-import from core.site.landing.diagrams.TopokineticDiagram { TopokineticDiagram }
-import from core.site.landing.diagrams.GradualBorrowDiagram { GradualBorrowDiagram }
-
 def:pub WhySlide(
     title: str = "", accent: str = "", sub: str = "", children: any = None
 ) -> JsxElement {

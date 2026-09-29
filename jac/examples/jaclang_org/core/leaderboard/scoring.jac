@@ -1,8 +1,5 @@
 import re;
 import math;
-import from core.ai { CodeReview }
-import from core.github { RepoMeta }
-import from core.timefmt { days_since }
 
 obj RepoFeatures {
     has osp: bool = False,
@@ -48,8 +45,8 @@ obj RepoAnalysis {
     def jac_pct -> int;
 }
 
-def analyze(files: dict[str, str]) -> RepoAnalysis;
+def:protect analyze(files: dict[str, str]) -> RepoAnalysis;
 
 def belt_for(total: int) -> str;
 
-def score(meta: RepoMeta, an: RepoAnalysis) -> ScoreBreakdown;
+def:protect score(meta: RepoMeta, an: RepoAnalysis) -> ScoreBreakdown;

@@ -1,0 +1,21 @@
+# Generated artifacts and dependencies
+.jac/
+__pycache__/
+*.pyc
+*.jir
+*.jbc
+node_modules/
+dist/
+build/
+.venv/
+.zig-cache/
+zig-out/
+
+# Local configuration and data
+.env
+.env.*
+*.log
+*.session
+*.session.*
+.tiny-jacyac.json
+.DS_Store

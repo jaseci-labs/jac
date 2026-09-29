@@ -7,6 +7,8 @@ def _wrapname(x: any) -> object {
 }
 
 class Type(_StrCaching) {
+    has __pointer_types: dict[(any, PointerType)];
+
     with entry {
         is_pointer = False;
         null = 'zeroinitializer';
@@ -21,7 +23,16 @@ class Type(_StrCaching) {
     }
 
     def as_pointer(self: Type, addrspace: any = 0) -> PointerType {
-        return PointerType(self, addrspace);
+        try {
+            pointers = self.__pointer_types;
+        } except AttributeError {
+            pointers = self.__pointer_types={};
+        }
+        pointer = pointers.get(addrspace);
+        if pointer is None {
+            pointer = pointers[addrspace]=PointerType(self, addrspace);
+        }
+        return pointer;
     }
 
     def __ne__(self: Type, other: any) -> object {
@@ -106,7 +117,7 @@ class PointerType(Type) {
     }
 
     def __hash__(self: PointerType) -> object {
-        return hash(PointerType);
+        return hash((PointerType, self.addrspace));
     }
 }
 
@@ -136,7 +147,7 @@ class _TypedPointerType(PointerType) {
     }
 
     def __hash__(self: _TypedPointerType) -> object {
-        return hash(_TypedPointerType);
+        return hash((PointerType, self.addrspace));
     }
 
     def gep(self: _TypedPointerType, i: any) -> Type {
@@ -615,7 +626,7 @@ class LiteralStructType(BaseStructType) {
     }
 
     def __hash__(self: LiteralStructType) -> object {
-        return hash(LiteralStructType);
+        return hash((LiteralStructType, self.elements, self.packed));
     }
 }
 
@@ -639,7 +650,7 @@ class IdentifiedStructType(BaseStructType) {
         return "%{name}".format(name=_wrapname(self.name));
     }
 
-    def get_declaration(self: IdentifiedStructType) -> object {
+    def get_declaration(self: IdentifiedStructType) -> str {
         if self.is_opaque {
             out = "{strrep} = type opaque".format(strrep=str(self));
         } else {
@@ -658,7 +669,7 @@ class IdentifiedStructType(BaseStructType) {
     }
 
     def __hash__(self: IdentifiedStructType) -> object {
-        return hash(IdentifiedStructType);
+        return hash((IdentifiedStructType, self.name, self.packed));
     }
 
     def set_body(self: IdentifiedStructType, *elems: any) -> object {

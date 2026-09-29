@@ -2,7 +2,7 @@
 corrupts a registered user's stored root_id with real SQL, simulating a store
 reset or migration out from under the users db."""
 
-def whoami -> dict[str, any] {
+def:protect whoami -> dict[str, any] {
     return {"root": jid(root)};
 }
 

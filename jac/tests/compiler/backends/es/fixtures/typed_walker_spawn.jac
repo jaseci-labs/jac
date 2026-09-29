@@ -16,9 +16,9 @@ node Task {
         done: bool = False;
 }
 
-edge Owns {}
+edge Owns : any --> any {}
 
-edge AssignedTo {}
+edge AssignedTo : any --> any {}
 
 walker create_project {
     has name: str,

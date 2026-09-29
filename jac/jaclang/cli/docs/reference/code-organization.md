@@ -2,6 +2,8 @@
 
 In most programming languages, the *interface* of a module -- what it exposes -- is interleaved with its *implementation* -- how it works. Jac takes a fundamentally different approach. Through its `impl` system, Jac allows you to cleanly separate **declarations** (the interfaces, types, and signatures that define a module's contract) from **implementations** (the method bodies and private helpers that fulfill that contract). As we will see throughout this guide, this distinction is far more than syntactic convenience -- it reshapes how both humans and AI models read, navigate, and reason about code.
 
+The same idea extends from one module to the whole project: an `arch.jac` beside `jac.toml` declares which modules feed which, and generates those imports itself. That file is covered in [Project Wiring](wiring.md).
+
 In this guide, we will walk through the five organizational patterns used in the Jac compiler itself. For each pattern, we will examine when it is most appropriate, study real-world examples drawn from the compiler codebase, and discuss best practices for maintaining clarity and consistency as your projects grow.
 
 !!! note "Examples from the real compiler"

@@ -1,10 +1,14 @@
 import os;
 import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.host { active_host }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
      SPACE_NATIVE: str = 'native';
 
+glob NATIVE_POLICY_DIR_REL: tuple[str, ...] = ("client/targets/desktop/native", );
 glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
      TOOLCHAIN_MIXED_NATIVE_REL: tuple[str, ...] = (
          "client",
@@ -15,8 +19,7 @@ glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
 
 
 def project_root_of(source_path: str) -> (str | None) {
-    import from jaclang.project.modresolver { find_jac_project_root }
-    return find_jac_project_root(source_path);
+    return active_host().project_root(source_path);
 }
 
 
@@ -62,30 +65,15 @@ def emits_server_code(mod: (uni.Module | None)) -> bool {
 }
 
 
-def declared_path_spaces(source_path: str, prog: any) -> set[str] {
+def declared_path_spaces(source_path: str, prog: JacProgram) -> set[str] {
     import from jaclang.compiler.placement.placement_solver { _materialize_module }
     return module_spaces(_materialize_module(source_path, prog));
 }
 
 
-def _errors_for_path(prog: any, ap: str) -> int {
-    count = 0;
-    normed = os.path.normpath(ap);
-    for e in prog.errors_had {
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
-            continue;
-        }
-        if e_path == normed {
-            count += 1;
-        }
-    }
-    return count;
-}
-
-
-def discover_spaces(paths: list[str], prog: any = None) -> dict[str, set[str]] {
+def discover_spaces(
+    paths: list[str], prog: (JacProgram | None) = None
+) -> dict[str, set[str]] {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.boundary_classify { hub_module_for_path }
     target = prog if prog is not None else JacProgram();
@@ -99,7 +87,7 @@ def discover_spaces(paths: list[str], prog: any = None) -> dict[str, set[str]] {
             } except Exception {}
         }
         spaces = set(module_spaces(mod));
-        if _errors_for_path(target, ap) > 0 {
+        if target.count_module_errors(os.path.normpath(ap)) > 0 {
             spaces.add(SPACE_SERVER);
         }
         out[ap] = spaces;
@@ -134,50 +122,98 @@ def client_only_paths(paths: list[str]) -> set[str] {
 }
 
 
-def sealed_spaces_for(source_path: str) -> (set[str] | None) {
-    import json;
-    ap = os.path.abspath(source_path);
-    d = os.path.dirname(ap);
-    while True {
-        mf = os.path.join(d, "_precompiled", "MANIFEST.json");
-        if os.path.isfile(mf) {
-            break;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
-    }
-    try {
-        with open(mf, "r") as f {
-            manifest = json.load(f);
-        }
-    } except Exception {
-        return None;
-    }
-    placement: any = manifest.get("placement") or {};
-    rel = os.path.relpath(ap, d).replace(os.sep, "/");
-    spaces = placement.get(rel);
-    if spaces is None {
-        return None;
-    }
-    return set(spaces);
+def _toolchain_rel(source_path: str) -> (str | None) {
+    import from jaclang.compiler.kernel_target { target_package_rel }
+    return target_package_rel(source_path);
 }
 
+def native_only(source_path: str) -> bool {
+    rel = _toolchain_rel(source_path);
+    if rel is None {
+        return False;
+    }
+    import from jaclang.compiler.kernel_target { active_kernel_target }
+    spec = active_kernel_target();
+    if spec is not None {
+        return spec.is_native_only(rel);
+    }
+    return active_host().is_native_only_source(rel);
+}
 
-def toolchain_native_by_policy(package_dir: str, source_path: str) -> bool {
-    rel = os.path.relpath(os.path.abspath(source_path), os.path.abspath(package_dir));
-    native_only = os.path.join(*TOOLCHAIN_NATIVE_ONLY_REL) + os.sep;
-    if rel.startswith(native_only) {
+def native_lowered(source_path: str) -> bool {
+    rel = _toolchain_rel(source_path);
+    if rel is None {
+        return False;
+    }
+    import from jaclang.compiler.kernel_target { active_kernel_target }
+    spec = active_kernel_target();
+    if spec is not None {
+        return spec.is_native_lowered(rel);
+    }
+    return active_host().is_native_lowered_source(rel);
+}
+
+def native_unit(
+    source_path: str,
+    native_unit_compile: (bool | None) = None,
+    prog: (JacProgram | None) = None
+) -> bool {
+    if native_only(source_path) {
         return True;
     }
-    mixed = os.path.join(*TOOLCHAIN_MIXED_NATIVE_REL) + os.sep;
-    if rel.startswith(mixed) {
-        import from jaclang.compiler.placement.placement_solver {
-            native_default_path_ok
+    import from jaclang.compiler.frontend.codeinfo { is_kernel_unit_path }
+    if is_kernel_unit_path(source_path) {
+        return True;
+    }
+    import from jaclang.compiler.placement.placement_pins { effective_module_pin }
+    if effective_module_pin(source_path, prog) == SPACE_NATIVE {
+        return True;
+    }
+    import from jaclang.compiler.native_scope { in_native_scope_path }
+    if in_native_scope_path(source_path) {
+        if native_unit_compile is None {
+            import from jaclang.compiler.frontend.codeinfo {
+                native_unit_compile_active
+            }
+            native_unit_compile = native_unit_compile_active();
         }
-        return native_default_path_ok(source_path);
+        return bool(native_unit_compile);
+    }
+    rel = _toolchain_rel(source_path);
+    if rel is not None {
+        for d in NATIVE_POLICY_DIR_REL {
+            if rel.startswith(d + "/") {
+                import from jaclang.compiler.placement.placement_solver {
+                    native_default_path_ok
+                }
+                return native_default_path_ok(source_path);
+            }
+        }
     }
     return False;
+}
+
+def native_units_of(package_dir: str, sources: list[str]) -> list[str] {
+    out: list[str] = [];
+    for p in sources {
+        if native_unit(p, native_unit_compile=True) {
+            out.append(os.path.realpath(p));
+        }
+    }
+    return sorted(set(out));
+}
+
+def session_declares_native(
+    options: CompileOptions, source: str, element: str, program: JacProgram
+) -> bool {
+    import from jaclang.compiler.placement.placement_pins {
+        effective_pin_for,
+        config_kind_space
+    }
+    return options.force_codespace == "native"
+        or options.default_codespace == "native"
+        or options.native_required_for(source)
+        or effective_pin_for(source, element, program) == "native"
+        or native_unit(source, options.native_unit, program)
+        or config_kind_space(source, options.app_kind) == "native";
 }

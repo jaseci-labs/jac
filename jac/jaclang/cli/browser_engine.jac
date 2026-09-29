@@ -164,6 +164,8 @@ def _key_code(ch: str) -> str;
 
 def _press(cdp: CDP, key: str, modifiers: int = 0);
 
+def _parse_key_combo(combo: str) -> tuple[str, int];
+
 
 def cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> str;
 def cmd_navigate(session: str, url: str) -> str;

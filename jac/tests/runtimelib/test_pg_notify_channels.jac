@@ -84,21 +84,45 @@ def _wait_for(box: list[any], want: int, seconds: float = 10.0) {
 }
 
 
-test "notify reaches a listener on a channel with a namespace separator" {
+test "notify reaches a listener on a namespaced channel, and still does after a reconnect" {
     (sub, `pub) = _pair();
     got: list[str] = [];
+    closed_flag: any = None;
     try {
         sub.listen('cache:invalidate', lambda (payload: str) { got.append(payload); });
         _settle();
         `pub.notify('cache:invalidate', 'A');
         _wait_for(got, 1);
+
+        # A restart or failover drops the connection LISTEN was registered on.
+        # Killing the backend from the publisher leaves the subscriber's own
+        # connection unaware, so the next write fails mid-call and the store
+        # redials: the registrations have to be replayed on the new connection
+        # or this replica goes deaf while every other call still works.
+        with sub._lock {
+            pid = sub._side().run('SELECT pg_backend_pid()')[0][0];
+        }
+        `pub.rows('SELECT pg_terminate_backend(:p)', {'p': int(pid)});
+        closed_flag = sub._side_conn?._closed;
+        sub.notify('unrelated:channel', 'drives the redial');
+        _settle();
+        `pub.notify('cache:invalidate', 'B');
+        _wait_for(got, 2);
     } finally {
         sub.close();
         `pub.close();
     }
-    assert got == ['A'] , (
+    assert got[:1] == ['A'] , (
         "notify('cache:invalidate') never reached its own listener, got "
         f"{got}: notify and listen disagree on the channel identifier"
+    );
+    assert closed_flag is False , (
+        'the subscriber noticed the kill before the redial, so this no longer '
+        'exercises the mid-call failure path'
+    );
+    assert got == ['A', 'B'] , (
+        f"delivery stopped after the connection was replaced, got {got}: the "
+        'redial dropped the LISTEN registrations'
     );
 }
 

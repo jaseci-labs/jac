@@ -10,13 +10,14 @@ None however it had been constructed. Assigning the field afterwards worked,
 so nothing crashed and nothing complained: the shape compiled and answered
 wrongly, which is the class of defect this file exists to close.
 
-The erasure is only sound while the type argument is a reference. One struct
-serves every instantiation, so `Ctx[int]` would put a scalar in a pointer
-slot -- read back as an object it segfaults, and as an option its zero payload
-is indistinguishable from the null that means None. Those instantiations are
-refused at the construction site instead, so the two halves below are the two
-permitted outcomes: lower correctly at an archetype type argument, refuse
-loudly at a scalar one. Nothing in between.
+One struct serves every instantiation, so `Ctx[int]` puts a scalar in a
+pointer slot -- stored raw it segfaults when read back as an object, and as an
+option its zero payload is indistinguishable from the null that means None. A
+scalar (or `str`, tuple or option) argument is therefore boxed on the way into
+an erased slot and unboxed at the access site, where the static type argument
+names the representation. A type argument with no box (a tagged `any` union)
+is refused at the construction site. Those are the permitted outcomes: lower
+correctly, or refuse loudly. Nothing in between.
 
 Every value is additionally checked against the sv/bytecode answer for the
 same fixture, since a dropped store is still well typed and still compiles.
@@ -24,7 +25,7 @@ same fixture, since a dropped store is still well typed and still compiles.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
@@ -72,7 +73,7 @@ def _compile(fixture: str) -> object {
 
 """ctypes handle for an (int) -> int function in the JIT engine."""
 def _get(eng: any, name: str) -> object {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
@@ -263,103 +264,119 @@ test "an imported generic archetype's optional slot stores on both sides" {
 }
 
 
-test "a generic archetype instantiated at a scalar is refused, not lowered" {
-    (prog, ir) = _compile_src(
-        "scalar_opt",
-        "obj Ctx[T] {\n"
-        "    has value: (T | None) = None;\n"
-        "}\n"
-        "def zero() -> int {\n"
-        "    c = Ctx[int](value=0);\n"
-        "    if c.value is not None {\n"
-        "        return c.value;\n"
-        "    }\n"
-        "    return -1;\n"
-        "}\n"
-    );
+"""The JIT function `name` of a snippet compiled natively, as (int) -> int."""
+def _lowered_fn(label: str, code: str, name: str) -> object {
+    (prog, ir) = _compile_src(label, code);
     assert not prog.errors_had , (
-        f"the refusal is owned by zero(), which must demote to a seam: "
+        f"{label} must lower: {[str(e) for e in prog.errors_had]}"
+    );
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert name in ir.gen.native_layout.functions , f"{name} demoted in {label}";
+    eng = ir.gen.native_engine;
+    assert eng is not None , f"No native engine produced for {label}";
+    return _get(eng, name);
+}
+
+
+test "a generic archetype at a scalar boxes, and 0 stays distinct from None" {
+    # One struct serves every instantiation, so a slot typed by `T` is a
+    # pointer. A scalar argument is boxed into it and unboxed at the access
+    # site, so `0` is a present value and only null spells None.
+    _src = "obj Ctx[T] {\n"
+    "    has value: (T | None) = None;\n"
+    "}\n"
+    "def zero(k: int) -> int {\n"
+    "    c = Ctx[int](value=k - k);\n"
+    "    if c.value is not None {\n"
+    "        return c.value + 10;\n"
+    "    }\n"
+    "    return -1;\n"
+    "}\n"
+    "def unset(k: int) -> int {\n"
+    "    c = Ctx[int]();\n"
+    "    if c.value is not None {\n"
+    "        return c.value;\n"
+    "    }\n"
+    "    return -1 - k;\n"
+    "}\n"
+    "def reassign(k: int) -> int {\n"
+    "    c = Ctx[int](value=k);\n"
+    "    c.value = k * 3;\n"
+    "    v = c.value;\n"
+    "    return v if v is not None else -99;\n"
+    "}\n";
+    assert _lowered_fn("scalar_opt", _src, "zero")(5) == 10 , "a boxed 0 read as None";
+    assert _lowered_fn("scalar_opt_unset", _src, "unset")(2) == -3;
+    assert _lowered_fn("scalar_opt_store", _src, "reassign")(4) == 12;
+}
+
+
+test "an unboxable type argument is refused, naming the instantiation" {
+    # A union of unrelated by-value kinds is a tagged `any` value with no box,
+    # so the erasure has no sound representation for it.
+    _src = "obj Ctx[T] {\n"
+    "    has value: (T | None) = None;\n"
+    "}\n"
+    "def five() -> int {\n"
+    "    c = Ctx[int | str](value=5);\n"
+    "    if c.value is not None {\n"
+    "        return 1;\n"
+    "    }\n"
+    "    return -1;\n"
+    "}\n";
+    msgs = _seam_reasons("scalar_named", _src);
+    assert any([("Ctx[int | str]" in m) for m in msgs]) , (
+        f"the seam reason must name the offending instantiation: {msgs}"
+    );
+    (prog, ir) = _compile_src("scalar_named_layout", _src);
+    assert not prog.errors_had , (
+        f"the refusal must demote five() rather than fail the module: "
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "zero" not in ir.gen.native_layout.functions , (
-        "Ctx[int] puts a scalar in an erased pointer slot, where 0 is "
-        "indistinguishable from the null that spells None; it must demote, "
-        "never lower"
-    );
+    assert "five" not in ir.gen.native_layout.functions;
 }
 
 
-test "the scalar refusal names the archetype and the type argument" {
-    msgs = _seam_reasons(
-        "scalar_named",
-        "obj Ctx[T] {\n"
-        "    has value: (T | None) = None;\n"
-        "}\n"
-        "def five() -> int {\n"
-        "    c = Ctx[int](value=5);\n"
-        "    if c.value is not None {\n"
-        "        return c.value;\n"
-        "    }\n"
-        "    return -1;\n"
-        "}\n"
-    );
-    assert any([("Ctx[int]" in m) for m in msgs]) , (
-        f"the seam reason must name the offending instantiation: {msgs}"
-    );
-}
-
-
-test "a bare `T` slot at a scalar type argument is refused too" {
-    # Before the gate this did not merely answer wrongly: the scalar sat in
-    # a pointer slot and the read dereferenced it, so the binary segfaulted.
-    (prog, ir) = _compile_src(
+test "a bare `T` slot at a scalar type argument boxes too" {
+    # Before boxing this did not merely answer wrongly: the scalar sat in a
+    # pointer slot and the read dereferenced it, so the binary segfaulted.
+    f = _lowered_fn(
         "scalar_bare",
         "obj Plain[T] {\n"
         "    has value: T,\n"
         "        tag: int = 3;\n"
         "}\n"
-        "def get() -> int {\n"
-        "    d = Plain[int](value=9);\n"
-        "    return d.tag;\n"
-        "}\n"
+        "def get(k: int) -> int {\n"
+        "    d = Plain[int](value=k);\n"
+        "    return d.value + d.tag;\n"
+        "}\n",
+        "get"
     );
-    assert not prog.errors_had , (
-        f"the refusal must demote get() rather than fail the module: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "get" not in ir.gen.native_layout.functions , (
-        "Plain[int] stores a scalar in an erased pointer slot; it must demote"
-    );
+    assert f(9) == 12;
+    assert f(0) == 3;
 }
 
 
-test "an inferred scalar type argument is refused the same as a written one" {
+test "an inferred scalar type argument boxes the same as a written one" {
     # No subscript at the call site: the checker solves `T` from the
-    # argument, so the gate has to read the solved instance type rather
-    # than the spelling.
-    (prog, ir) = _compile_src(
+    # argument, and the box follows the argument's own representation.
+    f = _lowered_fn(
         "scalar_inferred",
         "obj Ctx[T] {\n"
         "    has value: (T | None) = None;\n"
         "}\n"
-        "def go() -> int {\n"
-        "    c = Ctx(value=5);\n"
+        "def go(k: int) -> int {\n"
+        "    c = Ctx(value=k);\n"
         "    if c.value is not None {\n"
         "        return c.value;\n"
         "    }\n"
         "    return -1;\n"
-        "}\n"
+        "}\n",
+        "go"
     );
-    assert not prog.errors_had , (
-        f"the refusal must demote go() rather than fail the module: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in ir.gen.native_layout.functions , (
-        "an inferred Ctx[int] is the same unsound erasure as a written one"
-    );
+    assert f(5) == 5;
+    assert f(0) == 0;
 }
 
 
@@ -391,11 +408,10 @@ test "an inferred archetype type argument still lowers" {
 }
 
 
-test "every type parameter an erased slot can hold is checked, not just the first" {
-    # `(T | U | None)` is one erased pointer that either parameter can fill,
-    # so checking only `T` let `Choice[Leaf, int]` through and the scalar in
-    # the pointer slot segfaulted on the read.
-    (prog, ir) = _compile_src(
+test "every type parameter an erased slot can hold is boxed, not just the first" {
+    # `(T | U | None)` is one erased pointer that either parameter can fill;
+    # a scalar in the second parameter boxes exactly like one in the first.
+    f = _lowered_fn(
         "multi_tv_scalar",
         "obj Leaf {\n"
         "    has num: int = 0;\n"
@@ -404,23 +420,16 @@ test "every type parameter an erased slot can hold is checked, not just the firs
         "    has value: (T | U | None) = None,\n"
         "        tag: int = 0;\n"
         "}\n"
-        "def go() -> int {\n"
-        "    c = Choice[Leaf, int](value=7, tag=1);\n"
+        "def go(k: int) -> int {\n"
+        "    c = Choice[Leaf, int](value=k, tag=1);\n"
         "    if c.value is not None {\n"
-        "        return 1;\n"
+        "        return c.tag;\n"
         "    }\n"
         "    return -1;\n"
-        "}\n"
+        "}\n",
+        "go"
     );
-    assert not prog.errors_had , (
-        f"the refusal must demote go() rather than fail the module: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in ir.gen.native_layout.functions , (
-        "a scalar in the second type parameter is the same unsound erasure "
-        "as one in the first"
-    );
+    assert f(0) == 1 , "a boxed 0 in the second parameter read as None";
 }
 
 

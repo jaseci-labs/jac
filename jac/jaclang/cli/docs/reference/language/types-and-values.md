@@ -42,7 +42,8 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `i64`, `u64` | 64-bit signed/unsigned integer | `int64_t`, `uint64_t` |
 | `f32` | 32-bit float (IEEE binary32) | `float` |
 | `f64` | 64-bit float (IEEE binary64) | `double` |
-| `c_void` | Opaque pointer | `void*` |
+
+A C address is `ptr[T]` (a bare `ptr` is `void*`), a builtin generic rather than a scalar; see [C pointers](native-pathway.md#c-pointers-ptrt).
 
 ### Fixed-width semantics
 

@@ -1,36 +1,33 @@
 """Integration tests for the byLLM auto-compaction feature."""
 
-import from unittest { mock }
-import os;
-import types;
 import litellm;
 
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { Model, ModelPool, MockLLM }
 import from jaclang.byllm.llm { BaseLLM, LocalLLM }
-import from jaclang.byllm.types { MockToolCall, CompletionResult }
+import from jaclang.byllm.types { MockToolCall }
 import from jaclang.byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
-import from jaclang.byllm.mtir { MTRuntime }
 import from pathlib { Path }
+import from support { call, fail, finish, fixture_path, scripted }
 
 
-glob FIXTURE_DIR = os.path.join(
-         os.path.dirname(os.path.abspath(__file__)), "fixtures"
-     ),
-     COMPACTION_TOML_FIXTURE = os.path.join(FIXTURE_DIR, "compaction_config");
+glob COMPACTION_TOML_FIXTURE = fixture_path("compaction_config");
+
+
+def step_a -> str {
+    return "stepped";
+}
+
+
+def finish_tool(final_output: str) -> str {
+    return final_output;
+}
 
 
 # Pipeline tests compact through a hook so they check when compaction fires,
 # not how _default_compact slices; that is verified separately.
 test "above threshold compacts and next iteration sees shortened messages" {
-    def step_a -> str {
-        return "stepped";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
     llm = MockLLM(
         ctx_window=1000,
         outputs=[
@@ -46,24 +43,16 @@ test "above threshold compacts and next iteration sees shortened messages" {
         return [msgs[0], msgs[1]];
     }
 
-    iter_msgs: list[int] = [];
-    original_dispatch = llm.dispatch_no_streaming;
-    def capturing_dispatch(mt_run: MTRuntime) -> CompletionResult {
-        iter_msgs.append(len(mt_run.get_msg_list()));
-        return original_dispatch(mt_run);
-    }
-
     def my_task(q: str) -> str by llm(
         tools=[step_a], threshold_ratio=0.80, on_compaction=shrinking_hook
     );
 
-    with mock.patch.object(llm, "dispatch_no_streaming", capturing_dispatch) {
-        result = my_task("test");
-    }
+    result = my_task("test");
 
     assert result == "ok";
     assert hook_call_count[0] == 1;
     # Without compaction iter 3 would be at 6 messages; hook collapses to 3.
+    iter_msgs = [len(sent) for sent in llm.sent("messages")];
     assert iter_msgs == [2, 4, 3] , f"Expected [2, 4, 3], got {iter_msgs}";
 }
 
@@ -111,13 +100,6 @@ test "default compactor produces system user summary and kept-tail structure" {
 
 
 test "below threshold does not trigger compaction" {
-    def step_a -> str {
-        return "stepped";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
     llm = MockLLM(
         ctx_window=1000,
         outputs=[
@@ -138,12 +120,6 @@ test "below threshold does not trigger compaction" {
 
 test "ctx_window priority - call_params beats self.ctx_window" {
     reset_byllm_config();
-    def step_a -> str {
-        return "a";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
 
     llm = MockLLM(
         ctx_window=10000,
@@ -202,12 +178,6 @@ test "ctx_window priority - jac.toml beats litellm" {
 
 test "ctx_window fallback - unknown model with no override disables threshold" {
     reset_byllm_config();
-    def step_a -> str {
-        return "a";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
 
     llm = MockLLM(
         model_name="definitely-not-a-real-model-zzz",
@@ -235,13 +205,6 @@ test "ctx_window fallback - unknown model with no override disables threshold" {
 
 
 test "compaction_enabled false suppresses proactive and emergency paths" {
-    def step_a -> str {
-        return "a";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
     llm1 = MockLLM(
         ctx_window=1000,
         outputs=[
@@ -268,28 +231,28 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
     assert task1("test") == "ok";
     assert not proactive_fired[0];
 
-    llm2 = MockLLM(outputs=[]);
-
-    call_count = [0];
-    def fake_raises(mt_run: MTRuntime) -> CompletionResult {
-        call_count[0] += 1;
-        raise litellm.exceptions.ContextWindowExceededError(
-            message="ctx", model="mockllm", llm_provider="openai"
-        );
-    }
+    llm2 = MockLLM(
+        outputs=[
+            fail(
+                litellm.exceptions.ContextWindowExceededError(
+                    message="ctx", model="mockllm", llm_provider="openai"
+                )
+            )
+        ]
+    );
 
     def task2(q: str) -> str by llm2(tools=[step_a], compaction_enabled=False);
 
     raised = False;
-    with mock.patch.object(llm2, "dispatch_no_streaming", fake_raises) {
-        try {
-            task2("test");
-        } except litellm.exceptions.ContextWindowExceededError {
-            raised = True;
-        }
+    try {
+        task2("test");
+    } except litellm.exceptions.ContextWindowExceededError {
+        raised = True;
     }
     assert raised;
-    assert call_count[0] == 1;
+    assert len(llm2.seen) == 1 , (
+        f"a disabled compactor must not retry, got {len(llm2.seen)} calls"
+    );
 }
 
 
@@ -297,7 +260,16 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
 # [system, user] = 2 messages, too few for the default slice to be non-empty.
 test "ContextWindowExceededError triggers emergency compaction and retries" {
     # No tools are offered, so the retried call answers in plain text.
-    llm = MockLLM(outputs=["recovered"]);
+    llm = MockLLM(
+        outputs=[
+            fail(
+                litellm.exceptions.ContextWindowExceededError(
+                    message="ctx exceeded", model="mockllm", llm_provider="openai"
+                )
+            ),
+            "recovered"
+        ]
+    );
 
     hook_called = [False];
     def hook(msgs: list[any], keep_recent: int) -> list[any] {
@@ -305,39 +277,20 @@ test "ContextWindowExceededError triggers emergency compaction and retries" {
         return msgs[:2];
     }
 
-    original_dispatch = llm.dispatch_no_streaming;
-    outer_call_count = [0];
-    def fake_dispatch(mt_run: MTRuntime) -> CompletionResult {
-        outer_call_count[0] += 1;
-        if outer_call_count[0] == 1 {
-            raise litellm.exceptions.ContextWindowExceededError(
-                message="ctx exceeded", model="mockllm", llm_provider="openai"
-            );
-        }
-        return original_dispatch(mt_run);
-    }
-
     def my_task(q: str) -> str by llm(tools=[], on_compaction=hook);
 
-    with mock.patch.object(llm, "dispatch_no_streaming", fake_dispatch) {
-        result = my_task("test");
-    }
+    result = my_task("test");
 
     assert hook_called[0];
     assert result == "recovered";
-    assert outer_call_count[0] == 2;
-    assert llm.config["outputs"] == [];
+    assert len(llm.seen) == 2 , (
+        f"expected the failed call and one retry, got {len(llm.seen)}"
+    );
+    assert llm.exhausted();
 }
 
 
 test "compaction with no reduction raises CompactionNotEffectiveError" {
-    def step_a -> str {
-        return "a";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
     llm = MockLLM(
         ctx_window=1000,
         outputs=[
@@ -366,10 +319,6 @@ test "compaction with no reduction raises CompactionNotEffectiveError" {
 
 
 test "on_compaction hook returning invalid types raises ConfigurationError" {
-    def step_a -> str {
-        return "a";
-    }
-
     def run_with_hook(hook: object) -> any {
         llm = MockLLM(
             ctx_window=1000,
@@ -413,13 +362,6 @@ test "on_compaction hook returning invalid types raises ConfigurationError" {
 
 
 test "streaming path triggers compaction and respects compaction_enabled" {
-    def step_a -> str {
-        return "stepped";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
     llm1 = MockLLM(
         ctx_window=1000,
         outputs=[
@@ -501,73 +443,11 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
     reset_byllm_config();
     OVERRIDE = 1000;
 
-    def step_a -> str {
-        return "stepped";
-    }
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
-    # format_prompt subscripts messages[3] assuming get_msg_list() converted
-    # ToolCallResultMsg via to_dict(). On CI this isinstance check evaluates
-    # differently and the subscript raises. Bypass it - logging-only helper.
-    def noop_format(p: dict[str, any]) -> str {
-        return "";
-    }
-
-    def make_fake_dispatch -> any {
-        step_resp: dict[str, any] = {
-            "choices": [
-                {
-                    "message": {
-                        "content": None,
-                        "tool_calls": [
-                            types.SimpleNamespace(
-                                id="call_step",
-                                function=types.SimpleNamespace(
-                                    name="step_a", arguments="{}"
-                                )
-                            )
-                        ]
-                    }
-                }
-            ],
-            "usage": {"prompt_tokens": 850},
-            "model": "local:gemma-4-e4b"
-        };
-        finish_resp: dict[str, any] = {
-            "choices": [
-                {
-                    "message": {
-                        "content": None,
-                        "tool_calls": [
-                            types.SimpleNamespace(
-                                id="call_finish",
-                                function=types.SimpleNamespace(
-                                    name="finish_tool",
-                                    arguments='{"final_output": "ok"}'
-                                )
-                            )
-                        ]
-                    }
-                }
-            ],
-            "usage": {},
-            "model": "local:gemma-4-e4b"
-        };
-        call_count = [0];
-        def fake(params: dict[str, any]) -> dict[str, any] {
-            call_count[0] += 1;
-            return step_resp if call_count[0] == 1 else finish_resp;
-        }
-        return fake;
-    }
-
     # Drive `by target(...)` with the given call_params; report whether
-    # compaction fired. patch_target is the LLM whose dispatch should be
-    # intercepted (same as target for LocalLLM, _local_delegate for Model).
+    # compaction fired. `served` is the LLM whose network calls answer: the
+    # target itself for LocalLLM, its _local_delegate for Model.
     def fires_compaction(
-        target: object, patch_target: object, ctx_window_in_call: int
+        target: BaseLLM, served: BaseLLM, ctx_window_in_call: int
     ) -> bool {
         fired = [False];
         def hook(msgs: list[any], keep_recent: int) -> list[any] {
@@ -580,12 +460,14 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
             threshold_ratio=0.80,
             on_compaction=hook
         );
-        with mock.patch.object(patch_target, "format_prompt", noop_format) {
-            with mock.patch.object(
-                patch_target, "model_call_no_stream", make_fake_dispatch()
-            ) {
-                task("test");
-            }
+        with scripted(
+            served,
+            [
+                call("step_a", call_id="call_step", usage={"prompt_tokens": 850}),
+                finish("ok")
+            ]
+        ) {
+            task("test");
         }
         return fired[0];
     }
@@ -608,6 +490,7 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
 
     # Model wrapper must forward ctx_window to _local_delegate.
     m = Model(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
-    assert m._local_delegate is not None;
-    assert fires_compaction(m, m._local_delegate, 0) , "Model('local:...', ctx_window=N) must forward to _local_delegate";
+    delegate = m._local_delegate;
+    assert delegate is not None;
+    assert fires_compaction(m, delegate, 0) , "Model('local:...', ctx_window=N) must forward to _local_delegate";
 }

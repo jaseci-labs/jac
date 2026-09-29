@@ -20,6 +20,7 @@ import os;
 import shutil;
 import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 
 glob _FIELD_SRC: str = (
@@ -215,6 +216,154 @@ test "a missing sibling outside the guarded try is still an error" {
         ];
         assert len(named) == 1 , named;
         assert any([".label" in m for m in named]) , named;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+# A bare import that jac.toml declares as a dependency is expected to resolve.
+# When the package is not installed, W1100 left every name from it Unknown and
+# `jac check` green, so nothing flowing from it was type-checked. Declared and
+# missing is an error; undeclared stays a warning.
+glob _DEP_SRC: str = (
+         "import from not_installed_pkg_xyz { Thing }\n"
+         "\n"
+         "def use -> int {\n"
+         "    value: int = Thing.parse(\"x\");\n"
+         "    return value;\n"
+         "}\n"
+     ),
+     _STRICT = CompileOptions(strict_dependencies=True);
+
+
+# `jac check` compiles with strict_dependencies; a build does not, since a
+# dependency can be supplied at pack or install time (a fat jab vendors it).
+def _dep_project(source: str, declared: bool) -> tuple[str, str] {
+    (base, mod_path) = _project(source, name="main.jac");
+    toml = "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n";
+    if declared {
+        toml += "\n[dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n";
+    }
+    with open(os.path.join(base, "jac.toml"), "w") as f {
+        f.write(toml);
+    }
+    return (base, mod_path);
+}
+
+
+test "a declared dependency that is not installed is an error naming the package" {
+    (base, mod_path) = _dep_project(_DEP_SRC, declared=True);
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path, options=_STRICT);
+        named = [
+            str(e)
+            for e in prog.errors_had
+            if e.code and e.code.code == "E1138"
+        ];
+        assert len(named) == 1 , f"expected one E1138, got errors {_codes(prog)}"
+        f" and warnings {_warn_codes(prog)}";
+        assert "not-installed-pkg-xyz" in named[0] , named;
+        assert "W1100" not in _warn_codes(prog) , _warn_codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "an undeclared missing module stays a W1100 warning" {
+    (base, mod_path) = _dep_project(_DEP_SRC, declared=False);
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path, options=_STRICT);
+        assert "E1138" not in _codes(prog) , _codes(prog);
+        assert "W1100" in _warn_codes(prog) , _warn_codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a declared dependency imported under try/except ImportError stays a warning" {
+    src = (
+        "try {\n"
+        "    import from not_installed_pkg_xyz { Thing }\n"
+        "} except ImportError {\n"
+        "    Thing = None;\n"
+        "}\n"
+    );
+    (base, mod_path) = _dep_project(src, declared=True);
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path, options=_STRICT);
+        assert "E1138" not in _codes(prog) , _codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a dependency declared only on the app that owns the module is an error too" {
+    (base, mod_path) = _project(_DEP_SRC, name="main.jac");
+    with open(os.path.join(base, "jac.toml"), "w") as f {
+        f.write(
+            "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n\n"
+            "[apps.web]\nkind = \"service\"\nentry-point = \"main\"\n\n"
+            "[apps.web.dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n"
+        );
+    }
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path, options=_STRICT);
+        assert "E1138" in _codes(prog) , f"expected E1138, got errors {_codes(prog)}"
+        f" and warnings {_warn_codes(prog)}";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a shared module is not an error for an app that does not declare the package" {
+    (base, mod_path) = _project(_DEP_SRC, name="shared.jac");
+    with open(os.path.join(base, "web.jac"), "w") as f {
+        f.write("import shared;\n");
+    }
+    with open(os.path.join(base, "jac.toml"), "w") as f {
+        f.write(
+            "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n\n"
+            "[apps.web]\nkind = \"service\"\nentry-point = \"web\"\n\n"
+            "[apps.worker]\nkind = \"service\"\nentry-point = \"worker\"\n\n"
+            "[apps.worker.dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n"
+        );
+    }
+    try {
+        prog = JacProgram();
+        prog.compile(
+            mod_path, options=CompileOptions(target_app="web", strict_dependencies=True)
+        );
+        assert "E1138" not in _codes(prog) , _codes(prog);
+        worker = JacProgram();
+        worker.compile(
+            mod_path,
+            options=CompileOptions(target_app="worker", strict_dependencies=True)
+        );
+        assert "E1138" in _codes(worker) , f"expected E1138 for worker, got {_codes(
+            worker
+        )}";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a build compile keeps the warning for a declared missing dependency" {
+    (base, mod_path) = _dep_project(_DEP_SRC, declared=True);
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path);
+        assert "E1138" not in _codes(prog) , _codes(prog);
+        assert "W1100" in _warn_codes(prog) , _warn_codes(prog);
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

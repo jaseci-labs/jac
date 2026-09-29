@@ -1755,3 +1755,109 @@ impl NormalizePass.enter_token with uni.Token entry {}
 impl NormalizePass.enter_string with uni.String entry {
     here.value = f"{here.value}";
 }
+
+impl NormalizePass.enter_impl_import with uni.ImplImport entry {
+    new_kid: list[uni.UniNode] = [
+        here.gen_token(Tok.KW_IMPL),
+        here.gen_token(Tok.KW_IMPORT)
+    ];
+    if here.scope {
+        new_kid.append(here.scope);
+    }
+    new_kid.append(here.gen_token(Tok.LBRACE));
+    for stmt in here.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(here.gen_token(Tok.RBRACE));
+    here.set_kids(nodes=new_kid);
+}
+
+impl NormalizePass._wiring_payload_kids(
+    items: Sequence[uni.WireItem],
+    open_form: bool,
+    new_kid: list[uni.UniNode],
+    owner: uni.UniNode
+) -> None {
+    if open_form {
+        new_kid.append(owner.gen_token(Tok.SEMI));
+        return;
+    }
+    new_kid.append(owner.gen_token(Tok.LBRACE));
+    for idx in range(len(items)) {
+        new_kid.append(items[idx]);
+        if idx < len(items) - 1 {
+            new_kid.append(owner.gen_token(Tok.COMMA));
+        }
+    }
+    new_kid.append(owner.gen_token(Tok.RBRACE));
+}
+
+impl NormalizePass.enter_import_wire with uni.ImportWire entry {
+    new_kid: list[uni.UniNode] = [];
+    if here.is_comptime {
+        new_kid.append(here.gen_token(Tok.KW_COMPTIME));
+    }
+    if here.is_absorb {
+        new_kid.append(here.gen_token(Tok.KW_INCLUDE));
+    } elif here.is_typed {
+        new_kid.append(here.gen_token(Tok.TYP_TYPE));
+    }
+    new_kid.append(here.provider);
+    new_kid.append(here.gen_token(Tok.ARROW_R));
+    for idx in range(len(here.consumers)) {
+        new_kid.append(here.consumers[idx]);
+        if idx < len(here.consumers) - 1 {
+            new_kid.append(here.gen_token(Tok.BW_OR));
+        }
+    }
+    self._wiring_payload_kids(here.items, here.is_module_form, new_kid, here);
+    here.set_kids(nodes=new_kid);
+}
+
+impl NormalizePass.enter_import_rule with uni.ImportRule entry {
+    new_kid: list[uni.UniNode] = [
+        here.gen_token(Tok.KW_EDGE),
+        here.name,
+        here.gen_token(Tok.COLON)
+    ];
+    for idx in range(len(here.sources)) {
+        new_kid.append(here.sources[idx]);
+        if idx < len(here.sources) - 1 {
+            new_kid.append(here.gen_token(Tok.BW_OR));
+        }
+    }
+    new_kid.append(here.gen_token(Tok.ARROW_R));
+    for idx in range(len(here.targets)) {
+        new_kid.append(here.targets[idx]);
+        if idx < len(here.targets) - 1 {
+            new_kid.append(here.gen_token(Tok.BW_OR));
+        }
+    }
+    self._wiring_payload_kids(here.items, here.is_open, new_kid, here);
+    here.set_kids(nodes=new_kid);
+}
+
+impl NormalizePass.enter_module_pattern with uni.ModulePattern entry {
+    new_kid: list[uni.UniNode] = [];
+    if here.is_any {
+        new_kid.append(here.gen_token(Tok.TYP_ANY));
+    } elif here.path is None {
+        new_kid.append(here.gen_token(Tok.STAR_MUL));
+    } else {
+        new_kid.append(here.path);
+    }
+    if here.is_glob and here.path is not None {
+        new_kid.append(here.gen_token(Tok.DOT));
+        new_kid.append(here.gen_token(Tok.STAR_MUL));
+    }
+    here.set_kids(nodes=new_kid);
+}
+
+impl NormalizePass.enter_wire_item with uni.WireItem entry {
+    new_kid: list[uni.UniNode] = [here.name];
+    if here.alias {
+        new_kid.append(here.gen_token(Tok.KW_AS));
+        new_kid.append(here.alias);
+    }
+    here.set_kids(nodes=new_kid);
+}

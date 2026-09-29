@@ -31,6 +31,7 @@ def main -> None {
     }
 
     import from jaclang.cli.commands.native_build { native_build }
+    import from jaclang.compiler.driver.jir { scrub_cache_dirs }
     import from jaclang.compiler.native_compiler { ensure_loaded }
 
     kernel = ensure_loaded();
@@ -43,6 +44,7 @@ def main -> None {
         output = args.output or Path(directory) / "program";
         for round_number in range(-args.warmups, args.rounds) {
             gc.collect();
+            scrub_cache_dirs(str(args.source.resolve().parent));
             start = time.perf_counter();
             result = native_build(
                 str(args.source.resolve()), output=str(output), no_ir_cache=True
@@ -62,7 +64,6 @@ def main -> None {
             {
                 "source": str(args.source),
                 "kernel": os.environ.get("JAC_COMPILER_LIB", "auto"),
-                "early_passes": kernel.supports_early,
                 "seconds": times,
                 "median_seconds": statistics.median(times),
                 "min_seconds": min(times),

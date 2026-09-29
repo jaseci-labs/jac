@@ -1214,3 +1214,66 @@ impl UnparsePass.exit_match_arch with uni.MatchArch exit {
     }
     here.gen.jac = here.name.gen.jac + "(" + ", ".join(parts) + ")";
 }
+
+impl UnparsePass.exit_impl_import with uni.ImplImport exit {
+    head = "impl import";
+    if here.scope {
+        head = head + " " + here.scope.gen.jac;
+    }
+    body = " ".join([s.gen.jac for s in here.body]);
+    here.gen.jac = head + " { " + body + " }";
+}
+
+impl UnparsePass.exit_import_wire with uni.ImportWire exit {
+    parts: list[str] = [];
+    if here.is_comptime {
+        parts.append("comptime");
+    }
+    if here.is_absorb {
+        parts.append("include");
+    } elif here.is_typed {
+        parts.append("type");
+    }
+    parts.append(here.provider.gen.jac);
+    parts.append("-->");
+    consumers = " | ".join([c.gen.jac for c in here.consumers]);
+    if not here.is_module_form {
+        parts.append(consumers);
+        parts.append("{ " + self._comma_sep(here.items) + " }");
+    } else {
+        parts.append(consumers + ";");
+    }
+    here.gen.jac = " ".join(parts);
+}
+
+impl UnparsePass.exit_import_rule with uni.ImportRule exit {
+    parts: list[str] = ["edge", here.name.gen.jac + ":"];
+    parts.append(" | ".join([s.gen.jac for s in here.sources]));
+    parts.append("-->");
+    targets = " | ".join([t.gen.jac for t in here.targets]);
+    if not here.is_open {
+        parts.append(targets);
+        parts.append("{ " + self._comma_sep(here.items) + " }");
+    } else {
+        parts.append(targets + ";");
+    }
+    here.gen.jac = " ".join(parts);
+}
+
+impl UnparsePass.exit_module_pattern with uni.ModulePattern exit {
+    if here.is_any {
+        here.gen.jac = "any";
+    } elif here.path is None {
+        here.gen.jac = "*";
+    } else {
+        here.gen.jac = here.path.gen.jac + (".*" if here.is_glob else "");
+    }
+}
+
+impl UnparsePass.exit_wire_item with uni.WireItem exit {
+    result = here.name.gen.jac;
+    if here.alias {
+        result = result + " as " + here.alias.gen.jac;
+    }
+    here.gen.jac = result;
+}

@@ -33,7 +33,7 @@ node DLeaf {
     has n: int = 0;
 }
 
-edge DLink {}
+edge DLink: any --> any {}
 
 
 def _make_ctx(tmpdir: str) -> ExecutionContext {

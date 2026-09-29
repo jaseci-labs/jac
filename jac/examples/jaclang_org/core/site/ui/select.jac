@@ -1,5 +1,5 @@
 import from "radix-ui" { Select as SelectPrimitive }
-import from ....core.utils { cn }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     UnfoldMoreIcon,

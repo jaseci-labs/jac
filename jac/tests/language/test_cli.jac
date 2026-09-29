@@ -1,5 +1,6 @@
 """Test Jac cli module."""
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import io;
 import inspect;
 import json;
@@ -23,7 +24,7 @@ import from jaclang.cli.commands {
 }
 import from jaclang.cli.commands { config as config_cmd }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.config { set_config }
 import from jaclang.runtime.builtin { printgraph }
 
@@ -408,20 +409,21 @@ test "jac impl err" {
     assert f'"{path_to_file}", line 2' in stdout_value;
 }
 
-test "param name diff warns" {
+test "param name diff is an error" {
     import from jaclang.compiler.driver.program { JacProgram }
     prog = JacProgram();
     prog.compile(fixture_path("decl_defn_param_name.jac"), no_cgen=True);
-    warn_msgs = [str(w) for w in prog.warnings_had];
+    err_msgs = [str(e) for e in prog.errors_had];
     assert any(
-        "'some_long_paramenter_name'" in m and "'short_name'" in m for m in warn_msgs
-    ) , (f"Expected param name mismatch warning for method1, got: {warn_msgs}");
-    assert any("'param1'" in m and "'p1'" in m for m in warn_msgs) , (
-        f"Expected param name mismatch warning for method2 param1, got: {warn_msgs}"
+        "'some_long_paramenter_name'" in m and "'short_name'" in m for m in err_msgs
+    ) , (f"Expected param name mismatch error for method1, got: {err_msgs}");
+    assert any("'param1'" in m and "'p1'" in m for m in err_msgs) , (
+        f"Expected param name mismatch error for method2 param1, got: {err_msgs}"
     );
-    assert any("'param2'" in m and "'p2'" in m for m in warn_msgs) , (
-        f"Expected param name mismatch warning for method2 param2, got: {warn_msgs}"
+    assert any("'param2'" in m and "'p2'" in m for m in err_msgs) , (
+        f"Expected param name mismatch error for method2 param2, got: {err_msgs}"
     );
+    assert not any("Parameter name mismatch" in str(w) for w in prog.warnings_had);
 }
 
 test "jac test err" {
@@ -807,7 +809,7 @@ test "param arg" {
     jac_file_path = "";
     try {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
-        py_code = JacProgram().compile(file_path=filename).gen.py;
+        py_code = generated_python(JacProgram().compile(file_path=filename).gen);
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
@@ -2429,7 +2431,7 @@ test "bare lt in jsx content is treated as text" {
 test "jac check reports errors for files inside jaclang source tree" {
     # Regression: the self-host redirect routed jaclang-internal files to
     # the self-host program, so errors were invisible to the caller's JacProgram.
-    # force_target_program=True (set by jac check) fixes this. The fixture
+    #  (set by jac check) fixes this. The fixture
     # is deliberately ill-typed so this test never depends on an incidental
     # compiler bug in a shared fixture.
     internal_fixture = os.path.join(

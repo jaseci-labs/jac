@@ -5,7 +5,7 @@ node TaskNode {
         done: bool = False;
 }
 
-edge DependsOn {
+edge DependsOn : any --> any {
     has priority: int = 0;
 }
 

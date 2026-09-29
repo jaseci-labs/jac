@@ -7,7 +7,7 @@ node Item {
 edge Role: Item --> Item {}
 edge First(Role) {}
 edge Second(Role) {}
-edge Weighted(Role) {
+edge Weighted(Role): Item --> Item {
     has weight: int = 7;
 }
 

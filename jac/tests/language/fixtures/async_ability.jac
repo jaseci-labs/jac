@@ -12,7 +12,7 @@ node MyNode {
     }
 }
 
-edge MyEdge {
+edge MyEdge : any --> any {
     has value: int;
 }
 

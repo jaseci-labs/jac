@@ -203,15 +203,14 @@ obj MockLLM(BaseLLM) {
         seen_prompts: list[str] = [],
         seen: list[dict[str, any]] = [],
         chunk_size: int = 12,
+        logging_obj: object | None = None,
         _queue: list[any] | None = None;
 
     def postinit -> None;
     override def model_call_image(params: dict[str, any]) -> dict[str, any];
     override def model_call_no_stream(params: dict[str, any]) -> object;
-    override def model_call_with_stream(
-        params: dict[str, any]
-    ) -> Generator[object, None, None];
-
+    override def model_call_with_stream(params: dict[str, any]) -> Iterable[object];
+    def _stream_reply(params: dict[str, any]) -> Generator[object, None, None];
     def sent(key: str) -> list[any];
     def exhausted -> bool;
     def _next_reply(params: dict[str, any]) -> MockRawResponse | MockError;

@@ -1,5 +1,3 @@
-import from ....core.utils { cn }
-
 def:pub Textarea(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <textarea

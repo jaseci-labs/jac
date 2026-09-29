@@ -1,18 +1,4 @@
-import from core.docs.graph {
-    DocPageView,
-    DocsStatus,
-    DocTree,
-    TreeNode,
-    VersionInfo,
-    doc_page,
-    doc_tree,
-    docs_status
-}
 import from "@jac/runtime" { Navigate, useLocation, useNavigate }
-import from core.site.ui.GraphBackdrop { GraphBackdrop }
-import from .DocsArticle { DocsArticle, DocsArticleSkeleton }
-import from .DocsSidebar { DocsSidebar }
-import from .DocsTocRail { DocsTocRail }
 
 glob NOT_READY_POLL_MS: int = 4000;
 

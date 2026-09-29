@@ -5,11 +5,13 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 import from .react_jsdom_harness { bun_install, require_client_integration }
+import from jaclang.compiler.backends.es.jac_runtime_js {
+    point_jac_prelude_at,
+    write_jac_prelude_file
+}
 
 glob HARNESS: str = """
 import {createRoot, createSignal} from 'solid-js';
@@ -48,12 +50,11 @@ test "solid returned cleanup runs on invalidation and disposal" {
     prog = JacProgram();
     ir = prog.compile(file_path=str(fixture), no_cgen=True);
     assert not prog.errors_had , str(prog.errors_had);
-    result = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
+    js = es_js_with_backend(ir, prog, SolidBackend());
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
-        (work / "component.js").write_text(
-            es_to_js(result.module.gen.es_ast), encoding="utf-8"
-        );
+        write_jac_prelude_file(str(work));
+        (work / "component.js").write_text(point_jac_prelude_at(js), encoding="utf-8");
         (work / "harness.mjs").write_text(HARNESS, encoding="utf-8");
         bun_install(bun, work, "solid-effect-cleanup-test", {"solid-js": "^1.9.13"});
         runner = shutil.which("node") or bun;

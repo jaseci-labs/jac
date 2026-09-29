@@ -9,7 +9,7 @@ type after unary+, causing subsequent == to use JS === (identity) instead
 of _jac.complex.eq(). The pos runtime function itself is trivially correct.
 """
 
-def complex_ops_py() -> dict[any, any] {
+def complex_ops_py -> dict[any, any] {
     c1 = complex(3, 4);
     c2 = complex(1, 2);
 
@@ -23,9 +23,14 @@ def complex_ops_py() -> dict[any, any] {
 
     # Power: i^2 = -1 (use complex exponent for type tracking)
     pow_ok: bool = (complex(0, 1) ** complex(2, 0)) == complex(-1, 0);
+    pow_i: bool = (complex(0, 1) ** 2) == complex(-1, 0);
+    pow_f: bool = (complex(0, 1) ** 2.0) == complex(-1, 0);
 
     # Conjugate: conj(3+4j) = 3-4j
     conj_ok: bool = c1.conjugate() == complex(3, -4);
+
+    # .real/.imag on expression results, not just named locals
+    attr_ok: bool = (c1 + c2).real == 4.0 and (-c1).imag == -4.0;
 
     # Equality
     eq_same: bool = c1 == complex(3, 4);
@@ -47,7 +52,10 @@ def complex_ops_py() -> dict[any, any] {
         "mul_ok": mul_ok,
         "div_ok": div_ok,
         "pow_ok": pow_ok,
+        "pow_i": pow_i,
+        "pow_f": pow_f,
         "conj_ok": conj_ok,
+        "attr_ok": attr_ok,
         "eq_same": eq_same,
         "eq_diff": eq_diff,
         "ne_diff": ne_diff,
@@ -57,7 +65,7 @@ def complex_ops_py() -> dict[any, any] {
     };
 }
 
-def complex_ops_cl() -> dict[any, any] {
+def complex_ops_cl -> dict[any, any] {
     c1 = complex(3, 4);
     c2 = complex(1, 2);
 
@@ -89,7 +97,7 @@ def complex_ops_cl() -> dict[any, any] {
 }
 
 
-def complex_ops_na() -> dict[str, any] {
+def complex_ops_na -> dict[str, any] {
     c1 = complex(3, 4);
     c2 = complex(1, 2);
 
@@ -98,7 +106,13 @@ def complex_ops_na() -> dict[str, any] {
     mul_ok: int = (c1 * c2) == complex(-5, 10);
     div_ok: int = (complex(6, 8) / complex(2, 0)) == complex(3, 4);
 
+    pow_ok: int = (complex(0, 1) ** complex(2, 0)) == complex(-1, 0);
+    pow_i: int = (complex(0, 1) ** 2) == complex(-1, 0);
+    pow_f: int = (complex(0, 1) ** 2.0) == complex(-1, 0);
+
     conj_ok: int = c1.conjugate() == complex(3, -4);
+
+    attr_ok: int = (c1 + c2).real == 4.0 and (-c1).imag == -4.0;
 
     eq_same: int = c1 == complex(3, 4);
     eq_diff: int = c1 == c2;
@@ -114,7 +128,11 @@ def complex_ops_na() -> dict[str, any] {
         "sub_ok": sub_ok,
         "mul_ok": mul_ok,
         "div_ok": div_ok,
+        "pow_ok": pow_ok,
+        "pow_i": pow_i,
+        "pow_f": pow_f,
         "conj_ok": conj_ok,
+        "attr_ok": attr_ok,
         "eq_same": eq_same,
         "eq_diff": eq_diff,
         "ne_diff": ne_diff,

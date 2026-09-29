@@ -41,8 +41,14 @@ def _require_libc {
     }
 }
 
-"""Compile the shared fixture to LLVM IR text (the emit_wasm_from_ir input)."""
+"""The fixture's whole program for wasm: its unit merged with the runtime
+units it links and the glue that defines `jac_entry` and `__jac_glob_init`,
+the text `compile_to_wasm` hands the emitter."""
 def fixture_ir -> str {
+    import from jaclang.compiler.backends.native.link_plan {
+        build_link_plan,
+        wasm_program_ir
+    }
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
@@ -51,13 +57,28 @@ def fixture_ir -> str {
             options=CompileOptions(aot_mode=True)
         );
         assert not prog.errors_had;
-        return str(ir.gen.llvm_ir);
+        plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
+        return wasm_program_ir(plan);
     } finally {
         pop_native_target(prev);
     }
 }
 
 # ─── tests ───────────────────────────────────────────────────────────────────
+test "wasm links retain their target in a host application context" {
+    import from jaclang.compiler.driver.pipeline_runner { wasm_ir }
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    prog = JacProgram();
+    prog.options = CompileOptions(native_target="");
+    context_program(prog, prog.options);
+    for attempt in range(2) {
+        (llvm_ir, _) = wasm_ir(prog, os.path.join(FIXTURES, FIXTURE));
+        assert 'target triple = "wasm32-unknown-unknown"' in llvm_ir;
+        assert "pthread_key_create" not in llvm_ir;
+        assert "pthread_getspecific" not in llvm_ir;
+    }
+}
+
 test "libc folds in-module; the host surface is jac_host1 only" {
     _require_libc();
     mod = emit_wasm_from_ir(fixture_ir(), [], app_imports=set());

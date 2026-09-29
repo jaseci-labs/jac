@@ -1,14 +1,4 @@
 import from "lucide-react" { AlertCircle }
-import from core.site.ui.card {
-    Card,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-    CardContent
-}
-import from core.site.ui.field { Field, FieldLabel }
-import from core.site.ui.input { Input }
-import from core.site.ui.button { Button }
 
 def:pub AuthForm(
     isSignup: bool,

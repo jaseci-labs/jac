@@ -27,7 +27,13 @@ for job in resolve approve tag-and-release "build-binaries / admin-dist"; do
     successful_job "$job" >/dev/null
 done
 PLAN_ID="$(successful_job 'build-binaries / plan')"
-PLAN="$(gh api "repos/$GH_REPO/actions/jobs/$PLAN_ID/logs")"
+# Newer gh versions reject ANSI escapes even when stdout is captured. Logs
+# contain shell highlighting; allow it for parsing, never terminal display.
+log_flags=()
+if gh api --help | grep -q -- '--allow-escape-sequences'; then
+    log_flags+=(--allow-escape-sequences)
+fi
+PLAN="$(gh api "${log_flags[@]}" "repos/$GH_REPO/actions/jobs/$PLAN_ID/logs")"
 # Raw job logs prefix every line with a timestamp. Expired/missing logs fail;
 # never guess a platform list or accept an operator-supplied subset.
 plan_value() {

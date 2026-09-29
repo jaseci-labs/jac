@@ -1,32 +1,61 @@
-edge SymOf {}
+import type from jaclang.compiler.frontend.unitree {
+    Ability,
+    AstTypedVarNode,
+    ConditionalNode,
+    ContextAwareNode,
+    Expr,
+    FuncCall,
+    Import,
+    Module,
+    NameAtom,
+    Symbol,
+    UniCFGNode,
+    UniScopeNode
+}
+import type from jaclang.compiler.types.types {
+    ClassDetailsPrivate,
+    ClassDetailsShared,
+    ClassType,
+    EnumMemberInfo,
+    EnumMemberType,
+    FunctionType,
+    ModuleType,
+    OverloadedType,
+    Parameter,
+    TypeBase,
+    TypeVarType,
+    UnionType
+}
 
-edge Defines {}
+edge SymOf: NameAtom --> Symbol {}
 
-edge Uses {}
+edge Defines: Symbol --> NameAtom {}
 
-edge InScope {}
+edge Uses: Symbol --> NameAtom {}
 
-edge ScopePrimary {}
+edge InScope: UniScopeNode --> Symbol {}
 
-edge ScopeOverload {}
+edge ScopePrimary: UniScopeNode --> Symbol {}
 
-edge ScopeChild {}
+edge ScopeOverload: UniScopeNode --> Symbol {}
 
-edge ScopeParent {}
+edge ScopeChild: UniScopeNode --> UniScopeNode {}
 
-edge CfgSucc {}
+edge ScopeParent: UniScopeNode --> UniScopeNode {}
 
-edge CfgTrue {}
+edge CfgSucc: UniCFGNode --> UniCFGNode {}
 
-edge CfgFalse {}
+edge CfgTrue: ConditionalNode --> UniCFGNode {}
 
-edge PlacedIn {}
+edge CfgFalse: ConditionalNode --> UniCFGNode {}
 
-edge DecidedCodespace {}
+edge PlacedIn: ContextAwareNode --> Codespace {}
 
-edge CalleeDecl {}
+edge DecidedCodespace: Module --> Codespace {}
 
-edge Absorbs {}
+edge CalleeDecl: FuncCall --> Ability {}
+
+edge Absorbs: Import --> Module {}
 
 node Codespace {
     has kind: str = "";
@@ -47,54 +76,54 @@ def codespace_node(kind: str) -> Codespace {
     return found;
 }
 
-edge TypeOf {}
+edge TypeOf: AstTypedVarNode | Expr --> TypeBase {}
 
-edge NarrowedTypeOf {}
+edge NarrowedTypeOf: Expr --> TypeBase {}
 
-edge EventTriggerOf {}
+edge EventTriggerOf: Ability --> TypeBase {}
 
-edge SharedOf {}
+edge SharedOf: ClassType --> ClassDetailsShared {}
 
-edge PrivOf {}
+edge PrivOf: ClassType --> ClassDetailsPrivate {}
 
-edge BaseOf {}
+edge BaseOf: ClassDetailsShared --> TypeBase {}
 
-edge MroOf {}
+edge MroOf: ClassDetailsShared --> ClassType {}
 
-edge TypeParamOf {}
+edge TypeParamOf: ClassDetailsShared | FunctionType --> TypeVarType {}
 
-edge TypeArgOf {}
+edge TypeArgOf: ClassDetailsPrivate --> TypeBase {}
 
-edge ParamOf {}
+edge ParamOf: FunctionType --> Parameter {}
 
-edge ReturnsOf {}
+edge ReturnsOf: FunctionType --> TypeBase {}
 
-edge GuardOf {}
+edge GuardOf: FunctionType --> TypeBase {}
 
-edge ParamTypeOf {}
+edge ParamTypeOf: Parameter --> TypeBase {}
 
-edge ParamDefaultOf {}
+edge ParamDefaultOf: Parameter --> Expr {}
 
-edge UnionMemberOf {}
+edge UnionMemberOf: UnionType --> TypeBase {}
 
-edge BoundOf {}
+edge BoundOf: TypeVarType --> TypeBase {}
 
-edge ConstraintOf {}
+edge ConstraintOf: TypeVarType --> TypeBase {}
 
-edge OverloadOf {}
+edge OverloadOf: OverloadedType --> FunctionType {}
 
-edge EnumClassOf {}
+edge EnumClassOf: EnumMemberType --> ClassType {}
 
-edge ValueTypeOf {}
+edge ValueTypeOf: ClassDetailsShared | EnumMemberInfo --> TypeBase {}
 
-edge MemberInfoOf {}
+edge MemberInfoOf: EnumMemberType --> EnumMemberInfo {}
 
-edge TypeMemberOf {
+edge TypeMemberOf: ClassDetailsShared --> TypeBase {
     has name: str = "";
 }
 
-edge EnumMemberOf {
+edge EnumMemberOf: ClassDetailsShared --> EnumMemberInfo {
     has name: str = "";
 }
 
-edge DeclScopeOf {}
+edge DeclScopeOf: ClassDetailsShared | ModuleType --> UniScopeNode {}

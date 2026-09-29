@@ -6,6 +6,7 @@ import subprocess;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
+import from tests.compiler.backends.es.codegen_helpers { run_js_module }
 
 test "data constructors bind positional keyword and spread arguments in source order" {
     program = JacProgram();
@@ -38,11 +39,8 @@ def probe -> list[int] {
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
-    result = subprocess.run(
-        ["node", "-e", module.gen.js + "\nconsole.log(JSON.stringify(probe()));"],
-        capture_output=True,
-        text=True,
-        timeout=10
+    result = run_js_module(
+        module.gen.js + "\nconsole.log(JSON.stringify(probe()));", timeout=10.0
     );
     assert result.returncode == 0 , result.stderr;
     assert json.loads(result.stdout.strip())
@@ -75,11 +73,8 @@ def probe -> list[int] {
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
-    result = subprocess.run(
-        ["node", "-e", module.gen.js + "\nconsole.log(JSON.stringify(probe()));"],
-        capture_output=True,
-        text=True,
-        timeout=10
+    result = run_js_module(
+        module.gen.js + "\nconsole.log(JSON.stringify(probe()));", timeout=10.0
     );
     assert result.returncode == 0 , result.stderr;
     assert json.loads(result.stdout.strip()) == [3, 9, 8];

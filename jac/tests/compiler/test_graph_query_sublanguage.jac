@@ -19,7 +19,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob PRELUDE: str = "node Chan { has name: str = \"\"; }\n"
      "node Msg { has body: str = \"\", at: int = 0, seq: int = 0; }\n"
-     "edge Posted { has sent: int = 0; }\n";
+     "edge Posted: Chan --> Msg { has sent: int = 0; }\n";
 
 
 """Compile a filter body and return (diagnostic codes, rendered messages)."""

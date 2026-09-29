@@ -57,6 +57,10 @@ Sealing is **mandatory**: if the app cannot be sealed into a valid image, the de
 
 If a module in your project cannot be sealed (for example, a file that fails to compile), the deploy aborts with the seal error. Fix the offending module, or park its tree in `.jacignore` if it is not part of the served app, and redeploy.
 
+**Fat bundles.** By default the `.jab` also carries the app's Python dependency closure as wheels under `_vendor/wheels/`, resolved by the seal binary (the same jac version pods run) so pods install their dependencies offline at boot with no PyPI access. The wheels are resolved for the **pod platform**, not the deploy host: CPython of the pod binary, the node architecture (`x86_64` or `aarch64`, see `JAC_NODE_ARCH`), and Linux with glibc 2.36 or newer, which is what the official pod images provide. pip is asked for every tag such a pod accepts, `manylinux2014_<arch>` and each `manylinux_2_17` through `manylinux_2_36` PEP 600 tag, so compiled wheels (`cryptography`, `grpcio`, `bcrypt`, `watchdog`) resolve the same way they would on the pod itself. A dependency that publishes no wheel at all is built on the deploy host with `pip wheel`; the result ships only when it fits the pod (a pure-Python `none-any` wheel always does, a bare Linux compiled wheel only when the host is Linux on the same architecture and its detected glibc is no newer than the pod floor; unknown libc versions and musl hosts are rejected).
+
+`[scale] fat_bundle` in `jac.toml` controls the outcome when a dependency still has no usable wheel: unset, the deploy logs a warning naming the packages and ships a thin bundle whose pods install from PyPI at boot; `fat_bundle = true` makes that a deploy failure; `fat_bundle = false` skips vendoring entirely.
+
 ---
 
 ### Naming & Namespace
@@ -772,12 +776,81 @@ Status values:
 
 | Value | Meaning |
 |-------|---------|
-| `Running` | All pods ready |
-| `Degraded` | Some pods ready, others not |
-| `Pending` | Pods are starting up (no pods ready yet) |
-| `Restarting` | One or more pods are crash-looping |
+| `Active` | Every desired replica runs the current template and is available |
+| `Activating` | Replicas are starting, or a rollout is still in progress |
+| `Inactive` | Scaled to zero on purpose: the replica floor is 0 (`idle_replicas = 0` under KEDA, or `http_activation`), so this is the healthy resting state, not an error |
+| `Deactivating` | Scaling down; surplus replicas are still draining |
+| `Degraded` | Something is wrong: the rollout passed its progress deadline, pods are crash-looping, or the workload sits at zero replicas below its floor |
 | `Not Deployed` | Component was never provisioned |
 | `Unknown` | Component state could not be determined |
+
+The same verdict backs `ScaleClient.resource_status`, the fleet-ready gate at the end of `jac scale deploy`, and the Ops Console's `/admin/ops/deploy` endpoint, so all four agree about a workload. Scaling intent is read from the `jac-scale.replica-floor` annotation that `jac scale deploy` stamps on each Deployment; a Deployment applied before this annotation existed is treated as having a floor of 1 until it is redeployed.
+
+A Deployment whose replicas an autoscaler owns is redeployed with `spec.replicas` left out of the update, so the count the HPA, ScaledObject or HTTP interceptor set survives. Two consequences follow:
+
+- A service already idled to zero stays at zero through a redeploy, so `jac scale deploy` finishes without ever starting the new revision. The deploy log names those services: the image is unverified until the first request wakes one. Deploy a warm service, or set `idle_replicas` above zero, when a deploy has to prove the new build boots.
+- `idle_replicas` is a fleet-wide setting and the gateway is exempt from it, for the reason it is already exempt from `http_activation`: it is the ingress entry point, and nothing wakes it once it sleeps. Put `http_activation` on the services that should sleep instead.
+
+---
+
+### Autoscaler runtime status
+
+`resource_status` reads the Deployment, which reports how many replicas exist and never why. Those are different questions, and three situations produce the same Deployment:
+
+| Zero replicas because | Reality |
+|---|---|
+| No trigger is firing, KEDA idled it | healthy |
+| The scaler cannot reach its metric endpoint | broken, and silent |
+| Someone scaled it by hand | neither |
+
+`autoscaler_status` reads the autoscaler's own view to separate them:
+
+```jac
+import from jaclang.scale.sdk { ScaleClient }
+
+with entry {
+    s = ScaleClient().autoscaler_status("orders", "prod");
+    if s.scaler_ready == False {
+        print(f"scaler failing: {s.reason}: {s.message}");
+    }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `status` | the same `ResourceStatus` vocabulary `resource_status` uses |
+| `engine` | `keda` or `hpa` |
+| `autoscaler_name` | the live resource, resolved from the target rather than supplied |
+| `trigger_active` | a trigger is firing. `None` when the engine cannot say |
+| `scaler_ready` | the scaler itself is healthy. `None` when the engine cannot say |
+| `conditions` | the ScaledObject's and HPA's conditions, normalized to dicts |
+| `resource_version` | the version the status was read at |
+
+`trigger_active` and `scaler_ready` are tri-state on purpose. A plain HPA has nothing corresponding to a trigger firing, and a ScaledObject that could not be read leaves both unknown, so `None` is not `False`: reporting `False` would assert a scaler failure nobody observed. A pod whose Role predates the `keda.sh` read rule gets a 403 here, and the result falls back to the workload's own state rather than raising.
+
+The caller passes a **scale target**, not an autoscaler resource name. Which resource is live depends on the scaling mode (`{target}-scaledobject`, `{target}-http-scaledobject`, `{target}-hpa`), and deriving that is the abstraction's job.
+
+### Observing transitions
+
+Polling `autoscaler_status` on a timer costs one request per target per interval and still reports a change an interval late. `watch_autoscaler_transitions` streams them instead:
+
+```jac
+import from jaclang.scale.sdk { ScaleClient }
+
+with entry {
+    for t in ScaleClient().watch_autoscaler_transitions("orders", "prod") {
+        print(f"{t.scale_target_name}: {t.previous_state} -> {t.state} ({t.reason})");
+    }
+}
+```
+
+**Watch cardinality is the caller's responsibility.** One call opens a bounded number of watches for one namespace, and nothing is shared between callers. A consumer tracking many targets makes **one** call and fans out in its own process; calling it once per target opens one watch per target, which is what the bound exists to avoid.
+
+Transitions are deduplicated: a target only yields when its state actually changes. The opening list seeds that cache and yields nothing, because an observer that has just started has witnessed no transition and reporting current state as one invents history on every restart. When Kubernetes answers `410 Gone`, meaning the stream fell too far behind to resume, the watch relists and keeps the cache, so targets whose state did not move stay silent.
+
+**`observed_at` is not durable history.** It records when *this observer* saw the change, not when the change happened. A transition that occurred while the observer was down surfaces as current state on the next relist, carrying that later timestamp. Nothing here persists transitions, so a caller that needs the real moment something happened keeps its own record.
+
+This watches the ScaledObject, so KEDA-side changes (a trigger firing, a scaler failing) are observed. A pod becoming ready without the ScaledObject changing is not, and needs a second watch.
 
 ---
 
@@ -1461,7 +1534,9 @@ reachable at call time).
 | `preview(spec)` | the manifest bundle, nothing applied (microservice target only, like `--dry-run`) |
 | `destroy(app_name, namespace, component="")` | removes the deployment; never prompts |
 | `status(app_name, namespace)` | full status dict (components, pod counts, URLs) |
-| `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas}` |
+| `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas, available_replicas, updated_replicas, replica_floor, reason, message}`; `status` is one of `active`, `activating`, `inactive`, `deactivating`, `degraded`, `unknown` (see [Deployment Status](#deployment-status)) |
+| `autoscaler_status(app_name, namespace, service="")` | `AutoscalerRuntimeStatus`: everything `ResourceStatusInfo` carries plus `engine`, `autoscaler_name`, `trigger_active`, `scaler_ready`, `conditions`, `resource_version` (see [Autoscaler runtime status](#autoscaler-runtime-status)) |
+| `watch_autoscaler_transitions(app_name, namespace, label_selector=None, timeout_seconds=None)` | iterator of `AutoscalerTransition` (see [Observing transitions](#observing-transitions)) |
 | `service_url(app_name, namespace)` | externally reachable URL or `None` |
 | `scale(app_name, namespace, replicas)` | resizes the app deployment |
 

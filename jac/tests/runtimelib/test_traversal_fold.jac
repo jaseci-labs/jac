@@ -26,7 +26,7 @@ node FItem {
     has rank: int = 0;
 }
 
-edge FHas {}
+edge FHas: FBoard --> FItem {}
 
 
 def _as_any(v: any) -> any {

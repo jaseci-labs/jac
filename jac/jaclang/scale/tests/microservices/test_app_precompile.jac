@@ -314,7 +314,7 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
             serving = archive.extractfile(".jac/serve_manifest.json");
             assert serving is not None;
             serve_manifest = json.loads(serving.read());
-            assert serve_manifest["func_access"][func] is False , label;
+            assert serve_manifest["surface"][func]["exposure"] == "public" , label;
             for boot_file in boots {
                 assert boot_file in serve_manifest["module_manifests"] , (
                     label,
@@ -361,18 +361,44 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
                 );
                 assert result.returncode == 0 , result.stdout + result.stderr;
                 assert endpoint in result.stdout , (label, boot_file, result.stdout);
-                assert "Loading sealed application artifacts" in result.stdout , (
+                assert "Loading sealed application artifacts" in result.stderr , (
                     label,
                     boot_file,
-                    result.stdout
+                    result.stderr
                 );
-                assert "Compiling server modules" not in result.stdout , (
+                assert "Compiling server modules" not in result.stderr , (
                     label,
                     boot_file,
-                    result.stdout
+                    result.stderr
                 );
-                assert "Preparing dynamically imported module" not in result.stdout;
+                assert "Preparing dynamically imported module" not in result.stderr;
             }
+            (Path(tmp) / "unlisted.jac").write_text(
+                'def:pub other -> str { return "source"; }\n'
+            );
+            result = subprocess.run(
+                [
+                    str(jac_bin),
+                    "run",
+                    "--serve",
+                    "--no-client",
+                    "--faux",
+                    "unlisted.jac"
+                ],
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=90
+            );
+            assert result.returncode == 0 , result.stdout + result.stderr;
+            real_tmp = os.path.realpath(tmp);
+            missed = f"Sealed image at {real_tmp} does not list unlisted.jac";
+            assert missed in result.stdout , (label, result.stdout);
+            assert "Loading sealed application artifacts" not in result.stdout , (
+                label,
+                result.stdout
+            );
         }
     }
 }
@@ -406,14 +432,15 @@ test "sealing includes bytecode imports and serving exports despite client place
         (base / ".jac" / "serve_manifest.json").write_text(
             json.dumps(
                 {
-                    "cross_bindings": [
-                        {
-                            "src": "exported.jac",
-                            "name": "exposed",
-                            "kind": "def",
-                            "auth": False
+                    "surface": {
+                        "exposed": {
+                            "kind": "function",
+                            "exposure": "public",
+                            "placement": "server",
+                            "module": "",
+                            "src": "exported.jac"
                         }
-                    ]
+                    }
                 }
             )
         );

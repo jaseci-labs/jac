@@ -34,11 +34,13 @@ impl AccessCheckPass._collect_bridged_imports(ir_in: Module) -> None {
             return nd.abs_path;
         }
         try {
-            found = nd.resolve_relative_path();
+            if isinstance(nd, ModulePath) {
+                return nd.resolve_relative_path();
+            }
+            return nd.resolve_relative_path();
         } except Exception {
             return None;
         }
-        return found if isinstance(found, str) else None;
     }
 
     import from jaclang.compiler.driver.boundary_classify { classify_cross_app_import }
@@ -134,12 +136,12 @@ impl AccessCheckPass._module_app_facts(
     if not mod_path {
         return (None, mod.jac_project_root);
     }
-    import from jaclang.project.modresolver { find_jac_project_root }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.driver.compilation_context { context_app }
     app = context_app(mod_path);
     return (
         app.name if app is not None else None,
-        mod.jac_project_root or find_jac_project_root(mod_path)
+        mod.jac_project_root or active_host().project_root(mod_path)
     );
 }
 
@@ -213,20 +215,6 @@ impl AccessCheckPass._declaring_module(sym: Symbol) -> (Module | None) {
     return decl.find_parent_of_type(Module) if decl is not None else None;
 }
 
-impl AccessCheckPass._base_archetype(expr: UniNode) -> (Archetype | None) {
-    base_name: UniNode = expr;
-    if (isinstance(expr, AtomTrailer) and isinstance(expr.right, Name)) {
-        base_name = expr.right;
-    }
-    if (isinstance(base_name, AstSymbolNode) and base_name.sym) {
-        base_decl = base_name.sym.decl;
-        if base_decl {
-            return base_decl.find_parent_of_type(Archetype);
-        }
-    }
-    return None;
-}
-
 impl AccessCheckPass._is_subclass_of(child: Archetype, ancestor: Archetype) -> bool {
     visited: set[int] = set();
     queue: list[Archetype] = [child];
@@ -236,17 +224,11 @@ impl AccessCheckPass._is_subclass_of(child: Archetype, ancestor: Archetype) -> b
             continue;
         }
         visited.add(id(cur));
-        if cur.base_classes {
-            for base in cur.base_classes {
-                base_arch = self._base_archetype(base);
-                if base_arch is None {
-                    continue;
-                }
-                if base_arch is ancestor {
-                    return True;
-                }
-                queue.append(base_arch);
+        for base_arch in cur.base_archetypes() {
+            if base_arch is ancestor {
+                return True;
             }
+            queue.append(base_arch);
         }
     }
     return False;

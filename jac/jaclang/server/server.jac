@@ -33,6 +33,7 @@ obj ServerExtension {
 
     def register(server: JacAPIServer) -> None abst;
     def on_worker_start(server: JacAPIServer) {}
+    def on_worker_exit(server: JacAPIServer, pid: int) {}
 }
 
 
@@ -127,8 +128,8 @@ obj ModuleIntrospector {
         _bundle_epoch: int = 0,
         _bundle_builder: any = None,
         _bundle_lock: threading.Lock postinit,
-        _function_access: dict[(str, bool)] = {},
-        _walker_access: dict[(str, bool)] = {},
+        _surface: dict[(str, any)] = {},
+        _manifest_root: str = "",
         _spa_routes_loaded: bool = False,
         discover_endpoints: bool = True,
         _spa_route_patterns: (list[str] | None) = None,
@@ -137,11 +138,11 @@ obj ModuleIntrospector {
     def postinit -> None;
     def load(force_reload: bool = False) -> None;
     def _load_manifest -> None;
-    def _extract_access_levels -> None;
-    def _collect_cross_boundary_endpoints -> None;
-    def _register_prepared_bindings(sm: dict[str, any], img_root: str) -> None;
+    def _load_surface -> None;
     def _collect_functions -> dict[str, Callable[(..., any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
+    def _resolve_declared(rel: str, name: str) -> any;
+    def scheduled_members -> list[tuple[str, any, bool]];
     def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
@@ -228,6 +229,7 @@ obj JacAPIServer(EndpointHost) {
     def _ensure_client_bundle -> None;
     def _ensure_internal_users -> None;
     def _register_scheduled_tasks -> None;
+    def _scheduled_targets -> list[tuple[str, any, bool]];
     def _validate_or_raise -> None;
     def _prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings;
     def start(
@@ -249,6 +251,7 @@ obj JacAPIServer(EndpointHost) {
         port_retries: int = 0
     ) -> int;
 
+    def _on_worker_exit(pid: int) -> None;
     def request_stop -> None;
 }
 

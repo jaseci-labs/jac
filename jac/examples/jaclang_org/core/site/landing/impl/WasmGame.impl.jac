@@ -1,5 +1,3 @@
-import from core.site.game.webgl_host { run_game }
-
 impl WasmGame.launch(_e: MouseEvent) {
     launched = True;
     if canvasRef.current {

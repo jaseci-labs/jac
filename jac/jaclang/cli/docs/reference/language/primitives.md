@@ -411,7 +411,8 @@ The fixed-width types are first-class on every lane -- server, client, and nativ
 | `u64` | 64-bit | No | `uint64_t` |
 | `f32` | 32-bit | -- | `float` |
 | `f64` | 64-bit | -- | `double` |
-| `c_void` | -- | -- | `void*` |
+
+C addresses are the builtin generic `ptr[T]` (a bare `ptr` is `void*`), described in [C pointers](native-pathway.md#c-pointers-ptrt).
 
 Conversions follow one lattice on every lane: widening is implicit (`i8 -> i64 -> int`, `u8 -> i16`, `f32 -> f64 -> float`, `bool -> int`, `int -> float`), everything else is the checked cast `T(x)`, and sized arithmetic traps with `OverflowError` on overflow. The full contract is in [Fixed-width semantics](types-and-values.md#fixed-width-semantics).
 

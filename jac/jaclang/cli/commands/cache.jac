@@ -4,7 +4,7 @@ import from jaclang.comptime { name as ct_name }
 
 comptime SPEC_CACHE: CommandSpec = CommandSpec(
          name="cache",
-         help="Inspect and reclaim the machine-wide jac cache",
+         help="Inspect and reclaim the jac cache, machine-wide and project-local",
          args=[
              Arg.create(
                  "action",
@@ -30,7 +30,8 @@ comptime SPEC_CACHE: CommandSpec = CommandSpec(
          examples=[
              (
                  "jac cache status",
-                 "Every bucket with its path, entry count, size and retention policy"
+                 "Every bucket with its path, entry count, size and retention "
+                 "policy, plus this project's own cache when run inside one"
              ),
              (
                  "jac cache gc",
@@ -42,6 +43,7 @@ comptime SPEC_CACHE: CommandSpec = CommandSpec(
                  "Remove every managed bucket (keeps the running runtime; never touches pg/)"
              ),
              ("jac cache purge --bucket jir-modules", "Remove one bucket"),
+             ("jac cache purge --bucket project", "Remove this project's cache"),
 
          ],
          group="tools",

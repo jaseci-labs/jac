@@ -1,8 +1,3 @@
-import from core.jacyac.validation { post_limit, chars_left, valid_post }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.button { Button }
-import from core.site.ui.textarea { Textarea }
-
 def:pub Composer(
     avatar: str,
     avatarAlt: str,

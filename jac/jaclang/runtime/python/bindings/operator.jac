@@ -1,4 +1,18 @@
 """Python operator bindings and native accessor state."""
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyObject,
+    PyObject_CheckBuffer,
+    PyTuple_Size,
+    PyVectorcall_NARGS,
+    Py_NewRef,
+    Py_TYPE,
+    jacpy_dict_size,
+    jacpy_is_unicode,
+    jacpy_release,
+    jacpy_unicode_ascii
+}
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -12,8 +26,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeFlags,
     PropertyCallbacks,
     PropertyDefinition,
-    jacpy_binding_allocate,
-    jacpy_binding_typeof
+    jacpy_binding_allocate
 }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
@@ -33,22 +46,13 @@ import from jaclang.runtime.python.bindings.arguments {
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_retain,
-    jacpy_tuple_size,
-    jacpy_dict_size,
-    jacpy_is_unicode,
     object_error,
     type_name,
     text_object,
     boundary_failure
 }
 import from c {
-    def jacpy_binding_vector_count(count: u64) -> i64;  def jacpy_binding_vector_item(
-        arguments: u64, index: i64
-    ) -> u64;  def jacpy_buffer_supported(value: u64) -> i64;  def jacpy_unicode_ascii(
-        value: u64
-    ) -> i64;
+    def jacpy_binding_vector_item(arguments: ptr, index: i64) -> ptr[PyObject];
 }
 import from jaclang.runtime.python.modules.operator {
     jacpy_operator_neg,
@@ -106,448 +110,452 @@ import from jaclang.runtime.python.modules.operator {
     jacpy_operator_reduce
 }
 
-def:priv neg_call(module: u64, value: u64) -> u64 {
+def:priv neg_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_neg);
 }
 
-def:priv pos_call(module: u64, value: u64) -> u64 {
+def:priv pos_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_pos);
 }
 
-def:priv abs_call(module: u64, value: u64) -> u64 {
+def:priv abs_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_abs);
 }
 
-def:priv invert_call(module: u64, value: u64) -> u64 {
+def:priv invert_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_invert);
 }
 
-def:priv index_call(module: u64, value: u64) -> u64 {
+def:priv index_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_index);
 }
 
-def:priv truth_call(module: u64, value: u64) -> u64 {
+def:priv truth_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_truth);
 }
 
-def:priv not__call(module: u64, value: u64) -> u64 {
+def:priv not__call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_not_);
 }
 
-def:priv is_none_call(module: u64, value: u64) -> u64 {
+def:priv is_none_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_is_none);
 }
 
-def:priv is_not_none_call(module: u64, value: u64) -> u64 {
+def:priv is_not_none_call(
+    module: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke_one(value, jacpy_operator_is_not_none);
 }
 
 glob:priv add_signature = CallSignature("add", ["a", "b"], 2, 2, 2);
-def:priv add_bound(args: BoundArguments) -> u64 {
+def:priv add_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_add(args.values[0], args.values[1]);
 }
 
-def:priv add_call(module: u64, args: u64) -> u64 {
-    return invoke(add_signature, args, 0, add_bound);
+def:priv add_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(add_signature, args, NULL, add_bound);
 }
 
 glob:priv sub_signature = CallSignature("sub", ["a", "b"], 2, 2, 2);
-def:priv sub_bound(args: BoundArguments) -> u64 {
+def:priv sub_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_sub(args.values[0], args.values[1]);
 }
 
-def:priv sub_call(module: u64, args: u64) -> u64 {
-    return invoke(sub_signature, args, 0, sub_bound);
+def:priv sub_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(sub_signature, args, NULL, sub_bound);
 }
 
 glob:priv mul_signature = CallSignature("mul", ["a", "b"], 2, 2, 2);
-def:priv mul_bound(args: BoundArguments) -> u64 {
+def:priv mul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_mul(args.values[0], args.values[1]);
 }
 
-def:priv mul_call(module: u64, args: u64) -> u64 {
-    return invoke(mul_signature, args, 0, mul_bound);
+def:priv mul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(mul_signature, args, NULL, mul_bound);
 }
 
 glob:priv matmul_signature = CallSignature("matmul", ["a", "b"], 2, 2, 2);
-def:priv matmul_bound(args: BoundArguments) -> u64 {
+def:priv matmul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_matmul(args.values[0], args.values[1]);
 }
 
-def:priv matmul_call(module: u64, args: u64) -> u64 {
-    return invoke(matmul_signature, args, 0, matmul_bound);
+def:priv matmul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(matmul_signature, args, NULL, matmul_bound);
 }
 
 glob:priv floordiv_signature = CallSignature("floordiv", ["a", "b"], 2, 2, 2);
-def:priv floordiv_bound(args: BoundArguments) -> u64 {
+def:priv floordiv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_floordiv(args.values[0], args.values[1]);
 }
 
-def:priv floordiv_call(module: u64, args: u64) -> u64 {
-    return invoke(floordiv_signature, args, 0, floordiv_bound);
+def:priv floordiv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(floordiv_signature, args, NULL, floordiv_bound);
 }
 
 glob:priv truediv_signature = CallSignature("truediv", ["a", "b"], 2, 2, 2);
-def:priv truediv_bound(args: BoundArguments) -> u64 {
+def:priv truediv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_truediv(args.values[0], args.values[1]);
 }
 
-def:priv truediv_call(module: u64, args: u64) -> u64 {
-    return invoke(truediv_signature, args, 0, truediv_bound);
+def:priv truediv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(truediv_signature, args, NULL, truediv_bound);
 }
 
 glob:priv mod_signature = CallSignature("mod", ["a", "b"], 2, 2, 2);
-def:priv mod_bound(args: BoundArguments) -> u64 {
+def:priv mod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_mod(args.values[0], args.values[1]);
 }
 
-def:priv mod_call(module: u64, args: u64) -> u64 {
-    return invoke(mod_signature, args, 0, mod_bound);
+def:priv mod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(mod_signature, args, NULL, mod_bound);
 }
 
 glob:priv lshift_signature = CallSignature("lshift", ["a", "b"], 2, 2, 2);
-def:priv lshift_bound(args: BoundArguments) -> u64 {
+def:priv lshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_lshift(args.values[0], args.values[1]);
 }
 
-def:priv lshift_call(module: u64, args: u64) -> u64 {
-    return invoke(lshift_signature, args, 0, lshift_bound);
+def:priv lshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(lshift_signature, args, NULL, lshift_bound);
 }
 
 glob:priv rshift_signature = CallSignature("rshift", ["a", "b"], 2, 2, 2);
-def:priv rshift_bound(args: BoundArguments) -> u64 {
+def:priv rshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_rshift(args.values[0], args.values[1]);
 }
 
-def:priv rshift_call(module: u64, args: u64) -> u64 {
-    return invoke(rshift_signature, args, 0, rshift_bound);
+def:priv rshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(rshift_signature, args, NULL, rshift_bound);
 }
 
 glob:priv and__signature = CallSignature("and_", ["a", "b"], 2, 2, 2);
-def:priv and__bound(args: BoundArguments) -> u64 {
+def:priv and__bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_and_(args.values[0], args.values[1]);
 }
 
-def:priv and__call(module: u64, args: u64) -> u64 {
-    return invoke(and__signature, args, 0, and__bound);
+def:priv and__call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(and__signature, args, NULL, and__bound);
 }
 
 glob:priv xor_signature = CallSignature("xor", ["a", "b"], 2, 2, 2);
-def:priv xor_bound(args: BoundArguments) -> u64 {
+def:priv xor_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_xor(args.values[0], args.values[1]);
 }
 
-def:priv xor_call(module: u64, args: u64) -> u64 {
-    return invoke(xor_signature, args, 0, xor_bound);
+def:priv xor_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(xor_signature, args, NULL, xor_bound);
 }
 
 glob:priv or__signature = CallSignature("or_", ["a", "b"], 2, 2, 2);
-def:priv or__bound(args: BoundArguments) -> u64 {
+def:priv or__bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_or_(args.values[0], args.values[1]);
 }
 
-def:priv or__call(module: u64, args: u64) -> u64 {
-    return invoke(or__signature, args, 0, or__bound);
+def:priv or__call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(or__signature, args, NULL, or__bound);
 }
 
 glob:priv iadd_signature = CallSignature("iadd", ["a", "b"], 2, 2, 2);
-def:priv iadd_bound(args: BoundArguments) -> u64 {
+def:priv iadd_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_iadd(args.values[0], args.values[1]);
 }
 
-def:priv iadd_call(module: u64, args: u64) -> u64 {
-    return invoke(iadd_signature, args, 0, iadd_bound);
+def:priv iadd_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(iadd_signature, args, NULL, iadd_bound);
 }
 
 glob:priv isub_signature = CallSignature("isub", ["a", "b"], 2, 2, 2);
-def:priv isub_bound(args: BoundArguments) -> u64 {
+def:priv isub_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_isub(args.values[0], args.values[1]);
 }
 
-def:priv isub_call(module: u64, args: u64) -> u64 {
-    return invoke(isub_signature, args, 0, isub_bound);
+def:priv isub_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(isub_signature, args, NULL, isub_bound);
 }
 
 glob:priv imul_signature = CallSignature("imul", ["a", "b"], 2, 2, 2);
-def:priv imul_bound(args: BoundArguments) -> u64 {
+def:priv imul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_imul(args.values[0], args.values[1]);
 }
 
-def:priv imul_call(module: u64, args: u64) -> u64 {
-    return invoke(imul_signature, args, 0, imul_bound);
+def:priv imul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(imul_signature, args, NULL, imul_bound);
 }
 
 glob:priv imatmul_signature = CallSignature("imatmul", ["a", "b"], 2, 2, 2);
-def:priv imatmul_bound(args: BoundArguments) -> u64 {
+def:priv imatmul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_imatmul(args.values[0], args.values[1]);
 }
 
-def:priv imatmul_call(module: u64, args: u64) -> u64 {
-    return invoke(imatmul_signature, args, 0, imatmul_bound);
+def:priv imatmul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(imatmul_signature, args, NULL, imatmul_bound);
 }
 
 glob:priv ifloordiv_signature = CallSignature("ifloordiv", ["a", "b"], 2, 2, 2);
-def:priv ifloordiv_bound(args: BoundArguments) -> u64 {
+def:priv ifloordiv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ifloordiv(args.values[0], args.values[1]);
 }
 
-def:priv ifloordiv_call(module: u64, args: u64) -> u64 {
-    return invoke(ifloordiv_signature, args, 0, ifloordiv_bound);
+def:priv ifloordiv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ifloordiv_signature, args, NULL, ifloordiv_bound);
 }
 
 glob:priv itruediv_signature = CallSignature("itruediv", ["a", "b"], 2, 2, 2);
-def:priv itruediv_bound(args: BoundArguments) -> u64 {
+def:priv itruediv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_itruediv(args.values[0], args.values[1]);
 }
 
-def:priv itruediv_call(module: u64, args: u64) -> u64 {
-    return invoke(itruediv_signature, args, 0, itruediv_bound);
+def:priv itruediv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(itruediv_signature, args, NULL, itruediv_bound);
 }
 
 glob:priv imod_signature = CallSignature("imod", ["a", "b"], 2, 2, 2);
-def:priv imod_bound(args: BoundArguments) -> u64 {
+def:priv imod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_imod(args.values[0], args.values[1]);
 }
 
-def:priv imod_call(module: u64, args: u64) -> u64 {
-    return invoke(imod_signature, args, 0, imod_bound);
+def:priv imod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(imod_signature, args, NULL, imod_bound);
 }
 
 glob:priv ilshift_signature = CallSignature("ilshift", ["a", "b"], 2, 2, 2);
-def:priv ilshift_bound(args: BoundArguments) -> u64 {
+def:priv ilshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ilshift(args.values[0], args.values[1]);
 }
 
-def:priv ilshift_call(module: u64, args: u64) -> u64 {
-    return invoke(ilshift_signature, args, 0, ilshift_bound);
+def:priv ilshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ilshift_signature, args, NULL, ilshift_bound);
 }
 
 glob:priv irshift_signature = CallSignature("irshift", ["a", "b"], 2, 2, 2);
-def:priv irshift_bound(args: BoundArguments) -> u64 {
+def:priv irshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_irshift(args.values[0], args.values[1]);
 }
 
-def:priv irshift_call(module: u64, args: u64) -> u64 {
-    return invoke(irshift_signature, args, 0, irshift_bound);
+def:priv irshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(irshift_signature, args, NULL, irshift_bound);
 }
 
 glob:priv iand_signature = CallSignature("iand", ["a", "b"], 2, 2, 2);
-def:priv iand_bound(args: BoundArguments) -> u64 {
+def:priv iand_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_iand(args.values[0], args.values[1]);
 }
 
-def:priv iand_call(module: u64, args: u64) -> u64 {
-    return invoke(iand_signature, args, 0, iand_bound);
+def:priv iand_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(iand_signature, args, NULL, iand_bound);
 }
 
 glob:priv ixor_signature = CallSignature("ixor", ["a", "b"], 2, 2, 2);
-def:priv ixor_bound(args: BoundArguments) -> u64 {
+def:priv ixor_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ixor(args.values[0], args.values[1]);
 }
 
-def:priv ixor_call(module: u64, args: u64) -> u64 {
-    return invoke(ixor_signature, args, 0, ixor_bound);
+def:priv ixor_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ixor_signature, args, NULL, ixor_bound);
 }
 
 glob:priv ior_signature = CallSignature("ior", ["a", "b"], 2, 2, 2);
-def:priv ior_bound(args: BoundArguments) -> u64 {
+def:priv ior_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ior(args.values[0], args.values[1]);
 }
 
-def:priv ior_call(module: u64, args: u64) -> u64 {
-    return invoke(ior_signature, args, 0, ior_bound);
+def:priv ior_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ior_signature, args, NULL, ior_bound);
 }
 
 glob:priv concat_signature = CallSignature("concat", ["a", "b"], 2, 2, 2);
-def:priv concat_bound(args: BoundArguments) -> u64 {
+def:priv concat_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_concat(args.values[0], args.values[1]);
 }
 
-def:priv concat_call(module: u64, args: u64) -> u64 {
-    return invoke(concat_signature, args, 0, concat_bound);
+def:priv concat_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(concat_signature, args, NULL, concat_bound);
 }
 
 glob:priv iconcat_signature = CallSignature("iconcat", ["a", "b"], 2, 2, 2);
-def:priv iconcat_bound(args: BoundArguments) -> u64 {
+def:priv iconcat_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_iconcat(args.values[0], args.values[1]);
 }
 
-def:priv iconcat_call(module: u64, args: u64) -> u64 {
-    return invoke(iconcat_signature, args, 0, iconcat_bound);
+def:priv iconcat_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(iconcat_signature, args, NULL, iconcat_bound);
 }
 
 glob:priv getitem_signature = CallSignature("getitem", ["a", "b"], 2, 2, 2);
-def:priv getitem_bound(args: BoundArguments) -> u64 {
+def:priv getitem_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_getitem(args.values[0], args.values[1]);
 }
 
-def:priv getitem_call(module: u64, args: u64) -> u64 {
-    return invoke(getitem_signature, args, 0, getitem_bound);
+def:priv getitem_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(getitem_signature, args, NULL, getitem_bound);
 }
 
 glob:priv is__signature = CallSignature("is_", ["a", "b"], 2, 2, 2);
-def:priv is__bound(args: BoundArguments) -> u64 {
+def:priv is__bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_is_(args.values[0], args.values[1]);
 }
 
-def:priv is__call(module: u64, args: u64) -> u64 {
-    return invoke(is__signature, args, 0, is__bound);
+def:priv is__call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(is__signature, args, NULL, is__bound);
 }
 
 glob:priv is_not_signature = CallSignature("is_not", ["a", "b"], 2, 2, 2);
-def:priv is_not_bound(args: BoundArguments) -> u64 {
+def:priv is_not_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_is_not(args.values[0], args.values[1]);
 }
 
-def:priv is_not_call(module: u64, args: u64) -> u64 {
-    return invoke(is_not_signature, args, 0, is_not_bound);
+def:priv is_not_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(is_not_signature, args, NULL, is_not_bound);
 }
 
 glob:priv pow_signature = CallSignature("pow", ["a", "b"], 2, 2, 2);
-def:priv pow_bound(args: BoundArguments) -> u64 {
+def:priv pow_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_pow(args.values[0], args.values[1]);
 }
 
-def:priv pow_call(module: u64, args: u64) -> u64 {
-    return invoke(pow_signature, args, 0, pow_bound);
+def:priv pow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(pow_signature, args, NULL, pow_bound);
 }
 
 glob:priv ipow_signature = CallSignature("ipow", ["a", "b"], 2, 2, 2);
-def:priv ipow_bound(args: BoundArguments) -> u64 {
+def:priv ipow_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ipow(args.values[0], args.values[1]);
 }
 
-def:priv ipow_call(module: u64, args: u64) -> u64 {
-    return invoke(ipow_signature, args, 0, ipow_bound);
+def:priv ipow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ipow_signature, args, NULL, ipow_bound);
 }
 
 glob:priv contains_signature = CallSignature("contains", ["a", "b"], 2, 2, 2);
-def:priv contains_bound(args: BoundArguments) -> u64 {
+def:priv contains_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_contains(args.values[0], args.values[1]);
 }
 
-def:priv contains_call(module: u64, args: u64) -> u64 {
-    return invoke(contains_signature, args, 0, contains_bound);
+def:priv contains_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(contains_signature, args, NULL, contains_bound);
 }
 
 glob:priv indexOf_signature = CallSignature("indexOf", ["a", "b"], 2, 2, 2);
-def:priv indexOf_bound(args: BoundArguments) -> u64 {
+def:priv indexOf_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_indexOf(args.values[0], args.values[1]);
 }
 
-def:priv indexOf_call(module: u64, args: u64) -> u64 {
-    return invoke(indexOf_signature, args, 0, indexOf_bound);
+def:priv indexOf_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(indexOf_signature, args, NULL, indexOf_bound);
 }
 
 glob:priv countOf_signature = CallSignature("countOf", ["a", "b"], 2, 2, 2);
-def:priv countOf_bound(args: BoundArguments) -> u64 {
+def:priv countOf_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_countOf(args.values[0], args.values[1]);
 }
 
-def:priv countOf_call(module: u64, args: u64) -> u64 {
-    return invoke(countOf_signature, args, 0, countOf_bound);
+def:priv countOf_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(countOf_signature, args, NULL, countOf_bound);
 }
 
 glob:priv delitem_signature = CallSignature("delitem", ["a", "b"], 2, 2, 2);
-def:priv delitem_bound(args: BoundArguments) -> u64 {
+def:priv delitem_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_delitem(args.values[0], args.values[1]);
 }
 
-def:priv delitem_call(module: u64, args: u64) -> u64 {
-    return invoke(delitem_signature, args, 0, delitem_bound);
+def:priv delitem_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(delitem_signature, args, NULL, delitem_bound);
 }
 
 glob:priv lt_signature = CallSignature("lt", ["a", "b"], 2, 2, 2);
-def:priv lt_bound(args: BoundArguments) -> u64 {
+def:priv lt_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(0));
 }
 
-def:priv lt_call(module: u64, args: u64) -> u64 {
-    return invoke(lt_signature, args, 0, lt_bound);
+def:priv lt_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(lt_signature, args, NULL, lt_bound);
 }
 
 glob:priv le_signature = CallSignature("le", ["a", "b"], 2, 2, 2);
-def:priv le_bound(args: BoundArguments) -> u64 {
+def:priv le_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(1));
 }
 
-def:priv le_call(module: u64, args: u64) -> u64 {
-    return invoke(le_signature, args, 0, le_bound);
+def:priv le_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(le_signature, args, NULL, le_bound);
 }
 
 glob:priv eq_signature = CallSignature("eq", ["a", "b"], 2, 2, 2);
-def:priv eq_bound(args: BoundArguments) -> u64 {
+def:priv eq_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(2));
 }
 
-def:priv eq_call(module: u64, args: u64) -> u64 {
-    return invoke(eq_signature, args, 0, eq_bound);
+def:priv eq_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(eq_signature, args, NULL, eq_bound);
 }
 
 glob:priv ne_signature = CallSignature("ne", ["a", "b"], 2, 2, 2);
-def:priv ne_bound(args: BoundArguments) -> u64 {
+def:priv ne_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(3));
 }
 
-def:priv ne_call(module: u64, args: u64) -> u64 {
-    return invoke(ne_signature, args, 0, ne_bound);
+def:priv ne_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ne_signature, args, NULL, ne_bound);
 }
 
 glob:priv gt_signature = CallSignature("gt", ["a", "b"], 2, 2, 2);
-def:priv gt_bound(args: BoundArguments) -> u64 {
+def:priv gt_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(4));
 }
 
-def:priv gt_call(module: u64, args: u64) -> u64 {
-    return invoke(gt_signature, args, 0, gt_bound);
+def:priv gt_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(gt_signature, args, NULL, gt_bound);
 }
 
 glob:priv ge_signature = CallSignature("ge", ["a", "b"], 2, 2, 2);
-def:priv ge_bound(args: BoundArguments) -> u64 {
+def:priv ge_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(5));
 }
 
-def:priv ge_call(module: u64, args: u64) -> u64 {
-    return invoke(ge_signature, args, 0, ge_bound);
+def:priv ge_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ge_signature, args, NULL, ge_bound);
 }
 
 glob:priv setitem_signature = CallSignature("setitem", ["a", "b", "c"], 3, 3, 3),
      length_hint_signature = CallSignature("length_hint", ["obj", "default"], 1, 2, 2),
      digest_signature = CallSignature("_compare_digest", ["a", "b"], 2, 2, 2);
 
-def:priv setitem_bound(args: BoundArguments) -> u64 {
+def:priv setitem_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_setitem(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv setitem_call(module: u64, args: u64) -> u64 {
-    return invoke(setitem_signature, args, 0, setitem_bound);
+def:priv setitem_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(setitem_signature, args, NULL, setitem_bound);
 }
 
-def:priv length_hint_bound(args: BoundArguments) -> u64 {
+def:priv length_hint_bound(args: BoundArguments) -> ptr[PyObject] {
     fallback: i64 = 0;
     if args.values[1] != 0 {
         value = index_value(args.values[1]);
         if value is None {
-            return 0;
+            return NULL;
         }
         fallback = value;
     }
     return jacpy_operator_length_hint(args.values[0], fallback);
 }
 
-def:priv length_hint_call(module: u64, args: u64) -> u64 {
-    return invoke(length_hint_signature, args, 0, length_hint_bound);
+def:priv length_hint_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(length_hint_signature, args, NULL, length_hint_bound);
 }
 
-def:priv call_call(module: u64, args: u64, kwargs: u64) -> u64 {
-    if jacpy_tuple_size(args) == 0 {
+def:priv call_call(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    if PyTuple_Size(args) == 0 {
         object_error("TypeError", "call expected at least 1 argument, got 0");
-        return 0;
+        return NULL;
     }
     return jacpy_operator_call(args, kwargs);
 }
 
-def:priv digest_bound(args: BoundArguments) -> u64 {
+def:priv digest_bound(args: BoundArguments) -> ptr[PyObject] {
     a = args.values[0];
     b = args.values[1];
     ascii = jacpy_is_unicode(a) != 0 and jacpy_is_unicode(b) != 0;
@@ -557,45 +565,47 @@ def:priv digest_bound(args: BoundArguments) -> u64 {
                 "TypeError",
                 "comparing strings with non-ASCII characters is not supported"
             );
-            return 0;
+            return NULL;
         }
-    } elif jacpy_buffer_supported(a) == 0 and jacpy_buffer_supported(b) == 0 {
+    } elif PyObject_CheckBuffer(a) == 0 and PyObject_CheckBuffer(b) == 0 {
         object_error(
             "TypeError",
             f"unsupported operand types(s) or combination of types: '{type_name(a)[:100]}' and '{type_name(
                 b
             )[:100]}'"
         );
-        return 0;
+        return NULL;
     }
     av = BufferArgument();
     bv = BufferArgument();
     if not av.acquire(a, ascii) {
-        return 0;
+        return NULL;
     }
     if av.dimensions() > 1 {
         object_error("BufferError", "Buffer must be single dimension");
-        return 0;
+        return NULL;
     }
     if not bv.acquire(b, ascii) {
-        return 0;
+        return NULL;
     }
     if bv.dimensions() > 1 {
         object_error("BufferError", "Buffer must be single dimension");
-        return 0;
+        return NULL;
     }
     return jacpy_operator_digest(av.address(), bv.address(), av.size(), bv.size());
 }
 
-def:priv digest_call(module: u64, args: u64) -> u64 {
-    return invoke(digest_signature, args, 0, digest_bound);
+def:priv digest_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(digest_signature, args, NULL, digest_bound);
 }
 
 obj AccessorState(ReferenceState) {
     has kind: i64;
 }
 
-def:priv accessor_state(instance: u64, definition: u64) -> (AccessorState | None) {
+def:priv accessor_state(
+    instance: ptr[PyObject], definition: ptr
+) -> (AccessorState | None) {
     if jacpy_binding_native_present(instance, definition) != 0 {
         state = jacpy_binding_native_get(instance, definition);
         if isinstance(state, AccessorState) {
@@ -607,58 +617,65 @@ def:priv accessor_state(instance: u64, definition: u64) -> (AccessorState | None
 }
 
 def:priv accessor_create(
-    type: u64, args: u64, kwargs: u64, definition: u64, kind: i64
-) -> u64 {
+    type: ptr[PyObject],
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    definition: ptr,
+    kind: i64
+) -> ptr[PyObject] {
     if kind != 2 and jacpy_dict_size(kwargs) != 0 {
         object_error(
             "TypeError", f"{type_name(type, True)}() takes no keyword arguments"
         );
-        return 0;
+        return NULL;
     }
-    if jacpy_tuple_size(args) < 1 {
+    if PyTuple_Size(args) < 1 {
         object_error(
             "TypeError", f"{type_name(type, True)} expected at least 1 argument, got 0"
         );
-        return 0;
+        return NULL;
     }
     prepared = jacpy_operator_prepare(kind, args);
     if prepared == 0 {
-        return 0;
+        return NULL;
     }
     state = AccessorState(
-        references=[prepared, jacpy_retain(kwargs) if kwargs != 0 else u64(0)],
-        kind=kind
+        references=[prepared, Py_NewRef(kwargs) if kwargs != 0 else NULL], kind=kind
     );
     instance = jacpy_binding_allocate(type);
     if instance == 0 {
-        return 0;
+        return NULL;
     }
     if jacpy_binding_native_set(instance, definition, state) < 0 {
         jacpy_release(instance);
-        return 0;
+        return NULL;
     }
     return instance;
 }
 
 def:priv accessor_vector(
-    instance: u64, args: u64, count: u64, names: u64, definition: u64
-) -> u64 {
-    if names != 0 and jacpy_tuple_size(names) != 0 {
+    instance: ptr[PyObject],
+    args: ptr,
+    count: u64,
+    names: ptr[PyObject],
+    definition: ptr
+) -> ptr[PyObject] {
+    if names != 0 and PyTuple_Size(names) != 0 {
         object_error(
             "TypeError", f"{type_name(instance)}() takes no keyword arguments"
         );
-        return 0;
+        return NULL;
     }
-    size = jacpy_binding_vector_count(count);
+    size = PyVectorcall_NARGS(count);
     if size != 1 {
         object_error(
             "TypeError", f"{type_name(instance)} expected 1 argument, got {size}"
         );
-        return 0;
+        return NULL;
     }
     state = accessor_state(instance, definition);
     if state is None {
-        return 0;
+        return NULL;
     }
     return jacpy_operator_apply(
         state.kind,
@@ -668,62 +685,67 @@ def:priv accessor_vector(
     );
 }
 
-def:priv accessor_repr(instance: u64, definition: u64) -> u64 {
+def:priv accessor_repr(instance: ptr[PyObject], definition: ptr) -> ptr[PyObject] {
     state = accessor_state(instance, definition);
     if state is None {
-        return 0;
+        return NULL;
     }
     return jacpy_operator_repr(
         state.kind, instance, state.references[0], state.references[1]
     );
 }
 
-def:priv accessor_reduce(instance: u64, definition: u64) -> u64 {
+def:priv accessor_reduce(instance: ptr[PyObject], definition: ptr) -> ptr[PyObject] {
     state = accessor_state(instance, definition);
     if state is None {
-        return 0;
+        return NULL;
     }
     return jacpy_operator_reduce(
-        state.kind,
-        jacpy_binding_typeof(instance),
-        state.references[0],
-        state.references[1]
+        state.kind, Py_TYPE(instance), state.references[0], state.references[1]
     );
 }
 
-def:priv accessor_signature(instance: u64, context: u64) -> u64 {
+def:priv accessor_signature(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     try {
         return text_object("(obj, /)");
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def:priv itemgetter_create(type: u64, args: u64, kwargs: u64) -> u64 {
+def:priv itemgetter_create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_create(type, args, kwargs, itemgetter_type.handle, i64(0));
 }
 
-def:priv itemgetter_vector(instance: u64, args: u64, count: u64, names: u64) -> u64 {
+def:priv itemgetter_vector(
+    instance: ptr[PyObject], args: ptr, count: u64, names: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_vector(instance, args, count, names, itemgetter_type.handle);
 }
 
-def:priv itemgetter_repr(instance: u64) -> u64 {
+def:priv itemgetter_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return accessor_repr(instance, itemgetter_type.handle);
 }
 
-def:priv itemgetter_reduce(instance: u64, unused: u64) -> u64 {
+def:priv itemgetter_reduce(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_reduce(instance, itemgetter_type.handle);
 }
 
-def:priv itemgetter_clear(instance: u64) -> i32 {
+def:priv itemgetter_clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, itemgetter_type.handle);
 }
 
-def:priv itemgetter_traverse(instance: u64, visitor: u64, context: u64) -> i32 {
+def:priv itemgetter_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
     return traverse_payload(instance, itemgetter_type.handle, visitor, context);
 }
 
-def:priv itemgetter_deallocate(instance: u64) {
+def:priv itemgetter_deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, itemgetter_type.handle);
 }
 
@@ -756,31 +778,39 @@ glob:priv itemgetter_type = TypeDefinition(
          ]
      );
 
-def:priv attrgetter_create(type: u64, args: u64, kwargs: u64) -> u64 {
+def:priv attrgetter_create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_create(type, args, kwargs, attrgetter_type.handle, i64(1));
 }
 
-def:priv attrgetter_vector(instance: u64, args: u64, count: u64, names: u64) -> u64 {
+def:priv attrgetter_vector(
+    instance: ptr[PyObject], args: ptr, count: u64, names: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_vector(instance, args, count, names, attrgetter_type.handle);
 }
 
-def:priv attrgetter_repr(instance: u64) -> u64 {
+def:priv attrgetter_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return accessor_repr(instance, attrgetter_type.handle);
 }
 
-def:priv attrgetter_reduce(instance: u64, unused: u64) -> u64 {
+def:priv attrgetter_reduce(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_reduce(instance, attrgetter_type.handle);
 }
 
-def:priv attrgetter_clear(instance: u64) -> i32 {
+def:priv attrgetter_clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, attrgetter_type.handle);
 }
 
-def:priv attrgetter_traverse(instance: u64, visitor: u64, context: u64) -> i32 {
+def:priv attrgetter_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
     return traverse_payload(instance, attrgetter_type.handle, visitor, context);
 }
 
-def:priv attrgetter_deallocate(instance: u64) {
+def:priv attrgetter_deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, attrgetter_type.handle);
 }
 
@@ -813,31 +843,39 @@ glob:priv attrgetter_type = TypeDefinition(
          ]
      );
 
-def:priv methodcaller_create(type: u64, args: u64, kwargs: u64) -> u64 {
+def:priv methodcaller_create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_create(type, args, kwargs, methodcaller_type.handle, i64(2));
 }
 
-def:priv methodcaller_vector(instance: u64, args: u64, count: u64, names: u64) -> u64 {
+def:priv methodcaller_vector(
+    instance: ptr[PyObject], args: ptr, count: u64, names: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_vector(instance, args, count, names, methodcaller_type.handle);
 }
 
-def:priv methodcaller_repr(instance: u64) -> u64 {
+def:priv methodcaller_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return accessor_repr(instance, methodcaller_type.handle);
 }
 
-def:priv methodcaller_reduce(instance: u64, unused: u64) -> u64 {
+def:priv methodcaller_reduce(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     return accessor_reduce(instance, methodcaller_type.handle);
 }
 
-def:priv methodcaller_clear(instance: u64) -> i32 {
+def:priv methodcaller_clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, methodcaller_type.handle);
 }
 
-def:priv methodcaller_traverse(instance: u64, visitor: u64, context: u64) -> i32 {
+def:priv methodcaller_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
     return traverse_payload(instance, methodcaller_type.handle, visitor, context);
 }
 
-def:priv methodcaller_deallocate(instance: u64) {
+def:priv methodcaller_deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, methodcaller_type.handle);
 }
 
@@ -870,7 +908,7 @@ glob:priv methodcaller_type = TypeDefinition(
          ]
      );
 
-def:priv execute(module: u64) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_owned(module, "itemgetter", itemgetter_type.create(module)) {
         return i32(-1);
     }
@@ -1220,6 +1258,6 @@ glob:priv definition = ModuleDefinition(
          ModuleHooks(execute=execute)
      );
 
-def:pub PyInit__operator -> u64 {
+def:pub PyInit__operator -> ptr[PyObject] {
     return definition.initialize();
 }

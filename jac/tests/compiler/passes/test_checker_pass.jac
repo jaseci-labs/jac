@@ -398,10 +398,43 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              ]
          ),
          (
+             "subscript_guard_assignment",
+             "checker",
+             "checker_subscript_guard_assignment.jac",
+             3,
+             True,
+             []
+         ),
+         (
+             "sum_element_type",
+             "checker",
+             "checker_sum_element_type.jac",
+             1,
+             True,
+             [(0, """
+    Cannot assign list[float] to Iterable[int]
+    """)]
+         ),
+         (
+             "kwargs_literal_overload",
+             "checker",
+             "checker_kwargs_literal_overload.jac",
+             2,
+             True,
+             [
+                 (0, """
+    Cannot assign bytes to str
+    """),
+                 (1, """
+    'timeoutt'
+    """)
+             ]
+         ),
+         (
              "unannotated_reassignment_frozen",
              "checker",
              "checker_none_sentinel_reassignment.jac",
-             3,
+             4,
              True,
              [
                  (
@@ -421,7 +454,10 @@ glob CHECKER_DIRS: dict[(str, str)] = {
         count = "bad";  # <-- Error
         ^^^^^^^^^^^^^^
     """
-                 )
+                 ),
+                 (3, """
+    Cannot assign int | Literal[""] to str
+    """)
              ]
          ),
          (
@@ -696,6 +732,16 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              []
          ),
          ("expr_narrowing", "checker", "checker_expr_narrowing.jac", 0, True, []),
+         # A comprehension's `if` clauses run in order, so each narrows the
+         # element expression, the later clauses and any later `for` clause.
+         (
+             "comprehension_clause_narrowing",
+             "checker",
+             "checker_comprehension_clause_narrowing.jac",
+             0,
+             True,
+             []
+         ),
          # `x == "literal"` narrows like the int, float and bool forms; `!=`
          # rules out one value, never the whole class.
          (
@@ -705,6 +751,43 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              1,
              True,
              [(0, "Cannot return Literal[\"a\"] | NoneType, expected NoneType")]
+         ),
+         (
+             "membership_narrowing",
+             "checker",
+             "checker_membership_narrowing.jac",
+             4,
+             True,
+             [
+                 (
+                     0,
+                     """
+Cannot return str | NoneType, expected str
+    return ak if ak in (other, "walker") else "obj";  # <-- Error: variable element
+    """
+                 ),
+                 (
+                     1,
+                     """
+Cannot return str | NoneType, expected str
+    return ak;  # <-- Error: only the literals are ruled out, ak is still str | None
+    """
+                 ),
+                 (
+                     2,
+                     """
+Cannot return str | NoneType, expected str
+        return ak;  # <-- Error: only the literals are ruled out, ak is still str | None
+    """
+                 ),
+                 (
+                     3,
+                     """
+Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
+        c: Literal["c"] = k;  # <-- Error: not narrowed yet
+    """
+                 )
+             ]
          ),
          (
              "literal_ne_does_not_over_narrow",
@@ -5118,7 +5201,7 @@ test "edge_endpoint_typing_narrows_neighbour_traversals" {
         "follow_out": "list[Profile]",  # ->:Follow:-> narrows to target
         "post_in": "list[Profile]",  # <-:Post:<- narrows to source
         "post_out": "list[Tweet]",  # ->:Post:-> narrows to target
-        "untyped": "list[<any>]",  # bare edge stays gradual
+        "untyped": "list[<any>]",  # the `any --> any` opt-out stays gradual
         "inherited": "list[Profile]",  # subtype edge inherits endpoints
         "one": "Tweet",  # subscript element of a narrowed list
         "field_read": "str"  # field read off a narrowed element
@@ -5149,6 +5232,78 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
     }
     assert has_e2027 , "Expected E2027 for endpoint clause on a node, got:\\n"
         + "\\n---\\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+def _endpoint_diags(program: JacProgram) -> list[tuple[str, int]] {
+    return sorted(
+        [
+            (d.code.code, d.loc.first_line)
+            for d in program.errors_had + program.warnings_had
+            if d.code and d.code.code in ("E1136", "E1137", "W2081", "W2082", "E2086")
+        ]
+    );
+}
+
+test "edge_endpoint_declaration_is_enforced_at_connect_and_traversal" {
+    # Step 1: `edge Post: Profile --> Tweet` is already trusted by inference to
+    # narrow a traversal, so a connect that violates it is a miscompile, not a
+    # style question -- field access resolves by slot index, so the wrong node
+    # silently reads the wrong field. Only an unrelated type is an error; a
+    # supertype operand may well be the declared type at runtime, so it warns.
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_violation.jac"));
+    got = _endpoint_diags(program);
+    assert ("E1136", 27) in got , f"backwards connect must be E1136 at 27, got {got}";
+    assert ("E1137", 28) in got , f"wrong-origin traversal must be E1137 at 28, got {got}";
+    assert ("W2081", 14) in got , f"a supertype source must warn W2081 at 14, got {got}";
+    assert ("W2082", 18) in got , f"a supertype origin must warn W2082 at 18, got {got}";
+    for clean in [24, 25, 26, 29, 30] {
+        assert not [
+            p
+            for p in got
+            if p[1] == clean
+        ] , f"line {clean} conforms and must stay silent, got {got}";
+    }
+}
+
+test "edge_endpoint_admits_a_union_like_every_other_type_position" {
+    # Step 2: endpoints parsed through `parse_atomic_chain`, which stops short of
+    # the union operator, so `A | B` was E0005 -- while `has v: A | B` parsed
+    # fine through `parse_pipe`. 27 of the compiler's own role getters return a
+    # union, so endpoints were inexpressible for them until this parses.
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_union.jac"));
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    expected = {
+        "multi_out": "list[A | B]",
+        "narrow_out": "list[C]",
+        "narrow_in": "list[A | B]",
+        "shared_field": "str"
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
+}
+
+test "edge_without_an_endpoint_clause_is_rejected" {
+    # Step 3: a bare `edge Foo {}` widens every traversal through it to `any`
+    # with nothing written down, which is the one place Jac let an annotation be
+    # implied by silence. The widening stays available -- `any --> any` keeps the
+    # gradual behaviour exactly, `Node --> Node` asks for node-ness -- but it has
+    # to be said.
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "edge_missing_endpoints.jac"));
+    got = _endpoint_diags(program);
+    assert got == [("E2086", 6)] , f"only the bare edge on line 6 may be flagged, got {got}";
 }
 
 test "mobui_project_forbids_html_intrinsic_tags" {
@@ -5379,6 +5534,19 @@ test "bare_list_flow_inference" {
     }
 }
 
+test "final_reassignment_errors" {
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_reassignment.jac"), options=NO_TC
+    );
+    errors = [e.pretty_print() for e in program.errors_had];
+    names = ["SHARED_RATE", "x", "x", "y", "y", "label", "LIMIT"];
+    assert len(errors) == len(names) , "\n---\n".join(errors);
+    for (err, name) in zip(errors, names) {
+        assert "E1135" in err and f"'{name}'" in err , err;
+    }
+}
+
 test "none_equality_not_flagged" {
     # `==` / `!=` never fail to resolve in Python (object.__eq__ is the
     # universal identity fallback), so None-equality must not raise E1110.
@@ -5430,4 +5598,59 @@ test "client cleanup returns only warn when ignored" {
     ];
     assert len(ignored) == 2 , str(ignored);
     assert [w.loc.first_line for w in ignored] == [7, 10];
+}
+
+test "a bare name in a method body skips the class scope" {
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_name_skips_class_scope.jac")
+    );
+    errors = [str(e) for e in prog.errors_had];
+    assert not errors , f"Expected no errors, got: {errors}";
+    w2001 = [
+        w
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W2001"
+    ];
+    names = [w.msg for w in w2001];
+    for bound in ["'lookup'", "'Part'", "'T'", "'seed'"] {
+        assert not any(bound in m for m in names) , f"{bound} should resolve: {names}";
+    }
+    helper = [
+        w
+        for w in w2001
+        if "'helper'" in w.msg
+    ];
+    assert len(helper) == 1 , f"Expected one W2001 for 'helper', got: {names}";
+    hint = str(helper[0].help_text or "");
+    assert "self.helper" in hint and "Toolbox" in hint , f"Hint should name the class and `self.helper`: {hint!r}";
+    make_hints = sorted(
+        [
+            str(w.help_text or "")
+            for w in w2001
+            if "'make'" in w.msg
+        ]
+    );
+    assert len(make_hints) == 2 , f"Expected W2001 for 'make' in both methods, got: {names}";
+    assert any("`Toolbox.make`" in h for h in make_hints) , f"static method hint: {make_hints}";
+    assert any("`cls.make`" in h for h in make_hints) , f"class method hint: {make_hints}";
+}
+
+test "arguments of a call whose callee is Any are still type-evaluated" {
+    # `any(...)` resolves its callee to the `Any` keyword type, and calling an
+    # `any`-typed value has no signature to check arguments against. Both
+    # calls still evaluate their arguments, so a comprehension passed straight
+    # to them carries its element type to the backends.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_any_call_arguments.jac")
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    comprs = mod.get_all_sub_nodes(uni.ListCompr);
+    assert len(comprs) == 3 , f"expected three comprehensions, got {len(comprs)}";
+    for compr in comprs {
+        assert str(compr.type) == "list[bool]" , f"line {compr.loc.first_line}: {compr.type}";
+        assert str(compr.out_expr.type) == "bool" , f"line {compr.loc.first_line}: {compr.out_expr.type}";
+    }
 }

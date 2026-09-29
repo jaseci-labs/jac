@@ -1,6 +1,4 @@
 import from "@jac/runtime" { Outlet, useLocation }
-import from core.site.ui.Navbar { Navbar }
-import from core.site.ui.Footer { Footer }
 
 def init_theme {
     saved = localStorage.getItem("jac-theme");

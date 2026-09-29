@@ -1557,7 +1557,10 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
 
   exc: __JAC_EXC_RUNTIME__
 }""",
-     _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
+     _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"},
+     JAC_PRELUDE_MODULE: str = "@jac/prelude",
+     JAC_PRELUDE_BASENAME: str = "jac_prelude.js",
+     JAC_RUNTIME_GLOBAL: str = "__jacRuntime";
 
 def _build_exc_runtime_js -> str {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
@@ -1887,59 +1890,56 @@ def build_jac_runtime_js -> str {
     );
 }
 
-glob _OSP_CORE_JS_CACHE: list[str] = [];
+def build_jac_prelude_module -> str {
+    return (
+        "const _jac = (globalThis."
+        + JAC_RUNTIME_GLOBAL
+        + " ??= "
+        + build_jac_runtime_js()
+        + ");\nexport { _jac };\n"
+    );
+}
+
+def write_jac_prelude_file(dir_path: str) -> str {
+    import os;
+    os.makedirs(dir_path, exist_ok=True);
+    out = os.path.join(dir_path, JAC_PRELUDE_BASENAME);
+    with open(out, "w", encoding="utf-8") as handle {
+        handle.write(build_jac_prelude_module());
+    }
+    return out;
+}
+
+def stage_jac_prelude_package(dir_path: str) -> str {
+    import os;
+    import json;
+    pkg = os.path.join(dir_path, "node_modules", "@jac", "prelude");
+    os.makedirs(pkg, exist_ok=True);
+    with open(os.path.join(pkg, "index.js"), "w", encoding="utf-8") as handle {
+        handle.write(build_jac_prelude_module());
+    }
+    with open(os.path.join(pkg, "package.json"), "w", encoding="utf-8") as handle {
+        handle.write(
+            json.dumps(
+                {"name": JAC_PRELUDE_MODULE, "type": "module", "main": "index.js"}
+            )
+                + "\n"
+        );
+    }
+    return pkg;
+}
+
+def point_jac_prelude_at(js: str, target: str = "") -> str {
+    dest = target or ("./" + JAC_PRELUDE_BASENAME);
+    for quote in ['"', "'"] {
+        js = js.replace(quote + JAC_PRELUDE_MODULE + quote, quote + dest + quote);
+    }
+    return js;
+}
 
 def build_osp_core_js -> str {
-    if _OSP_CORE_JS_CACHE {
-        return _OSP_CORE_JS_CACHE[0];
-    }
-    import from jaclang.compiler.backends.common.kernel_units {
-        es_pass_fingerprint,
-        load_unit_artifact,
-        osp_core_unit_path,
-        store_unit_artifact
-    }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-    import from jaclang.compiler.backends.es { estree as es }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    fp = es_pass_fingerprint();
-    cl_copy = osp_core_unit_path('cl');
-    cached = load_unit_artifact(cl_copy, "mjs", fp);
-    if cached is not None {
-        _OSP_CORE_JS_CACHE.append(cached);
-        return cached;
-    }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=cl_copy,
-        options=CompileOptions(force_codespace='client', no_cgen=True)
-    );
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-    if not require_product(prog, ir, CompilationProduct.CLIENT) {
-        raise RuntimeError("Could not compile OSP client runtime");
-    }
-    program = ir.gen.es_ast;
-    kept: list[es.Statement | es.ModuleDeclaration] = [];
-    if isinstance(program, es.Program) {
-        for stmt in program.body {
-            is_jac_rt = (
-                isinstance(stmt, es.VariableDeclaration)
-                and stmt.declarations
-                and isinstance(stmt.declarations[0].id, es.Identifier)
-                and (stmt.declarations[0].id.name == "_jac")
-            );
-            if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
-                continue;
-            }
-            kept.append(stmt);
-        }
-    }
-    js = es_to_js(es.Program(body=kept));
-    store_unit_artifact(cl_copy, "mjs", fp, js);
-    _OSP_CORE_JS_CACHE.append(js);
-    return js;
+    import from jaclang.compiler.backends.es.client_kernel_cache { osp_core_js }
+    return osp_core_js();
 }
 
 def build_osp_driver_js -> str {
@@ -1953,7 +1953,7 @@ if (!globalThis.__jacOspCore) {
     osp_edge_peer,
     osp_spawn, osp_visit, osp_report, osp_disengage, osp_forget,
     osp_register_type, osp_register_desc, osp_node_desc, osp_is_a,
-    WalkerDesc, NodeDesc, Slot, OspRuntime
+    OspWalkerDesc, OspNodeDesc, OspSlot, OspRuntime
   };
 }
 var __ospC = globalThis.__jacOspCore;

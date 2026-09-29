@@ -13,7 +13,12 @@ import from jaclang.project.providers {
     capability_dependencies,
     get_python_provider
 }
-import from jaclang.project.pyvenv { make_pip_spec }
+import from jaclang.project.pyvenv {
+    make_pip_spec,
+    pip_command,
+    pip_python,
+    _bundled_runtime_python
+}
 import from jaclang.project.capabilities {
     Capability,
     CapabilityClosure,
@@ -428,14 +433,10 @@ test "ensure_global_capability pip-installs only the missing deploy tooling" {
         mock_run.assert_called_once();
         cmd: list[any] = list(mock_run.call_args[0][0]);
         assert cmd
-            == [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--quiet",
-                "docker>=7.1.0,<8.0.0"
-            ];
+            == pip_command(
+                pip_python(), ["install", "--quiet", "docker>=7.1.0,<8.0.0"]
+            ) , cmd;
+        assert cmd[0] in (sys.executable, _bundled_runtime_python()) , cmd;
     }
 }
 

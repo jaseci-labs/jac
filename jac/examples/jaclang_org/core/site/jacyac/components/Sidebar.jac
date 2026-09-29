@@ -7,18 +7,6 @@ import from "lucide-react" {
     LogOut,
     MoreHorizontal
 }
-import from core.site.ui.button { Button }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.badge { Badge }
-import from core.site.ui.dropdown_menu {
-    DropdownMenu,
-    DropdownMenuTrigger,
-    DropdownMenuContent,
-    DropdownMenuGroup,
-    DropdownMenuItem
-}
-import from core.utils { cn }
-import from core.jacyac.format { handle_of }
 
 def:pub Sidebar(
     activeTab: str,

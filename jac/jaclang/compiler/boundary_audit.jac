@@ -1,4 +1,5 @@
 import json;
+import type from jaclang.compiler.driver.program { JacProgram }
 
 def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, any] {
     boundaries: dict[str, dict[str, any]] = {};
@@ -6,16 +7,20 @@ def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, a
     host_imports: dict[str, dict[str, any]] = {};
     manifests = list(artifacts);
     compiler = program._get_compiler();
-    for hub in program._search_hubs() {
-        for module in hub.values() {
-            if module is not None and module.gen is not None {
-                manifests.append(compiler._build_interop_dict(module));
-            }
+    for module in program.mod.hub.values() {
+        if module is not None and module.gen is not None {
+            manifests.append(compiler._build_interop_dict(module));
         }
     }
+    surface: dict[str, dict[str, any]] = {};
     for manifest in manifests {
         if not manifest {
             continue;
+        }
+        for (name, rec) in (manifest.get("surface") or {}).items() {
+            module = str(rec.get("module") or "");
+            key = f"{module}:{name}" if module else name;
+            surface.setdefault(key, dict(rec));
         }
         effects.update(manifest["endpoint_effects"]);
         host_imports.update(manifest["native_host_imports"]);
@@ -53,8 +58,9 @@ def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, a
         }
     }
     return {
-        "version": 1,
+        "version": 2,
         "boundaries": boundaries,
+        "surface": surface,
         "effects": effects,
         "native_host_imports": host_imports
     };

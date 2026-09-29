@@ -27,16 +27,15 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
 import from tests.runtimelib.react_jsdom_harness { write_runtime_support }
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
+import from jaclang.compiler.backends.es.jac_runtime_js { point_jac_prelude_at }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.client.solid_entry { build_pages_solid_entry_script }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures"),
      # Real npm deps. The solid-* / zod versions mirror the canonical Solid set in
@@ -803,8 +802,7 @@ def _compile_solid(path: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
-    return es_to_js(es_pass.module.gen.es_ast);
+    return point_jac_prelude_at(es_js_with_backend(ir, prog, SolidBackend()));
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
@@ -851,11 +849,7 @@ test "solid counter mounts and reacts in jsdom" {
         str(Path(runtime_path).parent / "client_runtime_core.jac")
     );
     # Wire the three emitted modules together by relative path inside the work dir.
-    for q in ['"', "'"] {
-        component_js = component_js.replace(
-            f"{q}@jac/runtime{q}", f"{q}./jac_runtime.js{q}"
-        );
-    }
+    component_js = _wire_jac_runtime(component_js);
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);

@@ -1,6 +1,3 @@
-import from core.site.ui.GraphBackdrop { GraphBackdrop }
-import from core.leaderboard.format { belt_class, belt_label }
-import from core.site.ui.badge { Badge }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ChampionIcon }
 

@@ -1234,7 +1234,7 @@ def _paren_group_spans_subscript(tokens: list[Token], open_idx: int) -> bool:
         j += 1
     return False
 
-def transform_tokens(tokens: list[Token]) -> list[Token]:
+def transform_tokens(tokens: list[Token], *, allow_cast: bool = True) -> list[Token]:
     """Apply Jac→Python transformations on a token list.
 
     1. super.method → super().method
@@ -1254,6 +1254,41 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
 
     while i < len(tokens):
         tok = tokens[i]
+
+        # An `as` cast is a type assertion, erased on the Python backend.
+        # Consume the same atomic/union type shape as parse_cast_type, leaving
+        # enclosing delimiters and subsequent value operators untouched.
+        if allow_cast and tok.type == TT.NAME and tok.value == "as" and not tok.backtick:
+            i += 1
+            while True:
+                if i >= len(tokens) or tokens[i].type not in (TT.NAME, TT.LPAREN):
+                    raise ParseError(f"line {tok.line}: expected a cast type")
+                if tokens[i].type == TT.NAME:
+                    i += 1
+                while i < len(tokens):
+                    if tokens[i].type == TT.DOT:
+                        i += 1
+                        if i >= len(tokens) or tokens[i].type != TT.NAME:
+                            raise ParseError(f"line {tok.line}: expected a cast type name")
+                        i += 1
+                    elif tokens[i].type in (TT.LPAREN, TT.LBRACKET):
+                        depth = 1
+                        i += 1
+                        while i < len(tokens) and depth:
+                            if tokens[i].type in (TT.LPAREN, TT.LBRACKET):
+                                depth += 1
+                            elif tokens[i].type in (TT.RPAREN, TT.RBRACKET):
+                                depth -= 1
+                            i += 1
+                        if depth:
+                            raise ParseError(f"line {tok.line}: unclosed cast type")
+                    else:
+                        break
+                if i < len(tokens) and tokens[i].type == TT.OP and tokens[i].value == "|":
+                    i += 1
+                    continue
+                break
+            continue
 
         # === lambda NAME: TYPE : body → lambda NAME: body (no parens) ===
         if (
@@ -1442,9 +1477,9 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
     return out
 
 
-def tokens_to_str(tokens: list[Token]) -> str:
+def tokens_to_str(tokens: list[Token], *, allow_cast: bool = True) -> str:
     """Transform and join tokens into a Python expression string."""
-    return _join_tokens(transform_tokens(tokens))
+    return _join_tokens(transform_tokens(tokens, allow_cast=allow_cast))
 
 
 # =============================================================================
@@ -1512,10 +1547,12 @@ class Parser:
         *stop: TT,
         stop_values: set | None = None,
         stop_names: set | None = None,
+        allow_cast: bool = True,
     ) -> str:
         """Collect tokens until a stop token at depth 0, return as Python str."""
         return tokens_to_str(
-            self._collect_tokens_until(*stop, stop_values=stop_values, stop_names=stop_names)
+            self._collect_tokens_until(*stop, stop_values=stop_values, stop_names=stop_names),
+            allow_cast=allow_cast,
         )
 
     def _collect_tokens_until(
@@ -2248,7 +2285,7 @@ class Parser:
         cases: list[tuple[str, list]] = []
         while self._match(TT.NAME, "case"):
             # Collect pattern until : (colon after pattern)
-            pattern = self._collect_until(TT.COLON)
+            pattern = self._collect_until(TT.COLON, allow_cast=False)
             self._expect(TT.COLON)
             # Collect body until next 'case' or closing '}'
             body: list = []
@@ -2324,7 +2361,7 @@ class Parser:
             exc_type = ""
             exc_name = ""
             if not self._at(TT.LBRACE):
-                exc_str = self._collect_until(TT.LBRACE)
+                exc_str = self._collect_until(TT.LBRACE, allow_cast=False)
                 if " as " in exc_str:
                     parts = exc_str.rsplit(" as ", 1)
                     exc_type = parts[0].strip()
@@ -2356,7 +2393,7 @@ class Parser:
         if is_async:
             self._expect(TT.NAME, "async")
         self._expect(TT.NAME, "with")
-        items = self._collect_until(TT.LBRACE)
+        items = self._collect_until(TT.LBRACE, allow_cast=False)
         self._expect(TT.LBRACE)
         body = self._parse_body()
         self._expect(TT.RBRACE)
@@ -2611,7 +2648,14 @@ class CodeGen:
         if node.arch_kind:
             arch_base = "_jac_osp." + node.arch_kind.capitalize()
             bases = f"{bases}, {arch_base}" if bases else arch_base
-        if any(isinstance(member, FuncDef) and member.is_abstract for member in node.body):
+        # ABC gives an abstract member its instantiation guard, but a Protocol
+        # subclass may only inherit protocols, so adding it there makes the
+        # class unbuildable. Protocol already supplies the abstract semantics.
+        declared = [b.strip() for b in (node.bases or "").split(",") if b.strip()]
+        is_protocol = any(b == "Protocol" or b.endswith(".Protocol") for b in declared)
+        if not is_protocol and any(
+            isinstance(member, FuncDef) and member.is_abstract for member in node.body
+        ):
             bases = f"{bases}, _jac_abc.ABC" if bases else "_jac_abc.ABC"
         base_str = f"({bases})" if bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")

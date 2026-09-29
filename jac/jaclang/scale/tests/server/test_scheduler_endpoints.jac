@@ -108,6 +108,28 @@ test "another account's jobs do not count against mine" {
 }
 
 
+test "another service's jobs do not count against this service's cap" {
+    store = MemoryJobStore();
+    store.insert_within_quota(
+        {"job_id": "o1", "created_by": "ana", "status": "active", "service": "orders"},
+        "ana",
+        1
+    );
+    placed = store.insert_within_quota(
+        {"job_id": "b1", "created_by": "ana", "status": "active", "service": "billing"},
+        "ana",
+        1
+    );
+    assert placed , "ana's job in orders must not use her cap in billing";
+    refused = store.insert_within_quota(
+        {"job_id": "b2", "created_by": "ana", "status": "active", "service": "billing"},
+        "ana",
+        1
+    );
+    assert not refused;
+}
+
+
 test "a cap of zero means unlimited" {
     store = MemoryJobStore();
     for i in range(5) {

@@ -125,7 +125,6 @@ def _override_result(
     import from unittest.mock { patch }
     saved_path = list(sys.path);
     saved_dev = os.environ.get("JAC_DEV_SOURCE");
-    saved_pre = os.environ.get("JAC_NO_PRECOMPILE");
     saved_no_dev = os.environ.get("JAC_NO_DEV_SOURCE");
     try {
         # CI's binary jobs export JAC_NO_DEV_SOURCE=1 globally, which would
@@ -155,9 +154,6 @@ def _override_result(
             os.environ.pop("JAC_DEV_SOURCE", None);
         } else {
             os.environ["JAC_DEV_SOURCE"] = saved_dev;
-        }
-        if saved_pre is None {
-            os.environ.pop("JAC_NO_PRECOMPILE", None);
         }
         if saved_no_dev is None {
             os.environ.pop("JAC_NO_DEV_SOURCE", None);

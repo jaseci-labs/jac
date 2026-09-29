@@ -1,8 +1,10 @@
+import from jaclang.compiler.passes.layout_pass { native_type_key }
 impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
     if t is None or not t?.mangle {
         return None;
     }
-    m = t.mangle();
+    import from jaclang.compiler.passes.layout_pass { native_type_key }
+    m = native_type_key(t);
     _map = self._mono_mangle_map;
     if _map {
         import re;
@@ -196,17 +198,19 @@ impl NaIRGenPass._solve_generic_call(
     return solution;
 }
 
-impl NaIRGenPass._ct_eval -> any {
+impl NaIRGenPass._ct_eval -> CtEvaluator {
     return self.prog.get_type_evaluator().ct_eval;
 }
 
-impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
+impl NaIRGenPass._ct_value_with_bindings(
+    nd: uni.Expr
+) -> tuple[bool, (CtValue | None)] {
     cv = nd.ct_value;
     if cv is None {
         return (False, None);
     }
     if not cv.is_deferred {
-        return (True, cv.v);
+        return (True, cv);
     }
     if not self._ct_bindings {
         return (False, None);
@@ -218,19 +222,22 @@ impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
     }
 }
 
-impl NaIRGenPass._ct_native_const(v: any, nd: uni.Expr) -> (ir.Value | None) {
+impl NaIRGenPass._ct_native_const(v: CtValue, nd: uni.Expr) -> (ir.Value | None) {
     out: (ir.Value | None) = None;
-    if isinstance(v, bool) {
-        out = ir.Constant(ir.IntType(1), 1 if v else 0);
-    } elif isinstance(v, int) {
-        out = ir.Constant(ir.IntType(64), v);
-    } elif isinstance(v, float) {
-        out = ir.Constant(ir.DoubleType(), v);
-    } elif isinstance(v, str) {
-        out = self._make_global_string(v);
-    } elif isinstance(v, bytes) {
-        out = self._make_global_bytes(v);
-    } elif v is None {
+    if isinstance(v, CtBool) {
+        out = ir.Constant(ir.IntType(1), 1 if v.value else 0);
+    } elif isinstance(v, CtInt) {
+        if v.mag {
+            return None;
+        }
+        out = ir.Constant(ir.IntType(64), v.small);
+    } elif isinstance(v, CtFloat) {
+        out = ir.Constant(ir.DoubleType(), v.value);
+    } elif isinstance(v, CtStr) {
+        out = self._make_global_string(v.value);
+    } elif isinstance(v, CtBytes) {
+        out = self._make_global_bytes(v.value);
+    } elif isinstance(v, CtNone) {
         out = ir.Constant(ir.IntType(8).as_pointer(), None);
     }
     if out is not None and nd.coerce_to is not None {
@@ -261,7 +268,7 @@ impl NaIRGenPass._ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         return None;
     }
     (ok, v) = self._ct_value_with_bindings(nd);
-    if not ok {
+    if not ok or v is None {
         return None;
     }
     return self._ct_native_const(v, nd);
@@ -318,7 +325,7 @@ impl NaIRGenPass._ability_has_ct_params(ability: uni.Ability) -> bool {
 
 impl NaIRGenPass._solve_ct_args(
     ability: uni.Ability, nd: uni.FuncCall
-) -> (dict[str, any] | None) {
+) -> (dict[str, CtValue] | None) {
     sig = ability.signature;
     params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     positional: list[uni.Expr] = [];
@@ -332,7 +339,7 @@ impl NaIRGenPass._solve_ct_args(
             positional.append(a);
         }
     }
-    out: dict[str, any] = {};
+    out: dict[str, CtValue] = {};
     for (i, p) in enumerate(params) {
         if not p.is_comptime {
             continue;
@@ -343,7 +350,7 @@ impl NaIRGenPass._solve_ct_args(
             chosen = p.value;
         }
         if chosen is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="call argument",
@@ -353,8 +360,8 @@ impl NaIRGenPass._solve_ct_args(
             return None;
         }
         (ok, v) = self._ct_value_with_bindings(chosen);
-        if not ok {
-            self.ctx.emit(
+        if not ok or v is None {
+            self.emit(
                 E5092,
                 node_override=chosen,
                 kind="argument for comptime parameter",
@@ -368,7 +375,7 @@ impl NaIRGenPass._solve_ct_args(
     return out;
 }
 
-impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
+impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: CtValue) -> None {
     if isinstance(tgt, uni.AtomUnit) {
         self._bind_ct_target(tgt.value, v);
         return;
@@ -378,7 +385,7 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
         return;
     }
     if isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
-        items = list(v);
+        items = ct_iter(v);
         for (i, t) in enumerate(tgt.values) {
             if i < len(items) {
                 self._bind_ct_target(t, items[i]);
@@ -390,11 +397,10 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
 impl NaIRGenPass._instantiate_generic(
     nd: uni.FuncCall, func_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.types.ct_value { ct_mangle }
     ability = self.generic_fns[func_name];
     solution = self._solve_generic_call(ability, nd);
     if solution is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -409,7 +415,7 @@ impl NaIRGenPass._instantiate_generic(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     parts.extend(sorted([f"ct_{k}={ct_mangle(v)}" for (k, v) in ct_bind.items()]));
@@ -442,6 +448,7 @@ impl NaIRGenPass._instantiate_generic(
 impl NaIRGenPass._stamp_mono_fn(
     ability: uni.Ability, spec_name: str, memo_key: str
 ) -> (ir.Function | None) {
+    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
     if not isinstance(sig, uni.FuncSignature) {
@@ -523,7 +530,7 @@ impl NaIRGenPass._instantiate_generic_for_target(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     key = func_name + "|" + ",".join(parts);
@@ -555,7 +562,7 @@ impl NaIRGenPass._instantiate_generic_method(
     ability = self._generic_methods[f"{owner_arch}.{method_name}"];
     solution = self._solve_generic_call(ability, nd);
     if not solution {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="method",
@@ -566,7 +573,7 @@ impl NaIRGenPass._instantiate_generic_method(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     key = f"{owner_arch}.{method_name}|" + ",".join(parts);
@@ -599,6 +606,7 @@ impl NaIRGenPass._stamp_mono_method(
     spec_name: str,
     memo_key: str
 ) -> (ir.Function | None) {
+    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
     full_name = f"{arch_name}.{method_name}";
     if full_name in self._native_skipped_methods {
         return None;
@@ -609,7 +617,7 @@ impl NaIRGenPass._stamp_mono_method(
         or not isinstance(sig, uni.FuncSignature)
         or ability.is_static
         or ability.is_classmethod {
-        self.ctx.emit(E5092, node_override=ability, kind="method", name=full_name);
+        self.emit(E5092, node_override=ability, kind="method", name=full_name);
         return None;
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
@@ -676,6 +684,9 @@ impl NaIRGenPass._find_source_ability(
         } finally {
             self.prog.options = _saved_opts;
         }
+    }
+    if imported_mod is not None and self._is_catalog_module(imported_mod) {
+        imported_mod = self._full_ast_of(full_path);
     }
     if imported_mod is None {
         return None;

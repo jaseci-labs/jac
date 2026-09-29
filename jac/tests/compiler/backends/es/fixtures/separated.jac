@@ -5,7 +5,7 @@ node Todo {
     has done: bool = False;
 }
 
-walker create_todo {
+walker:protect create_todo {
     has text: str;
 
     can create with Root entry {

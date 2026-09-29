@@ -4,11 +4,11 @@ node Item {
         ct_pruned: bool = False;
 }
 
-edge Part {
+edge Part : Item --> Item {
     has idx: int = 0;
 }
 
-edge Link {}
+edge Link : any --> any {}
 
 walker Sum {
     has total: int = 0,

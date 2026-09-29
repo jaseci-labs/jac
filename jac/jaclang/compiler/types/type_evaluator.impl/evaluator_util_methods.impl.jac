@@ -130,7 +130,10 @@ impl TypeEvaluator._build_field_params(
             if has_var.type_tag {
                 var_type_expr = has_var.type_tag.tag;
                 type_cls = self.get_type_of_expression(var_type_expr);
-                param_type = self._convert_to_instance(type_cls);
+                param_type = self._final_declared_type(
+                    type_cls, has_var.name.sym, has_var.value
+                )
+                    or self._convert_to_instance(type_cls);
             }
             initialization = field_initialization(has_var);
             if skip_deferred and not initialization.participates_in_init {
@@ -463,6 +466,16 @@ impl TypeEvaluator._is_type_subscript(class_type: ClassType) -> bool {
     );
 }
 
+impl TypeEvaluator._subscript_index_expr(right: Expr) -> Expr {
+    if isinstance(right, IndexSlice)
+        and not right.is_range
+        and right.slices
+        and right.slices[0].start is not None {
+        return right.slices[0].start;
+    }
+    return right;
+}
+
 impl TypeEvaluator._get_type_for_member_lookup(object_type: ClassType) -> ClassType {
     if self._is_type_subscript(object_type) {
         inner_type = object_type.private.type_args[0];
@@ -644,6 +657,10 @@ impl TypeEvaluator._synthesize_enum_metaclass_attr(
 }
 
 impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
+    if final_form := self._as_final_form(jtype) {
+        type_args = final_form.private.type_args;
+        return self._convert_to_instance(type_args[0]) if type_args else UnknownType();
+    }
     return convert_to_instance(jtype);
 }
 
@@ -681,29 +698,39 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
     return None;
 }
 
-impl TypeEvaluator._edge_endpoint_type(
-    edge_type: ClassType, edge_dir: EdgeDir
-) -> TypeBase | None {
-    for cls in edge_type.shared.mro {
-        arch = cls.shared.symbol_table;
-        if not isinstance(arch, Archetype) {
-            continue;
-        }
-        endpoint: Expr | None = None;
-        if edge_dir == EdgeDir.OUT {
-            endpoint = arch.tgt_endpoint;
-        } elif edge_dir == EdgeDir.IN {
-            endpoint = arch.src_endpoint;
-        }
-        if endpoint is not None {
-            ep_type = self.get_type_of_expression(endpoint);
-            if isinstance(ep_type, ClassType) {
-                return ep_type;
-            }
-            return None;
-        }
+impl TypeEvaluator._declared_metaclass_member(
+    cls_type: ClassType, name: str
+) -> (ClassMember | None) {
+    if not cls_type.is_instantiable_class() {
+        return None;
     }
-    return None;
+    meta_cls = self._metaclass_of(cls_type);
+    if meta_cls is None {
+        return None;
+    }
+    member = self._lookup_class_member(meta_cls, name);
+    if member is None or member.class_type.shared.class_name in ("type", "object") {
+        return None;
+    }
+    return member;
+}
+
+impl TypeEvaluator._report_rejected_method_call(
+    receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+) -> None {
+    method = self.get_type_of_symbol(member.symbol);
+    if member.overloads or not isinstance(method, FunctionType) {
+        self.emit_diag(E1055, site, method=member.symbol.sym_name);
+        return;
+    }
+    method = method.specialize(receiver);
+    arg_match = self.match_args_to_params(args, site, method);
+    if not arg_match.argument_errors {
+        self.validate_arg_types(
+            arg_match,
+            solved_type_vars=self._receiver_type_var_bindings(method, receiver)
+        );
+    }
 }
 
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
@@ -788,7 +815,9 @@ impl TypeEvaluator._get_expected_kv_types(
     return None;
 }
 
-impl TypeEvaluator._infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | None {
+impl TypeEvaluator._infer_elem_from_mutations(
+    expr: Expr, container_class: ClassType
+) -> TypeBase | None {
     asg = expr.parent;
     if (
         not isinstance(asg, Assignment)
@@ -815,7 +844,7 @@ impl TypeEvaluator._infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | 
             continue;
         }
         seen_refs.add(id(ref));
-        contrib = self._list_mutation_elem_contrib(ref);
+        contrib = self._mutation_elem_contrib(ref, container_class);
         if contrib is None {
             continue;
         }
@@ -848,8 +877,11 @@ impl TypeEvaluator._infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | 
     return None;
 }
 
-impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None {
+impl TypeEvaluator._mutation_elem_contrib(
+    ref: NameAtom, container_class: ClassType
+) -> TypeBase | None {
     tr = ref.parent;
+    is_set = container_class.is_builtin("set");
     if isinstance(tr, AtomTrailer) and tr.target is ref {
         if (
             tr.is_attr
@@ -862,6 +894,15 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
                 for p in (tr.parent.params or [])
                 if not isinstance(p, KWPair)
             ];
+            if is_set {
+                if tr.right.value == "add" and args {
+                    return self.get_type_of_expression(args[0]);
+                }
+                if tr.right.value == "update" {
+                    return self._iterable_elem_contrib(args);
+                }
+                return None;
+            }
             if tr.right.value in ("append", "insert") {
                 arg_idx = 0 if tr.right.value == "append" else 1;
                 if len(args) > arg_idx {
@@ -880,7 +921,8 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
             return None;
         }
         if (
-            not tr.is_attr
+            not is_set
+            and not tr.is_attr
             and isinstance(tr.right, IndexSlice)
             and not tr.right.is_range
             and isinstance(tr.parent, Assignment)
@@ -895,10 +937,15 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
     if (
         isinstance(tr, Assignment)
         and tr.aug_op is not None
-        and tr.aug_op.name == Tok.ADD_EQ
         and tr.value is not None
         and any(t is ref for t in tr.target)
     ) {
+        if is_set and tr.aug_op.name == Tok.BW_OR_EQ {
+            return self._iterable_elem_contrib([tr.value]);
+        }
+        if is_set or tr.aug_op.name != Tok.ADD_EQ {
+            return None;
+        }
         if not (self.prefetch and self.prefetch.list_class) {
             return None;
         }
@@ -907,6 +954,31 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
         );
     }
     return None;
+}
+
+impl TypeEvaluator._iterable_elem_contrib(args: list[Expr]) -> TypeBase | None {
+    if not args {
+        return None;
+    }
+    elem_types: list[TypeBase] = [];
+    for arg in args {
+        arg_type = self.get_type_of_expression(arg);
+        if not (
+            isinstance(arg_type, ClassType)
+            and arg_type.is_builtin(["list", "set", "frozenset", "tuple"])
+            and arg_type.private.type_args
+        ) {
+            return UnknownType();
+        }
+        elem = arg_type.private.type_args[0];
+        if not self._type_in_list(elem, elem_types) {
+            elem_types.append(elem);
+        }
+    }
+    if len(elem_types) != 1 {
+        return UnknownType();
+    }
+    return elem_types[0];
 }
 
 impl TypeEvaluator._get_enclosing_class(nd: UniNode) -> Archetype | None {
@@ -926,6 +998,58 @@ impl TypeEvaluator._get_enclosing_method(nd: UniNode) -> Ability | None {
         return enclosing_fn;
     }
     return None;
+}
+
+impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
+    child: UniNode = nd;
+    cur = nd.parent;
+    while cur is not None {
+        if isinstance(cur, (Archetype, Enum)) {
+            return False;
+        }
+        if isinstance(cur, Ability) {
+            if child is not cur.signature
+                and child is not cur.name_ref
+                and child not in (cur.decorators or []) {
+                return True;
+            }
+        } elif isinstance(cur, ImplDef) {
+            if child is not cur.spec
+                and child not in (cur.decorators or [])
+                and child not in (cur.target or []) {
+                return True;
+            }
+        } elif isinstance(cur, LambdaExpr) {
+            if child is not cur.signature {
+                return True;
+            }
+        }
+        child = cur;
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool {
+    def enclosing_fn(n: UniNode) -> (UniNode | None) {
+        cur = n.parent;
+        while cur is not None and not isinstance(cur, (Ability, ImplDef, LambdaExpr)) {
+            cur = cur.parent;
+        }
+        return cur;
+    }
+    fn = enclosing_fn(nd);
+    if fn is None {
+        return False;
+    }
+    for use in symbol.uses {
+        if isinstance(use, Name)
+            and use.expr_ctx == ExprCtx.STORE
+            and enclosing_fn(use) is fn {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl TypeEvaluator._get_enclosing_return_scope(
@@ -1068,69 +1192,134 @@ impl TypeEvaluator._is_expr_super(expr: Expr) -> bool {
 }
 
 impl TypeEvaluator._is_unbound_method_call(expr: FuncCall) -> bool {
+    callee = self.get_type_of_expression(expr.target);
+    if self._carries_unbound_method(callee) {
+        return True;
+    }
     if isinstance(expr.target, AtomTrailer) and expr.target.is_attr {
         base_type = self.get_type_of_expression(expr.target.target);
-        if isinstance(base_type, ClassType) and base_type.is_instantiable_class() {
-            if isinstance(expr.target.right, Name) {
-                member = self._lookup_class_member(base_type, expr.target.right.value);
-                if member {
-                    decl = member.symbol.decl;
-                    node_ = decl.name_of if decl is not None else None;
-                    if isinstance(node_, HasVar) {
-                        return False;
-                    }
-                    member_type = self.get_type_of_symbol(member.symbol);
-                    if not isinstance(member_type, FunctionType) {
-                        return False;
-                    }
-                    if member_type.function_flags
-                        & (
-                            FunctionTypeFlags.StaticMethod
-                            | FunctionTypeFlags.ClassMethod
-                        ) {
-                        return False;
-                    }
-
-                    if isinstance(node_, Ability)
-                        and (
-                            node_.is_static
-                            or node_.is_cls_method
-                            or `any(
-                                isinstance(dec, Name)
-                                    and dec.sym_name == "staticmethod"
-                                for dec in (node_.decorators or ())
-                            )
-                        ) {
-                        return False;
-                    }
-                    params = member_type.parameters;
-                    if params and params[0].is_self {
-                        return True;
-                    }
-                    if params and params[0].is_cls {
-                        return False;
-                    }
-
-                    import from jaclang.compiler.types.stubcat.format {
-                        SYMF_INSTANCE_METHOD
-                    }
-                    prov: any = member.symbol.provider;
-                    if int(getattr(prov, "symbits", 0) or 0) & SYMF_INSTANCE_METHOD {
-                        return True;
-                    }
-                    if not isinstance(node_, Ability) or not node_.is_method {
-                        return False;
-                    }
-                    sig = node_.signature;
-                    if isinstance(sig, FuncSignature) and sig.is_in_py_class {
-                        return False;
-                    }
-                    return True;
-                }
+        if isinstance(base_type, ClassType)
+            and base_type.is_instantiable_class()
+            and isinstance(expr.target.right, Name) {
+            member = self._lookup_class_member(base_type, expr.target.right.value);
+            if member {
+                return self._is_instance_method_member(member);
             }
         }
     }
     return False;
+}
+
+impl TypeEvaluator._carries_unbound_method(t: (TypeBase | None)) -> bool {
+    if isinstance(t, FunctionType) {
+        return bool(t.function_flags & FunctionTypeFlags.UnboundMethod);
+    }
+    if isinstance(t, OverloadedType) and t.overloads {
+        return all(
+            bool(ov.function_flags & FunctionTypeFlags.UnboundMethod)
+            for ov in t.overloads
+        );
+    }
+    return False;
+}
+
+impl TypeEvaluator.class_member_store_type(
+    target: AtomTrailer, declared: TypeBase
+) -> TypeBase {
+    if not isinstance(target.right, Name) {
+        return declared;
+    }
+    base_type = self.get_type_of_expression(target.target);
+    if not isinstance(base_type, ClassType) or not base_type.is_instantiable_class() {
+        return declared;
+    }
+    owner = self._get_type_for_member_lookup(base_type);
+    member = self._lookup_class_member(owner, target.right.value);
+    return self._as_unbound_method(declared, member, owner) if member else declared;
+}
+
+impl TypeEvaluator._as_unbound_method(
+    t: TypeBase, member: ClassMember, owner: ClassType
+) -> TypeBase {
+    if not self._is_instance_method_member(member) {
+        return t;
+    }
+    if isinstance(t, FunctionType) {
+        return self._unbound_clone(t, owner);
+    }
+    if isinstance(t, OverloadedType) {
+        return OverloadedType(
+            overloads=[self._unbound_clone(ov, owner) for ov in t.overloads]
+        );
+    }
+    return t;
+}
+
+impl TypeEvaluator._unbound_clone(fn: FunctionType, owner: ClassType) -> FunctionType {
+    unbound = fn.clone();
+    unbound.function_flags = unbound.function_flags | FunctionTypeFlags.UnboundMethod;
+    params = unbound.parameters;
+    if not params or not (params[0].is_self or params[0].is_cls) {
+        unbound.parameters = [
+            Parameter(
+                name="self",
+                category=ParameterCategory.Positional,
+                param_type=self._convert_to_instance(owner),
+                is_self=True,
+                param_kind=ParamKind.NORMAL
+            )
+        ]
+            + params;
+    }
+    return unbound;
+}
+
+impl TypeEvaluator._is_instance_method_member(member: ClassMember) -> bool {
+    decl = member.symbol.decl;
+    node_ = decl.name_of if decl is not None else None;
+    if isinstance(node_, HasVar) {
+        return False;
+    }
+    member_type = self.get_type_of_symbol(member.symbol);
+    if not isinstance(member_type, FunctionType) {
+        return False;
+    }
+    if member_type.function_flags
+        & (FunctionTypeFlags.StaticMethod | FunctionTypeFlags.ClassMethod) {
+        return False;
+    }
+    if isinstance(node_, Ability)
+        and (
+            node_.is_static
+            or node_.is_cls_method
+            or `any(
+                isinstance(dec, Name) and dec.sym_name == "staticmethod"
+                for dec in (node_.decorators or [])
+            )
+        ) {
+        return False;
+    }
+    params = member_type.parameters;
+    if params and params[0].is_self {
+        return True;
+    }
+    if params and params[0].is_cls {
+        return False;
+    }
+    import from jaclang.compiler.types.stubcat.format { SYMF_INSTANCE_METHOD }
+    import from jaclang.compiler.types.stubcat.reader { CatProvider }
+    prov = member.symbol.provider;
+    if isinstance(prov, CatProvider) and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 {
+        return True;
+    }
+    if not isinstance(node_, Ability) or not node_.is_method {
+        return False;
+    }
+    sig = node_.signature;
+    if isinstance(sig, FuncSignature) and sig.is_in_py_class {
+        return False;
+    }
+    return True;
 }
 
 impl TypeEvaluator._set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase {
@@ -1148,17 +1337,43 @@ impl TypeEvaluator.resolve_imported_symbols(sym: Symbol) -> Symbol {
         mod_item = sym.decl.find_parent_of_type(ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
-        if isinstance(mod_item.name, Name) and mod_item.name.sym {
-            return mod_item.name.sym;
+        provided = self._provided_import_item_symbol(mod_item);
+        if provided is not None {
+            return provided;
         }
 
-        self.get_type_of_module_item(mod_item);
+        if self.push_symbol_resolution(sym) {
+            try {
+                self.get_type_of_module_item(mod_item);
+            } finally {
+                self.pop_symbol_resolution(sym);
+            }
+        }
+        provided = self._provided_import_item_symbol(mod_item);
+        if provided is not None {
+            return provided;
+        }
         if isinstance(mod_item.name, Name) and mod_item.name.sym {
             return mod_item.name.sym;
         }
         return sym;
     }
     return sym;
+}
+
+impl TypeEvaluator._provided_import_item_symbol(node_: ModuleItem) -> (Symbol | None) {
+    if not isinstance(node_.name, Name) {
+        return None;
+    }
+    bound = node_.name.sym;
+    if bound is None {
+        return None;
+    }
+    decl = bound.decl;
+    if decl is not None and decl.find_parent_of_type(ModuleItem) is node_ {
+        return None;
+    }
+    return bound;
 }
 
 impl TypeEvaluator._set_module_item_symbol_and_type(
@@ -1188,7 +1403,7 @@ impl TypeEvaluator._set_module_item_symbol_and_type(
 
 impl TypeEvaluator._ct_args_for_class(
     base_type: ClassType, slot_vals: list[Expr]
-) -> (tuple[dict[str, any], set[int]] | None) {
+) -> (tuple[dict[str, CtValue], set[int]] | None) {
     if not base_type.shared.ct_params {
         return None;
     }
@@ -1196,7 +1411,7 @@ impl TypeEvaluator._ct_args_for_class(
     if not isinstance(arch, Archetype) {
         return None;
     }
-    ct_args: dict[str, any] = {};
+    ct_args: dict[str, CtValue] = {};
     ct_slots: set[int] = set();
     for (i, tp) in enumerate(arch.type_params) {
         if not tp.is_comptime {
@@ -1211,7 +1426,7 @@ impl TypeEvaluator._ct_args_for_class(
         cv = self.ct_demand(val);
         self.ct_site_error(val, f"argument for comptime parameter '{pname}'", cv);
         if cv is not None {
-            ct_args[pname] = cv.v;
+            ct_args[pname] = cv;
         }
     }
     return (ct_args, ct_slots, );
@@ -1769,24 +1984,24 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not mod_path {
         return None;
     }
-    import from jaclang.project.modresolver { resolve_client_npm_package }
+    import from jaclang.compiler.frontend.host { active_host }
     base = self._client_npm_base(spec, mod_path);
     if base is None {
         return None;
     }
-    return resolve_client_npm_package(spec, base);
+    return active_host().resolve_npm_package(spec, base);
 }
 
 impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
-    import from jaclang.project.modresolver { has_client_npm_package }
-    if has_client_npm_package(spec, mod_path) {
+    import from jaclang.compiler.frontend.host { active_host }
+    if active_host().has_npm_package(spec, mod_path) {
         return mod_path;
     }
     entry_path = self._client_entry_mod_path();
     if (
         entry_path
         and entry_path != mod_path
-        and has_client_npm_package(spec, entry_path)
+        and active_host().has_npm_package(spec, entry_path)
     ) {
         return entry_path;
     }

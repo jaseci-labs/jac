@@ -1,8 +1,4 @@
-import from core.jacyac.validation { chars_left }
 import from "@jac/mobui" { View, Text, Pressable, TextInput, ActivityIndicator }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from .Avatar { Avatar }
 
 def:pub Composer(
     avatars: dict[str, str],

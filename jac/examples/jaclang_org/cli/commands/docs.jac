@@ -1,7 +1,4 @@
-import from core.docs.graph { DocsStatus, docs_status }
-import from core.docs.sync { docs_sync_tick }
 import from jaclang.server.bridge { BridgeError }
-import from .common { EXIT_OK, explain_bridge_error }
 
 def render_status(st: DocsStatus) -> str {
     if not st.ready {

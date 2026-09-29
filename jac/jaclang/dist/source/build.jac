@@ -27,7 +27,7 @@ def build_native_product(base: Path, record: dict[str, any]) {
         subprocess.run(command + ['-c', str(source), '-o', str(obj_path)], check=True);
         linker = WasmLinker();
         content = linker.link(
-            obj_path.read_bytes(),
+            [obj_path.read_bytes()],
             export_funcs=record['exports'],
             host_abi=WASM_HOST_ABI,
             host_module=WASM_HOST_MODULE,

@@ -568,11 +568,366 @@ def _verify_claims(
 }
 
 
+obj AccessRewrite {
+    has path: str,
+        line: int,
+        kind: str,
+        name: str,
+        reason: str;
+}
+
+def _module_has_jsx(decl: any) -> bool {
+    import jaclang.compiler.frontend.unitree as uni;
+    for sub in decl.get_all_sub_nodes(uni.UniNode) {
+        if type(sub).__name__.startswith('Jsx') {
+            return True;
+        }
+    }
+    return False;
+}
+
+def _returns_jsx(decl: any) -> bool {
+    sig = decl?.signature;
+    ret = sig?.return_type if sig is not None else None;
+    text = '';
+    try {
+        text = ret.unparse() if ret is not None else '';
+    } except Exception {
+        text = '';
+    }
+    return 'Jsx' in text;
+}
+
+def _parse_module(path: str) -> any {
+    import from jaclang.compiler.frontend.parser { parse as rd_parse }
+    try {
+        with open(path, 'r') as f {
+            src = f.read();
+        }
+        (mod, had_error) = rd_parse(src, path);
+        return None if had_error else mod;
+    } except Exception {
+        return None;
+    }
+}
+
+def _plain_top_decls(mod: any) -> dict[str, any] {
+    import jaclang.compiler.frontend.unitree as uni;
+    out: dict[str, any] = {};
+    for item in (mod.body or []) {
+        if (
+            isinstance(item, (uni.Ability, uni.Archetype))
+            and item.surface_kind
+            and item.access is None
+        ) {
+            out[item.sym_name] = item;
+        }
+    }
+    return out;
+}
+
+def _priv_top_decls(mod: any) -> dict[str, any] {
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.frontend.constant { SymbolAccess }
+    out: dict[str, any] = {};
+    for item in (mod.body or []) {
+        if (
+            isinstance(item, (uni.Ability, uni.Archetype))
+            and item.surface_kind
+            and item.access is not None
+            and item.exposure == SymbolAccess.PRIVATE
+        ) {
+            out[item.sym_name] = item;
+        }
+    }
+    return out;
+}
+
+def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str {
+    try {
+        resolved = module_path.resolve_relative_path();
+        if isinstance(resolved, str)
+            and resolved.endswith('.jac')
+            and os.path.isfile(resolved) {
+            return os.path.realpath(resolved);
+        }
+    } except Exception {}
+    try {
+        dotted = module_path.dot_path_str;
+        level = module_path.level;
+    } except Exception {
+        return '';
+    }
+    parts = [
+        p
+        for p in dotted.split('.')
+        if p
+    ];
+    if level > 0 {
+        base_dir = os.path.dirname(importer);
+        for _ in range(level - 1) {
+            base_dir = os.path.dirname(base_dir);
+        }
+        candidate = os.path.join(base_dir, *parts) + '.jac';
+    } else {
+        candidate = os.path.join(proj_root, *parts) + '.jac';
+    }
+    return os.path.realpath(candidate) if os.path.isfile(candidate) else '';
+}
+
+def _imported_names(imp: any) -> list[str] {
+    import jaclang.compiler.frontend.unitree as uni;
+    names: list[str] = [];
+    for item in (imp.items or []) {
+        if isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name) {
+            names.append(item.name.value);
+        }
+    }
+    return names;
+}
+
+def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.project.workspace { workspace_for_path }
+    ws = workspace_for_path(proj_root);
+    notes: list[str] = [];
+    plan: list[AccessRewrite] = [];
+    if ws is None {
+        notes.append(f"{proj_root}: no jac.toml found, nothing to migrate");
+        return (plan, notes);
+    }
+    serving = [
+        a
+        for a in ws.apps.values()
+        if a.has_server
+    ];
+    if not serving {
+        notes.append(f"{ws.toml_path}: no serving app declared, nothing to migrate");
+        return (plan, notes);
+    }
+    seen: set[tuple[str, str]] = set();
+    priv_seen: set[tuple[str, str]] = set();
+
+    def add(path: str, decl: any, kind: str, reason: str) {
+        key = (path, decl.sym_name);
+        if key in seen {
+            return;
+        }
+        if str(decl.sym_name).startswith('_') {
+            return;
+        }
+        if kind == 'function' and (_returns_jsx(decl) or _module_has_jsx(decl)) {
+            return;
+        }
+        seen.add(key);
+        plan.append(
+            AccessRewrite(
+                path=path,
+                line=decl.name_spec.loc.first_line,
+                kind=kind,
+                name=decl.sym_name,
+                reason=reason
+            )
+        );
+    }
+
+    for app in serving {
+        entry_rel = str(app.`entry or '').replace('.', os.sep);
+        entry_path = os.path.join(ws.project_root, entry_rel + '.jac');
+        if not os.path.isfile(entry_path) {
+            entry_path = os.path.join(ws.project_root, str(app.`entry or ''));
+        }
+        if not os.path.isfile(entry_path) {
+            notes.append(f"app '{app.name}': entry '{app.`entry}' not found, skipped");
+            continue;
+        }
+        entry_path = os.path.realpath(entry_path);
+        visited: set[tuple[str, bool]] = set();
+        queue: list[tuple[str, bool]] = [(entry_path, True)];
+        while queue {
+            (path, is_entry) = queue.pop(0);
+            if (path, is_entry) in visited {
+                continue;
+            }
+            visited.add((path, is_entry));
+            mod = _parse_module(path);
+            if mod is None {
+                notes.append(f"{path}: does not parse, skipped");
+                continue;
+            }
+            plain = _plain_top_decls(mod);
+            for (pname, pdecl) in _priv_top_decls(mod).items() {
+                pkey = (path, pname);
+                if pkey in priv_seen {
+                    continue;
+                }
+                priv_seen.add(pkey);
+                notes.append(
+                    f"{os.path.relpath(path)}:{pdecl.name_spec.loc.first_line}: "
+                    f":priv {pname} was served (authenticated) before; it is now private. "
+                    "Change it to :protect if it was meant to be an endpoint (left unchanged)."
+                );
+            }
+            for (name, decl) in plain.items() {
+                if isinstance(decl, uni.Ability) {
+                    if is_entry {
+                        add(
+                            path,
+                            decl,
+                            'function',
+                            f"plain def in entry of app '{app.name}'"
+                        );
+                    }
+                } else {
+                    add(
+                        path,
+                        decl,
+                        'walker',
+                        f"plain walker reachable from app '{app.name}'"
+                    );
+                }
+            }
+            for imp in mod.get_all_sub_nodes(uni.Import) {
+                if not imp.is_jac {
+                    continue;
+                }
+                module_path = imp.from_loc;
+                if imp.is_absorb and imp.items {
+                    module_path = imp.items[0];
+                }
+                if module_path is None {
+                    continue;
+                }
+                target = _resolve_project_import(module_path, path, ws.project_root);
+                if not target
+                    or not target.startswith(
+                        os.path.realpath(ws.project_root) + os.sep
+                    ) {
+                    continue;
+                }
+                if is_entry and imp.items {
+                    wanted = _imported_names(imp);
+                    tmod = _parse_module(target);
+                    if tmod is not None {
+                        tplain = _plain_top_decls(tmod);
+                        for nm in wanted {
+                            decl = tplain.get(nm);
+                            if decl is not None and isinstance(decl, uni.Ability) {
+                                add(
+                                    target,
+                                    decl,
+                                    'function',
+                                    f"plain def imported by entry of app '{app.name}'"
+                                );
+                            }
+                        }
+                    }
+                }
+
+                queue.append((target, is_entry and imp.is_absorb));
+            }
+        }
+    }
+    return (plan, notes);
+}
+
+def _apply_access_rewrites(
+    path: str, rewrites: list[AccessRewrite]
+) -> tuple[str, int] {
+    import re;
+    with open(path, 'r') as f {
+        lines = f.read().split('\n');
+    }
+    changed = 0;
+    for rw in rewrites {
+        idx = rw.line - 1;
+        if idx < 0 or idx >= len(lines) {
+            continue;
+        }
+        keyword = 'walker' if rw.kind == 'walker' else 'def';
+        pattern = re.compile(r'\b' + keyword + r'\s+' + re.escape(rw.name) + r'\b');
+        new_line = pattern.sub(keyword + ':protect ' + rw.name, lines[idx], count=1);
+        if new_line != lines[idx] {
+            lines[idx] = new_line;
+            changed += 1;
+        }
+    }
+    return ('\n'.join(lines), changed);
+}
+
+def _fix_access(paths: list[str], dry_run: bool) -> int {
+    proj_roots: list[str] = [];
+    for p in paths {
+        cand = os.path.realpath(p if os.path.isdir(p) else os.path.dirname(p));
+        if cand not in proj_roots {
+            proj_roots.append(cand);
+        }
+    }
+    total: list[AccessRewrite] = [];
+    all_notes: list[str] = [];
+    for proj_root in proj_roots {
+        (plan, notes) = _access_plan(proj_root);
+        total.extend(plan);
+        all_notes.extend(notes);
+    }
+    for note in all_notes {
+        console.print(f"  note: {note}");
+    }
+    if not total {
+        console.print(
+            "Nothing to migrate: every served declaration already declares its exposure."
+        );
+        return 0;
+    }
+    by_file: dict[str, list[AccessRewrite]] = {};
+    for rw in total {
+        by_file.setdefault(rw.path, []).append(rw);
+    }
+    console.print(
+        f"{'Would mark' if dry_run else 'Marking'} {len(
+            total
+        )} declaration(s) :protect:"
+    );
+    for (path, rws) in sorted(by_file.items()) {
+        for rw in sorted(rws, key=lambda (r: AccessRewrite) { r.line; }) {
+            console.print(
+                f"  {os.path.relpath(path)}:{rw.line}  {rw.kind} {rw.name}  ({rw.reason})"
+            );
+        }
+    }
+    if dry_run {
+        return 0;
+    }
+    written = 0;
+    for (path, rws) in by_file.items() {
+        (text, changed) = _apply_access_rewrites(path, rws);
+        if changed == 0 {
+            continue;
+        }
+        if not _parses_clean(text, path) {
+            console.error(f"{path}: rewritten source does not parse; left untouched");
+            continue;
+        }
+        with open(path, 'w') as f {
+            f.write(text);
+        }
+        written += changed;
+    }
+    console.print(f"Rewrote {written} declaration(s). Run `jac check` to confirm.");
+    return 0;
+}
+
 impl fix(
     target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
 ) -> int {
+    if isinstance(paths, str) {
+        paths = [paths];
+    }
+    if target == 'access' {
+        return _fix_access(paths, dry_run);
+    }
     if target != 'placement' {
-        console.error(f"Unknown fix target '{target}'. Available: placement");
+        console.error(f"Unknown fix target '{target}'. Available: placement, access");
         return 1;
     }
     if isinstance(paths, str) {

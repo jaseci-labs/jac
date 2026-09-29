@@ -1,4 +1,5 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.frontend.roles { BodyRole }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.passes.scope_walk { ScopeWalker }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -25,6 +26,7 @@ import from jaclang.compiler.frontend.unitree {
     FormattedValue,
     IfStmt,
     ImplDef,
+    ImplImport,
     Import,
     InForStmt,
     Int,
@@ -66,9 +68,9 @@ import from jaclang.compiler.frontend.diagnostics {
     E2027,
     E2055,
     E2083,
-    E2085
+    E2085,
+    E2086
 }
-import type from jaclang.compiler.driver.program { JacProgram }
 
 glob BUILTIN_NAMES: set[str] = {
          'ArithmeticError',
@@ -241,17 +243,17 @@ glob BUILTIN_NAMES: set[str] = {
      };
 
 def is_bootstrap_compiled_module(mod_path: str) -> bool {
-    import from jaclang.bootstrap_manifest { is_seed_source }
+    import from jaclang.compiler.frontend.host { active_host }
     norm = mod_path.replace("\\", "/");
     if norm.startswith("jaclang/") {
-        return is_seed_source(norm[len("jaclang/"):]);
+        return active_host().is_seed_source(norm[len("jaclang/"):]);
     }
     marker = "/jaclang/";
     idx = norm.rfind(marker);
     if idx < 0 {
         return False;
     }
-    return is_seed_source(norm[idx + len(marker):]);
+    return active_host().is_seed_source(norm[idx + len(marker):]);
 }
 
 def is_ambient_provider_module(mod_path: str) -> bool {
@@ -267,18 +269,13 @@ walker UnusedSymbolWalker(ScopeWalker) {
     }
 }
 
-walker StaticAnalysisPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module;
-
-    static has HOST_PASS: bool = True;
-
+walker StaticAnalysisPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_unused_symbols(scope: UniScopeNode) -> None;
     def _check_undefined_names(mod: Module) -> None;
     def _literal_case_suggestion(name: str) -> (str | None);
+    def _enclosing_class_member(name_nd: Name) -> (str | None);
     def _osp_shape_position(name_nd: Name) -> (str | None);
     def _native_type_position(name_nd: Name) -> (str | None);
     def _check_unreachable_code(mod: Module) -> None;

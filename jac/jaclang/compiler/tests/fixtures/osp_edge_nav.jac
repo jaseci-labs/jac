@@ -27,10 +27,10 @@ node Area {
 node Entity {
     has eid: int = 0;
 }
-edge Portal {
+edge Portal : Area --> Area {
     has w: int = 0;
 }
-edge In {}
+edge In : Entity --> Area {}
 
 walker VisPass {
     has ports: int = 0,

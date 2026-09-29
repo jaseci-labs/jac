@@ -118,7 +118,7 @@ node Person {
     has name: str;
 }
 
-edge Knows {
+edge Knows: Person --> Person {
     has since: int;      # Year they met
     has strength: str;   # "close", "acquaintance"
 }
@@ -470,7 +470,7 @@ node User {
     has bio: str = "";
 }
 
-edge Follows {
+edge Follows: User --> User {
     has since: str;
 }
 

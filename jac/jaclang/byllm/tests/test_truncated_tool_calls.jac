@@ -2,7 +2,7 @@
 clear truncation error, not execute the tool with partial arguments."""
 
 import from jaclang.byllm.lib { Model }
-import from support_tests { call, say, scripted }
+import from support { call, say, scripted }
 
 
 def save_data(name: str, payload: str) -> str {

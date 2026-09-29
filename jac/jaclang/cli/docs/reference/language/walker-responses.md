@@ -20,7 +20,7 @@ Every time a walker executes a `report` statement, the value is appended to a `.
     The `report` statement also prints each reported value to stdout as a side effect. This means you will see the reported values printed to the console in addition to them being collected in `.reports`.
 
 ```jac
-walker:priv MyWalker {
+walker:protect MyWalker {
     can do_work with Root entry {
         report "first";   # reports[0]
         report "second";  # reports[1]
@@ -50,7 +50,7 @@ node Task {
     has done: bool = False;
 }
 
-walker:priv ToggleTask {
+walker:protect ToggleTask {
     has task_id: str,
         reports: list[Task] = [];   # typed report channel
 
@@ -118,7 +118,7 @@ node Item {
     has data: str;
 }
 
-walker:priv ListItems {
+walker:protect ListItems {
     has reports: list[list[str]] = [];
     has items: list[str] = [];
 
@@ -166,7 +166,7 @@ node Item {
     has name: str;
 }
 
-walker:priv FindMatches {
+walker:protect FindMatches {
     has search_term: str,
         reports: list[Item] = [];   # one Item per match
 
@@ -199,7 +199,7 @@ node Item {
     has name: str;
 }
 
-walker:priv CreateItem {
+walker:protect CreateItem {
     has name: str,
         reports: list[Item] = [];   # the created Item flows back typed
 
@@ -223,7 +223,7 @@ with entry {
 When one walker spawns another, use `has` attributes to pass data between them instead of relying on `reports`:
 
 ```jac
-walker:priv InnerWalker {
+walker:protect InnerWalker {
     has result: str = "";
 
     can work with Root entry {
@@ -231,7 +231,7 @@ walker:priv InnerWalker {
     }
 }
 
-walker:priv OuterWalker {
+walker:protect OuterWalker {
     can work with Root entry {
         # Spawn inner walker
         inner = InnerWalker();
@@ -260,7 +260,7 @@ def do_processing(input: str) -> list[any] {
     return [input, input + "_processed"];
 }
 
-walker:priv ProcessAndSummarize {
+walker:protect ProcessAndSummarize {
     has input: str;
 
     can process with Root entry {
@@ -291,7 +291,7 @@ with entry {
 Always handle the possibility of empty reports:
 
 ```jac
-walker:priv MyWalker {
+walker:protect MyWalker {
     can work with Root entry {
         report "data";
     }
@@ -327,7 +327,7 @@ with entry {
 The full response object from `root spawn Walker()`:
 
 ```jac
-walker:priv MyWalker {
+walker:protect MyWalker {
     can work with Root entry {
         report "result";
     }
@@ -356,7 +356,7 @@ with entry {
 
 ```jac
 # Bad: Manual dict construction loses type information
-walker:priv BadCreate {
+walker:protect BadCreate {
     has name: str;
 
     can create with Root entry {
@@ -366,7 +366,7 @@ walker:priv BadCreate {
 }
 
 # Good: Report the typed object directly
-walker:priv GoodCreate {
+walker:protect GoodCreate {
     has name: str;
 
     can create with Root entry {
@@ -399,14 +399,14 @@ node Item {
 }
 
 # Bad: Creates many small reports
-walker:priv BadPattern {
+walker:protect BadPattern {
     can process with Item entry {
         report here.data;  # N reports for N items
     }
 }
 
 # Good: Accumulate and report once
-walker:priv GoodPattern {
+walker:protect GoodPattern {
     has items: list = [];
 
     can start with Root entry {
@@ -426,7 +426,7 @@ walker:priv GoodPattern {
 ### Don't: Assume report order without documentation
 
 ```jac
-walker:priv MyWalker {
+walker:protect MyWalker {
     can work with Root entry {
         report ["item1", "item2"];
         report {"count": 2};

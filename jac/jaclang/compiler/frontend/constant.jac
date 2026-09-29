@@ -136,11 +136,11 @@ enum DeleteTargetError {
 
 enum OwnershipKind: int { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, IMM = 4 }
 
-glob TYPE_PARAM_CONSTRUCTORS: frozenset = frozenset(
+glob TYPE_PARAM_CONSTRUCTORS: frozenset[str] = frozenset(
          {"TypeVar", "ParamSpec", "TypeVarTuple"}
      ),
-     NATIVE_ERASED_TYPE_MARKERS: frozenset = frozenset({"TypeAlias"}),
-     NATIVE_ERASED_ANNOTATIONS: frozenset = frozenset({"ClassVar"});
+     NATIVE_ERASED_TYPE_MARKERS: frozenset[str] = frozenset({"TypeAlias"}),
+     NATIVE_ERASED_ANNOTATIONS: frozenset[str] = frozenset({"ClassVar"});
 
 glob BROWSER_SEED_GLOBALS: frozenset[str] = frozenset(
          {
@@ -335,6 +335,8 @@ def client_state_setter_name(var_name: str) -> str {
     }
     return f"set{var_name[0].upper()}{var_name[1:]}";
 }
+
+enum ImmutabilityKind { NONE = 0, FINAL = 1, READONLY = 2 }
 
 def is_borrow_kind(k: OwnershipKind) -> bool {
     return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;

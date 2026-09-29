@@ -471,6 +471,19 @@ A built binary reads two environment variables at run time and no others: `JAC_G
 
 ---
 
+### [arch]
+
+The default for modules that `arch.jac` does not name. See [Project Wiring](../wiring.md).
+
+```toml
+[arch]
+closed = []               # Module-name patterns sealed even when arch.jac never names them
+```
+
+A module `arch.jac` names is sealed in both directions: its project-module imports must be wires, and it flows only where a rule admits. `closed` extends that to modules the file never mentions, including packages not yet written, and applies even before `arch.jac` exists. `["*"]` closes the whole project; a pattern list such as `["core.*"]` closes it one package at a time. The policy is part of every module's cache identity, so changing it rebuilds the affected modules.
+
+---
+
 ### [test]
 
 Defaults for `jac test`:

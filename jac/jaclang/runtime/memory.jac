@@ -10,14 +10,19 @@ glob logger = logging.getLogger(__name__),
 
 
 obj Memory {
-    has store: (any | None) = None,
-        base_path: (str | None) = None,
+    has base_path: (str | None) = None,
         target_path: (str | None) = None,
         __mem__: dict[UUID, Anchor] postinit,
         _dirty: dict[UUID, None] postinit,
         _deleted: set[UUID] postinit,
         _on_commit: list[Callable] postinit,
         _lock: threading.RLock postinit;
+
+    has store: (any | None) {
+        getter {
+            return None;
+        }
+    }
 
     def postinit {
         self._init_memory();
@@ -29,6 +34,10 @@ obj Memory {
         self._dirty = {};
         self._deleted = set();
         self._on_commit = [];
+    }
+
+    def new_session(target_path: str) -> Memory {
+        return self;
     }
 
     def is_available -> bool {
@@ -148,7 +157,7 @@ obj Memory {
         self.__mem__.pop(stub.ensure_id(), None);
     }
 
-    def is_recoverable_quarantine(id: UUID) -> bool {
+    def preserve_unresolved_ref(id: UUID) -> bool {
         return False;
     }
 

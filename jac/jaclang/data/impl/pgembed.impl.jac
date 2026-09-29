@@ -495,9 +495,9 @@ impl PgRuntime._download_zonky(major: int) -> (str | None) {
         return bin_dir;
     }
 
-    import from jaclang.toolchains.store { InstallLock }
+    import from jaclang.jac0core.cache_paths { FileLock }
     lock_path = Path(dist_cache_dir()) / f".{slug}-{version}.lock";
-    with InstallLock(lock_path) {
+    with FileLock(lock_path) {
         if os.path.isfile(os.path.join(bin_dir, 'postgres')) {
             return bin_dir;
         }
@@ -682,18 +682,47 @@ impl PgRuntime._ensure_database -> None {
         if created and self.kind == DbKind.SCRATCH {
             self._reap_scratch(conn);
         }
+        if created and self.sole_owner_database {
+            self._warn_superseded(conn);
+        }
     } finally {
         conn.close();
     }
 }
 
 
-impl PgRuntime._reap_scratch(conn: any) -> int {
+impl PgRuntime._warn_superseded(conn: any) -> None {
     import from jaclang.data.dbcatalog { list_databases }
+    try {
+        previous = [
+            rec.database
+            for rec in list_databases(conn, with_size=False)
+            if rec.database != self.database
+                and rec.kind == DbKind.PROJECT.value
+                and rec.owner_path == self.owner_path
+        ];
+    } except Exception as e {
+        logger.debug(f"superseded database check skipped: {e}");
+        return;
+    }
+    if previous {
+        logger.warning(
+            f"Created database {self.database} for {self.owner_path}, which "
+            f"already has data in {', '.join(previous)}. A changed project name "
+            "or [persistence] namespace selects a new database and schema "
+            "identity; restore the previous namespace to keep that data, or "
+            "migrate it explicitly."
+        );
+    }
+}
+
+
+impl PgRuntime._reap_scratch(conn: any) -> int {
+    import from jaclang.data.dbcatalog { SCRATCH_PREFIX, list_databases }
     try {
         records = [
             rec
-            for rec in list_databases(conn)
+            for rec in list_databases(conn, prefix=SCRATCH_PREFIX, with_size=False)
             if rec.is_scratch()
         ];
     } except Exception as e {
@@ -798,11 +827,11 @@ impl PgRuntime.drop_database(database: str, force: bool = False) -> bool {
 }
 
 
-impl PgRuntime.databases -> list[DbRecord] {
+impl PgRuntime.databases(with_size: bool = True) -> list[DbRecord] {
     import from jaclang.data.dbcatalog { connect_admin, list_databases }
     conn: any = connect_admin(self.conninfo());
     try {
-        return list_databases(conn);
+        return list_databases(conn, with_size=with_size);
     } finally {
         conn.close();
     }
@@ -823,7 +852,7 @@ impl PgRuntime._sweep_on_start -> None {
         return;
     }
     try {
-        self._reap(conn, list_databases(conn));
+        self._reap(conn, list_databases(conn, with_size=False));
         if self.retention_days > 0 {
             swept = 0;
             for name in expired_databases(conn, self.retention_days, self.database) {

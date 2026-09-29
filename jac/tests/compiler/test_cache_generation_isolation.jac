@@ -21,7 +21,7 @@ import from pathlib { Path }
 import jaclang.compiler.driver.jir as jir;
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
-    get_native_cache_dir,
+    get_native_debug_dir,
     sweep_stale_generations
 }
 
@@ -72,9 +72,9 @@ test "two compiler generations get disjoint cache slots for one module" {
 test "native artifacts ride the generation of the compiler that emitted them" {
     src = _seeded_module();
     _pin_generation(GEN_A);
-    native = get_native_cache_dir(src);
+    native = get_native_debug_dir(src);
     _unpin_generation();
-    assert native.name == "native";
+    assert native.name == "native-debug";
     assert native.parent.name == GEN_A , (
         "native artifacts escaped their compiler's generation"
     );
@@ -164,6 +164,58 @@ test "JacPython sources participate in the producing compiler identity" {
     }
 }
 
+test "a pruned staging resolves compiler identity from its recorded hashes" {
+    # The payload drops the natively lowered trees (they live in JacPython's
+    # native object, not as source), so a staged jaclang holds fewer files than
+    # the checkout it was built from. Identity must still describe the SAME
+    # compiler: the staging records what it dropped and the digest resolves
+    # those inputs from the record. Without the record it must refuse to report
+    # an identity at all -- silently reporting a smaller one is how a payload
+    # and its own checkout came to disagree.
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        write_compiler_identity
+    }
+    import shutil;
+    with tempfile.TemporaryDirectory() as tmp {
+        full = Path(tmp) / "full";
+        full.mkdir();
+        (full / "compiler_inputs.txt").write_text("compiler\nruntime\n");
+        for rel in (
+            "compiler/pass.jac",
+            "compiler/frontend/python/ast_input.jac",
+            "compiler/backends/py/jacpython/assembler.jac",
+            "runtime/python/bindings/heapq.jac"
+        ) {
+            f = full / rel;
+            f.parent.mkdir(parents=True, exist_ok=True);
+            f.write_text("def f -> int { return 1; }\n");
+        }
+        expected = compiler_source_digest(str(full));
+        pruned = Path(tmp) / "pruned";
+        shutil.copytree(full, pruned);
+        for prefix in (
+            "compiler/frontend/python",
+            "compiler/backends/py/jacpython",
+            "runtime/python"
+        ) {
+            shutil.rmtree(pruned / prefix);
+        }
+        raised = False;
+        try {
+            compiler_source_digest(str(pruned));
+        } except RuntimeError {
+            raised = True;
+        }
+        assert raised , "a pruned staging with no record reported an identity";
+        write_compiler_identity(str(full), str(pruned));
+        assert compiler_source_digest(str(pruned)) == expected;
+        # The record completes identity; it never overrides a present source.
+        (pruned / "compiler/pass.jac").write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(str(pruned)) != expected;
+    }
+}
+
 test "compiler identity excludes applications tests and generated artifacts" {
     import from jaclang.compiler.driver.jir { compiler_source_digest }
     with tempfile.TemporaryDirectory() as pkg {
@@ -190,5 +242,36 @@ test "compiler identity excludes applications tests and generated artifacts" {
         assert renamed != before;
         src.with_name("renamed.jac").unlink();
         assert compiler_source_digest(pkg) != renamed;
+    }
+}
+
+test "native-only units join the compiler identity by path, not by content" {
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        _manifest_compiler_digest
+    }
+    with tempfile.TemporaryDirectory() as pkg {
+        unit = Path(pkg) / "runtime/na_stdlib/fnmatch.jac";
+        unit.parent.mkdir(parents=True);
+        unit.write_text("def f -> int { return 1; }\n");
+        compiler = Path(pkg) / "compiler/pass.jac";
+        compiler.parent.mkdir(parents=True);
+        compiler.write_text("def f -> int { return 1; }\n");
+        before = compiler_source_digest(pkg);
+        assert _manifest_compiler_digest(pkg) == before;
+        unit.write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(pkg) == before , (
+            "an edit to a native-only unit changed the compiler identity"
+        );
+        assert _manifest_compiler_digest(pkg) == before;
+        added = Path(pkg) / "runtime/na_stdlib/glob.jac";
+        added.write_text("def g -> int { return 1; }\n");
+        assert compiler_source_digest(pkg) != before , (
+            "adding a native-only unit left the compiler identity unchanged"
+        );
+        added.unlink();
+        assert compiler_source_digest(pkg) == before;
+        compiler.write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(pkg) != before;
     }
 }

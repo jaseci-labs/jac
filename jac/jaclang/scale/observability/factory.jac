@@ -22,7 +22,9 @@ class UtilityFactory {
     }
 
     static def create_metrics(
-        metrics_type: str = 'prometheus', config: (dict[str, any] | None) = None
+        metrics_type: str = 'prometheus',
+        config: (dict[str, any] | None) = None,
+        worker_count: int = 1
     ) -> MetricsCollector {
         if not config or not config.get('enabled', False) {
             return NoOpMetricsCollector();
@@ -35,7 +37,7 @@ class UtilityFactory {
             import from jaclang.scale.observability.prometheus_metrics {
                 PrometheusMetricsCollector
             }
-            return PrometheusMetricsCollector(config=config);
+            return PrometheusMetricsCollector(config=config, worker_count=worker_count);
         } elif metrics_type == 'none' {
             return NoOpMetricsCollector();
         } else {

@@ -350,7 +350,12 @@ test "a compiled cross-app import is reported as a consumer/provider edge" {
     d = _bridge_workspace();
     try {
         cfg = _config(d);
-        apps = [cfg.app("web"), cfg.app("orders"), cfg.app("cart")];
+        apps = [
+            app
+            for app in [cfg.app("web"), cfg.app("orders"), cfg.app("cart")]
+            if app is not None
+        ];
+        assert len(apps) == 3 , "the workspace declares web, orders and cart";
         edges = consumer_provider_edges(cfg, d, apps);
         assert ("orders", "cart") in edges , (
             f"a declared cross-app import produced no edge: {edges!r}"
@@ -369,9 +374,7 @@ test "edge analysis visits modules registered while analyzing either hub" {
     def module(edges: list[any]) -> any {
         return SimpleNamespace(
             gen=SimpleNamespace(
-                interop_manifest=SimpleNamespace(
-                    app_edges=edges, walker_access={}, func_access={}
-                )
+                interop_manifest=SimpleNamespace(app_edges=edges, surface={})
             )
         );
     }
@@ -381,18 +384,24 @@ test "edge analysis visits modules registered while analyzing either hub" {
     final = module([("orders", "db")]);
     user_hub = {"first": first};
     compiler_hub = {"internal": internal};
-    def analyze(prog: any, mod: any, schedule: any) {
+    def analyze(prog: any, mod: any, product: any) -> bool {
         if mod is first {
             user_hub["added"] = added;
         }
         if mod is internal {
             compiler_hub["final"] = final;
         }
+        return True;
     }
+    import jaclang.compiler.driver.pipeline as pipeline;
     with patch.object(JacProgram, "compile"), patch.object(
-        JacProgram, "_search_hubs", return_value=[user_hub, compiler_hub]
-    ), patch.object(JacProgram, "run_schedule", analyze) {
+        JacProgram, "execution_hubs", return_value=[user_hub, compiler_hub]
+    ), patch.object(pipeline, "require_product", analyze) {
         edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
-        assert set(edges) == {("web", "orders"), ("orders", "db")};
+        assert set(edges) == {("web", "orders"), ("orders", "db")} , (
+            edges,
+            list(user_hub),
+            list(compiler_hub)
+        );
     }
 }

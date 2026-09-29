@@ -1,0 +1,51 @@
+[project]
+name = "tiny-jacyac"
+version = "0.1.0"
+default-app = "web"
+
+[jacpack]
+name = "awetiny"
+description = "Tiny JacYac: web, mobile, desktop and CLI over shared feed and scoring services"
+
+[apps.web]
+kind = "web-app"
+entry-point = "web"
+
+[apps.mobile]
+kind = "mobile"
+entry-point = "mobile"
+
+[apps.mobile.client.react_native]
+release = true
+
+[apps.desktop]
+kind = "desktop"
+entry-point = "desktop"
+
+[apps.cli]
+kind = "cli"
+entry-point = "cli"
+
+[apps.feed]
+kind = "service"
+entry-point = "core.feed"
+
+[apps.scoring]
+kind = "service"
+entry-point = "core.scoring"
+
+[dependencies.npm]
+react-native-web = "^0.21.2"
+
+[apps.desktop.desktop]
+name = "TinyJacYac"
+identifier = "org.jaclang.tinyjacyac"
+backend = "${TINY_JACYAC_URL:-http://127.0.0.1:8000}"
+
+[test]
+directories = ["core"]
+
+[client.app_meta_data]
+title = "Tiny JacYac"
+description = "Small talk. Good company."
+icon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23355d45'/%3E%3Ctext x='11' y='29' font-family='sans-serif' font-size='30' fill='white'%3Et%3C/text%3E%3C/svg%3E"

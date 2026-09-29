@@ -21,7 +21,7 @@ import from fixtures.routing_graph {
 import fixtures.routing_graph as rg;
 import from fixtures.agent_graph { MathAgent, PoemAgent, Team, supervisor }
 import fixtures.agent_graph as ag;
-import from support_tests { RoutingLLM, prompt_text, routing_candidates, say }
+import from support { RoutingLLM, prompt_text, routing_candidates, say }
 
 
 """A hub with one agent per (tag, edge priority) pair."""

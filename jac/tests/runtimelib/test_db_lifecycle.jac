@@ -322,12 +322,17 @@ test "marked scratch bases share one database that dies with the process" {
 
 
 test "opening a scratch store reaps scratch databases of dead processes" {
+    import from jaclang.cli.commands { db }
     import from jaclang.data.dbcatalog { DbKind, REGISTRY_TABLE }
     cluster = _start_cluster();
     scratch_proj = _seed_project("selfheal");
     dead = subprocess.Popen([sys.executable, "-c", "pass"]);
     dead.`wait();
     orphan = f"jac_scratch_{dead.pid}_crash";
+    gone_dir = tempfile.mkdtemp(prefix="jac-orphan-");
+    shutil.rmtree(gone_dir, ignore_errors=True);
+    project_orphan = "jac_main_orphaned_by_crash";
+    decoys = [f"jac_main_decoy_{i}" for i in range(100)];
     try {
         # A process killed hard (no atexit) leaves its scratch database behind.
         _exec(cluster, f'CREATE DATABASE "{orphan}"');
@@ -337,15 +342,101 @@ test "opening a scratch store reaps scratch databases of dead processes" {
             f"VALUES ('{orphan}', '{DbKind.SCRATCH.value}', '', "
             f"'{os.uname().nodename}', {dead.pid})"
         );
+        # A project database whose directory is gone: a scratch allocation
+        # must neither drop nor even mark it -- marking and reclaiming
+        # orphaned project databases is the start sweep's contract.
+        _exec(cluster, f'CREATE DATABASE "{project_orphan}"');
+        _exec(
+            cluster,
+            f"INSERT INTO {REGISTRY_TABLE} (database, kind, owner_path, host, pid) "
+            f"VALUES ('{project_orphan}', '{DbKind.PROJECT.value}', "
+            f"'{gone_dir}', '{os.uname().nodename}', {dead.pid})"
+        );
+        # Accumulated project databases must not be scanned on allocation.
+        for name in decoys {
+            _exec(cluster, f'CREATE DATABASE "{name}"');
+        }
+
         (rc, out, err) = _run_app(cluster, scratch_proj, scratch=True);
         assert rc == 0 , f"scratch run failed: {err}";
-        assert orphan not in _jac_databases(cluster) , (
+        names = _jac_databases(cluster);
+        assert orphan not in names , (
             f"the next scratch store must reclaim {orphan}, whose process is gone"
+        );
+        assert project_orphan in names and not _condemned(cluster, project_orphan) , (
+            f"a scratch allocation must neither drop nor mark {project_orphan}; "
+            "that is the start sweep's contract"
+        );
+        assert all(n in names for n in decoys) , (
+            "a scratch allocation must not touch accumulated project databases"
+        );
+
+        # A second corpse, for the status visibility contract: a scratch
+        # allocation reaps the first one, so seed a fresh one to count.
+        corpse2 = f"jac_scratch_{dead.pid}_crash2";
+        _exec(cluster, f'CREATE DATABASE "{corpse2}"');
+        _exec(
+            cluster,
+            f"INSERT INTO {REGISTRY_TABLE} (database, kind, owner_path, host, pid) "
+            f"VALUES ('{corpse2}', '{DbKind.SCRATCH.value}', '', "
+            f"'{os.uname().nodename}', {dead.pid})"
+        );
+        (code, text) = _capture(
+            lambda { db.db(action="status", data_dir=cluster.data_dir); }
+        );
+        assert code == 0 , f"db status failed: {text}";
+        assert "dead scratch: 1" in text , (
+            f"db status must make dead scratch databases visible: {text}"
+        );
+        _restart(cluster);
+        assert _condemned(cluster, project_orphan) , (
+            f"the start sweep must still mark the orphaned {project_orphan}"
         );
     } finally {
         shutil.rmtree(scratch_proj, ignore_errors=True);
         _stop_cluster(cluster);
     }
+}
+
+
+obj _PatternConn {
+    has patterns: list[str] = [],
+        sqls: list[str] = [];
+
+    def run(sql: str, pattern: str = '') -> list[str] {
+        self.sqls.append(sql);
+        self.patterns.append(pattern);
+        return [];
+    }
+}
+
+
+test "list_databases binds an escaped literal prefix pattern" {
+    import from jaclang.data.dbcatalog { DB_PREFIX, SCRATCH_PREFIX, list_databases }
+    conn = _PatternConn();
+    list_databases(conn);
+    assert conn.patterns[-1] == DB_PREFIX.replace('_', '\\_') + '%' , (
+        f"the default catalog scan must stay jac_* wide: {conn.patterns[-1]!r}"
+    );
+    list_databases(conn, prefix=SCRATCH_PREFIX);
+    assert conn.patterns[-1] == 'jac\\_scratch\\_%' , (
+        f"the scratch scan must bind the escaped scratch prefix, not a "
+        f"wildcard pattern: {conn.patterns[-1]!r}"
+    );
+}
+
+
+test "list_databases can skip the per-database size stat" {
+    import from jaclang.data.dbcatalog { list_databases }
+    conn = _PatternConn();
+    list_databases(conn);
+    assert 'pg_database_size' in conn.sqls[-1] , (
+        "the default catalog scan must still report database sizes"
+    );
+    list_databases(conn, with_size=False);
+    assert 'pg_database_size' not in conn.sqls[-1] , (
+        f"a size-free scan must not stat every database: {conn.sqls[-1]}"
+    );
 }
 
 

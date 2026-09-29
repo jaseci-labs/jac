@@ -1,5 +1,4 @@
 import from "@jac/mobui" { StyleSheet }
-import from core.brand.tokens { Colors, spacing, radii, fonts, font_family }
 
 def:pub makeStyles(C: Colors) -> any {
     S = spacing();

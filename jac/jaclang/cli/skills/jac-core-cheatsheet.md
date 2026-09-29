@@ -156,7 +156,7 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 
 ## Pitfalls
 
-- **Reserved keywords cannot be used as variable or parameter names** - declaration words (`node`, `edge`, `walker`, `obj`, `def`, `impl`), OSP / control words (`visit`, `disengage`, `report`, `spawn`, `flow`, `wait`, `skip`, `del`), module words (`include`), and `with`, `can`, `has`. (`entry` and `exit` are *not* reserved - fine as identifiers.) Escape with a single **leading** backtick: `` `visit `` (no closing backtick; `` `visit` `` is a lexer error).
+- **Reserved keywords cannot be used as variable or parameter names** - declaration words (`node`, `edge`, `walker`, `obj`, `def`, `impl`), OSP / control words (`visit`, `disengage`, `report`, `spawn`, `flow`, `wait`, `skip`, `del`), module words (`include`), and `with`, `can`, `has`. (`entry` and `exit` are reserved too - `with entry`, `can ... with Type entry`/`exit` - so name a parameter `rec`/`item`, or escape it: `` `entry ``.) Escape with a single **leading** backtick: `` `visit `` (no closing backtick; `` `visit` `` is a lexer error).
 - **Python reserved words can't name `has` fields or parameters - even backtick-escaped.** `` has `class: str; `` fails `jac check` with **E0067**: the generated Python uses the name as a real identifier, so escaping can't help. Pick a non-reserved name (`kind`, `cls`). Jac-only keywords that aren't Python keywords (`visit`, `node`, ...) escape fine everywhere.
 - **`` `any `` vs `any`:** bare `any` is the gradual *type*; backticked `` `any(...) `` calls the builtin truthiness *function*.
 - `import from X { Y };` fails with E0030. **Brace imports take NO trailing semicolon.** Plain module form `import X;` does.

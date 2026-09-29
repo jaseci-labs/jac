@@ -97,6 +97,7 @@ No API keys needed. `MockLLM` replaces only the network call, so byLLM still bui
 - Outputs are consumed in order, one per model call; a tool loop takes one per step.
 - For a typed return, queue the value (`Priority.HIGH`, `[Task(...)]`). A bare string is the answer when the return type allows a string (a union with `str`, a string enum), otherwise it is parsed like model text.
 - `MockToolCall(tool=fn_or_name, args={...})` must name a tool the function offers.
+- `MockRawResponse(model=...)` answers as another model, as after a fallback; `MockError(error=..., reply=...)` fails a stream after sending a reply.
 - Assert on what was sent with `llm.sent("messages")` or `llm.sent("tools")`.
 
 ```jac

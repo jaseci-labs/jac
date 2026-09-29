@@ -18,6 +18,8 @@ import os;
 import from tests.support {
     TESTS_DIR,
     compile_native,
+    names_function,
+    native_address,
     compile_native_ir,
     native_force_opts
 }
@@ -39,7 +41,7 @@ def sv_module -> any {
 
 """Get a ctypes-callable int -> int function from the JIT engine."""
 def get_func(eng: any, name: str) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
@@ -62,11 +64,10 @@ def congruent(eng: any, sv: object, name: str, inputs: list[int]) -> list[int] {
 
 """Slice one function's body out of a printed LLVM module."""
 def func_ir(llvm_ir: str, name: str) -> str {
-    marker = '@"' + name + '"(';
     out: list[str] = [];
     inside = False;
     for line in str(llvm_ir).split("\n") {
-        if not inside and line.startswith("define ") and marker in line {
+        if not inside and line.startswith("define ") and names_function(line, name) {
             inside = True;
         }
         if inside {
@@ -227,6 +228,25 @@ test "a value live across a loop back edge keeps the checked unwrap" {
     body = func_ir(str(ir.gen.llvm_ir), "back_edge_rewiden");
     assert "opt.isnone" in body , (
         "a use the loop body rebinds after must keep its checked unwrap"
+    );
+}
+
+test "a subscript store inside a loop keeps the narrow at the loop head" {
+    (eng, _) = compile_native(FIXTURE);
+    sv = sv_module();
+    vals = congruent(eng, sv, "loop_element_store", [0, 3]);
+    assert vals == [-1, 9] , f"unexpected loop_element_store results: {vals}";
+}
+
+test "a tuple-target rebind inside a loop keeps the checked unwrap" {
+    (eng, _) = compile_native(FIXTURE);
+    ir = compile_native_ir(FIXTURE);
+    sv = sv_module();
+    vals = congruent(eng, sv, "loop_unpack_rebind", [0, 6]);
+    assert vals == [-1, 21] , f"unexpected loop_unpack_rebind results: {vals}";
+    body = func_ir(str(ir.gen.llvm_ir), "loop_unpack_rebind");
+    assert "opt.isnone" in body , (
+        "a use the loop body rebinds through a tuple target must keep its checked unwrap"
     );
 }
 

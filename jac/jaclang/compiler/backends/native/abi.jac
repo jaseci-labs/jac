@@ -208,7 +208,8 @@ def classify_foreign_fn(
     structs: dict[str, list[tuple[str, str | None]]],
     params: list[tuple[(str | None), (str | None)]],
     ret_tname: (str | None),
-    triple: str
+    triple: str,
+    force: bool = False
 ) -> (dict[str, any] | None) {
     import from jaclang.compiler.backends.native.foreign { foreign_struct_layout }
     has_struct = ret_tname is not None and ret_tname in structs;
@@ -217,7 +218,7 @@ def classify_foreign_fn(
             has_struct = True;
         }
     }
-    if not has_struct {
+    if not has_struct and not force {
         return None;
     }
     sig: list[tuple[str, str | int | ir.Type]] = [];

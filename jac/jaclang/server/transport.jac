@@ -56,5 +56,5 @@ obj BaseTransport {
         on_error: (Callable[(..., any)] | None) = None,
         on_close: (Callable[(..., any)] | None) = None;
 
-    async def send(data: any) -> None;
+    async def send(data: any) -> None abst;
 }

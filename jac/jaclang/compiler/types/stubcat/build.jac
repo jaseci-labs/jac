@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { atomic_write }
 import type from jaclang.compiler.driver.program { JacProgram }
 import json;
 import os;
@@ -123,15 +124,6 @@ def _rss_mb -> int {
         else int(usage // 1024);
 }
 
-def _write_atomic(path: str, data: bytes) {
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True);
-    tmp = f"{path}.tmp.{os.getpid()}";
-    with open(tmp, "wb") as f {
-        f.write(data);
-    }
-    os.replace(tmp, path);
-}
-
 def build_catalog(
     out_path: str,
     only: (list[str] | None) = None,
@@ -225,7 +217,7 @@ def _build_catalog_inner(
     }
     writer.force_all();
     data = writer.emit(catalog_key(pkg), ev.ambient_typing_names_by_module);
-    _write_atomic(out_path, data);
+    atomic_write(out_path, data);
     manifest = writer.manifest();
     manifest["bytes"] = len(data);
     manifest["key"] = catalog_key(pkg);
@@ -248,12 +240,35 @@ def _build_catalog_inner(
     return manifest;
 }
 
+def _cached_catalog(pkg_dir: (str | None)) -> str {
+    try {
+        import from jaclang.compiler.types.stubcat.locate { dev_catalog_path }
+        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+        return dev_catalog_path(pkg_dir or jaclang_pkg_root());
+    } except Exception {
+        return "";
+    }
+}
+
+def _keep_catalog(out: str, cached: str) {
+    import shutil;
+    try {
+        os.makedirs(os.path.dirname(cached), exist_ok=True);
+        tmp = f"{cached}.{os.getpid()}.tmp";
+        shutil.copyfile(out, tmp);
+        os.replace(tmp, cached);
+    } except OSError {}
+}
+
 def main(argv: list[str]) -> int {
     out: (str | None) = None;
     only: (list[str] | None) = None;
     pkg_dir: (str | None) = None;
+    cache = False;
     for arg in argv {
-        if arg.startswith("--only=") {
+        if arg == "--cache" {
+            cache = True;
+        } elif arg.startswith("--only=") {
             only = [
                 s
                 for s in arg[len("--only="):].split(",")
@@ -272,11 +287,23 @@ def main(argv: list[str]) -> int {
         sys.stderr.write("usage: stubcat <out.bin> [--only=a,b] [--pkg-dir=DIR]\n");
         return 2;
     }
+    cached = _cached_catalog(pkg_dir) if cache and only is None else "";
+    if cached and os.path.isfile(cached) {
+        import shutil;
+        shutil.copyfile(cached, out);
+        sys.stderr.write(
+            f"stubcat: reused the catalog for this type system ({cached})\n"
+        );
+        return 0;
+    }
     try {
         manifest = build_catalog(out, only=only, pkg_dir=pkg_dir, quiet=False);
     } except Exception as e {
         sys.stderr.write(f"stubcat: build failed: {type(e).__name__}: {e}\n");
         return 1;
+    }
+    if cached and not manifest["load_failures"] {
+        _keep_catalog(out, cached);
     }
     if manifest["load_failures"] {
         sys.stderr.write(

@@ -6,6 +6,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.models.deploy_context { DeployContext }
+import from jaclang.scale.models.resource_status { ResourceStatus, assess_workload }
 import from jaclang.scale._optdeps.kubernetes { client, ApiException }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
@@ -140,27 +141,6 @@ def fleet_targets_for_release(
         return {"ok": True, "missing": [], "targets": held};
     }
     return {"ok": False, "missing": list(expected), "targets": {}};
-}
-
-
-def deployment_rollout_complete(dep: any) -> bool {
-    try {
-        status = dep.status;
-        if status is None {
-            return False;
-        }
-        if int(status.observed_generation or 0) < int(dep.metadata.generation or 0) {
-            return False;
-        }
-        desired = dep.spec.replicas;
-        wanted = int(desired) if desired is not None else 1;
-        updated = int(status.updated_replicas or 0);
-        current = int(status.replicas or 0);
-        available = int(status.available_replicas or 0);
-    } except Exception {
-        return False;
-    }
-    return updated >= wanted and current <= updated and available >= updated;
 }
 
 
@@ -574,16 +554,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
         import from kubernetes { client }
         import from jaclang.cli.console { console }
 
-        scaling: dict[str, any] = bundle.get("scaling", {});
-        http_activation_svc_names: set = {
-            str(svc_name)
-            for svc_name in scaling.keys()
-            if dict(scaling.get(svc_name, {})).get("mode")
-                == ScalingMode.HTTP_ACTIVATION
-        };
         names: list[str] = [];
         app_labels: list[str] = [];
-        for (svc_name, dep) in bundle.get("deployments", {}).items() {
+        for dep in bundle.get("deployments", {}).values() {
             app: str = "";
             try {
                 app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
@@ -596,30 +569,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             if app {
                 app_labels.append(app);
             }
-            if svc_name not in http_activation_svc_names {
-                names.append(str(dep["metadata"]["name"]));
-            }
-        }
-        if not names {
-            self._load_cluster_config();
-            core_v1 = client.CoreV1Api();
-            ns = self.k8s_config.namespace;
-            crash = self._scan_for_crash_loop(core_v1, ns, set(), set(app_labels))[
-                "crash"
-            ];
-            if crash {
-                raise Exception(
-                    "Deployment failed: application pods are restarting "
-                    "(crash loop / bad image); not marking the fleet ready."
-                );
-            }
-            if self.logger {
-                self.logger.info(
-                    "Fleet ready: all services use HTTP activation "
-                    "(scale to zero until first request); pods healthy."
-                );
-            }
-            return;
+            names.append(str(dep["metadata"]["name"]));
         }
         self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
@@ -657,26 +607,24 @@ obj KubernetesTarget(KubernetesTargetBase) {
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
                 ready = 0;
+                idle: list[str] = [];
                 for name in names {
                     try {
-                        d = apps_v1.read_namespaced_deployment(name=name, namespace=ns);
-                        complete = deployment_rollout_complete(d)
+                        health = assess_workload(
+                            apps_v1.read_namespaced_deployment(name=name, namespace=ns)
+                        );
+                        complete = health.is_settled()
                             if require_full
-                            else (d.status.ready_replicas or 0) >= 1;
+                            else health.is_serving();
                         if complete {
                             ready += 1;
+                            if health.status == ResourceStatus.INACTIVE {
+                                idle.append(name);
+                            }
                         }
                     } except Exception {
                         _ = 0;
                     }
-                }
-                if ready == total {
-                    if self.logger {
-                        self.logger.info(
-                            f"Fleet ready: {ready}/{total} deployments serving"
-                        );
-                    }
-                    return;
                 }
 
                 scan = self._scan_for_crash_loop(
@@ -747,6 +695,24 @@ obj KubernetesTarget(KubernetesTargetBase) {
                         core_v1, ns, str(failed_pod.metadata.name), failed_pod
                     );
                     raise Exception(f"{failure}.{detail}");
+                }
+
+                if ready == total {
+                    if self.logger {
+                        self.logger.info(
+                            f"Fleet ready: {ready}/{total} deployments serving"
+                        );
+                        if idle {
+                            self.logger.warning(
+                                f"Scaled to zero, so this revision was never "
+                                f"started and its image is unverified: "
+                                f"{', '.join(sorted(idle))}. The first request "
+                                f"to one of them is what boots it.",
+                                {"idle": sorted(idle)}
+                            );
+                        }
+                    }
+                    return;
                 }
 
                 summary = ", ".join(phase_tokens)
@@ -1090,6 +1056,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         """;
         k8s_name = k8s_safe_name(svc_name);
         cfg: dict[str, any] = dict(plan.get("autoscaler", {}));
+        cfg_idle = plan.get("idle_replicas", self.k8s_config.idle_replicas);
         return AutoscalerSpec(
             scale_target_name=str(plan.get("scale_target_name", "")),
             autoscaler_name=autoscaler.resource_name_for(k8s_name),
@@ -1097,7 +1064,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             namespace=namespace,
             min_replicas=int(cfg.get("min", self.k8s_config.min_replicas)),
             max_replicas=int(cfg.get("max", self.k8s_config.max_replicas)),
-            idle_replicas=self.k8s_config.idle_replicas,
+            idle_replicas=cfg_idle,
             polling_interval=self.k8s_config.autoscaler_polling_interval,
             cooldown_period=self.k8s_config.autoscaler_cooldown,
             initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
@@ -1231,16 +1198,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
         deployments: dict[str, dict[str, any]] = bundle["deployments"];
         for (svc_name, raw_manifest) in deployments.items() {
             dep_manifest = with_config_revision(raw_manifest, config_revision);
-            patch_body = None;
-            if dict(scaling.get(svc_name, {})).get("mode")
-                == ScalingMode.HTTP_ACTIVATION {
-                patch_body = dict(dep_manifest);
-                patch_body["spec"] = {
-                    k: v
-                    for (k, v) in dep_manifest["spec"].items()
-                    if k != "replicas"
-                };
-            }
+            patch_body = self._deployment_patch_body(
+                dep_manifest, dict(scaling.get(svc_name, {}))
+            );
             self._apply_or_replace(
                 apps_v1,
                 "read_namespaced_deployment",
@@ -1740,6 +1700,29 @@ obj KubernetesTarget(KubernetesTargetBase) {
         );
     }
 
+    def _deployment_patch_body(
+        manifest: dict[str, any], plan: dict[str, any]
+    ) -> (dict[str, any] | None) {
+        """The body an update PATCH gets, or None to send the manifest whole.
+
+        Every scaling mode hands `spec.replicas` to a controller -- the HPA
+        under METRIC, the ScaledObject or HTTP interceptor under
+        HTTP_ACTIVATION -- so both are patched without it and a redeploy cannot
+        reset the count that controller set. NONE is the only mode where the
+        manifest still owns the field.
+        """;
+        if plan.get("mode", ScalingMode.NONE) == ScalingMode.NONE {
+            return None;
+        }
+        patch_body = dict(manifest);
+        patch_body["spec"] = {
+            k: v
+            for (k, v) in manifest["spec"].items()
+            if k != "replicas"
+        };
+        return patch_body;
+    }
+
     def _apply_or_replace(
         api: any,
         read: str,
@@ -1753,10 +1736,10 @@ obj KubernetesTarget(KubernetesTargetBase) {
         e.g. a copy with `spec.replicas` stripped so a strategic-merge PATCH
         leaves an externally-scaled field (KEDA's ScaledObject) alone, while a
         fresh `create` still gets the full manifest including that field.
-        HTTP activation relies on exactly this: KEDA owns `replicas` once a
-        Deployment scales via HTTP_ACTIVATION, and the strategic-merge PATCH
-        this omission produces is what keeps this apply from resetting the
-        live value KEDA set.
+        Every scaling mode relies on this: the HPA, ScaledObject or HTTP
+        interceptor owns `replicas` once it manages a Deployment, and the
+        strategic-merge PATCH this omission produces is what keeps a redeploy
+        from resetting the live value the autoscaler set.
         """;
         name: str = manifest["metadata"]["name"];
         try {
