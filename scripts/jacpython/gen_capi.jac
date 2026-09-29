@@ -177,6 +177,8 @@ glob OPAQUE: list[str] = [
          "PyTime_t": "i64",
          "time_t": "i64",
          "_PyTime_round_t": "i32",
+         # An enum of C int values.
+         "PyGILState_STATE": "i32",
          "wchar_t": "i32",
          "Py_UCS4": "u32",
          "Py_UCS1": "u8",
@@ -291,6 +293,7 @@ glob OPAQUE: list[str] = [
          "long *": "&mut i64",
          "size_t *": "&mut u64",
          "uint64_t *": "&mut u64",
+         "uint32_t *": "&mut u32",
          "uid_t *": "&mut u32",
          "gid_t *": "&mut u32"
      },
@@ -433,6 +436,12 @@ def data_type(ctype: str) -> str | None {
 }
 
 def jac_type(function: str, ctype: str, index: int | None) -> str | None {
+    # A vector of object arguments (`PyObject *const *args` of the vectorcall
+    # API) is read, not written.
+    if index is not None
+        and re.fullmatch(r"PyObject\s*\*\s*const\s*\*", ctype.strip()) {
+        return "ptr[ptr[PyObject]]";
+    }
     base = ctype.replace("const ", "").replace(" const", "").strip();
     if index is not None and index in TYPED_OUT_PARAMETERS.get(function, {}) {
         return TYPED_OUT_PARAMETERS[function][index];

@@ -21,9 +21,17 @@ ClassToken the module file defines and the binding points at the created type.
 Converters without a generic Jac equivalent (posix's path_t, a module's own
 converter functions) are called as convert_<name>(value, fname, label) and
 imported from the module's Jac file, as C modules define their own converters.
-Default values that name C macros are imported from the module's file too.
+Default values that name C macros are imported from the module's file too,
+and a default read from the module state or the receiver
+(`clinic_state()->ConnectionType`, `((pysqlite_Cursor *)self)->arraysize`)
+is a module function over the receiver (`clinic_state_ConnectionType(receiver)`,
+`self_arraysize(receiver)`). A parameter deprecated with `[from X.Y]` warns
+as Tools/clinic's parser does. A clinic block whose `_impl` the C source never
+defines (a clone kept for its docstring and PyMethodDef, like
+`_sqlite3.connect`) contributes only `<c_basename>_doc`; the module binds it.
 """
 import argparse;
+import codecs;
 import importlib;
 import re;
 import sys;
@@ -320,6 +328,11 @@ def jac_ctype(ctype: str) -> str {
     return "";
 }
 
+# Whether a clinic parser body calls the `_impl` function of `base`.
+def expected_impl_call(base: str, body: str) -> bool {
+    return bool(re.search(r"_impl\(", body.replace("{c_basename}", base)));
+}
+
 obj Emitter {
     has module: str,
         name: str,
@@ -336,7 +349,9 @@ obj Emitter {
         qualified: bool = False,
         skipped: list[str] = [],
         windows: list[str] = [],
-        class_docs: dict[str, str] = {};
+        class_docs: dict[str, str] = {},
+        function_docs: dict[str, str] = {},
+        source_text: str = "";
 
     def use(name: str) -> str {
         self.converters.add(name);
@@ -400,6 +415,22 @@ obj Emitter {
         if re.fullmatch(r"[A-Za-z_]\w*", text) {
             self.module_names.add(text);
             return text;
+        }
+        # A value of the module state or of the receiver's own C fields: the
+        # module computes it from the receiver.
+        state = re.fullmatch(
+            r"(?:\(\s*\w+\s*\*\s*\))?\s*clinic_state\(\)->(\w+)", text
+        );
+        if state is not None {
+            name = "clinic_state_" + state.group(1);
+            self.module_names.add(name);
+            return f"{name}(receiver)";
+        }
+        field = re.fullmatch(r"\(\(\s*\w+\s*\*\s*\)\s*self\s*\)->(\w+)", text);
+        if field is not None {
+            name = "self_" + field.group(1);
+            self.module_names.add(name);
+            return f"{name}(receiver)";
         }
         # A bitwise OR of macros (select's POLLIN | POLLPRI | POLLOUT), in
         # the parameter's own width.
@@ -637,8 +668,83 @@ obj Emitter {
         return (flags, parser);
     }
 
+    # The deprecation warnings Tools/clinic's parser emits for `f`: CallSignature
+    # options for the positional and keyword `[from X.Y]` rules, with the
+    # messages taken from the generated parser.
+    def deprecations(f: any, params: list[any]) -> list[str] {
+        body = PARSERS[id(f)][1];
+        messages: list[str] = [];
+        for hit in re.finditer(
+            r'PyErr_WarnEx\(PyExc_DeprecationWarning,((?:\s*"(?:[^"\\]|\\.)*")+)\s*,\s*1\)',
+            body
+        ) {
+            pieces = re.findall(r'"((?:[^"\\]|\\.)*)"', hit.group(1));
+            messages.append(codecs.decode("".join(pieces), "unicode_escape"));
+        }
+        options: list[str] = [];
+        positional = [
+            i
+            for (i, p) in enumerate(params)
+            if getattr(p, "deprecated_positional", None)
+        ];
+        keyword = [
+            i
+            for (i, p) in enumerate(params)
+            if getattr(p, "deprecated_keyword", None)
+        ];
+        if positional {
+            message = next(
+                m
+                for m in messages
+                if "positional argument" in m
+            );
+            options.append(f"positional_warning={jac_string(message)}");
+            options.append(
+                f"positional_warn_range=({positional[0]}, {positional[-1] + 1})"
+            );
+        }
+        if keyword {
+            message = next(
+                m
+                for m in messages
+                if m.startswith("Passing keyword")
+            );
+            # deprecate_keyword_use(): a required parameter passed by keyword
+            # warns alone; an optional one after it only when given.
+            required = -1;
+            optional: list[int] = [];
+            for i in keyword {
+                if params[i].is_optional() {
+                    optional.append(i);
+                } else {
+                    required = i;
+                    optional = [];
+                }
+            }
+            options.append(f"keyword_warning={jac_string(message)}");
+            options.append(f"keyword_warn_required={required}");
+            options.append(f"keyword_warn_optional={optional}");
+        }
+        return options;
+    }
+
     def function(cls: any, f: any) {
         kind = f.kind.name;
+        # A clone kept only for its docstring and method table entry: the C
+        # module binds it by hand. A parser calls `<c_basename>_impl`; without
+        # one (a METH_O object argument) the C function is the impl itself.
+        expected = f.c_basename + "_impl"
+            if id(f) in PARSERS and expected_impl_call(f.c_basename, PARSERS[id(f)][1])
+            else f.c_basename;
+        if kind not in ("METHOD_NEW", "METHOD_INIT")
+            and not re.search(rf"\b{expected}\s*\(", self.source_text) {
+            doc = f.docstring or "";
+            if doc.split("\n")[-1] == "--" {
+                doc += "\n\n";
+            }
+            self.function_docs[f.c_basename] = doc;
+            return;
+        }
         params = list(f.parameters.values());
         params.pop(0);
         uses_class = bool(params)
@@ -723,7 +829,16 @@ obj Emitter {
             jtype = converted[0];
             expr = converted[1];
             checks = converted[2];
-            if p.is_optional() {
+            # A module's own converter types its value itself (a C enum, a
+            # `const char *` that may be NULL): an omitted argument keeps the
+            # C default in the same variable.
+            custom = expr.startswith("convert_")
+                and expr.split("(")[0] in self.module_names;
+            if p.is_optional() and custom {
+                fallback = self.default_value(p, jtype);
+                body.append(f"value = {slot};");
+                body.append(f"{var} = {expr} if value != NULL else {fallback};");
+            } elif p.is_optional() {
                 if not jtype {
                     raise Unsupported("optional module converter");
                 }
@@ -777,6 +892,7 @@ obj Emitter {
             if generator.min_kw_only {
                 options.append(f"keyword_required={generator.min_kw_only}");
             }
+            options += self.deprecations(f, params);
             options.append(f"parser={self.parse_constant(parser)}");
             self.lines.append(
                 f"glob:priv {sig} = {self.invoker('CallSignature')}({', '.join(
@@ -961,6 +1077,9 @@ obj Emitter {
         for (cls_name, doc) in sorted(self.class_docs.items()) {
             tables.append(f"glob {cls_name}_doc: str = {jac_string(doc)};");
         }
+        for (base, doc) in sorted(self.function_docs.items()) {
+            tables.append(f"glob {base}_doc: str = {jac_string(doc)};");
+        }
         for (table, entries) in sorted(self.tables.items()) {
             tables.append(f"glob {table}: list[MethodDefinition] = [");
             tables += [f"    {e}," for e in entries];
@@ -994,7 +1113,9 @@ obj Emitter {
 def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     sources = module_sources(tree, module);
     name = module.lstrip("_");
-    emitter = Emitter(module=module, name=name);
+    emitter = Emitter(
+        module=module, name=name, source_text="\n".join(s.read_text() for s in sources)
+    );
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];

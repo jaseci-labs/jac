@@ -306,6 +306,11 @@ def convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObjec
 
 def convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
     convert_unicode(value, fname, label);
+    # The UTF-8 encoding clinic reads: a lone surrogate is a UnicodeEncodeError.
+    size: i64 = 0;
+    if PyUnicode_AsUTF8AndSize(value, &mut size).is_null() {
+        raise boundary_failure();
+    }
     text = text_value(value);
     if "\x00" in text {
         object_error(PyExc_ValueError, "embedded null character");
