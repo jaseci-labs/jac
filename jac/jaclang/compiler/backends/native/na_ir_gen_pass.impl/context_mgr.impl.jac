@@ -115,8 +115,7 @@ impl NaIRGenPass._codegen_with_recursive(
         if self._exc_raise_fn is None {
             self._declare_exception_runtime();
         }
-        func.attributes.add("optnone");
-        func.attributes.add("noinline");
+        self._mark_setjmp_function(func);
         (state, depth) = self._push_exception_handler(error_bb, body_bb);
     }
     frame = NativeFinalizer(
@@ -151,7 +150,7 @@ impl NaIRGenPass._codegen_with_recursive(
     }
     if not self.builder.block.is_terminated {
         if not slot_mode {
-            self.builder.call(self._exc_pop_fn, []);
+            self._emit_exc_pop(self.builder);
         }
         self._emit_context_exit(owner, exit_fn);
         self.builder.branch(merge_bb);
@@ -172,7 +171,7 @@ impl NaIRGenPass._codegen_with_recursive(
         assert state is not None and depth is not None;
         self._region_unwind(self.builder.load(depth));
         values = self._exception_values(state);
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
     }
     self._caught_error_stack.append((func, values));
     suppressed = self._emit_context_exit(owner, exit_fn);
@@ -344,8 +343,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     body_bb = func.append_basic_block(name=f"with.gen.body.{idx}");
     error_bb = func.append_basic_block(name=f"with.gen.error.{idx}");
     merge_bb = func.append_basic_block(name=f"with.gen.merge.{idx}");
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
+    self._mark_setjmp_function(func);
     (state, depth) = self._push_exception_handler(error_bb, body_bb);
     frame = NativeFinalizer(
         body=None,
@@ -373,7 +371,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
         }
     }
     if not self.builder.block.is_terminated {
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
         self._emit_gen_context_exit(owner, out_type);
         self.builder.branch(merge_bb);
     }
@@ -381,7 +379,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     self.builder.position_at_end(error_bb);
     self._region_unwind(self.builder.load(depth));
     values = self._exception_values(state);
-    self.builder.call(self._exc_pop_fn, []);
+    self._emit_exc_pop(self.builder);
     again = self._emit_gen_throw(owner, out_type, values);
     self._emit_runtime_raise(
         again, "RuntimeError", "generator didn't stop after throw()"

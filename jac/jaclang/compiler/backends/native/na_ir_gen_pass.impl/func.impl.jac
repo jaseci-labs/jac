@@ -720,7 +720,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         self._attach_di_subprogram(func, symbol, line);
 
         exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
-        self.builder.call(self._exc_push_fn, [exc_state]);
+        self._emit_exc_push(self.builder, exc_state);
         env_ptr = self.builder.gep(
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
         );
@@ -739,13 +739,13 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         }
 
         self.builder.position_at_end(success_bb);
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
         _tc_loc = f"{self.module.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
         self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
         self.builder.ret(ir.Constant(i8p, None));
 
         self.builder.position_at_end(fail_bb);
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
         exc_obj_ptr = self.builder.gep(
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
         );
