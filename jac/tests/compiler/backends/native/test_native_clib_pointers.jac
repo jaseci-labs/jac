@@ -588,6 +588,35 @@ test "a scalar C definition's entry jumps into its body unless a region is open"
     assert thunk.index("region.open") < thunk.index("musttail") , thunk;
 }
 
+glob C_BLOCK_ORDER: str = '''import from c {
+    def order_bump(n: i64) -> i64 {
+        order_count = order_count + n;
+        return order_twice(order_count);
+    }
+}
+def read_count -> i64 {
+    return order_count;
+}
+import from c {
+    glob order_count: i64 = 5;
+    def order_twice(v: i64) -> i64 {
+        return v * 2;
+    }
+}
+with entry {
+    print("order", order_bump(2), read_count());
+}
+''';
+
+test "C blocks are order-independent: a function above one writes its data" {
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "corder.jac");
+        Path(path).write_text(C_BLOCK_ORDER);
+        out = assert_native_identity(path);
+    }
+    assert "order 14 7" in out.splitlines() , out;
+}
+
 test "a C definition may not reuse another module's C symbol with a different signature" {
     with tempfile.TemporaryDirectory() as directory {
         (Path(directory) / "cdecl_owner.jac").write_text(

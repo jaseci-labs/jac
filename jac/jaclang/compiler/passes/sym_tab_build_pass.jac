@@ -118,6 +118,9 @@ walker SymTabBuildPass(TreePass) {
     can exit_type_alias with TypeAlias exit;
     can enter_type_param with TypeParam entry;
     can exit_global_vars with GlobalVars exit;
+    """Declare a `glob` statement's names in their module scope."""
+    def _declare_global_vars(nd: GlobalVars) -> None;
+
     can exit_assignment with Assignment exit;
     can exit_binary_expr with BinaryExpr exit;
     can enter_test with Test entry;
