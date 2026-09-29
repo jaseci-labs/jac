@@ -383,6 +383,10 @@ impl NaIRGenPass._codegen_c_interop_call(
         if text is not None {
             return (True, self._c_string_global(text).ptrtoint(i64) as ir.Value);
         }
+        (named, address) = self._c_function_address(params[0]);
+        if named {
+            return (True, address);
+        }
         return (True, self._codegen_expr(params[0]));
     }
     if isinstance(nd.target, uni.Name)
@@ -863,7 +867,7 @@ impl NaIRGenPass._emit_clib_data_inits -> None {
                 node_override=value,
                 kind="C data definition",
                 name=gv.name,
-                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, and constructors of foreign structs made of these."
+                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, `ptr(f)` for a named function's address, and constructors of foreign structs made of these."
             );
             continue;
         }
@@ -1011,11 +1015,70 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if text is not None {
                 return self._c_string_global(text).ptrtoint(i64) as ir.Constant;
             }
-            return self._c_const_scalar(arg, i64) if len(params) == 1 else None;
+            if len(params) != 1 or isinstance(arg, uni.KWPair) {
+                return None;
+            }
+            (named, address) = self._c_function_address(arg);
+            if named {
+                return address;
+            }
+            return self._c_const_scalar(arg, i64);
         }
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+# `ptr(f)` for a named function `f`: the address C calls it at, as C casts a
+# function to a data or generic function pointer (`(void *)f`,
+# `_PyCFunction_CAST(f)`). A C function defined in a C library import yields its
+# C-ABI entry; any other function its own body, whose parameters and result
+# must then be C scalars or pointers so C can call it directly. The first item
+# is False when `expr` names no function.
+impl NaIRGenPass._c_function_address(
+    expr: uni.Expr
+) -> tuple[bool, (ir.Constant | None)] {
+    while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+        expr = expr.value;
+    }
+    decl = expr.sym.decl
+        if isinstance(expr, uni.Name) and expr.sym is not None
+        else None;
+    if decl is None or not isinstance(decl.name_of, uni.Ability) {
+        return (False, None);
+    }
+    i64 = ir.IntType(64);
+    name = expr.sym_name;
+    exported = self._clib_exports.get(name);
+    if exported is not None {
+        return (True, exported.ptrtoint(i64) as ir.Constant);
+    }
+    target = self.func_symtab.get(name);
+    ftype = target.function_type if isinstance(target, ir.Function) else None;
+    c_callable = ftype is not None and not ftype.var_arg;
+    passed: list[ir.Type] = list(ftype.args) if c_callable else [];
+    if c_callable and not isinstance(ftype.return_type, ir.VoidType) {
+        passed.append(ftype.return_type);
+    }
+    for t in passed {
+        if not (
+            (isinstance(t, ir.IntType) and t.width in (8, 16, 32, 64))
+            or isinstance(t, (ir.FloatType, ir.DoubleType, ir.PointerType))
+        ) {
+            c_callable = False;
+        }
+    }
+    if not c_callable {
+        self.ctx.emit(
+            E5092,
+            node_override=expr,
+            kind="function address",
+            name=name,
+            help_text="`ptr(f)` hands C the function itself, so its parameters and result must be sized scalars, floats or pointers; define it in a C library import to give it a C-ABI entry point."
+        );
+        return (True, None);
+    }
+    return (True, target.ptrtoint(i64) as ir.Constant);
 }
 
 impl NaIRGenPass._clib_global_of(

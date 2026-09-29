@@ -157,3 +157,15 @@ typedef struct {
 
 int32_t cp_recipe_run(const CpRecipe *r, int32_t v) { return r->scale(v) + r->count; }
 int32_t cp_label_len(const char *s) { return (int32_t)strlen(s); }
+
+/* A table of type-erased function pointers, as CPython's method tables hold
+ * PyCFunction casts of functions with other signatures. */
+typedef struct {
+    const char *name;
+    void *fn;
+} CpErased;
+
+int64_t cp_erased_call(const CpErased *e, int64_t a, int64_t b) {
+    return ((int64_t (*)(int64_t, int64_t))e->fn)(a, b);
+}
+int64_t cp_address_call(void *fn, int64_t a) { return ((int64_t (*)(int64_t))fn)(a); }

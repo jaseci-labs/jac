@@ -611,3 +611,38 @@ with entry {
     assert "scan 2 42 7" in out.splitlines() , out;
     assert "pointer 64" in out.splitlines() , out;
 }
+
+test "ptr(f) is the address C calls a named function at" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpErased { has name: ptr[u8], fn: ptr; }
+    def cp_erased_call(e: ptr[CpErased], a: i64, b: i64) -> i64;
+    def cp_address_call(fn: ptr, a: i64) -> i64;
+    glob user_erased: list[CpErased] = [
+             CpErased(name=ptr[u8]("sum"), fn=ptr(add)),
+             CpErased(name=ptr[u8]("product"), fn=ptr(c_product))
+         ];
+    def c_product(a: i64, b: i64) -> i64 {
+        return a * b;
+    }
+}
+def add(a: i64, b: i64) -> i64 {
+    return a + b;
+}
+def negate(a: i64) -> i64 {
+    return -a;
+}
+with entry {
+    table = addressof(user_erased);
+    print(
+        "erased",
+        cp_erased_call(table, i64(3), i64(4)),
+        cp_erased_call(table + 1, i64(3), i64(4)),
+        cp_address_call(ptr(negate), i64(9))
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code, "erased.jac"));
+    }
+    assert "erased 7 12 -9" in out.splitlines() , out;
+}

@@ -169,7 +169,10 @@ the Jac form, not a C helper:
    from C constants (literals, `ptr[u8]("text")`, `addressof(symbol)`, named
    functions for callback fields, nested struct constructors). A
    `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
-   `addressof(table)` is its first element.
+   `addressof(table)` is its first element. `ptr(f)` is the address of the
+   named function `f`, as C's `_PyCFunction_CAST(f)` erases its type: a
+   method table's `ml_meth` takes `ptr(range_count)` or
+   `ptr(namespace_replace)` whatever the calling convention.
 
 5. **Varargs.** A call to a variadic C function passes each extra argument
    with C's default promotions, and a borrowed one (`&mut x`) as the

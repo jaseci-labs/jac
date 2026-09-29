@@ -2546,10 +2546,7 @@ impl TypeCheckPass._c_const_problem(
         return None;
     }
     if isinstance(ctype, FunctionType) {
-        decl = expr.sym.decl
-            if isinstance(expr, Name) and expr.sym is not None
-            else None;
-        if decl is not None and isinstance(decl.name_of, Ability) {
+        if self._names_function(expr) {
             return None;
         }
         return "sets a callback field to something other than a named function";
@@ -2571,6 +2568,7 @@ impl TypeCheckPass._c_const_problem(
                         and (
                             c_string_literal(params[0]) is not None
                             or c_scalar_constant(params[0])[0]
+                            or self._names_function(params[0])
                         )
                     )
                 ) {
@@ -2585,6 +2583,14 @@ impl TypeCheckPass._c_const_problem(
         return None;
     }
     return "is not a compile-time constant";
+}
+
+impl TypeCheckPass._names_function(expr: (UniNode | None)) -> bool {
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    decl = expr.sym.decl if isinstance(expr, Name) and expr.sym is not None else None;
+    return decl is not None and isinstance(decl.name_of, Ability);
 }
 
 impl TypeCheckPass._check_c_global_use(nd: Name) -> None {

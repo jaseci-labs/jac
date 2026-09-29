@@ -215,6 +215,7 @@ walker TypeCheckPass(TreePass) {
     def _check_c_variadic_args(nd: FuncCall) -> None;
     def _check_c_global_decl(assign: Assignment) -> None;
     def _c_const_problem(expr: Expr, ctype: (TypeBase | None)) -> (str | None);
+    def _names_function(expr: (UniNode | None)) -> bool;
     def _check_c_interop_import(imp: Import) -> None;
     def _foreign_struct_contains(t: (TypeBase | None), target: Archetype) -> bool;
     def _check_c_interop_call(nd: FuncCall) -> None;

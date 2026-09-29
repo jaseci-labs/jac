@@ -198,8 +198,11 @@ _ViewT = TypeVar("_ViewT")
 _PinT = TypeVar("_PinT")
 
 class ptr(Generic[_PtrT]):
-    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address.
-    def __init__(self, address: ptr[object] | int | str = ...) -> None: ...
+    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address, and
+    # `ptr(f)` is the address C calls the named function `f` at.
+    def __init__(
+        self, address: ptr[object] | int | str | Callable[..., object] = ...
+    ) -> None: ...
     def is_null(self) -> bool: ...
     # A borrowed, bounds-checked window of `n` elements starting at the
     # address. It is a local view: it may not outlive its scope.

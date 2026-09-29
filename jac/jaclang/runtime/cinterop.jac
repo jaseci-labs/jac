@@ -22,6 +22,7 @@ def _scalar_ctypes -> dict[str, any] {
 glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),
      _LIBS: dict[str, any] = {},
      _C_STRINGS: dict[str, any] = {},
+     _C_FUNCTIONS: list[any] = [],
      _VIEW_RANGE: str = "PtrView index out of range";
 
 class JacCOpaque {}
@@ -878,6 +879,16 @@ def jac_addressof(symbol: any) -> JacPtr {
         );
     }
     return symbol.address();
+}
+
+# `ptr(f)`: the address of a C callback that runs the named function `f`,
+# whose C signature `spec_json` gives. C may keep the address, so the callback
+# is kept alive for the life of the process.
+def c_function_ptr(fn: any, spec_json: str, scope: any) -> JacPtr {
+    spec = json.loads(spec_json);
+    callback = _fn_ctype(spec, scope)(_callback_trampoline(spec, fn, scope));
+    _C_FUNCTIONS.append(callback);
+    return JacPtr(ctypes.cast(callback, ctypes.c_void_p).value or 0);
 }
 
 def clib_bind(scope: any, desc_json: str) -> dict[str, any] {

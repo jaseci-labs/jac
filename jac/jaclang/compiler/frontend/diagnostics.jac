@@ -1160,8 +1160,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A C data symbol Jac defines is laid out at link time, so its"
          " initializer is a C constant: a literal, `None`, `ptr[T]()`, an integer"
          " address, `ptr[u8](\"text\")`, `addressof(symbol)`, a named function"
-         " for a callback field, or a constructor of a foreign struct whose"
-         " arguments are all of these.",
+         " for a callback field, `ptr(f)` for a named function's address, or a"
+         " constructor of a foreign struct whose arguments are all of these.",
          blocks_codegen=True
      ),
      E1156 = _err(
