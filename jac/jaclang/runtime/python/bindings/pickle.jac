@@ -1,36 +1,20 @@
-"""Native pickle constructors, descriptors, and Python callback ownership."""
+"""The _pickle module: the Pickler and Unpickler types with their
+hand-written attribute hooks, memo getsets and members, and the
+clinic-generated methods and functions over modules/pickle.jac's state."""
 
 import from jaclang.runtime.python.cpython_api {
-    jacpy_error_pending,
     jacpy_is_unicode,
-    jacpy_optional_attr,
     jacpy_release,
-    jacpy_set_exception,
     NULL,
     Py_NewRef,
     Py_None,
     Py_TYPE,
-    PyDict_New,
-    PyDict_SetItem,
-    PyErr_Clear,
-    PyErr_ExceptionMatches,
-    PyExc_AttributeError,
-    PyExc_RuntimeError,
     PyExc_TypeError,
-    PyExc_ValueError,
     PyImport_ImportModuleAttrString,
-    PyLong_AsInt,
-    PyLong_AsLongLong,
-    PyLong_FromLongLong,
     PyObject,
-    PyObject_Call,
-    PyObject_CallOneArg,
     PyObject_GenericGetAttr,
-    PyObject_GenericSetAttr,
-    PyObject_GetAttrString,
-    PyObject_IsTrue
+    PyObject_GenericSetAttr
 }
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
@@ -48,227 +32,103 @@ import from jaclang.runtime.python.bindings.type {
     TypeHooks,
     TypeFlags,
     PropertyCallbacks,
-    PropertyDefinition,
-    jacpy_binding_owner,
-    jacpy_binding_allocate,
-    jacpy_binding_matches,
-    jacpy_binding_type_matches,
-    jacpy_binding_basicsize
+    PropertyDefinition
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_set,
-    jacpy_binding_native_present,
+    jacpy_binding_untrack,
     traverse_payload,
     clear_payload,
     dispose_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_KEYWORDS,
-    PARSE_NO_ARGUMENTS,
-    invoke,
-    invoke_vector
+import from jaclang.runtime.python.bindings.members {
+    MemberField,
+    MemberType,
+    record_object,
+    record_set_object
 }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.bindings.references { ReferenceState }
 import from jaclang.runtime.python.capi {
     builtin_kind,
     builtin_type,
     text_value,
-    text_object,
-    object_error,
-    required,
-    boundary_failure
+    object_error
 }
-import from jaclang.runtime.python.modules.pickle_encode { pickle_state }
-import from jaclang.runtime.python.modules.pickle_decode { unpickle_state }
+import from jaclang.runtime.python.bindings.clinic.pickle {
+    Pickler_doc,
+    Pickler_methods,
+    Pickler_methods_persistent_id_doc,
+    PicklerMemoProxy_methods,
+    Unpickler_doc,
+    Unpickler_methods,
+    UnpicklerMemoProxy_methods,
+    _pickle_Pickler___init___init,
+    _pickle_Unpickler___init___init,
+    module_methods,
+    pickle_module_doc
+}
 import from jaclang.runtime.python.modules.pickle {
+    MemoState,
+    PICKLER_DISPATCH,
+    PICKLER_RECORD,
+    PicklerMemoProxy_token,
+    PicklerState,
+    Pickler_token,
+    Slot,
+    UnpicklerMemoProxy_token,
+    UnpicklerState,
+    Unpickler_token,
+    memo_proxy_copy,
+    module_for,
+    pickle_module_token,
+    pickler_record,
+    state_for,
+    type_definition,
+    wrap,
     jacpy_pickler_new,
-    jacpy_pickler_clear,
     jacpy_unpickler_new,
-    jacpy_unpickler_clear,
-    jacpy_pickler_init,
-    jacpy_pickler_dump,
-    jacpy_pickler_field,
-    jacpy_pickler_size,
-    jacpy_unpickler_init,
-    jacpy_unpickler_load,
-    jacpy_unpickler_find,
-    jacpy_unpickler_field_count,
-    jacpy_unpickler_field,
-    jacpy_unpickler_size,
-    jacpy_pickler_memo,
-    jacpy_pickler_memo_clear,
-    jacpy_unpickler_memo,
-    jacpy_unpickler_memo_clear,
     jacpy_pickler_memo_set,
     jacpy_unpickler_memo_set
-}
-
-enum Slot {
-    PICKLER = 0,
-    UNPICKLER = 1,
-    PICKLER_MEMO = 2,
-    UNPICKLER_MEMO = 3,
-    ERROR = 4,
-    PICKLING_ERROR = 5,
-    UNPICKLING_ERROR = 6,
-    BYTESIO = 7,
-    DISPATCH = 8
-}
-
-obj CodecState(ReferenceState) {
-    has initialized: bool = False,
-        busy: bool = False,
-        bin: i64 = 0,
-        fast: i64 = 0,
-        fix_imports: i64 = 1;
-
-    override def clear {
-        self.initialized = False;
-        super.clear();
-    }
-
-    def enter -> bool {
-        if self.busy {
-            object_error(PyExc_RuntimeError, "pickle object is already in use");
-            return False;
-        }
-        self.busy = True;
-        return True;
-    }
-}
-
-obj PicklerState(CodecState) {
-    has native: pickle_state;
-
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        result = super.traverse_refs(visitor, context);
-        if result != 0 {
-            return result;
-        }
-        for index in range(8) {
-            result = visit_reference(
-                jacpy_pickler_field(self.native, i64(index)), visitor, context
-            );
-            if result != 0 {
-                return result;
-            }
-        }
-        return i32(0);
-    }
-
-    override def clear {
-        super.clear();
-        jacpy_pickler_clear(self.native);
-    }
-
-    def drop {
-        self.clear();
-    }
-}
-
-obj UnpicklerState(CodecState) {
-    has native: unpickle_state;
-
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        result = super.traverse_refs(visitor, context);
-        if result != 0 {
-            return result;
-        }
-        for index in range(int(jacpy_unpickler_field_count(self.native))) {
-            result = visit_reference(
-                jacpy_unpickler_field(self.native, i64(index)), visitor, context
-            );
-            if result != 0 {
-                return result;
-            }
-        }
-        return i32(0);
-    }
-
-    override def clear {
-        super.clear();
-        jacpy_unpickler_clear(self.native);
-    }
-
-    def drop {
-        self.clear();
-    }
-}
-
-obj MemoState(ReferenceState) {}
-def:priv module_for(type: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_binding_owner(type, definition.handle);
-}
-
-def:priv type_definition(type: ptr[PyObject]) -> ptr {
-    if jacpy_binding_type_matches(type, pickler_type.handle) != 0 {
-        return pickler_type.handle;
-    }
-    if jacpy_binding_type_matches(type, unpickler_type.handle) != 0 {
-        return unpickler_type.handle;
-    }
-    if jacpy_binding_type_matches(type, pickler_memo_type.handle) != 0 {
-        return pickler_memo_type.handle;
-    }
-    if jacpy_binding_type_matches(type, unpickler_memo_type.handle) != 0 {
-        return unpickler_memo_type.handle;
-    }
-    return ptr();
-}
-
-def:priv state_for(instance: ptr[PyObject]) -> (CodecState | None) {
-    handle = type_definition(Py_TYPE(instance));
-    if handle != 0 and jacpy_binding_native_present(instance, handle) != 0 {
-        state = jacpy_binding_native_get(instance, handle);
-        if isinstance(state, CodecState) {
-            return state;
-        }
-    }
-    object_error(PyExc_RuntimeError, "uninitialized native pickle object");
-    return None;
-}
-
-def:priv wrap(type: ptr[PyObject], state: NativeState) -> ptr[PyObject] {
-    handle = type_definition(type);
-    if handle == 0 {
-        return NULL;
-    }
-    result = jacpy_binding_allocate(type);
-    if result == 0 {
-        return NULL;
-    }
-    if jacpy_binding_native_set(result, handle, state) < 0 {
-        jacpy_release(result);
-        return NULL;
-    }
-    return result;
 }
 
 def:priv traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
-    return traverse_payload(
-        instance, type_definition(Py_TYPE(instance)), visitor, context
+    handle = type_definition(Py_TYPE(instance));
+    status = traverse_payload(instance, handle, visitor, context);
+    if status != 0 or handle != Pickler_token.handle {
+        return status;
+    }
+    return visit_reference(
+        record_object(pickler_record(instance), PICKLER_DISPATCH), visitor, context
     );
 }
 
+# Pickler's record owns dispatch_table.
+def:priv release_dispatch(instance: ptr[PyObject]) {
+    if type_definition(Py_TYPE(instance)) != Pickler_token.handle {
+        return;
+    }
+    record = pickler_record(instance);
+    old = record_object(record, PICKLER_DISPATCH);
+    record_set_object(record, PICKLER_DISPATCH, NULL);
+    jacpy_release(old);
+}
+
 def:priv clear(instance: ptr[PyObject]) -> i32 {
+    release_dispatch(instance);
     return clear_payload(instance, type_definition(Py_TYPE(instance)));
 }
 
 def:priv dealloc(instance: ptr[PyObject]) {
+    jacpy_binding_untrack(instance);
+    release_dispatch(instance);
     dispose_payload(instance, type_definition(Py_TYPE(instance)));
 }
 
 def:priv create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if jacpy_binding_type_matches(type, unpickler_type.handle) != 0 {
+    if type_definition(type) == Unpickler_token.handle {
         return wrap(
             type, UnpicklerState(references=[NULL, NULL], native=jacpy_unpickler_new())
         );
@@ -278,6 +138,8 @@ def:priv create(
     );
 }
 
+# Pickler_getattr/Unpickler_getattr and the setattr pair: persistent_id and
+# persistent_load set on the instance.
 def:priv get_attribute(instance: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
@@ -313,438 +175,9 @@ def:priv set_attribute(
     return PyObject_GenericSetAttr(instance, name, value);
 }
 
-def:priv fail(
-    message: str, category: ptr[PyObject] = PyExc_TypeError
-) -> ptr[PyObject] {
-    object_error(category, message);
-    return NULL;
-}
-
-def:priv module_error(
-    instance: ptr[PyObject], slot: int, message: str
-) -> ptr[PyObject] {
-    module = module_for(Py_TYPE(instance));
-    if module != 0 {
-        jacpy_set_exception(
-            jacpy_binding_state_get(module, i64(slot)), message, i64(len(message))
-        );
-    }
-    return NULL;
-}
-
-def:priv bind(
-    signature: CallSignature,
-    args: ptr[PyObject],
-    kwargs: ptr[PyObject],
-    instance: ptr[PyObject]
-) -> (BoundArguments | None) {
-    bound = BoundArguments([NULL for _ in signature.names], instance);
-    if not signature.bind(bound, args, kwargs) {
-        return None;
-    }
-    return bound;
-}
-
-def:priv flag(value: ptr[PyObject], default_value: i64 = 1) -> i64 {
-    return PyObject_IsTrue(value) if value != 0 else default_value;
-}
-
-def:priv text_argument(value: ptr[PyObject], default_value: str) -> ptr[PyObject] {
-    if value == 0 {
-        return text_object(default_value);
-    }
-    if jacpy_is_unicode(value) == 0 {
-        return fail("argument must be str");
-    }
-    text = text_value(value);
-    if "\0" in text {
-        return fail("embedded null character", PyExc_ValueError);
-    }
-    return text_object(text);
-}
-
-def:priv initialize_pickler(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> i32 {
-    try {
-        bound = bind(pickler_signature, args, kwargs, instance);
-        if bound is None {
-            return i32(-1);
-        }
-        version: i64 = 5;
-        if bound.values[1] != 0 and bound.values[1] != Py_None {
-            version = PyLong_AsLongLong(bound.values[1]);
-            if version == -1 and jacpy_error_pending() != 0 {
-                return i32(-1);
-            }
-            if version < 0 {
-                version = 5;
-            }
-        }
-        fix = flag(bound.values[2]);
-        if fix < 0 {
-            return i32(-1);
-        }
-        if version > 5 {
-            fail("pickle protocol must be <= 5", PyExc_ValueError);
-            return i32(-1);
-        }
-        callback = bound.values[3];
-        if callback != 0 and callback == Py_None {
-            callback = NULL;
-        }
-        if callback != 0 and version < 5 {
-            fail("buffer_callback needs protocol >= 5", PyExc_ValueError);
-            return i32(-1);
-        }
-        state = state_for(instance);
-        if not isinstance(state, PicklerState) or not state.enter() {
-            return i32(-1);
-        }
-        held = ReferenceState(references=[NULL]);
-        try {
-            module = module_for(Py_TYPE(instance));
-            if module == 0 {
-                return i32(-1);
-            }
-            held.references[0] = PyObject_GetAttrString(bound.values[0], "write");
-            if held.references[0] == 0 {
-                if PyErr_ExceptionMatches(PyExc_AttributeError) != 0 {
-                    PyErr_Clear();
-                    fail("file must have a 'write' attribute");
-                }
-                return i32(-1);
-            }
-            result = jacpy_pickler_init(
-                state.native,
-                held.references[0],
-                version,
-                fix,
-                callback,
-                jacpy_binding_state_get(module, i64(Slot.PICKLING_ERROR.value))
-            );
-            if result == 0 {
-                state.initialized = True;
-                state.bin = i64(version > 0);
-                state.fast = 0;
-                state.fix_imports = fix;
-            }
-            return i32(result);
-        } finally {
-            state.busy = False;
-        }
-    } except boundary_failure {
-        return i32(-1);
-    }
-}
-
-def:priv initialize_unpickler(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> i32 {
-    try {
-        bound = bind(unpickler_signature, args, kwargs, instance);
-        if bound is None {
-            return i32(-1);
-        }
-        fix = flag(bound.values[1]);
-        if fix < 0 {
-            return i32(-1);
-        }
-        held = ReferenceState(references=[NULL, NULL, NULL, NULL]);
-        held.references[2] = required(text_argument(bound.values[2], "ASCII"));
-        held.references[3] = required(text_argument(bound.values[3], "strict"));
-        state = state_for(instance);
-        if not isinstance(state, UnpicklerState) or not state.enter() {
-            return i32(-1);
-        }
-        try {
-            module = module_for(Py_TYPE(instance));
-            if module == 0 {
-                return i32(-1);
-            }
-            held.references[0] = jacpy_optional_attr(bound.values[0], "read");
-            if jacpy_error_pending() != 0 {
-                return i32(-1);
-            }
-            held.references[1] = jacpy_optional_attr(bound.values[0], "readline");
-            if jacpy_error_pending() != 0 {
-                return i32(-1);
-            }
-            if held.references[0] == 0 or held.references[1] == 0 {
-                fail("file must have 'read' and 'readline' attributes");
-                return i32(-1);
-            }
-            buffers = bound.values[4];
-            if buffers != 0 and buffers == Py_None {
-                buffers = NULL;
-            }
-            result = jacpy_unpickler_init(
-                state.native,
-                held.references[0],
-                held.references[1],
-                jacpy_binding_state_get(module, i64(Slot.UNPICKLING_ERROR.value)),
-                buffers,
-                held.references[2],
-                held.references[3]
-            );
-            if result == 0 {
-                state.initialized = True;
-                state.fix_imports = fix;
-            }
-            return i32(result);
-        } finally {
-            state.busy = False;
-        }
-    } except boundary_failure {
-        return i32(-1);
-    }
-}
-
-def:priv dump(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_for(instance);
-    if not isinstance(state, PicklerState) {
-        return NULL;
-    }
-    if not state.initialized {
-        return module_error(
-            instance, Slot.PICKLING_ERROR.value, "Pickler.__init__() was not called"
-        );
-    }
-    if not state.enter() {
-        return NULL;
-    }
-    held = ReferenceState(references=[NULL, NULL, NULL]);
-    try {
-        module = module_for(Py_TYPE(instance));
-        if module == 0 {
-            return NULL;
-        }
-        held.references[0] = required(
-            PyObject_GetAttrString(instance, "persistent_id")
-        );
-        held.references[1] = jacpy_optional_attr(instance, "reducer_override");
-        if jacpy_error_pending() != 0 {
-            return NULL;
-        }
-        held.references[2] = jacpy_optional_attr(instance, "dispatch_table");
-        if jacpy_error_pending() != 0 {
-            return NULL;
-        }
-        if held.references[2] == 0 {
-            held.references[2] = Py_NewRef(
-                jacpy_binding_state_get(module, i64(Slot.DISPATCH.value))
-            );
-        }
-        if jacpy_pickler_dump(
-            state.native,
-            value,
-            held.references[0],
-            held.references[1],
-            held.references[2],
-            state.fast
-        )
-            == 0 {
-            return Py_NewRef(Py_None);
-        }
-        return NULL;
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        state.busy = False;
-    }
-}
-
-def:priv load(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_for(instance);
-    if not isinstance(state, UnpicklerState) {
-        return NULL;
-    }
-    if not state.initialized {
-        return module_error(
-            instance, Slot.UNPICKLING_ERROR.value, "Unpickler.__init__() was not called"
-        );
-    }
-    if not state.enter() {
-        return NULL;
-    }
-    held = ReferenceState(references=[NULL, NULL]);
-    try {
-        held.references[0] = required(PyObject_GetAttrString(instance, "find_class"));
-        held.references[1] = required(
-            PyObject_GetAttrString(instance, "persistent_load")
-        );
-        return jacpy_unpickler_load(
-            state.native, held.references[0], held.references[1]
-        );
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        state.busy = False;
-    }
-}
-
+# Pickler.persistent_id (METH_O): no persistent ids by default.
 def:priv persistent_id(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
-}
-
-def:priv persistent_load(
-    instance: ptr[PyObject], value: ptr[PyObject]
-) -> ptr[PyObject] {
-    return module_error(
-        instance,
-        Slot.UNPICKLING_ERROR.value,
-        "A load persistent id instruction was encountered, but no persistent_load function was specified."
-    );
-}
-
-def:priv find_bound(args: BoundArguments) -> ptr[PyObject] {
-    state = state_for(args.context);
-    return jacpy_unpickler_find(
-        state.native, args.values[0], args.values[1], state.fix_imports
-    )
-        if isinstance(state, UnpicklerState)
-        else NULL;
-}
-
-# Unpickler's and Pickler's defining-class methods are METH_METHOD|
-# METH_FASTCALL|METH_KEYWORDS: their arguments go through
-# _PyArg_UnpackKeywords.
-glob:priv find_class_signature = CallSignature(
-         "find_class", ["module_name", "global_name"], 2, 2, 2, parser=PARSE_KEYWORDS
-     ),
-     persistent_load_signature = CallSignature(
-         "persistent_load", ["pid"], 1, 1, 1, parser=PARSE_KEYWORDS
-     ),
-     load_method_signature = CallSignature("load", [], 0, 0, parser=PARSE_NO_ARGUMENTS),
-     dump_method_signature = CallSignature(
-         "dump", ["obj"], 1, 1, 1, parser=PARSE_KEYWORDS
-     );
-
-def:priv find_class(
-    instance: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        find_class_signature, args, nargs, kwnames, find_bound, instance
-    );
-}
-
-def:priv persistent_load_bound(args: BoundArguments) -> ptr[PyObject] {
-    return persistent_load(args.context, args.values[0]);
-}
-
-def:priv persistent_load_call(
-    instance: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        persistent_load_signature, args, nargs, kwnames, persistent_load_bound, instance
-    );
-}
-
-def:priv load_method_bound(args: BoundArguments) -> ptr[PyObject] {
-    return load(args.context, NULL);
-}
-
-def:priv load_call(
-    instance: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        load_method_signature, args, nargs, kwnames, load_method_bound, instance
-    );
-}
-
-def:priv dump_method_bound(args: BoundArguments) -> ptr[PyObject] {
-    return dump(args.context, args.values[0]);
-}
-
-def:priv dump_call(
-    instance: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        dump_method_signature, args, nargs, kwnames, dump_method_bound, instance
-    );
-}
-
-def:priv size_of(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_for(instance);
-    size: i64 = -1;
-    if isinstance(state, PicklerState) {
-        size = jacpy_pickler_size(state.native);
-    } elif isinstance(state, UnpicklerState) {
-        size = jacpy_unpickler_size(state.native);
-    }
-    return PyLong_FromLongLong(jacpy_binding_basicsize(Py_TYPE(instance)) + size)
-        if size >= 0
-        else NULL;
-}
-
-def:priv memo_owner(instance: ptr[PyObject]) -> ptr[PyObject] {
-    handle = type_definition(Py_TYPE(instance));
-    if handle != 0 and jacpy_binding_native_present(instance, handle) != 0 {
-        state = jacpy_binding_native_get(instance, handle);
-        if isinstance(state, MemoState) and state.references[0] != 0 {
-            return state.references[0];
-        }
-    }
-    object_error(PyExc_RuntimeError, "uninitialized pickle memo proxy");
-    return NULL;
-}
-
-def:priv memo_copy(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    owner = memo_owner(instance);
-    if owner == 0 {
-        return NULL;
-    }
-    state = state_for(owner);
-    if isinstance(state, PicklerState) {
-        return jacpy_pickler_memo(state.native);
-    }
-    if isinstance(state, UnpicklerState) {
-        return jacpy_unpickler_memo(state.native);
-    }
-    return NULL;
-}
-
-def:priv memo_clear(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    owner = memo_owner(instance);
-    if owner == 0 {
-        return NULL;
-    }
-    state = state_for(owner);
-    if isinstance(state, PicklerState) {
-        jacpy_pickler_memo_clear(state.native);
-        return Py_NewRef(Py_None);
-    }
-    if isinstance(state, UnpicklerState) {
-        jacpy_unpickler_memo_clear(state.native);
-        return Py_NewRef(Py_None);
-    }
-    return NULL;
-}
-
-def:priv memo_reduce(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    held = ReferenceState(references=[memo_copy(instance, NULL), NULL]);
-    if held.references[0] == 0 {
-        return NULL;
-    }
-    held.references[1] = owned_tuple([Py_NewRef(held.references[0])]);
-    if held.references[1] == 0 {
-        return NULL;
-    }
-    return owned_tuple(
-        [builtin_type(builtin_kind.DICT), Py_NewRef(held.references[1])]
-    );
 }
 
 def:priv get_memo(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
@@ -767,7 +200,7 @@ def:priv get_memo(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
 
 def:priv set_memo(instance: ptr[PyObject], value: ptr[PyObject], unused: u64) -> i32 {
     if value == 0 {
-        fail("attribute deletion is not supported");
+        object_error(PyExc_TypeError, "attribute deletion is not supported");
         return i32(-1);
     }
     state = state_for(instance);
@@ -782,7 +215,7 @@ def:priv set_memo(instance: ptr[PyObject], value: ptr[PyObject], unused: u64) ->
         if isinstance(state, UnpicklerState)
         else Slot.PICKLER_MEMO.value;
     held = ReferenceState(references=[NULL]);
-    held.references[0] = memo_copy(value, NULL)
+    held.references[0] = memo_proxy_copy(value)
         if Py_TYPE(value) == jacpy_binding_state_get(module, i64(index))
         else Py_NewRef(value);
     if held.references[0] == 0 {
@@ -797,365 +230,45 @@ def:priv set_memo(instance: ptr[PyObject], value: ptr[PyObject], unused: u64) ->
     return i32(-1);
 }
 
-def:priv clear_memo(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_for(instance);
-    if not isinstance(state, PicklerState) {
-        return NULL;
-    }
-    jacpy_pickler_memo_clear(state.native);
-    return Py_NewRef(Py_None);
-}
-
-def:priv integer_get(instance: ptr[PyObject], field: u64) -> ptr[PyObject] {
-    state = state_for(instance);
-    if state is None {
-        return NULL;
-    }
-    return PyLong_FromLongLong(state.bin if field == 0 else state.fast);
-}
-
-def:priv integer_set(instance: ptr[PyObject], value: ptr[PyObject], field: u64) -> i32 {
-    if value == 0 {
-        fail("can't delete numeric/char attribute");
-        return i32(-1);
-    }
-    state = state_for(instance);
-    if state is None {
-        return i32(-1);
-    }
-    number = PyLong_AsInt(value);
-    if number == -1 and jacpy_error_pending() != 0 {
-        return i32(-1);
-    }
-    if field == 0 {
-        state.bin = number;
-    } else {
-        state.fast = number;
-    }
-    return i32(0);
-}
-
-def:priv dispatch_get(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
-    state = state_for(instance);
-    if state is None {
-        return NULL;
-    }
-    if state.references[1] == 0 {
-        return fail("dispatch_table", PyExc_AttributeError);
-    }
-    return Py_NewRef(state.references[1]);
-}
-
-def:priv dispatch_set(
-    instance: ptr[PyObject], value: ptr[PyObject], unused: u64
-) -> i32 {
-    state = state_for(instance);
-    if state is None {
-        return i32(-1);
-    }
-    previous = state.references[1];
-    if value == 0 and previous == 0 {
-        fail("dispatch_table", PyExc_AttributeError);
-        return i32(-1);
-    }
-    state.references[1] = Py_NewRef(value) if value != 0 else NULL;
-    jacpy_release(previous);
-    return i32(0);
-}
-
-# These helpers borrow values; the caller's BoundArguments owns the call frame.
-def:priv keywords(names: list[str], values: list[ptr[PyObject]]) -> ptr[PyObject] {
-    held = ReferenceState(references=[PyDict_New(), NULL]);
-    if held.references[0] == 0 {
-        return NULL;
-    }
-    for index in range(len(names)) {
-        held.references[1] = text_object(names[index]);
-        if held.references[1] == 0 {
-            return NULL;
-        }
-        result = PyDict_SetItem(held.references[0], held.references[1], values[index]);
-        previous = held.references[1];
-        held.references[1] = NULL;
-        jacpy_release(previous);
-        if result < 0 {
-            return NULL;
-        }
-    }
-    return Py_NewRef(held.references[0]);
-}
-
-def:priv write_value(
-    module: ptr[PyObject],
-    value: ptr[PyObject],
-    file: ptr[PyObject],
-    protocol: ptr[PyObject],
-    fix: i64,
-    callback: ptr[PyObject]
-) -> ptr[PyObject] {
-    held = ReferenceState(references=[NULL, NULL, NULL, PyBool_FromLong(fix)]);
-    held.references[0] = owned_tuple([Py_NewRef(file), Py_NewRef(protocol)]);
-    if held.references[0] == 0 {
-        return NULL;
-    }
-    held.references[1] = keywords(
-        ["fix_imports", "buffer_callback"], [held.references[3], callback]
-    );
-    if held.references[1] == 0 {
-        return NULL;
-    }
-    held.references[2] = PyObject_Call(
-        jacpy_binding_state_get(module, i64(Slot.PICKLER.value)),
-        held.references[0],
-        held.references[1]
-    );
-    if held.references[2] == 0 {
-        return NULL;
-    }
-    return dump(held.references[2], value);
-}
-
-def:priv dump_bound(args: BoundArguments) -> ptr[PyObject] {
-    if args.values[2] == 0 {
-        args.values[2] = Py_NewRef(Py_None);
-    }
-    if args.values[4] == 0 {
-        args.values[4] = Py_NewRef(Py_None);
-    }
-    fix = flag(args.values[3]);
-    if fix < 0 {
-        return NULL;
-    }
-    return write_value(
-        args.context,
-        args.values[0],
-        args.values[1],
-        args.values[2],
-        fix,
-        args.values[4]
-    );
-}
-
-def:priv dumps_bound(args: BoundArguments) -> ptr[PyObject] {
-    if args.values[1] == 0 {
-        args.values[1] = Py_NewRef(Py_None);
-    }
-    if args.values[3] == 0 {
-        args.values[3] = Py_NewRef(Py_None);
-    }
-    fix = flag(args.values[2]);
-    if fix < 0 {
-        return NULL;
-    }
-    held = ReferenceState(references=[NULL, NULL, NULL, NULL]);
-    held.references[0] = owned_tuple([]);
-    if held.references[0] == 0 {
-        return NULL;
-    }
-    held.references[1] = PyObject_Call(
-        jacpy_binding_state_get(args.context, i64(Slot.BYTESIO.value)),
-        held.references[0],
-        NULL
-    );
-    if held.references[1] == 0 {
-        return NULL;
-    }
-    held.references[2] = write_value(
-        args.context,
-        args.values[0],
-        held.references[1],
-        args.values[1],
-        fix,
-        args.values[3]
-    );
-    if held.references[2] == 0 {
-        return NULL;
-    }
-    held.references[3] = PyObject_GetAttrString(held.references[1], "getvalue");
-    if held.references[3] == 0 {
-        return NULL;
-    }
-    return PyObject_Call(held.references[3], held.references[0], NULL);
-}
-
-def:priv module_dump(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(dump_signature, args, kwargs, dump_bound, module);
-}
-
-def:priv module_dumps(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(dumps_signature, args, kwargs, dumps_bound, module);
-}
-
-def:priv unpickle(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    held = ReferenceState(
-        references=[
-            PyObject_Call(
-                jacpy_binding_state_get(module, i64(Slot.UNPICKLER.value)), args, kwargs
-            )
-        ]
-    );
-    return load(held.references[0], NULL) if held.references[0] else NULL;
-}
-
-def:priv loads_bound(args: BoundArguments) -> ptr[PyObject] {
-    # _Unpickler_SetStringInput(): the data must export a buffer.
-    data = BufferArgument();
-    if not data.acquire(args.values[0]) {
-        return NULL;
-    }
-    fix = flag(args.values[1]);
-    if fix < 0 {
-        return NULL;
-    }
-    held = ReferenceState(references=[NULL for _ in range(6)]);
-    held.references[0] = required(text_argument(args.values[2], "ASCII"));
-    held.references[1] = required(text_argument(args.values[3], "strict"));
-    if args.values[4] == 0 {
-        args.values[4] = Py_NewRef(Py_None);
-    }
-    held.references[2] = required(
-        PyObject_CallOneArg(
-            jacpy_binding_state_get(args.context, i64(Slot.BYTESIO.value)),
-            args.values[0]
-        )
-    );
-    held.references[3] = required(owned_tuple([Py_NewRef(held.references[2])]));
-    held.references[4] = PyBool_FromLong(fix);
-    held.references[5] = required(
-        keywords(
-            ["fix_imports", "encoding", "errors", "buffers"],
-            [held.references[4], held.references[0], held.references[1], args.values[4]]
-        )
-    );
-    return unpickle(args.context, held.references[3], held.references[5]);
-}
-
-# load(file, *, fix_imports=True, encoding="ASCII", errors="strict",
-# buffers=()): its own signature, then an Unpickler over `file`.
-def:priv load_bound(args: BoundArguments) -> ptr[PyObject] {
-    names = ["fix_imports", "encoding", "errors", "buffers"];
-    given: list[str] = [];
-    values: list[ptr[PyObject]] = [];
-    for i in range(4) {
-        if args.values[i + 1] != 0 {
-            given.append(names[i]);
-            values.append(args.values[i + 1]);
-        }
-    }
-    held = ReferenceState(references=[NULL, NULL]);
-    held.references[0] = required(owned_tuple([Py_NewRef(args.values[0])]));
-    held.references[1] = required(keywords(given, values));
-    return unpickle(args.context, held.references[0], held.references[1]);
-}
-
-def:priv module_load(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(load_signature, args, kwargs, load_bound, module);
-}
-
-def:priv module_loads(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(loads_signature, args, kwargs, loads_bound, module);
-}
-
-glob:priv pickler_signature = CallSignature(
-         "Pickler", ["file", "protocol", "fix_imports", "buffer_callback"], 1, 4
-     ),
-     unpickler_signature = CallSignature(
-         "Unpickler", ["file", "fix_imports", "encoding", "errors", "buffers"], 1, 1
-     ),
-     dump_signature = CallSignature(
-         "dump", ["obj", "file", "protocol", "fix_imports", "buffer_callback"], 2, 3
-     ),
-     dumps_signature = CallSignature(
-         "dumps", ["obj", "protocol", "fix_imports", "buffer_callback"], 1, 2
-     ),
-     loads_signature = CallSignature(
-         "loads", ["data", "fix_imports", "encoding", "errors", "buffers"], 1, 1, 1
-     ),
-     load_signature = CallSignature(
-         "load", ["file", "fix_imports", "encoding", "errors", "buffers"], 1, 1
-     ),
-     flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
+glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
      pickler_type = TypeDefinition(
          "_pickle.Pickler",
-         "",
-         [
-             MethodDefinition(
-                 "dump", MethodCallbacks(fast_keywords=dump_call), "", flags=130
-             ),
-             MethodDefinition(
-                 "clear_memo", MethodCallbacks(positional=clear_memo), "", flags=4
-             ),
-             MethodDefinition(
-                 "persistent_id", MethodCallbacks(positional=persistent_id), "", flags=8
-             ),
-             MethodDefinition(
-                 "__sizeof__", MethodCallbacks(positional=size_of), "", flags=4
-             )
-         ],
+         Pickler_doc,
+         Pickler_methods
+             + [
+                 MethodDefinition(
+                     "persistent_id",
+                     MethodCallbacks(positional=persistent_id),
+                     Pickler_methods_persistent_id_doc,
+                     flags=8
+                 )
+             ],
          flags | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
              create=create,
-             initialize=initialize_pickler,
+             initialize=_pickle_Pickler___init___init,
              dealloc=dealloc,
              traverse=traverse,
              clear=clear,
              get_attribute=get_attribute,
              set_attribute=set_attribute
          ),
-         [
-             PropertyDefinition(
-                 "memo", PropertyCallbacks(read=get_memo, write=set_memo)
-             ),
-             PropertyDefinition(
-                 "bin",
-                 PropertyCallbacks(read=integer_get, write=integer_set),
-                 context=0
-             ),
-             PropertyDefinition(
-                 "fast",
-                 PropertyCallbacks(read=integer_get, write=integer_set),
-                 context=1
-             ),
-             PropertyDefinition(
-                 "dispatch_table",
-                 PropertyCallbacks(read=dispatch_get, write=dispatch_set)
-             )
-         ]
+         [PropertyDefinition("memo", PropertyCallbacks(read=get_memo, write=set_memo))],
+         members=[
+             MemberField("bin", MemberType.INT.value, 0),
+             MemberField("fast", MemberType.INT.value, 4),
+             MemberField("dispatch_table", MemberType.OBJECT_EX.value, PICKLER_DISPATCH)
+         ],
+         record_size=PICKLER_RECORD
      ),
      unpickler_type = TypeDefinition(
          "_pickle.Unpickler",
-         "",
-         [
-             MethodDefinition(
-                 "load", MethodCallbacks(fast_keywords=load_call), "", flags=130
-             ),
-             MethodDefinition(
-                 "find_class", MethodCallbacks(fast_keywords=find_class), "", flags=130
-             ),
-             MethodDefinition(
-                 "persistent_load",
-                 MethodCallbacks(fast_keywords=persistent_load_call),
-                 "",
-                 flags=130
-             ),
-             MethodDefinition(
-                 "__sizeof__", MethodCallbacks(positional=size_of), "", flags=4
-             )
-         ],
+         Unpickler_doc,
+         Unpickler_methods,
          flags | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
              create=create,
-             initialize=initialize_unpickler,
+             initialize=_pickle_Unpickler___init___init,
              dealloc=dealloc,
              traverse=traverse,
              clear=clear,
@@ -1164,24 +277,17 @@ glob:priv pickler_signature = CallSignature(
          ),
          [PropertyDefinition("memo", PropertyCallbacks(read=get_memo, write=set_memo))]
      ),
-     memo_methods = [
-         MethodDefinition("copy", MethodCallbacks(positional=memo_copy), "", flags=4),
-         MethodDefinition("clear", MethodCallbacks(positional=memo_clear), "", flags=4),
-         MethodDefinition(
-             "__reduce__", MethodCallbacks(positional=memo_reduce), "", flags=4
-         )
-     ],
      pickler_memo_type = TypeDefinition(
          "_pickle.PicklerMemoProxy",
          "",
-         memo_methods,
+         PicklerMemoProxy_methods,
          flags,
          TypeHooks(dealloc=dealloc, traverse=traverse, clear=clear)
      ),
      unpickler_memo_type = TypeDefinition(
          "_pickle.UnpicklerMemoProxy",
          "",
-         memo_methods,
+         UnpicklerMemoProxy_methods,
          flags,
          TypeHooks(dealloc=dealloc, traverse=traverse, clear=clear)
      );
@@ -1196,6 +302,11 @@ def:priv retain_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -
 }
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
+    Pickler_token.handle = pickler_type.handle;
+    Unpickler_token.handle = unpickler_type.handle;
+    PicklerMemoProxy_token.handle = pickler_memo_type.handle;
+    UnpicklerMemoProxy_token.handle = unpickler_memo_type.handle;
+    pickle_module_token.handle = definition.handle;
     if not add_state_owned(
         module,
         Slot.ERROR.value,
@@ -1249,13 +360,8 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 
 glob:priv definition = ModuleDefinition(
          "_pickle",
-         "Native Jac pickle serialization.",
-         [
-             MethodDefinition("dump", MethodCallbacks(keywords=module_dump), ""),
-             MethodDefinition("dumps", MethodCallbacks(keywords=module_dumps), ""),
-             MethodDefinition("load", MethodCallbacks(keywords=module_load), ""),
-             MethodDefinition("loads", MethodCallbacks(keywords=module_loads), "")
-         ],
+         pickle_module_doc,
+         module_methods,
          hooks=ModuleHooks(execute=execute),
          state_count=9
      );

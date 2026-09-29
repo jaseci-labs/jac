@@ -49,3 +49,4 @@ array
 _struct
 _collections
 itertools
+_pickle
