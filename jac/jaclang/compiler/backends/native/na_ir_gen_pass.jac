@@ -2613,6 +2613,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value;
+    def _unwind_top_slot(b: ir.IRBuilder) -> ir.Value;
+    def _unwind_node_type -> ir.Type;
+    def _register_unwind_cleanup -> None;
     def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
     def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
     def _tail_frame_blocker -> (str | None);
