@@ -5790,6 +5790,12 @@ impl NativeBuiltinEmitter.emit_str(
             "==", arg_val, ir.Constant(i8p, None), name="str.isnone"
         );
         result = b.select(is_null, none_s, arg_val, name="str.ornone");
+        if p._nogc_headerless() {
+            if p._is_owned(arg_val) {
+                return p._mark_owned(result);
+            }
+            return p._rc_strdup(result, name="str.copy");
+        }
         p._emit_rc_retain(result, op="builtin_str_id");
         return result;
     }

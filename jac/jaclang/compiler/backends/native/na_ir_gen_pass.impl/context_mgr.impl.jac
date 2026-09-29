@@ -162,10 +162,16 @@ impl NaIRGenPass._codegen_with_recursive(
     }
     self.builder.position_at_end(error_bb);
     values: tuple[ir.Value, ir.Value, ir.Value];
+    taken: (ir.Value | None) = None;
     if slot_mode {
         (tg, og, mg) = self._nogc_err_slot();
         values = (self.builder.load(tg), self.builder.load(og), self.builder.load(mg));
         self.builder.store(ir.Constant(i32, 0), tg);
+        if self._nogc_headerless() {
+            drop_field = self._nogc_err_drop_slot();
+            taken = self.builder.load(drop_field, name="with.exc.drop");
+            self.builder.store(ir.Constant(taken.type, None), drop_field);
+        }
     } else {
         assert state is not None and depth is not None;
         self._region_unwind(self.builder.load(depth));
@@ -176,13 +182,29 @@ impl NaIRGenPass._codegen_with_recursive(
     suppressed = self._emit_context_exit(owner, exit_fn);
     self._caught_error_stack.pop();
     propagate = func.append_basic_block(name=f"with.propagate.{idx}");
+    swallowed = merge_bb;
+    if taken is not None {
+        swallowed = func.append_basic_block(name=f"with.suppressed.{idx}");
+    }
     self.builder.cbranch(
-        self._coerce_type(suppressed, ir.IntType(1)), merge_bb, propagate
+        self._coerce_type(suppressed, ir.IntType(1)), swallowed, propagate
     );
+    if taken is not None {
+        self.builder.position_at_end(swallowed);
+        drop_slot = self._entry_alloca(taken.type, f"with.exc.drop.{idx}");
+        obj_slot = self._entry_alloca(values[1].type, f"with.exc.obj.{idx}");
+        self.builder.store(taken, drop_slot);
+        self.builder.store(values[1], obj_slot);
+        self._emit_caught_drop(drop_slot, obj_slot);
+        self.builder.branch(merge_bb);
+    }
     self.builder.position_at_end(propagate);
     if slot_mode {
         for (slot, value) in zip(self._nogc_err_slot(), values) {
             self.builder.store(value, slot);
+        }
+        if taken is not None {
+            self.builder.store(taken, self._nogc_err_drop_slot());
         }
         self._emit_err_propagate(loc="with.propagate");
     } else {

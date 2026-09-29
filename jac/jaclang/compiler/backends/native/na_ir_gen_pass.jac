@@ -62,6 +62,7 @@ import from jaclang.compiler.passes.layout_pass {
     archetype_accessors,
     ArchetypeLayout,
     EnumLayout,
+    EXC_MESSAGE_FIELD,
     VTABLE_DROP_SLOT,
     VTABLE_HEADER_SLOTS
 }
@@ -147,7 +148,8 @@ obj NativeFinalizer {
         handler_depth: int,
         pop_handler: bool = False,
         context_exit: tuple[ir.Value, ir.Function] | None = None,
-        gen_exit: tuple[ir.Value, ir.Type] | None = None;
+        gen_exit: tuple[ir.Value, ir.Type] | None = None,
+        exc_drop: tuple[ir.Value, ir.Value] | None = None;
 }
 
 obj NativeErrorHandler {
@@ -320,6 +322,7 @@ walker NaIRGenPass(CompilerPass) {
                     tuple[ir.Value, ir.Value, ir.Value]
                 ]
             ] = [],
+        _slot_caught_drops: dict[int, tuple[ir.Value, ir.Value]] = {},
         _exc_context_fn: (ir.Function | None) = None,
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},
@@ -1516,6 +1519,12 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_state_message(obj_val: ir.Value, type_name: str) -> ir.Value;
     def _exc_bound_struct(ex: (uni.Expr | None)) -> (str | None);
     def _reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None;
+    def _exc_binding_escapes(handler: uni.Except) -> bool;
+    def _raise_payload_drop(
+        payload: (ir.Value | None), msg: ir.Value, type_name: str
+    ) -> (ir.Value | None);
+
+    def _emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> None;
     def _reraise_if_bound(cause: uni.Expr) -> None;
     def _exc_lineage_fns -> tuple[ir.Function, ir.Function];
     def _emit_exc_lineage_probe(
@@ -3177,6 +3186,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _slot_lowering_active -> bool;
     def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
+    def _nogc_err_drop_slot -> ir.Value;
     def _emit_finalizers(loop_depth: int = 0) -> bool;
     def _emit_err_check(
         callee: (uni.Ability | None), site: (uni.UniNode | None) = None
@@ -3184,7 +3194,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _emit_pending_error_check -> None;
     def _emit_err_propagate(loc: str = "") -> None;
-    def _codegen_raise_slot(payload: ir.Value, type_id: int, msg: ir.Value) -> None;
+    def _codegen_raise_slot(
+        payload: ir.Value, type_id: int, msg: ir.Value, drop: (ir.Value | None) = None
+    ) -> None;
+
     def _codegen_try_slot(nd: uni.TryStmt) -> None;
     def _codegen_try_unwind(nd: uni.TryStmt, emit_finally: bool = True) -> None;
     def _codegen_finally_guard(nd: uni.TryStmt) -> None;
