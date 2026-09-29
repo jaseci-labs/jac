@@ -50,6 +50,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E5091,
     E5092,
     E5095,
+    E1145,
     E9001,
     E9002
 }
@@ -494,6 +495,7 @@ walker NaIRGenPass(CompilerPass) {
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _glob_import_sources: dict[str, str] = {},
+        _native_import_items: list[tuple[uni.ModuleItem, str, str]] = [],
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
         _lowered_type_cache: dict[tuple[TypeBase, str], ir.Type] = {},
@@ -1260,6 +1262,10 @@ walker NaIRGenPass(CompilerPass) {
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
+    def _check_native_import_names(
+        imported_mods: list[tuple[str, uni.Module]]
+    ) -> None;
+
     def _declare_clib_struct(decl: uni.Archetype) -> (str | None);
     def _lower_clib_struct(decl: uni.Archetype) -> None;
     def _adopt_foreign_struct(t: any) -> (str | None);

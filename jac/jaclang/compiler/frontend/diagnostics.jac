@@ -1096,6 +1096,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " missing wire. An inline suppression does not silence this; loosening"
          " the boundary is a change to arch.jac or jac.toml."
      ),
+     E1145 = _err(
+         "E1145",
+         Category.IMPORT,
+         "Cannot import name '{name}' from Jac module '{module}': it defines no such name",
+         help="The module declares no global, function, archetype, enum or import"
+         " named '{name}'. Native lowering binds an imported name to the symbol"
+         " its defining unit exports, and there is none, so the build stops here"
+         " rather than lowering every use of the name to a null value. Import a"
+         " name the module defines, or add the definition to it."
+     ),
      E1150 = _err(
          "E1150",
          Category.TYPE,

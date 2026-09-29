@@ -479,6 +479,14 @@ See [Project Wiring](wiring.md).
 | `E1143` | A wire cannot connect '{module}' to itself |
 | `E1144` | Import of '{module}' is not declared by arch.jac for '{consumer}' |
 
+### Unresolved Names
+
+| Code | Message |
+|------|---------|
+| `E1145` | Cannot import name '{name}' from Jac module '{module}': it defines no such name |
+
+Native lowering reports `E1145` when a module imports a name that the Jac module it binds to does not define. There is no symbol to bind the name to, and every use of it used to lower to a null value (a glob initializer received NULL and the binary crashed at load). The checker reports the same import as the `W1101` warning: its lazy resolution can miss a name that exists (an import cycle still being analyzed, or a sibling module shadowing a standard-library one), so only native lowering, which reads the bound module's complete symbol table, makes it an error.
+
 ## Semantic Errors (E2xxx / W2xxx)
 
 Emitted by static analysis and declaration-implementation matching passes.
