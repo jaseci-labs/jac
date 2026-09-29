@@ -10,22 +10,22 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.modules.sysconfig { _sysconfig_config_vars_impl }
-
-def:priv _sysconfig_config_vars_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _sysconfig_config_vars_impl(receiver);
-}
 
 def:priv _sysconfig_config_vars_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _sysconfig_config_vars_bound, receiver);
+    try {
+        return _sysconfig_config_vars_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob sysconfig__doc__: str = "A helper for the sysconfig module.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "config_vars",
              MethodCallbacks(positional=_sysconfig_config_vars_call),

@@ -31,6 +31,7 @@ defines (a clone kept for its docstring and PyMethodDef, like
 `_sqlite3.connect`) contributes only `<c_basename>_doc`; the module binds it.
 """
 import argparse;
+import ast;
 import codecs;
 import importlib;
 import re;
@@ -54,6 +55,11 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
          "METH_COEXIST": 64,
          "METH_FASTCALL": 128,
          "METH_METHOD": 0
+     },
+     # Clinic converter= functions the interpreter defines, by shared Jac
+     # converter.
+     SHARED_CONVERTERS: dict[str, str] = {
+         "_PyEval_SliceIndexNotNone": "convert_slice_index_not_none"
      },
      SCALAR: dict[str, str] = {
          "int": "i32",
@@ -108,7 +114,9 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
          "unsigned_short": ("u16", 0xFFFF, "unsigned short"),
          "unsigned_char": ("u8", 0xFF, "unsigned byte integer"),
          "uint32": ("u32", 0xFFFFFFFF, "Python int too large for C uint32_t"),
-         "uint16": ("u16", 0xFFFF, "Python int too large for C uint16_t")
+         "uint16": ("u16", 0xFFFF, "Python int too large for C uint16_t"),
+         "uint8": ("u8", 0xFF, "Python int too large for C uint8_t"),
+         "uint64": ("u64", 0xFFFFFFFFFFFFFFFF, "Python int too large for C uint64_t")
      },
      RETURNS: dict[str, str] = {
          "CReturnConverter": "",
@@ -206,6 +214,28 @@ def posix_condition(condition: str) -> bool {
     return False;
 }
 
+# A body line starting with RELEASE releases what the lines before it
+# acquired: the rest of the body runs in a try whose finally does it, so an
+# argument that fails to convert (or the impl) never leaks a buffer export
+# or the defining class, as clinic's cleanup label does in C.
+glob RELEASE: str = "\x00release ";
+
+def nest_releases(body: list[str], indent: str) -> list[str] {
+    lines: list[str] = [];
+    for (index, line) in enumerate(body) {
+        if line.startswith(RELEASE) {
+            lines.append(indent + "try {");
+            lines += nest_releases(body[index + 1:], indent + "    ");
+            lines.append(indent + "} finally {");
+            lines.append(indent + "    " + line[len(RELEASE):]);
+            lines.append(indent + "}");
+            return lines;
+        }
+        lines.append(indent + line);
+    }
+    return lines;
+}
+
 def class_name(value: any) -> str {
     return value.__class__.__name__;
 }
@@ -248,6 +278,238 @@ def windows_only(condition: str) -> bool {
 # ParseArgsCodeGen (flags, pos_only, min_pos, max_pos, min_kw_only) and the
 # generated C parser, which names the getargs routine it calls.
 glob PARSERS: dict[int, tuple[any, str]] = {};
+
+# A C string literal's body as a Python bytes literal's: characters outside
+# ASCII become the \x escapes of their UTF-8 bytes.
+def c_bytes_literal(piece: str) -> str {
+    return "".join(
+        c if ord(c) < 128 else "".join(f"\\x{byte:02x}" for byte in c.encode("utf-8"))
+        for c in piece
+    );
+}
+
+# The PyDoc_STRVAR docstrings of `sources` outside clinic blocks, by C
+# identifier, in source order: the docs of a module's hand-written method
+# tables, types and the module itself. A name defined under several #if
+# branches keeps the first one a POSIX target compiles.
+def c_docstrings(tree: Path, sources: list[Path]) -> dict[str, str] {
+    sys.path.insert(0, str(tree / "Tools/clinic"));
+    cpp = importlib.import_module("libclinic.cpp");
+    found: dict[str, str] = {};
+    for source in sources {
+        lines = source.read_text().splitlines();
+        monitor = cpp.Monitor(str(source));
+        index = 0;
+        generated = False;
+        while index < len(lines) {
+            line = lines[index];
+            monitor.writeline(line);
+            # Clinic's own output (a block written into the .c file) is
+            # generated separately.
+            if "[clinic start generated code]" in line {
+                generated = True;
+            }
+            if "[clinic end generated code" in line {
+                generated = False;
+            }
+            start = None
+                if generated
+                else re.match(r"\s*PyDoc_STRVAR\((\w+),(.*)$", line);
+            if not start {
+                index += 1;
+                continue;
+            }
+            name = start.group(1);
+            condition = monitor.condition();
+            body = start.group(2);
+            while not re.search(r"\);\s*$", body) and index + 1 < len(lines) {
+                index += 1;
+                monitor.writeline(lines[index]);
+                body += "\n" + lines[index];
+            }
+            index += 1;
+            # C line splices, then the adjacent string literals as the bytes
+            # C compiles them to (\xNN escapes are bytes), read as UTF-8.
+            body = body.replace("\\\n", "");
+            text = b"".join(
+                ast.literal_eval('b"' + c_bytes_literal(piece) + '"')
+                for piece in re.findall(r'"((?:[^"\\\n]|\\.)*)"', body)
+            ).decode(
+                "utf-8"
+            );
+            if name not in found and posix_condition(condition) {
+                found[name] = text;
+            }
+        }
+    }
+    return found;
+}
+
+# Splits a C macro argument list at its top-level commas, keeping string
+# literals and nested parentheses whole.
+def split_c_arguments(text: str) -> list[str] {
+    pieces: list[str] = [];
+    depth = 0;
+    current = "";
+    quoted = False;
+    index = 0;
+    while index < len(text) {
+        c = text[index];
+        if quoted {
+            current += c;
+            if c == "\\" and index + 1 < len(text) {
+                current += text[index + 1];
+                index += 2;
+                continue;
+            }
+            if c == '"' {
+                quoted = False;
+            }
+        } elif c == '"' {
+            quoted = True;
+            current += c;
+        } elif c == "(" {
+            depth += 1;
+            current += c;
+        } elif c == ")" {
+            depth -= 1;
+            current += c;
+        } elif c == "," and depth == 0 {
+            pieces.append(current.strip());
+            current = "";
+        } else {
+            current += c;
+        }
+        index += 1;
+    }
+    pieces.append(current.strip());
+    return pieces;
+}
+
+# Docstrings defined through a function-like macro whose body is a
+# PyDoc_STRVAR (math's FUNC1(name, func, overflow, "doc")): each invocation's
+# expanded name and doc text.
+def c_macro_docstrings(sources: list[Path]) -> dict[str, str] {
+    found: dict[str, str] = {};
+    for source in sources {
+        text = source.read_text().replace("\\\n", " ");
+        macros: dict[str, tuple[list[str], str, str]] = {};
+        for hit in re.finditer(r"#define\s+(\w+)\(([^)]*)\)(.*)", text) {
+            doc = re.search(
+                r"PyDoc_STRVAR\(\s*([\w#\s]+?)\s*,\s*(\w+)\s*\)", hit.group(3)
+            );
+            if doc {
+                params = [p.strip() for p in hit.group(2).split(",")];
+                macros[hit.group(1)] = (params, doc.group(1), doc.group(2));
+            }
+        }
+        for (macro, (params, name_pattern, doc_param)) in macros.items() {
+            for call in re.finditer(r"(?m)^" + macro + r"\(", text) {
+                depth = 1;
+                end = call.end();
+                quoted = False;
+                while end < len(text) and depth > 0 {
+                    c = text[end];
+                    if quoted {
+                        if c == "\\" {
+                            end += 1;
+                        } elif c == '"' {
+                            quoted = False;
+                        }
+                    } elif c == '"' {
+                        quoted = True;
+                    } elif c == "(" {
+                        depth += 1;
+                    } elif c == ")" {
+                        depth -= 1;
+                    }
+                    end += 1;
+                }
+                values = split_c_arguments(text[call.end():end - 1]);
+                if len(values) != len(params) {
+                    continue;
+                }
+                binding = dict(zip(params, values));
+                name = "".join(
+                    binding.get(part.strip(), part.strip())
+                    for part in name_pattern.split("##")
+                );
+                literals = re.findall(
+                    r'"((?:[^"\\\n]|\\.)*)"', binding.get(doc_param, "")
+                );
+                if literals and name not in found {
+                    found[name] = b"".join(
+                        ast.literal_eval('b"' + c_bytes_literal(piece) + '"')
+                        for piece in literals
+                    ).decode(
+                        "utf-8"
+                    );
+                }
+            }
+        }
+    }
+    return found;
+}
+
+# The docs a C source writes inline into its PyMethodDef, PyMemberDef and
+# PyGetSetDef tables (PyDoc_STR("...") or a literal), as
+# <table>_<entry>_doc. Entries a POSIX target does not compile are left out.
+def c_table_docs(tree: Path, sources: list[Path]) -> dict[str, str] {
+    sys.path.insert(0, str(tree / "Tools/clinic"));
+    cpp = importlib.import_module("libclinic.cpp");
+    found: dict[str, str] = {};
+    for source in sources {
+        lines = source.read_text().splitlines();
+        monitor = cpp.Monitor(str(source));
+        table = "";
+        pending = "";
+        condition = "";
+        for line in lines {
+            monitor.writeline(line);
+            start = re.match(
+                r"\s*(?:static\s+)?(?:struct\s+)?(?:PyMethodDef|PyMemberDef|PyGetSetDef)\s+(\w+)\s*\[\]\s*=",
+                line
+            );
+            if start {
+                table = start.group(1);
+                continue;
+            }
+            if not table {
+                continue;
+            }
+            if re.match(r"\s*};", line) {
+                table = "";
+                continue;
+            }
+            if not pending {
+                if not re.match(r'\s*\{\s*"', line) {
+                    continue;
+                }
+                condition = monitor.condition();
+            }
+            pending += line.replace("\\\n", "") + "\n";
+            if not re.search(r"\}\s*,?\s*(/\*.*)?$", pending.rstrip()) {
+                continue;
+            }
+            record = pending;
+            pending = "";
+            name = re.match(r'\s*\{\s*"(\w+)"', record);
+            literals = re.findall(r'"((?:[^"\\\n]|\\.)*)"', record);
+            if not name or len(literals) < 2 or not posix_condition(condition) {
+                continue;
+            }
+            # The first literal is the pending's name; the rest are its doc.
+            text = b"".join(
+                ast.literal_eval('b"' + c_bytes_literal(piece) + '"')
+                for piece in literals[1:]
+            ).decode(
+                "utf-8"
+            );
+            found[f"{table}_{name.group(1)}_doc"] = text;
+        }
+    }
+    return found;
+}
 
 # (class or None, clinic function) for every clinic input block of `sources`.
 def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
@@ -345,11 +607,14 @@ obj Emitter {
         getsets: dict[str, dict[str, dict[str, str]]] = {},
         hooks: list[str] = [],
         tokens: set[str] = set(),
-        invokers: set[str] = {"BoundArguments"},
+        invokers: set[str] = set(),
+        capi: set[str] = set(),
         qualified: bool = False,
         skipped: list[str] = [],
         windows: list[str] = [],
         class_docs: dict[str, str] = {},
+        c_docs: dict[str, str] = {},
+        slow_only: bool = False,
         function_docs: dict[str, str] = {},
         source_text: str = "";
 
@@ -406,11 +671,15 @@ obj Emitter {
         if jtype == "bool" and text in ("0", "1", "true", "false") {
             return "True" if text in ("1", "true") else "False";
         }
-        if re.fullmatch(r"-?\d+(\.\d+)?", text) {
+        if re.fullmatch(r"-?\d+(\.\d+)?([eE][-+]?\d+)?", text) {
             return text;
         }
         if re.fullmatch(r'"(?:[^"\\]|\\.)*"', text) {
             return text;
+        }
+        # Py_ssize_t's limit on every JacPython target.
+        if text == "PY_SSIZE_T_MAX" {
+            return "9223372036854775807";
         }
         if re.fullmatch(r"[A-Za-z_]\w*", text) {
             self.module_names.add(text);
@@ -461,6 +730,21 @@ obj Emitter {
         qualified = ", True" if self.qualified else "";
         # Clinic records bitwise=True only as the mask format unit it selects.
         bitwise = getattr(conv, "format_unit", "") in ("B", "H", "I", "k", "K");
+        # object(converter=..., type=...): the named function converts into
+        # the declared C type.
+        through = getattr(conv, "converter", None);
+        if kind == "object" and isinstance(through, str) and through {
+            if through in SHARED_CONVERTERS {
+                return (
+                    jac_ctype(conv.type),
+                    self.use(SHARED_CONVERTERS[through]) + f"(value, {where})",
+                    []
+                );
+            }
+            custom = "convert_" + re.sub(r"\W", "_", through);
+            self.module_names.add(custom);
+            return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
+        }
         if kind == "object" or kind in TYPED_OBJECTS {
             subclass = TYPED_OBJECTS[kind]
                 if kind in TYPED_OBJECTS
@@ -529,7 +813,8 @@ obj Emitter {
             );
         }
         # Without bitwise=True these are CPython's _PyLong_*_Converter.
-        if kind in ("unsigned_short", "unsigned_int", "uint16", "uint32")
+        if kind
+            in ("unsigned_short", "unsigned_int", "uint8", "uint16", "uint32", "uint64")
             and not bitwise {
             return (BOUNDED[kind][0], self.use("convert_" + kind) + "(value)", []);
         }
@@ -609,14 +894,34 @@ obj Emitter {
             }
             return ("BufferArgument", self.use(converter) + f"(value, {where})", []);
         }
-        # A module-defined converter, supplied by the module's Jac file.
         named = getattr(conv, "converter", "");
+        # Converters the interpreter itself provides (ceval.c), shared by
+        # every module that names them.
+        if isinstance(named, str) and named in SHARED_CONVERTERS {
+            return (
+                jac_ctype(conv.type),
+                self.use(SHARED_CONVERTERS[named]) + f"(value, {where})",
+                []
+            );
+        }
+        # A module-defined converter, supplied by the module's Jac file.
         custom = re.sub(
             r"\W",
             "_",
             "convert_" + (named if isinstance(named, str) and named else kind)
         );
         self.module_names.add(custom);
+        # A converter the C glue calls with the module first (_struct's
+        # cache_struct_converter(module, arg, &out)) gets the receiver too.
+        parsed = "";
+        try {
+            parsed = conv.parse_arg("arg", "argument", limited_capi=False) or "";
+        } except Exception {
+            parsed = "";
+        }
+        if isinstance(named, str) and named and f"{named}(module," in parsed {
+            return (jac_ctype(conv.type), f"{custom}(receiver, value, {where})", []);
+        }
         return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
     }
 
@@ -730,6 +1035,7 @@ obj Emitter {
 
     def function(cls: any, f: any) {
         kind = f.kind.name;
+        self.slow_only = False;
         # A clone kept only for its docstring and method table entry: the C
         # module binds it by hand. A parser calls `<c_basename>_impl`; without
         # one (a METH_O object argument) the C function is the impl itself.
@@ -756,11 +1062,15 @@ obj Emitter {
         if any(p.group for p in params) {
             raise Unsupported("optional groups");
         }
-        if any(
-            class_name(p.converter)
-                in ("varpos_tuple_converter", "varpos_array_converter") for p in params
-        ) {
-            raise Unsupported("*args");
+        varpos = [
+            p
+            for p in params
+            if class_name(p.converter)
+                in ("varpos_tuple_converter", "varpos_array_converter")
+        ];
+        if varpos {
+            self.varargs_function(cls, f, params, varpos[0]);
+            return;
         }
         convention = self.calling_convention(f);
         flags = convention[0];
@@ -780,12 +1090,17 @@ obj Emitter {
             if kind in ("METHOD_NEW", "METHOD_INIT")
             else f.name;
         ret_kind = class_name(f.return_converter).removesuffix("_return_converter");
-        if ret_kind not in RETURNS {
-            raise Unsupported(f"return converter {ret_kind}");
-        }
-        wrap = RETURNS[ret_kind];
-        if wrap {
-            self.use(wrap);
+        # A module's own return converter (cmath's Py_complex_protected) is
+        # return_<kind> in the module's Jac file, as its C one is in the module.
+        wrap = "";
+        if ret_kind in RETURNS {
+            wrap = RETURNS[ret_kind];
+            if wrap {
+                self.use(wrap);
+            }
+        } else {
+            wrap = re.sub(r"\W", "_", "return_" + ret_kind);
+            self.module_names.add(wrap);
         }
         # The body that converts bound values and calls the impl.
         body: list[str] = [];
@@ -797,6 +1112,8 @@ obj Emitter {
             body.append(
                 f"cls = {self.use(finder)}(receiver, {self.token_name(cls.name)});"
             );
+            self.api.add("jacpy_release");
+            body.append(RELEASE + "jacpy_release(cls);");
             call_args.append("cls");
         }
         # A METH_O argument is named only "argument" in type errors.
@@ -804,7 +1121,18 @@ obj Emitter {
         for (i, p) in enumerate(params) {
             var = local(p.name);
             position = i + 1;
-            slot = f"args.values[{i}]";
+            # Where parameter i's value is and whether it was passed: the
+            # METH_O argument, the stepwise parser's BoundArguments, or the
+            # bound array (shorter than the parameters on the fast path).
+            slot = f"clinic_args[{i}]";
+            present = f"count > {i} and clinic_args[{i}] != NULL";
+            if meth_o {
+                slot = "value";
+                present = "True";
+            } elif stepwise {
+                slot = f"args.values[{i}]";
+                present = f"{slot} != NULL";
+            }
             if stepwise {
                 body.append(f"args.reach({i});");
             }
@@ -820,7 +1148,7 @@ obj Emitter {
                 fallback = self.default_value(p, "i64") if p.is_optional() else "0";
                 body.append(f"{var}: i64 = {fallback};");
                 body.append(
-                    f"if {slot} != NULL {{ {var} = {self.use('convert_optional_ssize')}({slot}, {fallback}); }}"
+                    f"if {present} {{ {var} = {self.use('convert_optional_ssize')}({slot}, {fallback}); }}"
                 );
                 call_args.append(var);
                 continue;
@@ -836,7 +1164,9 @@ obj Emitter {
                 and expr.split("(")[0] in self.module_names;
             if p.is_optional() and custom {
                 fallback = self.default_value(p, jtype);
-                body.append(f"value = {slot};");
+                if slot != "value" {
+                    body.append(f"value = {slot} if {present} else NULL;");
+                }
                 body.append(f"{var} = {expr} if value != NULL else {fallback};");
             } elif p.is_optional() {
                 if not jtype {
@@ -845,20 +1175,33 @@ obj Emitter {
                 fallback = self.default_value(p, jtype);
                 if jtype == "BufferArgument" {
                     body.append(f"{var} = BufferArgument();");
+                    body.append(RELEASE + f"{var}.close();");
                 } else {
                     body.append(f"{var}: {jtype} = {fallback};");
                 }
-                body.append(f"if {slot} != NULL {{");
+                body.append(f"if {present} {{");
                 body.append(f"    value = {slot};");
                 body += [f"    {c}" for c in checks];
                 body.append(f"    {var} = {expr};");
                 body.append("}");
             } else {
-                body.append(f"value = {slot};");
+                if slot != "value" {
+                    body.append(f"value = {slot};");
+                }
                 body += checks;
                 body.append(
                     f"{var}: {jtype} = {expr};" if jtype else f"{var} = {expr};"
                 );
+                if jtype == "BufferArgument" {
+                    body.append(RELEASE + f"{var}.close();");
+                }
+            }
+            # A converter whose cleanup drops the reference it produced
+            # (_struct's cache_struct) hands the impl a new reference.
+            if jtype != "BufferArgument"
+                and re.search(r"Py_X?DECREF\(", p.converter.cleanup() or "") {
+                self.api.add("jacpy_release");
+                body.append(RELEASE + f"jacpy_release({var});");
             }
             if jtype == "SizedText" {
                 call_args += [f"{var}.data", f"{var}.size"];
@@ -871,14 +1214,7 @@ obj Emitter {
         }
         call = f"{impl_name}({', '.join(call_args)})";
         result = f"{wrap}({call})" if wrap else call;
-        if uses_class {
-            body.append(f"result = {result};");
-            body.append("jacpy_release(cls);");
-            self.api.add("jacpy_release");
-            body.append("return result;");
-        } else {
-            body.append(f"return {result};");
-        }
+        body.append(f"return {result};");
         sig = f"{base}_signature";
         if parser != "PARSE_GIVEN" {
             names = ", ".join(jac_string(p.name) for p in params);
@@ -892,7 +1228,11 @@ obj Emitter {
             if generator.min_kw_only {
                 options.append(f"keyword_required={generator.min_kw_only}");
             }
-            options += self.deprecations(f, params);
+            warnings = self.deprecations(f, params);
+            # Tools/clinic's deprecation checks run in its parser, so a
+            # function that warns always binds through the signature.
+            self.slow_only = bool(warnings);
+            options += warnings;
             options.append(f"parser={self.parse_constant(parser)}");
             self.lines.append(
                 f"glob:priv {sig} = {self.invoker('CallSignature')}({', '.join(
@@ -900,12 +1240,25 @@ obj Emitter {
                 )});"
             );
         }
-        self.lines.append(
-            f"def:priv {base}_bound(args: BoundArguments) -> ptr[PyObject] {{"
-        );
-        self.lines.append("    receiver = args.context;");
-        self.lines += ["    " + line for line in body];
-        self.lines.append("}");
+        if stepwise {
+            self.invoker("BoundArguments");
+            self.lines.append(
+                f"def:priv {base}_bound(args: BoundArguments) -> ptr[PyObject] {{"
+            );
+            self.lines.append("    receiver = args.context;");
+            self.lines += nest_releases(body, "    ");
+            self.lines.append("}");
+        } elif kind in ("METHOD_NEW", "METHOD_INIT")
+            or not (meth_o or flags & METHOD_FLAGS["METH_NOARGS"]) {
+            self.lines.append(
+                f"def:priv {base}_bound(receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64) -> ptr[PyObject] {{"
+            );
+            if params {
+                self.lines.append("    clinic_args = stack.view(count);");
+            }
+            self.lines += self.guarded(body, "    ");
+            self.lines.append("}");
+        }
         doc = f.docstring or "";
         # A signature-only docstring ends with the blank line the
         # __text_signature__ getter expects, as Tools/clinic writes it.
@@ -915,12 +1268,40 @@ obj Emitter {
         if kind in ("METHOD_NEW", "METHOD_INIT") and cls is not None {
             self.class_docs[cls.name] = doc;
         }
+        # Clinic's self_type_check: a tp_new/tp_init that refuses arguments
+        # does so only for the class or a subclass keeping the other slot.
+        type_check = "";
+        if "{self_type_check}" in PARSERS[id(f)][1]
+            and cls is not None
+            and cls.typedef {
+            self.tokens.add(cls.name);
+            finder = "new_checks_arguments"
+                if kind == "METHOD_NEW"
+                else "init_checks_arguments";
+            subject = "type" if kind == "METHOD_NEW" else "receiver";
+            type_check = f", checked={self.use(finder)}({subject}, {self.token_name(
+                cls.name
+            )})";
+        }
+        invoke_args = "invoke" if stepwise else "invoke_tuple";
         if kind == "METHOD_NEW" {
             self.lines.append(
                 f"def:pub {base}_new(type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {{"
             );
+            if not stepwise {
+                self.lines += self.tuple_fast_path(parser, generator, base, "type");
+                if parser == "PARSE_KEYWORDS" {
+                    self.lines += self.unpacked(
+                        f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
+                        base,
+                        "type",
+                        len(params),
+                        "    return "
+                    );
+                }
+            }
             self.lines.append(
-                f"    return {self.invoker('invoke')}({sig}, args, kwargs, {base}_bound, type);"
+                f"    return {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, type{type_check});"
             );
             self.lines.append("}");
             self.hooks.append(f"{base}_new");
@@ -930,9 +1311,46 @@ obj Emitter {
             self.lines.append(
                 f"def:pub {base}_init(receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> i32 {{"
             );
-            self.lines.append(
-                f"    result = {self.invoker('invoke')}({sig}, args, kwargs, {base}_bound, receiver);"
-            );
+            arity = [] if stepwise else self.tuple_arity(parser, generator);
+            if arity {
+                self.api.add("jacpy_dict_size");
+                self.api.add("jacpy_tuple_items");
+                self.api.add("PyTuple_Size");
+                self.lines += [
+                    "    result: ptr[PyObject] = NULL;",
+                    "    bound = False;",
+                    "    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {",
+                    "        size = PyTuple_Size(args);",
+                    f"        if size >= {arity[0]} and size <= {arity[1]} {{",
+                    "            bound = True;",
+                    f"            result = {base}_bound(receiver, jacpy_tuple_items(args), size);",
+                    "        }",
+                    "    }",
+                    "    if not bound {"
+                ];
+                if parser == "PARSE_KEYWORDS" {
+                    self.lines += [
+                        "        " + line
+                        for line in self.unpacked(
+                            f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
+                            base,
+                            "receiver",
+                            len(params),
+                            "    bound = True;\n    result = "
+                        )
+                    ];
+                    self.lines.append("    }");
+                    self.lines.append("    if not bound {");
+                }
+                self.lines += [
+                    f"        result = {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver{type_check});",
+                    "    }"
+                ];
+            } else {
+                self.lines.append(
+                    f"    result = {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver{type_check});"
+                );
+            }
             self.lines.append("    if not result { return i32(-1); }");
             self.lines.append("    jacpy_release(result);");
             self.lines.append("    return i32(0);");
@@ -949,15 +1367,12 @@ obj Emitter {
         keywords = bool(flags & METHOD_FLAGS["METH_KEYWORDS"]);
         head = f"def:priv {base}_call(receiver: ptr[PyObject], ";
         if meth_o or flags & METHOD_FLAGS["METH_NOARGS"] {
+            # CPython's call checked the arity: convert the argument in place.
             argument = "value" if meth_o else "unused";
             self.lines.append(head + f"{argument}: ptr[PyObject]) -> ptr[PyObject] {{");
-            self.lines.append(
-                f"    return {self.invoker('invoke_given')}({'value'
-                    if meth_o
-                    else 'NULL'}, {base}_bound, receiver);"
-            );
+            self.lines += self.guarded(body, "    ");
             callback = "positional";
-        } elif fast {
+        } elif fast and stepwise {
             kwnames = ", kwnames: ptr[PyObject]" if keywords else "";
             self.lines.append(
                 head
@@ -969,12 +1384,67 @@ obj Emitter {
                     else 'NULL'}, {base}_bound, receiver);"
             );
             callback = "fast_keywords" if keywords else "fast";
+        } elif fast {
+            # The vectorcall stack is the bound array when clinic's own fast
+            # path applies; otherwise the signature's parser binds it.
+            kwnames = ", kwnames: ptr[PyObject]" if keywords else "";
+            self.lines.append(
+                head
+                    + f"args: ptr[ptr[PyObject]], nargs: i64{kwnames}) -> ptr[PyObject] {{"
+            );
+            if parser == "PARSE_POSITIONAL" and not self.slow_only {
+                self.lines.append(
+                    f"    if not {self.invoker('check_positional')}({jac_string(
+                        fname
+                    )}, int(nargs), {generator.min_pos}, {generator.max_pos}) {{"
+                );
+                self.lines.append("        return NULL;");
+                self.lines.append("    }");
+                self.lines.append(f"    return {base}_bound(receiver, args, nargs);");
+            } else {
+                fast_path = self.stack_fast_path(parser, generator, keywords);
+                if fast_path {
+                    self.lines.append(f"    if {fast_path} {{");
+                    self.lines.append(
+                        f"        return {base}_bound(receiver, args, nargs);"
+                    );
+                    self.lines.append("    }");
+                }
+                if parser == "PARSE_KEYWORDS" and keywords {
+                    self.lines += self.unpacked(
+                        f"{self.invoker('unpack_stack')}({sig}, args, nargs, kwnames)",
+                        base,
+                        "receiver",
+                        len(params),
+                        "    return "
+                    );
+                }
+                self.lines.append(
+                    f"    return {self.invoker('invoke_stack')}({sig}, args, nargs, {'kwnames'
+                        if keywords
+                        else 'NULL'}, {base}_bound, receiver);"
+                );
+            }
+            callback = "fast_keywords" if keywords else "fast";
         } elif keywords {
             self.lines.append(
                 head + "args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {"
             );
+            invoke_args = "invoke" if stepwise else "invoke_tuple";
+            if not stepwise {
+                self.lines += self.tuple_fast_path(parser, generator, base, "receiver");
+                if parser == "PARSE_KEYWORDS" {
+                    self.lines += self.unpacked(
+                        f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
+                        base,
+                        "receiver",
+                        len(params),
+                        "    return "
+                    );
+                }
+            }
             self.lines.append(
-                f"    return {self.invoker('invoke')}({sig}, args, kwargs, {base}_bound, receiver);"
+                f"    return {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver);"
             );
             callback = "keywords";
         } else {
@@ -986,6 +1456,138 @@ obj Emitter {
                 doc
             )}, {flags})"
         );
+    }
+
+    # A function of only *args (math.gcd): METH_FASTCALL with no arity check,
+    # the impl taking the argument array and its length (or, for a tuple
+    # converter, the arguments as a tuple).
+    def varargs_function(cls: any, f: any, params: list[any], varpos: any) {
+        if len(params) != 1 or f.kind.name != "CALLABLE" {
+            raise Unsupported("*args with other parameters");
+        }
+        flags = 0;
+        for name in PARSERS[id(f)][0].flags.split("|") {
+            flags = flags | METHOD_FLAGS[name.strip()];
+        }
+        if flags != METHOD_FLAGS["METH_FASTCALL"] {
+            raise Unsupported("*args with keywords");
+        }
+        base = f.c_basename;
+        impl_name = base + "_impl";
+        self.impls.add(impl_name);
+        self.lines.append(
+            f"def:priv {base}_call(receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64) -> ptr[PyObject] {{"
+        );
+        if class_name(varpos.converter) == "varpos_tuple_converter" {
+            tuple_of = self.invoker("vector_tuple");
+            self.api.add("jacpy_release");
+            self.lines.append(f"    values = {tuple_of}(args, nargs);");
+            self.lines.append("    if not values { return NULL; }");
+            self.lines.append(f"    result = {impl_name}(receiver, values);");
+            self.lines.append("    jacpy_release(values);");
+            self.lines.append("    return result;");
+        } else {
+            self.lines.append(f"    return {impl_name}(receiver, args, nargs);");
+        }
+        self.lines.append("}");
+        doc = f.docstring or "";
+        if doc.split("\n")[-1] == "--" {
+            doc += "\n\n";
+        }
+        self.tables.setdefault(self.table_name(cls), []).append(
+            f"MethodDefinition({jac_string(f.name)}, MethodCallbacks(fast={base}_call), {jac_string(
+                doc
+            )}, {flags})"
+        );
+    }
+
+    # `body` inside the exception region every conversion and impl may
+    # raise boundary_failure from, with its releases nested.
+    def guarded(body: list[str], indent: str) -> list[str] {
+        self.capi.add("boundary_failure");
+        return [indent + "try {"]
+            + nest_releases(body, indent + "    ")
+            + [
+                indent + "} except boundary_failure {",
+                indent + "    return NULL;",
+                indent + "}"
+            ];
+    }
+
+    # The condition under which a vectorcall's stack binds as it is: clinic's
+    # `kwnames == NULL && minpos <= nargs && nargs <= maxpos` for
+    # _PyArg_UnpackKeywords, no arguments at all for a parameterless
+    # defining-class method.
+    def stack_fast_path(parser: str, generator: any, keywords: bool) -> str {
+        if self.slow_only {
+            return "";
+        }
+        no_keywords = "kwnames == NULL and " if keywords else "";
+        if parser == "PARSE_KEYWORDS" and not generator.min_kw_only {
+            return f"{no_keywords}nargs >= {generator.min_pos} and nargs <= {generator.max_pos}";
+        }
+        if parser == "PARSE_NO_ARGUMENTS" {
+            return f"{no_keywords}nargs == 0";
+        }
+        return "";
+    }
+
+    # The glue's keyword path: `unpack` binds into a new array, which the
+    # _bound function reads and the glue frees; `finish` receives the result
+    # ("    return " or an assignment). A NULL array falls through to the
+    # parser, which reports the call as CPython does.
+    def unpacked(
+        unpack: str, base: str, receiver: str, count: int, finish: str
+    ) -> list[str] {
+        if self.slow_only {
+            return [];
+        }
+        self.api.add("PyMem_Free");
+        lines = [
+            f"    values = {unpack};",
+            "    if values {",
+            f"        unpacked = {base}_bound({receiver}, values, {count});",
+            "        PyMem_Free(values);"
+        ];
+        lines += ["    " + part for part in (finish + "unpacked;").split("\n")];
+        lines.append("    }");
+        return lines;
+    }
+
+    # The positional counts a tuple-and-dict call without keywords binds as
+    # its tuple's items: the parser's own arity, when it has one to check.
+    def tuple_arity(parser: str, generator: any) -> list[int] {
+        if self.slow_only {
+            return [];
+        }
+        if parser in ("PARSE_KEYWORDS", "PARSE_POSITIONAL", "PARSE_FORMAT")
+            and not generator.min_kw_only {
+            return [generator.min_pos, generator.max_pos];
+        }
+        if parser == "PARSE_NOTHING" {
+            return [0, 0];
+        }
+        return [];
+    }
+
+    def tuple_fast_path(
+        parser: str, generator: any, base: str, receiver: str
+    ) -> list[str] {
+        arity = self.tuple_arity(parser, generator);
+        if not arity {
+            return [];
+        }
+        self.api.add("jacpy_dict_size");
+        self.api.add("jacpy_tuple_items");
+        self.api.add("PyTuple_Size");
+        return [
+            "    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {",
+            "        size = PyTuple_Size(args);",
+            f"        if size >= {arity[0]} and size <= {arity[1]} {{",
+            f"            return {base}_bound({receiver}, jacpy_tuple_items(args), size);",
+            "        }",
+            "    }"
+        ];
     }
 
     def invoker(name: str) -> str {
@@ -1025,6 +1627,25 @@ obj Emitter {
     }
 
     def render(source_names: list[str], version: str) -> str {
+        # A signature only the slow path uses goes with it: a positional-only
+        # METH_FASTCALL function checks its arity inline.
+        text = "\n".join(self.lines);
+        kept: list[str] = [];
+        for line in self.lines {
+            declared = re.match(r"glob:priv (\w+_signature) = ", line);
+            if declared
+                and len(re.findall(r"\b" + declared.group(1) + r"\b", text)) == 1 {
+                continue;
+            }
+            kept.append(line);
+        }
+        self.lines = kept;
+        text = "\n".join(self.lines);
+        self.invokers = {
+            name
+            for name in self.invokers
+            if re.search(r"\b" + name + r"\b", text)
+        };
         head = [
             f'"""Argument Clinic glue for {self.module}: signatures, converters and tables.',
             "",
@@ -1050,11 +1671,23 @@ obj Emitter {
             )} }}",
             "import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }",
             "import from jaclang.runtime.python.bindings.type { PropertyDefinition, PropertyCallbacks }",
-            f"import from jaclang.runtime.python.bindings.arguments {{ {', '.join(
-                sorted(self.invokers)
-            )} }}",
             "import from jaclang.runtime.python.bindings.buffer { BufferArgument }"
         ];
+        if self.invokers {
+            imports.insert(
+                3,
+                f"import from jaclang.runtime.python.bindings.arguments {{ {', '.join(
+                    sorted(self.invokers)
+                )} }}"
+            );
+        }
+        if self.capi {
+            imports.append(
+                f"import from jaclang.runtime.python.capi {{ {', '.join(
+                    sorted(self.capi)
+                )} }}"
+            );
+        }
         converters = sorted(self.converters);
         if converters {
             imports.append(
@@ -1077,8 +1710,19 @@ obj Emitter {
         for (cls_name, doc) in sorted(self.class_docs.items()) {
             tables.append(f"glob {cls_name}_doc: str = {jac_string(doc)};");
         }
+        # A clinic clone's docstring (a function the module binds by hand).
+        taken = {f"{cls_name}_doc" for cls_name in self.class_docs};
         for (base, doc) in sorted(self.function_docs.items()) {
-            tables.append(f"glob {base}_doc: str = {jac_string(doc)};");
+            if f"{base}_doc" not in taken {
+                tables.append(f"glob {base}_doc: str = {jac_string(doc)};");
+                taken.add(f"{base}_doc");
+            }
+        }
+        # The C module's own PyDoc_STRVAR docstrings, under their C names.
+        for (doc_name, doc) in self.c_docs.items() {
+            if doc_name not in taken and doc_name not in KEYWORDS {
+                tables.append(f"glob {doc_name}: str = {jac_string(doc)};");
+            }
         }
         for (table, entries) in sorted(self.tables.items()) {
             tables.append(f"glob {table}: list[MethodDefinition] = [");
@@ -1133,6 +1777,11 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
             emitter.skipped.append(f"{f.full_name}: {reason}");
         }
     }
+    emitter.c_docs = {
+        ** c_docstrings(tree, sources),
+        ** c_macro_docstrings(sources),
+        ** c_table_docs(tree, sources)
+    };
     relative = [str(s.relative_to(tree)) for s in sources];
     return (name, emitter.render(relative, version));
 }

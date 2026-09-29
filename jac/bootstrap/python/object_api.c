@@ -104,6 +104,9 @@ int64_t jacpy_is_tuple(PyObject *handle) { return PyTuple_Check(handle); }
 PyObject *jacpy_tuple_item(PyObject *handle, int64_t index) {
     return Py_XNewRef(PyTuple_GetItem(handle, index));
 }
+/* A tuple's item array (PyTupleObject.ob_item): the generated argument glue
+ * binds a call's positional tuple in place. */
+PyObject **jacpy_tuple_items(PyObject *handle) { return ((PyTupleObject *)handle)->ob_item; }
 int64_t jacpy_tuple_set_owned(PyObject *handle, int64_t index, PyObject *value) {
     if (!value) return -1;
     return PyTuple_SetItem(handle, index, value);

@@ -11,9 +11,7 @@ import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHoo
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
+    TypeFlags
 }
 import from jaclang.runtime.python.bindings.payload {
     dispose_payload,
@@ -24,10 +22,10 @@ import from jaclang.runtime.python.modules.unicodedata {
     UCD_token,
     new_previous_version,
     ucd_3_2_0_version,
-    ucd_unidata_version,
     unicodedata_create_capi
 }
 import from jaclang.runtime.python.modules.unicodedata_db { UNIDATA_VERSION }
+import from jaclang.runtime.python.bindings.members { MemberField, MemberType }
 
 def:priv ucd_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, UCD_token.handle);
@@ -35,10 +33,6 @@ def:priv ucd_dealloc(instance: ptr[PyObject]) {
 
 def:priv ucd_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return traverse_payload(instance, UCD_token.handle, visitor, context);
-}
-
-def:priv unidata_version(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return ucd_unidata_version(instance);
 }
 
 # The functions are both the module's and the UCD type's methods: for a
@@ -53,11 +47,11 @@ glob:priv ucd_type = TypeDefinition(
                  | TypeFlags.IMMUTABLE.value
          ),
          TypeHooks(dealloc=ucd_dealloc, traverse=ucd_traverse),
-         [
-             PropertyDefinition(
-                 "unidata_version", PropertyCallbacks(read=unidata_version)
-             )
-         ]
+         members=[
+             MemberField("unidata_version", MemberType.STRING.value, 0, readonly=True)
+         ],
+         record_size=8,
+         generic_getattr=True
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {

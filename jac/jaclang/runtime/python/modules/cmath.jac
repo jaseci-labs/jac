@@ -1304,9 +1304,10 @@ def:priv unary(operation: int, z: complex_parts) -> tuple[float, float, int] {
     return (result[0] / _M_LN10, result[1] / _M_LN10, result[2]);
 }
 
-def:pub jacpy_cmath_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
+# phase, polar, isfinite, isinf and isnan (15-19) and the complex
+# functions, as Python objects.
+def:pub jacpy_cmath_unary(operation: int, z: complex_parts) -> ptr[PyObject] {
     try {
-        z = input_complex(value);
         if operation == 15 {
             jacpy_clear_errno();
             angle_value = atan2(z.imag, z.real);
@@ -1343,9 +1344,105 @@ def:pub jacpy_cmath_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject]
     }
 }
 
-def:pub jacpy_cmath_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] {
+# Clinic's Py_complex converter (PyComplex_AsCComplex) and cmath's
+# Py_complex_protected one, which clears errno for the call.
+def convert_Py_complex(value: ptr[PyObject], fname: str, label: str) -> complex_parts {
+    return input_complex(value);
+}
+
+def convert_Py_complex_protected(
+    value: ptr[PyObject], fname: str, label: str
+) -> complex_parts {
+    return input_complex(value);
+}
+
+# A Py_complex result and the errno the computation left.
+obj complex_result {
+    has real: float = 0.0,
+        imag: float = 0.0,
+        error: int = 0;
+}
+
+# cmath's Py_complex_protected return converter: EDOM is "math domain error",
+# ERANGE "math range error".
+def return_Py_complex_protected(result: complex_result) -> ptr[PyObject] {
     try {
-        z = input_complex(value);
+        _check_errno(result.error);
+    } except boundary_failure {
+        return NULL;
+    }
+    return PyComplex_FromDoubles(result.real, result.imag);
+}
+
+def:priv unary_result(operation: int, z: complex_parts) -> complex_result {
+    result = unary(operation, z);
+    return complex_result(real=result[0], imag=result[1], error=result[2]);
+}
+
+def cmath_acos_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(0, z);
+}
+
+def cmath_acosh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(1, z);
+}
+
+def cmath_asin_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(2, z);
+}
+
+def cmath_asinh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(3, z);
+}
+
+def cmath_atan_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(4, z);
+}
+
+def cmath_atanh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(5, z);
+}
+
+def cmath_cos_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(6, z);
+}
+
+def cmath_cosh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(7, z);
+}
+
+def cmath_exp_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(8, z);
+}
+
+def cmath_sin_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(9, z);
+}
+
+def cmath_sinh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(10, z);
+}
+
+def cmath_sqrt_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(11, z);
+}
+
+def cmath_tan_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(12, z);
+}
+
+def cmath_tanh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(13, z);
+}
+
+def cmath_log10_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
+    return unary_result(14, z);
+}
+
+def cmath_log_impl(
+    module: ptr[PyObject], z: complex_parts, base: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
         result = _c_log(z);
         if base != 0 {
             divisor = _c_log(input_complex(base));
@@ -1372,32 +1469,42 @@ def:pub jacpy_cmath_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObje
     }
 }
 
-def:pub jacpy_cmath_rect(radius: ptr[PyObject], angle: ptr[PyObject]) -> ptr[PyObject] {
-    try {
-        r = input_float(radius);
-        phi = input_float(angle);
-        result = rectangular(r, phi);
-        return PyComplex_FromDoubles(result.real, result.imag);
-    } except boundary_failure {
-        return NULL;
-    }
+def cmath_phase_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
+    return jacpy_cmath_unary(15, z);
 }
 
-def:pub jacpy_cmath_isclose(
-    left: ptr[PyObject],
-    right: ptr[PyObject],
-    relative: ptr[PyObject],
-    absolute: ptr[PyObject]
-) -> ptr[PyObject] {
+def cmath_polar_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
+    return jacpy_cmath_unary(16, z);
+}
+
+def cmath_isfinite_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
+    return jacpy_cmath_unary(17, z);
+}
+
+def cmath_isinf_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
+    return jacpy_cmath_unary(18, z);
+}
+
+def cmath_isnan_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
+    return jacpy_cmath_unary(19, z);
+}
+
+def cmath_rect_impl(module: ptr[PyObject], r: f64, phi: f64) -> ptr[PyObject] {
+    result = rectangular(r, phi);
+    return PyComplex_FromDoubles(result.real, result.imag);
+}
+
+# cmath.isclose returns clinic's bool: -1 with the error set on failure.
+def cmath_isclose_impl(
+    module: ptr[PyObject],
+    a: complex_parts,
+    b: complex_parts,
+    rel_tol: f64,
+    abs_tol: f64
+) -> i32 {
     try {
-        a = input_complex(left);
-        b = input_complex(right);
-        relative_tolerance = input_float(relative) if relative != 0 else 1e-9;
-        absolute_tolerance = input_float(absolute) if absolute != 0 else 0.0;
-        return PyBool_FromLong(
-            i64(close(a, b, relative_tolerance, absolute_tolerance))
-        );
+        return i32(close(a, b, rel_tol, abs_tol));
     } except boundary_failure {
-        return NULL;
+        return i32(-1);
     }
 }

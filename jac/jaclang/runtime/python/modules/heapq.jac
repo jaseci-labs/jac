@@ -229,3 +229,60 @@ def:pub jacpy_heapify(heap: ptr[PyObject], maximum: i64) -> ptr[PyObject] {
     }
     return Py_NewRef(Py_None);
 }
+
+# The Argument Clinic _impl functions; the glue checks that `heap` is a list.
+def _heapq_heappush_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_push(heap, item, 0);
+}
+
+def _heapq_heappush_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_push(heap, item, 1);
+}
+
+def _heapq_heappop_impl(module: ptr[PyObject], heap: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_heap_pop(heap, 0);
+}
+
+def _heapq_heappop_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_pop(heap, 1);
+}
+
+def _heapq_heapreplace_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_replace(heap, item, 0);
+}
+
+def _heapq_heapreplace_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_replace(heap, item, 1);
+}
+
+def _heapq_heappushpop_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_pushpop(heap, item, 0);
+}
+
+def _heapq_heappushpop_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_pushpop(heap, item, 1);
+}
+
+def _heapq_heapify_impl(module: ptr[PyObject], heap: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_heapify(heap, 0);
+}
+
+def _heapq_heapify_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heapify(heap, 1);
+}

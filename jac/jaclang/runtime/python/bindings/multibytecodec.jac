@@ -4,13 +4,10 @@ codec types over their generated clinic glue."""
 import from jaclang.runtime.python.cpython_api {
     jacpy_release,
     NULL,
-    Py_NewRef,
-    Py_None,
-    PyExc_AttributeError,
     PyObject,
     PyUnicode_InternFromString
 }
-import from jaclang.runtime.python.capi { object_error }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
@@ -22,7 +19,8 @@ import from jaclang.runtime.python.bindings.type {
     TypeHooks,
     TypeFlags,
     PropertyDefinition,
-    PropertyCallbacks
+    PropertyCallbacks,
+    jacpy_binding_record
 }
 import from jaclang.runtime.python.bindings.payload {
     clear_payload,
@@ -57,6 +55,13 @@ import from jaclang.runtime.python.modules.multibytecodec {
     codecctx_errors_set,
     parse_new_arguments,
     stateful_new
+}
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.members {
+    MemberField,
+    MemberType,
+    record_clear,
+    record_set_object
 }
 
 # The "errors" property's context: which stateful type it reads.
@@ -98,6 +103,7 @@ def:priv decoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -
 }
 
 def:priv reader_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, MultibyteStreamReader_token.handle), 8);
     dispose_payload(instance, MultibyteStreamReader_token.handle);
 }
 
@@ -108,6 +114,7 @@ def:priv reader_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) ->
 }
 
 def:priv writer_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, MultibyteStreamWriter_token.handle), 8);
     dispose_payload(instance, MultibyteStreamWriter_token.handle);
 }
 
@@ -159,7 +166,7 @@ def:priv reader_new(
     if parsed is None {
         return NULL;
     }
-    return stateful_new(
+    instance = stateful_new(
         type,
         MultibyteStreamReader_token,
         definition.handle,
@@ -167,6 +174,10 @@ def:priv reader_new(
         parsed.stream,
         False
     );
+    if instance {
+        mirror_stream(instance, MultibyteStreamReader_token);
+    }
+    return instance;
 }
 
 def:priv writer_new(
@@ -176,7 +187,7 @@ def:priv writer_new(
     if parsed is None {
         return NULL;
     }
-    return stateful_new(
+    instance = stateful_new(
         type,
         MultibyteStreamWriter_token,
         definition.handle,
@@ -184,6 +195,10 @@ def:priv writer_new(
         parsed.stream,
         True
     );
+    if instance {
+        mirror_stream(instance, MultibyteStreamWriter_token);
+    }
+    return instance;
 }
 
 # tp_init of the four stateful types accepts anything.
@@ -212,31 +227,17 @@ def:priv errors_property(kind: u64) -> PropertyDefinition {
     );
 }
 
-# The "stream" member (_Py_T_OBJECT, Py_READONLY) of the stream types.
-def:priv stream_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    token = MultibyteStreamReader_token
-        if context == READER
-        else MultibyteStreamWriter_token;
+# The stream types' "stream" member (_Py_T_OBJECT, Py_READONLY) reads the
+# record, which holds the state's stream borrowed.
+def:priv mirror_stream(instance: ptr[PyObject], token: ClassToken) {
     if jacpy_binding_native_present(instance, token.handle) != 0 {
         state = jacpy_binding_native_get(instance, token.handle);
-        if isinstance(state, StatefulState) and state.stream {
-            return Py_NewRef(state.stream);
+        if isinstance(state, StatefulState) {
+            record_set_object(
+                jacpy_binding_record(instance, token.handle), 0, state.stream
+            );
         }
     }
-    return Py_NewRef(Py_None);
-}
-
-def:priv stream_set(
-    instance: ptr[PyObject], value: ptr[PyObject], context: u64
-) -> i32 {
-    object_error(PyExc_AttributeError, "readonly attribute");
-    return i32(-1);
-}
-
-def:priv stream_property(kind: u64) -> PropertyDefinition {
-    return PropertyDefinition(
-        "stream", PropertyCallbacks(read=stream_get, write=stream_set), kind
-    );
 }
 
 glob:priv STATEFUL_FLAGS: u64 = u64(
@@ -265,7 +266,8 @@ glob:priv codec_type = TypeDefinition(
              dealloc=encoder_dealloc,
              traverse=encoder_traverse
          ),
-         [errors_property(ENCODER)]
+         [errors_property(ENCODER)],
+         generic_getattr=True
      ),
      decoder_type = TypeDefinition(
          "_multibytecodec.MultibyteIncrementalDecoder",
@@ -278,7 +280,8 @@ glob:priv codec_type = TypeDefinition(
              dealloc=decoder_dealloc,
              traverse=decoder_traverse
          ),
-         [errors_property(DECODER)]
+         [errors_property(DECODER)],
+         generic_getattr=True
      ),
      reader_type = TypeDefinition(
          "_multibytecodec.MultibyteStreamReader",
@@ -291,7 +294,10 @@ glob:priv codec_type = TypeDefinition(
              dealloc=reader_dealloc,
              traverse=reader_traverse
          ),
-         [errors_property(READER), stream_property(READER)]
+         [errors_property(READER)],
+         members=[MemberField("stream", MemberType.OBJECT.value, 0, readonly=True)],
+         record_size=8,
+         generic_getattr=True
      ),
      writer_type = TypeDefinition(
          "_multibytecodec.MultibyteStreamWriter",
@@ -304,7 +310,10 @@ glob:priv codec_type = TypeDefinition(
              dealloc=writer_dealloc,
              traverse=writer_traverse
          ),
-         [errors_property(WRITER), stream_property(WRITER)]
+         [errors_property(WRITER)],
+         members=[MemberField("stream", MemberType.OBJECT.value, 0, readonly=True)],
+         record_size=8,
+         generic_getattr=True
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {

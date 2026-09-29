@@ -105,8 +105,19 @@ calls (`parser=PARSE_POSITIONAL` for `_PyArg_CheckPositional`,
 `PARSE_KEYWORDS` for `_PyArg_UnpackKeywords`, `PARSE_FORMAT` and
 `PARSE_FORMAT_KEYWORDS` for `PyArg_ParseTuple` and
 `PyArg_ParseTupleAndKeywords`); `bindings/arguments.jac` implements each with
-its messages. A hand-written binding picks the same flags and parser as the C
-module's clinic output. A C type's `PyMemberDef` fields are real member
+its messages. The generated glue takes clinic's own fast paths without
+allocating: a `METH_O` or `METH_NOARGS` function converts its argument in
+place, a positional-only `METH_FASTCALL` function checks its arity with
+`check_positional` and converts the vectorcall stack, and a keyword-capable
+function or a `tp_new`/`tp_init` hands its stack or its tuple's items
+(`jacpy_tuple_items`) to the `_bound` function when no keywords are passed and
+the positional count is in range. Only the other calls go through the
+`CallSignature` (`invoke_stack`, `invoke_tuple`), which binds into an array as
+long as the parameter list. The glue calls its `_bound` function directly
+there: passing a Jac function as a `Callable` allocates a closure per call.
+`ArgumentFormat` analyses each format string once (`format_plan`). A
+hand-written binding picks the same flags and parser as the C module's clinic
+output. A C type's `PyMemberDef` fields are real member
 descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
 in the instance and `jacpy_binding_record()` gives their address
 (`select.kevent`, `_multiprocessing.SemLock`).
@@ -161,6 +172,30 @@ entry (`_sqlite3.connect`), contributes only `<c_basename>_doc`, and the
 binding supplies the function. `TypeHooks(finalize=...)` is `tp_finalize`; a
 dealloc calls `PyObject_CallFinalizerFromDealloc()` first, as
 `sqlite3.Connection` does.
+
+The public surface comes from the same source as the parsing. Besides the
+clinic tables, the glue carries every other docstring of the C files as a
+`glob`: `PyDoc_STRVAR` texts under their C names (`module_doc`,
+`s_pack__doc__`, `teecopy_doc`) and the inline `PyDoc_STR` of a
+`PyMethodDef`, `PyMemberDef` or `PyGetSetDef` table as
+`<table>_<name>_doc` (`deque_methods___class_getitem___doc`,
+`defdict_members_default_factory_doc`). A binding builds the module and type
+docs, its hand-written `PyMethodDef` entries and its getset and member docs
+from these, so no docstring or text signature is written by hand. The type
+options follow the C slots: `weaklist=True` for a `__weaklistoffset__` member
+(not `Py_TPFLAGS_MANAGED_WEAKREF`), `generic_getattr`/`generic_setattr` for
+`Py_tp_getattro = PyObject_GenericGetAttr` and its setattr pair, and
+`TypeHooks.finalize` for `Py_tp_finalize`. A type without `Py_tp_new` in C
+has none in Jac either (`defaultdict`, `_lsprof.Profiler`): its state lives
+in the member record or appears on first use. A writable `Py_T_OBJECT`
+member owns its reference in the record (`_tuplegetter.__doc__`,
+`Pickler.dispatch_table`); a read-only one over native state mirrors it
+borrowed (`BZ2Decompressor.unused_data`) and the type zeroes the record before
+the state releases it. A converter C calls with the module first
+(`cache_struct_converter(module, arg, &out)`) receives the receiver, a
+converter whose `cleanup` drops its result has the glue release it, and the
+interpreter's own `_PyEval_SliceIndexNotNone` is the shared
+`convert_slice_index_not_none`.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or

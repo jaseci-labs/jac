@@ -292,6 +292,7 @@ glob OPAQUE: list[str] = [
          "_PyLong_UnsignedInt_Converter": {1: "&mut u32"},
          "_PyLong_UInt16_Converter": {1: "&mut u16"},
          "_PyLong_UInt32_Converter": {1: "&mut u32"},
+         "_PyLong_UInt8_Converter": {1: "&mut u8"},
          "_PyLong_UInt64_Converter": {1: "&mut u64"}
      },
      # `void *` parameters of a PyArg converter (`int conv(PyObject *, void *)`)

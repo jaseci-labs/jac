@@ -22,6 +22,13 @@ import from c {
     );
 }
 
+import from c {
+    # The state through the instance's own type's binding definition.
+    def jacpy_binding_own_present(object: ptr[PyObject]) -> i64;  def jacpy_binding_own_get(
+        object: ptr[PyObject]
+    ) -> NativeState;
+}
+
 def traverse_payload(
     instance: ptr[PyObject], definition: ptr, visitor: ptr, context: ptr
 ) -> i32 {

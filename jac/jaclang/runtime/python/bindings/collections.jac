@@ -1,4 +1,6 @@
-"""Native collection types, iteration, descriptors, and Python ownership."""
+"""The _collections module: deque_new, the deque slots and iterators, the
+hand-written defaultdict and _tuplegetter, and the clinic-generated methods
+over the state modules/collections.jac keeps."""
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
@@ -9,15 +11,11 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_RuntimeError,
     PyExc_SystemError,
     PyExc_TypeError,
-    PyExc_ValueError,
-    PyLong_AsSsize_t,
     PyLong_FromLongLong,
-    PyNumber_AsSsize_t,
     PyODict_Type,
     PyObject,
     PyObject_Call,
     PyObject_CallNoArgs,
-    PyObject_CallOneArg,
     PyObject_GetAttrString,
     PyObject_GetIter,
     PyTuple_GetSlice,
@@ -28,13 +26,10 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_NotImplemented,
     Py_TYPE,
-    _PyObject_GetState,
-    jacpy_error_pending,
     jacpy_is_dict,
     jacpy_is_tuple,
     jacpy_release,
     jacpy_tuple_item,
-    jacpy_tuple_set_owned,
     jacpy_type_check
 }
 import from jaclang.runtime.python.bindings.module {
@@ -54,21 +49,16 @@ import from jaclang.runtime.python.bindings.type {
     TypeFlags,
     PropertyCallbacks,
     PropertyDefinition,
-    jacpy_binding_owner,
-    jacpy_binding_allocate,
-    jacpy_binding_basicsize,
     jacpy_binding_parent,
     jacpy_binding_matches,
-    jacpy_binding_base_new,
+    jacpy_binding_record,
     jacpy_binding_base_init,
     jacpy_binding_base_traverse,
     jacpy_binding_base_clear,
     jacpy_binding_base_dealloc
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
-    jacpy_binding_native_set,
     jacpy_binding_native_present,
     jacpy_binding_native_clear,
     jacpy_binding_untrack,
@@ -76,35 +66,60 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     dispose_payload
 }
+import from jaclang.runtime.python.bindings.members {
+    MemberField,
+    MemberType,
+    record_object,
+    record_set_object
+}
 import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
     PARSE_FORMAT,
     invoke,
-    index_value,
-    invoke_vector
+    index_value
 }
 import from jaclang.runtime.python.bindings.converters { bad_argument }
+import from jaclang.runtime.python.bindings.clinic.collections {
+    collections_doc,
+    defdict_class_getitem_doc,
+    defdict_copy_doc,
+    defdict_doc,
+    defdict_members_default_factory_doc,
+    defdict_missing_doc,
+    deque_doc,
+    deque_getset_maxlen_doc,
+    deque_init_init,
+    deque_methods,
+    deque_methods___class_getitem___doc,
+    length_hint_doc,
+    module_methods,
+    reduce_doc,
+    tuplegetter_new_new
+}
 import from jaclang.runtime.python.modules.collections {
+    DequeIteratorState,
+    DequeState,
+    TupleGetterState,
+    _tuplegetter_token,
+    allocate,
+    collections_module_token,
+    defdict_token,
+    deque_copy_impl,
     deque_state,
-    deque_cursor,
+    deque_token,
+    deque_value,
+    dequeiter_token,
+    dequereviter_token,
+    iterator_create,
+    module_for,
+    search,
     jacpy_deque_size,
     jacpy_deque_limit,
-    jacpy_deque_memory,
-    jacpy_deque_set_limit,
-    jacpy_deque_clear,
-    jacpy_deque_borrow,
-    jacpy_deque_pop,
-    jacpy_deque_append,
     jacpy_deque_extend,
     jacpy_deque_item,
     jacpy_deque_assign,
-    jacpy_deque_insert,
-    jacpy_deque_rotate,
-    jacpy_deque_reverse,
-    jacpy_deque_search,
-    jacpy_deque_cursor,
     jacpy_deque_next,
     jacpy_deque_remaining,
     jacpy_deque_consumed,
@@ -112,75 +127,21 @@ import from jaclang.runtime.python.modules.collections {
     jacpy_deque_repeat,
     jacpy_deque_repr,
     jacpy_default_missing,
-    jacpy_count_elements,
     jacpy_default_repr
 }
 import from jaclang.runtime.python.capi {
-    jac_heap_size,
+    repr_value,
     object_error,
     type_name,
     text_object,
-    repr_value,
     boundary_failure
 }
 
-obj DequeState(NativeState) {
-    has native: deque_state;
-
-    def clear {
-        jacpy_deque_clear(self.native);
-    }
-
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        for i in range(int(jacpy_deque_size(self.native))) {
-            status = visit_reference(
-                jacpy_deque_borrow(self.native, i64(i)), visitor, context
-            );
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
-
-    def drop {
-        self.clear();
-    }
-}
-
-obj DequeIteratorState(ReferenceState) {
-    has cursor: (deque_cursor | None);
-
-    def clear {
-        self.cursor = None;
-        super.clear();
-    }
-}
-
-obj TupleGetterState(ReferenceState) {
-    has index: i64;
-}
-
-def:priv module_for(type: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_binding_owner(type, definition.handle);
-}
-
-def:priv deque_value(instance: ptr[PyObject]) -> (DequeState | None) {
-    if jacpy_binding_native_present(instance, deque_type.handle) != 0 {
-        state = jacpy_binding_native_get(instance, deque_type.handle);
-        if isinstance(state, DequeState) {
-            return state;
-        }
-    }
-    object_error(PyExc_SystemError, "native deque state is unavailable");
-    return None;
-}
-
 def:priv reference_value(
-    instance: ptr[PyObject], type: TypeDefinition
+    instance: ptr[PyObject], definition: ptr
 ) -> (ReferenceState | None) {
-    if jacpy_binding_native_present(instance, type.handle) != 0 {
-        state = jacpy_binding_native_get(instance, type.handle);
+    if jacpy_binding_native_present(instance, definition) != 0 {
+        state = jacpy_binding_native_get(instance, definition);
         if isinstance(state, ReferenceState) {
             return state;
         }
@@ -189,59 +150,11 @@ def:priv reference_value(
     return None;
 }
 
-def:priv allocate(
-    type: ptr[PyObject], declaration: TypeDefinition, state: NativeState
-) -> ptr[PyObject] {
-    instance = jacpy_binding_allocate(type);
-    if instance != 0
-        and jacpy_binding_native_set(instance, declaration.handle, state) < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    return instance;
-}
-
+# deque_new: an empty deque; deque.__init__ (clinic) fills it.
 def:priv deque_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return allocate(type, deque_type, DequeState(native=deque_state()));
-}
-
-glob:priv deque_signature = CallSignature("deque", ["iterable", "maxlen"], 0, 2);
-def:priv deque_init_bound(args: BoundArguments) -> ptr[PyObject] {
-    limit: i64 = -1;
-    if args.values[1] != 0 and args.values[1] != Py_None {
-        limit = PyLong_AsSsize_t(args.values[1]);
-        if limit == -1 and jacpy_error_pending() != 0 {
-            return NULL;
-        }
-        if limit < 0 {
-            object_error(PyExc_ValueError, "maxlen must be non-negative");
-            return NULL;
-        }
-    }
-    state = deque_value(args.context);
-    if state is None {
-        return NULL;
-    }
-    jacpy_deque_set_limit(state.native, limit);
-    jacpy_deque_clear(state.native);
-    if args.values[0] != 0
-        and jacpy_deque_extend(state.native, args.context, args.values[0], 0) < 0 {
-        return NULL;
-    }
-    return Py_NewRef(Py_None);
-}
-
-def:priv deque_initialize(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> i32 {
-    result = invoke(deque_signature, args, kwargs, deque_init_bound, instance);
-    if result == 0 {
-        return i32(-1);
-    }
-    jacpy_release(result);
-    return i32(0);
+    return allocate(type, deque_token.handle, DequeState(native=deque_state()));
 }
 
 def:priv deque_length(instance: ptr[PyObject]) -> i64 {
@@ -263,176 +176,8 @@ def:priv deque_assign(
         else i32(-1);
 }
 
-def:priv append(
-    instance: ptr[PyObject], value: ptr[PyObject], left: i64
-) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
-        return NULL;
-    }
-    jacpy_deque_append(state.native, value, left);
-    return Py_NewRef(Py_None);
-}
-
-def:priv deque_append(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return append(instance, value, 0);
-}
-
-def:priv deque_appendleft(
-    instance: ptr[PyObject], value: ptr[PyObject]
-) -> ptr[PyObject] {
-    return append(instance, value, 1);
-}
-
-def:priv pop(instance: ptr[PyObject], left: i64) -> ptr[PyObject] {
-    state = deque_value(instance);
-    return jacpy_deque_pop(state.native, left) if state is not None else NULL;
-}
-
-def:priv deque_pop(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return pop(instance, 0);
-}
-
-def:priv deque_popleft(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pop(instance, 1);
-}
-
-def:priv extend(
-    instance: ptr[PyObject], value: ptr[PyObject], left: i64
-) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
-        return NULL;
-    }
-    return Py_NewRef(Py_None)
-        if jacpy_deque_extend(state.native, instance, value, left) == 0
-        else NULL;
-}
-
-def:priv deque_extend(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return extend(instance, value, 0);
-}
-
-def:priv deque_extendleft(
-    instance: ptr[PyObject], value: ptr[PyObject]
-) -> ptr[PyObject] {
-    return extend(instance, value, 1);
-}
-
-def:priv deque_clear_method(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
-    clear_payload(instance, deque_type.handle);
-    return Py_NewRef(Py_None);
-}
-
-def:priv deque_reverse(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
-        return NULL;
-    }
-    jacpy_deque_reverse(state.native);
-    return Py_NewRef(Py_None);
-}
-
-glob:priv rotate_signature = CallSignature("rotate", ["n"], 0, 1, 1),
-     insert_signature = CallSignature("insert", ["index", "value"], 2, 2, 2),
-     index_signature = CallSignature("index", ["value", "start", "stop"], 1, 3, 3);
-
-def:priv rotate_bound(args: BoundArguments) -> ptr[PyObject] {
-    amount: i64 = 1;
-    if args.values[0] != 0 {
-        value = index_value(args.values[0]);
-        if value is None {
-            return NULL;
-        }
-        amount = value;
-    }
-    state = deque_value(args.context);
-    if state is None {
-        return NULL;
-    }
-    jacpy_deque_rotate(state.native, amount);
-    return Py_NewRef(Py_None);
-}
-
-def:priv deque_rotate(
-    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    return invoke_vector(rotate_signature, args, nargs, NULL, rotate_bound, instance);
-}
-
-def:priv insert_bound(args: BoundArguments) -> ptr[PyObject] {
-    index = index_value(args.values[0]);
-    if index is None {
-        return NULL;
-    }
-    state = deque_value(args.context);
-    if state is None {
-        return NULL;
-    }
-    return Py_NewRef(Py_None)
-        if jacpy_deque_insert(state.native, index, args.values[1]) == 0
-        else NULL;
-}
-
-def:priv deque_insert(
-    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    return invoke_vector(insert_signature, args, nargs, NULL, insert_bound, instance);
-}
-
-def:priv search(
-    instance: ptr[PyObject], value: ptr[PyObject], first: i64, last: i64, kind: i64
-) -> i64 {
-    state = deque_value(instance);
-    return jacpy_deque_search(state.native, value, first, last, kind)
-        if state is not None
-        else i64(-1);
-}
-
-def:priv deque_count(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    count = search(instance, value, 0, 9223372036854775807, 0);
-    return PyLong_FromLongLong(count) if count >= 0 else NULL;
-}
-
 def:priv deque_contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     return i32(search(instance, value, 0, 9223372036854775807, 1));
-}
-
-def:priv deque_remove(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_NewRef(Py_None)
-        if search(instance, value, 0, 9223372036854775807, 3) >= 0
-        else NULL;
-}
-
-def:priv index_bound(args: BoundArguments) -> ptr[PyObject] {
-    first: i64 = 0;
-    last: i64 = 9223372036854775807;
-    if args.values[1] != 0 {
-        first = PyNumber_AsSsize_t(args.values[1], NULL);
-        if jacpy_error_pending() != 0 {
-            return NULL;
-        }
-    }
-    if args.values[2] != 0 {
-        last = PyNumber_AsSsize_t(args.values[2], NULL);
-        if jacpy_error_pending() != 0 {
-            return NULL;
-        }
-    }
-    found = search(args.context, args.values[0], first, last, 2);
-    return PyLong_FromLongLong(found) if found >= 0 else NULL;
-}
-
-def:priv deque_index(
-    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    return invoke_vector(index_signature, args, nargs, NULL, index_bound, instance);
 }
 
 def:priv deque_maxlen(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
@@ -442,18 +187,6 @@ def:priv deque_maxlen(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
     }
     limit = jacpy_deque_limit(state.native);
     return Py_NewRef(Py_None) if limit < 0 else PyLong_FromLongLong(limit);
-}
-
-def:priv deque_sizeof(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
-        return NULL;
-    }
-    return PyLong_FromLongLong(
-        jacpy_binding_basicsize(instance)
-            + jac_heap_size(u64(id(state)))
-            + jacpy_deque_memory(state.native)
-    );
 }
 
 def:priv deque_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
@@ -481,40 +214,15 @@ def:priv deque_compare(
     );
 }
 
-def:priv deque_copy(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
-        return NULL;
-    }
-    limit = jacpy_deque_limit(state.native);
-    args = owned_tuple([Py_NewRef(instance)])
-        if limit < 0
-        else owned_tuple([Py_NewRef(instance), PyLong_FromLongLong(limit)]);
-    if args == 0 {
-        return NULL;
-    }
-    result = PyObject_Call(Py_TYPE(instance), args, NULL);
-    jacpy_release(args);
-    if result != 0 and jacpy_binding_matches(result, deque_type.handle) == 0 {
-        object_error(
-            PyExc_TypeError,
-            f"{type_name(instance)[:200]}() must return a deque, not {type_name(result)[:200]}"
-        );
-        jacpy_release(result);
-        return NULL;
-    }
-    return result;
-}
-
 def:priv deque_concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
-    if jacpy_binding_matches(other, deque_type.handle) == 0 {
+    if jacpy_binding_matches(other, deque_token.handle) == 0 {
         object_error(
             PyExc_TypeError,
             f"can only concatenate deque (not \"{type_name(other)[:200]}\") to deque"
         );
         return NULL;
     }
-    result = deque_copy(instance, NULL);
+    result = deque_copy_impl(instance);
     if result == 0 {
         return NULL;
     }
@@ -547,7 +255,7 @@ def:priv deque_irepeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
 }
 
 def:priv deque_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
-    result = deque_copy(instance, NULL);
+    result = deque_copy_impl(instance);
     if result == 0 {
         return NULL;
     }
@@ -559,32 +267,18 @@ def:priv deque_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
     return result;
 }
 
-def:priv iterator_type_for(instance: ptr[PyObject]) -> TypeDefinition {
-    return reverse_type
-        if jacpy_binding_matches(instance, reverse_type.handle) != 0
-        else forward_type;
+def:priv iterator_definition(instance: ptr[PyObject]) -> ptr {
+    return dequereviter_token.handle
+        if jacpy_binding_matches(instance, dequereviter_token.handle) != 0
+        else dequeiter_token.handle;
 }
 
 def:priv iterator_value(instance: ptr[PyObject]) -> (DequeIteratorState | None) {
-    state = reference_value(instance, iterator_type_for(instance));
+    state = reference_value(instance, iterator_definition(instance));
     if isinstance(state, DequeIteratorState) {
         return state;
     }
     return None;
-}
-
-def:priv iterator_create(
-    type: ptr[PyObject], owner: ptr[PyObject], reverse: bool, advance: i64
-) -> ptr[PyObject] {
-    native = deque_value(owner);
-    if native is None {
-        return NULL;
-    }
-    state = DequeIteratorState(
-        references=[Py_NewRef(owner)],
-        cursor=jacpy_deque_cursor(native.native, i64(reverse), advance)
-    );
-    return allocate(type, reverse_type if reverse else forward_type, state);
 }
 
 def:priv deque_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
@@ -593,16 +287,6 @@ def:priv deque_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     return iterator_create(jacpy_binding_state_get(module, 1), instance, False, 0);
-}
-
-def:priv deque_reversed(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
-    module = module_for(Py_TYPE(instance));
-    if module == 0 {
-        return NULL;
-    }
-    return iterator_create(jacpy_binding_state_get(module, 2), instance, True, 0);
 }
 
 def:priv iterator_self(instance: ptr[PyObject]) -> ptr[PyObject] {
@@ -688,43 +372,27 @@ def:priv iterator_reduce(
     return owned_tuple([Py_NewRef(Py_TYPE(instance)), args]);
 }
 
-def:priv deque_reduce(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
-        return NULL;
-    }
-    limit = jacpy_deque_limit(state.native);
-    saved = _PyObject_GetState(instance);
-    iterator = PyObject_GetIter(instance);
-    args = PyTuple_New(0)
-        if limit < 0
-        else owned_tuple([PyTuple_New(0), PyLong_FromLongLong(limit)]);
-    return owned_tuple([Py_NewRef(Py_TYPE(instance)), args, saved, iterator]);
-}
-
+# defaultdict keeps default_factory in its record (defdict_members[]), so
+# dict's tp_new allocates it as C's defdict does.
 def:priv dictionary_base(instance: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_binding_parent(Py_TYPE(instance), default_type.handle);
+    return jacpy_binding_parent(Py_TYPE(instance), defdict_token.handle);
 }
 
-def:priv default_create(
-    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    module = module_for(type);
-    if module == 0 {
-        return NULL;
-    }
-    instance = jacpy_binding_base_new(
-        jacpy_binding_state_get(module, 5), type, args, kwargs
-    );
-    if instance == 0 {
-        return NULL;
-    }
-    state = ReferenceState(references=[NULL]);
-    if jacpy_binding_native_set(instance, default_type.handle, state) < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    return instance;
+def:priv factory_record(instance: ptr[PyObject]) -> ptr {
+    return jacpy_binding_record(instance, defdict_token.handle);
+}
+
+# The factory as a new reference; None when unset.
+def:priv default_factory(instance: ptr[PyObject]) -> ptr[PyObject] {
+    value = record_object(factory_record(instance), 0);
+    return Py_NewRef(value) if value != 0 else Py_NewRef(Py_None);
+}
+
+def:priv default_release_factory(instance: ptr[PyObject]) {
+    record = factory_record(instance);
+    old = record_object(record, 0);
+    record_set_object(record, 0, NULL);
+    jacpy_release(old);
 }
 
 def:priv default_initialize(
@@ -740,13 +408,9 @@ def:priv default_initialize(
         object_error(PyExc_TypeError, "first argument must be callable or None");
         return i32(-1);
     }
-    state = reference_value(instance, default_type);
-    if state is None {
-        jacpy_release(factory);
-        return i32(-1);
-    }
-    old = state.references[0];
-    state.references[0] = factory;
+    record = factory_record(instance);
+    old = record_object(record, 0);
+    record_set_object(record, 0, factory);
     jacpy_release(old);
     rest = PyTuple_GetSlice(args, 1 if count > 0 else 0, count);
     if rest == 0 {
@@ -760,33 +424,8 @@ def:priv default_initialize(
     return status;
 }
 
-def:priv default_factory(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
-    state = reference_value(instance, default_type);
-    if state is None {
-        return NULL;
-    }
-    value = state.references[0];
-    return Py_NewRef(value) if value != 0 else Py_NewRef(Py_None);
-}
-
-def:priv default_set_factory(
-    instance: ptr[PyObject], value: ptr[PyObject], unused: u64
-) -> i32 {
-    state = reference_value(instance, default_type);
-    if state is None {
-        return i32(-1);
-    }
-    old = state.references[0];
-    state.references[0] = Py_NewRef(value) if value != 0 else NULL;
-    jacpy_release(old);
-    return i32(0);
-}
-
 def:priv default_missing(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
-    factory = default_factory(instance, 0);
-    if factory == 0 {
-        return NULL;
-    }
+    factory = default_factory(instance);
     result = jacpy_default_missing(instance, factory, key);
     jacpy_release(factory);
     return result;
@@ -795,7 +434,7 @@ def:priv default_missing(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyO
 def:priv default_construct(
     instance: ptr[PyObject], mapping: ptr[PyObject]
 ) -> ptr[PyObject] {
-    args = owned_tuple([default_factory(instance, 0), Py_NewRef(mapping)]);
+    args = owned_tuple([default_factory(instance), Py_NewRef(mapping)]);
     if args == 0 {
         return NULL;
     }
@@ -809,10 +448,7 @@ def:priv default_copy(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyO
 }
 
 def:priv default_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
-    factory = default_factory(instance, 0);
-    if factory == 0 {
-        return NULL;
-    }
+    factory = default_factory(instance);
     result = jacpy_default_repr(instance, factory);
     jacpy_release(factory);
     return result;
@@ -821,10 +457,7 @@ def:priv default_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
 def:priv default_reduce(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    factory = default_factory(instance, 0);
-    if factory == 0 {
-        return NULL;
-    }
+    factory = default_factory(instance);
     args = PyTuple_New(0) if factory == Py_None else owned_tuple([Py_NewRef(factory)]);
     jacpy_release(factory);
     if args == 0 {
@@ -860,7 +493,7 @@ def:priv default_or(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] 
     if jacpy_is_dict(left) == 0 or jacpy_is_dict(right) == 0 {
         return Py_NewRef(Py_NotImplemented);
     }
-    owner = left if jacpy_binding_matches(left, default_type.handle) != 0 else right;
+    owner = left if jacpy_binding_matches(left, defdict_token.handle) != 0 else right;
     result = default_construct(owner, left);
     if result == 0 {
         return NULL;
@@ -875,7 +508,13 @@ def:priv default_or(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] 
 def:priv default_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
-    status = traverse_payload(instance, default_type.handle, visitor, context);
+    status = traverse_payload(instance, defdict_token.handle, visitor, context);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(
+        record_object(factory_record(instance), 0), visitor, context
+    );
     if status != 0 {
         return status;
     }
@@ -886,7 +525,8 @@ def:priv default_traverse(
 }
 
 def:priv default_clear(instance: ptr[PyObject]) -> i32 {
-    clear_payload(instance, default_type.handle);
+    clear_payload(instance, defdict_token.handle);
+    default_release_factory(instance);
     base = dictionary_base(instance);
     return jacpy_binding_base_clear(base, instance) if base != 0 else i32(-1);
 }
@@ -895,29 +535,16 @@ def:priv default_dealloc(instance: ptr[PyObject]) {
     base = dictionary_base(instance);
     type = Py_TYPE(instance);
     jacpy_binding_untrack(instance);
-    clear_payload(instance, default_type.handle);
-    jacpy_binding_native_clear(instance, default_type.handle);
+    default_release_factory(instance);
+    clear_payload(instance, defdict_token.handle);
+    jacpy_binding_native_clear(instance, defdict_token.handle);
     jacpy_binding_base_dealloc(base, instance);
     jacpy_release(type);
 }
 
-glob:priv getter_signature = CallSignature(
-         "_tuplegetter", ["index", "doc"], 2, 2, 2
-     );
-
-def:priv getter_create_bound(args: BoundArguments) -> ptr[PyObject] {
-    index = index_value(args.values[0]);
-    if index is None {
-        return NULL;
-    }
-    state = TupleGetterState(references=[Py_NewRef(args.values[1])], index=index);
-    return allocate(args.context, getter_type, state);
-}
-
-def:priv getter_create(
-    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(getter_signature, args, kwargs, getter_create_bound, type);
+# _tuplegetter: the index in its native state, __doc__ in its record.
+def:priv getter_record(instance: ptr[PyObject]) -> ptr {
+    return jacpy_binding_record(instance, _tuplegetter_token.handle);
 }
 
 def:priv getter_get(
@@ -926,7 +553,7 @@ def:priv getter_get(
     if object == 0 {
         return Py_NewRef(instance);
     }
-    state = reference_value(instance, getter_type);
+    state = reference_value(instance, _tuplegetter_token.handle);
     if not isinstance(state, TupleGetterState) {
         return NULL;
     }
@@ -952,37 +579,24 @@ def:priv getter_set(
     return i32(-1);
 }
 
-def:priv getter_doc(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
-    state = reference_value(instance, getter_type);
-    if state is None {
-        return NULL;
-    }
-    value = state.references[0];
+def:priv getter_doc(instance: ptr[PyObject]) -> ptr[PyObject] {
+    value = record_object(getter_record(instance), 0);
     return Py_NewRef(value) if value != 0 else Py_NewRef(Py_None);
 }
 
-def:priv getter_set_doc(
-    instance: ptr[PyObject], value: ptr[PyObject], unused: u64
-) -> i32 {
-    state = reference_value(instance, getter_type);
-    if state is None {
-        return i32(-1);
-    }
-    previous = state.references[0];
-    state.references[0] = Py_NewRef(value) if value != 0 else NULL;
-    jacpy_release(previous);
-    return i32(0);
+def:priv getter_release_doc(instance: ptr[PyObject]) {
+    record = getter_record(instance);
+    old = record_object(record, 0);
+    record_set_object(record, 0, NULL);
+    jacpy_release(old);
 }
 
 def:priv getter_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
-    state = reference_value(instance, getter_type);
+    state = reference_value(instance, _tuplegetter_token.handle);
     if not isinstance(state, TupleGetterState) {
         return NULL;
     }
-    doc = getter_doc(instance, 0);
-    if doc == 0 {
-        return NULL;
-    }
+    doc = getter_doc(instance);
     try {
         return text_object(
             f"{type_name(instance).split(".")[-1]}({state.index}, {repr_value(doc)})"
@@ -997,86 +611,76 @@ def:priv getter_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
 def:priv getter_reduce(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    state = reference_value(instance, getter_type);
+    state = reference_value(instance, _tuplegetter_token.handle);
     if not isinstance(state, TupleGetterState) {
         return NULL;
     }
-    args = owned_tuple([PyLong_FromLongLong(state.index), getter_doc(instance, 0)]);
+    args = owned_tuple([PyLong_FromLongLong(state.index), getter_doc(instance)]);
     return owned_tuple([Py_NewRef(Py_TYPE(instance)), args]);
-}
-
-glob:priv count_signature = CallSignature(
-         "_count_elements", ["mapping", "iterable"], 2, 2, 2
-     );
-
-def:priv count_bound(args: BoundArguments) -> ptr[PyObject] {
-    return Py_NewRef(Py_None)
-        if jacpy_count_elements(args.values[0], args.values[1]) == 0
-        else NULL;
-}
-
-def:priv count_elements(
-    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    return invoke_vector(count_signature, args, nargs, NULL, count_bound);
 }
 
 def:priv deque_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
-    return traverse_payload(instance, deque_type.handle, visitor, context);
+    return traverse_payload(instance, deque_token.handle, visitor, context);
 }
 
 def:priv deque_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, deque_type.handle);
+    return clear_payload(instance, deque_token.handle);
 }
 
 def:priv deque_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, deque_type.handle);
+    dispose_payload(instance, deque_token.handle);
 }
 
 def:priv getter_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
-    return traverse_payload(instance, getter_type.handle, visitor, context);
+    status = traverse_payload(instance, _tuplegetter_token.handle, visitor, context);
+    if status != 0 {
+        return status;
+    }
+    return visit_reference(record_object(getter_record(instance), 0), visitor, context);
 }
 
 def:priv getter_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, getter_type.handle);
+    getter_release_doc(instance);
+    return clear_payload(instance, _tuplegetter_token.handle);
 }
 
 def:priv getter_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, getter_type.handle);
+    jacpy_binding_untrack(instance);
+    getter_release_doc(instance);
+    dispose_payload(instance, _tuplegetter_token.handle);
 }
 
 def:priv iterator_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
-    return traverse_payload(
-        instance, iterator_type_for(instance).handle, visitor, context
-    );
+    return traverse_payload(instance, iterator_definition(instance), visitor, context);
 }
 
 def:priv iterator_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, iterator_type_for(instance).handle);
+    return clear_payload(instance, iterator_definition(instance));
 }
 
 def:priv iterator_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, iterator_type_for(instance).handle);
+    dispose_payload(instance, iterator_definition(instance));
 }
 
 glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
+     # dequeiter_methods[]
      iterator_methods = [
          MethodDefinition(
              "__length_hint__",
              MethodCallbacks(positional=iterator_hint),
-             "Private method returning an estimate of len(list(it)).",
+             length_hint_doc,
              flags=4
          ),
          MethodDefinition(
              "__reduce__",
              MethodCallbacks(positional=iterator_reduce),
-             "Return state information for pickling.",
+             reduce_doc,
              flags=4
          )
      ],
@@ -1089,143 +693,37 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          next=iterator_next
      ),
      forward_type = TypeDefinition(
-         "_collections._deque_iterator", "", iterator_methods, flags, iterator_hooks
-     ),
-     reverse_type = TypeDefinition(
-         "_collections._deque_reverse_iterator",
+         "collections._deque_iterator",
          "",
          iterator_methods,
          flags,
-         iterator_hooks
+         iterator_hooks,
+         generic_getattr=True
+     ),
+     reverse_type = TypeDefinition(
+         "collections._deque_reverse_iterator",
+         "",
+         iterator_methods,
+         flags,
+         iterator_hooks,
+         generic_getattr=True
      ),
      deque_type = TypeDefinition(
          "collections.deque",
-         "A list-like sequence optimized for data accesses near its endpoints.",
-         [
-             MethodDefinition(
-                 "append",
-                 MethodCallbacks(positional=deque_append),
-                 "Add an element to the right side of the deque.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "appendleft",
-                 MethodCallbacks(positional=deque_appendleft),
-                 "Add an element to the left side of the deque.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "pop",
-                 MethodCallbacks(positional=deque_pop),
-                 "Remove and return the rightmost element.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "popleft",
-                 MethodCallbacks(positional=deque_popleft),
-                 "Remove and return the leftmost element.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "extend",
-                 MethodCallbacks(positional=deque_extend),
-                 "Extend the right side of the deque with elements from the iterable.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "extendleft",
-                 MethodCallbacks(positional=deque_extendleft),
-                 "Extend the left side of the deque with elements from the iterable.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "clear",
-                 MethodCallbacks(positional=deque_clear_method),
-                 "Remove all elements from the deque.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "reverse",
-                 MethodCallbacks(positional=deque_reverse),
-                 "Reverse *IN PLACE*.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "rotate",
-                 MethodCallbacks(fast=deque_rotate),
-                 "Rotate the deque n steps to the right. If n is negative, rotates left.",
-                 flags=128
-             ),
-             MethodDefinition(
-                 "insert",
-                 MethodCallbacks(fast=deque_insert),
-                 "Insert value before index.",
-                 flags=128
-             ),
-             MethodDefinition(
-                 "count",
-                 MethodCallbacks(positional=deque_count),
-                 "Return number of occurrences of value.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "index",
-                 MethodCallbacks(fast=deque_index),
-                 "Return first index of value.",
-                 flags=128
-             ),
-             MethodDefinition(
-                 "remove",
-                 MethodCallbacks(positional=deque_remove),
-                 "Remove first occurrence of value.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "copy",
-                 MethodCallbacks(positional=deque_copy),
-                 "Return a shallow copy of a deque.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__copy__",
-                 MethodCallbacks(positional=deque_copy),
-                 "Return a shallow copy of a deque.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__reduce__",
-                 MethodCallbacks(positional=deque_reduce),
-                 "Return state information for pickling.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__reversed__",
-                 MethodCallbacks(positional=deque_reversed),
-                 "Return a reverse iterator over the deque.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__sizeof__",
-                 MethodCallbacks(positional=deque_sizeof),
-                 "Return the size of the deque in memory, in bytes.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__class_getitem__",
-                 MethodCallbacks(positional=Py_GenericAlias),
-                 "deques are generic over the type of their contents",
-                 flags=24
-             )
-         ],
-         flags
-             | u64(
-                 TypeFlags.BASETYPE.value
-                     | TypeFlags.SEQUENCE.value
-                     | TypeFlags.MANAGED_WEAKREF.value
-             ),
+         deque_doc,
+         deque_methods
+             + [
+                 MethodDefinition(
+                     "__class_getitem__",
+                     MethodCallbacks(positional=Py_GenericAlias),
+                     deque_methods___class_getitem___doc,
+                     flags=24
+                 )
+             ],
+         flags | u64(TypeFlags.BASETYPE.value | TypeFlags.SEQUENCE.value),
          TypeHooks(
              create=deque_create,
-             initialize=deque_initialize,
+             initialize=deque_init_init,
              dealloc=deque_dealloc,
              traverse=deque_traverse,
              clear=deque_clear,
@@ -1241,47 +739,55 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              repeat=deque_repeat,
              inplace_repeat=deque_irepeat
          ),
-         [PropertyDefinition("maxlen", PropertyCallbacks(read=deque_maxlen))],
-         unhashable=True
+         [
+             PropertyDefinition(
+                 "maxlen",
+                 PropertyCallbacks(read=deque_maxlen),
+                 doc=deque_getset_maxlen_doc
+             )
+         ],
+         unhashable=True,
+         weaklist=True,
+         generic_getattr=True
      ),
+     # defdict_methods[] and defdict_members[].
      default_type = TypeDefinition(
          "collections.defaultdict",
-         "defaultdict(default_factory=None, /, [...]) --> dict with default factory\n\nThe default factory is called without arguments to produce\na new value when a key is not present, in __getitem__ only.\nA defaultdict compares equal to a dict with the same items.\nAll remaining arguments are treated the same as if they were\npassed to the dict constructor, including keyword arguments.\n",
+         defdict_doc,
          [
              MethodDefinition(
                  "__missing__",
                  MethodCallbacks(positional=default_missing),
-                 "Called by __getitem__ for missing keys.",
+                 defdict_missing_doc,
                  flags=8
              ),
              MethodDefinition(
                  "copy",
                  MethodCallbacks(positional=default_copy),
-                 "D.copy() -> a shallow copy of D.",
+                 defdict_copy_doc,
                  flags=4
              ),
              MethodDefinition(
                  "__copy__",
                  MethodCallbacks(positional=default_copy),
-                 "D.copy() -> a shallow copy of D.",
+                 defdict_copy_doc,
                  flags=4
              ),
              MethodDefinition(
                  "__reduce__",
                  MethodCallbacks(positional=default_reduce),
-                 "Return state information for pickling.",
+                 reduce_doc,
                  flags=4
              ),
              MethodDefinition(
                  "__class_getitem__",
                  MethodCallbacks(positional=Py_GenericAlias),
-                 "defaultdicts are generic over keys and values",
+                 defdict_class_getitem_doc,
                  flags=24
              )
          ],
          flags | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
-             create=default_create,
              initialize=default_initialize,
              traverse=default_traverse,
              clear=default_clear,
@@ -1289,13 +795,18 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              repr=default_repr,
              bit_or=default_or
          ),
-         [
-             PropertyDefinition(
+         members=[
+             MemberField(
                  "default_factory",
-                 PropertyCallbacks(read=default_factory, write=default_set_factory)
+                 MemberType.OBJECT.value,
+                 0,
+                 doc=defdict_members_default_factory_doc
              )
-         ]
+         ],
+         record_size=8,
+         generic_getattr=True
      ),
+     # tuplegetter_members[]: __doc__ over the record.
      getter_type = TypeDefinition(
          "collections._tuplegetter",
          "",
@@ -1306,7 +817,7 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          ],
          flags,
          TypeHooks(
-             create=getter_create,
+             create=tuplegetter_new_new,
              descriptor=getter_get,
              descriptor_set=getter_set,
              traverse=getter_traverse,
@@ -1314,14 +825,17 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              dealloc=getter_dealloc,
              repr=getter_repr
          ),
-         [
-             PropertyDefinition(
-                 "__doc__", PropertyCallbacks(read=getter_doc, write=getter_set_doc)
-             )
-         ]
+         members=[MemberField("__doc__", MemberType.OBJECT.value, 0)],
+         record_size=8
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
+    deque_token.handle = deque_type.handle;
+    dequeiter_token.handle = forward_type.handle;
+    dequereviter_token.handle = reverse_type.handle;
+    defdict_token.handle = default_type.handle;
+    _tuplegetter_token.handle = getter_type.handle;
+    collections_module_token.handle = definition.handle;
     if not add_state_owned(module, 0, "deque", deque_type.create(module))
         or not add_state_owned(
             module, 1, "_deque_iterator", forward_type.create(module)
@@ -1359,12 +873,8 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 
 glob:priv definition = ModuleDefinition(
          "_collections",
-         "Native Jac collections.",
-         [
-             MethodDefinition(
-                 "_count_elements", MethodCallbacks(fast=count_elements), "", flags=128
-             )
-         ],
+         collections_doc,
+         module_methods,
          hooks=ModuleHooks(execute=execute),
          state_count=6
      );

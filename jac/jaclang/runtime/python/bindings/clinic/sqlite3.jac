@@ -6,9 +6,13 @@ jaclang.runtime.python.modules.sqlite3.
 """
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyMem_Free,
     PyObject,
+    PyTuple_Size,
+    jacpy_dict_size,
     jacpy_is_tuple,
-    jacpy_release
+    jacpy_release,
+    jacpy_tuple_items
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
@@ -16,15 +20,16 @@ import from jaclang.runtime.python.bindings.type {
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
     PARSE_POSITIONAL,
-    invoke,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    invoke_tuple,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -39,12 +44,16 @@ import from jaclang.runtime.python.bindings.converters {
     convert_uint32,
     convert_unicode,
     defining_class,
+    init_checks_arguments,
+    new_checks_arguments,
     return_bool,
     return_int
 }
 import from jaclang.runtime.python.modules.sqlite3 {
     Connection_token,
+    Cursor_token,
     LEGACY_TRANSACTION_CONTROL,
+    Row_token,
     _sqlite3_Cursor_arraysize_get_impl,
     _sqlite3_Cursor_arraysize_set_impl,
     blob_close_impl,
@@ -110,119 +119,127 @@ import from jaclang.runtime.python.modules.sqlite3 {
     subclass_clinic_state_CursorType
 }
 
-def:priv blob_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return blob_close_impl(receiver);
-}
-
 def:priv blob_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, blob_close_bound, receiver);
+    try {
+        return blob_close_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv blob_read_signature = CallSignature(
-         "read", ["length"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
-def:priv blob_read_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    length: i32 = -1;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        length = convert_int(value);
+def:priv blob_read_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        length: i32 = -1;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            length = convert_int(value);
+        }
+        return blob_read_impl(receiver, length);
+    } except boundary_failure {
+        return NULL;
     }
-    return blob_read_impl(receiver, length);
 }
 
 def:priv blob_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        blob_read_signature, args, nargs, NULL, blob_read_bound, receiver
-    );
-}
-
-def:priv blob_write_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(value, "write", "argument");
-    return blob_write_impl(receiver, data);
+    if not check_positional("read", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return blob_read_bound(receiver, args, nargs);
 }
 
 def:priv blob_write_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, blob_write_bound, receiver);
+    try {
+        data: BufferArgument = convert_buffer(value, "write", "argument");
+        try {
+            return blob_write_impl(receiver, data);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv blob_seek_signature = CallSignature(
-         "seek", ["offset", "origin"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv blob_seek_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    offset: i32 = convert_int(value);
-    origin: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        origin = convert_int(value);
+def:priv blob_seek_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        offset: i32 = convert_int(value);
+        origin: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            origin = convert_int(value);
+        }
+        return blob_seek_impl(receiver, offset, origin);
+    } except boundary_failure {
+        return NULL;
     }
-    return blob_seek_impl(receiver, offset, origin);
 }
 
 def:priv blob_seek_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        blob_seek_signature, args, nargs, NULL, blob_seek_bound, receiver
-    );
-}
-
-def:priv blob_tell_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return blob_tell_impl(receiver);
+    if not check_positional("seek", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return blob_seek_bound(receiver, args, nargs);
 }
 
 def:priv blob_tell_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, blob_tell_bound, receiver);
-}
-
-def:priv blob_enter_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return blob_enter_impl(receiver);
+    try {
+        return blob_tell_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv blob_enter_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, blob_enter_bound, receiver);
+    try {
+        return blob_enter_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv blob_exit_signature = CallSignature(
-         "__exit__", ["type", "val", "tb"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv blob_exit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    type_: ptr[PyObject] = value;
-    value = args.values[1];
-    val: ptr[PyObject] = value;
-    value = args.values[2];
-    tb: ptr[PyObject] = value;
-    return blob_exit_impl(receiver, type_, val, tb);
+def:priv blob_exit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        type_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        val: ptr[PyObject] = value;
+        value = clinic_args[2];
+        tb: ptr[PyObject] = value;
+        return blob_exit_impl(receiver, type_, val, tb);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv blob_exit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        blob_exit_signature, args, nargs, NULL, blob_exit_bound, receiver
-    );
+    if not check_positional("__exit__", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return blob_exit_bound(receiver, args, nargs);
 }
 
 glob:priv pysqlite_connection_init_signature = CallSignature(
@@ -246,72 +263,78 @@ glob:priv pysqlite_connection_init_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv pysqlite_connection_init_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    database: ptr[PyObject] = value;
-    timeout: f64 = 5.0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        timeout = convert_double(value);
-    }
-    detect_types: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        detect_types = convert_int(value);
-    }
-    value = args.values[3];
-    isolation_level = convert_isolation_level_converter(
-        value, "Connection", argument_label("isolation_level", 4)
-    )
-        if value != NULL
-        else "";
-    check_same_thread: bool = True;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        check_same_thread = convert_bool(value);
-    }
-    factory: ptr[PyObject] = clinic_state_ConnectionType(receiver);
-    if args.values[5] != NULL {
-        value = args.values[5];
-        factory = value;
-    }
-    cached_statements: i32 = 128;
-    if args.values[6] != NULL {
-        value = args.values[6];
-        cached_statements = convert_int(value);
-    }
-    uri: bool = False;
-    if args.values[7] != NULL {
-        value = args.values[7];
-        uri = convert_bool(value);
-    }
-    value = args.values[8];
-    autocommit = convert_autocommit_converter(
-        value, "Connection", argument_label("autocommit", 9)
-    )
-        if value != NULL
-        else LEGACY_TRANSACTION_CONTROL;
-    return return_int(
-        pysqlite_connection_init_impl(
-            receiver,
-            database,
-            timeout,
-            detect_types,
-            isolation_level,
-            check_same_thread,
-            factory,
-            cached_statements,
-            uri,
-            autocommit
+def:priv pysqlite_connection_init_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        database: ptr[PyObject] = value;
+        timeout: f64 = 5.0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            timeout = convert_double(value);
+        }
+        detect_types: i32 = 0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            detect_types = convert_int(value);
+        }
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        isolation_level = convert_isolation_level_converter(
+            value, "Connection", argument_label("isolation_level", 4)
         )
-    );
+            if value != NULL
+            else "";
+        check_same_thread: bool = True;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            check_same_thread = convert_bool(value);
+        }
+        factory: ptr[PyObject] = clinic_state_ConnectionType(receiver);
+        if count > 5 and clinic_args[5] != NULL {
+            value = clinic_args[5];
+            factory = value;
+        }
+        cached_statements: i32 = 128;
+        if count > 6 and clinic_args[6] != NULL {
+            value = clinic_args[6];
+            cached_statements = convert_int(value);
+        }
+        uri: bool = False;
+        if count > 7 and clinic_args[7] != NULL {
+            value = clinic_args[7];
+            uri = convert_bool(value);
+        }
+        value = clinic_args[8] if count > 8 and clinic_args[8] != NULL else NULL;
+        autocommit = convert_autocommit_converter(
+            value, "Connection", argument_label("autocommit", 9)
+        )
+            if value != NULL
+            else LEGACY_TRANSACTION_CONTROL;
+        return return_int(
+            pysqlite_connection_init_impl(
+                receiver,
+                database,
+                timeout,
+                detect_types,
+                isolation_level,
+                check_same_thread,
+                factory,
+                cached_statements,
+                uri,
+                autocommit
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:pub pysqlite_connection_init_init(
     receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
-    result = invoke(
+    result = invoke_tuple(
         pysqlite_connection_init_signature,
         args,
         kwargs,
@@ -329,14 +352,20 @@ glob:priv pysqlite_connection_cursor_signature = CallSignature(
          "cursor", ["factory"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv pysqlite_connection_cursor_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    factory: ptr[PyObject] = NULL;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        factory = value;
+def:priv pysqlite_connection_cursor_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        factory: ptr[PyObject] = NULL;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            factory = value;
+        }
+        return pysqlite_connection_cursor_impl(receiver, factory);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_connection_cursor_impl(receiver, factory);
 }
 
 def:priv pysqlite_connection_cursor_call(
@@ -345,7 +374,16 @@ def:priv pysqlite_connection_cursor_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return pysqlite_connection_cursor_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(pysqlite_connection_cursor_signature, args, nargs, kwnames);
+    if values {
+        unpacked = pysqlite_connection_cursor_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_connection_cursor_signature,
         args,
         nargs,
@@ -364,25 +402,33 @@ glob:priv blobopen_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv blobopen_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    table: str = convert_str(value, "blobopen", argument_label("", 1));
-    value = args.values[1];
-    column: str = convert_str(value, "blobopen", argument_label("", 2));
-    value = args.values[2];
-    rowid = convert_sqlite3_int64_converter(value, "blobopen", argument_label("", 3));
-    readonly: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        readonly = convert_bool(value);
+def:priv blobopen_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        table: str = convert_str(value, "blobopen", argument_label("", 1));
+        value = clinic_args[1];
+        column: str = convert_str(value, "blobopen", argument_label("", 2));
+        value = clinic_args[2];
+        rowid = convert_sqlite3_int64_converter(
+            value, "blobopen", argument_label("", 3)
+        );
+        readonly: bool = False;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            readonly = convert_bool(value);
+        }
+        name: str = "main";
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            name = convert_str(value, "blobopen", argument_label("name", 5));
+        }
+        return blobopen_impl(receiver, table, column, rowid, readonly, name);
+    } except boundary_failure {
+        return NULL;
     }
-    name: str = "main";
-    if args.values[4] != NULL {
-        value = args.values[4];
-        name = convert_str(value, "blobopen", argument_label("name", 5));
-    }
-    return blobopen_impl(receiver, table, column, rowid, readonly, name);
 }
 
 def:priv blobopen_call(
@@ -391,42 +437,48 @@ def:priv blobopen_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return blobopen_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(blobopen_signature, args, nargs, kwnames);
+    if values {
+        unpacked = blobopen_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         blobopen_signature, args, nargs, kwnames, blobopen_bound, receiver
     );
-}
-
-def:priv pysqlite_connection_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_connection_close_impl(receiver);
 }
 
 def:priv pysqlite_connection_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_connection_close_bound, receiver);
-}
-
-def:priv pysqlite_connection_commit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_connection_commit_impl(receiver);
+    try {
+        return pysqlite_connection_close_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_commit_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_connection_commit_bound, receiver);
-}
-
-def:priv pysqlite_connection_rollback_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_connection_rollback_impl(receiver);
+    try {
+        return pysqlite_connection_commit_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_rollback_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_connection_rollback_bound, receiver);
+    try {
+        return pysqlite_connection_rollback_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv pysqlite_connection_create_function_signature = CallSignature(
@@ -442,26 +494,34 @@ glob:priv pysqlite_connection_create_function_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_create_function_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    name: str = convert_str(value, "create_function", argument_label("name", 1));
-    value = args.values[1];
-    narg: i32 = convert_int(value);
-    value = args.values[2];
-    func: ptr[PyObject] = value;
-    deterministic: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        deterministic = convert_bool(value);
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            name: str = convert_str(
+                value, "create_function", argument_label("name", 1)
+            );
+            value = clinic_args[1];
+            narg: i32 = convert_int(value);
+            value = clinic_args[2];
+            func: ptr[PyObject] = value;
+            deterministic: bool = False;
+            if count > 3 and clinic_args[3] != NULL {
+                value = clinic_args[3];
+                deterministic = convert_bool(value);
+            }
+            return pysqlite_connection_create_function_impl(
+                receiver, cls, name, narg, func, deterministic
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = pysqlite_connection_create_function_impl(
-        receiver, cls, name, narg, func, deterministic
-    );
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv pysqlite_connection_create_function_call(
@@ -470,7 +530,7 @@ def:priv pysqlite_connection_create_function_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    return invoke_stack(
         pysqlite_connection_create_function_signature,
         args,
         nargs,
@@ -489,20 +549,30 @@ glob:priv create_window_function_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv create_window_function_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    name: str = convert_str(value, "create_window_function", argument_label("", 1));
-    value = args.values[1];
-    num_params: i32 = convert_int(value);
-    value = args.values[2];
-    aggregate_class: ptr[PyObject] = value;
-    result = create_window_function_impl(
-        receiver, cls, name, num_params, aggregate_class
-    );
-    jacpy_release(cls);
-    return result;
+def:priv create_window_function_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            name: str = convert_str(
+                value, "create_window_function", argument_label("", 1)
+            );
+            value = clinic_args[1];
+            num_params: i32 = convert_int(value);
+            value = clinic_args[2];
+            aggregate_class: ptr[PyObject] = value;
+            return create_window_function_impl(
+                receiver, cls, name, num_params, aggregate_class
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv create_window_function_call(
@@ -511,7 +581,16 @@ def:priv create_window_function_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return create_window_function_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(create_window_function_signature, args, nargs, kwnames);
+    if values {
+        unpacked = create_window_function_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         create_window_function_signature,
         args,
         nargs,
@@ -534,21 +613,29 @@ glob:priv pysqlite_connection_create_aggregate_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_create_aggregate_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    name: str = convert_str(value, "create_aggregate", argument_label("name", 1));
-    value = args.values[1];
-    n_arg: i32 = convert_int(value);
-    value = args.values[2];
-    aggregate_class: ptr[PyObject] = value;
-    result = pysqlite_connection_create_aggregate_impl(
-        receiver, cls, name, n_arg, aggregate_class
-    );
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            name: str = convert_str(
+                value, "create_aggregate", argument_label("name", 1)
+            );
+            value = clinic_args[1];
+            n_arg: i32 = convert_int(value);
+            value = clinic_args[2];
+            aggregate_class: ptr[PyObject] = value;
+            return pysqlite_connection_create_aggregate_impl(
+                receiver, cls, name, n_arg, aggregate_class
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_create_aggregate_call(
@@ -557,7 +644,7 @@ def:priv pysqlite_connection_create_aggregate_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    return invoke_stack(
         pysqlite_connection_create_aggregate_signature,
         args,
         nargs,
@@ -580,17 +667,23 @@ glob:priv pysqlite_connection_set_authorizer_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_set_authorizer_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    authorizer_callback: ptr[PyObject] = value;
-    result = pysqlite_connection_set_authorizer_impl(
-        receiver, cls, authorizer_callback
-    );
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            authorizer_callback: ptr[PyObject] = value;
+            return pysqlite_connection_set_authorizer_impl(
+                receiver, cls, authorizer_callback
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_set_authorizer_call(
@@ -599,7 +692,7 @@ def:priv pysqlite_connection_set_authorizer_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    return invoke_stack(
         pysqlite_connection_set_authorizer_signature,
         args,
         nargs,
@@ -622,19 +715,25 @@ glob:priv pysqlite_connection_set_progress_handler_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_set_progress_handler_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    progress_handler: ptr[PyObject] = value;
-    value = args.values[1];
-    n: i32 = convert_int(value);
-    result = pysqlite_connection_set_progress_handler_impl(
-        receiver, cls, progress_handler, n
-    );
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            progress_handler: ptr[PyObject] = value;
+            value = clinic_args[1];
+            n: i32 = convert_int(value);
+            return pysqlite_connection_set_progress_handler_impl(
+                receiver, cls, progress_handler, n
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_set_progress_handler_call(
@@ -643,7 +742,7 @@ def:priv pysqlite_connection_set_progress_handler_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    return invoke_stack(
         pysqlite_connection_set_progress_handler_signature,
         args,
         nargs,
@@ -666,15 +765,23 @@ glob:priv pysqlite_connection_set_trace_callback_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_set_trace_callback_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    trace_callback: ptr[PyObject] = value;
-    result = pysqlite_connection_set_trace_callback_impl(receiver, cls, trace_callback);
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            trace_callback: ptr[PyObject] = value;
+            return pysqlite_connection_set_trace_callback_impl(
+                receiver, cls, trace_callback
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_set_trace_callback_call(
@@ -683,7 +790,7 @@ def:priv pysqlite_connection_set_trace_callback_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    return invoke_stack(
         pysqlite_connection_set_trace_callback_signature,
         args,
         nargs,
@@ -693,21 +800,15 @@ def:priv pysqlite_connection_set_trace_callback_call(
     );
 }
 
-def:priv pysqlite_connection_enable_load_extension_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    enable: bool = convert_bool(value);
-    return pysqlite_connection_enable_load_extension_impl(receiver, enable);
-}
-
 def:priv pysqlite_connection_enable_load_extension_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        value, pysqlite_connection_enable_load_extension_bound, receiver
-    );
+    try {
+        enable: bool = convert_bool(value);
+        return pysqlite_connection_enable_load_extension_impl(receiver, enable);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv pysqlite_connection_load_extension_signature = CallSignature(
@@ -715,19 +816,23 @@ glob:priv pysqlite_connection_load_extension_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_load_extension_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: str = convert_str(value, "load_extension", argument_label("", 1));
-    entrypoint: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        entrypoint = convert_cstr(
-            value, "load_extension", argument_label("entrypoint", 2), True
-        );
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        name: str = convert_str(value, "load_extension", argument_label("", 1));
+        entrypoint: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            entrypoint = convert_cstr(
+                value, "load_extension", argument_label("entrypoint", 2), True
+            );
+        }
+        return pysqlite_connection_load_extension_impl(receiver, name, entrypoint);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_connection_load_extension_impl(receiver, name, entrypoint);
 }
 
 def:priv pysqlite_connection_load_extension_call(
@@ -736,7 +841,18 @@ def:priv pysqlite_connection_load_extension_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return pysqlite_connection_load_extension_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        pysqlite_connection_load_extension_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = pysqlite_connection_load_extension_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_connection_load_extension_signature,
         args,
         nargs,
@@ -746,99 +862,98 @@ def:priv pysqlite_connection_load_extension_call(
     );
 }
 
-glob:priv pysqlite_connection_execute_signature = CallSignature(
-         "execute", ["sql", "parameters"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_connection_execute_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sql: ptr[PyObject] = convert_unicode(value, "execute", argument_label("", 1));
-    parameters: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        parameters = value;
+def:priv pysqlite_connection_execute_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        sql: ptr[PyObject] = convert_unicode(value, "execute", argument_label("", 1));
+        parameters: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            parameters = value;
+        }
+        return pysqlite_connection_execute_impl(receiver, sql, parameters);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_connection_execute_impl(receiver, sql, parameters);
 }
 
 def:priv pysqlite_connection_execute_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_connection_execute_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_connection_execute_bound,
-        receiver
-    );
+    if not check_positional("execute", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return pysqlite_connection_execute_bound(receiver, args, nargs);
 }
 
-glob:priv pysqlite_connection_executemany_signature = CallSignature(
-         "executemany", ["sql", "parameters"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_connection_executemany_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sql: ptr[PyObject] = convert_unicode(value, "executemany", argument_label("", 1));
-    value = args.values[1];
-    parameters: ptr[PyObject] = value;
-    return pysqlite_connection_executemany_impl(receiver, sql, parameters);
+def:priv pysqlite_connection_executemany_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        sql: ptr[PyObject] = convert_unicode(
+            value, "executemany", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        parameters: ptr[PyObject] = value;
+        return pysqlite_connection_executemany_impl(receiver, sql, parameters);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_executemany_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_connection_executemany_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_connection_executemany_bound,
-        receiver
-    );
-}
-
-def:priv pysqlite_connection_executescript_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sql_script: ptr[PyObject] = value;
-    return pysqlite_connection_executescript_impl(receiver, sql_script);
+    if not check_positional("executemany", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return pysqlite_connection_executemany_bound(receiver, args, nargs);
 }
 
 def:priv pysqlite_connection_executescript_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, pysqlite_connection_executescript_bound, receiver);
-}
-
-def:priv pysqlite_connection_interrupt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_connection_interrupt_impl(receiver);
+    try {
+        sql_script: ptr[PyObject] = value;
+        return pysqlite_connection_executescript_impl(receiver, sql_script);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_interrupt_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_connection_interrupt_bound, receiver);
+    try {
+        return pysqlite_connection_interrupt_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv pysqlite_connection_iterdump_signature = CallSignature(
          "iterdump", ["filter"], 0, 0, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv pysqlite_connection_iterdump_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    filter: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        filter = value;
+def:priv pysqlite_connection_iterdump_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        filter: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            filter = value;
+        }
+        return pysqlite_connection_iterdump_impl(receiver, filter);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_connection_iterdump_impl(receiver, filter);
 }
 
 def:priv pysqlite_connection_iterdump_call(
@@ -847,7 +962,16 @@ def:priv pysqlite_connection_iterdump_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 0 {
+        return pysqlite_connection_iterdump_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(pysqlite_connection_iterdump_signature, args, nargs, kwnames);
+    if values {
+        unpacked = pysqlite_connection_iterdump_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_connection_iterdump_signature,
         args,
         nargs,
@@ -866,34 +990,42 @@ glob:priv pysqlite_connection_backup_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv pysqlite_connection_backup_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    subclass_clinic_state_ConnectionType(value, "backup", argument_label("target", 1));
-    target: ptr[PyObject] = value;
-    pages: i32 = -1;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        pages = convert_int(value);
+def:priv pysqlite_connection_backup_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        subclass_clinic_state_ConnectionType(
+            value, "backup", argument_label("target", 1)
+        );
+        target: ptr[PyObject] = value;
+        pages: i32 = -1;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            pages = convert_int(value);
+        }
+        progress: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            progress = value;
+        }
+        name: str = "main";
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            name = convert_str(value, "backup", argument_label("name", 4));
+        }
+        sleep: f64 = 0.25;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            sleep = convert_double(value);
+        }
+        return pysqlite_connection_backup_impl(
+            receiver, target, pages, progress, name, sleep
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    progress: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        progress = value;
-    }
-    name: str = "main";
-    if args.values[3] != NULL {
-        value = args.values[3];
-        name = convert_str(value, "backup", argument_label("name", 4));
-    }
-    sleep: f64 = 0.25;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        sleep = convert_double(value);
-    }
-    return pysqlite_connection_backup_impl(
-        receiver, target, pages, progress, name, sleep
-    );
 }
 
 def:priv pysqlite_connection_backup_call(
@@ -902,7 +1034,16 @@ def:priv pysqlite_connection_backup_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return pysqlite_connection_backup_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(pysqlite_connection_backup_signature, args, nargs, kwnames);
+    if values {
+        unpacked = pysqlite_connection_backup_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_connection_backup_signature,
         args,
         nargs,
@@ -917,17 +1058,25 @@ glob:priv pysqlite_connection_create_collation_signature = CallSignature(
      );
 
 def:priv pysqlite_connection_create_collation_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Connection_token);
-    value = args.values[0];
-    name: str = convert_str(value, "create_collation", argument_label("", 1));
-    value = args.values[1];
-    callback: ptr[PyObject] = value;
-    result = pysqlite_connection_create_collation_impl(receiver, cls, name, callback);
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Connection_token);
+        try {
+            value = clinic_args[0];
+            name: str = convert_str(value, "create_collation", argument_label("", 1));
+            value = clinic_args[1];
+            callback: ptr[PyObject] = value;
+            return pysqlite_connection_create_collation_impl(
+                receiver, cls, name, callback
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_create_collation_call(
@@ -936,7 +1085,18 @@ def:priv pysqlite_connection_create_collation_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return pysqlite_connection_create_collation_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        pysqlite_connection_create_collation_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = pysqlite_connection_create_collation_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_connection_create_collation_signature,
         args,
         nargs,
@@ -950,14 +1110,20 @@ glob:priv serialize_signature = CallSignature(
          "serialize", ["name"], 0, 0, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv serialize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    name: str = "main";
-    if args.values[0] != NULL {
-        value = args.values[0];
-        name = convert_str(value, "serialize", argument_label("name", 1));
+def:priv serialize_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        name: str = "main";
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            name = convert_str(value, "serialize", argument_label("name", 1));
+        }
+        return serialize_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
     }
-    return serialize_impl(receiver, name);
 }
 
 def:priv serialize_call(
@@ -966,7 +1132,16 @@ def:priv serialize_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 0 {
+        return serialize_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(serialize_signature, args, nargs, kwnames);
+    if values {
+        unpacked = serialize_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         serialize_signature, args, nargs, kwnames, serialize_bound, receiver
     );
 }
@@ -975,18 +1150,28 @@ glob:priv deserialize_signature = CallSignature(
          "deserialize", ["data", "name"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
-def:priv deserialize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_text_buffer(
-        value, "deserialize", argument_label("", 1)
-    );
-    name: str = "main";
-    if args.values[1] != NULL {
-        value = args.values[1];
-        name = convert_str(value, "deserialize", argument_label("name", 2));
+def:priv deserialize_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_text_buffer(
+            value, "deserialize", argument_label("", 1)
+        );
+        try {
+            name: str = "main";
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                name = convert_str(value, "deserialize", argument_label("name", 2));
+            }
+            return deserialize_impl(receiver, data, name);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return deserialize_impl(receiver, data, name);
 }
 
 def:priv deserialize_call(
@@ -995,141 +1180,169 @@ def:priv deserialize_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return deserialize_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(deserialize_signature, args, nargs, kwnames);
+    if values {
+        unpacked = deserialize_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         deserialize_signature, args, nargs, kwnames, deserialize_bound, receiver
     );
-}
-
-def:priv pysqlite_connection_enter_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_connection_enter_impl(receiver);
 }
 
 def:priv pysqlite_connection_enter_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_connection_enter_bound, receiver);
+    try {
+        return pysqlite_connection_enter_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv pysqlite_connection_exit_signature = CallSignature(
-         "__exit__", ["type", "value", "traceback"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_connection_exit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    type_: ptr[PyObject] = value;
-    value = args.values[1];
-    value_: ptr[PyObject] = value;
-    value = args.values[2];
-    traceback: ptr[PyObject] = value;
-    return pysqlite_connection_exit_impl(receiver, type_, value_, traceback);
+def:priv pysqlite_connection_exit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        type_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        value_: ptr[PyObject] = value;
+        value = clinic_args[2];
+        traceback: ptr[PyObject] = value;
+        return pysqlite_connection_exit_impl(receiver, type_, value_, traceback);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_connection_exit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_connection_exit_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_connection_exit_bound,
-        receiver
-    );
+    if not check_positional("__exit__", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return pysqlite_connection_exit_bound(receiver, args, nargs);
 }
 
-glob:priv setlimit_signature = CallSignature(
-         "setlimit", ["category", "limit"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv setlimit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    category: i32 = convert_int(value);
-    value = args.values[1];
-    limit: i32 = convert_int(value);
-    return setlimit_impl(receiver, category, limit);
+def:priv setlimit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        category: i32 = convert_int(value);
+        value = clinic_args[1];
+        limit: i32 = convert_int(value);
+        return setlimit_impl(receiver, category, limit);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv setlimit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        setlimit_signature, args, nargs, NULL, setlimit_bound, receiver
-    );
-}
-
-def:priv getlimit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    category: i32 = convert_int(value);
-    return getlimit_impl(receiver, category);
+    if not check_positional("setlimit", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return setlimit_bound(receiver, args, nargs);
 }
 
 def:priv getlimit_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, getlimit_bound, receiver);
+    try {
+        category: i32 = convert_int(value);
+        return getlimit_impl(receiver, category);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv setconfig_signature = CallSignature(
-         "setconfig", ["op", "enable"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv setconfig_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    op: i32 = convert_int(value);
-    enable: bool = True;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        enable = convert_bool(value);
+def:priv setconfig_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        op: i32 = convert_int(value);
+        enable: bool = True;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            enable = convert_bool(value);
+        }
+        return setconfig_impl(receiver, op, enable);
+    } except boundary_failure {
+        return NULL;
     }
-    return setconfig_impl(receiver, op, enable);
 }
 
 def:priv setconfig_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        setconfig_signature, args, nargs, NULL, setconfig_bound, receiver
-    );
-}
-
-def:priv getconfig_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    op: i32 = convert_int(value);
-    return return_bool(getconfig_impl(receiver, op));
+    if not check_positional("setconfig", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return setconfig_bound(receiver, args, nargs);
 }
 
 def:priv getconfig_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, getconfig_bound, receiver);
+    try {
+        op: i32 = convert_int(value);
+        return return_bool(getconfig_impl(receiver, op));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv pysqlite_cursor_init_signature = CallSignature(
          "Cursor", ["connection"], 1, 1, 1, parser=PARSE_POSITIONAL
      );
 
-def:priv pysqlite_cursor_init_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    subclass_clinic_state_ConnectionType(value, "Cursor", argument_label("", 1));
-    connection: ptr[PyObject] = value;
-    return return_int(pysqlite_cursor_init_impl(receiver, connection));
+def:priv pysqlite_cursor_init_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        subclass_clinic_state_ConnectionType(value, "Cursor", argument_label("", 1));
+        connection: ptr[PyObject] = value;
+        return return_int(pysqlite_cursor_init_impl(receiver, connection));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:pub pysqlite_cursor_init_init(
     receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
-    result = invoke(
-        pysqlite_cursor_init_signature,
-        args,
-        kwargs,
-        pysqlite_cursor_init_bound,
-        receiver
-    );
+    result: ptr[PyObject] = NULL;
+    bound = False;
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 1 and size <= 1 {
+            bound = True;
+            result = pysqlite_cursor_init_bound(
+                receiver, jacpy_tuple_items(args), size
+            );
+        }
+    }
+    if not bound {
+        result = invoke_tuple(
+            pysqlite_cursor_init_signature,
+            args,
+            kwargs,
+            pysqlite_cursor_init_bound,
+            receiver,
+            checked=init_checks_arguments(receiver, Cursor_token)
+        );
+    }
     if not result {
         return i32(-1);
     }
@@ -1137,97 +1350,98 @@ def:pub pysqlite_cursor_init_init(
     return i32(0);
 }
 
-glob:priv pysqlite_cursor_execute_signature = CallSignature(
-         "execute", ["sql", "parameters"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_cursor_execute_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sql: ptr[PyObject] = convert_unicode(value, "execute", argument_label("", 1));
-    parameters: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        parameters = value;
+def:priv pysqlite_cursor_execute_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        sql: ptr[PyObject] = convert_unicode(value, "execute", argument_label("", 1));
+        parameters: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            parameters = value;
+        }
+        return pysqlite_cursor_execute_impl(receiver, sql, parameters);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_cursor_execute_impl(receiver, sql, parameters);
 }
 
 def:priv pysqlite_cursor_execute_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_cursor_execute_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_cursor_execute_bound,
-        receiver
-    );
+    if not check_positional("execute", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return pysqlite_cursor_execute_bound(receiver, args, nargs);
 }
 
-glob:priv pysqlite_cursor_executemany_signature = CallSignature(
-         "executemany", ["sql", "seq_of_parameters"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_cursor_executemany_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sql: ptr[PyObject] = convert_unicode(value, "executemany", argument_label("", 1));
-    value = args.values[1];
-    seq_of_parameters: ptr[PyObject] = value;
-    return pysqlite_cursor_executemany_impl(receiver, sql, seq_of_parameters);
+def:priv pysqlite_cursor_executemany_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        sql: ptr[PyObject] = convert_unicode(
+            value, "executemany", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        seq_of_parameters: ptr[PyObject] = value;
+        return pysqlite_cursor_executemany_impl(receiver, sql, seq_of_parameters);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_cursor_executemany_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_cursor_executemany_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_cursor_executemany_bound,
-        receiver
-    );
-}
-
-def:priv pysqlite_cursor_executescript_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sql_script: str = convert_str(value, "executescript", "argument");
-    return pysqlite_cursor_executescript_impl(receiver, sql_script);
+    if not check_positional("executemany", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return pysqlite_cursor_executemany_bound(receiver, args, nargs);
 }
 
 def:priv pysqlite_cursor_executescript_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, pysqlite_cursor_executescript_bound, receiver);
-}
-
-def:priv pysqlite_cursor_fetchone_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_cursor_fetchone_impl(receiver);
+    try {
+        sql_script: str = convert_str(value, "executescript", "argument");
+        return pysqlite_cursor_executescript_impl(receiver, sql_script);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_cursor_fetchone_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_cursor_fetchone_bound, receiver);
+    try {
+        return pysqlite_cursor_fetchone_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv pysqlite_cursor_fetchmany_signature = CallSignature(
          "fetchmany", ["size"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv pysqlite_cursor_fetchmany_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    size: u32 = self_arraysize(receiver);
-    if args.values[0] != NULL {
-        value = args.values[0];
-        size = convert_uint32(value);
+def:priv pysqlite_cursor_fetchmany_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        size: u32 = self_arraysize(receiver);
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            size = convert_uint32(value);
+        }
+        return pysqlite_cursor_fetchmany_impl(receiver, size);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_cursor_fetchmany_impl(receiver, size);
 }
 
 def:priv pysqlite_cursor_fetchmany_call(
@@ -1236,7 +1450,16 @@ def:priv pysqlite_cursor_fetchmany_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return pysqlite_cursor_fetchmany_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(pysqlite_cursor_fetchmany_signature, args, nargs, kwnames);
+    if values {
+        unpacked = pysqlite_cursor_fetchmany_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_cursor_fetchmany_signature,
         args,
         nargs,
@@ -1246,68 +1469,62 @@ def:priv pysqlite_cursor_fetchmany_call(
     );
 }
 
-def:priv pysqlite_cursor_fetchall_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_cursor_fetchall_impl(receiver);
-}
-
 def:priv pysqlite_cursor_fetchall_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_cursor_fetchall_bound, receiver);
-}
-
-def:priv pysqlite_cursor_setinputsizes_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sizes: ptr[PyObject] = value;
-    return pysqlite_cursor_setinputsizes_impl(receiver, sizes);
+    try {
+        return pysqlite_cursor_fetchall_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_cursor_setinputsizes_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, pysqlite_cursor_setinputsizes_bound, receiver);
+    try {
+        sizes: ptr[PyObject] = value;
+        return pysqlite_cursor_setinputsizes_impl(receiver, sizes);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv pysqlite_cursor_setoutputsize_signature = CallSignature(
-         "setoutputsize", ["size", "column"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_cursor_setoutputsize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    size: ptr[PyObject] = value;
-    column: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        column = value;
+def:priv pysqlite_cursor_setoutputsize_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        size: ptr[PyObject] = value;
+        column: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            column = value;
+        }
+        return pysqlite_cursor_setoutputsize_impl(receiver, size, column);
+    } except boundary_failure {
+        return NULL;
     }
-    return pysqlite_cursor_setoutputsize_impl(receiver, size, column);
 }
 
 def:priv pysqlite_cursor_setoutputsize_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_cursor_setoutputsize_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_cursor_setoutputsize_bound,
-        receiver
-    );
-}
-
-def:priv pysqlite_cursor_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_cursor_close_impl(receiver);
+    if not check_positional("setoutputsize", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return pysqlite_cursor_setoutputsize_bound(receiver, args, nargs);
 }
 
 def:priv pysqlite_cursor_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_cursor_close_bound, receiver);
+    try {
+        return pysqlite_cursor_close_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _sqlite3_Cursor_arraysize_get(
@@ -1326,13 +1543,19 @@ glob:priv pysqlite_complete_statement_signature = CallSignature(
          "complete_statement", ["statement"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv pysqlite_complete_statement_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    statement: str = convert_str(
-        value, "complete_statement", argument_label("statement", 1)
-    );
-    return pysqlite_complete_statement_impl(receiver, statement);
+def:priv pysqlite_complete_statement_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        statement: str = convert_str(
+            value, "complete_statement", argument_label("statement", 1)
+        );
+        return pysqlite_complete_statement_impl(receiver, statement);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_complete_statement_call(
@@ -1341,7 +1564,16 @@ def:priv pysqlite_complete_statement_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return pysqlite_complete_statement_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(pysqlite_complete_statement_signature, args, nargs, kwnames);
+    if values {
+        unpacked = pysqlite_complete_statement_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         pysqlite_complete_statement_signature,
         args,
         nargs,
@@ -1351,147 +1583,156 @@ def:priv pysqlite_complete_statement_call(
     );
 }
 
-glob:priv pysqlite_register_adapter_signature = CallSignature(
-         "register_adapter", ["type", "adapter"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_register_adapter_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    type_: ptr[PyObject] = value;
-    value = args.values[1];
-    adapter: ptr[PyObject] = value;
-    return pysqlite_register_adapter_impl(receiver, type_, adapter);
+def:priv pysqlite_register_adapter_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        type_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        adapter: ptr[PyObject] = value;
+        return pysqlite_register_adapter_impl(receiver, type_, adapter);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_register_adapter_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_register_adapter_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_register_adapter_bound,
-        receiver
-    );
+    if not check_positional("register_adapter", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return pysqlite_register_adapter_bound(receiver, args, nargs);
 }
 
-glob:priv pysqlite_register_converter_signature = CallSignature(
-         "register_converter",
-         ["typename", "converter"],
-         2,
-         2,
-         2,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_register_converter_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    typename: ptr[PyObject] = convert_unicode(
-        value, "register_converter", argument_label("", 1)
-    );
-    value = args.values[1];
-    converter: ptr[PyObject] = value;
-    return pysqlite_register_converter_impl(receiver, typename, converter);
+def:priv pysqlite_register_converter_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        typename: ptr[PyObject] = convert_unicode(
+            value, "register_converter", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        converter: ptr[PyObject] = value;
+        return pysqlite_register_converter_impl(receiver, typename, converter);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pysqlite_register_converter_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_register_converter_signature,
-        args,
-        nargs,
-        NULL,
-        pysqlite_register_converter_bound,
-        receiver
-    );
-}
-
-def:priv pysqlite_enable_callback_trace_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    enable: i32 = convert_int(value);
-    return pysqlite_enable_callback_trace_impl(receiver, enable);
+    if not check_positional("register_converter", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return pysqlite_register_converter_bound(receiver, args, nargs);
 }
 
 def:priv pysqlite_enable_callback_trace_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, pysqlite_enable_callback_trace_bound, receiver);
+    try {
+        enable: i32 = convert_int(value);
+        return pysqlite_enable_callback_trace_impl(receiver, enable);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv pysqlite_adapt_signature = CallSignature(
-         "adapt", ["obj", "proto", "alt"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv pysqlite_adapt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    obj_: ptr[PyObject] = value;
-    proto: ptr[PyObject] = clinic_state_PrepareProtocolType(receiver);
-    if args.values[1] != NULL {
-        value = args.values[1];
-        proto = value;
+def:priv pysqlite_adapt_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        obj_: ptr[PyObject] = value;
+        proto: ptr[PyObject] = clinic_state_PrepareProtocolType(receiver);
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            proto = value;
+        }
+        alt: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            alt = value;
+        }
+        return pysqlite_adapt_impl(receiver, obj_, proto, alt);
+    } except boundary_failure {
+        return NULL;
     }
-    alt: ptr[PyObject] = NULL;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        alt = value;
-    }
-    return pysqlite_adapt_impl(receiver, obj_, proto, alt);
 }
 
 def:priv pysqlite_adapt_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        pysqlite_adapt_signature, args, nargs, NULL, pysqlite_adapt_bound, receiver
-    );
+    if not check_positional("adapt", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return pysqlite_adapt_bound(receiver, args, nargs);
 }
 
 glob:priv pysqlite_row_new_signature = CallSignature(
          "Row", ["cursor", "data"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
-def:priv pysqlite_row_new_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    subclass_clinic_state_CursorType(value, "Row", argument_label("", 1));
-    cursor: ptr[PyObject] = value;
-    value = args.values[1];
-    if jacpy_is_tuple(value) == 0 {
-        bad_argument("Row", argument_label("", 2), "tuple", value);
+def:priv pysqlite_row_new_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        subclass_clinic_state_CursorType(value, "Row", argument_label("", 1));
+        cursor: ptr[PyObject] = value;
+        value = clinic_args[1];
+        if jacpy_is_tuple(value) == 0 {
+            bad_argument("Row", argument_label("", 2), "tuple", value);
+        }
+        data: ptr[PyObject] = value;
+        return pysqlite_row_new_impl(receiver, cursor, data);
+    } except boundary_failure {
+        return NULL;
     }
-    data: ptr[PyObject] = value;
-    return pysqlite_row_new_impl(receiver, cursor, data);
 }
 
 def:pub pysqlite_row_new_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        pysqlite_row_new_signature, args, kwargs, pysqlite_row_new_bound, type
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 2 and size <= 2 {
+            return pysqlite_row_new_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    return invoke_tuple(
+        pysqlite_row_new_signature,
+        args,
+        kwargs,
+        pysqlite_row_new_bound,
+        type,
+        checked=new_checks_arguments(type, Row_token)
     );
-}
-
-def:priv pysqlite_row_keys_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pysqlite_row_keys_impl(receiver);
 }
 
 def:priv pysqlite_row_keys_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pysqlite_row_keys_bound, receiver);
+    try {
+        return pysqlite_row_keys_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob Connection_doc: str = "\n\nNote: Passing more than 1 positional argument to _sqlite3.Connection()\nis deprecated. Parameters 'timeout', 'detect_types',\n'isolation_level', 'check_same_thread', 'factory', 'cached_statements'\nand 'uri' will become keyword-only parameters in Python 3.15.\n",
      Cursor_doc: str = "",
      Row_doc: str = "",
      pysqlite_connect_doc: str = "connect($module, /, database, timeout=5.0, detect_types=0,\n        isolation_level='', check_same_thread=True,\n        factory=ConnectionType, cached_statements=128, uri=False, *,\n        autocommit=sqlite3.LEGACY_TRANSACTION_CONTROL)\n--\n\nOpen a connection to the SQLite database file 'database'.\n\nYou can use \":memory:\" to open a database connection to a database that\nresides in RAM instead of on disk.\n\nNote: Passing more than 1 positional argument to _sqlite3.connect() is\ndeprecated. Parameters 'timeout', 'detect_types', 'isolation_level',\n'check_same_thread', 'factory', 'cached_statements' and 'uri' will\nbecome keyword-only parameters in Python 3.15.\n",
+     doc: str = "PEP 246 style object adaption protocol type.",
      Blob_methods: list[MethodDefinition] = [
          MethodDefinition(
              "close",

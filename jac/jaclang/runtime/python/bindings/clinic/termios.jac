@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_fildes,
@@ -34,168 +29,163 @@ import from jaclang.runtime.python.modules.termios {
     termios_tcsetwinsize_impl
 }
 
-def:priv termios_tcgetattr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcgetattr", "argument");
-    return termios_tcgetattr_impl(receiver, fd);
-}
-
 def:priv termios_tcgetattr_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, termios_tcgetattr_bound, receiver);
+    try {
+        fd: i32 = convert_fildes(value, "tcgetattr", "argument");
+        return termios_tcgetattr_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv termios_tcsetattr_signature = CallSignature(
-         "tcsetattr", ["fd", "when", "attributes"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv termios_tcsetattr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcsetattr", argument_label("", 1));
-    value = args.values[1];
-    when: i32 = convert_int(value);
-    value = args.values[2];
-    attributes: ptr[PyObject] = value;
-    return termios_tcsetattr_impl(receiver, fd, when, attributes);
+def:priv termios_tcsetattr_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "tcsetattr", argument_label("", 1));
+        value = clinic_args[1];
+        when: i32 = convert_int(value);
+        value = clinic_args[2];
+        attributes: ptr[PyObject] = value;
+        return termios_tcsetattr_impl(receiver, fd, when, attributes);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv termios_tcsetattr_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        termios_tcsetattr_signature,
-        args,
-        nargs,
-        NULL,
-        termios_tcsetattr_bound,
-        receiver
-    );
+    if not check_positional("tcsetattr", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return termios_tcsetattr_bound(receiver, args, nargs);
 }
 
-glob:priv termios_tcsendbreak_signature = CallSignature(
-         "tcsendbreak", ["fd", "duration"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv termios_tcsendbreak_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcsendbreak", argument_label("", 1));
-    value = args.values[1];
-    duration: i32 = convert_int(value);
-    return termios_tcsendbreak_impl(receiver, fd, duration);
+def:priv termios_tcsendbreak_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "tcsendbreak", argument_label("", 1));
+        value = clinic_args[1];
+        duration: i32 = convert_int(value);
+        return termios_tcsendbreak_impl(receiver, fd, duration);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv termios_tcsendbreak_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        termios_tcsendbreak_signature,
-        args,
-        nargs,
-        NULL,
-        termios_tcsendbreak_bound,
-        receiver
-    );
-}
-
-def:priv termios_tcdrain_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcdrain", "argument");
-    return termios_tcdrain_impl(receiver, fd);
+    if not check_positional("tcsendbreak", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return termios_tcsendbreak_bound(receiver, args, nargs);
 }
 
 def:priv termios_tcdrain_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, termios_tcdrain_bound, receiver);
+    try {
+        fd: i32 = convert_fildes(value, "tcdrain", "argument");
+        return termios_tcdrain_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv termios_tcflush_signature = CallSignature(
-         "tcflush", ["fd", "queue"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv termios_tcflush_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcflush", argument_label("", 1));
-    value = args.values[1];
-    queue: i32 = convert_int(value);
-    return termios_tcflush_impl(receiver, fd, queue);
+def:priv termios_tcflush_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "tcflush", argument_label("", 1));
+        value = clinic_args[1];
+        queue: i32 = convert_int(value);
+        return termios_tcflush_impl(receiver, fd, queue);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv termios_tcflush_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        termios_tcflush_signature, args, nargs, NULL, termios_tcflush_bound, receiver
-    );
+    if not check_positional("tcflush", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return termios_tcflush_bound(receiver, args, nargs);
 }
 
-glob:priv termios_tcflow_signature = CallSignature(
-         "tcflow", ["fd", "action"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv termios_tcflow_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcflow", argument_label("", 1));
-    value = args.values[1];
-    action: i32 = convert_int(value);
-    return termios_tcflow_impl(receiver, fd, action);
+def:priv termios_tcflow_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "tcflow", argument_label("", 1));
+        value = clinic_args[1];
+        action: i32 = convert_int(value);
+        return termios_tcflow_impl(receiver, fd, action);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv termios_tcflow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        termios_tcflow_signature, args, nargs, NULL, termios_tcflow_bound, receiver
-    );
-}
-
-def:priv termios_tcgetwinsize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcgetwinsize", "argument");
-    return termios_tcgetwinsize_impl(receiver, fd);
+    if not check_positional("tcflow", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return termios_tcflow_bound(receiver, args, nargs);
 }
 
 def:priv termios_tcgetwinsize_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, termios_tcgetwinsize_bound, receiver);
+    try {
+        fd: i32 = convert_fildes(value, "tcgetwinsize", "argument");
+        return termios_tcgetwinsize_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv termios_tcsetwinsize_signature = CallSignature(
-         "tcsetwinsize", ["fd", "winsize"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv termios_tcsetwinsize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "tcsetwinsize", argument_label("", 1));
-    value = args.values[1];
-    winsize: ptr[PyObject] = value;
-    return termios_tcsetwinsize_impl(receiver, fd, winsize);
+def:priv termios_tcsetwinsize_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "tcsetwinsize", argument_label("", 1));
+        value = clinic_args[1];
+        winsize: ptr[PyObject] = value;
+        return termios_tcsetwinsize_impl(receiver, fd, winsize);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv termios_tcsetwinsize_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        termios_tcsetwinsize_signature,
-        args,
-        nargs,
-        NULL,
-        termios_tcsetwinsize_bound,
-        receiver
-    );
+    if not check_positional("tcsetwinsize", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return termios_tcsetwinsize_bound(receiver, args, nargs);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob termios__doc__: str = "This module provides an interface to the Posix calls for tty I/O control.\nFor a complete description of these calls, see the Posix or Unix manual\npages. It is only available for those Unix versions that support Posix\ntermios style tty I/O control.\n\nAll functions in this module take a file descriptor fd as their first\nargument. This can be an integer file descriptor, such as returned by\nsys.stdin.fileno(), or a file object, such as sys.stdin itself.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "tcgetattr",
              MethodCallbacks(positional=termios_tcgetattr_call),
