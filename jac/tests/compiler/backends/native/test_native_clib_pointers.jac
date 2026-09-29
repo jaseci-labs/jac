@@ -584,7 +584,8 @@ int64_t fa_call(const FaEntry *record, int64_t value) {
              FaEntry(name=ptr[u8]("scale"), code=ptr(fa_scale), arity=2),
              FaEntry(name=ptr[u8]("twice"), code=ptr(fa_c_twice), arity=1),
              FaEntry(name=ptr[u8](), code=ptr(), arity=0)
-         ];
+         ],
+         fa_first: ptr[u8] = ptr[u8](addressof(fa_table));
 }
 def fa_inc(value: i64) -> i64 {
     return value + 1;
@@ -598,6 +599,7 @@ with entry {
     print("scale", fa_call(table + 1, 5));
     print("twice", fa_call(table + 2, 21));
     print("end", (table + 3).view(1)[0].code.is_null());
+    print("cast", int(fa_first) == int(table));
 }
 ''';
 
@@ -623,7 +625,13 @@ test "a C data pointer field takes a named function's address" {
             binary = str(Path(directory) / f"fa.{memory}");
             native_build(str(program), binary, memory=memory);
             lines = native_run(binary).splitlines();
-            for expected in ["inc 42", "scale 15", "twice 42", "end True"] {
+            for expected in [
+                "inc 42",
+                "scale 15",
+                "twice 42",
+                "end True",
+                "cast True"
+            ] {
                 assert expected in lines , f"{memory}: missing {expected!r} in {lines}";
             }
         }

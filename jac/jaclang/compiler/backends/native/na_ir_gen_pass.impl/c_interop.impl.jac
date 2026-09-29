@@ -1015,7 +1015,8 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if len(params) == 1 and named_function_of(arg) is not None {
                 return self._c_const_function_address(arg);
             }
-            return self._c_const_scalar(arg, i64) if len(params) == 1 else None;
+            # A cast `ptr[T](address)` of any C constant address.
+            return self._c_const_address(arg) if len(params) == 1 else None;
         }
         return None;
     }

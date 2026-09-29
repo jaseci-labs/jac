@@ -1161,8 +1161,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " initializer is a C constant: a literal, `None`, `ptr[T]()`, an integer"
          " address, `ptr[u8](\"text\")`, `addressof(symbol)`, a named function"
          " for a callback field, `ptr(function)` for the address of a named"
-         " function, or a constructor of a foreign struct whose arguments are"
-         " all of these.",
+         " function, a `ptr[T](...)` cast of any of these addresses, or a"
+         " constructor of a foreign struct whose arguments are all of these.",
          blocks_codegen=True
      ),
      E1156 = _err(
