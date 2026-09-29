@@ -156,6 +156,74 @@ glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS_APP"
      };
 
+# The JacPython targets and the symbols only one of them defines; the other
+# systems' symbols (and HAVE_CWAIT, which only PC/pyconfig.h sets) are never
+# defined on either.
+glob PLATFORMS: list[str] = ["darwin", "linux"],
+     PLATFORM_SYMBOLS: dict[str, str] = {
+         "__APPLE__": "darwin",
+         "__MACH__": "darwin",
+         "__linux__": "linux"
+     },
+     OTHER_SYSTEM_SYMBOLS: set[str] = {
+         "__FreeBSD__",
+         "__DragonFly__",
+         "__NetBSD__",
+         "__OpenBSD__",
+         "__sun",
+         "__VXWORKS__",
+         "HAVE_CWAIT"
+     };
+
+# The targets on which a clinic #if condition can hold, every other feature
+# test being free as in posix_condition().
+def condition_platforms(condition: str) -> list[str] {
+    if not condition {
+        return list(PLATFORMS);
+    }
+    expression = re.sub(
+        r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition
+    );
+    expression = expression.replace("&&", " and ").replace("||", " or ");
+    expression = re.sub(r"!(?!=)", " not ", expression);
+    symbols = sorted(
+        set(re.findall(r"\b[A-Za-z_]\w*\b", expression))
+            - {"True", "False", "and", "or", "not"}
+    );
+    fixed = WINDOWS_SYMBOLS | OTHER_SYSTEM_SYMBOLS | set(PLATFORM_SYMBOLS);
+    features = [name for name in symbols if name not in fixed];
+    if len(features) > 12 or re.search(r"[<>=]", condition) {
+        return list(PLATFORMS);
+    }
+    found: list[str] = [];
+    for platform in PLATFORMS {
+        holds = False;
+        for choice in range(2 ** len(features)) {
+            values: dict[str, bool] = {name: False for name in symbols};
+            for name in symbols {
+                if PLATFORM_SYMBOLS.get(name) == platform {
+                    values[name] = True;
+                }
+            }
+            for (bit, name) in enumerate(features) {
+                values[name] = bool((choice >> bit) & 1);
+            }
+            try {
+                holds = bool(eval(expression, {}, values));
+            } except Exception {
+                holds = True;
+            }
+            if holds {
+                break;
+            }
+        }
+        if holds {
+            found.append(platform);
+        }
+    }
+    return found;
+}
+
 def:priv tested_symbol(hit: any) -> str {
     return hit.group(1) or hit.group(2);
 }
@@ -349,6 +417,9 @@ obj Emitter {
         qualified: bool = False,
         skipped: list[str] = [],
         windows: list[str] = [],
+        elsewhere: list[str] = [],
+        variants: list[str] = [],
+        table_suffix: str = "",
         class_docs: dict[str, str] = {},
         function_docs: dict[str, str] = {},
         source_text: str = "";
@@ -363,11 +434,15 @@ obj Emitter {
     }
 
     def table_name(cls: any) -> str {
-        return f"{cls.name}_methods" if cls else "module_methods";
+        return (f"{cls.name}_methods" if cls else "module_methods") + self.table_suffix;
     }
 
     # The Jac expression for a parameter's default.
     def default_value(p: any, jtype: str) -> str {
+        initial = self.initializer(p.converter);
+        if initial {
+            return initial;
+        }
         c_default = getattr(p.converter, "c_default", "");
         py_default = p.default;
         if jtype == "ptr[u8]" and (c_default == "NULL" or py_default is None) {
@@ -431,6 +506,13 @@ obj Emitter {
             name = "self_" + field.group(1);
             self.module_names.add(name);
             return f"{name}(receiver)";
+        }
+        # A C call over a C object (posix's fileno(stdout)), not over the
+        # receiver: both are the module's.
+        call = re.fullmatch(r"([A-Za-z_]\w*)\(\s*([A-Za-z_]\w*)\s*\)", text);
+        if call is not None and call.group(2) not in ("self", "module", "type") {
+            self.module_names.update([call.group(1), call.group(2)]);
+            return f"{call.group(1)}({call.group(2)})";
         }
         # A bitwise OR of macros (select's POLLIN | POLLPRI | POLLOUT), in
         # the parameter's own width.
@@ -626,7 +708,64 @@ obj Emitter {
             "convert_" + (named if isinstance(named, str) and named else kind)
         );
         self.module_names.add(custom);
-        return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
+        # A converter that fills a C struct its initializer macro sets up
+        # (posix's path_t and PATH_T_INITIALIZE_P) is handed that initializer,
+        # which also stands for the omitted argument.
+        initial = self.initializer(conv);
+        if initial {
+            return (jac_ctype(conv.type), f"{custom}(value, {initial})", []);
+        }
+        # Keyword options the converter keeps (confname's `table`, a C array
+        # the module defines) follow the error context.
+        options = "".join(f", {name}" for name in self.converter_options(conv));
+        return (jac_ctype(conv.type), f"{custom}(value, {where}{options})", []);
+    }
+
+    # The C initializer macro call a by-reference converter defaults to, in
+    # Jac, or "" when it has none.
+    def initializer(conv: any) -> str {
+        if not getattr(conv, "impl_by_reference", False)
+            or not hasattr(conv, "pre_render") {
+            return "";
+        }
+        conv.pre_render();
+        text = str(getattr(conv, "c_default", "") or "").strip();
+        call = re.fullmatch(r"([A-Za-z_]\w*)\((.*)\)", text);
+        if call is None {
+            return "";
+        }
+        arguments: list[str] = [];
+        for argument in re.findall(r'"(?:[^"\\]|\\.)*"|[^,\s][^,]*', call.group(2)) {
+            argument = argument.strip();
+            if re.fullmatch(r"[A-Za-z_]\w*", argument) {
+                self.module_names.add(argument);
+            }
+            arguments.append(argument);
+        }
+        self.module_names.add(call.group(1));
+        return f"{call.group(1)}({', '.join(arguments)})";
+    }
+
+    # The values of a module converter's own keyword options that name C
+    # objects of the module.
+    def converter_options(conv: any) -> list[str] {
+        init = getattr(type(conv), "converter_init", None);
+        if init is None {
+            return [];
+        }
+        import inspect;
+        names: list[str] = [];
+        for (name, parameter) in inspect.signature(init).parameters.items() {
+            if parameter.kind != parameter.KEYWORD_ONLY {
+                continue;
+            }
+            value = getattr(conv, name, None);
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z_]\w*", value) {
+                self.module_names.add(value);
+                names.append(value);
+            }
+        }
+        return names;
     }
 
     # The PyMethodDef flags and getargs parser clinic generates for `f`.
@@ -742,9 +881,13 @@ obj Emitter {
         # A clone kept only for its docstring and method table entry: the C
         # module binds it by hand. A parser calls `<c_basename>_impl`; without
         # one (a METH_O object argument) the C function is the impl itself.
-        expected = f.c_basename + "_impl"
-            if id(f) in PARSERS and expected_impl_call(f.c_basename, PARSERS[id(f)][1])
+        # A per-target definition is looked up in C by its unsuffixed name.
+        source_base = f.c_basename.removesuffix(self.table_suffix)
+            if self.table_suffix
             else f.c_basename;
+        expected = source_base + "_impl"
+            if id(f) in PARSERS and expected_impl_call(source_base, PARSERS[id(f)][1])
+            else source_base;
         if kind not in ("METHOD_NEW", "METHOD_INIT")
             and not re.search(rf"\b{expected}\s*\(", self.source_text) {
             doc = f.docstring or "";
@@ -789,12 +932,21 @@ obj Emitter {
             if kind in ("METHOD_NEW", "METHOD_INIT")
             else f.name;
         ret_kind = class_name(f.return_converter).removesuffix("_return_converter");
-        if ret_kind not in RETURNS {
+        # A module's own return converter (posix's Py_off_t) converts with its
+        # conversion_fn: the module supplies return_<conversion_fn>, which
+        # also checks the error value as its base converter does.
+        conversion = getattr(f.return_converter, "conversion_fn", "");
+        wrap = "";
+        if ret_kind in RETURNS {
+            wrap = RETURNS[ret_kind];
+            if wrap {
+                self.use(wrap);
+            }
+        } elif conversion and re.fullmatch(r"[A-Za-z_]\w*", conversion) {
+            wrap = "return_" + conversion;
+            self.module_names.add(wrap);
+        } else {
             raise Unsupported(f"return converter {ret_kind}");
-        }
-        wrap = RETURNS[ret_kind];
-        if wrap {
-            self.use(wrap);
         }
         # The body that converts bound values and calls the impl.
         body: list[str] = [];
@@ -1052,6 +1204,18 @@ obj Emitter {
             head += ["", "Compiled only on Windows, so absent here:"];
             head += [f"    {item}" for item in self.windows];
         }
+        if self.elsewhere {
+            head += ["", "Compiled only for other systems, so absent here:"];
+            head += [f"    {item}" for item in self.elsewhere];
+        }
+        if self.variants {
+            head += [
+                "",
+                "One definition per target (names and tables suffixed _<target>;",
+                "the binding installs its own target's):"
+            ];
+            head += [f"    {item}" for item in self.variants];
+        }
         head.append('"""');
         imports = [
             f"import from jaclang.runtime.python.cpython_api {{ {', '.join(
@@ -1125,12 +1289,39 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     emitter = Emitter(
         module=module, name=name, source_text="\n".join(s.read_text() for s in sources)
     );
-    for pair in clinic_functions(tree, sources) {
+    functions = clinic_functions(tree, sources);
+    # A function C defines once per system (#ifdef __APPLE__ ... #else): the
+    # definitions that can exist on a JacPython target, by full name and kind
+    # (a getter and its setter share a name).
+    defined: dict[str, list[any]] = {};
+    for pair in functions {
+        f = pair[1];
+        condition = CONDITIONS.get(id(f), "");
+        if not windows_only(condition) and condition_platforms(condition) {
+            defined.setdefault(f"{f.full_name}:{f.kind.name}", []).append(f);
+        }
+    }
+    for pair in functions {
         cls = pair[0];
         f = pair[1];
-        if windows_only(CONDITIONS.get(id(f), "")) {
+        condition = CONDITIONS.get(id(f), "");
+        if windows_only(condition) {
             emitter.windows.append(f.full_name);
             continue;
+        }
+        targets = condition_platforms(condition);
+        if not targets {
+            emitter.elsewhere.append(f.full_name);
+            continue;
+        }
+        emitter.table_suffix = "";
+        if len(defined.get(f"{f.full_name}:{f.kind.name}", [])) > 1 {
+            if len(targets) != 1 {
+                sys.exit(f"{f.full_name} has definitions for more than one target");
+            }
+            emitter.table_suffix = "_" + targets[0];
+            emitter.variants.append(f"{f.full_name}: {targets[0]}");
+            f.c_basename = f.c_basename + emitter.table_suffix;
         }
         try {
             if f.kind.name in ("GETTER", "SETTER") {
