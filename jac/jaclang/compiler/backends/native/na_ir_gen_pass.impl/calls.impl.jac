@@ -2437,7 +2437,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
             if sig.return_type is None and clib_import_of(sig) is not None {
-                # A C definition with no return annotation returns void.
                 ret_ir_type = ir.VoidType();
             }
             _extern_sym = func_name;

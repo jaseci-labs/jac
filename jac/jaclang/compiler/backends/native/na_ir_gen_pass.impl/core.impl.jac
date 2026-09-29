@@ -231,8 +231,6 @@ impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
     issue.record(self.llvm_module);
 }
 
-# The globals the module initializer computes, and the globals of other units
-# it loads (declarations: this unit does not define them).
 impl NaIRGenPass._glob_init_symbols -> tuple[list[str], list[str]] {
     computed: list[str] = [];
     for init_tuple in self._global_init_nodes {
