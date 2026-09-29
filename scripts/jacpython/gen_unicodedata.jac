@@ -23,11 +23,17 @@ case pairs. Table names keep their C spelling; the static ones take a `ucd_`
 or `ucn_` prefix because a C data definition is an exported symbol.
 """
 import argparse;
-import ast;
 import re;
 import sys;
 import from pathlib { Path }
-import from common { RUNTIME, archive_texts, format_jac_many, pin, write_or_check }
+import from common {
+    RUNTIME,
+    archive_texts,
+    bytes_literal,
+    format_jac_many,
+    pin,
+    write_or_check
+}
 
 glob COMMAND: str = "scripts/jacpython/gen_unicodedata.jac",
      DATABASE: Path = RUNTIME / "modules/unicodedata_db.jac",
@@ -43,10 +49,7 @@ glob COMMAND: str = "scripts/jacpython/gen_unicodedata.jac",
          "Py_UCS2": "u16",
          "Py_UCS4": "u32",
          "double": "f64"
-     },
-     WIDTHS: dict[str, int] = {"u8": 1, "u16": 2, "u32": 4, "i16": 2, "i32": 4},
-     # Characters of a bytes literal per generated line (indent and quotes aside).
-     LINE_CHARS: int = 72;
+     };
 
 obj Unsupported(Exception) {}
 
@@ -180,50 +183,6 @@ def string_table(text: str, name: str) -> list[str] {
     return [c_string(item) for item in items];
 }
 
-# The escape of one byte of a bytes literal: printable ASCII as itself, the
-# rest as the shortest octal escape that `following` (the next byte) cannot
-# extend.
-def byte_escape(byte: int, following: int) -> str {
-    ch = chr(byte);
-    if ch in '\\"' {
-        return "\\" + ch;
-    }
-    if 32 <= byte < 127 {
-        return ch;
-    }
-    digits = f"{byte:o}";
-    if 48 <= following <= 55 {
-        digits = digits.rjust(3, "0");
-    }
-    return "\\" + digits;
-}
-
-# A bytes literal of `values` as little-endian elements of `jt`, split into
-# adjacent literals that fit the formatter's line.
-def bytes_table(values: list[int], jt: str) -> str {
-    width = WIDTHS[jt];
-    signed = jt.startswith("i");
-    data = b"".join(v.to_bytes(width, "little", signed=signed) for v in values);
-    lines: list[str] = [];
-    line: list[str] = [];
-    size = 0;
-    for i in range(len(data)) {
-        token = byte_escape(data[i], data[i + 1] if i + 1 < len(data) else -1);
-        if size + len(token) > LINE_CHARS {
-            lines.append('b"' + "".join(line) + '"');
-            line = [];
-            size = 0;
-        }
-        line.append(token);
-        size += len(token);
-    }
-    lines.append('b"' + "".join(line) + '"');
-    if b"".join(ast.literal_eval(text) for text in lines) != data {
-        raise Unsupported(f"a {jt} table does not survive its bytes literal");
-    }
-    return "(\n" + "\n".join(lines) + "\n)";
-}
-
 def struct_value(struct: str, fields: list[tuple[str, str]], items: list[str]) -> str {
     if len(items) != len(fields) {
         raise Unsupported(f"{struct} record {items} does not match its fields");
@@ -255,7 +214,7 @@ obj Emitter {
     }
 
     def ints(name: str, jt: str, values: list[int]) {
-        self.data.append(f"{name}: list[{jt}] = {bytes_table(values, jt)}");
+        self.data.append(f"{name}: list[{jt}] = {bytes_literal(values, jt)}");
     }
 
     def strings(name: str, items: list[str]) {
