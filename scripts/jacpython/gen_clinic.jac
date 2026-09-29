@@ -769,6 +769,15 @@ obj Emitter {
             }
             check = "subclass_" + re.sub(r"\W+", "_", subclass).strip("_");
             self.module_names.add(check);
+            # clinic_state() is the state of the receiver's module, so a
+            # check against one of its types takes the receiver.
+            if "clinic_state()" in subclass {
+                return (
+                    "ptr[PyObject]",
+                    "value",
+                    [f"{check}(receiver, value, {where});"]
+                );
+            }
             return ("ptr[PyObject]", "value", [f"{check}(value, {where});"]);
         }
         # int(accept={str}) keeps its accepted types only as the "C" unit.

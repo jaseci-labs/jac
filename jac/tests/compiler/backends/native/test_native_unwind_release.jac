@@ -6,12 +6,14 @@ object those frames held leaked once per raise (a JacPython argument parser
 failing a conversion leaked about a dozen objects per call). A frame that
 owns rc locals now links a node into the thread's unwind chain, and the raise
 releases each crossed frame's locals before it jumps. A handler that binds no
-name releases the caught exception when it finishes, and a name bound again
+name releases the caught exception when it finishes, whether it falls off its
+end or leaves by return, break, continue or a raise, and a name bound again
 in a loop releases the exception it held before.
 
 An owned `bytes` or `str` temporary passed straight to a C function whose
 signature goes through the C ABI plan (a slice of a bytes field handed to
-`memchr`) was never released after the call.
+`memchr`) was never released after the call, nor was the C string made for
+any `str` argument (the owner retained, or a NUL-terminated copy).
 
 The fixtures agree with the Python backend, and a debug build's live-object
 dump (or macOS `leaks`, for the byte buffers the dump does not track) must
@@ -68,6 +70,10 @@ test "raises through rc frames agree with the Python backend" {
         str(FIXTURES / "unwind_handlers.jac"), profiles=["rc", "managed"]
     );
     assert out.strip() == "5750" , out;
+    out = assert_native_identity(
+        str(FIXTURES / "unwind_handler_exits.jac"), profiles=["rc", "managed"]
+    );
+    assert out.strip() == "2532" , out;
 }
 
 test "a raise releases the locals of every frame it crosses" {
@@ -82,6 +88,22 @@ test "caught exceptions are released whether or not a handler binds them" {
     for memory in ["rc", "managed"] {
         (first, leaks) = debug_leaks("unwind_handlers_leaks.jac", memory);
         assert first == "5750" , first;
+        assert not leaks , f"{memory}: {len(leaks)} leaked, e.g. {leaks[:3]}";
+    }
+}
+
+test "a handler that binds no name releases what it caught however it exits" {
+    for memory in ["rc", "managed"] {
+        (first, leaks) = debug_leaks("unwind_handler_exits_leaks.jac", memory);
+        assert first == "2532" , first;
+        assert not leaks , f"{memory}: {len(leaks)} leaked, e.g. {leaks[:3]}";
+    }
+}
+
+test "the C string made for a str argument is released after the call" {
+    for memory in ["rc", "managed"] {
+        (first, leaks) = debug_leaks("c_str_arguments_leaks.jac", memory);
+        assert first == "100" , first;
         assert not leaks , f"{memory}: {len(leaks)} leaked, e.g. {leaks[:3]}";
     }
 }

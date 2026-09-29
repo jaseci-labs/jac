@@ -118,7 +118,8 @@ import from jaclang.compiler.backends.native.na_constants {
     RC_COLOR_PURPLE,
     RC_COLOR_SHIFT,
     RC_COLOR_WHITE,
-    RC_CYCLE_THRESHOLD
+    RC_CYCLE_THRESHOLD,
+    UNBOUND_CAUGHT
 }
 
 glob GEN_PENDING_FLAG_OFF: int = 8,
@@ -323,6 +324,7 @@ walker NaIRGenPass(CompilerPass) {
                 ]
             ] = [],
         _slot_caught_drops: dict[int, tuple[ir.Value, ir.Value]] = {},
+        _unbound_caught_slots: dict[int, ir.Value] = {},
         _exc_context_fn: (ir.Function | None) = None,
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},

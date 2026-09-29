@@ -137,6 +137,12 @@ glob OPAQUE: list[str] = [
          "atexit_callback": (
              "obj atexit_callback { has func: Callable[[ptr], None], data: ptr, "
              + "next: ptr[atexit_callback]; }"
+         ),
+         # The union read through its `expat` member: 16 salt bytes, then the
+         # legacy XML_SetHashSalt() salt.
+         "_Py_HashSecret_t": (
+             "obj _Py_HashSecret_t { has expat_hashsalt16_head: u64, "
+             + "expat_hashsalt16_tail: u64, expat_hashsalt: i64; }"
          )
      },
      # Macros that name the address of a C object; each is a glob of that
@@ -267,7 +273,6 @@ glob OPAQUE: list[str] = [
      # out-pointer takes `&mut T | None`, so None passes NULL.
      NULLABLE_PARAMETERS: dict[str, set[int]] = {
          "PyBytes_DecodeEscape": {2, 4},
-         "PyCapsule_New": {1},
          "PyOS_double_to_string": {4},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
@@ -479,6 +484,9 @@ def data_type(ctype: str) -> str | None {
     }
     if base in OBJECT_LAYOUTS or base == "PyObject" {
         return "PyObject";
+    }
+    if base in INTERNAL_STRUCTS {
+        return base;
     }
     return SCALARS.get(base);
 }

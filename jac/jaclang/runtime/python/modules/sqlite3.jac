@@ -71,7 +71,7 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyLong_FromUInt32,
     PyLong_FromUnsignedLong,
-    PyMapping_GetOptionalItem,
+    PyMapping_GetOptionalItemString,
     PyMem_Free,
     PyMem_Malloc,
     PyMem_RawFree,
@@ -141,6 +141,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_unicode,
     jacpy_memory_copy,
     jacpy_release,
+    jacpy_is_type,
     jacpy_type_check,
     PyBool_Type,
     PyByteArray_Type,
@@ -171,7 +172,6 @@ import from jaclang.runtime.python.bindings.module {
 }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_allocate,
-    jacpy_binding_matches,
     jacpy_binding_owner,
     jacpy_binding_record
 }
@@ -768,6 +768,16 @@ def state_by_type(type: ptr[PyObject]) -> (SqliteState | None) {
 
 def:priv state_of(instance: ptr[PyObject]) -> (SqliteState | None) {
     return state_by_type(Py_TYPE(instance));
+}
+
+# A NUL-terminated UTF-8 C string as a Jac str.
+def:priv c_text(address: ptr[u8]) -> str {
+    text = c_string_text(address);
+    try {
+        return text_value(text);
+    } finally {
+        jacpy_release(text);
+    }
 }
 
 # PyUnicode_FromStringAndSize() over C memory: a strict UTF-8 decode.
@@ -1999,16 +2009,32 @@ def clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject] {
     return state.PrepareProtocolType;
 }
 
+# clinic_state(): the state of the receiver's module; in Row's __new__ the
+# receiver is the type.
+def:priv clinic_state(receiver: ptr[PyObject]) -> SqliteState {
+    state = state_by_type(
+        receiver if jacpy_is_type(receiver) != 0 else Py_TYPE(receiver)
+    );
+    if state is None {
+        raise boundary_failure();
+    }
+    return state;
+}
+
 # object(subclass_of='clinic_state()->ConnectionType').
-def subclass_clinic_state_ConnectionType(value: ptr[PyObject], fname: str, label: str) {
-    if jacpy_binding_matches(value, Connection_token.handle) == 0 {
+def subclass_clinic_state_ConnectionType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) {
+    if jacpy_type_check(value, clinic_state(receiver).ConnectionType) == 0 {
         bad_argument(fname, label, "sqlite3.Connection", value);
     }
 }
 
 # object(subclass_of='clinic_state()->CursorType').
-def subclass_clinic_state_CursorType(value: ptr[PyObject], fname: str, label: str) {
-    if jacpy_binding_matches(value, Cursor_token.handle) == 0 {
+def subclass_clinic_state_CursorType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) {
+    if jacpy_type_check(value, clinic_state(receiver).CursorType) == 0 {
         bad_argument(fname, label, "sqlite3.Cursor", value);
     }
 }
@@ -3982,12 +4008,9 @@ def:priv bind_parameters(
             # Skip the first character (the colon).
             binding_name += 1;
             current_param = NULL;
-            key = c_string_text(binding_name);
-            if not key {
-                return;
-            }
-            found = PyMapping_GetOptionalItem(parameters, key, &mut current_param);
-            jacpy_release(key);
+            found = PyMapping_GetOptionalItemString(
+                parameters, c_text(binding_name), &mut current_param
+            );
             if found == -1 {
                 return;
             } elif found == 0 {

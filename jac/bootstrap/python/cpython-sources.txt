@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 110 C files / 171,140 lines; 97 headers / 78,003 lines.
-#   Total: 207 files / 249,143 source lines.
+#   Excluded: 112 C files / 178,237 lines; 99 headers / 80,173 lines.
+#   Total: 211 files / 258,410 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -334,7 +334,7 @@ Modules/_ctypes/stgdict.c
 # Modules/_datetimemodule.c  # removed: 7,787 source lines
 # Modules/_decimal/_decimal.c  # removed: 6,341 source lines
 # Modules/_decimal/docstrings.h  # removed: 966 source lines
-Modules/_elementtree.c
+# Modules/_elementtree.c  # removed: 4,560 source lines
 # Modules/_functoolsmodule.c  # removed: 1,953 source lines
 Modules/_hacl/Hacl_HMAC.c
 Modules/_hacl/Hacl_HMAC.h
@@ -511,7 +511,7 @@ Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
 # Modules/clinic/_csv.c.h  # removed: 210 source lines
 # Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
-Modules/clinic/_elementtree.c.h
+# Modules/clinic/_elementtree.c.h  # removed: 1,334 source lines
 # Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
 Modules/clinic/_hashopenssl.c.h
 # Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
@@ -549,7 +549,7 @@ Modules/clinic/gcmodule.c.h
 # Modules/clinic/mmapmodule.c.h  # removed: 769 source lines
 Modules/clinic/posixmodule.c.h
 # Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
-Modules/clinic/pyexpat.c.h
+# Modules/clinic/pyexpat.c.h  # removed: 836 source lines
 # Modules/clinic/resource.c.h  # removed: 177 source lines
 # Modules/clinic/selectmodule.c.h  # removed: 1,379 source lines
 # Modules/clinic/sha1module.c.h  # removed: 175 source lines
@@ -588,7 +588,7 @@ Modules/makesetup
 Modules/posixmodule.c
 Modules/posixmodule.h
 # Modules/pwdmodule.c  # removed: 380 source lines
-Modules/pyexpat.c
+# Modules/pyexpat.c  # removed: 2,537 source lines
 # Modules/resource.c  # removed: 568 source lines
 Modules/rotatingtree.c
 Modules/rotatingtree.h

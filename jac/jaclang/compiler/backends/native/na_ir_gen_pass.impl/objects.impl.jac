@@ -3139,7 +3139,11 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     dict_type_key: (str | None) = self._dict_key_of(trailer.target);
-    if dict_type_key is None and target_name is not None {
+    # Only a variable is probed: evaluating any other receiver here would run
+    # it twice (an f-string or literal allocating a copy nothing releases).
+    if dict_type_key is None
+        and target_name is not None
+        and isinstance(trailer.target, uni.Name) {
         probe_val = self._codegen_receiver(trailer.target);
         if probe_val is not None {
             dict_type_info = self._infer_dict_type(probe_val);

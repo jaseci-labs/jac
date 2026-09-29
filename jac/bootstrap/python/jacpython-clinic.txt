@@ -56,3 +56,5 @@ unicodedata
 _datetime
 _sqlite3
 _multibytecodec
+pyexpat
+_elementtree
