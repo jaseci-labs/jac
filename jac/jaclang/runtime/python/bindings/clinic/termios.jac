@@ -195,7 +195,8 @@ def:priv termios_tcsetwinsize_call(
     );
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob termios__doc__: str = "This module provides an interface to the Posix calls for tty I/O control.\nFor a complete description of these calls, see the Posix or Unix manual\npages. It is only available for those Unix versions that support Posix\ntermios style tty I/O control.\n\nAll functions in this module take a file descriptor fd as their first\nargument. This can be an integer file descriptor, such as returned by\nsys.stdin.fileno(), or a file object, such as sys.stdin itself.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "tcgetattr",
              MethodCallbacks(positional=termios_tcgetattr_call),

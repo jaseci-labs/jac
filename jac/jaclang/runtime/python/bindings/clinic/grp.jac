@@ -83,7 +83,9 @@ def:priv grp_getgrall_call(
     return invoke_given(NULL, grp_getgrall_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob struct_group__doc__: str = "grp.struct_group: Results from getgr*() routines.\n\nThis object may be accessed either as a tuple of\n  (gr_name,gr_passwd,gr_gid,gr_mem)\nor via the object attributes as named in the above tuple.\n",
+     grp__doc__: str = "Access to the Unix group database.\n\nGroup entries are reported as 4-tuples containing the following fields\nfrom the group database, in order:\n\n  gr_name   - name of the group\n  gr_passwd - group password (encrypted); often empty\n  gr_gid    - numeric ID of the group\n  gr_mem    - list of members\n\nThe gid is an integer, name and password are strings.  (Note that most\nusers are not explicitly listed as members of the groups they are in\naccording to the password database.  Check both databases to get\ncomplete membership information.)",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getgrgid",
              MethodCallbacks(fast_keywords=grp_getgrgid_call),

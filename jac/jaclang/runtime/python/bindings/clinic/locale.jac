@@ -275,7 +275,8 @@ def:priv _locale_getencoding_call(
     return invoke_given(NULL, _locale_getencoding_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob locale__doc__: str = "Support for POSIX locales.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "setlocale",
              MethodCallbacks(fast=_locale_setlocale_call),

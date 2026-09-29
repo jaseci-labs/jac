@@ -20,7 +20,8 @@ enum TypeFlags {
     GC = 16384,
     MANAGED_WEAKREF = 8,
     DISALLOW_INSTANTIATION = 128,
-    SEQUENCE = 32
+    SEQUENCE = 32,
+    METHOD_DESCRIPTOR = 131072
 }
 
 enum TypeSlot { DESCR_GET = 54, INIT = 60, NEW = 65 }
@@ -73,7 +74,8 @@ import from c {
             release_buffer: Callable[[ptr[PyObject], ptr[Py_buffer]], None] = 0,
             get_attribute: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
             set_attribute:
-                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0;
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0,
+            finalize: Callable[[ptr[PyObject]], None] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
@@ -84,7 +86,8 @@ import from c {
         instance_dict: i64,
         unhashable: i64,
         field_count: i64,
-        record_size: i64
+        record_size: i64,
+        options: i64
     ) -> ptr;  def jacpy_binding_member(
         handle: ptr,
         index: i64,
@@ -142,7 +145,10 @@ obj TypeDefinition {
         instance_dict: bool = False,
         unhashable: bool = False,
         members: (list[MemberField] | None) = None,
-        record_size: int = 0
+        record_size: int = 0,
+        weaklist: bool = False,
+        generic_getattr: bool = False,
+        generic_setattr: bool = False
     ) {
         declarations: list[PropertyDefinition] = properties
             if properties is not None
@@ -158,7 +164,9 @@ obj TypeDefinition {
             i64(instance_dict),
             i64(unhashable),
             i64(len(fields)),
-            i64(record_size)
+            i64(record_size),
+            # JAC_TYPE_WEAKLIST, JAC_TYPE_GENERIC_GETATTR, JAC_TYPE_GENERIC_SETATTR.
+            i64(int(weaklist) | int(generic_getattr) << 1 | int(generic_setattr) << 2)
         );
         if self.handle and not install_methods(self.handle, methods) {
             jacpy_binding_type_discard(self.handle);

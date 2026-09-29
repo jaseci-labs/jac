@@ -32,7 +32,6 @@ import from jaclang.runtime.python.bindings.converters {
     convert_unsigned_bounded
 }
 import from jaclang.runtime.python.modules.mmap {
-    PY_SSIZE_T_MAX,
     mmap_mmap___enter___impl,
     mmap_mmap___exit___impl,
     mmap_mmap_close_impl,
@@ -92,9 +91,9 @@ glob:priv mmap_mmap_read_signature = CallSignature(
 
 def:priv mmap_mmap_read_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
-    n: i64 = PY_SSIZE_T_MAX;
+    n: i64 = 9223372036854775807;
     if args.values[0] != NULL {
-        n = convert_optional_ssize(args.values[0], PY_SSIZE_T_MAX);
+        n = convert_optional_ssize(args.values[0], 9223372036854775807);
     }
     return mmap_mmap_read_impl(receiver, n);
 }
@@ -115,17 +114,21 @@ def:priv mmap_mmap_find_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
     view: BufferArgument = convert_buffer(value, "find", argument_label("", 1));
-    start: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        start = value;
+    try {
+        start: ptr[PyObject] = borrowed_none();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            start = value;
+        }
+        end: ptr[PyObject] = borrowed_none();
+        if args.values[2] != NULL {
+            value = args.values[2];
+            end = value;
+        }
+        return mmap_mmap_find_impl(receiver, view, start, end);
+    } finally {
+        view.close();
     }
-    end: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        end = value;
-    }
-    return mmap_mmap_find_impl(receiver, view, start, end);
 }
 
 def:priv mmap_mmap_find_call(
@@ -144,17 +147,21 @@ def:priv mmap_mmap_rfind_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
     view: BufferArgument = convert_buffer(value, "rfind", argument_label("", 1));
-    start: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        start = value;
+    try {
+        start: ptr[PyObject] = borrowed_none();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            start = value;
+        }
+        end: ptr[PyObject] = borrowed_none();
+        if args.values[2] != NULL {
+            value = args.values[2];
+            end = value;
+        }
+        return mmap_mmap_rfind_impl(receiver, view, start, end);
+    } finally {
+        view.close();
     }
-    end: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        end = value;
-    }
-    return mmap_mmap_rfind_impl(receiver, view, start, end);
 }
 
 def:priv mmap_mmap_rfind_call(
@@ -169,7 +176,11 @@ def:priv mmap_mmap_write_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
     bytes_: BufferArgument = convert_buffer(value, "write", "argument");
-    return mmap_mmap_write_impl(receiver, bytes_);
+    try {
+        return mmap_mmap_write_impl(receiver, bytes_);
+    } finally {
+        bytes_.close();
+    }
 }
 
 def:priv mmap_mmap_write_call(
@@ -393,7 +404,8 @@ def:priv mmap_mmap_madvise_call(
     );
 }
 
-glob mmap_methods: list[MethodDefinition] = [
+glob mmap_doc: str = "Windows: mmap(fileno, length[, tagname[, access[, offset]]])\n\nMaps length bytes from the file specified by the file handle fileno,\nand returns a mmap object.  If length is larger than the current size\nof the file, the file is extended to contain length bytes.  If length\nis 0, the maximum length of the map is the current size of the file,\nexcept that if the file is empty Windows raises an exception (you cannot\ncreate an empty mapping on Windows).\n\nUnix: mmap(fileno, length[, flags[, prot[, access[, offset[, trackfd]]]]])\n\nMaps length bytes from the file specified by the file descriptor fileno,\nand returns a mmap object.  If length is 0, the maximum length of the map\nwill be the current size of the file when mmap is called.\nflags specifies the nature of the mapping. MAP_PRIVATE creates a\nprivate copy-on-write mapping, so changes to the contents of the mmap\nobject will be private to this process, and MAP_SHARED creates a mapping\nthat's shared with all other processes mapping the same areas of the file.\nThe default value is MAP_SHARED.\n\nTo map anonymous memory, pass -1 as the fileno (both versions).",
+     mmap_methods: list[MethodDefinition] = [
          MethodDefinition(
              "close",
              MethodCallbacks(positional=mmap_mmap_close_call),

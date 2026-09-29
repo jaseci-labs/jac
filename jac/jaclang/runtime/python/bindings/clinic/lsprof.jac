@@ -49,9 +49,11 @@ glob:priv _lsprof_Profiler_getstats_signature = CallSignature(
 def:priv _lsprof_Profiler_getstats_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, Profiler_token);
-    result = _lsprof_Profiler_getstats_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        return _lsprof_Profiler_getstats_impl(receiver, cls);
+    } finally {
+        jacpy_release(cls);
+    }
 }
 
 def:priv _lsprof_Profiler_getstats_call(

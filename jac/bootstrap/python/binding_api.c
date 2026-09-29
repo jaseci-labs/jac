@@ -189,18 +189,30 @@ typedef struct {
     void (*release_buffer)(PyObject *, Py_buffer *);
     PyObject *(*get_attribute)(PyObject *, PyObject *);
     int32_t (*set_attribute)(PyObject *, PyObject *, PyObject *);
+    void (*finalize)(PyObject *);
 } JacTypeHooks;
 
 typedef struct {
     void *state;
     vectorcallfunc vectorcall;
     PyObject *dictionary;
+    PyObject *weaklist;
 } JacInstancePayload;
+
+/* jacpy_binding_type options, as a C type's spec spells them: a
+ * tp_weaklistoffset list, and PyObject_GenericGetAttr/SetAttr named as the
+ * type's own tp_getattro/tp_setattro (which gives it __getattribute__,
+ * __setattr__ and __delattr__ slot wrappers). */
+enum {
+    JAC_TYPE_WEAKLIST = 1,
+    JAC_TYPE_GENERIC_GETATTR = 2,
+    JAC_TYPE_GENERIC_SETATTR = 4
+};
 
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[35];
+    PyType_Slot slots[40];
     vectorcallfunc vectorcall;
     int instance_dict;
     /* The C fields published as member descriptors, then
@@ -238,13 +250,13 @@ void jacpy_binding_type_discard(void *handle) {
 void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
                            uint64_t flags, JacTypeHooks hooks, int64_t property_count,
                            int64_t instance_dict, int64_t unhashable,
-                           int64_t field_count, int64_t record_size) {
+                           int64_t field_count, int64_t record_size, int64_t options) {
     JacTypeSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
     spec->properties = calloc(property_count + 1, sizeof(PyGetSetDef));
     spec->field_count = field_count;
-    spec->members = calloc(field_count + 3, sizeof(PyMemberDef));
+    spec->members = calloc(field_count + 4, sizeof(PyMemberDef));
     if (!spec->table.name || !spec->table.doc || !spec->properties || !spec->members) {
         jacpy_binding_type_discard((spec));
         return 0;
@@ -265,6 +277,11 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
         spec->instance_dict = 1;
         spec->members[member++] = (PyMemberDef){"__dictoffset__", Py_T_PYSSIZET,
             offsetof(JacInstancePayload, dictionary), Py_READONLY | Py_RELATIVE_OFFSET};
+    }
+    if (options & JAC_TYPE_WEAKLIST) {
+        spec->definition.basicsize = -(int)(sizeof(JacInstancePayload) + record_size);
+        spec->members[member++] = (PyMemberDef){"__weaklistoffset__", Py_T_PYSSIZET,
+            offsetof(JacInstancePayload, weaklist), Py_READONLY | Py_RELATIVE_OFFSET};
     }
     int slot = 0;
 #define SLOT(field, id) if (hooks.field) spec->slots[slot++] = (PyType_Slot){id, (void *)hooks.field}
@@ -296,6 +313,11 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(release_buffer, Py_bf_releasebuffer);
     SLOT(get_attribute, Py_tp_getattro);
     SLOT(set_attribute, Py_tp_setattro);
+    SLOT(finalize, Py_tp_finalize);
+    if (!hooks.get_attribute && (options & JAC_TYPE_GENERIC_GETATTR))
+        spec->slots[slot++] = (PyType_Slot){Py_tp_getattro, PyObject_GenericGetAttr};
+    if (!hooks.set_attribute && (options & JAC_TYPE_GENERIC_SETATTR))
+        spec->slots[slot++] = (PyType_Slot){Py_tp_setattro, PyObject_GenericSetAttr};
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT

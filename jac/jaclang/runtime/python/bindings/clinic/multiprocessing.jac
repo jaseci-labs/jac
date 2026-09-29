@@ -311,6 +311,10 @@ def:priv _multiprocessing_SemLock___exit___call(
 }
 
 glob SemLock_doc: str = "",
+     semlock_members_handle_doc: str = "",
+     semlock_members_kind_doc: str = "",
+     semlock_members_maxvalue_doc: str = "",
+     semlock_members_name_doc: str = "",
      SemLock_methods: list[MethodDefinition] = [
          MethodDefinition(
              "acquire",

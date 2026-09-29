@@ -118,6 +118,30 @@ parameter (format unit `S` or `Y`) is checked as `object(subclass_of=...)`
 over bytes or bytearray. A module built from several C files (`_zstd`'s
 `Modules/_zstd/`) gets one glue file for all of them.
 
+The public surface comes from the same source as the parsing. Besides the
+clinic tables, the glue carries every other docstring of the C files as a
+`glob`: `PyDoc_STRVAR` texts under their C names (`module_doc`,
+`s_pack__doc__`, `teecopy_doc`) and the inline `PyDoc_STR` of a
+`PyMethodDef`, `PyMemberDef` or `PyGetSetDef` table as
+`<table>_<name>_doc` (`deque_methods___class_getitem___doc`,
+`defdict_members_default_factory_doc`). A binding builds the module and type
+docs, its hand-written `PyMethodDef` entries and its getset and member docs
+from these, so no docstring or text signature is written by hand. The type
+options follow the C slots: `weaklist=True` for a `__weaklistoffset__` member
+(not `Py_TPFLAGS_MANAGED_WEAKREF`), `generic_getattr`/`generic_setattr` for
+`Py_tp_getattro = PyObject_GenericGetAttr` and its setattr pair, and
+`TypeHooks.finalize` for `Py_tp_finalize`. A type without `Py_tp_new` in C
+has none in Jac either (`defaultdict`, `_lsprof.Profiler`): its state lives
+in the member record or appears on first use. A writable `Py_T_OBJECT`
+member owns its reference in the record (`_tuplegetter.__doc__`,
+`Pickler.dispatch_table`); a read-only one over native state mirrors it
+borrowed (`BZ2Decompressor.unused_data`) and the type zeroes the record before
+the state releases it. A converter C calls with the module first
+(`cache_struct_converter(module, arg, &out)`) receives the receiver, a
+converter whose `cleanup` drops its result has the glue release it, and the
+interpreter's own `_PyEval_SliceIndexNotNone` is the shared
+`convert_slice_index_not_none`.
+
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
 optional groups; the generated file lists them and the module binding parses

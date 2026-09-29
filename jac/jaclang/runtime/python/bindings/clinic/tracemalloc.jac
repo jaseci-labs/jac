@@ -164,7 +164,8 @@ def:priv _tracemalloc_reset_peak_call(
     return invoke_given(NULL, _tracemalloc_reset_peak_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob module_doc: str = "Debug module to trace memory blocks allocated by Python.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "is_tracing",
              MethodCallbacks(positional=_tracemalloc_is_tracing_call),

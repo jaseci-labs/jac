@@ -155,7 +155,8 @@ def:priv fcntl_lockf_call(
     );
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob module_doc: str = "This module performs file control and I/O control on file\ndescriptors.  It is an interface to the fcntl() and ioctl() Unix\nroutines.  File descriptors can be obtained with the fileno() method of\na file or socket object.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "fcntl",
              MethodCallbacks(fast=fcntl_fcntl_call),

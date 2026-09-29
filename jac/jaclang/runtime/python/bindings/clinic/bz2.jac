@@ -25,9 +25,12 @@ import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_buffer,
     convert_int,
-    convert_ssize
+    convert_ssize,
+    new_checks_arguments
 }
 import from jaclang.runtime.python.modules.bz2 {
+    BZ2Compressor_token,
+    BZ2Decompressor_token,
     _bz2_BZ2Compressor_compress_impl,
     _bz2_BZ2Compressor_flush_impl,
     _bz2_BZ2Compressor_impl,
@@ -39,7 +42,11 @@ def:priv _bz2_BZ2Compressor_compress_bound(args: BoundArguments) -> ptr[PyObject
     receiver = args.context;
     value = args.values[0];
     data: BufferArgument = convert_buffer(value, "compress", "argument");
-    return _bz2_BZ2Compressor_compress_impl(receiver, data);
+    try {
+        return _bz2_BZ2Compressor_compress_impl(receiver, data);
+    } finally {
+        data.close();
+    }
 }
 
 def:priv _bz2_BZ2Compressor_compress_call(
@@ -77,7 +84,12 @@ def:pub _bz2_BZ2Compressor_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return invoke(
-        _bz2_BZ2Compressor_signature, args, kwargs, _bz2_BZ2Compressor_bound, type
+        _bz2_BZ2Compressor_signature,
+        args,
+        kwargs,
+        _bz2_BZ2Compressor_bound,
+        type,
+        checked=new_checks_arguments(type, BZ2Compressor_token)
     );
 }
 
@@ -91,12 +103,16 @@ def:priv _bz2_BZ2Decompressor_decompress_bound(args: BoundArguments) -> ptr[PyOb
     data: BufferArgument = convert_buffer(
         value, "decompress", argument_label("data", 1)
     );
-    max_length: i64 = -1;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        max_length = convert_ssize(value);
+    try {
+        max_length: i64 = -1;
+        if args.values[1] != NULL {
+            value = args.values[1];
+            max_length = convert_ssize(value);
+        }
+        return _bz2_BZ2Decompressor_decompress_impl(receiver, data, max_length);
+    } finally {
+        data.close();
     }
-    return _bz2_BZ2Decompressor_decompress_impl(receiver, data, max_length);
 }
 
 def:priv _bz2_BZ2Decompressor_decompress_call(
@@ -128,12 +144,20 @@ def:pub _bz2_BZ2Decompressor_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return invoke(
-        _bz2_BZ2Decompressor_signature, args, kwargs, _bz2_BZ2Decompressor_bound, type
+        _bz2_BZ2Decompressor_signature,
+        args,
+        kwargs,
+        _bz2_BZ2Decompressor_bound,
+        type,
+        checked=new_checks_arguments(type, BZ2Decompressor_token)
     );
 }
 
 glob BZ2Compressor_doc: str = "BZ2Compressor(compresslevel=9, /)\n--\n\nCreate a compressor object for compressing data incrementally.\n\n  compresslevel\n    Compression level, as a number between 1 and 9.\n\nFor one-shot compression, use the compress() function instead.",
      BZ2Decompressor_doc: str = "BZ2Decompressor()\n--\n\nCreate a decompressor object for decompressing data incrementally.\n\nFor one-shot decompression, use the decompress() function instead.",
+     BZ2Decompressor_eof__doc__: str = "True if the end-of-stream marker has been reached.",
+     BZ2Decompressor_unused_data__doc__: str = "Data found after the end of the compressed stream.",
+     BZ2Decompressor_needs_input_doc: str = "True if more input is needed before more decompressed data can be produced.",
      BZ2Compressor_methods: list[MethodDefinition] = [
          MethodDefinition(
              "compress",

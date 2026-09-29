@@ -40,9 +40,11 @@ glob:priv MD5Type_copy_signature = CallSignature(
 def:priv MD5Type_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, MD5Type_token);
-    result = MD5Type_copy_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        return MD5Type_copy_impl(receiver, cls);
+    } finally {
+        jacpy_release(cls);
+    }
 }
 
 def:priv MD5Type_copy_call(

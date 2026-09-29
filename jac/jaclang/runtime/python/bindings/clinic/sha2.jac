@@ -48,9 +48,11 @@ glob:priv SHA256Type_copy_signature = CallSignature(
 def:priv SHA256Type_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, SHA256Type_token);
-    result = SHA256Type_copy_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        return SHA256Type_copy_impl(receiver, cls);
+    } finally {
+        jacpy_release(cls);
+    }
 }
 
 def:priv SHA256Type_copy_call(
@@ -106,9 +108,11 @@ glob:priv SHA512Type_copy_signature = CallSignature(
 def:priv SHA512Type_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, SHA512Type_token);
-    result = SHA512Type_copy_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        return SHA512Type_copy_impl(receiver, cls);
+    } finally {
+        jacpy_release(cls);
+    }
 }
 
 def:priv SHA512Type_copy_call(

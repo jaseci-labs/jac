@@ -25,7 +25,8 @@ def:priv _sysconfig_config_vars_call(
     return invoke_given(NULL, _sysconfig_config_vars_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob sysconfig__doc__: str = "A helper for the sysconfig module.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "config_vars",
              MethodCallbacks(positional=_sysconfig_config_vars_call),

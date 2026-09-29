@@ -59,7 +59,9 @@ def:priv pwd_getpwall_call(
     return invoke_given(NULL, pwd_getpwall_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob struct_passwd__doc__: str = "pwd.struct_passwd: Results from getpw*() routines.\n\nThis object may be accessed either as a tuple of\n  (pw_name,pw_passwd,pw_uid,pw_gid,pw_gecos,pw_dir,pw_shell)\nor via the object attributes as named in the above tuple.",
+     pwd__doc__: str = "This module provides access to the Unix password database.\nIt is available on all Unix versions.\n\nPassword database entries are reported as 7-tuples containing the following\nitems from the password database (see `<pwd.h>'), in order:\npw_name, pw_passwd, pw_uid, pw_gid, pw_gecos, pw_dir, pw_shell.\nThe uid and gid items are integers, all others are strings. An\nexception is raised if the entry asked for cannot be found.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getpwuid",
              MethodCallbacks(positional=pwd_getpwuid_call),

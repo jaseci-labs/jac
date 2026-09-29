@@ -561,14 +561,24 @@ def call_bound(
 }
 
 # A METH_VARARGS or METH_VARARGS|METH_KEYWORDS call (and tp_new / tp_init).
+# `checked` False is clinic's failed self_type_check for tp_new/tp_init: a
+# subclass that replaced the other slot, where _PyArg_NoKeywords() and
+# _PyArg_NoPositional() are skipped.
 def invoke(
     signature: CallSignature,
     args: ptr[PyObject],
     kwargs: ptr[PyObject],
     implementation: Callable[[BoundArguments], ptr[PyObject]],
     context: ptr[PyObject] = 0,
-    forward_keywords: bool = False
+    forward_keywords: bool = False,
+    checked: bool = True
 ) -> ptr[PyObject] {
+    if not checked {
+        if signature.parser == PARSE_NOTHING {
+            return call_bound(BoundArguments([], context), implementation);
+        }
+        kwargs = NULL;
+    }
     bound = BoundArguments([NULL for _ in signature.names], context);
     if forward_keywords and kwargs != 0 {
         bound.keywords = Py_NewRef(kwargs);

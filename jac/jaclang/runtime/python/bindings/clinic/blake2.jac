@@ -74,86 +74,100 @@ def:priv py_blake2b_new_bound(args: BoundArguments) -> ptr[PyObject] {
         digest_size = convert_int(value);
     }
     key = BufferArgument();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        key = convert_buffer(value, "blake2b", argument_label("key", 3));
+    try {
+        if args.values[2] != NULL {
+            value = args.values[2];
+            key = convert_buffer(value, "blake2b", argument_label("key", 3));
+        }
+        salt = BufferArgument();
+        try {
+            if args.values[3] != NULL {
+                value = args.values[3];
+                salt = convert_buffer(value, "blake2b", argument_label("salt", 4));
+            }
+            person = BufferArgument();
+            try {
+                if args.values[4] != NULL {
+                    value = args.values[4];
+                    person = convert_buffer(
+                        value, "blake2b", argument_label("person", 5)
+                    );
+                }
+                fanout: i32 = 1;
+                if args.values[5] != NULL {
+                    value = args.values[5];
+                    fanout = convert_int(value);
+                }
+                depth: i32 = 1;
+                if args.values[6] != NULL {
+                    value = args.values[6];
+                    depth = convert_int(value);
+                }
+                leaf_size: u64 = 0;
+                if args.values[7] != NULL {
+                    value = args.values[7];
+                    leaf_size = convert_unsigned_long(
+                        value, False, "blake2b", argument_label("leaf_size", 8)
+                    );
+                }
+                node_offset: u64 = 0;
+                if args.values[8] != NULL {
+                    value = args.values[8];
+                    node_offset = convert_unsigned_long_long(
+                        value, False, "blake2b", argument_label("node_offset", 9)
+                    );
+                }
+                node_depth: i32 = 0;
+                if args.values[9] != NULL {
+                    value = args.values[9];
+                    node_depth = convert_int(value);
+                }
+                inner_size: i32 = 0;
+                if args.values[10] != NULL {
+                    value = args.values[10];
+                    inner_size = convert_int(value);
+                }
+                last_node: bool = False;
+                if args.values[11] != NULL {
+                    value = args.values[11];
+                    last_node = convert_bool(value);
+                }
+                usedforsecurity: bool = True;
+                if args.values[12] != NULL {
+                    value = args.values[12];
+                    usedforsecurity = convert_bool(value);
+                }
+                string: ptr[PyObject] = NULL;
+                if args.values[13] != NULL {
+                    value = args.values[13];
+                    string = value;
+                }
+                return py_blake2b_new_impl(
+                    receiver,
+                    data,
+                    digest_size,
+                    key,
+                    salt,
+                    person,
+                    fanout,
+                    depth,
+                    leaf_size,
+                    node_offset,
+                    node_depth,
+                    inner_size,
+                    last_node,
+                    usedforsecurity,
+                    string
+                );
+            } finally {
+                person.close();
+            }
+        } finally {
+            salt.close();
+        }
+    } finally {
+        key.close();
     }
-    salt = BufferArgument();
-    if args.values[3] != NULL {
-        value = args.values[3];
-        salt = convert_buffer(value, "blake2b", argument_label("salt", 4));
-    }
-    person = BufferArgument();
-    if args.values[4] != NULL {
-        value = args.values[4];
-        person = convert_buffer(value, "blake2b", argument_label("person", 5));
-    }
-    fanout: i32 = 1;
-    if args.values[5] != NULL {
-        value = args.values[5];
-        fanout = convert_int(value);
-    }
-    depth: i32 = 1;
-    if args.values[6] != NULL {
-        value = args.values[6];
-        depth = convert_int(value);
-    }
-    leaf_size: u64 = 0;
-    if args.values[7] != NULL {
-        value = args.values[7];
-        leaf_size = convert_unsigned_long(
-            value, False, "blake2b", argument_label("leaf_size", 8)
-        );
-    }
-    node_offset: u64 = 0;
-    if args.values[8] != NULL {
-        value = args.values[8];
-        node_offset = convert_unsigned_long_long(
-            value, False, "blake2b", argument_label("node_offset", 9)
-        );
-    }
-    node_depth: i32 = 0;
-    if args.values[9] != NULL {
-        value = args.values[9];
-        node_depth = convert_int(value);
-    }
-    inner_size: i32 = 0;
-    if args.values[10] != NULL {
-        value = args.values[10];
-        inner_size = convert_int(value);
-    }
-    last_node: bool = False;
-    if args.values[11] != NULL {
-        value = args.values[11];
-        last_node = convert_bool(value);
-    }
-    usedforsecurity: bool = True;
-    if args.values[12] != NULL {
-        value = args.values[12];
-        usedforsecurity = convert_bool(value);
-    }
-    string: ptr[PyObject] = NULL;
-    if args.values[13] != NULL {
-        value = args.values[13];
-        string = value;
-    }
-    return py_blake2b_new_impl(
-        receiver,
-        data,
-        digest_size,
-        key,
-        salt,
-        person,
-        fanout,
-        depth,
-        leaf_size,
-        node_offset,
-        node_depth,
-        inner_size,
-        last_node,
-        usedforsecurity,
-        string
-    );
 }
 
 def:pub py_blake2b_new_new(
@@ -245,86 +259,100 @@ def:priv py_blake2s_new_bound(args: BoundArguments) -> ptr[PyObject] {
         digest_size = convert_int(value);
     }
     key = BufferArgument();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        key = convert_buffer(value, "blake2s", argument_label("key", 3));
+    try {
+        if args.values[2] != NULL {
+            value = args.values[2];
+            key = convert_buffer(value, "blake2s", argument_label("key", 3));
+        }
+        salt = BufferArgument();
+        try {
+            if args.values[3] != NULL {
+                value = args.values[3];
+                salt = convert_buffer(value, "blake2s", argument_label("salt", 4));
+            }
+            person = BufferArgument();
+            try {
+                if args.values[4] != NULL {
+                    value = args.values[4];
+                    person = convert_buffer(
+                        value, "blake2s", argument_label("person", 5)
+                    );
+                }
+                fanout: i32 = 1;
+                if args.values[5] != NULL {
+                    value = args.values[5];
+                    fanout = convert_int(value);
+                }
+                depth: i32 = 1;
+                if args.values[6] != NULL {
+                    value = args.values[6];
+                    depth = convert_int(value);
+                }
+                leaf_size: u64 = 0;
+                if args.values[7] != NULL {
+                    value = args.values[7];
+                    leaf_size = convert_unsigned_long(
+                        value, False, "blake2s", argument_label("leaf_size", 8)
+                    );
+                }
+                node_offset: u64 = 0;
+                if args.values[8] != NULL {
+                    value = args.values[8];
+                    node_offset = convert_unsigned_long_long(
+                        value, False, "blake2s", argument_label("node_offset", 9)
+                    );
+                }
+                node_depth: i32 = 0;
+                if args.values[9] != NULL {
+                    value = args.values[9];
+                    node_depth = convert_int(value);
+                }
+                inner_size: i32 = 0;
+                if args.values[10] != NULL {
+                    value = args.values[10];
+                    inner_size = convert_int(value);
+                }
+                last_node: bool = False;
+                if args.values[11] != NULL {
+                    value = args.values[11];
+                    last_node = convert_bool(value);
+                }
+                usedforsecurity: bool = True;
+                if args.values[12] != NULL {
+                    value = args.values[12];
+                    usedforsecurity = convert_bool(value);
+                }
+                string: ptr[PyObject] = NULL;
+                if args.values[13] != NULL {
+                    value = args.values[13];
+                    string = value;
+                }
+                return py_blake2s_new_impl(
+                    receiver,
+                    data,
+                    digest_size,
+                    key,
+                    salt,
+                    person,
+                    fanout,
+                    depth,
+                    leaf_size,
+                    node_offset,
+                    node_depth,
+                    inner_size,
+                    last_node,
+                    usedforsecurity,
+                    string
+                );
+            } finally {
+                person.close();
+            }
+        } finally {
+            salt.close();
+        }
+    } finally {
+        key.close();
     }
-    salt = BufferArgument();
-    if args.values[3] != NULL {
-        value = args.values[3];
-        salt = convert_buffer(value, "blake2s", argument_label("salt", 4));
-    }
-    person = BufferArgument();
-    if args.values[4] != NULL {
-        value = args.values[4];
-        person = convert_buffer(value, "blake2s", argument_label("person", 5));
-    }
-    fanout: i32 = 1;
-    if args.values[5] != NULL {
-        value = args.values[5];
-        fanout = convert_int(value);
-    }
-    depth: i32 = 1;
-    if args.values[6] != NULL {
-        value = args.values[6];
-        depth = convert_int(value);
-    }
-    leaf_size: u64 = 0;
-    if args.values[7] != NULL {
-        value = args.values[7];
-        leaf_size = convert_unsigned_long(
-            value, False, "blake2s", argument_label("leaf_size", 8)
-        );
-    }
-    node_offset: u64 = 0;
-    if args.values[8] != NULL {
-        value = args.values[8];
-        node_offset = convert_unsigned_long_long(
-            value, False, "blake2s", argument_label("node_offset", 9)
-        );
-    }
-    node_depth: i32 = 0;
-    if args.values[9] != NULL {
-        value = args.values[9];
-        node_depth = convert_int(value);
-    }
-    inner_size: i32 = 0;
-    if args.values[10] != NULL {
-        value = args.values[10];
-        inner_size = convert_int(value);
-    }
-    last_node: bool = False;
-    if args.values[11] != NULL {
-        value = args.values[11];
-        last_node = convert_bool(value);
-    }
-    usedforsecurity: bool = True;
-    if args.values[12] != NULL {
-        value = args.values[12];
-        usedforsecurity = convert_bool(value);
-    }
-    string: ptr[PyObject] = NULL;
-    if args.values[13] != NULL {
-        value = args.values[13];
-        string = value;
-    }
-    return py_blake2s_new_impl(
-        receiver,
-        data,
-        digest_size,
-        key,
-        salt,
-        person,
-        fanout,
-        depth,
-        leaf_size,
-        node_offset,
-        node_depth,
-        inner_size,
-        last_node,
-        usedforsecurity,
-        string
-    );
 }
 
 def:pub py_blake2s_new_new(
@@ -335,6 +363,7 @@ def:pub py_blake2s_new_new(
 
 glob blake2b_doc: str = "blake2b(data=b'', *, digest_size=_blake2.blake2b.MAX_DIGEST_SIZE,\n        key=b'', salt=b'', person=b'', fanout=1, depth=1, leaf_size=0,\n        node_offset=0, node_depth=0, inner_size=0, last_node=False,\n        usedforsecurity=True, string=None)\n--\n\nReturn a new BLAKE2b hash object.",
      blake2s_doc: str = "blake2s(data=b'', *, digest_size=_blake2.blake2s.MAX_DIGEST_SIZE,\n        key=b'', salt=b'', person=b'', fanout=1, depth=1, leaf_size=0,\n        node_offset=0, node_depth=0, inner_size=0, last_node=False,\n        usedforsecurity=True, string=None)\n--\n\nReturn a new BLAKE2s hash object.",
+     blake2mod__doc__: str = "_blake2b provides BLAKE2b for hashlib\n",
      blake2b_methods: list[MethodDefinition] = [
          MethodDefinition(
              "copy",

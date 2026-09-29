@@ -431,9 +431,11 @@ glob:priv _hmac_HMAC_copy_signature = CallSignature(
 def:priv _hmac_HMAC_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, HMAC_token);
-    result = _hmac_HMAC_copy_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        return _hmac_HMAC_copy_impl(receiver, cls);
+    } finally {
+        jacpy_release(cls);
+    }
 }
 
 def:priv _hmac_HMAC_copy_call(

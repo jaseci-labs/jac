@@ -488,7 +488,9 @@ import from c {
         arg0: ptr[PyObject], arg1: &mut u16
     ) -> i32;  def _PyLong_UInt32_Converter(
         arg0: ptr[PyObject], arg1: &mut u32
-    ) -> i32;  def _PyLong_UnsignedInt_Converter(
+    ) -> i32;  def _PyLong_UInt64_Converter(
+        arg0: ptr[PyObject], arg1: &mut u64
+    ) -> i32;  def _PyLong_UInt8_Converter(arg0: ptr[PyObject], arg1: &mut u8) -> i32;  def _PyLong_UnsignedInt_Converter(
         arg0: ptr[PyObject], arg1: &mut u32
     ) -> i32;  def _PyLong_UnsignedShort_Converter(
         arg0: ptr[PyObject], arg1: &mut u16

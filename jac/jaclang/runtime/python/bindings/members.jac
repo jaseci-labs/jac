@@ -20,6 +20,7 @@ enum MemberType {
     FLOAT = 3,
     DOUBLE = 4,
     STRING = 5,
+    OBJECT = 6,
     CHAR = 7,
     BYTE = 8,
     UBYTE = 9,
@@ -27,6 +28,7 @@ enum MemberType {
     UINT = 11,
     ULONG = 12,
     BOOL = 14,
+    OBJECT_EX = 16,
     LONGLONG = 17,
     ULONGLONG = 18,
     PYSSIZET = 19
@@ -62,5 +64,40 @@ obj MemberField {
     def write(address: ptr, value: ptr[PyObject]) -> i32 {
         definition = self.record();
         return PyMember_SetOne(address, &definition, value);
+    }
+}
+
+# A field record whose object fields mirror references a native state owns:
+# the record holds them borrowed, so a type zeroes it (record_clear) before its
+# state releases them.
+def record_set_object(record: ptr, offset: int, value: ptr[PyObject]) {
+    ptr[ptr[PyObject]](int(record) + offset).view(1)[0] = value;
+}
+
+# The object field at `offset`, borrowed (NULL when unset).
+def record_object(record: ptr, offset: int) -> ptr[PyObject] {
+    return ptr[ptr[PyObject]](int(record) + offset).view(1)[0];
+}
+
+# A C int field at `offset`.
+def record_int(record: ptr, offset: int) -> i32 {
+    return ptr[i32](int(record) + offset).view(1)[0];
+}
+
+def record_set_int(record: ptr, offset: int, value: int) {
+    ptr[i32](int(record) + offset).view(1)[0] = i32(value);
+}
+
+def record_set_byte(record: ptr, offset: int, value: int) {
+    ptr[i8](int(record) + offset).view(1)[0] = i8(value);
+}
+
+def record_clear(record: ptr, size: int) {
+    if int(record) == 0 {
+        return;
+    }
+    bytes = ptr[u8](record).view(size);
+    for index in range(size) {
+        bytes[index] = u8(0);
     }
 }

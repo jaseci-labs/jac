@@ -146,7 +146,8 @@ def:priv subprocess_fork_exec_call(
     );
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob module_doc: str = "A POSIX helper for the subprocess module.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "fork_exec",
              MethodCallbacks(fast=subprocess_fork_exec_call),

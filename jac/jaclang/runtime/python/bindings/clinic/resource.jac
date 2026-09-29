@@ -121,7 +121,8 @@ def:priv resource_getpagesize_call(
     return invoke_given(NULL, resource_getpagesize_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob struct_rusage__doc__: str = "struct_rusage: Result from getrusage.\n\nThis object may be accessed either as a tuple of\n    (utime,stime,maxrss,ixrss,idrss,isrss,minflt,majflt,\n    nswap,inblock,oublock,msgsnd,msgrcv,nsignals,nvcsw,nivcsw)\nor via the attributes ru_utime, ru_stime, ru_maxrss, and so on.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getrusage",
              MethodCallbacks(positional=resource_getrusage_call),

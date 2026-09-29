@@ -27,7 +27,8 @@ def:priv _typing__idfunc_call(
     return invoke_given(value, _typing__idfunc_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob typing_doc: str = "Primitives and accelerators for the typing module.\n",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "_idfunc",
              MethodCallbacks(positional=_typing__idfunc_call),

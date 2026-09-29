@@ -196,7 +196,11 @@ def:priv _zstd_get_frame_size_bound(args: BoundArguments) -> ptr[PyObject] {
     frame_buffer: BufferArgument = convert_buffer(
         value, "get_frame_size", argument_label("frame_buffer", 1)
     );
-    return _zstd_get_frame_size_impl(receiver, frame_buffer);
+    try {
+        return _zstd_get_frame_size_impl(receiver, frame_buffer);
+    } finally {
+        frame_buffer.close();
+    }
 }
 
 def:priv _zstd_get_frame_size_call(
@@ -225,7 +229,11 @@ def:priv _zstd_get_frame_info_bound(args: BoundArguments) -> ptr[PyObject] {
     frame_buffer: BufferArgument = convert_buffer(
         value, "get_frame_info", argument_label("frame_buffer", 1)
     );
-    return _zstd_get_frame_info_impl(receiver, frame_buffer);
+    try {
+        return _zstd_get_frame_info_impl(receiver, frame_buffer);
+    } finally {
+        frame_buffer.close();
+    }
 }
 
 def:priv _zstd_get_frame_info_call(
@@ -298,12 +306,16 @@ def:priv _zstd_ZstdDict_new_bound(args: BoundArguments) -> ptr[PyObject] {
     dict_content: BufferArgument = convert_buffer(
         value, "ZstdDict", argument_label("", 1)
     );
-    is_raw: bool = False;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        is_raw = convert_bool(value);
+    try {
+        is_raw: bool = False;
+        if args.values[1] != NULL {
+            value = args.values[1];
+            is_raw = convert_bool(value);
+        }
+        return _zstd_ZstdDict_new_impl(receiver, dict_content, is_raw);
+    } finally {
+        dict_content.close();
     }
-    return _zstd_ZstdDict_new_impl(receiver, dict_content, is_raw);
 }
 
 def:pub _zstd_ZstdDict_new_new(
@@ -387,12 +399,16 @@ def:priv _zstd_ZstdCompressor_compress_bound(args: BoundArguments) -> ptr[PyObje
     receiver = args.context;
     value = args.values[0];
     data: BufferArgument = convert_buffer(value, "compress", argument_label("data", 1));
-    mode: i32 = ZSTD_e_continue;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        mode = convert_int(value);
+    try {
+        mode: i32 = ZSTD_e_continue;
+        if args.values[1] != NULL {
+            value = args.values[1];
+            mode = convert_int(value);
+        }
+        return _zstd_ZstdCompressor_compress_impl(receiver, data, mode);
+    } finally {
+        data.close();
     }
-    return _zstd_ZstdCompressor_compress_impl(receiver, data, mode);
 }
 
 def:priv _zstd_ZstdCompressor_compress_call(
@@ -509,12 +525,16 @@ def:priv _zstd_ZstdDecompressor_decompress_bound(
     data: BufferArgument = convert_buffer(
         value, "decompress", argument_label("data", 1)
     );
-    max_length: i64 = -1;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        max_length = convert_ssize(value);
+    try {
+        max_length: i64 = -1;
+        if args.values[1] != NULL {
+            value = args.values[1];
+            max_length = convert_ssize(value);
+        }
+        return _zstd_ZstdDecompressor_decompress_impl(receiver, data, max_length);
+    } finally {
+        data.close();
     }
-    return _zstd_ZstdDecompressor_decompress_impl(receiver, data, max_length);
 }
 
 def:priv _zstd_ZstdDecompressor_decompress_call(
@@ -536,6 +556,10 @@ def:priv _zstd_ZstdDecompressor_decompress_call(
 glob ZstdCompressor_doc: str = "ZstdCompressor(level=None, options=None, zstd_dict=None)\n--\n\nCreate a compressor object for compressing data incrementally.\n\n  level\n    The compression level to use. Defaults to COMPRESSION_LEVEL_DEFAULT.\n  options\n    A dict object that contains advanced compression parameters.\n  zstd_dict\n    A ZstdDict object, a pre-trained Zstandard dictionary.\n\nThread-safe at method level.  For one-shot compression, use the\ncompress() function instead.",
      ZstdDecompressor_doc: str = "ZstdDecompressor(zstd_dict=None, options=None)\n--\n\nCreate a decompressor object for decompressing data incrementally.\n\n  zstd_dict\n    A ZstdDict object, a pre-trained Zstandard dictionary.\n  options\n    A dict object that contains advanced decompression parameters.\n\nThread-safe at method level.  For one-shot decompression, use the\ndecompress() function instead.",
      ZstdDict_doc: str = "ZstdDict(dict_content, /, *, is_raw=False)\n--\n\nRepresents a Zstandard dictionary.\n\n  dict_content\n    The content of a Zstandard dictionary as a bytes-like object.\n  is_raw\n    If true, perform no checks on *dict_content*, useful for some\n    advanced cases. Otherwise, check that the content represents\n    a Zstandard dictionary created by the zstd library or CLI.\n\nThe dictionary can be used for compression or decompression, and can be\nshared by multiple ZstdCompressor or ZstdDecompressor objects.",
+     ZstdDict_dictid_doc: str = "The Zstandard dictionary, an int between 0 and 2**32.\n\nA non-zero value represents an ordinary Zstandard dictionary,\nconforming to the standardised format.\n\nA value of zero indicates a 'raw content' dictionary,\nwithout any restrictions on format or content.",
+     ZstdCompressor_last_mode_doc: str = "The last mode used to this compressor object, its value can be .CONTINUE,\n.FLUSH_BLOCK, .FLUSH_FRAME. Initialized to .FLUSH_FRAME.\n\nIt can be used to get the current state of a compressor, such as, data\nflushed, or a frame ended.",
+     ZstdDecompressor_eof_doc: str = "True means the end of the first frame has been reached. If decompress data\nafter that, an EOFError exception will be raised.",
+     ZstdDecompressor_needs_input_doc: str = "If the max_length output limit in .decompress() method has been reached,\nand the decompressor has (or may has) unconsumed input data, it will be set\nto False. In this case, passing b'' to the .decompress() method may output\nfurther data.",
      ZstdCompressor_methods: list[MethodDefinition] = [
          MethodDefinition(
              "compress",

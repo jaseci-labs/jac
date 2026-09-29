@@ -196,12 +196,16 @@ def:priv _codecs_escape_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_text_buffer(
         value, "escape_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "escape_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "escape_decode", argument_label("", 2), True);
+        }
+        return _codecs_escape_decode_impl(receiver, data, errors);
+    } finally {
+        data.close();
     }
-    return _codecs_escape_decode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_escape_decode_call(
@@ -257,17 +261,21 @@ def:priv _codecs_utf_7_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
     data: BufferArgument = convert_buffer(value, "utf_7_decode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_7_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "utf_7_decode", argument_label("", 2), True);
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_7_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_7_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_7_decode_call(
@@ -291,17 +299,21 @@ def:priv _codecs_utf_8_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
     data: BufferArgument = convert_buffer(value, "utf_8_decode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_8_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "utf_8_decode", argument_label("", 2), True);
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_8_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_8_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_8_decode_call(
@@ -327,17 +339,21 @@ def:priv _codecs_utf_16_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_16_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "utf_16_decode", argument_label("", 2), True);
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_16_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_16_decode_call(
@@ -368,17 +384,23 @@ def:priv _codecs_utf_16_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_16_le_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_le_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "utf_16_le_decode", argument_label("", 2), True
+            );
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_16_le_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_le_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_16_le_decode_call(
@@ -409,17 +431,23 @@ def:priv _codecs_utf_16_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_16_be_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_be_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "utf_16_be_decode", argument_label("", 2), True
+            );
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_16_be_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_be_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_16_be_decode_call(
@@ -450,22 +478,28 @@ def:priv _codecs_utf_16_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_16_ex_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_ex_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "utf_16_ex_decode", argument_label("", 2), True
+            );
+        }
+        byteorder: i32 = 0;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            byteorder = convert_int(value);
+        }
+        final: bool = False;
+        if args.values[3] != NULL {
+            value = args.values[3];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_16_ex_decode_impl(receiver, data, errors, byteorder, final);
+    } finally {
+        data.close();
     }
-    byteorder: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        byteorder = convert_int(value);
-    }
-    final: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_ex_decode_impl(receiver, data, errors, byteorder, final);
 }
 
 def:priv _codecs_utf_16_ex_decode_call(
@@ -491,17 +525,21 @@ def:priv _codecs_utf_32_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_32_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "utf_32_decode", argument_label("", 2), True);
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_32_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_32_decode_call(
@@ -532,17 +570,23 @@ def:priv _codecs_utf_32_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_32_le_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_le_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "utf_32_le_decode", argument_label("", 2), True
+            );
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_32_le_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_le_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_32_le_decode_call(
@@ -573,17 +617,23 @@ def:priv _codecs_utf_32_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_32_be_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_be_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "utf_32_be_decode", argument_label("", 2), True
+            );
+        }
+        final: bool = False;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_32_be_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_be_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_32_be_decode_call(
@@ -614,22 +664,28 @@ def:priv _codecs_utf_32_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "utf_32_ex_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_ex_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "utf_32_ex_decode", argument_label("", 2), True
+            );
+        }
+        byteorder: i32 = 0;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            byteorder = convert_int(value);
+        }
+        final: bool = False;
+        if args.values[3] != NULL {
+            value = args.values[3];
+            final = convert_bool(value);
+        }
+        return _codecs_utf_32_ex_decode_impl(receiver, data, errors, byteorder, final);
+    } finally {
+        data.close();
     }
-    byteorder: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        byteorder = convert_int(value);
-    }
-    final: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_ex_decode_impl(receiver, data, errors, byteorder, final);
 }
 
 def:priv _codecs_utf_32_ex_decode_call(
@@ -660,19 +716,23 @@ def:priv _codecs_unicode_escape_decode_bound(args: BoundArguments) -> ptr[PyObje
     data: BufferArgument = convert_text_buffer(
         value, "unicode_escape_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(
-            value, "unicode_escape_decode", argument_label("", 2), True
-        );
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "unicode_escape_decode", argument_label("", 2), True
+            );
+        }
+        final: bool = True;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_unicode_escape_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_unicode_escape_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_unicode_escape_decode_call(
@@ -705,19 +765,23 @@ def:priv _codecs_raw_unicode_escape_decode_bound(
     data: BufferArgument = convert_text_buffer(
         value, "raw_unicode_escape_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(
-            value, "raw_unicode_escape_decode", argument_label("", 2), True
-        );
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "raw_unicode_escape_decode", argument_label("", 2), True
+            );
+        }
+        final: bool = True;
+        if args.values[2] != NULL {
+            value = args.values[2];
+            final = convert_bool(value);
+        }
+        return _codecs_raw_unicode_escape_decode_impl(receiver, data, errors, final);
+    } finally {
+        data.close();
     }
-    final: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_raw_unicode_escape_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_raw_unicode_escape_decode_call(
@@ -743,12 +807,16 @@ def:priv _codecs_latin_1_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "latin_1_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "latin_1_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "latin_1_decode", argument_label("", 2), True);
+        }
+        return _codecs_latin_1_decode_impl(receiver, data, errors);
+    } finally {
+        data.close();
     }
-    return _codecs_latin_1_decode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_latin_1_decode_call(
@@ -772,12 +840,16 @@ def:priv _codecs_ascii_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
     data: BufferArgument = convert_buffer(value, "ascii_decode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "ascii_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "ascii_decode", argument_label("", 2), True);
+        }
+        return _codecs_ascii_decode_impl(receiver, data, errors);
+    } finally {
+        data.close();
     }
-    return _codecs_ascii_decode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_ascii_decode_call(
@@ -808,17 +880,21 @@ def:priv _codecs_charmap_decode_bound(args: BoundArguments) -> ptr[PyObject] {
     data: BufferArgument = convert_buffer(
         value, "charmap_decode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "charmap_decode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(value, "charmap_decode", argument_label("", 2), True);
+        }
+        mapping: ptr[PyObject] = borrowed_none();
+        if args.values[2] != NULL {
+            value = args.values[2];
+            mapping = value;
+        }
+        return _codecs_charmap_decode_impl(receiver, data, errors, mapping);
+    } finally {
+        data.close();
     }
-    mapping: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        mapping = value;
-    }
-    return _codecs_charmap_decode_impl(receiver, data, errors, mapping);
 }
 
 def:priv _codecs_charmap_decode_call(
@@ -844,12 +920,18 @@ def:priv _codecs_readbuffer_encode_bound(args: BoundArguments) -> ptr[PyObject] 
     data: BufferArgument = convert_text_buffer(
         value, "readbuffer_encode", argument_label("", 1)
     );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "readbuffer_encode", argument_label("", 2), True);
+    try {
+        errors: ptr[u8] = ptr[u8]();
+        if args.values[1] != NULL {
+            value = args.values[1];
+            errors = convert_cstr(
+                value, "readbuffer_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_readbuffer_encode_impl(receiver, data, errors);
+    } finally {
+        data.close();
     }
-    return _codecs_readbuffer_encode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_readbuffer_encode_call(

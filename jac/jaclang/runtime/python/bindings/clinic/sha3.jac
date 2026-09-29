@@ -174,6 +174,12 @@ def:priv _sha3_shake_128_hexdigest_call(
 }
 
 glob sha3_224_doc: str = "sha3_224(data=b'', *, usedforsecurity=True, string=None)\n--\n\nReturn a new SHA3 hash object.",
+     sha3_224__doc__: str = "sha3_224([data], *, usedforsecurity=True) -> SHA3 object\n\nReturn a new SHA3 hash object with a hashbit length of 28 bytes.",
+     sha3_256__doc__: str = "sha3_256([data], *, usedforsecurity=True) -> SHA3 object\n\nReturn a new SHA3 hash object with a hashbit length of 32 bytes.",
+     sha3_384__doc__: str = "sha3_384([data], *, usedforsecurity=True) -> SHA3 object\n\nReturn a new SHA3 hash object with a hashbit length of 48 bytes.",
+     sha3_512__doc__: str = "sha3_512([data], *, usedforsecurity=True) -> SHA3 object\n\nReturn a new SHA3 hash object with a hashbit length of 64 bytes.",
+     shake_128__doc__: str = "shake_128([data], *, usedforsecurity=True) -> SHAKE object\n\nReturn a new SHAKE hash object.",
+     shake_256__doc__: str = "shake_256([data], *, usedforsecurity=True) -> SHAKE object\n\nReturn a new SHAKE hash object.",
      sha3_224_methods: list[MethodDefinition] = [
          MethodDefinition(
              "copy",

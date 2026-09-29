@@ -40,9 +40,11 @@ glob:priv SHA1Type_copy_signature = CallSignature(
 def:priv SHA1Type_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, SHA1Type_token);
-    result = SHA1Type_copy_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        return SHA1Type_copy_impl(receiver, cls);
+    } finally {
+        jacpy_release(cls);
+    }
 }
 
 def:priv SHA1Type_copy_call(

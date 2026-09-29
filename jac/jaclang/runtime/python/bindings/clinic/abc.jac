@@ -171,7 +171,9 @@ def:priv _abc_get_cache_token_call(
     return invoke_given(NULL, _abc_get_cache_token_bound, receiver);
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob _abc__doc__: str = "Module contains faster C implementation of abc.ABCMeta",
+     abc_data_doc: str = "Internal state held by ABC machinery.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "_reset_registry",
              MethodCallbacks(positional=_abc__reset_registry_call),

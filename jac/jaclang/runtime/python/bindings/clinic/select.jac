@@ -27,7 +27,8 @@ import from jaclang.runtime.python.bindings.converters {
     convert_fildes,
     convert_int,
     convert_unsigned_bounded,
-    convert_unsigned_short
+    convert_unsigned_short,
+    new_checks_arguments
 }
 import from jaclang.runtime.python.modules.select {
     EPOLLIN,
@@ -36,6 +37,7 @@ import from jaclang.runtime.python.modules.select {
     POLLIN,
     POLLOUT,
     POLLPRI,
+    kqueue_token,
     select_devpoll_close_impl,
     select_devpoll_fileno_impl,
     select_devpoll_impl,
@@ -597,7 +599,14 @@ def:priv select_kqueue_bound(args: BoundArguments) -> ptr[PyObject] {
 def:pub select_kqueue_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(select_kqueue_signature, args, kwargs, select_kqueue_bound, type);
+    return invoke(
+        select_kqueue_signature,
+        args,
+        kwargs,
+        select_kqueue_bound,
+        type,
+        checked=new_checks_arguments(type, kqueue_token)
+    );
 }
 
 def:priv select_kqueue_close_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -673,6 +682,12 @@ def:priv select_kqueue_control_call(
 
 glob epoll_doc: str = "epoll(sizehint=-1, flags=0)\n--\n\nReturns an epolling object.\n\n  sizehint\n    The expected number of events to be registered.  It must be positive,\n    or -1 to use the default.  It is only used on older systems where\n    epoll_create1() is not available; otherwise it has no effect (though its\n    value is still checked).\n  flags\n    Deprecated and completely ignored.  However, when supplied, its value\n    must be 0 or select.EPOLL_CLOEXEC, otherwise OSError is raised.",
      kqueue_doc: str = "kqueue()\n--\n\nKqueue syscall wrapper.\n\nFor example, to start watching a socket for input:\n>>> kq = kqueue()\n>>> sock = socket()\n>>> sock.connect((host, port))\n>>> kq.control([kevent(sock, KQ_FILTER_WRITE, KQ_EV_ADD)], 0)\n\nTo wait one second for it to become writeable:\n>>> kq.control(None, 1, 1000)\n\nTo stop listening:\n>>> kq.control([kevent(sock, KQ_FILTER_WRITE, KQ_EV_DELETE)], 0)",
+     pyepoll_doc: str = "select.epoll(sizehint=-1, flags=0)\n\nReturns an epolling object\n\nsizehint must be a positive integer or -1 for the default size. The\nsizehint is used to optimize internal data structures. It doesn't limit\nthe maximum number of monitored events.",
+     kqueue_event_doc: str = "kevent(ident, filter=KQ_FILTER_READ, flags=KQ_EV_ADD, fflags=0, data=0, udata=0)\n\nThis object is the equivalent of the struct kevent for the C API.\n\nSee the kqueue manpage for more detailed information about the meaning\nof the arguments.\n\nOne minor note: while you might hope that udata could store a\nreference to a python object, it cannot, because it is impossible to\nkeep a proper reference count of the object once it's passed into the\nkernel. Therefore, I have restricted it to only storing an integer.  I\nrecommend ignoring it and simply using the 'ident' field to key off\nof. You could also set up a dictionary on the python side to store a\nudata->object mapping.",
+     module_doc: str = "This module supports asynchronous I/O on multiple file descriptors.\n\n*** IMPORTANT NOTICE ***\nOn Windows, only sockets are supported; on Unix, all file descriptors.",
+     devpoll_getsetlist_closed_doc: str = "True if the devpoll object is closed",
+     pyepoll_getsetlist_closed_doc: str = "True if the epoll handler is closed",
+     kqueue_queue_getsetlist_closed_doc: str = "True if the kqueue handler is closed",
      devpoll_methods: list[MethodDefinition] = [
          MethodDefinition(
              "register",
