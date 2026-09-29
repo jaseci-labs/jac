@@ -161,6 +161,9 @@ import from c {
         has ob_base: PyVarObject,
             ob_item: ptr[ptr[PyObject]],
             allocated: i64;
+    }  obj PyGC_Head {
+        has _gc_next: u64,
+            _gc_prev: u64;
     }  obj PyStatus {
         has _type: u32,
             func: ptr[u8],
@@ -546,6 +549,15 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      rangeobject_STOP: Final[i64] = 24,
      rangeobject_STEP: Final[i64] = 32,
      longrangeiterobject_SIZE: Final[i64] = 40,
+     PyThreadState_INTERP: Final[i64] = 16,
+     PyInterpreterState_FREELISTS: Final[i64] = 11168,
+     PyInterpreterState_GC: Final[i64] = 7408,
+     _gc_runtime_state_GENERATION0: Final[i64] = 256,
+     _gc_runtime_state_HEAP_SIZE: Final[i64] = 216,
+     PyGC_Head_SIZE: Final[i64] = 16,
+     _PyGC_PREV_MASK_FINALIZED: Final[i64] = 1,
+     _PyGC_PREV_MASK: Final[i64] = -4,
+     _PyGC_PREV_FLAGS: Final[i64] = 3,
      _Py_freelists_SLICES: Final[i64] = 432,
      _Py_freelists_RANGES: Final[i64] = 448,
      _Py_freelists_RANGE_ITERS: Final[i64] = 464,

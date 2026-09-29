@@ -437,10 +437,8 @@ glob:priv AUTOCOMMIT_LEGACY: i32 = -1,
 # PY_SQLITE_ENABLE_LOAD_EXTENSION: JacPython builds, like CPython's default
 # configure, leave loadable extensions disabled (the vendored SQLite omits
 # them), so Connection has no enable_load_extension() or load_extension().
-glob ENABLE_LOAD_EXTENSION: bool = False;
-
-# The SQLite result codes the module publishes (error_codes[]).
-glob ERROR_CODES: list[tuple[str, i64]] = [
+glob ENABLE_LOAD_EXTENSION: bool = False,
+     ERROR_CODES: list[tuple[str, i64]] = [
          ("SQLITE_ABORT", 4),
          ("SQLITE_AUTH", 23),
          ("SQLITE_BUSY", 5),
@@ -546,9 +544,8 @@ glob ERROR_CODES: list[tuple[str, i64]] = [
          ("SQLITE_CORRUPT_INDEX", 779),
          ("SQLITE_IOERR_DATA", 8202),
          ("SQLITE_IOERR_CORRUPTFS", 8458)
-     ];
-# The integer constants add_integer_constants() publishes.
-glob INTEGER_CONSTANTS: list[tuple[str, i64]] = [
+     ],
+     INTEGER_CONSTANTS: list[tuple[str, i64]] = [
          ("PARSE_DECLTYPES", 1),
          ("PARSE_COLNAMES", 2),
          ("SQLITE_DENY", 1),
@@ -616,6 +613,9 @@ glob INTEGER_CONSTANTS: list[tuple[str, i64]] = [
          ("SQLITE_DBCONFIG_TRUSTED_SCHEMA", 1017)
      ];
 
+# The SQLite result codes the module publishes (error_codes[]).
+
+# The integer constants add_integer_constants() publishes.
 # The handle of the module definition, which the binding fills in, so a type
 # finds its module as PyType_GetModuleByDef() does.
 obj DefinitionHandle {
@@ -2446,7 +2446,7 @@ def connection_get_row_factory(instance: ptr[PyObject], context: u64) -> ptr[PyO
     if con is None {
         return NULL;
     }
-    return Py_NewRef(con.row_factory if con.row_factory else Py_None);
+    return Py_NewRef(con.row_factory or Py_None);
 }
 
 def connection_set_row_factory(
@@ -2473,7 +2473,7 @@ def connection_get_text_factory(
     if con is None {
         return NULL;
     }
-    return Py_NewRef(con.text_factory if con.text_factory else Py_None);
+    return Py_NewRef(con.text_factory or Py_None);
 }
 
 def connection_set_text_factory(
@@ -4562,10 +4562,7 @@ def pysqlite_row_new_impl(
         return NULL;
     }
     description = cur.fields.view(1)[0].description;
-    row = RowState(
-        data=Py_NewRef(data),
-        description=Py_NewRef(description if description else Py_None)
-    );
+    row = RowState(data=Py_NewRef(data), description=Py_NewRef(description or Py_None));
     if jacpy_binding_native_set(instance, Row_token.handle, row) < 0 {
         jacpy_release(instance);
         return NULL;

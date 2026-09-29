@@ -22,7 +22,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMethodDef,
     PyObject,
     PyObject_ClearWeakRefs,
-    PyObject_GC_UnTrack,
     PyObject_GetBuffer,
     Py_NewRef,
     Py_None,
@@ -50,7 +49,11 @@ import from jaclang.runtime.python.layouts {
     _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
     _object
 }
-import from jaclang.runtime.python.object_model.header { object_is_type, object_type }
+import from jaclang.runtime.python.object_model.header {
+    object_gc_untrack,
+    object_is_type,
+    object_type
+}
 import from jaclang.runtime.python.bindings.module { visit_reference }
 
 import from c {
@@ -186,7 +189,7 @@ def picklebuf_clear(op: ptr[PyObject]) -> i32 {
 }
 
 def picklebuf_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     if picklebuf_of(op).view(1)[0].weakreflist {
         PyObject_ClearWeakRefs(op);
     }

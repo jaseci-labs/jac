@@ -10,20 +10,27 @@ too. See ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyObject,
-    PyObject_GC_IsTracked,
-    PyObject_GC_Track,
     PyType_IsSubtype,
     PyUnicode_InternFromString,
     Py_NewRef,
     Py_NotImplemented,
     _PyEval_GetBuiltin,
     _Py_Dealloc,
+    PyThreadState_GetUnchecked,
     _Py_NewReference,
-    jacpy_freelists,
     jacpy_release
 }
 import from jaclang.runtime.python.layouts {
     _Py_freelist,
+    PyGC_Head_SIZE,
+    PyInterpreterState_FREELISTS,
+    PyInterpreterState_GC,
+    PyThreadState_INTERP,
+    _PyGC_PREV_FLAGS,
+    _PyGC_PREV_MASK,
+    _PyGC_PREV_MASK_FINALIZED,
+    _gc_runtime_state_GENERATION0,
+    _gc_runtime_state_HEAP_SIZE,
     PyListObject,
     PyTupleObject,
     PyTupleObject_ITEMS,
@@ -145,8 +152,8 @@ def tuple_set_item(tuple: ptr[PyObject], index: i64, item: ptr[PyObject]) {
 tracked by the GC again (bpo-42536: the GC may have untracked it)."""
 def tuple_recycle(tuple: ptr[PyObject]) {
     ptr[PyTupleObject](tuple).view(1)[0].ob_hash = -1;
-    if PyObject_GC_IsTracked(tuple) == 0 {
-        PyObject_GC_Track(tuple);
+    if not object_gc_is_tracked(tuple) {
+        object_gc_track(tuple);
     }
 }
 
@@ -185,17 +192,34 @@ def eval_builtin(name: str) -> ptr[PyObject] {
     return result;
 }
 
-"""The interpreter freelist at `offset` in struct _Py_freelists (one of the
+"""_PyInterpreterState_GET: the current thread's interpreter, read from its
+thread state as the release build does."""
+def current_interp -> ptr[u8] {
+    tstate = ptr[u8](PyThreadState_GetUnchecked());
+    return ptr[ptr[u8]](tstate + PyThreadState_INTERP).view(1)[0];
+}
+
+"""The freelist at `offset` in `interp`'s struct _Py_freelists (one of the
 layouts.jac `_Py_freelists_*` offsets)."""
+def freelist_in(interp: ptr[u8], offset: i64) -> ptr[_Py_freelist] {
+    return ptr[_Py_freelist](interp + PyInterpreterState_FREELISTS + offset);
+}
+
+"""_Py_freelists_GET()->NAME for the freelist at `offset`."""
 def freelist(offset: i64) -> ptr[_Py_freelist] {
-    return ptr[_Py_freelist](ptr[u8](jacpy_freelists()) + offset);
+    return freelist_in(current_interp(), offset);
 }
 
 """_Py_FREELIST_POP: a freed object of the freelist at `offset`, its
 reference count reset to 1, or NULL when the list is empty. The list links
 objects through their first word."""
 def freelist_pop(offset: i64) -> ptr[PyObject] {
-    fl = freelist(offset);
+    return freelist_pop_in(current_interp(), offset);
+}
+
+"""freelist_pop with the interpreter the caller already has."""
+def freelist_pop_in(interp: ptr[u8], offset: i64) -> ptr[PyObject] {
+    fl = freelist_in(interp, offset);
     op = ptr[PyObject](fl.view(1)[0].freelist);
     if op {
         fl.view(1)[0].freelist = ptr[ptr](op).view(1)[0];
@@ -208,7 +232,14 @@ def freelist_pop(offset: i64) -> ptr[PyObject] {
 """_PyFreeList_Push: keep `op` on the freelist at `offset` unless it holds
 `maxsize` objects already (or is disabled); True when kept."""
 def freelist_push(offset: i64, op: ptr[PyObject], maxsize: i64) -> bool {
-    fl = freelist(offset);
+    return freelist_push_in(current_interp(), offset, op, maxsize);
+}
+
+"""freelist_push with the interpreter the caller already has."""
+def freelist_push_in(
+    interp: ptr[u8], offset: i64, op: ptr[PyObject], maxsize: i64
+) -> bool {
+    fl = freelist_in(interp, offset);
     size = fl.view(1)[0].size;
     if size < maxsize and size >= 0 {
         ptr[ptr](op).view(1)[0] = fl.view(1)[0].freelist;
@@ -217,4 +248,63 @@ def freelist_push(offset: i64, op: ptr[PyObject], maxsize: i64) -> bool {
         return True;
     }
     return False;
+}
+
+"""_Py_AS_GC: the address of the GC header in front of a GC object, whose
+two words are `_gc_next` and `_gc_prev` (the PyGC_Head layout)."""
+def gc_head(op: ptr[PyObject]) -> int {
+    return int(op) - PyGC_Head_SIZE;
+}
+
+"""_PyObject_GC_IS_TRACKED."""
+def object_gc_is_tracked(op: ptr[PyObject]) -> bool {
+    return ptr[i64](gc_head(op)).view(1)[0] != 0;
+}
+
+"""_PyObject_GC_TRACK in `interp`: link `op` (untracked) at the end of
+generation 0 and count it in the heap size."""
+def gc_track_in(interp: ptr[u8], op: ptr[PyObject]) {
+    gc = gc_head(op);
+    gcstate = interp + PyInterpreterState_GC;
+    generation0 = ptr[i64](gcstate + _gc_runtime_state_GENERATION0).view(1)[0];
+    head = ptr[i64](generation0).view(2);
+    last = head[1];
+    ptr[i64](last).view(1)[0] = gc;
+    words = ptr[i64](gc).view(2);
+    words[1] = (words[1] & _PyGC_PREV_FLAGS) | last;
+    words[0] = generation0;
+    head[1] = gc;
+    heap_size = ptr[i64](gcstate + _gc_runtime_state_HEAP_SIZE).view(1);
+    heap_size[0] = wrapping_add(heap_size[0], 1);
+}
+
+"""_PyObject_GC_UNTRACK in `interp`: unlink `op` (tracked), keeping only its
+finalized flag, and uncount it."""
+def gc_untrack_in(interp: ptr[u8], op: ptr[PyObject]) {
+    words = ptr[i64](gc_head(op)).view(2);
+    prev = words[1] & _PyGC_PREV_MASK;
+    next = words[0];
+    ptr[i64](prev).view(1)[0] = next;
+    next_words = ptr[i64](next).view(2);
+    next_words[1] = (next_words[1] & _PyGC_PREV_FLAGS) | prev;
+    words[0] = 0;
+    words[1] = words[1] & _PyGC_PREV_MASK_FINALIZED;
+    heap_size = ptr[i64](
+        interp + PyInterpreterState_GC + _gc_runtime_state_HEAP_SIZE
+    ).view(
+        1
+    );
+    heap_size[0] = wrapping_sub(heap_size[0], 1);
+}
+
+"""PyObject_GC_Track, inline."""
+def object_gc_track(op: ptr[PyObject]) {
+    gc_track_in(current_interp(), op);
+}
+
+"""PyObject_GC_UnTrack, inline: untrack `op` if it is tracked."""
+def object_gc_untrack(op: ptr[PyObject]) {
+    if object_gc_is_tracked(op) {
+        gc_untrack_in(current_interp(), op);
+    }
 }

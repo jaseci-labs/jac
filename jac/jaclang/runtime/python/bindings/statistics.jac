@@ -7,7 +7,9 @@ import from jaclang.runtime.python.bindings.clinic.statistics {
     statistics_doc
 }
 
-glob:priv definition = ModuleDefinition("_statistics", statistics_doc, module_methods);
+glob:priv definition = ModuleDefinition(
+         "_statistics", statistics_doc, module_methods
+     );
 
 def:pub PyInit__statistics -> ptr[PyObject] {
     return definition.initialize();

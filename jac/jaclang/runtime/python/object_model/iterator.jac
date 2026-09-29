@@ -29,8 +29,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_CallMethod,
     PyObject_CallNoArgs,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_RichCompareBool,
     PyObject_SelfIter,
@@ -67,9 +65,11 @@ import from jaclang.runtime.python.layouts {
     seqiterobject_SIZE
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     eval_builtin,
-    object_type
+    object_gc_track,
+    object_gc_untrack,
+    object_type,
+    PyType_Type
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
 
@@ -213,13 +213,13 @@ import from c {
         }
         seqiter_of(op).view(1)[0].it_index = 0;
         seqiter_of(op).view(1)[0].it_seq = Py_NewRef(seq);
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }
 }
 
 def iter_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(seqiter_of(op).view(1)[0].it_seq);
     PyObject_GC_Del(op);
 }
@@ -311,13 +311,13 @@ import from c {
         }
         calliter_of(op).view(1)[0].it_callable = Py_NewRef(function);
         calliter_of(op).view(1)[0].it_sentinel = Py_NewRef(sentinel);
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }
 }
 
 def calliter_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(calliter_of(op).view(1)[0].it_callable);
     jacpy_release(calliter_of(op).view(1)[0].it_sentinel);
     PyObject_GC_Del(op);
@@ -382,7 +382,7 @@ def anext_of(op: ptr[PyObject]) -> ptr[anextawaitableobject] {
 }
 
 def anextawaitable_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(anext_of(op).view(1)[0].wrapped);
     jacpy_release(anext_of(op).view(1)[0].default_value);
     PyObject_GC_Del(op);
@@ -491,7 +491,7 @@ import from c {
         }
         anext_of(op).view(1)[0].wrapped = Py_NewRef(awaitable);
         anext_of(op).view(1)[0].default_value = Py_NewRef(default_value);
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }
 }

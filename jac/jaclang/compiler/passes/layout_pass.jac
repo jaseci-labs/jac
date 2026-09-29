@@ -204,13 +204,6 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
     return top;
 }
 
-"""The native names of the archetypes named so far, by the class identity a
-ClassType records for its declaration (ClassDetailsShared.canonical_key):
-the declaring module's real path, the declaration's line and column, and the
-class name. A class a module's cached interface describes carries that
-identity but not the Archetype node, so this is how it finds the name its
-declaration was given.
-"""
 glob _NATIVE_NAME_BY_DECL: dict[tuple[str, int, int, str], str] = {},
      _NATIVE_NAMED_CLASSES: set[str] = set();
 
@@ -244,10 +237,6 @@ def _archetype_native_name(arch: Archetype, name: str) -> str {
     return native_arch_name(arch.loc.mod_path if arch.loc else "", name);
 }
 
-"""The native name of a class described by an interface rather than by its
-Archetype node: the name its declaration was given, found by the class
-identity, or the bare class name for a class no archetype declared (Python
-and stub classes)."""
 def _declared_native_name(shared: ClassDetailsShared) -> str {
     name = shared.class_name;
     if name not in _NATIVE_NAMED_CLASSES {
