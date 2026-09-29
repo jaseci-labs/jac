@@ -120,6 +120,12 @@ glob OPAQUE: list[str] = [
          "atexit_callback": (
              "obj atexit_callback { has func: Callable[[ptr], None], data: ptr, "
              + "next: ptr[atexit_callback]; }"
+         ),
+         # The union read through its `expat` member: 16 salt bytes, then the
+         # legacy XML_SetHashSalt() salt.
+         "_Py_HashSecret_t": (
+             "obj _Py_HashSecret_t { has expat_hashsalt16_head: u64, "
+             + "expat_hashsalt16_tail: u64, expat_hashsalt: i64; }"
          )
      },
      # Macros that name the address of a C object; each is a glob of that
@@ -190,6 +196,10 @@ glob OPAQUE: list[str] = [
          "PyThread_type_lock": "ptr",
          "Py_tracefunc": "ptr"
      },
+     # Function pointer typedefs a JacPython source passes a Jac callback for.
+     CALLBACK_TYPEDEFS: dict[str, str] = {
+         "PyCapsule_Destructor": "Callable[[ptr[PyObject]], None]"
+     },
      # A `const char *` parameter is a NUL-terminated C string (Jac `str`) unless
      # the function reads a sized payload; those take raw memory as `bytes`.
      PAYLOAD_PARAMETERS: dict[str, set[int]] = {
@@ -238,6 +248,7 @@ glob OPAQUE: list[str] = [
      # out-pointer takes `&mut T | None`, so None passes NULL.
      NULLABLE_PARAMETERS: dict[str, set[int]] = {
          "PyBytes_DecodeEscape": {2, 4},
+         "PyCapsule_New": {1},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
          "PyErr_WarnExplicit": {4},
@@ -422,6 +433,9 @@ def data_type(ctype: str) -> str | None {
     if base in OBJECT_LAYOUTS or base == "PyObject" {
         return "PyObject";
     }
+    if base in INTERNAL_STRUCTS {
+        return base;
+    }
     return SCALARS.get(base);
 }
 
@@ -453,6 +467,9 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     }
     if base in SCALARS {
         return SCALARS[base];
+    }
+    if index is not None and base in CALLBACK_TYPEDEFS {
+        return CALLBACK_TYPEDEFS[base];
     }
     if base in POINTER_TYPEDEFS {
         return POINTER_TYPEDEFS[base];

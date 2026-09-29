@@ -128,7 +128,15 @@ the C file never defines, a clone kept for its docstring and method table
 entry (`_sqlite3.connect`), contributes only `<c_basename>_doc`, and the
 binding supplies the function. `TypeHooks(finalize=...)` is `tp_finalize`; a
 dealloc calls `PyObject_CallFinalizerFromDealloc()` first, as
-`sqlite3.Connection` does.
+`sqlite3.Connection` does. `TypeHooks(boolean=...)` is `nb_bool`
+(`_elementtree.Element`). A check against one of the module's own types
+(`object(subclass_of='clinic_state()->Element_Type')`) is a module function
+that also takes the receiver, whose module state names the type. An empty
+method doc is a NULL `ml_doc`, so `__doc__` is None as in C. A C API record of
+function pointers that another port calls (`pyexpat.expat_CAPI`, which
+`_elementtree` uses for every Expat call) is a C `obj` with `Callable` fields;
+a Jac function passed through one of them gets the same C-ABI trampoline as a
+direct C call.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or

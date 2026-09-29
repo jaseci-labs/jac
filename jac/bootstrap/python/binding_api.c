@@ -95,6 +95,8 @@ int64_t jacpy_binding_method(void *handle, int64_t index, const char *name,
         ? (flags & METH_KEYWORDS ? (void (*)(void))fast_keywords : (void (*)(void))fast)
         : (flags & METH_KEYWORDS ? (void (*)(void))keywords : (void (*)(void))positional);
     PyCFunction callback = (PyCFunction)chosen;
+    /* An empty doc is no doc, as a NULL ml_doc in a static PyMethodDef. */
+    if (!*owned_doc) { free(owned_doc); owned_doc = NULL; }
     *method = (PyMethodDef){owned_name, callback, (int)flags, owned_doc};
     return 0;
 }
@@ -191,6 +193,7 @@ typedef struct {
     int32_t (*set_attribute)(PyObject *, PyObject *, PyObject *);
     PyObject *(*string)(PyObject *);
     void (*finalize)(PyObject *);
+    int32_t (*boolean)(PyObject *);
 } JacTypeHooks;
 
 typedef struct {
@@ -202,7 +205,7 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[37];
+    PyType_Slot slots[38];
     vectorcallfunc vectorcall;
     int instance_dict;
     /* The C fields published as member descriptors, then
@@ -300,6 +303,7 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(set_attribute, Py_tp_setattro);
     SLOT(string, Py_tp_str);
     SLOT(finalize, Py_tp_finalize);
+    SLOT(boolean, Py_nb_bool);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
