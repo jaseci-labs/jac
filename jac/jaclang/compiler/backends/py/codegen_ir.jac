@@ -133,7 +133,8 @@ obj CodegenIrWriter {
         string_idx: dict[str, int] = {},
         modules: list[CirModule] = [],
         diags: list[CirDiag] = [],
-        _code: any = None,
+        _code: bytearray = bytearray(),
+        _open: bool = False,
         _mod_path: str = "",
         _depth: int = 0,
         _loc_set: bool = False,
@@ -173,7 +174,7 @@ obj CodegenIrWriter {
     }
 
     def _require_open {
-        if self._code is None {
+        if not self._open {
             raise CodegenIrFormatError(
                 "no module is open: call begin_module before emitting"
             );
@@ -181,12 +182,13 @@ obj CodegenIrWriter {
     }
 
     def begin_module(mod_path: str) {
-        if self._code is not None {
+        if self._open {
             raise CodegenIrFormatError(
                 f"module {self._mod_path} is still open; call end_module first"
             );
         }
         self._code = bytearray();
+        self._open = True;
         self._mod_path = mod_path;
         self._depth = 0;
         self._loc_set = False;
@@ -350,9 +352,9 @@ obj CodegenIrWriter {
             );
         }
         self._code.append(OP_END);
-        frozen: bytearray = self._code;
-        self.modules.append(CirModule(mod_path=self._mod_path, code=bytes(frozen)));
-        self._code = None;
+        self.modules.append(CirModule(mod_path=self._mod_path, code=bytes(self._code)));
+        self._code = bytearray();
+        self._open = False;
         self._mod_path = "";
     }
 
@@ -361,7 +363,7 @@ obj CodegenIrWriter {
     }
 
     def to_bytes -> bytes {
-        if self._code is not None {
+        if self._open {
             raise CodegenIrFormatError(
                 f"module {self._mod_path} is still open; call end_module before to_bytes"
             );
