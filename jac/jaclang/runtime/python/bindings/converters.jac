@@ -300,7 +300,7 @@ def convert_bool_int(value: ptr[PyObject]) -> bool {
 
 """unicode_fs_encoded (PyUnicode_FSConverter): the bytes of a str encoded
 with the filesystem encoding, or of a bytes-like object; a new reference
-the _impl function releases."""
+the clinic glue releases after the _impl returns."""
 def convert_PyUnicode_FSConverter(
     value: ptr[PyObject], fname: str, label: str
 ) -> ptr[PyObject] {

@@ -11,7 +11,7 @@ Compiled only on Windows, so absent here:
     _ssl.enum_certificates
     _ssl.enum_crls
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
+import from jaclang.runtime.python.cpython_api { NULL, PyObject, jacpy_release }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
@@ -131,7 +131,11 @@ def:priv _ssl__test_decode_cert_bound(args: BoundArguments) -> ptr[PyObject] {
     path: ptr[PyObject] = convert_PyUnicode_FSConverter(
         value, "_test_decode_cert", "argument"
     );
-    return _ssl__test_decode_cert_impl(receiver, path);
+    result = _ssl__test_decode_cert_impl(receiver, path);
+    if path {
+        jacpy_release(path);
+    }
+    return result;
 }
 
 def:priv _ssl__test_decode_cert_call(

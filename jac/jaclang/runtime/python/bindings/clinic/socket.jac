@@ -126,7 +126,11 @@ def:priv _socket_if_nametoindex_bound(args: BoundArguments) -> ptr[PyObject] {
     oname: ptr[PyObject] = convert_PyUnicode_FSConverter(
         value, "if_nametoindex", "argument"
     );
-    return _socket_if_nametoindex_impl(receiver, oname);
+    result = _socket_if_nametoindex_impl(receiver, oname);
+    if oname {
+        jacpy_release(oname);
+    }
+    return result;
 }
 
 def:priv _socket_if_nametoindex_call(

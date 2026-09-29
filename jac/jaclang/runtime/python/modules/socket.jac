@@ -1150,7 +1150,6 @@ def _socket_if_nametoindex_impl(
     jacpy_set_errno(i64(ENODEV));
     index = if_nametoindex(ptr[u8](jacpy_bytes_address(oname)));
     error = jacpy_errno();
-    jacpy_release(oname);
     if index == 0 {
         return socket_error(int(error));
     }

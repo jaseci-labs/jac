@@ -152,7 +152,9 @@ obj Unsupported(Exception) {}
 # macOS, so a clinic function whose #if needs one is not generated.
 # Converters the C API itself provides (not a module's own), which
 # bindings/converters.jac supplies to every module.
-glob API_CONVERTERS: set[str] = {"convert_PyUnicode_FSConverter"};
+glob API_CONVERTERS: set[str] = {"convert_PyUnicode_FSConverter"},
+     # Converters whose result is a new reference the glue releases.
+     OWNED_CONVERTERS: set[str] = {"convert_PyUnicode_FSConverter"};
 
 glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS",
@@ -821,6 +823,7 @@ obj Emitter {
         # The body that converts bound values and calls the impl.
         body: list[str] = [];
         call_args = ["receiver"];
+        owned: list[str] = [];
         if uses_class {
             finder = "defining_class_of_type"
                 if kind == "CLASS_METHOD"
@@ -896,15 +899,26 @@ obj Emitter {
             } else {
                 call_args.append(var);
             }
+            # A converter that returns a new reference (PyUnicode_FSConverter's
+            # bytes) is released after the _impl returns, as clinic's cleanup
+            # does; the _impl only borrows it.
+            if expr.split("(")[0] in OWNED_CONVERTERS {
+                owned.append(var);
+            }
         }
         if stepwise {
             body.append(f"args.reach({len(params)});");
         }
         call = f"{impl_name}({', '.join(call_args)})";
         result = f"{wrap}({call})" if wrap else call;
-        if uses_class {
+        if uses_class or owned {
             body.append(f"result = {result};");
-            body.append("jacpy_release(cls);");
+            if uses_class {
+                body.append("jacpy_release(cls);");
+            }
+            for var in owned {
+                body.append(f"if {var} {{ jacpy_release({var}); }}");
+            }
             self.api.add("jacpy_release");
             body.append("return result;");
         } else {
