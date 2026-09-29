@@ -401,6 +401,9 @@ walker NaIRGenPass(CompilerPass) {
         set_helpers: dict[str, dict[str, any]] = {},
         _peer_container_ty: (ir.Type | None) = None,
         _exc_state_type: (ir.Type | None) = None,
+        # Functions that arm setjmp frames; their locals written after an
+        # arming are made volatile before the module is handed on.
+        _setjmp_functions: list[ir.Function] = [],
         _exc_push_fn: (ir.Function | None) = None,
         _exc_pop_fn: (ir.Function | None) = None,
         _exc_raise_fn: (ir.Function | None) = None,
@@ -3202,6 +3205,10 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_try_slot(nd: uni.TryStmt) -> None;
     def _codegen_try_unwind(nd: uni.TryStmt, emit_finally: bool = True) -> None;
     def _codegen_finally_guard(nd: uni.TryStmt) -> None;
+    def _mark_setjmp_function(func: ir.Function) -> None;
+    def _volatilize_setjmp_locals -> None;
+    def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
+    def _block_successors(block: ir.Block) -> list[ir.Block];
     def _push_exception_handler(
         dispatch: ir.Block, body: ir.Block
     ) -> tuple[ir.Value, ir.Value];

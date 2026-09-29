@@ -119,8 +119,7 @@ impl NaIRGenPass._codegen_with_recursive(
         if self._exc_raise_fn is None {
             self._declare_exception_runtime();
         }
-        func.attributes.add("optnone");
-        func.attributes.add("noinline");
+        self._mark_setjmp_function(func);
         (state, depth) = self._push_exception_handler(error_bb, body_bb);
     }
     frame = NativeFinalizer(
@@ -348,8 +347,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     body_bb = func.append_basic_block(name=f"with.gen.body.{idx}");
     error_bb = func.append_basic_block(name=f"with.gen.error.{idx}");
     merge_bb = func.append_basic_block(name=f"with.gen.merge.{idx}");
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
+    self._mark_setjmp_function(func);
     (state, depth) = self._push_exception_handler(error_bb, body_bb);
     frame = NativeFinalizer(
         body=None,

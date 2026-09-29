@@ -1167,8 +1167,7 @@ impl NaIRGenPass._user_iter_next_fn(
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_user_" + iter_struct);
     fn.linkage = "private";
-    fn.attributes.add("optnone");
-    fn.attributes.add("noinline");
+    self._mark_setjmp_function(fn);
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");

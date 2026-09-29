@@ -1003,8 +1003,7 @@ impl NaIRGenPass._codegen_try_unwind(
     _gc = self._gen_ctx;
     _in_gen = _gc is not None and func is _gc.resume_fn;
 
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
+    self._mark_setjmp_function(func);
 
     setup_bb = func.append_basic_block(name="try.setup");
     body_bb = func.append_basic_block(name="try.body");
@@ -1936,6 +1935,7 @@ impl NaIRGenPass._push_exception_handler(
 ) -> tuple[ir.Value, ir.Value] {
     i32 = ir.IntType(32);
     i8p = ir.IntType(8).as_pointer();
+    self._mark_setjmp_function(self.builder.function);
     state = self._stack_entry_alloca(self._get_exception_state_type(), "exc.state");
     depth = self._stack_entry_alloca(ir.IntType(64), "rgn.depth.slot");
     self.builder.call(self._exc_push_fn, [state]);
@@ -1965,8 +1965,7 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
         self._declare_exception_runtime();
     }
     func = self.builder.function;
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
+    self._mark_setjmp_function(func);
     dispatch = func.append_basic_block("finally.error");
     body = func.append_basic_block("finally.guard");
     merge = func.append_basic_block("finally.merge");
@@ -2035,4 +2034,131 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
         self.builder.unreachable();
     }
     self.builder.position_at_end(merge);
+}
+
+impl NaIRGenPass._mark_setjmp_function(func: ir.Function) -> None {
+    """Record a function that arms a setjmp frame.
+
+    It stays optimizable. What C requires of such a function -- a local
+    written between the arming and the longjmp that returns to it must be
+    volatile, or the second return may see a stale register copy -- is
+    applied before the module is handed on (_volatilize_setjmp_locals). The
+    setjmp call keeps returns_twice, so LLVM neither inlines the function
+    nor reuses its stack slots across the arming.
+    """;
+    for known in self._setjmp_functions {
+        if known is func {
+            return;
+        }
+    }
+    self._setjmp_functions.append(func);
+}
+
+impl NaIRGenPass._setjmp_local_base(value: ir.Value) -> (ir.Value | None) {
+    """The local (alloca) a pointer addresses through GEPs and casts, or None.""";
+    current = value;
+    while True {
+        if isinstance(current, ir.AllocaInstr) {
+            return current;
+        }
+        if isinstance(current, ir.GEPInstr) or isinstance(current, ir.CastInstr) {
+            current = current.operands[0];
+            continue;
+        }
+        return None;
+    }
+}
+
+impl NaIRGenPass._block_successors(block: ir.Block) -> list[ir.Block] {
+    term: any = block.terminator;
+    if term is None {
+        return [];
+    }
+    found: list[ir.Block] = [
+        op
+        for op in term.operands
+        if isinstance(op, ir.Block)
+    ];
+    if isinstance(term, ir.SwitchInstr) {
+        found.append(term.default_bb);
+        for arm in term.cases {
+            found.append(arm[1]);
+        }
+    }
+    return found;
+}
+
+impl NaIRGenPass._volatilize_setjmp_locals -> None {
+    """Make volatile exactly the locals a setjmp function writes after an arming.
+
+    Every instruction that can run after an arming -- the rest of the arming
+    block and every block reachable from it -- is scanned for stores into a
+    local; each such local's loads and stores anywhere in the function become
+    volatile, so the value a handler, finally clause or re-armed generator
+    frame reads after the longjmp is the one last written. Locals only
+    written before every arming keep their register and SSA form, and the
+    rest of the function is optimized as usual.
+    """;
+    if not self._setjmp_functions {
+        return;
+    }
+    setjmp_name = self._exc_jmp_symbols()[0];
+    for func in self._setjmp_functions {
+        after: list[any] = [];
+        pending: list[ir.Block] = [];
+        for block in func.blocks {
+            armed = False;
+            for inst in block.instructions {
+                if armed {
+                    after.append(inst);
+                } elif isinstance(inst, ir.CallInstr)
+                    and getattr(inst.callee, "name", "") == setjmp_name {
+                    armed = True;
+                }
+            }
+            if armed {
+                pending.extend(self._block_successors(block));
+            }
+        }
+        seen: set[int] = set();
+        while pending {
+            block = pending.pop();
+            if id(block) in seen {
+                continue;
+            }
+            seen.add(id(block));
+            after.extend(block.instructions);
+            pending.extend(self._block_successors(block));
+        }
+        written: set[int] = set();
+        for inst in after {
+            if isinstance(inst, ir.StoreInstr) {
+                base = self._setjmp_local_base(inst.operands[1]);
+                if base is not None {
+                    written.add(id(base));
+                }
+            }
+        }
+        if not written {
+            continue;
+        }
+        for block in func.blocks {
+            for inst_value in block.instructions {
+                inst: any = inst_value;
+                target: (ir.Value | None) = None;
+                if isinstance(inst, ir.LoadInstr) {
+                    target = inst.operands[0];
+                } elif isinstance(inst, ir.StoreInstr) {
+                    target = inst.operands[1];
+                }
+                if target is not None {
+                    base = self._setjmp_local_base(target);
+                    if base is not None and id(base) in written {
+                        setattr(inst, "volatile", True);
+                    }
+                }
+            }
+        }
+    }
+    self._setjmp_functions = [];
 }

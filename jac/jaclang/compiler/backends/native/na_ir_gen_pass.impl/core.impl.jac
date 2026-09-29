@@ -187,6 +187,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
+        self._volatilize_setjmp_locals();
         self.module.gen.llvm_ir = self.llvm_module;
         self.module.gen.native_deps = list(self._native_dep_paths);
 
