@@ -346,6 +346,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
     try {
         b = self.builder;
         i32 = ir.IntType(32);
+        saved = self._region_c_entry_escape();
         jac_args: list[ir.Value] = [];
         boxes: list[ir.Value] = [];
         params = plan["params"] if plan is not None else [];
@@ -404,6 +405,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
                     b.bitcast(cfunc.args[0], c_struct.as_pointer(), name="cdef.sret")
                 );
                 self._c_release_temp(result);
+                self._region_c_entry_restore(saved);
                 b.ret_void();
             } else {
                 coerce = ret_plan["coerce"];
@@ -420,12 +422,16 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
                 }
                 value = b.load(b.bitcast(src, shape.as_pointer()), name="cdef.ret.reg");
                 self._c_release_temp(result);
+                self._region_c_entry_restore(saved);
                 b.ret(value);
             }
         } elif isinstance(ret_type, ir.VoidType) {
+            self._region_c_entry_restore(saved);
             b.ret_void();
         } else {
-            b.ret(self._clib_reinterpret(result, ret_type, name="cdef.ret"));
+            value = self._clib_reinterpret(result, ret_type, name="cdef.ret");
+            self._region_c_entry_restore(saved);
+            b.ret(value);
         }
     } finally {
         self._leave_function(state);

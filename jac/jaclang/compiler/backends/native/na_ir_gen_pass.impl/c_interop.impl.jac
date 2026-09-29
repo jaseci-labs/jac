@@ -947,7 +947,7 @@ impl NaIRGenPass._c_const_init(
         if isinstance(expr, uni.Name) and expr.sym_name in self._clib_exports {
             return self._clib_exports[expr.sym_name].bitcast(llt) as ir.Constant;
         }
-        if target.function_type != llt.pointee {
+        if target.function_type != llt.pointee or not self._is_kernel_unit() {
             target = self._emit_clib_c_trampoline(target, llt);
         }
         return target.bitcast(llt) as ir.Constant;
