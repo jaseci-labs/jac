@@ -294,7 +294,9 @@ glob OPAQUE: list[str] = [
          "_PyUnicode_EncodeCharmap": {2},
          "_PyUnicode_EncodeUTF7": {3},
          "_PyUnicode_EncodeUTF16": {1},
-         "_PyUnicode_EncodeUTF32": {1}
+         "_PyUnicode_EncodeUTF32": {1},
+         # atomic_flag_works: NULL where the platform has no SOCK_CLOEXEC.
+         "_Py_set_inheritable": {2}
      },
      # `void *` out-parameters of converters whose C type the function fixes.
      TYPED_OUT_PARAMETERS: dict[str, dict[int, str]] = {

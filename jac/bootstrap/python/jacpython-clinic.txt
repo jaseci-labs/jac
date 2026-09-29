@@ -58,3 +58,4 @@ _sqlite3
 _multibytecodec
 pyexpat
 _elementtree
+_socket

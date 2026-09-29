@@ -556,7 +556,7 @@ Modules/clinic/posixmodule.c.h
 # Modules/clinic/sha2module.c.h  # removed: 510 source lines
 # Modules/clinic/sha3module.c.h  # removed: 291 source lines
 Modules/clinic/signalmodule.c.h
-Modules/clinic/socketmodule.c.h
+# Modules/clinic/socketmodule.c.h  # removed: 376 source lines
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
 Modules/clinic/termios.c.h
@@ -597,7 +597,7 @@ Modules/rotatingtree.h
 # Modules/sha2module.c  # removed: 954 source lines
 # Modules/sha3module.c  # removed: 680 source lines
 Modules/signalmodule.c
-Modules/socketmodule.c
+# Modules/socketmodule.c  # removed: 9,305 source lines
 Modules/socketmodule.h
 # Modules/symtablemodule.c  # removed: 130 source lines
 # Modules/syslogmodule.c  # removed: 469 source lines
