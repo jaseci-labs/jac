@@ -332,8 +332,8 @@ Modules/_ctypes/ctypes.h
 Modules/_ctypes/malloc_closure.c
 Modules/_ctypes/stgdict.c
 # Modules/_datetimemodule.c  # removed: 7,787 source lines
-Modules/_decimal/_decimal.c
-Modules/_decimal/docstrings.h
+# Modules/_decimal/_decimal.c  # removed: 6,341 source lines
+# Modules/_decimal/docstrings.h  # removed: 966 source lines
 Modules/_elementtree.c
 # Modules/_functoolsmodule.c  # removed: 1,953 source lines
 Modules/_hacl/Hacl_HMAC.c

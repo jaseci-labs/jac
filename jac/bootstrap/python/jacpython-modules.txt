@@ -78,3 +78,4 @@ _locale         test.test_locale,test.test__locale
 _zoneinfo       test.test_zoneinfo
 unicodedata     test.test_unicodedata,test.test_ucn
 _datetime       test.test_datetime
+_decimal        test.test_decimal                       -lmpdec -lm

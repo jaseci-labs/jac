@@ -168,6 +168,18 @@ layouts, because C extensions such as `_zoneinfo` read them through the header's
 macros; `bindings/datetime.jac` readies them for each interpreter and defines the
 module.
 
+`modules/decimal_*.jac` implement `_decimal` over libmpdec, which stays the C
+library the build links (`-lmpdec`) and is declared in `modules/mpdecimal.jac`.
+A Decimal keeps its `mpd_t` and a four-word static coefficient inside the object
+and a Context its `mpd_context_t`, laid out as `_decimal.c`'s structs, so
+libmpdec works on them in place. `decimal_objects.jac` holds the layouts, module
+state, signal maps and the contextvar-based current context,
+`decimal_convert.jac` the conversions, `decimal_number.jac` the Decimal type,
+`decimal_context.jac` Context, SignalDictMixin and the context manager, and
+`decimal_ops.jac` names the libmpdec operation each method family applies. The
+heap types come from `PyType_Spec`s of C data in `bindings/decimal.jac`, each spec
+its type's token.
+
 `modules/posixsubprocess.jac` converts every `fork_exec()` argument into C
 memory before forking: argv, envp and the executable list as char* arrays,
 the descriptors to keep, the group list, the child's messages and scratch
