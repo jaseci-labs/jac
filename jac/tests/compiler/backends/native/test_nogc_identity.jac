@@ -79,22 +79,33 @@ test "str() of a string returns a value its consumer owns" {
     assert out.splitlines() == ["caught: out of range", "literal item3 580"] , out;
 }
 
-test "str() copies and len() temporaries leave nothing behind" {
+"""Build `name` headerless and require the macOS `leaks` tool to find nothing."""
+def _assert_nogc_leak_free(name: str) {
     import shutil;
     import subprocess;
     import tempfile;
     import from tests.support { native_build }
-    out = assert_native_identity(_fixture("str_builtin_leaks.jac"));
-    assert out.strip() == "literal 870" , out;
     if not shutil.which("leaks") {
         testskip("the macOS leaks tool is not available");
     }
-    binary = os.path.join(tempfile.mkdtemp(), "str_leaks.nogc");
-    native_build(_fixture("str_builtin_leaks.jac"), binary, memory="nogc");
+    binary = os.path.join(tempfile.mkdtemp(), name.replace(".jac", ".nogc"));
+    native_build(_fixture(name), binary, memory="nogc");
     lk = subprocess.run(
         ["leaks", "--atExit", "--", binary], capture_output=True, text=True, timeout=300
     );
     assert "0 leaks for 0 total leaked bytes" in lk.stdout , lk.stdout[-1500:];
+}
+
+test "str() copies and len() temporaries leave nothing behind" {
+    out = assert_native_identity(_fixture("str_builtin_leaks.jac"));
+    assert out.strip() == "literal 870" , out;
+    _assert_nogc_leak_free("str_builtin_leaks.jac");
+}
+
+test "rebound and freshly built string locals leave nothing behind" {
+    out = assert_native_identity(_fixture("rebind_leaks.jac"));
+    assert out.strip() == "item49 1350" , out;
+    _assert_nogc_leak_free("rebind_leaks.jac");
 }
 
 test "an own field held by pointer drops the object each store replaces" {

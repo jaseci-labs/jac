@@ -134,6 +134,7 @@ walker OwnershipCheckPass(CompilerPass) {
     def _nogc_setup -> None;
     def _nogc_resolve_provenance -> (str | None);
     def _nogc_infer_locals -> None;
+    def _nogc_entry_confined_str(tgt: Name) -> bool;
     def _nogc_infer_state(expr: Expr | None) -> tuple[OwnershipKind, list[Name]];
     def _nogc_bind_inferred(
         nd: Assignment, tgt: Name, kind: OwnershipKind, roots: list[Name]

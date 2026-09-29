@@ -3161,6 +3161,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     _pre_box_val = value;
                 }
             }
+            _raw_str_hint: (ir.Type | None) = None;
+            if self._nogc_headerless()
+                and self._str_desc_ty is not None
+                and (not nd.type_tag or not nd.type_tag.tag)
+                and value.type == ir.IntType(8).as_pointer()
+                and isinstance(nd.value, uni.Expr)
+                and nd.value.type is not None {
+                try {
+                    _raw_str_hint = self._lower_type(nd.value.type);
+                } except Exception {
+                    _raw_str_hint = None;
+                }
+            }
+            if _raw_str_hint is not None and _raw_str_hint == self._str_desc_ty {
+                value = self._coerce_type(value, _raw_str_hint);
+                var_type = _raw_str_hint;
+                _pre_box_val = value;
+            }
             if nd.type_tag and nd.type_tag.tag {
                 tag_node = nd.type_tag.tag;
 
