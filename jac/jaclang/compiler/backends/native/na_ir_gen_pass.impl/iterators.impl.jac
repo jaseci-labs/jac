@@ -1185,7 +1185,7 @@ impl NaIRGenPass._user_iter_next_fn(
     recv = b.bitcast(obj_i8, struct_ptr_type, name="usr.obj");
 
     exc_state = b.alloca(exc_state_type, name="usr.exc.state");
-    b.call(self._exc_push_fn, [exc_state]);
+    self._exc_push(b, exc_state);
     env_ptr = b.gep(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
     );
@@ -1196,13 +1196,13 @@ impl NaIRGenPass._user_iter_next_fn(
 
     b.position_at_end(call_bb);
     v = b.call(next_method_fn, [recv], name="usr.v");
-    b.call(self._exc_pop_fn, []);
+    self._exc_pop(b);
     out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="usr.out");
     b.store(v, out_t);
     b.ret(ir.Constant(i1, 1));
 
     b.position_at_end(caught_bb);
-    b.call(self._exc_pop_fn, []);
+    self._exc_pop(b);
     exc_type_ptr = b.gep(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="usr.exc.type.ptr"
     );

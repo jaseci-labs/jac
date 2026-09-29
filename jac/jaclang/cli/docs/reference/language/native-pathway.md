@@ -873,7 +873,7 @@ A pointer supports exactly these operations:
 | `ptr[T]()` | the null pointer |
 | `ptr[T](q)` | the same address retyped as a `T*` |
 
-There is no dereference and no `free`: memory is read and written through `p.view(n)`, and C memory is freed by the C API that allocated it. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
+There is no dereference and no `free`: memory is read and written through `p.view(n)`, and C memory is freed by the C API that allocated it. As in C, a step must not carry a pointer around the ends of the address space (past address 0 or the highest address); the native backend relies on it, knowing a pointer stepped forward is not null, so a view of it needs no null check. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
 
 <!-- jac-skip -->
 ```jac

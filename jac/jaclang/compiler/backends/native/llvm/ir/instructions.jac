@@ -686,7 +686,8 @@ class GEPInstr(Instruction) {
         indices: any,
         inbounds: any,
         name: any,
-        source_etype: any = None
+        source_etype: any = None,
+        nusw: bool = False
     ) -> object {
         if (source_etype is not None) {
             typ = ptr.type;
@@ -717,11 +718,14 @@ class GEPInstr(Instruction) {
         self.pointer = ptr;
         self.indices = indices;
         self.inbounds = inbounds;
+        self.nusw = nusw;
     }
 
     def descr(self: GEPInstr, buf: any) -> object {
         indices = ['{0} {1}'.format(i.type, i.get_reference()) for i in self.indices];
-        op = "getelementptr inbounds" if self.inbounds else "getelementptr";
+        op = "getelementptr inbounds"
+            if self.inbounds
+            else ("getelementptr nusw" if self.nusw else "getelementptr");
         buf.append(
             "{0} {1}, {2} {3}, {4} {5}\n".format(
                 op,

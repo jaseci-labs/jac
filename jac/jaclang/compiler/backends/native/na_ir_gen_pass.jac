@@ -326,6 +326,7 @@ walker NaIRGenPass(CompilerPass) {
         _slot_caught_drops: dict[int, tuple[ir.Value, ir.Value]] = {},
         _unbound_caught_slots: dict[int, ir.Value] = {},
         _exc_context_fn: (ir.Function | None) = None,
+        _exc_context_cache: dict[int, tuple[ir.Function, ir.CallInstr]] = {},
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},
         static_fields: dict[str, ir.GlobalVariable] = {},
@@ -585,6 +586,11 @@ walker NaIRGenPass(CompilerPass) {
 
     def _get_exception_context_fn -> ir.Function;
     def _exception_handler_slot(b: ir.IRBuilder) -> ir.Value;
+    def _context_handler_slot(b: ir.IRBuilder, context: ir.Value) -> ir.Value;
+    def _exc_context_at(b: ir.IRBuilder) -> ir.Value;
+    def _cached_exc_context(func: ir.Function) -> (ir.Value | None);
+    def _exc_push(b: ir.IRBuilder, state: ir.Value) -> None;
+    def _exc_pop(b: ir.IRBuilder) -> None;
     def _region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value;
     def _region_ptr(val: ir.Value, name: str = "rgn.p") -> ir.Value;
     def _region_new_handle -> ir.Value;

@@ -180,6 +180,33 @@ def run -> f32 {
     assert 'declare i8* @"cp_find"(i32 %"key")' in text;
 }
 
+test "a pointer step does not wrap around the address space" {
+    code = """
+def step(p: ptr[i32], n: int) -> ptr[i32] {
+    return p + n;
+}
+
+def back(p: ptr[i32]) -> ptr[i32] {
+    return p - 1;
+}
+""";
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, code);
+        text = str(compile_native_ir("probe.jac", fixture_dir=directory).gen.llvm_ir);
+    }
+    # C's rule: a step forward from a pointer is never null, which lets LLVM
+    # drop the null check of a view walked forward from a checked start.
+    steps = [
+        line
+        for line in text.splitlines()
+        if '%"c.ptr.step" = ' in line
+    ];
+    assert len(steps) == 2 , text;
+    for line in steps {
+        assert "getelementptr nusw" in line , line;
+    }
+}
+
 test "foreign struct fields must be C plain data" {
     code = '''import from "CLIB_POINTERS_LIBRARY" {
     obj CpVec3 { has x: f32, y: f32, z: f32; }

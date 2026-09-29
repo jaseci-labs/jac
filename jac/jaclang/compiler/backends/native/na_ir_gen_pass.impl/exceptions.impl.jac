@@ -75,13 +75,16 @@ impl NaIRGenPass._emit_exc_push_helper -> None {
     exc_state_ptr = exc_state_type.as_pointer();
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    fnty = ir.FunctionType(ir.VoidType(), [exc_state_ptr]);
+    context_ptr = self._get_exception_context_fn().function_type.return_type;
+    fnty = ir.FunctionType(ir.VoidType(), [exc_state_ptr, context_ptr]);
     func = self._define_function("__jac_exc_push", fnty);
     func.linkage = "private";
     func.args[0].name = "state";
+    func.args[1].name = "context";
     bb = func.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    handler_slot = self._exception_handler_slot(b);
+    context = func.args[1];
+    handler_slot = self._context_handler_slot(b, context);
     state = func.args[0];
 
     prev_handler = b.load(handler_slot, name="prev");
@@ -105,7 +108,10 @@ impl NaIRGenPass._emit_exc_push_helper -> None {
     saved_top = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 5)], name="unwind.saved"
     );
-    b.store(b.load(self._unwind_top_slot(b), name="unwind.top"), saved_top);
+    unwind_top = b.gep(
+        context, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="unwind.top.ptr"
+    );
+    b.store(b.load(unwind_top, name="unwind.top"), saved_top);
 
     b.store(state, handler_slot);
     b.ret_void();
@@ -117,12 +123,14 @@ impl NaIRGenPass._emit_exc_pop_helper -> None {
     exc_state_ptr = exc_state_type.as_pointer();
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    fnty = ir.FunctionType(ir.VoidType(), []);
+    context_ptr = self._get_exception_context_fn().function_type.return_type;
+    fnty = ir.FunctionType(ir.VoidType(), [context_ptr]);
     func = self._define_function("__jac_exc_pop", fnty);
     func.linkage = "private";
+    func.args[0].name = "context";
     bb = func.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    handler_slot = self._exception_handler_slot(b);
+    handler_slot = self._context_handler_slot(b, func.args[0]);
 
     cur_handler = b.load(handler_slot, name="cur");
 
@@ -1050,7 +1058,7 @@ impl NaIRGenPass._codegen_try_unwind(
     }
 
     self.builder.position_at_end(success_bb);
-    self.builder.call(self._exc_pop_fn, []);
+    self._exc_pop(self.builder);
 
     frame.pop_handler = False;
     self._finally_stack.append(frame);
@@ -1137,7 +1145,7 @@ impl NaIRGenPass._codegen_try_unwind(
                         reraise_bb
                     );
                     self.builder.position_at_end(reraise_bb);
-                    self.builder.call(self._exc_pop_fn, []);
+                    self._exc_pop(self.builder);
                     reraise_obj = self.builder.load(exc_obj_ptr, name="reraise.obj");
                     reraise_type = self.builder.load(exc_type_ptr, name="reraise.type");
                     reraise_msg = self.builder.load(exc_msg_slot, name="reraise.msg");
@@ -1149,7 +1157,7 @@ impl NaIRGenPass._codegen_try_unwind(
             }
 
             self.builder.position_at_end(handler_bb);
-            self.builder.call(self._exc_pop_fn, []);
+            self._exc_pop(self.builder);
 
             if except_node.name is not None {
                 var_name = except_node.name.value
@@ -1229,7 +1237,7 @@ impl NaIRGenPass._codegen_try_unwind(
             }
         }
     } else {
-        self.builder.call(self._exc_pop_fn, []);
+        self._exc_pop(self.builder);
         exc_msg_val = self.builder.load(exc_msg_slot, name="exc.msg");
         self.builder.call(self._exc_raise_fn, [exc_obj_val, exc_type_val, exc_msg_val]);
         self.builder.unreachable();
@@ -1277,7 +1285,10 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
         ir.FunctionType(context_ptr, []),
         name="__jac_exception_context"
     );
-    func.linkage = "weak";
+    # Every unit emits this same accessor over the one weak TLS slot, so,
+    # like the slot's accessors, it may be inlined: a `try` then reads the
+    # thread's context without a call.
+    func.linkage = "linkonce_odr";
     self._exc_context_fn = func;
     entry_bb = func.append_basic_block("entry");
     create = func.append_basic_block("create");
@@ -1426,9 +1437,11 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         ) = saved;
     }
     entry_blk = func.entry_basic_block;
+    # The frame links itself after the function's one context read, if any.
+    context = self._cached_exc_context(func);
     anchor: any = None;
     for inst in entry_blk.instructions {
-        if isinstance(inst, ir.AllocaInstr) {
+        if isinstance(inst, ir.AllocaInstr) or inst is context {
             continue;
         }
         if isinstance(inst, ir.StoreInstr)
@@ -1454,7 +1467,10 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     }
     node_ty = self._unwind_node_type();
     link = b.alloca(node_ty, name="unwind.node");
-    top_slot = self._unwind_top_slot(b);
+    if context is None {
+        context = b.call(self._get_exception_context_fn(), [], name="exc.context");
+    }
+    top_slot = b.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
     prev = b.load(top_slot, name="unwind.prev");
     b.store(prev, b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
     b.store(
@@ -1483,7 +1499,64 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
 }
 
 impl NaIRGenPass._exception_handler_slot(b: ir.IRBuilder) -> ir.Value {
-    context = b.call(self._get_exception_context_fn(), []);
+    return self._context_handler_slot(b, b.call(self._get_exception_context_fn(), []));
+}
+
+impl NaIRGenPass._exc_context_at(b: ir.IRBuilder) -> ir.Value {
+    """The thread's exception context, for code `b` is building.
+
+    The context is per thread and lives as long as the thread, so a function
+    reads it once, at entry, and every `try` in it pushes and pops its handler
+    through that one read. A generator's body is the exception: it may resume
+    on another thread, so it reads the context where it needs it.
+    """;
+    func = b.function;
+    if self._gen_ctx is None and self._builder is not None and b is self.builder {
+        cached = self._cached_exc_context(func);
+        if cached is not None {
+            return cached;
+        }
+        # Placed as `_entry_alloca` places a slot, through the builder itself
+        # so its own position in the entry block stays right.
+        cur_block = b.block;
+        first = func.entry_basic_block;
+        if first.instructions {
+            b.position_before(first.instructions[0]);
+        } else {
+            b.position_at_start(first);
+        }
+        context = b.call(self._get_exception_context_fn(), [], name="exc.context");
+        b.position_at_end(cur_block);
+        self._exc_context_cache[id(func)] = (func, context);
+        return context;
+    }
+    return b.call(self._get_exception_context_fn(), [], name="exc.context");
+}
+
+impl NaIRGenPass._cached_exc_context(func: ir.Function) -> (ir.Value | None) {
+    """The context `func` read at entry, if `_exc_context_at` made one.""";
+    cached = self._exc_context_cache.get(id(func));
+    # A body that was thrown away (a stubbed function) took the read with it.
+    if cached is not None
+        and cached[0] is func
+        and cached[1].parent is func.entry_basic_block {
+        return cached[1];
+    }
+    return None;
+}
+
+impl NaIRGenPass._exc_push(b: ir.IRBuilder, state: ir.Value) -> None {
+    """Make `state` the innermost handler of the thread.""";
+    b.call(self._exc_push_fn, [state, self._exc_context_at(b)]);
+}
+
+impl NaIRGenPass._exc_pop(b: ir.IRBuilder) -> None {
+    """Drop the innermost handler of the thread.""";
+    b.call(self._exc_pop_fn, [self._exc_context_at(b)]);
+}
+
+impl NaIRGenPass._context_handler_slot(b: ir.IRBuilder, context: ir.Value) -> ir.Value {
+    """The innermost handler's slot in the thread's exception `context`.""";
     slot = b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 3)]
     );
@@ -1920,7 +1993,7 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
             self._finally_stack = saved_finalizers[:index];
             self._slot_try_stack = saved_handlers[:frame.handler_depth];
             if frame.pop_handler {
-                self.builder.call(self._exc_pop_fn, []);
+                self._exc_pop(self.builder);
             }
             if frame.exc_drop is not None {
                 self._emit_caught_drop(frame.exc_drop[0], frame.exc_drop[1]);
@@ -1954,7 +2027,7 @@ impl NaIRGenPass._push_exception_handler(
     i8p = ir.IntType(8).as_pointer();
     state = self._stack_entry_alloca(self._get_exception_state_type(), "exc.state");
     depth = self._stack_entry_alloca(ir.IntType(64), "rgn.depth.slot");
-    self.builder.call(self._exc_push_fn, [state]);
+    self._exc_push(self.builder, state);
     self.builder.store(self._region_depth(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
     result = self.builder.call(self._exc_setjmp_fn(), [self.builder.bitcast(env, i8p)]);
@@ -2012,7 +2085,7 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
         }
     }
     if not self.builder.block.is_terminated {
-        self.builder.call(self._exc_pop_fn, []);
+        self._exc_pop(self.builder);
         if nd.finally_body is not None
             and isinstance(nd.finally_body.body, (list, tuple)) {
             self._codegen_body(nd.finally_body.body);
@@ -2024,7 +2097,7 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
     self.builder.position_at_end(dispatch);
     self._region_unwind(self.builder.load(depth));
     values = self._exception_values(state);
-    self.builder.call(self._exc_pop_fn, []);
+    self._exc_pop(self.builder);
     _spill: list[ir.Value] = [];
     if _in_gen {
         for (_si, _sv) in enumerate(values) {

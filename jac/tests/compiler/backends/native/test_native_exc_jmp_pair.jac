@@ -7,6 +7,9 @@ frame, so on Darwin and Linux the frames use the mask-free pair. The pair has
 to match: Darwin's `longjmp` restores the mask from a buffer slot `_setjmp`
 never writes. Windows and wasm keep the portable names; nogc builds lower
 exceptions to error slots and arm no frames at all.
+
+A frame's push and pop reach the thread's exception context, a per-thread
+lookup; a function reads it once, at entry, and all its frames share it.
 """
 
 import re;
@@ -39,6 +42,31 @@ test "posix exception frames pair _setjmp with _longjmp" {
 test "windows exception frames keep setjmp with longjmp" {
     names = jmp_externs("x86_64-pc-windows-msvc");
     assert names == {"setjmp", "longjmp"} , sorted(names);
+}
+
+test "a function reads the exception context once for all its frames" {
+    prev = push_native_target("aarch64-apple-darwin");
+    try {
+        ir_text = program_ir(FIXTURE, "aarch64-apple-darwin");
+    } finally {
+        pop_native_target(prev);
+    }
+    # `outer` arms two frames (its except and its finally).
+    body = re.search(r'define [^\n]*\.outer"?\(.*?\n}', ir_text, re.S);
+    assert body is not None , "no outer in the program IR";
+    text = body.group(0);
+    reads = re.findall(
+        r'(%[\w."]+) = call [^\n]*@"?__jac_exception_context[.\d]*"?\(', text
+    );
+    assert len(reads) == 1 , text;
+    # Every push and pop of its frames goes through that one read.
+    frames = re.findall(
+        r'call [^\n]*@"?__jac_exc_(?:push|pop)[.\d]*"?\(([^\n]*)\)', text
+    );
+    assert len(frames) >= 4 , text;
+    for args in frames {
+        assert args.endswith(f"ptr {reads[0]}") , args;
+    }
 }
 
 test "frames armed and raised into repeatedly behave like Python" {
