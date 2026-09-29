@@ -204,15 +204,18 @@ pilot port; it established the pieces below.
 **Layouts are generated and verified.** `scripts/jacpython/gen_layouts.jac`
 writes `runtime/python/layouts.jac`: one C-layout struct per layout it lists
 (`_object`, `PyVarObject`, `PyTypeObject`, `PyNumberMethods`, `_PyLongValue`,
-`PyLongObject`, `PyTupleObject` so far), read from the pinned headers through
+`PyLongObject`, `PyTupleObject`, and datetime.h's `PyDateTime_DateTime` and
+`PyDateTime_CAPI` so far), read from the pinned headers through
 a small preprocessor that keeps the `#if` branches of the release build
-(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots are
-`Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
+(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots and
+members are `Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
 pointers to records no port reads yet are opaque. `PyObject` stays the opaque
 handle of `cpython_api.jac`; its layout is `_object`, reached by casting a
 handle (`ptr[_object](op).view(1)[0].ob_type`). The 3.14 refcount union is its
 widest member, `ob_refcnt_full: i64`; a trailing C array `T name[1]` is one
-`T` field, and further elements are reached by pointer arithmetic. The same
+`T` field, and further elements are reached by pointer arithmetic. A fixed
+array `T name[N]` is N fields, `name` and `name_1` to `name_<N-1>`, so
+`_zoneinfo` reads a datetime's year as `(data << 8) | data_1`. The same
 script writes the header constants initializers need (`Py_TPFLAGS_*`, the
 immortal refcount, `_PyLong_*_TAG`, `offsetof`/`sizeof` values) as `Final`
 globs, read back from a configured build's headers.
