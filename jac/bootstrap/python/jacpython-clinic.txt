@@ -45,3 +45,4 @@ _functools
 cmath
 math
 _operator
+array
