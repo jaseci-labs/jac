@@ -8,11 +8,6 @@ collations, the authorizer, progress and trace handlers, destructors) take the
 GIL first, and their contexts are C records SQLite keeps pointers to.
 """
 
-import from jaclang.runtime.python.object_model.slice {
-    PySlice_AdjustIndices,
-    PySlice_Unpack
-}
-
 import from jaclang.runtime.python.cpython_api {
     NULL,
     Py_NewRef,
@@ -76,7 +71,7 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyLong_FromUInt32,
     PyLong_FromUnsignedLong,
-    PyMapping_GetOptionalItem,
+    PyMapping_GetOptionalItemString,
     PyMem_Free,
     PyMem_Malloc,
     PyMem_RawFree,
@@ -146,6 +141,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_unicode,
     jacpy_memory_copy,
     jacpy_release,
+    jacpy_is_type,
     jacpy_type_check,
     PyBool_Type,
     PyByteArray_Type,
@@ -156,6 +152,10 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.object_model.slice {
+    PySlice_AdjustIndices,
+    PySlice_Unpack
+}
 import from jaclang.runtime.python.capi {
     boundary_failure,
     c_string_copy,
@@ -172,7 +172,6 @@ import from jaclang.runtime.python.bindings.module {
 }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_allocate,
-    jacpy_binding_matches,
     jacpy_binding_owner,
     jacpy_binding_record
 }
@@ -769,6 +768,16 @@ def state_by_type(type: ptr[PyObject]) -> (SqliteState | None) {
 
 def:priv state_of(instance: ptr[PyObject]) -> (SqliteState | None) {
     return state_by_type(Py_TYPE(instance));
+}
+
+# A NUL-terminated UTF-8 C string as a Jac str.
+def:priv c_text(address: ptr[u8]) -> str {
+    text = c_string_text(address);
+    try {
+        return text_value(text);
+    } finally {
+        jacpy_release(text);
+    }
 }
 
 # PyUnicode_FromStringAndSize() over C memory: a strict UTF-8 decode.
@@ -2000,16 +2009,32 @@ def clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject] {
     return state.PrepareProtocolType;
 }
 
+# clinic_state(): the state of the receiver's module; in Row's __new__ the
+# receiver is the type.
+def:priv clinic_state(receiver: ptr[PyObject]) -> SqliteState {
+    state = state_by_type(
+        receiver if jacpy_is_type(receiver) != 0 else Py_TYPE(receiver)
+    );
+    if state is None {
+        raise boundary_failure();
+    }
+    return state;
+}
+
 # object(subclass_of='clinic_state()->ConnectionType').
-def subclass_clinic_state_ConnectionType(value: ptr[PyObject], fname: str, label: str) {
-    if jacpy_binding_matches(value, Connection_token.handle) == 0 {
+def subclass_clinic_state_ConnectionType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) {
+    if jacpy_type_check(value, clinic_state(receiver).ConnectionType) == 0 {
         bad_argument(fname, label, "sqlite3.Connection", value);
     }
 }
 
 # object(subclass_of='clinic_state()->CursorType').
-def subclass_clinic_state_CursorType(value: ptr[PyObject], fname: str, label: str) {
-    if jacpy_binding_matches(value, Cursor_token.handle) == 0 {
+def subclass_clinic_state_CursorType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) {
+    if jacpy_type_check(value, clinic_state(receiver).CursorType) == 0 {
         bad_argument(fname, label, "sqlite3.Cursor", value);
     }
 }
@@ -3983,12 +4008,9 @@ def:priv bind_parameters(
             # Skip the first character (the colon).
             binding_name += 1;
             current_param = NULL;
-            key = c_string_text(binding_name);
-            if not key {
-                return;
-            }
-            found = PyMapping_GetOptionalItem(parameters, key, &mut current_param);
-            jacpy_release(key);
+            found = PyMapping_GetOptionalItemString(
+                parameters, c_text(binding_name), &mut current_param
+            );
             if found == -1 {
                 return;
             } elif found == 0 {
@@ -4993,25 +5015,15 @@ def:priv get_subscript_index(blob: BlobState, item: ptr[PyObject]) -> i64 {
 
 # The slice's start, stop, step and length over the blob; None on failure.
 def:priv get_slice_info(blob: BlobState, item: ptr[PyObject]) -> (list[i64] | None) {
-    # start, stop and step, in memory the slice functions write through.
-    cells = PyMem_Malloc(u64(24));
-    if not cells {
-        PyErr_NoMemory();
+    start: i64 = 0;
+    stop: i64 = 0;
+    step: i64 = 0;
+    if PySlice_Unpack(item, &mut start, &mut stop, &mut step) < 0 {
         return None;
     }
-    start = ptr[i64](cells);
-    stop = ptr[i64](cells + 8);
-    step = ptr[i64](cells + 16);
-    try {
-        if PySlice_Unpack(item, start, stop, step) < 0 {
-            return None;
-        }
-        length = i64(sqlite3_blob_bytes(blob.blob));
-        slicelen = PySlice_AdjustIndices(length, start, stop, step.view(1)[0]);
-        return [start.view(1)[0], stop.view(1)[0], step.view(1)[0], slicelen];
-    } finally {
-        PyMem_Free(cells);
-    }
+    length = i64(sqlite3_blob_bytes(blob.blob));
+    slicelen = PySlice_AdjustIndices(length, &mut start, &mut stop, step);
+    return [start, stop, step, slicelen];
 }
 
 def blob_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {

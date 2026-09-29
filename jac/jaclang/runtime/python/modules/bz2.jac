@@ -35,7 +35,14 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_record
+}
+import from jaclang.runtime.python.bindings.members {
+    record_set_byte,
+    record_set_object
+}
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -318,6 +325,16 @@ obj DecompressorState(NativeState) {
     }
 }
 
+# BZ2Decompressor_members[]: eof and needs_input (Py_T_BOOL) and unused_data
+# (Py_T_OBJECT_EX) read the record, which mirrors the state after every change
+# and holds unused_data borrowed.
+def mirror_decompressor(instance: ptr[PyObject], state: DecompressorState) {
+    record = jacpy_binding_record(instance, BZ2Decompressor_token.handle);
+    record_set_byte(record, 0, 1 if state.eof else 0);
+    record_set_byte(record, 1, 1 if state.needs_input else 0);
+    record_set_object(record, 8, state.unused_data);
+}
+
 def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     if jacpy_binding_native_present(instance, BZ2Decompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, BZ2Decompressor_token.handle);
@@ -477,6 +494,7 @@ def _bz2_BZ2Decompressor_decompress_impl(
     } else {
         result = decompress(state, data.address(), data.size(), max_length);
     }
+    mirror_decompressor(receiver, state);
     PyThread_release_lock(state.lock);
     return result;
 }
@@ -505,5 +523,6 @@ def _bz2_BZ2Decompressor_impl(type: ptr[PyObject]) -> ptr[PyObject] {
         jacpy_release(instance);
         return NULL;
     }
+    mirror_decompressor(instance, state);
     return instance;
 }

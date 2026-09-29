@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     borrowed_none,
@@ -32,96 +27,93 @@ import from jaclang.runtime.python.modules.resource {
     resource_setrlimit_impl
 }
 
-def:priv resource_getrusage_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    who: i32 = convert_int(value);
-    return resource_getrusage_impl(receiver, who);
-}
-
 def:priv resource_getrusage_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, resource_getrusage_bound, receiver);
-}
-
-def:priv resource_getrlimit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    resource: i32 = convert_int(value);
-    return resource_getrlimit_impl(receiver, resource);
+    try {
+        who: i32 = convert_int(value);
+        return resource_getrusage_impl(receiver, who);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv resource_getrlimit_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, resource_getrlimit_bound, receiver);
+    try {
+        resource: i32 = convert_int(value);
+        return resource_getrlimit_impl(receiver, resource);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv resource_setrlimit_signature = CallSignature(
-         "setrlimit", ["resource", "limits"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv resource_setrlimit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    resource: i32 = convert_int(value);
-    value = args.values[1];
-    limits: ptr[PyObject] = value;
-    return resource_setrlimit_impl(receiver, resource, limits);
+def:priv resource_setrlimit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        resource: i32 = convert_int(value);
+        value = clinic_args[1];
+        limits: ptr[PyObject] = value;
+        return resource_setrlimit_impl(receiver, resource, limits);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv resource_setrlimit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        resource_setrlimit_signature,
-        args,
-        nargs,
-        NULL,
-        resource_setrlimit_bound,
-        receiver
-    );
+    if not check_positional("setrlimit", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return resource_setrlimit_bound(receiver, args, nargs);
 }
 
-glob:priv resource_prlimit_signature = CallSignature(
-         "prlimit", ["pid", "resource", "limits"], 2, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv resource_prlimit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    resource: i32 = convert_int(value);
-    limits: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        limits = value;
+def:priv resource_prlimit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        resource: i32 = convert_int(value);
+        limits: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            limits = value;
+        }
+        return resource_prlimit_impl(receiver, pid, resource, limits);
+    } except boundary_failure {
+        return NULL;
     }
-    return resource_prlimit_impl(receiver, pid, resource, limits);
 }
 
 def:priv resource_prlimit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        resource_prlimit_signature, args, nargs, NULL, resource_prlimit_bound, receiver
-    );
-}
-
-def:priv resource_getpagesize_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return return_int(resource_getpagesize_impl(receiver));
+    if not check_positional("prlimit", int(nargs), 2, 3) {
+        return NULL;
+    }
+    return resource_prlimit_bound(receiver, args, nargs);
 }
 
 def:priv resource_getpagesize_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, resource_getpagesize_bound, receiver);
+    try {
+        return return_int(resource_getpagesize_impl(receiver));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob struct_rusage__doc__: str = "struct_rusage: Result from getrusage.\n\nThis object may be accessed either as a tuple of\n    (utime,stime,maxrss,ixrss,idrss,isrss,minflt,majflt,\n    nswap,inblock,oublock,msgsnd,msgrcv,nsignals,nvcsw,nivcsw)\nor via the attributes ru_utime, ru_stime, ru_maxrss, and so on.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getrusage",
              MethodCallbacks(positional=resource_getrusage_call),

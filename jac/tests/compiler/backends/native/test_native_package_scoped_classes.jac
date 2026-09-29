@@ -8,14 +8,22 @@ of its modules each defining `obj CompressorState` shared one LLVM struct:
 `jac check` warned `native struct name collision ... skipping
 re-registration` and the importer lowered one module's class with the other's
 layout. Bare names are now kept only where something binds them by name (the
-kernel ABI units and the native compiler's own scope); the rest of the
-package is scoped like any program.
+language runtime, the type stubs and the native compiler's own scope); the
+rest of the package is scoped like any program.
+
+The fixture is a `jac.toml` project inside the package. Such a project was
+exempt from nogc enforcement, as if it were toolchain code, so its nogc build
+emitted the reference-counted runtime; it now builds under every profile.
 """
 
 import os;
 import jaclang;
 import from tests.support { assert_native_identity }
-import from jaclang.compiler.frontend.codeinfo { native_arch_display, native_arch_name }
+import from jaclang.compiler.frontend.codeinfo {
+    is_toolchain_unit,
+    native_arch_display,
+    native_arch_name
+}
 
 glob PACKAGE = os.path.dirname(jaclang.__file__),
      FIXTURES = os.path.join(
@@ -45,12 +53,16 @@ test "the runtime, type stubs and the native compiler keep bare names" {
     assert native_arch_name(unitree, "Module") == "Module";
 }
 
-test "two package modules' same-named classes keep their own layouts" {
-    # A nogc build of jaclang-package sources emits the reference-counted
-    # runtime, so the package fixture runs under the reference-counted
-    # profiles and the Python backend.
-    out = assert_native_identity(
-        os.path.join(FIXTURES, "main.jac"), profiles=["rc", "managed"]
+test "a jac.toml project inside the package is a program, not the toolchain" {
+    kernel = os.path.join(PACKAGE, "runtime", "osp_kernel.jac");
+    assert is_toolchain_unit(kernel);
+    assert not is_toolchain_unit(os.path.join(FIXTURES, "main.jac")) , (
+        "a project nested in the package must lower like any program under nogc"
     );
+}
+
+test "two package modules' same-named classes keep their own layouts" {
+    out = assert_native_identity(os.path.join(FIXTURES, "main.jac"));
     assert out.split("\n")[0] == "bz:9:False 2:7:0.25" , out;
+    assert "True False True" in out , out;
 }

@@ -8,19 +8,29 @@ See ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyExc_SystemError,
+    PyExc_TypeError,
+    PyExc_ValueError,
+    PyLong_AsUnsignedLongMask,
     PyLong_FromLongLong,
     PyObject,
-    _Py_strhex_bytes_with_sep,
+    PySequence_Size,
+    PyUnicode_ReadChar,
     jacpy_buffer_byte,
     jacpy_buffer_size,
+    jacpy_is_bytes,
+    jacpy_is_unicode,
+    jacpy_release,
     jacpy_set_exception
 }
 import from jaclang.runtime.python.capi {
+    boundary_failure,
     read_buffer,
     write_buffer,
     module_failure,
     object_error
 }
+import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
 
 def _binascii_error(message: str) {
     raise module_failure(message=message);
@@ -754,4 +764,149 @@ def:pub jacpy_binascii_convert(
         jacpy_set_exception(error_type, message, i64(len(message.encode("utf-8"))));
         return NULL;
     }
+}
+
+# ascii_buffer_converter(): a bytes-like object or an ASCII str, as a buffer
+# over its bytes.
+def convert_ascii_buffer_converter(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument {
+    view = BufferArgument();
+    if not view.acquire(value, True) {
+        raise boundary_failure();
+    }
+    return view;
+}
+
+# One codec over the buffer's bytes, raising binascii.Error (the module's
+# first state slot) for bad data.
+def:priv convert(
+    module: ptr[PyObject],
+    data: BufferArgument,
+    operation: int,
+    option: i64 = 0,
+    second: i64 = 0,
+    third: i64 = 0
+) -> ptr[PyObject] {
+    source = data.bytes();
+    if source == 0 {
+        return NULL;
+    }
+    result = jacpy_binascii_convert(
+        source,
+        jacpy_binding_state_get(module, 0),
+        i64(operation),
+        option,
+        second,
+        third
+    );
+    jacpy_release(source);
+    return result;
+}
+
+def binascii_a2b_uu_impl(module: ptr[PyObject], data: BufferArgument) -> ptr[PyObject] {
+    return convert(module, data, 0);
+}
+
+def binascii_b2a_uu_impl(
+    module: ptr[PyObject], data: BufferArgument, backtick: bool
+) -> ptr[PyObject] {
+    return convert(module, data, 1, i64(backtick));
+}
+
+def binascii_a2b_base64_impl(
+    module: ptr[PyObject], data: BufferArgument, strict_mode: bool
+) -> ptr[PyObject] {
+    return convert(module, data, 2, i64(strict_mode));
+}
+
+def binascii_b2a_base64_impl(
+    module: ptr[PyObject], data: BufferArgument, newline: bool
+) -> ptr[PyObject] {
+    return convert(module, data, 3, i64(newline));
+}
+
+def binascii_a2b_hex_impl(module: ptr[PyObject], hexstr: BufferArgument) -> ptr[PyObject] {
+    return convert(module, hexstr, 4);
+}
+
+def binascii_unhexlify_impl(
+    module: ptr[PyObject], hexstr: BufferArgument
+) -> ptr[PyObject] {
+    return convert(module, hexstr, 4);
+}
+
+# _Py_strhex_bytes_with_sep()'s separator checks, then the hex codec.
+def:priv hex_with_separator(
+    module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
+) -> ptr[PyObject] {
+    option: i64 = -1;
+    if sep != 0 {
+        size = PySequence_Size(sep);
+        if size < 0 {
+            return NULL;
+        }
+        if size != 1 {
+            object_error(PyExc_ValueError, "sep must be length 1.");
+            return NULL;
+        }
+        if jacpy_is_unicode(sep) != 0 {
+            option = PyUnicode_ReadChar(sep, 0);
+            if option > 255 {
+                object_error(PyExc_ValueError, "sep must be ASCII.");
+                return NULL;
+            }
+        } elif jacpy_is_bytes(sep) != 0 {
+            option = jacpy_buffer_byte(sep, 0);
+        } else {
+            object_error(PyExc_TypeError, "sep must be str or bytes.");
+            return NULL;
+        }
+    }
+    return convert(module, data, 5, option, i64(bytes_per_sep));
+}
+
+def binascii_b2a_hex_impl(
+    module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
+) -> ptr[PyObject] {
+    return hex_with_separator(module, data, sep, bytes_per_sep);
+}
+
+def binascii_hexlify_impl(
+    module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
+) -> ptr[PyObject] {
+    return hex_with_separator(module, data, sep, bytes_per_sep);
+}
+
+def binascii_a2b_qp_impl(
+    module: ptr[PyObject], data: BufferArgument, header: bool
+) -> ptr[PyObject] {
+    return convert(module, data, 6, i64(header));
+}
+
+def binascii_b2a_qp_impl(
+    module: ptr[PyObject],
+    data: BufferArgument,
+    quotetabs: bool,
+    istext: bool,
+    header: bool
+) -> ptr[PyObject] {
+    return convert(module, data, 7, i64(quotetabs), i64(istext), i64(header));
+}
+
+def binascii_crc_hqx_impl(
+    module: ptr[PyObject], data: BufferArgument, crc: u32
+) -> ptr[PyObject] {
+    return convert(module, data, 8, i64(crc));
+}
+
+# crc32 returns clinic's unsigned int: (unsigned)-1 with an error on failure.
+def binascii_crc32_impl(module: ptr[PyObject], data: BufferArgument, crc: u32) -> u32 {
+    result = convert(module, data, 9, i64(crc));
+    if result == 0 {
+        return u32(0xFFFFFFFF);
+    }
+    value = u32(PyLong_AsUnsignedLongMask(result));
+    jacpy_release(result);
+    return value;
 }

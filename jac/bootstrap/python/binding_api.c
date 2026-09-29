@@ -95,6 +95,8 @@ int64_t jacpy_binding_method(void *handle, int64_t index, const char *name,
         ? (flags & METH_KEYWORDS ? (void (*)(void))fast_keywords : (void (*)(void))fast)
         : (flags & METH_KEYWORDS ? (void (*)(void))keywords : (void (*)(void))positional);
     PyCFunction callback = (PyCFunction)chosen;
+    /* An empty doc is no doc, as a NULL ml_doc in a static PyMethodDef. */
+    if (!*owned_doc) { free(owned_doc); owned_doc = NULL; }
     *method = (PyMethodDef){owned_name, callback, (int)flags, owned_doc};
     return 0;
 }
@@ -191,18 +193,30 @@ typedef struct {
     int32_t (*set_attribute)(PyObject *, PyObject *, PyObject *);
     PyObject *(*string)(PyObject *);
     void (*finalize)(PyObject *);
+    int32_t (*boolean)(PyObject *);
 } JacTypeHooks;
 
 typedef struct {
     void *state;
     vectorcallfunc vectorcall;
     PyObject *dictionary;
+    PyObject *weaklist;
 } JacInstancePayload;
+
+/* jacpy_binding_type options, as a C type's spec spells them: a
+ * tp_weaklistoffset list, and PyObject_GenericGetAttr/SetAttr named as the
+ * type's own tp_getattro/tp_setattro (which gives it __getattribute__,
+ * __setattr__ and __delattr__ slot wrappers). */
+enum {
+    JAC_TYPE_WEAKLIST = 1,
+    JAC_TYPE_GENERIC_GETATTR = 2,
+    JAC_TYPE_GENERIC_SETATTR = 4
+};
 
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[37];
+    PyType_Slot slots[45];
     vectorcallfunc vectorcall;
     int instance_dict;
     /* The C fields published as member descriptors, then
@@ -240,13 +254,13 @@ void jacpy_binding_type_discard(void *handle) {
 void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
                            uint64_t flags, JacTypeHooks hooks, int64_t property_count,
                            int64_t instance_dict, int64_t unhashable,
-                           int64_t field_count, int64_t record_size) {
+                           int64_t field_count, int64_t record_size, int64_t options) {
     JacTypeSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
     spec->properties = calloc(property_count + 1, sizeof(PyGetSetDef));
     spec->field_count = field_count;
-    spec->members = calloc(field_count + 3, sizeof(PyMemberDef));
+    spec->members = calloc(field_count + 4, sizeof(PyMemberDef));
     if (!spec->table.name || !spec->table.doc || !spec->properties || !spec->members) {
         jacpy_binding_type_discard((spec));
         return 0;
@@ -267,6 +281,11 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
         spec->instance_dict = 1;
         spec->members[member++] = (PyMemberDef){"__dictoffset__", Py_T_PYSSIZET,
             offsetof(JacInstancePayload, dictionary), Py_READONLY | Py_RELATIVE_OFFSET};
+    }
+    if (options & JAC_TYPE_WEAKLIST) {
+        spec->definition.basicsize = -(int)(sizeof(JacInstancePayload) + record_size);
+        spec->members[member++] = (PyMemberDef){"__weaklistoffset__", Py_T_PYSSIZET,
+            offsetof(JacInstancePayload, weaklist), Py_READONLY | Py_RELATIVE_OFFSET};
     }
     int slot = 0;
 #define SLOT(field, id) if (hooks.field) spec->slots[slot++] = (PyType_Slot){id, (void *)hooks.field}
@@ -300,6 +319,11 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(set_attribute, Py_tp_setattro);
     SLOT(string, Py_tp_str);
     SLOT(finalize, Py_tp_finalize);
+    if (!hooks.get_attribute && (options & JAC_TYPE_GENERIC_GETATTR))
+        spec->slots[slot++] = (PyType_Slot){Py_tp_getattro, PyObject_GenericGetAttr};
+    if (!hooks.set_attribute && (options & JAC_TYPE_GENERIC_SETATTR))
+        spec->slots[slot++] = (PyType_Slot){Py_tp_setattro, PyObject_GenericSetAttr};
+    SLOT(boolean, Py_nb_bool);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
@@ -370,8 +394,39 @@ PyObject *jacpy_binding_base(PyObject *type, void *definition) {
     return (PyObject *)base;
 }
 
+/* A heap type's Py_tp_token (the binding definition that made it), or NULL. */
+static inline void *type_token(PyTypeObject *type) {
+    return PyType_HasFeature(type, Py_TPFLAGS_HEAPTYPE) ? ((PyHeapTypeObject *)type)->ht_token : NULL;
+}
+
+/* The binding definition nearest to `type` along its tp_base chain: the
+ * type's own for an instance of a binding type, its binding base's for a
+ * Python subclass. One pointer comparison then identifies the kind. */
+void *jacpy_binding_token(PyObject *type) {
+    for (PyTypeObject *t = (PyTypeObject *)type; t; t = t->tp_base) {
+        void *token = type_token(t);
+        if (token) return token;
+    }
+    return NULL;
+}
+
+static void **native_payload(PyObject *object, void *definition);
+
+/* The state of an instance of any binding type, through its type's own
+ * nearest definition: one call where a kind lookup, a presence check and a
+ * read took three. */
+int64_t jacpy_binding_own_present(PyObject *object) {
+    void *definition = jacpy_binding_token((PyObject *)Py_TYPE(object));
+    void **slot = definition ? native_payload(object, definition) : NULL;
+    return slot && *slot;
+}
+
+/* An instance of the definition's own type (the common case) has its
+ * payload at its type's data, without the MRO search and base reference. */
 static void **native_payload(PyObject *object, void *definition) {
-    PyTypeObject *base = (PyTypeObject *)jacpy_binding_base((PyObject *)Py_TYPE(object), definition);
+    PyTypeObject *type = Py_TYPE(object);
+    if (type_token(type) == definition) return PyObject_GetTypeData(object, type);
+    PyTypeObject *base = (PyTypeObject *)jacpy_binding_base((PyObject *)type, definition);
     if (!base) return NULL;
     void **slot = PyObject_GetTypeData((object), base);
     Py_DECREF(base);
@@ -402,6 +457,14 @@ int64_t jacpy_binding_module_native_present(PyObject *module) {
     return state && state->native;
 }
 
+/* jacpy_binding_own_present()'s state, as an owned reference. */
+void *jacpy_binding_own_get(PyObject *object) {
+    void *definition = jacpy_binding_token((PyObject *)Py_TYPE(object));
+    void **slot = definition ? native_payload(object, definition) : NULL;
+    void *state = slot ? *slot : NULL;
+    if (state) jac_retain(state);
+    return state;
+}
 void *jacpy_binding_native_get(PyObject *object, void *definition) {
     void **slot = native_payload(object, definition);
     if (!slot) return NULL;
@@ -467,6 +530,7 @@ int64_t jacpy_binding_dict_replace(PyObject *object, PyObject *dictionary) {
 
 /* Invoke inherited opaque built-in slots without duplicating their layouts. */
 int64_t jacpy_binding_type_matches(PyObject *type, void *definition) {
+    if (type_token((PyTypeObject *)type) == definition) return 1;
     PyTypeObject *base = NULL;
     int found = PyType_GetBaseByToken((PyTypeObject *)type, definition, &base);
     Py_XDECREF(base);

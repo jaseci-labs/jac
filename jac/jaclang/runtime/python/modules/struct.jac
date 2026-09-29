@@ -29,9 +29,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_set_owned,
     NULL,
     Py_NewRef,
-    PyComplex_FromDoubles,
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble,
     PyDict_Clear,
     PyDict_SetItem,
     PyErr_Clear,
@@ -42,15 +39,22 @@ import from jaclang.runtime.python.cpython_api {
     PyIndex_Check,
     PyLong_AsLongLong,
     PyLong_AsUnsignedLongLong,
-    PyLong_AsVoidPtr,
-    PyLong_FromLongLong,
-    PyLong_FromUnsignedLongLong,
     PyNumber_Index,
     PyObject,
     PyObject_CallOneArg,
     PyObject_IsTrue,
     PyTuple_New,
-    PyTuple_Size
+    PyExc_RuntimeError,
+    PyExc_TypeError,
+    PyUnicode_AsEncodedString,
+    Py_None,
+    Py_TYPE,
+    jacpy_is_unicode
+}
+import from jaclang.runtime.python.object_model.complex {
+    PyComplex_FromDoubles,
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.binary_scalars {
@@ -59,6 +63,7 @@ import from jaclang.runtime.python.modules.binary_scalars {
     integer_from_bits
 }
 import from jaclang.runtime.python.capi {
+    type_name,
     boundary_failure,
     required,
     checked,
@@ -67,6 +72,23 @@ import from jaclang.runtime.python.capi {
     jac_list_heap_size,
     memory_byte,
     memory_set
+}
+import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_owner
+}
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
+}
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
 }
 
 obj format_field {
@@ -602,4 +624,244 @@ def:pub jacpy_struct_memory(plan: struct_plan) -> i64 {
         total += jac_heap_size(u64(id(field)));
     }
     return total;
+}
+
+# The definitions the binding creates; the methods find the receiver's state
+# and module by them.
+glob Struct_token = ClassToken(),
+     unpack_iterator_token = ClassToken(),
+     struct_module_token = ClassToken();
+
+obj StructState(ReferenceState) {
+    has plan: struct_plan;
+}
+
+obj UnpackState(NativeState) {
+    has cursor: (unpack_cursor | None) = None,
+        buffer: (BufferArgument | None) = None,
+        owner: ptr[PyObject] = NULL;
+
+    def clear {
+        previous_owner = self.owner;
+        previous_buffer = self.buffer;
+        self.cursor = None;
+        self.buffer = None;
+        self.owner = NULL;
+        if previous_buffer is not None {
+            previous_buffer.close();
+        }
+        jacpy_release(previous_owner);
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        status = visit_reference(self.owner, visitor, context);
+        if status != 0 {
+            return status;
+        }
+        buffer = self.buffer;
+        if buffer is not None {
+            return visit_reference(buffer.owner(), visitor, context);
+        }
+        return i32(0);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+def state_for(instance: ptr[PyObject]) -> (StructState | None) {
+    if jacpy_binding_native_present(instance, Struct_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, Struct_token.handle);
+        if isinstance(state, StructState) and state.references[0] != 0 {
+            return state;
+        }
+    }
+    object_error(PyExc_RuntimeError, "Struct object is not initialized");
+    return None;
+}
+
+def module_for(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_binding_owner(Py_TYPE(instance), struct_module_token.handle);
+}
+
+def module_error(module: ptr[PyObject], message: str) {
+    jacpy_set_exception(
+        jacpy_binding_state_get(module, 0), message, i64(len(message.encode("utf-8")))
+    );
+}
+
+def iterator_state(instance: ptr[PyObject]) -> (UnpackState | None) {
+    if jacpy_binding_native_present(instance, unpack_iterator_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, unpack_iterator_token.handle);
+        if isinstance(state, UnpackState) {
+            return state;
+        }
+    }
+    return None;
+}
+
+# The Argument Clinic _impl functions.
+def Struct___init___impl(instance: ptr[PyObject], format_: ptr[PyObject]) -> i32 {
+    source = format_;
+    format: ptr[PyObject] = NULL;
+    if jacpy_is_unicode(source) != 0 {
+        format = PyUnicode_AsEncodedString(source, "ascii", "strict");
+    } elif jacpy_is_bytes(source) != 0 {
+        format = Py_NewRef(source);
+    } else {
+        object_error(
+            PyExc_TypeError,
+            f"Struct() argument 1 must be a str or bytes object, not {type_name(source)[:200]}"
+        );
+        return i32(-1);
+    }
+    if format == 0 {
+        return i32(-1);
+    }
+    state = StructState(references=[format], plan=struct_plan());
+    module = module_for(instance);
+    if module == 0 {
+        return i32(-1);
+    }
+    if jacpy_struct_compile(state.plan, format, jacpy_binding_state_get(module, 0))
+        < 0 {
+        return i32(-1);
+    }
+    if jacpy_binding_native_set(instance, Struct_token.handle, state) < 0 {
+        return i32(-1);
+    }
+    return i32(0);
+}
+
+def Struct_unpack_impl(
+    instance: ptr[PyObject], buffer: BufferArgument
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    plan = state.plan;
+    module = module_for(instance);
+    if module == 0 {
+        return NULL;
+    }
+    size = jacpy_struct_size(plan);
+    if buffer.size() != size {
+        module_error(module, f"unpack requires a buffer of {size} bytes");
+        return NULL;
+    }
+    return jacpy_struct_unpack(plan, buffer.address());
+}
+
+def Struct_unpack_from_impl(
+    instance: ptr[PyObject], buffer: BufferArgument, offset: i64
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    plan = state.plan;
+    module = module_for(instance);
+    if module == 0 {
+        return NULL;
+    }
+    start = jacpy_struct_offset(
+        plan, buffer.size(), offset, 0, jacpy_binding_state_get(module, 0)
+    );
+    if start < 0 {
+        return NULL;
+    }
+    return jacpy_struct_unpack(plan, buffer.address() + start);
+}
+
+def Struct_iter_unpack_impl(
+    instance: ptr[PyObject], buffer: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    plan = state.plan;
+    module = module_for(instance);
+    if module == 0 {
+        return NULL;
+    }
+    size = jacpy_struct_size(plan);
+    if size == 0 {
+        module_error(module, "cannot iteratively unpack with a struct of length 0");
+        return NULL;
+    }
+    iterator = jacpy_binding_allocate(jacpy_binding_state_get(module, 2));
+    if iterator == 0 {
+        return NULL;
+    }
+    view = BufferArgument();
+    iterator_data = UnpackState(buffer=view);
+    if jacpy_binding_native_set(iterator, unpack_iterator_token.handle, iterator_data)
+        < 0 {
+        jacpy_release(iterator);
+        return NULL;
+    }
+    if not view.acquire(buffer) {
+        jacpy_release(iterator);
+        return NULL;
+    }
+    if view.size() % size != 0 {
+        module_error(
+            module,
+            f"iterative unpacking requires a buffer of a multiple of {size} bytes"
+        );
+        jacpy_release(iterator);
+        return NULL;
+    }
+    iterator_data.owner = Py_NewRef(instance);
+    iterator_data.cursor = jacpy_struct_cursor(plan, view.address(), view.size());
+    return iterator;
+}
+
+# cache_struct_converter: the cached Struct for `format`, a new reference
+# the glue releases.
+def convert_cache_struct_converter(
+    module: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) -> ptr[PyObject] {
+    result = jacpy_struct_cached(
+        jacpy_binding_state_get(module, 3), jacpy_binding_state_get(module, 1), value
+    );
+    if result == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def _clearcache_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+    PyDict_Clear(jacpy_binding_state_get(module, 3));
+    return Py_NewRef(Py_None);
+}
+
+# calcsize returns clinic's Py_ssize_t.
+def calcsize_impl(module: ptr[PyObject], s_object: ptr[PyObject]) -> i64 {
+    state = state_for(s_object);
+    if state is None {
+        return -1;
+    }
+    return jacpy_struct_size(state.plan);
+}
+
+def unpack_impl(
+    module: ptr[PyObject], s_object: ptr[PyObject], buffer: BufferArgument
+) -> ptr[PyObject] {
+    return Struct_unpack_impl(s_object, buffer);
+}
+
+def unpack_from_impl(
+    module: ptr[PyObject], s_object: ptr[PyObject], buffer: BufferArgument, offset: i64
+) -> ptr[PyObject] {
+    return Struct_unpack_from_impl(s_object, buffer, offset);
+}
+
+def iter_unpack_impl(
+    module: ptr[PyObject], s_object: ptr[PyObject], buffer: ptr[PyObject]
+) -> ptr[PyObject] {
+    return Struct_iter_unpack_impl(s_object, buffer);
 }

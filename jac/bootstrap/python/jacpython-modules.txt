@@ -52,6 +52,8 @@ _bz2            test.test_bz2                           -lbz2
 _lzma           test.test_lzma                          -llzma
 _zstd           test.test_zstd                          -lzstd
 _sqlite3        test.test_sqlite3                       -lsqlite3 -lm -lpthread
+pyexpat         test.test_pyexpat                       -lexpat
+_elementtree    test.test_xml_etree_c
 errno           test.test_errno
 syslog          test.test_syslog
 resource        test.test_resource
@@ -79,6 +81,13 @@ _zoneinfo       test.test_zoneinfo
 unicodedata     test.test_unicodedata,test.test_ucn
 _datetime       test.test_datetime
 _decimal        test.test_decimal                       -lmpdec -lm
+_multibytecodec test.test_multibytecodec
+_codecs_cn      test.test_codecencodings_cn,test.test_codecmaps_cn
+_codecs_hk      test.test_codecencodings_hk,test.test_codecmaps_hk
+_codecs_iso2022 test.test_codecencodings_iso2022
+_codecs_jp      test.test_codecencodings_jp,test.test_codecmaps_jp
+_codecs_kr      test.test_codecencodings_kr,test.test_codecmaps_kr
+_codecs_tw      test.test_codecencodings_tw,test.test_codecmaps_tw
 _socket         test.test_socket,test.test_selectors
 _hashlib        test.test_hashlib,test.test_hmac        -lcrypto
 _ssl            test.test_ssl                           -lssl -lcrypto

@@ -60,7 +60,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMem_Malloc,
     PyMem_Realloc,
     PyObject,
-    PyObject_AsFileDescriptor,
     PyObject_Call,
     PyObject_CallNoArgs,
     PyObject_GetAttr,
@@ -75,6 +74,7 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyUnicode_FromString
 }
+import from jaclang.runtime.python.object_model.file { PyObject_AsFileDescriptor }
 import from jaclang.runtime.python.capi {
     boundary_failure,
     object_error,

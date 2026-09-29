@@ -17,7 +17,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     Py_None,
     Py_NotImplemented,
-    PyComplex_AsCComplex,
     PyErr_Format,
     PyErr_NoMemory,
     PyErr_Occurred,
@@ -47,6 +46,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyUnicode_IsWhitespace,
     _PyUnicode_ToDecimalDigit
 }
+import from jaclang.runtime.python.object_model.complex { PyComplex_AsCComplex }
 import from jaclang.runtime.python.object_model.header { object_type }
 import from jaclang.runtime.python.modules.numeric { copysign, isinf, isnan }
 import from jaclang.runtime.python.modules.mpdecimal {

@@ -30,7 +30,11 @@ import from jaclang.compiler.frontend.unitree {
 }
 
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.types.types { ClassType, TypeBase }
+import type from jaclang.compiler.types.types {
+    ClassDetailsShared,
+    ClassType,
+    TypeBase
+}
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
@@ -200,9 +204,37 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
     return top;
 }
 
+"""The native names of the archetypes named so far, by the class identity a
+ClassType records for its declaration (ClassDetailsShared.canonical_key):
+the declaring module's real path, the declaration's line and column, and the
+class name. A class a module's cached interface describes carries that
+identity but not the Archetype node, so this is how it finds the name its
+declaration was given.
+"""
+glob _NATIVE_NAME_BY_DECL: dict[tuple[str, int, int, str], str] = {},
+     _NATIVE_NAMED_CLASSES: set[str] = set();
+
 def archetype_native_name(arch: Archetype) -> str {
-    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     name = arch.name.value if arch.name else "unknown";
+    native = _archetype_native_name(arch, name);
+    if arch.loc is not None and arch.loc.mod_path {
+        import os;
+        key = (
+            os.path.realpath(arch.loc.mod_path),
+            arch.loc.first_line,
+            arch.loc.col_start,
+            name
+        );
+        if key not in _NATIVE_NAME_BY_DECL {
+            _NATIVE_NAME_BY_DECL[key] = native;
+            _NATIVE_NAMED_CLASSES.add(name);
+        }
+    }
+    return native;
+}
+
+def _archetype_native_name(arch: Archetype, name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     if arch.name is not None and is_enum_class_type(arch.name.type) {
         return name;
     }
@@ -210,6 +242,26 @@ def archetype_native_name(arch: Archetype) -> str {
         return name;
     }
     return native_arch_name(arch.loc.mod_path if arch.loc else "", name);
+}
+
+"""The native name of a class described by an interface rather than by its
+Archetype node: the name its declaration was given, found by the class
+identity, or the bare class name for a class no archetype declared (Python
+and stub classes)."""
+def _declared_native_name(shared: ClassDetailsShared) -> str {
+    name = shared.class_name;
+    if name not in _NATIVE_NAMED_CLASSES {
+        return name;
+    }
+    key = shared.canonical_key();
+    if key is None or not key[0] {
+        return name;
+    }
+    import os;
+    found = _NATIVE_NAME_BY_DECL.get(
+        (os.path.realpath(key[0]), key[1], key[2], key[3])
+    );
+    return found if found is not None else name;
 }
 
 def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
@@ -253,8 +305,11 @@ def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     }
     shared = typ.shared;
     scope = shared.symbol_table;
-    if not isinstance(scope, Archetype) or shared.is_enum_class {
+    if shared.is_enum_class {
         return shared.class_name;
+    }
+    if not isinstance(scope, Archetype) {
+        return _declared_native_name(shared);
     }
     memo = shared._native_name;
     if memo is not None and memo[0] is scope {

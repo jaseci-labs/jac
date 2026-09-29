@@ -1170,7 +1170,6 @@ def _ssl__test_decode_cert_impl(
     if cert {
         BIO_free(cert);
     }
-    jacpy_release(path);
     return retval;
 }
 

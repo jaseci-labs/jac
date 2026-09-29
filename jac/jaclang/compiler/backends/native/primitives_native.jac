@@ -1659,7 +1659,13 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return p._mark_owned(p._emit_bytes_repr(arg_val));
         }
         if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
-            return p._bool_text(b, arg_val, "repr.bool");
+            _repr_flag = p._bool_text(b, arg_val, "repr.bool");
+            if p._nogc_headerless() {
+                return p._mark_owned(
+                    p._call_str_dup(b, _repr_flag, name="repr.bool.own")
+                );
+            }
+            return _repr_flag;
         }
         if isinstance(arg_val.type, ir.IntType) {
             buf_ptr = b.call(p.rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
@@ -1731,6 +1737,9 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             i8.as_pointer(),
             name="chr.cached.str"
         );
+        if p._nogc_headerless() {
+            cached = p._call_str_dup(b, cached, name="chr.cached.own");
+        }
         ascii_end = b.basic_block;
         b.branch(done_bb);
         b.position_at_end(wide_bb);

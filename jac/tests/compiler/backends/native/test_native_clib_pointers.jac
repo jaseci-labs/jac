@@ -2,7 +2,8 @@
 
 A foreign struct (a fielded `obj` in a clib import block) is C-layout plain
 data with nested structs embedded by value. A `&T` / `&mut T` clib parameter
-lends C the address of Jac storage for the call, `ptr[T]` holds a C address,
+lends C the address of Jac storage for the call, as `&mut x` passed to a C
+function's `ptr[T]` parameter does, `ptr[T]` holds a C address,
 `p.view(n)` is a bounds-checked view of C memory, an opaque C type is handled
 only by address, and `Pinned[T]` keeps a payload's address stable while C
 holds on to it.
@@ -138,6 +139,7 @@ test "C pointer interop agrees across memory profiles and the Python backend" {
         "step 2.0 2.0",
         "distance 2 -2",
         "aug True 2.0",
+        "order True True True False",
         "bytes 24",
         "address True 24",
         "void step True",
@@ -267,6 +269,99 @@ def mismatch(p: ptr[CpVec3]) -> ptr[CpDb] { return p; }
 def scalar(p: ptr[u8]) -> ptr[i8] { return p; }
 ''';
     assert checker_codes(code) == ["E1002", "E1002", "E1002"];
+}
+
+test "pointers order by unsigned address across memory profiles and the Python backend" {
+    code = '''import from c {
+    glob order_cells: list[i32] = [i32(1), i32(2), i32(3)];
+}
+with entry {
+    first = addressof(order_cells);
+    last = first + 2;
+    print("lt", first < last, last < first, first < first);
+    print("le", first <= last, last <= first, first <= first);
+    print("gt", last > first, first > last, last > last);
+    print("ge", last >= first, first >= last, last >= last);
+    print("chain", first < first + 1 < last, first < last < first);
+    print("bare", ptr(first) < ptr(last), ptr(first) < last, last > ptr(first));
+    high = ptr[u8](0xFFFFFFFFFFFFFFF0);
+    low = ptr[u8](16);
+    print("unsigned", high > low, low < high, high >= low, low <= high);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        path = Path(directory) / "ordering.jac";
+        path.write_text(code);
+        out = assert_native_identity(str(path));
+    }
+    lines = out.splitlines();
+    for expected in [
+        "lt True False False",
+        "le True False True",
+        "gt True False False",
+        "ge True False True",
+        "chain True False",
+        "bare True True True",
+        "unsigned True True True True"
+    ] {
+        assert expected in lines , f"missing {expected!r} in:\n{out}";
+    }
+}
+
+test "pointer ordering needs one pointee type" {
+    code = DECLS
+        + '''
+def same(p: ptr[CpVec3], q: ptr[CpVec3]) -> bool { return p < q; }
+def widened(p: ptr[CpVec3], q: ptr) -> bool { return p <= q and q >= p; }
+def mismatch(p: ptr[CpVec3], q: ptr[CpDb]) -> bool { return p > q; }
+def scalar(p: ptr[u8], q: ptr[i8]) -> bool { return p >= q; }
+def integer(p: ptr[u8]) -> bool { return p < 16; }
+''';
+    assert checker_codes(code) == ["E1110", "E1110", "E1110"];
+}
+
+test "a function rebinds a C data glob of another module in place" {
+    holder = '''import from c {
+    obj GbRec {
+        has a: i32;
+    }
+    glob:priv gb_kept: ptr[GbRec] = ptr[GbRec]();
+    glob gb_count: i32 = i32(0);
+    glob gb_recs: list[GbRec] = [GbRec(a=i32(5)), GbRec(a=i32(6))];
+}
+glob gb_calls: int = 0;
+
+def keep(p: ptr[GbRec]) {
+    gb_kept = p;
+    gb_count += i32(1);
+    gb_calls = gb_calls + 1;
+}
+
+def kept_value -> i32 {
+    return gb_kept.view(1)[0].a;
+}
+
+def calls -> int {
+    return gb_calls;
+}
+''';
+    main = '''import from holder { calls, gb_count, gb_recs, keep, kept_value }
+with entry {
+    keep(addressof(gb_recs));
+    print("first", kept_value(), gb_count, calls());
+    keep(addressof(gb_recs) + 1);
+    print("second", kept_value(), gb_count, calls());
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "holder.jac").write_text(holder);
+        path = Path(directory) / "rebind.jac";
+        path.write_text(main);
+        out = assert_native_identity(str(path));
+    }
+    lines = out.splitlines();
+    assert "first 5 1 1" in lines , out;
+    assert "second 6 2 2" in lines , out;
 }
 
 test "C data symbols are declared without a value and C objects are used by address" {
@@ -863,4 +958,143 @@ with entry {
         out = assert_native_identity(stage_source(directory, code, "held.jac"));
     }
     assert "held 15 True" in out.splitlines() , out;
+}
+
+glob LEND_LIBRARY: str = '''#include <stdint.h>
+typedef struct { float x, y, z; } LnVec;
+static LnVec ln_origin = {7.0f, 8.0f, 9.0f};
+int32_t ln_set_i64(int64_t *out, int64_t v) { *out = v; return 1; }
+void ln_read_i32(const int32_t *p, int64_t *out) { *out = (int64_t)*p * 10; }
+void ln_scale(LnVec *v, float k) { v->x *= k; v->y *= k; v->z *= k; }
+void ln_origin_of(LnVec **out) { *out = &ln_origin; }
+''',
+     LEND_DEFINITIONS: str = '''import from c {
+    def ln_imported_bump(p: ptr[i64], amount: i64) {
+        p.view(1)[0] = p.view(1)[0] + amount;
+    }
+}
+''',
+     LEND_PROGRAM: str = '''import from lend_defs { ln_imported_bump }
+import from "LN_LIBRARY" {
+    obj LnVec { has x: f32, y: f32, z: f32; }
+    def ln_set_i64(out: ptr[i64], v: i64) -> i32;
+    def ln_read_i32(p: ptr[i32], out: ptr[i64]) -> None;
+    def ln_scale(v: ptr[LnVec], k: f32) -> None;
+    def ln_origin_of(out: ptr[ptr[LnVec]]) -> None;
+    def ln_double(p: ptr[i64]) {
+        p.view(1)[0] = p.view(1)[0] * 2;
+    }
+    def ln_shift(v: ptr[LnVec]) {
+        v.view(1)[0].x = v.view(1)[0].x + f32(1.0);
+    }
+}
+obj Holder {
+    has count: i64 = 3,
+        vec: LnVec = LnVec(x=f32(1.0), y=f32(2.0), z=f32(3.0));
+}
+with entry {
+    n: i64 = 0;
+    print("set", ln_set_i64(&mut n, 41), n);
+    ln_double(&mut n);
+    print("double", n);
+    ln_imported_bump(&mut n, 8);
+    print("bump", n);
+    small: i32 = 7;
+    got: i64 = 0;
+    ln_read_i32(&small, &mut got);
+    print("read", got);
+    v = LnVec(x=f32(1.0), y=f32(2.0), z=f32(3.0));
+    ln_scale(&mut v, f32(2.0));
+    ln_shift(&mut v);
+    print("struct", v.x, v.y, v.z);
+    origin = ptr[LnVec]();
+    ln_origin_of(&mut origin);
+    print("pointer", origin.view(1)[0].z);
+    h = Holder();
+    ln_set_i64(&mut h.count, 9);
+    ln_double(&mut h.count);
+    ln_scale(&mut h.vec, f32(3.0));
+    print("field", h.count, h.vec.x);
+}
+''';
+
+test "&mut x lends x's address to a C function's ptr[T] parameter" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        library = str(Path(directory) / "liblend.so");
+        source = Path(directory) / "lend.c";
+        source.write_text(LEND_LIBRARY);
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", "-O1", str(source), "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        (Path(directory) / "lend_defs.jac").write_text(LEND_DEFINITIONS);
+        program = Path(directory) / "lend.jac";
+        program.write_text(LEND_PROGRAM.replace("LN_LIBRARY", library));
+        out = assert_native_identity(str(program));
+    }
+    for expected in [
+        "set 1 41",
+        "double 82",
+        "bump 90",
+        "read 70",
+        "struct 3.0 4.0 6.0",
+        "pointer 9.0",
+        "field 18 3.0"
+    ] {
+        assert expected in out.splitlines() , f"missing {expected!r} in:\n{out}";
+    }
+}
+
+test "only a C function's ptr[T] parameter borrows a variable of exactly T" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    def cp_lend_i64(out: ptr[i64]) -> None;
+}
+def jac_takes(p: ptr[i64]) -> None {
+    print(p);
+}
+with entry {
+    n: i64 = 0;
+    small: i32 = 0;
+    cp_lend_i64(&mut n);
+    cp_lend_i64(&mut small);
+    jac_takes(&mut n);
+}
+''';
+    assert checker_codes(code) == ["E1053", "E1053"];
+}
+
+test "an imported C definition returns a struct by value through its C ABI" {
+    pairs = '''import from c {
+    obj Pair {
+        has a: f64, b: f64;
+    }
+    def make_pair(x: f64) -> Pair {
+        return Pair(a=x, b=x * 2.0);
+    }
+    def pair_sum(p: Pair) -> f64 {
+        return p.a + p.b;
+    }
+}
+''';
+    user = '''import from pairs { Pair, make_pair, pair_sum }
+
+with entry {
+    p = make_pair(1.5);
+    print("pair", p.a, p.b, pair_sum(p));
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        Path(directory, "pairs.jac").write_text(pairs);
+        path = str(Path(directory) / "user.jac");
+        Path(path).write_text(user);
+        out = assert_native_identity(path);
+    }
+    assert "pair 1.5 3.0 4.5" in out.splitlines() , out;
 }

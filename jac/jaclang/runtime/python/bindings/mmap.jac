@@ -80,12 +80,7 @@ glob:priv mmap_type = TypeDefinition(
          "mmap.mmap",
          MMAP_DOC,
          methods(),
-         u64(
-             TypeFlags.BASETYPE.value
-                 | TypeFlags.GC.value
-                 | TypeFlags.IMMUTABLE.value
-                 | TypeFlags.MANAGED_WEAKREF.value
-         ),
+         u64(TypeFlags.BASETYPE.value | TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          TypeHooks(
              create=mmap_new,
              dealloc=mmap_dealloc,
@@ -100,7 +95,9 @@ glob:priv mmap_type = TypeDefinition(
              buffer=mmap_getbuffer,
              release_buffer=mmap_releasebuffer
          ),
-         [PropertyDefinition("closed", PropertyCallbacks(read=mmap_closed_get), 0, "")]
+         [PropertyDefinition("closed", PropertyCallbacks(read=mmap_closed_get), 0, "")],
+         weaklist=True,
+         generic_getattr=True
      );
 
 # The MADV_* constants, or all the others.
