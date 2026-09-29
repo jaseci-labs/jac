@@ -1273,23 +1273,29 @@ class BuiltinEmitter[V, C](PrimitiveEmitter[V, C]) {
     def emit_wrapping_add(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
+
     def emit_wrapping_sub(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
+
     def emit_wrapping_mul(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
+
     def emit_wrapping_shl(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
+
     def emit_wrapping_neg(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
+
     def emit_jid(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
     def emit_new(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
     def emit_unsafe_html(
         self: BuiltinEmitter, ctx: C, args: list[V]
     ) -> (V | None) abst;
+
     def method_names(self: BuiltinEmitter) -> list[str];
     def static_names(self: BuiltinEmitter) -> list[str];
     def dispatch(
