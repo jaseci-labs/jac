@@ -290,7 +290,6 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     post: list[CgNode] = [];
     scope = self.call_node(self.name_load('globals'), [], []);
     for (i, spec) in borrowed {
-        # A literal None for an optional borrow is passed as NULL.
         if i >= len(params) or isinstance(params[i], Null) {
             continue;
         }

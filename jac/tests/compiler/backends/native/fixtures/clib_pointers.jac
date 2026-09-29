@@ -45,9 +45,10 @@ import from "CLIB_POINTERS_LIBRARY" {
         db: ptr[CpDb]
     ) -> None;  def cp_batch_set_active(batch: &mut Pinned[CpBatch] | None) -> None;  def cp_batch_is_active -> bool;  def cp_batch_draw(
         v: i32
-    ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_maybe_count(out: &mut i64 | None) -> i32;  def cp_pointlist_fill(
-        pl: &mut CpPointList, n: i32
-    ) -> None;  def cp_global_read -> i32;  glob cp_global_count: i32,
+    ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_maybe_count(
+        out: &mut i64 | None
+    ) -> i32;  def cp_pointlist_fill(pl: &mut CpPointList, n: i32) -> None;  def cp_global_read -> i32;  glob cp_global_count:
+             i32,
          cp_global_flag: bool,
          cp_global_origin: CpVec3,
          cp_global_origin_ref: ptr[CpVec3]; obj CpRecipe {

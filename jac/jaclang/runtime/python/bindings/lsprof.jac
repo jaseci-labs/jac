@@ -1,9 +1,6 @@
 """The _lsprof module: the Profiler type and the two stats struct sequences."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_struct_sequence_type,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { jacpy_struct_sequence_type, PyObject }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

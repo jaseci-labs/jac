@@ -96,7 +96,9 @@ def format_jac_many(items: list[tuple[str, Path]]) -> list[str] {
     # The scratch files sit in the compiler's source tree, so a native
     # compiler kernel keyed on that tree would be rebuilt for every run.
     environment = {** os.environ, "JAC_COMPILER_LIB": "off"};
-    paths = [scratch / f"{index}_{target.name}" for (index, (_, target)) in enumerate(items)];
+    paths = [
+        scratch / f"{index}_{target.name}" for (index, (_, target)) in enumerate(items)
+    ];
     try {
         for (path, (text, _)) in zip(paths, items) {
             path.write_text(text);

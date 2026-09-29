@@ -1,10 +1,6 @@
 """The _bz2 module: BZ2Compressor and BZ2Decompressor over the generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    Py_NewRef,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { NULL, Py_NewRef, PyObject }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,

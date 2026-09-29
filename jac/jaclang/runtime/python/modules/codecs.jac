@@ -98,18 +98,14 @@ def _codecs_encode_impl(
     module: ptr[PyObject], obj_: ptr[PyObject], encoding: ptr[u8], errors: ptr[u8]
 ) -> ptr[PyObject] {
     # Encode via the codec registry
-    return PyCodec_Encode(
-        obj_, encoding if encoding else PyUnicode_GetDefaultEncoding(), errors
-    );
+    return PyCodec_Encode(obj_, encoding or PyUnicode_GetDefaultEncoding(), errors);
 }
 
 def _codecs_decode_impl(
     module: ptr[PyObject], obj_: ptr[PyObject], encoding: ptr[u8], errors: ptr[u8]
 ) -> ptr[PyObject] {
     # Decode via the codec registry
-    return PyCodec_Decode(
-        obj_, encoding if encoding else PyUnicode_GetDefaultEncoding(), errors
-    );
+    return PyCodec_Decode(obj_, encoding or PyUnicode_GetDefaultEncoding(), errors);
 }
 
 # --- String codecs ---

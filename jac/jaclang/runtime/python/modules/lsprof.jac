@@ -456,8 +456,7 @@ def:priv describe_cfunction(
         if module {
             if jacpy_is_unicode(module) != 0 {
                 modname = Py_NewRef(module);
-            } elif jacpy_type_check(module, addressof(PyModule_Type))
-                != 0 {
+            } elif jacpy_type_check(module, addressof(PyModule_Type)) != 0 {
                 modname = PyModule_GetNameObject(module);
                 if not modname {
                     PyErr_Clear();

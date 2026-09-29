@@ -705,7 +705,9 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
         return i32(-1);
     }
     if has_preexec and PyInterpreterState_Get() != PyInterpreterState_Main() {
-        object_error(PyExc_RuntimeError, "preexec_fn not supported within subinterpreters");
+        object_error(
+            PyExc_RuntimeError, "preexec_fn not supported within subinterpreters"
+        );
         return i32(-1);
     }
     errpipe_write = request.pipes[7];

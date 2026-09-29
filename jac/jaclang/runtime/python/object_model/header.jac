@@ -5,9 +5,7 @@ inline functions; object ports read the header through the layouts instead of
 calling the exported compatibility functions. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { PyObject }
 import from jaclang.runtime.python.layouts { PyTypeObject, PyVarObject, _object }
 
 """Py_TYPE: the type of `op` (borrowed)."""

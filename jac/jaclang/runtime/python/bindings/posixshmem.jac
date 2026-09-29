@@ -1,8 +1,6 @@
 """The _posixshmem module: shm_open() and shm_unlink() from the generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { PyObject }
 import from jaclang.runtime.python.bindings.module { ModuleDefinition }
 import from jaclang.runtime.python.bindings.clinic.posixshmem { module_methods }
 

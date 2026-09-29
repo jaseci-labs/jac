@@ -1174,7 +1174,8 @@ def kqueue_event_init(
         }
         if written > 8 {
             object_error(
-                PyExc_OverflowError, "Python int too large for C kqueue event identifier"
+                PyExc_OverflowError,
+                "Python int too large for C kqueue event identifier"
             );
             return i32(-1);
         }
@@ -1527,7 +1528,8 @@ def select_kqueue_control_impl(
     }
     if maxevents < 0 {
         object_error(
-            PyExc_ValueError, f"Length of eventlist must be 0 or positive, got {maxevents}"
+            PyExc_ValueError,
+            f"Length of eventlist must be 0 or positive, got {maxevents}"
         );
         return NULL;
     }

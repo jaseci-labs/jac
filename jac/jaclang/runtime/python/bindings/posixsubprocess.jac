@@ -1,9 +1,6 @@
 """The _posixsubprocess module: the generated fork_exec() clinic table."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyExc_ImportError,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { PyExc_ImportError, PyObject }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHooks }
 import from jaclang.runtime.python.bindings.clinic.posixsubprocess { module_methods }

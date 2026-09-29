@@ -5,9 +5,7 @@ Everything here is async-signal-safe: scalar and pointer arithmetic over
 memory the parent allocated, and plain C calls. Nothing allocates.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    _Py_closerange
-}
+import from jaclang.runtime.python.cpython_api { _Py_closerange }
 import from jaclang.runtime.python.modules.posixsubprocess_constants { _SC_OPEN_MAX }
 import from c { def close(fd: i32) -> i32;  def sysconf(name: i32) -> i64;  }
 

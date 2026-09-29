@@ -318,7 +318,9 @@ def:priv release(state: SemLockState) -> ptr[PyObject] {
                 if sem_post(state.handle) < 0 {
                     return oserror();
                 }
-                object_error(PyExc_ValueError, "semaphore or lock released too many times");
+                object_error(
+                    PyExc_ValueError, "semaphore or lock released too many times"
+                );
                 return NULL;
             }
         }

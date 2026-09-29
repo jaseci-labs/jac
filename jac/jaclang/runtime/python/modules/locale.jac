@@ -188,9 +188,7 @@ def:priv locale_decode_monetary(dict_: ptr[PyObject], lc: ptr[lconv]) -> i32 {
     if change_locale {
         oldloc = setlocale(i32(LC_CTYPE), ptr[u8]());
         if not oldloc {
-            PyErr_SetString(
-                PyExc_RuntimeWarning, "failed to get LC_CTYPE locale"
-            );
+            PyErr_SetString(PyExc_RuntimeWarning, "failed to get LC_CTYPE locale");
             return i32(-1);
         }
         oldloc = _PyMem_Strdup(oldloc);

@@ -823,8 +823,6 @@ def native_target_arch -> str {
     return machine;
 }
 
-# The most specific platform variant of a native module: `<name>.<os>.<arch>`,
-# then `<name>.<arch>`, then `<name>.<os>`, then `<name>` itself.
 def _native_variant_path(base_no_ext: str) -> (str | None) {
     import os;
     _osarchv = f"{base_no_ext}.{native_target_os()}.{native_target_arch()}.jac";

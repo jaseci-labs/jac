@@ -342,7 +342,9 @@ def termios_tcsetwinsize_impl(
     module: ptr[PyObject], fd: i32, winsz: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PySequence_Check(winsz) == 0 or PySequence_Size(winsz) != 2 {
-        object_error(PyExc_TypeError, "tcsetwinsize, arg 2: must be a two-item sequence");
+        object_error(
+            PyExc_TypeError, "tcsetwinsize, arg 2: must be a two-item sequence"
+        );
         return NULL;
     }
     (rows_ok, rows) = sequence_long(winsz, 0);

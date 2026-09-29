@@ -348,12 +348,6 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     return literal_string_value(expr);
 }
 
-"""The initializer of the module-level `Final` glob `nd` names, or None.
-
-A `Final` glob is never rebound, so its initializer is a named C constant: a
-C data definition may use it wherever a literal is accepted, as C uses an
-enumerator or a macro.
-"""
 def final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
     import from jaclang.compiler.frontend.unitree { Name }
     if not isinstance(nd, Name) or nd.sym is None {
@@ -410,8 +404,6 @@ def c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any
     return folded;
 }
 
-# Integer folding of an expression fold_const rejects because an operand
-# names a Final glob: each operand is folded through c_scalar_constant.
 def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
     import from jaclang.compiler.frontend.unitree { BinaryExpr }
     if isinstance(expr, UnaryExpr) {
@@ -441,7 +433,7 @@ def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
         or isinstance(right, bool) {
         return (False, None);
     }
-    op = expr.op.value if hasattr(expr.op, "value") else "";
+    op = expr.op?.value or "";
     if op == "+" {
         return (True, left + right);
     }

@@ -11,10 +11,7 @@ sigaction 152 with the handler first, and struct linux_dirent64 has d_reclen
 at byte 16 and d_name at byte 19.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_getdents64,
-    _Py_open_noraise
-}
+import from jaclang.runtime.python.cpython_api { jacpy_getdents64, _Py_open_noraise }
 import from jaclang.runtime.python.modules.posixsubprocess_constants {
     O_RDONLY,
     SIGKILL,

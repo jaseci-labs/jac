@@ -672,7 +672,9 @@ with entry:__main__ {
     args = parser.parse_args();
     headers = {
         path: text
-        for (path, text) in archive_texts(("Include/", "Modules/posixmodule.h")).items()
+        for (path, text) in archive_texts(
+            ("Include/", "Modules/posixmodule.h")
+        ).items()
         if path.endswith(".h")
     };
     functions = declarations(headers);

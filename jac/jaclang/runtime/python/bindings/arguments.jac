@@ -257,7 +257,8 @@ obj ArgumentFormat {
         shown = "None" if value == Py_None else type_name(value);
         caller = f"{self.name}() " if self.name else "";
         object_error(
-            PyExc_TypeError, f"{caller}argument {position} must be {expected}, not {shown}"
+            PyExc_TypeError,
+            f"{caller}argument {position} must be {expected}, not {shown}"
         );
         raise boundary_failure();
     }
@@ -435,7 +436,8 @@ obj ArgumentFormat {
             if i == maximum and maximum < nargs {
                 if maximum == 0 {
                     object_error(
-                        PyExc_TypeError, f"{shown}{called} takes no positional arguments"
+                        PyExc_TypeError,
+                        f"{shown}{called} takes no positional arguments"
                     );
                 } else {
                     quantity = "at most" if "|" in units else "exactly";

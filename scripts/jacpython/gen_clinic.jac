@@ -127,7 +127,11 @@ obj Unsupported(Exception) {}
 
 # Preprocessor symbols only Windows defines. JacPython builds for Linux and
 # macOS, so a clinic function whose #if needs one is not generated.
-glob WINDOWS_SYMBOLS: set[str] = {"MS_WINDOWS", "MS_WINDOWS_DESKTOP", "MS_WINDOWS_APP"};
+glob WINDOWS_SYMBOLS: set[str] = {
+         "MS_WINDOWS",
+         "MS_WINDOWS_DESKTOP",
+         "MS_WINDOWS_APP"
+     };
 
 def:priv windows_symbol(name: str) -> str {
     return "False" if name in WINDOWS_SYMBOLS else "True";
@@ -869,7 +873,9 @@ with entry:__main__ {
     stale: list[str] = [];
     with tempfile.TemporaryDirectory() as scratch {
         tree = extract_tree(Path(scratch), ("Tools/clinic/", "Modules/"));
-        rendered = [generate(tree, module, version) for module in args.modules or registered()];
+        rendered = [
+            generate(tree, module, version) for module in args.modules or registered()
+        ];
         targets = [(args.out or OUTPUT) / f"{name}.jac" for (name, _) in rendered];
         formatted = format_jac_many(
             [(text, target) for ((_, text), target) in zip(rendered, targets)]

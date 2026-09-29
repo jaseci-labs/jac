@@ -381,7 +381,9 @@ def:priv is_writable(state: MmapState) -> bool {
 
 def:priv is_resizeable(state: MmapState) -> bool {
     if state.exports > 0 {
-        object_error(PyExc_BufferError, "mmap can't resize with extant buffers exported.");
+        object_error(
+            PyExc_BufferError, "mmap can't resize with extant buffers exported."
+        );
         return False;
     }
     if not state.trackfd {
@@ -926,7 +928,9 @@ def mmap_new(
     }
     if access != ACCESS_DEFAULT
         and (flags != MAP_SHARED or prot != int(PROT_WRITE | PROT_READ)) {
-        object_error(PyExc_ValueError, "mmap can't specify both access and flags, prot.");
+        object_error(
+            PyExc_ValueError, "mmap can't specify both access and flags, prot."
+        );
         return NULL;
     }
     if access == ACCESS_READ {

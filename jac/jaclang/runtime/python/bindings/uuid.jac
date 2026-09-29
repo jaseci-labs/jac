@@ -1,9 +1,6 @@
 """The _uuid module: generate_time_safe() and the library capability flags."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyModule_AddIntConstant,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { PyModule_AddIntConstant, PyObject }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
