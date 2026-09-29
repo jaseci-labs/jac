@@ -95,6 +95,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'system_user_password': '__no_login__',
             'user_exists_ttl': 30.0
         },
+        'jobs': {
+            'enabled': False,
+            'queues': {},
+            'poll_seconds': 1.0,
+            'retention_seconds': 604800.0
+        },
         'telemetry': {'max_traces': 1000},
         'emailer': {
             'provider': '',
@@ -437,6 +443,33 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
         'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0)),
         'min_interval': floor if floor is not None else 1.0,
         'max_jobs_per_user': cap if cap is not None else 25
+    };
+}
+
+impl JacScaleConfig.get_jobs_config(self: JacScaleConfig) -> dict[str, any] {
+    import from jaclang.scale.config.validation { jobs_concurrency, jobs_lease_seconds }
+    config = self.load();
+    jobs_config: any = config.get('jobs', {}) or {};
+    raw_queues: any = jobs_config.get('queues') or {};
+    declared: dict[str, any] = dict(raw_queues) if isinstance(raw_queues, dict) else {};
+    if 'default' not in declared {
+        declared['default'] = {};
+    }
+    queues: dict[str, dict[str, any]] = {};
+    for (name, raw_spec) in declared.items() {
+        spec: dict[str, any] = raw_spec if isinstance(raw_spec, dict) else {};
+        concurrency: any = jobs_concurrency(spec.get('concurrency', 4));
+        lease: any = jobs_lease_seconds(spec.get('lease_s', 60.0));
+        queues[str(name)] = {
+            'concurrency': concurrency if concurrency is not None else 4,
+            'lease_s': lease if lease is not None else 60.0
+        };
+    }
+    return {
+        'enabled': bool(jobs_config.get('enabled', False)),
+        'queues': queues,
+        'poll_seconds': float(jobs_config.get('poll_seconds', 1.0)),
+        'retention_seconds': float(jobs_config.get('retention_seconds', 604800.0))
     };
 }
 

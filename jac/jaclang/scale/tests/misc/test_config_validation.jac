@@ -464,6 +464,29 @@ test "valid scheduler bounds are accepted quietly" {
 }
 
 
+test "a [scale.jobs] queue that could never run a job is flagged" {
+    cases: list[tuple[any, list[str]]] = [
+        ({"agents": {"concurrency": 2, "lease_s": 90}}, []),
+        ({"agents": {"concurrency": 4.0}}, []),
+        ({"agents": {"concurrency": 0}}, ["concurrency", "whole number 1 or more"]),
+        ({"agents": {"concurrency": 1.5}}, ["concurrency", "whole number 1 or more"]),
+        ({"agents": {"lease_s": 0.5}}, ["lease_s", "1 or more"]),
+        ({"agents": 3}, ["queues.agents must be a table"])
+    ];
+    for (queues, expected) in cases {
+        msgs = validate_scale_config({"jobs": {"queues": queues}});
+        if not expected {
+            assert msgs == [] , f"{queues!r}: expected no findings, got {msgs}";
+            continue;
+        }
+        assert len(msgs) == 1 , f"{queues!r}: expected 1 finding, got {msgs}";
+        for part in expected {
+            assert part in msgs[0] , f"{queues!r}: {part!r} missing from {msgs[0]}";
+        }
+    }
+}
+
+
 test "a fractional job cap is rejected, not truncated to unlimited" {
     import from jaclang.scale.config.validation { scheduler_job_cap }
 

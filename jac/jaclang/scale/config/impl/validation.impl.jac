@@ -34,6 +34,7 @@ impl validate_scale_config(raw: dict[str, any] | None) -> list[str] {
     if isinstance(raw, dict) {
         findings.extend(_declared_target_findings(raw));
         findings.extend(_scheduler_bound_findings(raw));
+        findings.extend(_jobs_bound_findings(raw));
     }
     return findings;
 }
@@ -89,6 +90,63 @@ impl _scheduler_bound_findings(raw: dict[str, any]) -> list[str] {
             f"{cfg.get('max_jobs_per_user')!r} must be a whole number 0 or more,"
             " where 0 means unlimited; the default of 25 is used instead"
         );
+    }
+    return out;
+}
+
+impl jobs_concurrency(raw: any) -> int | None {
+    value = _as_number(raw);
+    if value is None or value < 1.0 {
+        return None;
+    }
+    wanted = int(value);
+    return wanted if float(wanted) == value else None;
+}
+
+impl jobs_lease_seconds(raw: any) -> float | None {
+    value = _as_number(raw);
+    return value if value is not None and value >= 1.0 else None;
+}
+
+impl _jobs_bound_findings(raw: dict[str, any]) -> list[str] {
+    cfg = raw.get("jobs");
+    if not isinstance(cfg, dict) {
+        return [];
+    }
+    queues = cfg.get("queues");
+    if queues is None {
+        return [];
+    }
+    if not isinstance(queues, dict) {
+        return [
+            f"jac.toml [scale.jobs] queues {queues!r} must be a table of queue"
+            " name to {{ concurrency, lease_s }}"
+        ];
+    }
+    out: list[str] = [];
+    for (name, spec) in queues.items() {
+        if not isinstance(spec, dict) {
+            out.append(
+                f"jac.toml [scale.jobs] queues.{name} must be a table such as"
+                " { concurrency = 4, lease_s = 60 }"
+            );
+            continue;
+        }
+        if "concurrency" in spec
+            and jobs_concurrency(spec.get("concurrency")) is None {
+            out.append(
+                f"jac.toml [scale.jobs] queues.{name}.concurrency "
+                f"{spec.get('concurrency')!r} must be a whole number 1 or more;"
+                " the default of 4 is used instead"
+            );
+        }
+        if "lease_s" in spec and jobs_lease_seconds(spec.get("lease_s")) is None {
+            out.append(
+                f"jac.toml [scale.jobs] queues.{name}.lease_s "
+                f"{spec.get('lease_s')!r} must be a number 1 or more;"
+                " the 60 second default is used instead"
+            );
+        }
     }
     return out;
 }
