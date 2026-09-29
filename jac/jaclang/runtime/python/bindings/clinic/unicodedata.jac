@@ -21,9 +21,9 @@ import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
     SizedText,
     argument_label,
-    convert_char,
     convert_sized_str,
     convert_unicode,
+    convert_unicode_char,
     return_int
 }
 import from jaclang.runtime.python.modules.unicodedata {
@@ -49,7 +49,7 @@ glob:priv unicodedata_UCD_decimal_signature = CallSignature(
 def:priv unicodedata_UCD_decimal_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "decimal", argument_label("", 1));
+    chr: i32 = i32(convert_unicode_char(value, "decimal", argument_label("", 1)));
     default_: ptr[PyObject] = NULL;
     if args.values[1] != NULL {
         value = args.values[1];
@@ -78,7 +78,7 @@ glob:priv unicodedata_UCD_digit_signature = CallSignature(
 def:priv unicodedata_UCD_digit_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "digit", argument_label("", 1));
+    chr: i32 = i32(convert_unicode_char(value, "digit", argument_label("", 1)));
     default_: ptr[PyObject] = NULL;
     if args.values[1] != NULL {
         value = args.values[1];
@@ -107,7 +107,7 @@ glob:priv unicodedata_UCD_numeric_signature = CallSignature(
 def:priv unicodedata_UCD_numeric_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "numeric", argument_label("", 1));
+    chr: i32 = i32(convert_unicode_char(value, "numeric", argument_label("", 1)));
     default_: ptr[PyObject] = NULL;
     if args.values[1] != NULL {
         value = args.values[1];
@@ -132,7 +132,7 @@ def:priv unicodedata_UCD_numeric_call(
 def:priv unicodedata_UCD_category_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "category", "argument");
+    chr: i32 = i32(convert_unicode_char(value, "category", "argument"));
     return unicodedata_UCD_category_impl(receiver, chr);
 }
 
@@ -145,7 +145,7 @@ def:priv unicodedata_UCD_category_call(
 def:priv unicodedata_UCD_bidirectional_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "bidirectional", "argument");
+    chr: i32 = i32(convert_unicode_char(value, "bidirectional", "argument"));
     return unicodedata_UCD_bidirectional_impl(receiver, chr);
 }
 
@@ -158,7 +158,7 @@ def:priv unicodedata_UCD_bidirectional_call(
 def:priv unicodedata_UCD_combining_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "combining", "argument");
+    chr: i32 = i32(convert_unicode_char(value, "combining", "argument"));
     return return_int(unicodedata_UCD_combining_impl(receiver, chr));
 }
 
@@ -171,7 +171,7 @@ def:priv unicodedata_UCD_combining_call(
 def:priv unicodedata_UCD_mirrored_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "mirrored", "argument");
+    chr: i32 = i32(convert_unicode_char(value, "mirrored", "argument"));
     return return_int(unicodedata_UCD_mirrored_impl(receiver, chr));
 }
 
@@ -184,7 +184,7 @@ def:priv unicodedata_UCD_mirrored_call(
 def:priv unicodedata_UCD_east_asian_width_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "east_asian_width", "argument");
+    chr: i32 = i32(convert_unicode_char(value, "east_asian_width", "argument"));
     return unicodedata_UCD_east_asian_width_impl(receiver, chr);
 }
 
@@ -197,7 +197,7 @@ def:priv unicodedata_UCD_east_asian_width_call(
 def:priv unicodedata_UCD_decomposition_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "decomposition", "argument");
+    chr: i32 = i32(convert_unicode_char(value, "decomposition", "argument"));
     return unicodedata_UCD_decomposition_impl(receiver, chr);
 }
 
@@ -270,7 +270,7 @@ glob:priv unicodedata_UCD_name_signature = CallSignature(
 def:priv unicodedata_UCD_name_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    chr: i32 = convert_char(value, "name", argument_label("", 1));
+    chr: i32 = i32(convert_unicode_char(value, "name", argument_label("", 1)));
     default_: ptr[PyObject] = NULL;
     if args.values[1] != NULL {
         value = args.values[1];

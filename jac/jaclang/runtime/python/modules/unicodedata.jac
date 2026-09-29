@@ -1624,7 +1624,7 @@ import from c {
 
 def unicodedata_create_capi -> ptr[PyObject] {
     return PyCapsule_New(
-        ptr(addressof(unicodedata_capi)), "unicodedata._ucnhash_CAPI", NULL
+        ptr(addressof(unicodedata_capi)), ptr[u8]("unicodedata._ucnhash_CAPI"), NULL
     );
 }
 

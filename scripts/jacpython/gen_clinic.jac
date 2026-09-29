@@ -459,7 +459,7 @@ obj Emitter {
         # int(accept={str}) keeps its accepted types only as the "C" unit.
         if kind == "int" {
             # int(accept={str}) is clinic's "C" unit: one unicode character.
-            if "str" in accept_names {
+            if "str" in accept_names or getattr(conv, "format_unit", "") == "C" {
                 return (
                     "i32",
                     f"i32({self.use('convert_unicode_char')}(value, {where}))",
