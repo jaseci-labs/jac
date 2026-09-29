@@ -130,9 +130,6 @@ impl NaIRGenPass._region_unwind(depth: ir.Value) -> None {
     );
 }
 
-# Whether a region is open on this thread, inline: the thread's region block
-# (the slot accessor inlines to the key's readiness load and a TLS read) and,
-# when there is one, its current-region word. No kernel call on this path.
 impl NaIRGenPass._region_open_test -> ir.Value {
     self._register_region_kernel();
     b = self.builder;
@@ -158,9 +155,6 @@ impl NaIRGenPass._region_open_test -> ir.Value {
     return opened;
 }
 
-# A C-ABI entry leaves the caller's open region for the Jac body: when a
-# region is open, the kernel pushes the no-region entry and returns the depth
-# to restore; otherwise the entry costs the inline test and yields -1.
 impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
     if self._is_kernel_unit() {
         return None;

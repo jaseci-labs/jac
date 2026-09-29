@@ -406,10 +406,7 @@ walker NaIRGenPass(CompilerPass) {
         set_helpers: dict[str, dict[str, any]] = {},
         _peer_container_ty: (ir.Type | None) = None,
         _exc_state_type: (ir.Type | None) = None,
-        # Functions that arm setjmp frames; their locals written after an
-        # arming are made volatile before the module is handed on.
         _setjmp_functions: list[ir.Function] = [],
-        # Per function: the thread's exception context, fetched once at entry.
         _exc_context_cache: dict[int, ir.Value] = {},
         _exc_push_fn: (ir.Function | None) = None,
         _exc_pop_fn: (ir.Function | None) = None,

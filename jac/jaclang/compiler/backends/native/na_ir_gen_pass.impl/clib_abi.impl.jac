@@ -319,9 +319,6 @@ impl NaIRGenPass._clib_reinterpret(
     return self._coerce_type(val, want);
 }
 
-# A C function's signature as the C ABI sees it: the lowered type of each
-# fixed parameter (a borrowed one is an address), the result, and whether it
-# is variadic.
 impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     sig = decl.signature;
@@ -348,9 +345,6 @@ impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
 }
 
 impl NaIRGenPass._declare_clib_definitions -> None {
-    # One C symbol has one signature across the program: a definition whose
-    # name another linked module declares (or defines) with a different one
-    # cannot be both.
     for (name, decl) in list(self._clib_definitions.items()) {
         other = self._foreign_clib_abilities.get(name);
         if other is None {
@@ -430,8 +424,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
             );
         b = self.builder;
         i32 = ir.IntType(32);
-        # No region open (the common case): one musttail jump into the body.
-        # With one open, the general path below leaves it first.
+
         if _scalar_only
             and self._c_entry_tail_or_escape(cfunc, jac_fn)
             and self._is_kernel_unit() {
@@ -557,8 +550,7 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
         return False;
     }
     i64 = ir.IntType(64);
-    # A C pointer and the i64 a Jac body holds it as travel in the same
-    # register, both ways.
+
     for (c_arg, j_arg) in zip(cty.args, jty.args) {
         if c_arg == j_arg {
             continue;
@@ -573,11 +565,6 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
     return c_ret == j_ret or (isinstance(c_ret, ir.PointerType) and j_ret == i64);
 }
 
-# A C entry (a C definition's thunk or a callback trampoline) whose body takes
-# the entry's registers unchanged: when no region is open it is one musttail
-# jump into the body; the builder is left in the block that handles an open
-# region, for the caller to escape it around an ordinary call. False (nothing
-# emitted) when the entry cannot jump.
 impl NaIRGenPass._c_entry_tail_or_escape(
     c_entry: ir.Function, jac_fn: ir.Function
 ) -> bool {
