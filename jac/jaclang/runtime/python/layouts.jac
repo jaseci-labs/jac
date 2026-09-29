@@ -16,13 +16,10 @@ object's further elements follow it in memory, reached by pointer
 arithmetic from the field's offset exactly as C indexes past the declared
 bound. Pointers to records no port reads yet are opaque.
 """
-import from jaclang.runtime.python.cpython_api {
-    PyMethodDef,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { PyObject }
 
 import from c {
-    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyGetSetDef;  obj PyMappingMethods;  obj PyMemberDef;  obj PySequenceMethods;  obj _object {
+    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyGetSetDef;  obj PyMappingMethods;  obj PyMemberDef;  obj PyMethodDef;  obj PySequenceMethods;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {

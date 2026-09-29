@@ -7,10 +7,7 @@ jaclang.runtime.python.modules.locale.
 Compiled only on Windows, so absent here:
     _locale._getdefaultlocale
 """
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { NULL, PyObject }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,

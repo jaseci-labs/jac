@@ -12,11 +12,7 @@ Compiled only on Windows, so absent here:
     _codecs.oem_encode
     _codecs.code_page_encode
 """
-import from jaclang.runtime.python.cpython_api {
-    jacpy_is_bytes,
-    NULL,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { NULL, PyObject, jacpy_is_bytes }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
