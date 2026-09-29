@@ -206,7 +206,7 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
 }
 
 impl WasmObj.parse_reloc(nm: str, o: int, end: int) -> None {
-    if nm != "reloc.CODE" {
+    if nm != "reloc.CODE" and nm != "reloc.DATA" {
         return;
     }
     b = self.b;
@@ -225,6 +225,37 @@ impl WasmObj.parse_reloc(nm: str, o: int, end: int) -> None {
         self.relocs.append([nm, rt, off, sym, add]);
         ci += 1;
     }
+}
+
+def _data_segment_starts(b: bytes) -> list[int] {
+    """The data-section payload offset each segment's bytes start at.
+
+    A `reloc.DATA` entry's offset is relative to the data section payload, so
+    patching a segment needs the position of its first byte there. A vtable,
+    a class-name table or any pointer stored in data is such an entry: left
+    unpatched it keeps the object file's placeholder, and a call through a
+    vtable read from it traps on an out-of-bounds table index.
+    """;
+    if not b {
+        return [];
+    }
+    o = 0;
+    (n, o) = read_uleb128(b, o);
+    starts: list[int] = [];
+    ci = 0;
+    while ci < n {
+        (flags, o) = read_uleb128(b, o);
+        if flags == 0 {
+            o += 1;
+            (_v, o) = read_sleb128(b, o);
+            o += 1;
+        }
+        (sz, o) = read_uleb128(b, o);
+        starts.append(o);
+        o += sz;
+        ci += 1;
+    }
+    return starts;
 }
 
 def _parse_data_segments(b: bytes) -> list[bytes] {
@@ -446,6 +477,38 @@ impl WasmLinker.link(
             raise ValueError(f"unsupported reloc type {rt}");
         }
     }
+
+    seg_starts = _data_segment_starts(ob.data_raw);
+    patched = [bytearray(sg) for sg in segs];
+    for r in ob.relocs {
+        if r[0] != "reloc.DATA" {
+            continue;
+        }
+        rt = r[1];
+        off = r[2];
+        seg_i = -1;
+        si = 0;
+        while si < len(seg_starts) {
+            if seg_starts[si] <= off < seg_starts[si] + len(segs[si]) {
+                seg_i = si;
+                break;
+            }
+            si += 1;
+        }
+        if seg_i < 0 {
+            raise ValueError(f"data relocation at {off} lies outside every segment");
+        }
+        at = off - seg_starts[seg_i];
+        target = _sym_val(ob, r[3], old2new, seg_base, heap_base);
+        if rt == 2 {
+            _patch(patched[seg_i], at, _u32le(slot_of[target]));
+        } elif rt == 5 {
+            _patch(patched[seg_i], at, _u32le(target + r[4]));
+        } else {
+            raise ValueError(f"unsupported data reloc type {rt}");
+        }
+    }
+    segs = [bytes(sg) for sg in patched];
 
     out = bytearray(b"\x00asm");
     out += _u32le(1);

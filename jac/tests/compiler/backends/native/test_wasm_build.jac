@@ -210,6 +210,55 @@ console.log(`out=${JSON.stringify(out)} compute=${c}`);
     assert last == 'out="3.14\\n11\\nup\\nfinished\\n7\\n" compute=21' , f"unexpected: {last}";
 }
 
+test "vtable dispatch works in a wasm module: data relocations are applied" {
+    # A vtable is data holding function-table indices. The wasm linker used to
+    # apply only the code section's relocations, so every function pointer or
+    # address stored in data kept the object file's placeholder, and a call
+    # through a vtable trapped with "table index is out of bounds".
+    _require_libc();
+    node_bin = shutil.which("node");
+    if not node_bin {
+        testskip("node not available");
+    }
+    import from tests.support { jac_command }
+    d = tempfile.mkdtemp();
+    wpath = os.path.join(d, "vt.wasm");
+    comp = subprocess.run(
+        jac_command(
+            "build",
+            "--native",
+            os.path.join(FIXTURES, "wasm_vtable_dispatch.jac"),
+            "--target-triple",
+            "wasm32",
+            "--memory",
+            "nogc",
+            "-o",
+            wpath
+        ),
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    assert comp.returncode == 0 , comp.stderr[-1500:];
+    harness = """
+import { readFileSync } from "fs";
+const jac_host1 = new Proxy({ abort: () => { throw new Error("abort"); } },
+  { get: (t, k) => t[k] ?? ((...a) => 0) });
+const { instance } = await WebAssembly.instantiate(readFileSync(process.argv[2]), { jac_host1 });
+const e = instance.exports;
+if (e.__jac_glob_init) e.__jac_glob_init();
+const f = Object.keys(e).find(k => k.endsWith(".compute") || k === "compute");
+console.log(`compute=${Number(e[f](5n))}`);
+""";
+    hpath = os.path.join(d, "run.mjs");
+    Path(hpath).write_text(harness);
+    proc = subprocess.run(
+        [node_bin, hpath, wpath], capture_output=True, text=True, timeout=60
+    );
+    assert proc.returncode == 0 , f"node failed: {proc.stderr}";
+    assert proc.stdout.strip().splitlines()[-1] == "compute=5050" , proc.stdout;
+}
+
 # ─── stale-floor detection ───────────────────────────────────────────────────
 # The vendored bitcode is a build artifact with no recorded link to
 # wasm_rt/*.c. When an adapter is added to jac_abi64.c and the floor is not
