@@ -9,13 +9,14 @@ cannot be ported yet: the object model (`Objects/`) and the evaluator
 
 ## Porting a module
 
-Four generated files and two lists do the bookkeeping. A port touches only
+Four generated files and three lists do the bookkeeping. A port touches only
 the module's own Jac files and one line in each list.
 
 | Piece | Produced by | Holds |
 |---|---|---|
 | `jac/bootstrap/python/jacpython-modules.txt` | hand | module name, upstream test modules, extra linker flags |
 | `jac/bootstrap/python/jacpython-clinic.txt` | hand | modules whose argument parsing is generated |
+| `jac/bootstrap/python/jacpython-compiler-tests.txt` | hand | upstream suites for the Python frontend (tokenizer, parser, AST, codegen) that CI runs |
 | `runtime/python/cpython_api.jac` | `scripts/jacpython/gen_capi.jac` | typed clib declarations of every CPython function the Jac code calls |
 | `runtime/python/bindings/clinic/<name>.jac` | `scripts/jacpython/gen_clinic.jac` | signatures, converters, return conversion, method/getset tables |
 | `runtime/python/modules/<name>_constants.<os>.jac` | `scripts/jacpython/gen_constants.jac` | system constants as the target's C headers define them |

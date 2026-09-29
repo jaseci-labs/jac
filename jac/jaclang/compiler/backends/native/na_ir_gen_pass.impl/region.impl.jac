@@ -216,6 +216,21 @@ impl NaIRGenPass._region_alloc_object(
     }
     dtor = self._emit_struct_drop_fields_fn(type_name);
     if dtor is not None {
+        # The drop is logged before the constructor stores any field, so a
+        # constructor whose argument raises leaves the object in the log
+        # half built. Region memory is recycled, so its fields start null:
+        # the drop skips a null field, never a stale pointer.
+        _i8p = ir.IntType(8).as_pointer();
+        self.builder.call(
+            self._get_or_declare_extern(
+                "memset", _i8p, [_i8p, ir.IntType(32), ir.IntType(64)]
+            ),
+            [
+                self.builder.bitcast(o_ptr, _i8p, name="region.zero.p"),
+                ir.Constant(ir.IntType(32), 0),
+                self._coerce_type(size, ir.IntType(64))
+            ]
+        );
         self.builder.call(
             self._region_kernel_fn("__jac_region_log_dtor"),
             [

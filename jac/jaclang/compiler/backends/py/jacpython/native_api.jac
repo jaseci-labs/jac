@@ -10,6 +10,7 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_RecursionError,
     PyExc_RuntimeError,
     PyExc_SyntaxError,
+    jacpy_ast_kind,
     PyExc_SystemError,
     PyExc_TabError,
     PyExc_TypeError,
@@ -137,7 +138,7 @@ import from jaclang.compiler.frontend.python.parser {
     parse_interactive,
     parse_func_type
 }
-import from jaclang.compiler.frontend.python.ast_nodes { mod }
+import from jaclang.compiler.frontend.python.ast_nodes { ast_kind, mod }
 import from jaclang.compiler.frontend.python.syntax_error {
     syntax_failure,
     split_source_lines,
@@ -150,7 +151,8 @@ import from jaclang.runtime.python.capi {
     object_error,
     required,
     text_object,
-    text_value
+    text_value,
+    type_name
 }
 import from jaclang.runtime.python.constant_output { constant_object }
 import from jaclang.compiler.frontend.python.ast_input { read_node }
@@ -422,6 +424,20 @@ obj compile_request(native_request) {
     }
 
     def compile_tree -> ptr[PyObject] {
+        # PyAST_obj2mod(): the root must be the mode's node before any field
+        # is converted.
+        (required_kind, required_name) = {
+            "exec": (ast_kind.Module, "Module"),
+            "eval": (ast_kind.Expression, "Expression"),
+            "single": (ast_kind.Interactive, "Interactive"),
+            "func_type": (ast_kind.FunctionType, "FunctionType")
+        }[self.mode];
+        if int(jacpy_ast_kind(self.source)) != required_kind.value {
+            raise syntax_failure(
+                f"expected {required_name} node, got {type_name(self.source)}",
+                kind="TypeError"
+            );
+        }
         tree = read_node(self.source);
         validate_ast_value(tree);
         if not isinstance(tree, mod) {
