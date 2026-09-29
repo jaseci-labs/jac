@@ -384,9 +384,39 @@ definitions under their names; tables and types are C data. What they added:
 - `enumerate.__new__` parses with `PyArg_ParseTupleAndKeywords` over a C data
   keyword array, as the clinic glue's messages are getargs.c's.
 
-Refcounting from Jac is still a call into C (`Py_IncRef`, `jacpy_release`);
-with `_object` declared, inline immortality-aware reference operations in Jac
-are the next shared helper. `jacpython.o` enters the link as machine code,
+The second wave ported `complexobject.c`, `classobject.c`, `structseq.c`,
+`genericaliasobject.c`, `unionobject.c`, `picklebufobject.c`,
+`interpolationobject.c`, `templateobject.c` and `fileobject.c` (with the
+clinic files of the first five), as `object_model/complex.jac`, `method.jac`,
+`structseq.jac`, `genericalias.jac`, `union.jac`, `picklebuffer.jac`,
+`interpolation.jac`, `template.jac` and `file.jac`. What they added:
+
+- The `Py_complex` C API (`_Py_c_sum`, `_Py_c_quot`, `_Py_c_pow`,
+  `_Py_c_abs`, ...) takes and returns the struct by value as C does. The
+  arithmetic behind it is C definitions (`cplx_prod`, `cplx_quot`, ...) that
+  write their result pair through `ptr[f64]` parameters; callers lend `&mut`
+  locals, so an operation allocates nothing but its result object. A Jac
+  tuple return is a heap allocation natively, which the lending replaces on
+  every hot path.
+- `__new__` of complex and of structseq types takes clinic's fast path
+  (positional arguments only, within range, read from the tuple) before the
+  shared argument layer, as `_PyArg_UnpackKeywords` does.
+- `header.jac` now inlines `Py_INCREF` / `Py_DECREF` / `Py_NewRef`
+  (`object_incref`, `object_decref`, `object_new_ref`) over
+  `ob_refcnt_full`, with the release build's immortality tests and
+  `_Py_IMMORTAL_INITIAL_REFCNT` from gen_layouts; method objects use them.
+- `PyStructSequence_NewType` builds its slots and spec in `PyMem` memory, and
+  `PyStructSequence_UnnamedField` is C data. `PyFile_*` and the
+  `open_code` hook read `_PyRuntime` through `jacpy_open_code_hook` /
+  `jacpy_open_code_userdata` in `object_api.c`.
+- gen_layouts imports records from the C API declarations positionally
+  (`Py_buffer`, `Py_complex`, `PyType_Slot`, `PyType_Spec`), asserts bool
+  fields, renames Jac keywords among member names with a trailing `_`
+  (`obj_`), and writes unsigned constants unsigned.
+
+Refcounting from most ports is still a call into C (`Py_IncRef`,
+`jacpy_release`); the inline helpers above replace it where a port is hot.
+`jacpython.o` enters the link as machine code,
 so a call into C costs a call ThinLTO cannot remove; emitting it as bitcode
 for the ThinLTO link removes that boundary if Jac's LLVM and Zig's LLVM agree
 on the bitcode version.
