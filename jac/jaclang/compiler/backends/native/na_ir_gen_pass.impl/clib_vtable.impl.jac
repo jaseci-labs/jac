@@ -162,8 +162,6 @@ impl NaIRGenPass._lower_clib_function_type(
     import from jaclang.compiler.types.types { FunctionType as CallbackType }
     param_types: list[ir.Type] = [];
     for p in (t.parameters or []) {
-        # A callback parameter of a C function is itself a C function pointer,
-        # not a Jac closure.
         if isinstance(p.param_type, CallbackType) {
             param_types.append(
                 self._lower_clib_function_type(arch_name, "", p.param_type)
@@ -186,7 +184,7 @@ impl NaIRGenPass._clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value {
             return self._membrane_str_out(self.builder, val);
         }
     }
-    # A callback argument gets the C-ABI adaptation a direct C call gives it.
+
     if isinstance(target, ir.PointerType)
         and not target.is_opaque
         and isinstance(target.pointee, ir.FunctionType) {

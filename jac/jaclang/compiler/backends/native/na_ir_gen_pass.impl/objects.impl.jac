@@ -485,6 +485,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
     field_type_map: dict[(str, ir.Type)] = {};
     field_default_map: dict[str, uni.Expr] = {};
     foreign_fields: set = set();
+    text_fields: dict[str, str] = {};
     erased_tv_fields: dict[str, list[str]] = {};
 
     if layout.vtable_ptr_slot is not None {
@@ -514,6 +515,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
         ftype: ir.Type = ir.IntType(64);
         if var is None and fname == EXC_MESSAGE_FIELD {
             ftype = self._lower_type_by_name("str") or ftype;
+            text_fields[fname] = "str";
         }
         if isinstance(var, uni.HasVar) and type_tag_borrows(var.type_tag) {
             if arch_name not in self.struct_field_borrow {
@@ -559,6 +561,17 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
                 }
                 if self._foreign_optional_field(var?.type) {
                     foreign_fields.add(fname);
+                }
+                _tmangle = "";
+                try {
+                    _tmangle = var.type.mangle() if var?.type is not None else "";
+                } except Exception {
+                    _tmangle = "";
+                }
+                if _tmangle in ("str", "bytes")
+                    and fname not in foreign_fields
+                    and not type_tag_borrows(var.type_tag) {
+                    text_fields[fname] = _tmangle;
                 }
                 _etv = self._erased_typevar_names(var?.type);
                 if _etv {
@@ -661,6 +674,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
     self.struct_field_types[arch_name] = field_type_map;
     self.struct_field_defaults[arch_name] = field_default_map;
     self.struct_field_foreign[arch_name] = foreign_fields;
+    self.struct_field_text[arch_name] = text_fields;
     self.struct_field_erased_tv[arch_name] = erased_tv_fields;
     self.arch_type_params[arch_name] = [
         tp.name.value
@@ -2292,7 +2306,14 @@ impl NaIRGenPass._codegen_instantiation(
                     )
                 );
             }
-            val = self._coerce_type(val, ftype);
+            val = self._coerce_type(
+                self._nogc_own_text(
+                    None if isinstance(init_expr, ir.Value) else init_expr,
+                    val,
+                    self._nogc_text_field(type_name, key_name)
+                ),
+                ftype
+            );
         }
 
         self._emit_take_ref(
@@ -2312,6 +2333,10 @@ impl NaIRGenPass._codegen_instantiation(
             self._nogc_consume_local(init_expr);
         }
         set_fields.add(key_name);
+    }
+    if self._nogc_headerless() and _pre_args {
+        self._release_owned_args(list(_pre_args.values()), op="ctor_leftover");
+        _pre_args.clear();
     }
 
     for (fname, default_expr) in field_defaults.items() {
@@ -2349,7 +2374,12 @@ impl NaIRGenPass._codegen_instantiation(
                 if _is_clib_cb_d {
                     val = self._clib_coerce_callback(val, ftype);
                 } else {
-                    val = self._coerce_type(val, ftype);
+                    val = self._coerce_type(
+                        self._nogc_own_text(
+                            default_expr, val, self._nogc_text_field(type_name, fname)
+                        ),
+                        ftype
+                    );
                 }
 
                 self._emit_take_ref(
@@ -3139,11 +3169,11 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     dict_type_key: (str | None) = self._dict_key_of(trailer.target);
-    # Only a variable is probed: evaluating any other receiver here would run
-    # it twice (an f-string or literal allocating a copy nothing releases).
+    _recv_key = self._type_key_of(trailer.target) or "";
     if dict_type_key is None
         and target_name is not None
-        and isinstance(trailer.target, uni.Name) {
+        and isinstance(trailer.target, uni.Name)
+        and _recv_key in ("", "any", "Any", "Unknown") {
         probe_val = self._codegen_receiver(trailer.target);
         if probe_val is not None {
             dict_type_info = self._infer_dict_type(probe_val);
@@ -4555,6 +4585,10 @@ impl NaIRGenPass._emit_field_store(
             )
         );
     }
+    _text_kind = self._nogc_text_field(type_name, field_name);
+    if _text_kind {
+        value = self._nogc_own_text(value_node, value, _text_kind);
+    }
     if _is_clib_cb {
         value = self._clib_coerce_callback(value, ftype);
     } elif not (skip_narrow_coerce and value.type != ftype) {
@@ -4582,6 +4616,12 @@ impl NaIRGenPass._emit_field_store(
     if self._elem_kind(ftype) != "raw" and not _borrow_field {
         self._emit_take_ref(value, op="field_set", loc=_fs_loc);
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
+    }
+    if _text_kind and value.type == ftype {
+        _text_old = self.builder.load(field_ptr, name=f"field.{field_name}.text.old");
+        self.builder.store(value, field_ptr);
+        self._nogc_free_text(self.builder, _text_old, _text_kind);
+        return;
     }
     _fs_old_pv: (ir.Value | None) = None;
     _fs_opt = self._opt_payload_of(ftype);

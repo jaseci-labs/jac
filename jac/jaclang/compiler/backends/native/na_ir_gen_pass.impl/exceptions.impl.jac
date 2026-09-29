@@ -628,7 +628,6 @@ impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) ->
         }
         self._emit_err_propagate(loc="reraise");
     } else {
-        # The re-raise takes over what the handler held.
         held_slot = self._unbound_caught_slots.get(id(values));
         if held_slot is not None {
             self.builder.store(ir.Constant(held_slot.type.pointee, None), held_slot);
@@ -1181,9 +1180,6 @@ impl NaIRGenPass._codegen_try_unwind(
                 self.local_vars[var_name] = alloca;
             }
 
-            # A handler that binds no name holds the caught exception in a
-            # hidden local, so a return, break or raise out of the handler
-            # releases it as scope cleanup does for any local.
             unbound_slot: (ir.Value | None) = None;
             if except_node.name is None
                 and not _in_gen

@@ -742,6 +742,10 @@ impl TypeEvaluator._validate_call_type(
                     expr, self._create_object_init_method(caller_type)
                 );
             }
+        } elif self._dataclass_shadows_base_init(caller_type) {
+            self._validate_constructor_method(
+                expr, self._create_object_init_method(caller_type)
+            );
         }
 
         inferred_type_args = self._infer_type_args_from_method(

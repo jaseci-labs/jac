@@ -135,8 +135,6 @@ impl NaIRGenPass._codegen_clib_call(
                     call_args.append(self._clib_coerce_callback(_cv, scalar_type));
                 } else {
                     _coerced = self._coerce_type(_cv, scalar_type);
-                    # A str handed to C is materialized as an owned C string
-                    # (the owner retained, or a NUL-terminated copy).
                     if self._str_desc_ty is not None
                         and _cv.type == self._str_desc_ty
                         and _coerced is not _cv

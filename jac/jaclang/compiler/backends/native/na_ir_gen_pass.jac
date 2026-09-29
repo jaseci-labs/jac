@@ -62,7 +62,6 @@ import from jaclang.compiler.passes.layout_pass {
     archetype_accessors,
     ArchetypeLayout,
     EnumLayout,
-    EXC_MESSAGE_FIELD,
     VTABLE_DROP_SLOT,
     VTABLE_HEADER_SLOTS
 }
@@ -305,6 +304,7 @@ walker NaIRGenPass(CompilerPass) {
         arch_type_params: dict[str, list[str]] = {},
         struct_field_inline: dict[str, set] = {},
         struct_field_borrow: dict[str, set] = {},
+        struct_field_text: dict[str, dict[str, str]] = {},
         _subclassed_arch_names: (set[str] | None) = None,
         _aos_deciding: set[str] = set(),
         _self_owned: bool = False,
@@ -3195,6 +3195,13 @@ walker NaIRGenPass(CompilerPass) {
     def _slot_lowering_active -> bool;
     def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
     def _nogc_err_drop_slot -> ir.Value;
+    def _nogc_text_field(type_name: str, fname: str) -> str;
+    def _nogc_own_text(
+        expr: (uni.UniNode | None), val: ir.Value, kind: str
+    ) -> ir.Value;
+
+    def _nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> None;
+    def _nogc_release_dict_key(key: ir.Value) -> None;
     def _emit_finalizers(loop_depth: int = 0) -> bool;
     def _emit_err_check(
         callee: (uni.Ability | None), site: (uni.UniNode | None) = None
