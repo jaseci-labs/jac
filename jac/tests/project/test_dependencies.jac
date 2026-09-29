@@ -55,7 +55,7 @@ def make_temp_project -> tuple[any, ...] {
 
     jac_toml = project_dir / "jac.toml";
     jac_toml.write_text(
-        '[project]\nname = "test-project"\nversion = "0.1.0"\ndescription = "A test project"\nentry-point = "main"\n\n[dependencies]\nrequests = ">=2.28.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = "jac test"\n'
+        '[project]\nname = "test-project"\nversion = "0.1.0"\ndescription = "A test project"\nentry-point = "main"\n\n[dependencies.pypi]\nrequests = ">=2.28.0"\n\n[dev-dependencies.pypi]\npytest = ">=8.0.0"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = "jac test"\n'
     );
 
     src_dir = project_dir / "src";
@@ -73,7 +73,7 @@ def create_test_project(tmpdir: str, toml_content: str = "") -> str {
     project_path = os.path.join(tmpdir, "testproj");
     os.makedirs(project_path, exist_ok=True);
     if not toml_content {
-        toml_content = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nrequests = ">=2.28.0"\nflask = "~=3.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
+        toml_content = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\nrequests = ">=2.28.0"\nflask = "~=3.0"\n\n[dev-dependencies.pypi]\npytest = ">=8.0.0"\n';
     }
     f = open(os.path.join(project_path, "jac.toml"), "w");
     f.write(toml_content);
@@ -742,7 +742,7 @@ test "python resolve git dependencies" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nrequests = ">=2.28.0"\n\n[dependencies.git]\nmy-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\nrequests = ">=2.28.0"\nmy-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}\n';
         project_path = create_test_project(tmp, toml);
         config = JacConfig.load(Path(project_path) / "jac.toml");
         python = PythonProvider();
@@ -811,7 +811,7 @@ test "resolve_plan folds capability deps with manifest priority" {
     try {
         # Manifest pins its own fastapi; the serve capability must not
         # override or duplicate it.
-        toml = '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\nentry-point = "main"\n\n[dependencies]\nfastapi = ">=0.100.0"\n';
+        toml = '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\nentry-point = "main"\n\n[dependencies.pypi]\nfastapi = ">=0.100.0"\n';
         project_path = create_test_project(tmp, toml);
         (Path(project_path) / "main.jac").write_text(
             "with entry {\n    print(\"hi\");\n}\n"
@@ -1055,7 +1055,7 @@ test "install with pip and git deps" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nrequests = ">=2.28.0"\n\n[dependencies.git]\nmy-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\nrequests = ">=2.28.0"\nmy-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}\n';
         project_path = create_test_project(tmp, toml);
         original_cwd = os.getcwd();
         os.chdir(project_path);
@@ -1093,7 +1093,7 @@ test "install pip and npm deps" {
     import from jaclang.client.npm_provider { NpmProvider }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "fullstack"\nversion = "0.1.0"\n\n[dependencies]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\nreact = "^19.2.0"\ntypescript = "^5.0.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
+        toml = '[project]\nname = "fullstack"\nversion = "0.1.0"\n\n[dependencies.pypi]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\nreact = "^19.2.0"\ntypescript = "^5.0.0"\n\n[dev-dependencies.pypi]\npytest = ">=8.0.0"\n';
         project_path = create_test_project(tmp, toml);
         os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
         original_cwd = os.getcwd();
@@ -1141,7 +1141,7 @@ test "install npm-only project dispatches the npm provider" {
     import from jaclang.client.npm_provider { NpmProvider }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n\n[dependencies.npm]\nreact = "18.0"\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\n\n[dependencies.npm]\nreact = "18.0"\n';
         project_path = create_test_project(tmp, toml);
         original_cwd = os.getcwd();
         os.chdir(project_path);
@@ -1176,7 +1176,7 @@ test "install --no-npm skips the npm provider on a full install" {
     import from jaclang.client.npm_provider { NpmProvider }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n\n[dependencies.npm]\nreact = "18.0"\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\n\n[dependencies.npm]\nreact = "18.0"\n';
         project_path = create_test_project(tmp, toml);
         original_cwd = os.getcwd();
         os.chdir(project_path);
@@ -1229,7 +1229,7 @@ test "install pkg no toml errors" {
     os.chdir(tmp);
     reset_config();
     try {
-        result = proj_cmds.install(packages=["requests"]);
+        result = proj_cmds.install(pypi=True, packages=["requests"]);
         assert result == 1;
     } finally {
         os.chdir(original_cwd);
@@ -1260,12 +1260,12 @@ test "install pkg resolves version" {
                     (0, "Successfully installed numpy-1.26.4", ""),
                     (0, "Name: numpy\nVersion: 1.26.4\nSummary: ...", "")
                 ];
-                result = proj_cmds.install(packages=["numpy"]);
+                result = proj_cmds.install(pypi=True, packages=["numpy"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert "numpy" in config.dependencies;
-            assert config.dependencies["numpy"] == "~=1.26";
+            assert "numpy" in config.pypi_dependencies;
+            assert config.pypi_dependencies["numpy"] == "~=1.26";
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1289,12 +1289,12 @@ test "install pkg with explicit version" {
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
-                result = proj_cmds.install(packages=["numpy>=1.24"]);
+                result = proj_cmds.install(pypi=True, packages=["numpy>=1.24"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert "numpy" in config.dependencies;
-            assert config.dependencies["numpy"] == ">=1.24";
+            assert "numpy" in config.pypi_dependencies;
+            assert config.pypi_dependencies["numpy"] == ">=1.24";
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1312,7 +1312,7 @@ test "install honors declared version constraint" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n# bcrypt 5.x breaks stored hashes; do not bump.\nbcrypt = ">=4.0.0,<5.0.0"\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\n# bcrypt 5.x breaks stored hashes; do not bump.\nbcrypt = ">=4.0.0,<5.0.0"\n';
         project_path = create_test_project(tmp, toml);
         os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
         original_cwd = os.getcwd();
@@ -1329,7 +1329,7 @@ test "install honors declared version constraint" {
                     (0, "Successfully installed bcrypt-4.3.0", ""),
                     (0, "Name: bcrypt\nVersion: 4.3.0", "")
                 ];
-                result = proj_cmds.install(packages=["bcrypt"]);
+                result = proj_cmds.install(pypi=True, packages=["bcrypt"]);
             }
             assert result == 0;
             install_args = mock_pip.call_args_list[0].args[1];
@@ -1337,7 +1337,7 @@ test "install honors declared version constraint" {
                 f"pip must receive the declared constraint, got: {install_args}"
             );
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert config.dependencies["bcrypt"] == ">=4.0.0,<5.0.0" , (
+            assert config.pypi_dependencies["bcrypt"] == ">=4.0.0,<5.0.0" , (
                 "an explicit manifest constraint must never be rewritten"
             );
             saved = (Path(project_path) / "jac.toml").read_text();
@@ -1360,7 +1360,7 @@ test "install explicit spec replaces declared pin" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nbcrypt = ">=4.0.0,<5.0.0"\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\nbcrypt = ">=4.0.0,<5.0.0"\n';
         project_path = create_test_project(tmp, toml);
         os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
         original_cwd = os.getcwd();
@@ -1374,13 +1374,13 @@ test "install explicit spec replaces declared pin" {
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.return_value = (0, "Successfully installed bcrypt-5.0.0", "");
-                result = proj_cmds.install(packages=["bcrypt~=5.0"]);
+                result = proj_cmds.install(pypi=True, packages=["bcrypt~=5.0"]);
             }
             assert result == 0;
             install_args = mock_pip.call_args_list[0].args[1];
             assert "bcrypt~=5.0" in install_args;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert config.dependencies["bcrypt"] == "~=5.0" , (
+            assert config.pypi_dependencies["bcrypt"] == "~=5.0" , (
                 "an explicit CLI constraint must replace the declared pin"
             );
         } finally {
@@ -1414,12 +1414,12 @@ test "update all deps" {
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
-                result = proj_cmds.update();
+                result = proj_cmds.update(pypi=True);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert config.dependencies["requests"] == ">=2.28.0";
-            assert config.dependencies["flask"] == "~=3.1";
+            assert config.pypi_dependencies["requests"] == ">=2.28.0";
+            assert config.pypi_dependencies["flask"] == "~=3.1";
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1434,7 +1434,7 @@ test "update specific package" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nrequests = "~=2.28"\nflask = "~=3.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\nrequests = "~=2.28"\nflask = "~=3.0"\n\n[dev-dependencies.pypi]\npytest = ">=8.0.0"\n';
         project_path = create_test_project(tmp, toml);
         os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
         original_cwd = os.getcwd();
@@ -1451,12 +1451,12 @@ test "update specific package" {
                     (0, "Successfully installed requests-2.32.0", ""),
                     (0, "Name: requests\nVersion: 2.32.0", "")
                 ];
-                result = proj_cmds.update(packages=["requests"]);
+                result = proj_cmds.update(pypi=True, packages=["requests"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert config.dependencies["requests"] == "~=2.32";
-            assert config.dependencies["flask"] == "~=3.0";
+            assert config.pypi_dependencies["requests"] == "~=2.32";
+            assert config.pypi_dependencies["flask"] == "~=3.0";
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1476,7 +1476,7 @@ test "update unknown package errors" {
         os.chdir(project_path);
         reset_config();
         try {
-            result = proj_cmds.update(packages=["nonexistent"]);
+            result = proj_cmds.update(pypi=True, packages=["nonexistent"]);
             assert result == 1;
         } finally {
             os.chdir(original_cwd);
@@ -1495,7 +1495,7 @@ test "update no toml errors" {
     os.chdir(tmp);
     reset_config();
     try {
-        result = proj_cmds.update();
+        result = proj_cmds.update(pypi=True);
         assert result == 1;
     } finally {
         os.chdir(original_cwd);
@@ -1525,13 +1525,15 @@ test "install pkg dev dependency" {
                     (0, "Successfully installed pytest-cov-7.0.0", ""),
                     (0, "Name: pytest-cov\nVersion: 7.0.0", "")
                 ];
-                result = proj_cmds.install(packages=["pytest-cov"], dev=True);
+                result = proj_cmds.install(
+                    pypi=True, packages=["pytest-cov"], dev=True
+                );
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert "pytest-cov" in config.dev_dependencies;
-            assert config.dev_dependencies["pytest-cov"] == "~=7.0";
-            assert "pytest-cov" not in config.dependencies;
+            assert "pytest-cov" in config.pypi_dev_dependencies;
+            assert config.pypi_dev_dependencies["pytest-cov"] == "~=7.0";
+            assert "pytest-cov" not in config.pypi_dependencies;
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1565,12 +1567,12 @@ test "install multiple pkgs records all" {
                     (0, "Name: numpy\nVersion: 2.4.2", ""),
                     (0, "Name: pandas\nVersion: 3.0.0", "")
                 ];
-                result = proj_cmds.install(packages=["numpy", "pandas"]);
+                result = proj_cmds.install(pypi=True, packages=["numpy", "pandas"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert config.dependencies["numpy"] == "~=2.4";
-            assert config.dependencies["pandas"] == "~=3.0";
+            assert config.pypi_dependencies["numpy"] == "~=2.4";
+            assert config.pypi_dependencies["pandas"] == "~=3.0";
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1594,7 +1596,9 @@ test "install --git rejects multiple positional names" {
         try {
             with patch.object(PythonProvider, "install_specs") as mock_install {
                 result = proj_cmds.install(
-                    packages=["mylib", "extra"], git="https://github.com/u/plugin.git"
+                    pypi=True,
+                    packages=["mylib", "extra"],
+                    git="https://github.com/u/plugin.git"
                 );
             }
             assert result == 1;
@@ -1663,7 +1667,7 @@ test "install pkg pip failure no toml update" {
                     "",
                     "ERROR: No matching distribution found for badpkg"
                 );
-                result = proj_cmds.install(packages=["badpkg"]);
+                result = proj_cmds.install(pypi=True, packages=["badpkg"]);
             }
             assert result == 1;
             f = open(toml_path);
@@ -1693,12 +1697,14 @@ test "install git dependency" {
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed my-lib", "");
-                result = proj_cmds.install(git="https://github.com/user/my-lib.git");
+                result = proj_cmds.install(
+                    pypi=True, git="https://github.com/user/my-lib.git"
+                );
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert "my-lib" in config.git_dependencies;
-            assert config.git_dependencies["my-lib"]["git"]
+            assert "my-lib" in config.pypi_git_dependencies;
+            assert config.pypi_git_dependencies["my-lib"]["git"]
                 == "https://github.com/user/my-lib.git";
         } finally {
             os.chdir(original_cwd);
@@ -1731,7 +1737,7 @@ test "install pkg no save skips toml" {
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.return_value = (0, "Successfully installed numpy-1.26.4", "");
-                result = proj_cmds.install(packages=["numpy"], no_save=True);
+                result = proj_cmds.install(pypi=True, packages=["numpy"], no_save=True);
             }
             assert result == 0;
             f = open(toml_path);
@@ -1752,7 +1758,7 @@ test "update with dev deps" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nrequests = "~=2.28"\nflask = "~=3.0"\n\n[dev-dependencies]\npytest = "~=8.0"\n';
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies.pypi]\nrequests = "~=2.28"\nflask = "~=3.0"\n\n[dev-dependencies.pypi]\npytest = "~=8.0"\n';
         project_path = create_test_project(tmp, toml);
         os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
         original_cwd = os.getcwd();
@@ -1771,13 +1777,13 @@ test "update with dev deps" {
                     (0, "Name: flask\nVersion: 3.1.0", ""),
                     (0, "Name: pytest\nVersion: 8.3.0", "")
                 ];
-                result = proj_cmds.update(dev=True);
+                result = proj_cmds.update(pypi=True, dev=True);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert config.dependencies["requests"] == "~=2.32";
-            assert config.dependencies["flask"] == "~=3.1";
-            assert config.dev_dependencies["pytest"] == "~=8.3";
+            assert config.pypi_dependencies["requests"] == "~=2.32";
+            assert config.pypi_dependencies["flask"] == "~=3.1";
+            assert config.pypi_dev_dependencies["pytest"] == "~=8.3";
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1792,7 +1798,7 @@ test "install empty deps" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
-        toml = '[project]\nname = "empty"\nversion = "0.1.0"\n\n[dependencies]\n\n[dev-dependencies]\n';
+        toml = '[project]\nname = "empty"\nversion = "0.1.0"\n\n[dependencies.pypi]\n\n[dev-dependencies.pypi]\n';
         project_path = create_test_project(tmp, toml);
         original_cwd = os.getcwd();
         os.chdir(project_path);
@@ -1828,12 +1834,12 @@ test "remove package" {
                     "Successfully uninstalled requests-2.31.0",
                     ""
                 );
-                result = proj_cmds.remove(packages=["requests"]);
+                result = proj_cmds.remove(pypi=True, packages=["requests"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert "requests" not in config.dependencies;
-            assert "flask" in config.dependencies;
+            assert "requests" not in config.pypi_dependencies;
+            assert "flask" in config.pypi_dependencies;
             assert mock_pip.call_args.args[1] == ["uninstall", "-y", "requests"];
         } finally {
             os.chdir(original_cwd);
@@ -1863,11 +1869,11 @@ test "remove dev dep without flag" {
                     "Successfully uninstalled pytest-8.0.0",
                     ""
                 );
-                result = proj_cmds.remove(packages=["pytest"]);
+                result = proj_cmds.remove(pypi=True, packages=["pytest"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
-            assert "pytest" not in config.dev_dependencies;
+            assert "pytest" not in config.pypi_dev_dependencies;
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1906,7 +1912,7 @@ test "remove no toml errors" {
     os.chdir(tmp);
     reset_config();
     try {
-        result = proj_cmds.remove(packages=["requests"]);
+        result = proj_cmds.remove(pypi=True, packages=["requests"]);
         assert result == 1;
     } finally {
         os.chdir(original_cwd);
@@ -1925,7 +1931,7 @@ test "remove nonexistent package" {
         os.chdir(project_path);
         reset_config();
         try {
-            result = proj_cmds.remove(packages=["nonexistent"]);
+            result = proj_cmds.remove(pypi=True, packages=["nonexistent"]);
             assert result == 0;
         } finally {
             os.chdir(original_cwd);
@@ -1937,7 +1943,7 @@ test "remove nonexistent package" {
 }
 
 # ===== Extras resolution =====
-glob EXTRAS_TOML = '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n[dependencies]\n\n[optional-dependencies.data]\npymongo = ">=4.0,<5.0"\nredis = ">=7.0,<8.0"\n\n[optional-dependencies.monitoring]\nprometheus-client = ">=0.21.0,<1.0.0"\n\n[optional-dependencies.all]\n"mypkg[data,monitoring]" = "*"\n\n[optional-dependencies.test]\n"mypkg[all]" = "*"\n"testcontainers[mongodb,redis]" = "*"\nrequests = "*"\n';
+glob EXTRAS_TOML = '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n[dependencies.pypi]\n\n[optional-dependencies.data]\npymongo = ">=4.0,<5.0"\nredis = ">=7.0,<8.0"\n\n[optional-dependencies.monitoring]\nprometheus-client = ">=0.21.0,<1.0.0"\n\n[optional-dependencies.all]\n"mypkg[data,monitoring]" = "*"\n\n[optional-dependencies.test]\n"mypkg[all]" = "*"\n"testcontainers[mongodb,redis]" = "*"\nrequests = "*"\n';
 
 test "resolve_extras basic group" {
     reset_config();
@@ -2069,7 +2075,7 @@ test "update always uses upgrade flag" {
                     (0, "Name: requests\nVersion: 2.31.0", ""),
                     (0, "Name: flask\nVersion: 3.1.0", "")
                 ];
-                result = proj_cmds.update();
+                result = proj_cmds.update(pypi=True);
             }
             assert result == 0;
             first_call_args = mock_pip.call_args_list[0].args[1];
@@ -2094,7 +2100,7 @@ test "jac install <pkg> outside a project errors" {
     try {
         os.chdir(tmp);
         reset_config();
-        result = proj_cmds.install(packages=["pip"], no_deps=True);
+        result = proj_cmds.install(pypi=True, packages=["pip"], no_deps=True);
         assert result == 1;
     } finally {
         os.chdir(original_cwd);
@@ -2115,7 +2121,7 @@ test "install package failure returns error code" {
         with patch.object(
             PythonProvider, "install_specs", MagicMock(return_value=False)
         ) {
-            result = proj_cmds.install(packages=["badpkg"]);
+            result = proj_cmds.install(pypi=True, packages=["badpkg"]);
         }
         assert result == 1;
     } finally {

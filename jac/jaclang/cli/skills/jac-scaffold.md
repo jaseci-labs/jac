@@ -19,8 +19,8 @@ jac create myapp --kind native-binary   # natively-compiled binary (build dist/)
 jac create myapp --kind web-app       # server + client UI    (built into jaclang)
 jac create myapp --kind desktop         # OS-webview app         (built into jaclang)
 jac create myapp --use ./my-template/   # from a local template DIRECTORY
-jac create myapp --use ./local.jacpack  # from a local jacpack archive
-jac create --use https://.../t.jacpack  # from a URL
+jac create myapp --use acme/starter    # a published template (org/name[@range])
+jac create myapp --use ./starter.jab    # a template package file
 jac create --use jac-shadcn             # shadcn variant of web-app (built into jaclang)
 jac create --list                       # list available kinds and named variants
 jac create myapp --force                # overwrite an existing dir / reinit
@@ -28,7 +28,7 @@ jac create myapp --force                # overwrite an existing dir / reinit
 
 Without a project name, `jac create` initializes the **current directory** and names the project after it (like `cargo init` / `uv init`). Pass a name to create a subdirectory instead (`jac create myapp`).
 
-`--kind` and `--use` are mutually exclusive: `--kind` picks a built-in kind template; `--use` loads a custom template (path / URL) or a named variant.
+`--kind` and `--use` are mutually exclusive: `--kind` picks a built-in kind template; `--use` loads a custom template (published `org/name`, directory, `.jab`) or a named variant.
 
 ## Project kinds and what each scaffolds
 
@@ -94,20 +94,24 @@ After `jac create`:
 
 ## Make your own template
 
-Any Jac project becomes a template by adding a `[jacpack]` section to its `jac.toml`; `{{name}}` placeholders in files are substituted at create time:
+Any Jac project becomes a template by adding a `[jacpack]` section to its `jac.toml`; `{{name}}` placeholders in files are substituted at create time. To publish it, give it a scoped name and a version:
 
 ```toml
 [jacpack]
-name = "mytemplate"
+name = "acme/starter"
+version = "1.0.0"
 description = "My custom project template"
 ```
 
 ```
 jac create --list                      # registered kinds and named variants
-jac create --pack ./my-template/       # bundle dir -> mytemplate.jacpack (--pack_output for a custom path)
-jac create app --use ./my-template/    # use directly, no packing needed
-jac create app --use mytemplate.jacpack
+jac create app --use ./my-template/    # use a template directory directly
+jac build --as jab                     # in the template dir: build acme-starter-1.0.0.jab
+jac publish                            # publish it to the package index
+jac create app --use acme/starter      # anyone: create from the published template
 ```
+
+Templates from the index cannot run a post-create hook.
 
 All non-`[jacpack]` sections of the template's `jac.toml` become the created project's config.
 
