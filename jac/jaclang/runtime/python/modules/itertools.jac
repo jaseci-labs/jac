@@ -264,13 +264,11 @@ def kind_for(type: ptr[PyObject]) -> int {
     return -1;
 }
 
+# The instance's state through its type's own binding definition: every
+# itertools type keeps one payload, so no kind lookup is needed.
 def state_for(instance: ptr[PyObject]) -> (NativeState | None) {
-    kind = kind_for(Py_TYPE(instance));
-    if kind < 0 {
-        return None;
-    }
-    handle = kind_tokens[kind].handle;
-    if jacpy_binding_native_present(instance, handle) == 0 {
+    handle = jacpy_binding_token(Py_TYPE(instance));
+    if handle == 0 or jacpy_binding_native_present(instance, handle) == 0 {
         object_error(PyExc_RuntimeError, "uninitialized native iterator");
         return None;
     }
