@@ -223,7 +223,26 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
         c_type_spec,
         c_variadic_param,
-        is_builtin_pin_call
+        is_builtin_pin_call,
+        is_ptr_type,
+        named_function_of
+    }
+    # `ptr(function)`: the function's C-callable address, which needs the
+    # function's C signature to make its callback.
+    callee_type = nd.target.type;
+    if is_ptr_type(callee_type)
+        and callee_type is not None
+        and not callee_type.is_instance()
+        and len(nd.params or []) == 1
+        and named_function_of((nd.params or [])[0]) is not None {
+        function = (nd.params or [])[0];
+        call = self.outs(nd)[0] if self.outs(nd) else None;
+        if isinstance(call, CgNode) and call.cls == 'Call' {
+            spec = c_type_spec(function.type, None);
+            call.get('args').append(self.const_of(json.dumps(spec)));
+            call.get('args').append(self.call_node(self.name_load('globals'), [], []));
+        }
+        return;
     }
     if is_builtin_pin_call(nd) {
         args = [

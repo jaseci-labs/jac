@@ -73,8 +73,14 @@ class JacPtr {
         _jac_views: dict[int, type] = {};
     }
 
-    def init(self: JacPtr, address: any = None) {
-        if address is None {
+    # `spec_json` and `scope` come with `ptr(function)`: the function's C
+    # signature, from which its C-callable address is made.
+    def init(
+        self: JacPtr, address: any = None, spec_json: any = None, scope: any = None
+    ) {
+        if spec_json is not None and callable(address) {
+            self._addr = _function_address(address, json.loads(spec_json), scope);
+        } elif address is None {
             self._addr = 0;
         } elif isinstance(address, JacPtr) {
             self._addr = address._addr;
@@ -576,6 +582,22 @@ def _callback_property(name: str, raw: str, spec: list[any], scope: any) -> prop
         setattr(self, raw, wrapped);
     }
     return property(fetch, put);
+}
+
+# C callbacks made for `ptr(function)`, kept alive with the process as a
+# native function's code is.
+glob _FUNCTION_CALLBACKS: dict[int, any] = {};
+
+# The C-callable address of `fn` with the C signature `spec` (["fn", params,
+# ret]): a ctypes callback over the same trampoline a callback field uses,
+# made once per function.
+def _function_address(fn: any, spec: list[any], scope: any) -> int {
+    found = _FUNCTION_CALLBACKS.get(id(fn));
+    if found is None {
+        found = (fn, _fn_ctype(spec, scope)(_callback_trampoline(spec, fn, scope)));
+        _FUNCTION_CALLBACKS[id(fn)] = found;
+    }
+    return ctypes.cast(found[1], ctypes.c_void_p).value or 0;
 }
 
 def _callback_trampoline(spec: list[any], fn: any, scope: any) -> any {

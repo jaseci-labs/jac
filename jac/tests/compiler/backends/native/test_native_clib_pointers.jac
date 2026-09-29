@@ -603,7 +603,7 @@ with entry {
 }
 ''';
 
-test "a C data pointer field takes a named function's address" {
+test "a C data pointer field takes a named function's address on every backend" {
     cc = shutil.which("cc") or shutil.which("gcc");
     if not cc {
         testskip("no C compiler available for the reference library");
@@ -621,20 +621,10 @@ test "a C data pointer field takes a named function's address" {
         assert built.returncode == 0 , built.stderr;
         program = Path(directory) / "fa.jac";
         program.write_text(FUNCTION_ADDRESS_PROGRAM.replace("FA_LIBRARY", library));
-        for memory in ("nogc", "rc", "managed") {
-            binary = str(Path(directory) / f"fa.{memory}");
-            native_build(str(program), binary, memory=memory);
-            lines = native_run(binary).splitlines();
-            for expected in [
-                "inc 42",
-                "scale 15",
-                "twice 42",
-                "end True",
-                "cast True"
-            ] {
-                assert expected in lines , f"{memory}: missing {expected!r} in {lines}";
-            }
-        }
+        lines = assert_native_identity(str(program)).splitlines();
+    }
+    for expected in ["inc 42", "scale 15", "twice 42", "end True", "cast True"] {
+        assert expected in lines , f"missing {expected!r} in {lines}";
     }
 }
 
