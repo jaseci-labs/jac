@@ -138,6 +138,8 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
              + "static override abs kw let type any str int float bool bytes list dict "
              + "set tuple ptr object len format hash iter next callable id args kwargs "
              + "module value arg own"
+             # the names the generated glue gives its own locals
+             + " receiver stack count clinic_args cls result values unpacked"
          ).split()
      );
 

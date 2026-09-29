@@ -198,10 +198,10 @@ def:priv itertools_teedataobject_bound(
         if jacpy_is_list(value) == 0 {
             bad_argument("teedataobject", argument_label("", 2), "list", value);
         }
-        values: ptr[PyObject] = value;
+        values_: ptr[PyObject] = value;
         value = clinic_args[2];
         next_: ptr[PyObject] = value;
-        return itertools_teedataobject_impl(receiver, iterable, values, next_);
+        return itertools_teedataobject_impl(receiver, iterable, values_, next_);
     } except boundary_failure {
         return NULL;
     }

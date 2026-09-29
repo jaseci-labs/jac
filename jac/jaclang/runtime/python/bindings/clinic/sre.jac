@@ -618,12 +618,12 @@ def:priv _sre_SRE_Pattern_sub_bound(
             repl: ptr[PyObject] = value;
             value = clinic_args[1];
             string: ptr[PyObject] = value;
-            count: i64 = 0;
+            count_: i64 = 0;
             if count > 2 and clinic_args[2] != NULL {
                 value = clinic_args[2];
-                count = convert_ssize(value);
+                count_ = convert_ssize(value);
             }
-            return _sre_SRE_Pattern_sub_impl(receiver, cls, repl, string, count);
+            return _sre_SRE_Pattern_sub_impl(receiver, cls, repl, string, count_);
         } finally {
             jacpy_release(cls);
         }
@@ -672,12 +672,12 @@ def:priv _sre_SRE_Pattern_subn_bound(
             repl: ptr[PyObject] = value;
             value = clinic_args[1];
             string: ptr[PyObject] = value;
-            count: i64 = 0;
+            count_: i64 = 0;
             if count > 2 and clinic_args[2] != NULL {
                 value = clinic_args[2];
-                count = convert_ssize(value);
+                count_ = convert_ssize(value);
             }
-            return _sre_SRE_Pattern_subn_impl(receiver, cls, repl, string, count);
+            return _sre_SRE_Pattern_subn_impl(receiver, cls, repl, string, count_);
         } finally {
             jacpy_release(cls);
         }

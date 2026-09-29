@@ -316,8 +316,8 @@ def:priv mmap_mmap_move_bound(
         value = clinic_args[1];
         src: i64 = convert_ssize(value);
         value = clinic_args[2];
-        count: i64 = convert_ssize(value);
-        return mmap_mmap_move_impl(receiver, dest, src, count);
+        count_: i64 = convert_ssize(value);
+        return mmap_mmap_move_impl(receiver, dest, src, count_);
     } except boundary_failure {
         return NULL;
     }
