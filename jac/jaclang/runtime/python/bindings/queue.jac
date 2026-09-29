@@ -44,7 +44,10 @@ import from jaclang.runtime.python.bindings.payload {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_NO_ARGUMENTS,
+    PARSE_NOTHING,
+    invoke,
+    invoke_vector
 }
 import from jaclang.runtime.python.modules.queue {
     queue_state,
@@ -65,7 +68,11 @@ def:priv state_of(instance: ptr[PyObject]) -> (queue_state | None) {
     return None;
 }
 
-glob:priv init_signature = CallSignature("SimpleQueue", [], 0, 0);
+# simplequeue_new: _PyArg_NoPositional() and _PyArg_NoKeywords().
+glob:priv init_signature = CallSignature(
+         "SimpleQueue", [], 0, 0, parser=PARSE_NOTHING
+     );
+
 def:priv create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
@@ -178,13 +185,28 @@ def:priv get_call(
     return invoke(get_signature, args, kwargs, get_bound, instance);
 }
 
-def:priv get_nowait_call(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
+# A defining-class method without parameters: "get_nowait() takes no
+# arguments" for any argument.
+glob:priv get_nowait_signature = CallSignature(
+         "get_nowait", [], 0, 0, parser=PARSE_NO_ARGUMENTS
+     );
+
+def:priv get_nowait_bound(args: BoundArguments) -> ptr[PyObject] {
     timeout = Py_NewRef(Py_None);
-    result = get_item(instance, 0, timeout);
+    result = get_item(args.context, 0, timeout);
     jacpy_release(timeout);
     return result;
+}
+
+def:priv get_nowait_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        get_nowait_signature, args, nargs, kwnames, get_nowait_bound, instance
+    );
 }
 
 def:priv empty_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
@@ -224,9 +246,9 @@ glob:priv queue_type = TypeDefinition(
              ),
              MethodDefinition(
                  "get_nowait",
-                 MethodCallbacks(positional=get_nowait_call),
+                 MethodCallbacks(fast_keywords=get_nowait_call),
                  "get_nowait($self, /)\n--\n\nGet an item or raise Empty.",
-                 flags=4
+                 flags=130
              ),
              MethodDefinition(
                  "empty",

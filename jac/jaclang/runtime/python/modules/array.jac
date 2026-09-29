@@ -70,7 +70,8 @@ import from jaclang.runtime.python.capi {
     text_object,
     jac_heap_size,
     repr_value,
-    object_tuple
+    object_tuple,
+    type_name
 }
 
 obj array_state {
@@ -158,8 +159,21 @@ def:pub jacpy_array_memory(state: array_state) -> i64 {
 def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
     letter = chr(state.code);
     if letter in "uw" {
-        if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
-            object_error(PyExc_TypeError, "array item must be unicode character");
+        # u_setitem / w_setitem (wchar_t is UCS-4 on every JacPython target).
+        if jacpy_is_unicode(value) == 0 {
+            object_error(
+                PyExc_TypeError,
+                f"array item must be a unicode character, not {type_name(value, True)}"
+            );
+            raise boundary_failure();
+        }
+        if jacpy_unicode_size(value) != 1 {
+            object_error(
+                PyExc_TypeError,
+                f"array item must be a unicode character, not a string of length {jacpy_unicode_size(
+                    value
+                )}"
+            );
             raise boundary_failure();
         }
         return u64(PyUnicode_ReadChar(value, 0));
@@ -661,7 +675,12 @@ def:pub jacpy_array_search(
             index += 1;
         }
         if mode == 1 or mode == 2 {
-            object_error(PyExc_ValueError, "array.index(x): x not in array");
+            object_error(
+                PyExc_ValueError,
+                "array.index(x): x not in array"
+                    if mode == 1
+                    else "array.remove(x): x not in array"
+            );
             return -1;
         }
         return found;
@@ -714,7 +733,7 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
         if chr(state.code) not in "uw" {
             object_error(
                 PyExc_ValueError,
-                "tounicode() may only be called on unicode type arrays"
+                "tounicode() may only be called on unicode type arrays ('u' or 'w')"
             );
             return NULL;
         }
@@ -732,7 +751,8 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
 def:pub jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64 {
     if chr(state.code) not in "uw" {
         object_error(
-            PyExc_ValueError, "fromunicode() may only be called on unicode type arrays"
+            PyExc_ValueError,
+            "fromunicode() may only be called on unicode type arrays ('u' or 'w')"
         );
         return -1;
     }
