@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 84 C files / 139,281 lines; 65 headers / 25,988 lines.
-#   Total: 149 files / 165,269 source lines.
+#   Excluded: 93 C files / 145,789 lines; 80 headers / 29,291 lines.
+#   Total: 173 files / 175,080 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -418,30 +418,30 @@ Modules/_math.h
 # Modules/_randommodule.c  # removed: 679 source lines
 Modules/_remote_debugging_module.c
 Modules/_scproxy.c
-Modules/_sqlite/blob.c
-Modules/_sqlite/blob.h
-Modules/_sqlite/clinic/_sqlite3.connect.c.h
-Modules/_sqlite/clinic/blob.c.h
-Modules/_sqlite/clinic/connection.c.h
-Modules/_sqlite/clinic/cursor.c.h
-Modules/_sqlite/clinic/module.c.h
-Modules/_sqlite/clinic/row.c.h
-Modules/_sqlite/connection.c
-Modules/_sqlite/connection.h
-Modules/_sqlite/cursor.c
-Modules/_sqlite/cursor.h
-Modules/_sqlite/microprotocols.c
-Modules/_sqlite/microprotocols.h
-Modules/_sqlite/module.c
-Modules/_sqlite/module.h
-Modules/_sqlite/prepare_protocol.c
-Modules/_sqlite/prepare_protocol.h
-Modules/_sqlite/row.c
-Modules/_sqlite/row.h
-Modules/_sqlite/statement.c
-Modules/_sqlite/statement.h
-Modules/_sqlite/util.c
-Modules/_sqlite/util.h
+# Modules/_sqlite/blob.c  # removed: 631 source lines
+# Modules/_sqlite/blob.h  # removed: 24 source lines
+# Modules/_sqlite/clinic/_sqlite3.connect.c.h  # removed: 31 source lines
+# Modules/_sqlite/clinic/blob.c.h  # removed: 215 source lines
+# Modules/_sqlite/clinic/connection.c.h  # removed: 1,927 source lines
+# Modules/_sqlite/clinic/cursor.c.h  # removed: 374 source lines
+# Modules/_sqlite/clinic/module.c.h  # removed: 214 source lines
+# Modules/_sqlite/clinic/row.c.h  # removed: 59 source lines
+# Modules/_sqlite/connection.c  # removed: 2,802 source lines
+# Modules/_sqlite/connection.h  # removed: 114 source lines
+# Modules/_sqlite/cursor.c  # removed: 1,391 source lines
+# Modules/_sqlite/cursor.h  # removed: 52 source lines
+# Modules/_sqlite/microprotocols.c  # removed: 143 source lines
+# Modules/_sqlite/microprotocols.h  # removed: 42 source lines
+# Modules/_sqlite/module.c  # removed: 773 source lines
+# Modules/_sqlite/module.h  # removed: 98 source lines
+# Modules/_sqlite/prepare_protocol.c  # removed: 76 source lines
+# Modules/_sqlite/prepare_protocol.h  # removed: 35 source lines
+# Modules/_sqlite/row.c  # removed: 299 source lines
+# Modules/_sqlite/row.h  # removed: 37 source lines
+# Modules/_sqlite/statement.c  # removed: 208 source lines
+# Modules/_sqlite/statement.h  # removed: 42 source lines
+# Modules/_sqlite/util.c  # removed: 185 source lines
+# Modules/_sqlite/util.h  # removed: 39 source lines
 Modules/_sre/clinic/sre.c.h
 Modules/_sre/sre.c
 Modules/_sre/sre.h
