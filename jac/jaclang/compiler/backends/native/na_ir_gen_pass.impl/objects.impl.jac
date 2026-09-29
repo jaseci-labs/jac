@@ -4776,6 +4776,9 @@ impl NaIRGenPass._build_class_layouts -> dict[str, any] {
     _tags = _model.tags if _model is not None else {};
     _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
     for arch_name in self.struct_field_indices {
+        if arch_name in self._helper_structs {
+            continue;
+        }
         _src = self._struct_source_mod.get(arch_name, "");
         if _src and _own_path and os.path.realpath(_src) != _own_path {
             continue;

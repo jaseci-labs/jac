@@ -254,3 +254,32 @@ test "a unit's layout keeps a function named like a dependency's foreign symbol"
     assert iface.layout is not None;
     assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());
 }
+
+"""Closure cells and iterator states are the backend's own helper structs,
+numbered or shaped per unit; publishing them made two units that each
+captured a differently typed variable disagree about 'JacCell.1'. A unit's
+interface lists only its Jac classes."""
+test "an interface does not publish the backend's helper structs" {
+    source = (
+        "obj Counter {\n    has n: int = 0;\n}\n\n"
+        + "def make_counter(start: int) -> Callable[[], int] {\n"
+        + "    count = start;\n"
+        + "    def step -> int {\n"
+        + "        count = count + 1;\n"
+        + "        return count;\n"
+        + "    }\n"
+        + "    return step;\n}\n\n"
+        + "def total(values: list[int]) -> int {\n"
+        + "    acc = 0;\n"
+        + "    for v in values {\n        acc += v;\n    }\n"
+        + "    return acc;\n}\n"
+    );
+    iface = _iface_of(_scratch_copy("helpers.jac", source));
+    names = sorted(iface.classes.keys());
+    assert any(name.startswith("Counter") for name in names) , names;
+    for name in names {
+        assert not name.startswith("JacCell") , names;
+        assert not name.endswith("IterState") , names;
+        assert name != "JacIter" , names;
+    }
+}

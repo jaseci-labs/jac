@@ -35,6 +35,7 @@ impl NaIRGenPass._register_iter_struct(
     st = self.llvm_module.context.get_identified_type(name);
     st.set_body(*field_types);
     self.struct_types[name] = st;
+    self._helper_structs.add(name);
     idx_map: dict[str, int] = {};
     type_map: dict[str, ir.Type] = {};
     i = 0;
