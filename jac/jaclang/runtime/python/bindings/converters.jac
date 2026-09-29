@@ -403,6 +403,22 @@ def convert_writable_buffer(
 }
 
 # Borrowed singletons, by CPython's Py_CONSTANT_* identifiers.
+"""A new reference an argument converter made (PyUnicode_FSConverter's bytes),
+released when the call's arguments go, as clinic's cleanup code does."""
+obj OwnedReference {
+    has value: ptr[PyObject] = NULL;
+
+    def close {
+        value = self.value;
+        self.value = NULL;
+        jacpy_release(value);
+    }
+
+    def drop {
+        self.close();
+    }
+}
+
 def borrowed_none -> ptr[PyObject] {
     return Py_GetConstantBorrowed(u32(0));
 }

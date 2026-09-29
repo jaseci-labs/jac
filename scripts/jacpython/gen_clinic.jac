@@ -33,6 +33,7 @@ defines (a clone kept for its docstring and PyMethodDef, like
 import argparse;
 import codecs;
 import importlib;
+import json;
 import re;
 import sys;
 import tempfile;
@@ -153,11 +154,13 @@ obj Unsupported(Exception) {}
 glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS",
          "MS_WINDOWS_DESKTOP",
-         "MS_WINDOWS_APP"
+         "MS_WINDOWS_APP",
+         "MS_WINDOWS_SYSTEM"
      };
 
 # The JacPython targets and the symbols only one of them defines; the other
-# systems' symbols (and HAVE_CWAIT, which only PC/pyconfig.h sets) are never
+# systems' symbols (and HAVE_CWAIT, HAVE_SPAWNV and HAVE_WSPAWNV, which only PC/pyconfig.h
+# sets, VxWorks' HAVE_RTPSPAWN and the AIX and Solaris HAVE_PLOCK) are never
 # defined on either.
 glob PLATFORMS: list[str] = ["darwin", "linux"],
      PLATFORM_SYMBOLS: dict[str, str] = {
@@ -172,7 +175,13 @@ glob PLATFORMS: list[str] = ["darwin", "linux"],
          "__OpenBSD__",
          "__sun",
          "__VXWORKS__",
-         "HAVE_CWAIT"
+         "__EMSCRIPTEN__",
+         "__wasi__",
+         "HAVE_CWAIT",
+         "HAVE_SPAWNV",
+         "HAVE_WSPAWNV",
+         "HAVE_RTPSPAWN",
+         "HAVE_PLOCK"
      };
 
 # The targets on which a clinic #if condition can hold, every other feature
@@ -371,6 +380,20 @@ def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
         }
     }
     return found;
+}
+
+# Whether the converted object is a new reference clinic's cleanup releases.
+def owns_reference(conv: any, jtype: str) -> bool {
+    return jtype == "ptr[PyObject]"
+        and conv.cleanup().strip() == f"Py_XDECREF({conv.parser_name});";
+}
+
+# The C a converter's own parse_arg renders, or "" when it inherits one.
+def custom_parse_source(conv: any) -> str {
+    if "parse_arg" not in type(conv).__dict__ {
+        return "";
+    }
+    return conv.parse_arg("__argument", "__argument", limited_capi=False) or "";
 }
 
 def jac_ctype(ctype: str) -> str {
@@ -715,10 +738,16 @@ obj Emitter {
         if initial {
             return (jac_ctype(conv.type), f"{custom}(value, {initial})", []);
         }
-        # Keyword options the converter keeps (confname's `table`, a C array
-        # the module defines) follow the error context.
+        # Keyword options the converter keeps (confname's `table`, the name
+        # of a module attribute) follow the error context; a custom parse
+        # that hands the converter the module gets the receiver first.
         options = "".join(f", {name}" for name in self.converter_options(conv));
-        return (jac_ctype(conv.type), f"{custom}(value, {where}{options})", []);
+        module = "receiver, " if "(module, " in custom_parse_source(conv) else "";
+        return (
+            jac_ctype(conv.type),
+            f"{custom}({module}value, {where}{options})",
+            []
+        );
     }
 
     # The C initializer macro call a by-reference converter defaults to, in
@@ -760,7 +789,13 @@ obj Emitter {
                 continue;
             }
             value = getattr(conv, name, None);
-            if isinstance(value, str) and re.fullmatch(r"[A-Za-z_]\w*", value) {
+            if not isinstance(value, str) {
+                continue;
+            }
+            # An option the parse spells as a C string literal stays one.
+            if f'"{value}"' in custom_parse_source(conv) {
+                names.append(json.dumps(value));
+            } elif re.fullmatch(r"[A-Za-z_]\w*", value) {
                 self.module_names.add(value);
                 names.append(value);
             }
@@ -951,6 +986,7 @@ obj Emitter {
         # The body that converts bound values and calls the impl.
         body: list[str] = [];
         call_args = ["receiver"];
+        owners: list[str] = [];
         if uses_class {
             finder = "defining_class_of_type"
                 if kind == "CLASS_METHOD"
@@ -1014,6 +1050,17 @@ obj Emitter {
                 body += [f"    {c}" for c in checks];
                 body.append(f"    {var} = {expr};");
                 body.append("}");
+            } elif owns_reference(p.converter, jtype) {
+                # A converter whose clinic cleanup is Py_XDECREF (the
+                # PyUnicode_FSConverter family) hands back a new reference;
+                # its owner releases it once the call's arguments go, whether
+                # the call returns or a later conversion raises.
+                owner = self.use("OwnedReference");
+                body.append(f"value = {slot};");
+                body += checks;
+                body.append(f"{var}_owner = {owner}({expr});");
+                body.append(f"{var} = {var}_owner.value;");
+                owners.append(f"{var}_owner");
             } else {
                 body.append(f"value = {slot};");
                 body += checks;
@@ -1032,6 +1079,11 @@ obj Emitter {
         }
         call = f"{impl_name}({', '.join(call_args)})";
         result = f"{wrap}({call})" if wrap else call;
+        if owners {
+            body.append(f"result = {result};");
+            body += [f"{owner}.close();" for owner in owners];
+            result = "result";
+        }
         if uses_class {
             body.append(f"result = {result};");
             body.append("jacpy_release(cls);");
