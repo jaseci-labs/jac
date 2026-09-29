@@ -106,6 +106,7 @@ impl NaIRGenPass._codegen_clib_call(
         arg_attrs[len(call_args)] = sret_aa;
         call_args.append(sret_buf);
     }
+    _materialized: list[ir.Value] = [];
     for (i, pp) in enumerate(param_plans) {
         jac_val = args[i] if i < len(args) else None;
         kind = pp["kind"];
@@ -133,7 +134,16 @@ impl NaIRGenPass._codegen_clib_call(
                     and isinstance(scalar_type.pointee, ir.FunctionType) {
                     call_args.append(self._clib_coerce_callback(_cv, scalar_type));
                 } else {
-                    call_args.append(self._coerce_type(_cv, scalar_type));
+                    _coerced = self._coerce_type(_cv, scalar_type);
+                    # A str handed to C is materialized as an owned C string
+                    # (the owner retained, or a NUL-terminated copy).
+                    if self._str_desc_ty is not None
+                        and _cv.type == self._str_desc_ty
+                        and _coerced is not _cv
+                        and self._is_owned(_coerced) {
+                        _materialized.append(_coerced);
+                    }
+                    call_args.append(_coerced);
                 }
             }
         } elif kind == "struct_mem" {
@@ -234,6 +244,7 @@ impl NaIRGenPass._codegen_clib_call(
             self._release_owned_args([_ht], op="c_temp");
         }
     }
+    self._release_owned_args(_materialized, op="c_str_arg");
     rkind = ret_plan["kind"];
     if rkind == "sret" {
         assert sret_buf is not None , "the sret buffer is allocated whenever the plan asks for one";
