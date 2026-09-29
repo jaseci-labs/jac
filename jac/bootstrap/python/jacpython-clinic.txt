@@ -41,3 +41,4 @@ binascii
 _queue
 _json
 _csv
+_functools
