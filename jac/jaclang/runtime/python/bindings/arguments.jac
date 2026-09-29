@@ -201,6 +201,12 @@ obj CallSignature {
         keyword_required: int = 0,
         parser: int = PARSE_AUTO;
 
+    # getargs' "%.200s%s" of fname: an empty name (a format without ':name')
+    # reads "function".
+    def caller -> str {
+        return f"{self.name}()" if self.name else "function";
+    }
+
     def bind(
         result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
     ) -> bool {
@@ -278,7 +284,7 @@ obj CallSignature {
                     if low == high
                     else ("at least" if count < low else "at most");
                 return invalid(
-                    f"{self.name}() takes {quantity} {bound} argument{plural(bound)} ({count} given)"
+                    f"{self.caller()} takes {quantity} {bound} argument{plural(bound)} ({count} given)"
                 );
             }
         }
@@ -303,7 +309,7 @@ obj CallSignature {
         maxargs = len(self.names);
         reqlimit = maxpos + minkw if minkw else minpos;
         minposonly = min(posonly, minpos);
-        caller = f"{self.name}()";
+        caller = self.caller();
         if nkwargs == 0 and minkw == 0 and minpos <= nargs and nargs <= maxpos {
             for i in range(nargs) {
                 result.values[i] = Py_NewRef(positional[i]);
@@ -385,7 +391,7 @@ obj CallSignature {
         remaining = len(keywords.keys);
         total = len(self.names);
         pos = self.positional_only;
-        caller = f"{self.name}()";
+        caller = self.caller();
         if nargs + remaining > total {
             return invalid(
                 f"{caller} takes at most {total} {'keyword '
@@ -506,6 +512,7 @@ def check_positional(name: str, nargs: int, low: int, high: int) -> bool {
 def unexpected_keyword(
     name: str, accepted: list[str], keywords: KeywordArguments
 ) -> str {
+    shown = f"{name}()" if name else "this function";
     for i in range(len(keywords.keys)) {
         key = keywords.keys[i];
         if jacpy_is_unicode(key) == 0 {
@@ -527,17 +534,17 @@ def unexpected_keyword(
             }
             suggestion = _Py_CalculateSuggestions(candidates, key);
             if suggestion {
-                return f"{name}() got an unexpected keyword argument '{keywords.names[
+                return f"{shown} got an unexpected keyword argument '{keywords.names[
                     i
                 ]}'. Did you mean '{text_value(suggestion)}'?";
             }
-            return f"{name}() got an unexpected keyword argument '{keywords.names[i]}'";
+            return f"{shown} got an unexpected keyword argument '{keywords.names[i]}'";
         } finally {
             jacpy_release(suggestion);
             jacpy_release(candidates);
         }
     }
-    return f"invalid keyword argument for {name}()";
+    return f"invalid keyword argument for {shown}";
 }
 
 # Run `implementation` over bound arguments. The call frame lives outside the

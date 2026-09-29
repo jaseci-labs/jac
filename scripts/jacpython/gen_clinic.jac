@@ -165,7 +165,9 @@ def posix_condition(condition: str) -> bool {
     if re.search(r"[<>=]", condition) {
         return not any(name in condition for name in WINDOWS_SYMBOLS);
     }
-    expression = re.sub(r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition);
+    expression = re.sub(
+        r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition
+    );
     expression = expression.replace("&&", " and ").replace("||", " or ");
     expression = re.sub(r"!(?!=)", " not ", expression);
     symbols = sorted(
@@ -455,8 +457,13 @@ obj Emitter {
             return ("ptr[PyObject]", "value", [f"{check}(value, {where});"]);
         }
         if kind == "int" {
+            # int(accept={str}) is clinic's "C" unit: one unicode character.
             if "str" in accept_names {
-                raise Unsupported("int(accept={str})");
+                return (
+                    "i32",
+                    f"i32({self.use('convert_unicode_char')}(value, {where}))",
+                    []
+                );
             }
             return ("i32", self.use("convert_int") + "(value)", []);
         }
