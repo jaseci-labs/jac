@@ -31,7 +31,11 @@ import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlo
 import from jaclang.compiler.passes.context { TreePass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
+import from jaclang.compiler.frontend.codeinfo {
+    BoundaryTypeInfo,
+    ClientManifest,
+    InteropManifest
+}
 import from jaclang.compiler.backends.es.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
@@ -681,7 +685,7 @@ walker EsastGenPass(TreePass) {
     ) -> es.Expression;
 
     def _extract_return_type(
-        ability_node: uni.Ability, func_name: str, manifest: any
+        ability_node: uni.Ability, func_name: str, manifest: (InteropManifest | None)
     ) -> str;
 
     def _wrap_return_with_boundary(

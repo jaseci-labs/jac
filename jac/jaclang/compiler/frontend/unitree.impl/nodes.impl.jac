@@ -2302,6 +2302,16 @@ impl FuncSignature.postinit -> None {
 }
 
 
+impl FuncSignature.get_named_parameters -> list[ParamVar] {
+    params: list[ParamVar] = [];
+    params.extend(self.posonly_params);
+    if self.params is not None {
+        params.extend(self.params);
+    }
+    params.extend(self.kwonlyargs);
+    return params;
+}
+
 impl FuncSignature.get_parameters -> list[ParamVar] {
     params: list[ParamVar] = [];
     params.extend(self.posonly_params);

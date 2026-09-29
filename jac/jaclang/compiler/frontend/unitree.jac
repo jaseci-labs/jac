@@ -1249,6 +1249,7 @@ node FuncSignature(UniNode) {
 
     def postinit -> None;
     def get_parameters -> list[ParamVar];
+    def get_named_parameters -> list[ParamVar];
 
     has is_static: bool { getter; }
     has is_in_py_class: bool { getter; }

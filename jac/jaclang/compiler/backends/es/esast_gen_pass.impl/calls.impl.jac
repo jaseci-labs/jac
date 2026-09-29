@@ -389,24 +389,20 @@ impl EsastGenPass._param_type_map_from_ability(
     if not isinstance(ability_node.signature, uni.FuncSignature) {
         return type_map;
     }
-    sig = ability_node.signature;
-    param_lists = [sig.posonly_params, sig.params or [], sig.kwonlyargs];
-    for params in param_lists {
-        for p in params {
-            if (
-                p.type_tag and p.type_tag.tag and isinstance(p.type_tag.tag, uni.Name)
-            ) {
-                type_map[p.name.sym_name] = p.type_tag.tag.value;
-            }
+    for p in ability_node.signature.get_named_parameters() {
+        type_tag = p.type_tag;
+        tag = type_tag.tag if type_tag is not None else None;
+        if isinstance(tag, uni.Name) {
+            type_map[p.name.sym_name] = tag.value;
         }
     }
     return type_map;
 }
 
 impl EsastGenPass._extract_return_type(
-    ability_node: uni.Ability, func_name: str, manifest: any
+    ability_node: uni.Ability, func_name: str, manifest: (InteropManifest | None)
 ) -> str {
-    if manifest {
+    if manifest is not None {
         for b in manifest.server_exports_to_client {
             if b.name == func_name {
                 return b.ret_type;
@@ -931,20 +927,15 @@ impl EsastGenPass._warn_rpc_callable_params(
     if not isinstance(ability_node.signature, uni.FuncSignature) {
         return;
     }
-    import re;
     import from jaclang.compiler.frontend.diagnostics { W6005 }
-    _sig = ability_node.signature;
-    for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
-        for _p in _plist {
-            if (
-                _p.type_tag is not None
-                and _p.type_tag.tag is not None
-                and re.search(r"\bCallable\b", unparse_node(_p.type_tag.tag))
-            ) {
-                self.ctx.emit(
-                    W6005, node_override=at, func=func_name, param=_p.name.sym_name
-                );
-            }
+    for param in ability_node.signature.get_named_parameters() {
+        type_tag = param.type_tag;
+        if type_tag is not None
+            and type_tag.tag is not None
+            and "Callable" in js_identifiers(unparse_node(type_tag.tag)) {
+            self.ctx.emit(
+                W6005, node_override=at, func=func_name, param=param.name.sym_name
+            );
         }
     }
 }
