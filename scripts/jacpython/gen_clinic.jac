@@ -148,30 +148,35 @@ def jac_string(text: str) -> str {
 
 obj Unsupported(Exception) {}
 
-# Preprocessor symbols only Windows defines. JacPython builds for Linux and
-# macOS, so a clinic function whose #if needs one is not generated.
+# Preprocessor symbols a JacPython build never defines: Windows's (it builds
+# for Linux and macOS) and the debug build's (it is a release build). A
+# clinic function whose #if needs one is not generated.
 glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS",
          "MS_WINDOWS_DESKTOP",
          "MS_WINDOWS_APP"
-     };
+     },
+     DEBUG_SYMBOLS: set[str] = {"Py_DEBUG"};
 
 def:priv tested_symbol(hit: any) -> str {
     return hit.group(1) or hit.group(2);
 }
 
-# Whether a clinic #if condition can hold on a POSIX target: Windows symbols
-# are undefined, and the condition holds for some choice of every other
+# Whether a clinic #if condition can hold on a POSIX release build: the
+# `undefined` symbols (Windows's and Py_DEBUG) are undefined, and the
+# condition holds for some choice of every other
 # feature test (a function under !defined(HAVE_BROKEN_POLL) exists where poll
 # works), since the module binding decides what a platform actually offers.
-def posix_condition(condition: str) -> bool {
+def posix_condition(
+    condition: str, undefined: set[str] = WINDOWS_SYMBOLS | DEBUG_SYMBOLS
+) -> bool {
     if not condition {
         return True;
     }
     # A comparison (SIZEOF_WCHAR_T == 4) is not evaluated; only a Windows
     # symbol in it decides.
     if re.search(r"[<>=]", condition) {
-        return not any(name in condition for name in WINDOWS_SYMBOLS);
+        return not any(name in condition for name in undefined);
     }
     expression = re.sub(
         r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition
@@ -185,7 +190,7 @@ def posix_condition(condition: str) -> bool {
     features = [
         name
         for name in symbols
-        if name not in WINDOWS_SYMBOLS
+        if name not in undefined
     ];
     if len(features) > 12 {
         return True;
@@ -349,6 +354,7 @@ obj Emitter {
         qualified: bool = False,
         skipped: list[str] = [],
         windows: list[str] = [],
+        debug: list[str] = [],
         class_docs: dict[str, str] = {},
         function_docs: dict[str, str] = {},
         source_text: str = "";
@@ -1043,6 +1049,10 @@ obj Emitter {
             head += ["", "Compiled only on Windows, so absent here:"];
             head += [f"    {item}" for item in self.windows];
         }
+        if self.debug {
+            head += ["", "Compiled only in debug (Py_DEBUG) builds, so absent here:"];
+            head += [f"    {item}" for item in self.debug];
+        }
         head.append('"""');
         imports = [
             f"import from jaclang.runtime.python.cpython_api {{ {', '.join(
@@ -1119,8 +1129,13 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];
-        if windows_only(CONDITIONS.get(id(f), "")) {
-            emitter.windows.append(f.full_name);
+        condition = CONDITIONS.get(id(f), "");
+        if windows_only(condition) {
+            if posix_condition(condition, WINDOWS_SYMBOLS) {
+                emitter.debug.append(f.full_name);
+            } else {
+                emitter.windows.append(f.full_name);
+            }
             continue;
         }
         try {
