@@ -2603,6 +2603,7 @@ walker NaIRGenPass(CompilerPass) {
         kv: uni.MatchKVPair, helpers: dict[str, any]
     ) -> (ir.Value | None);
 
+    def _match_arch_name(pat: uni.MatchArch) -> (str | None);
     def _match_arch_fields(
         pat: uni.MatchArch, arch_name: str
     ) -> (list[tuple[str, uni.MatchPattern]] | None);

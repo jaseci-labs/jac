@@ -1282,6 +1282,14 @@ impl NaIRGenPass._match_map_cond(
     return self.builder.load(res, name="match.map.ok");
 }
 
+impl NaIRGenPass._match_arch_name(pat: uni.MatchArch) -> (str | None) {
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    pattern_type = pat.name.type if isinstance(pat.name, uni.Expr) else None;
+    return self._arch_ref_key(pat.name)
+        or class_type_native_name(pattern_type)
+        or self._get_name(pat.name);
+}
+
 impl NaIRGenPass._match_arch_fields(
     pat: uni.MatchArch, arch_name: str
 ) -> (list[tuple[str, uni.MatchPattern]] | None) {
@@ -1312,7 +1320,7 @@ impl NaIRGenPass._match_arch_cond(
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
-    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
+    arch_name = self._match_arch_name(pat);
     if arch_name is None or arch_name not in self.struct_types {
         self.emit(
             E5092,
@@ -1690,7 +1698,7 @@ impl NaIRGenPass._bind_match_map(
 impl NaIRGenPass._bind_match_arch(
     pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
-    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
+    arch_name = self._match_arch_name(pat);
     if arch_name is None or arch_name not in self.struct_types {
         return;
     }

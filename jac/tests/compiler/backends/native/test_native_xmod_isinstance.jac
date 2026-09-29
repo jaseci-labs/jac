@@ -77,6 +77,13 @@ test "isinstance against a module-qualified imported class" {
     assert got == [1, 1, 0] , f"lib.Circle/lib.Square must match lib.Shape, got {got}";
 }
 
+test "class patterns match archetypes an imported module defines" {
+    (eng, _) = compile_native("xmod_match_main.jac");
+    f = get_func(eng, "shape_kind", ctypes.c_int64, ctypes.c_int64);
+    got = [f(k) for k in range(3)];
+    assert got == [1, 2, 0] , f"imported class patterns matched {got}";
+}
+
 """A subclass defined in a module the checking module never imports.
 
 The checking module's candidate vtables and class index only list the classes
