@@ -61,6 +61,8 @@ import from jaclang.runtime.python.bindings.bz2 { PyInit__bz2 }
 import from jaclang.runtime.python.bindings.lzma { PyInit__lzma }
 import from jaclang.runtime.python.bindings.zstd { PyInit__zstd }
 import from jaclang.runtime.python.bindings.sqlite3 { PyInit__sqlite3 }
+import from jaclang.runtime.python.bindings.pyexpat { PyInit_pyexpat }
+import from jaclang.runtime.python.bindings.elementtree { PyInit__elementtree }
 import from jaclang.runtime.python.bindings.errno { PyInit_errno }
 import from jaclang.runtime.python.bindings.syslog { PyInit_syslog }
 import from jaclang.runtime.python.bindings.resource { PyInit_resource }

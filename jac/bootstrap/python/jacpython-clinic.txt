@@ -36,3 +36,5 @@ _locale
 _lzma
 _zoneinfo
 _sqlite3
+pyexpat
+_elementtree

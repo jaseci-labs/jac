@@ -143,6 +143,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_unicode,
     jacpy_memory_copy,
     jacpy_release,
+    jacpy_is_type,
     jacpy_type_check,
     PyBool_Type,
     PyByteArray_Type,
@@ -169,7 +170,6 @@ import from jaclang.runtime.python.bindings.module {
 }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_allocate,
-    jacpy_binding_matches,
     jacpy_binding_owner,
     jacpy_binding_record
 }
@@ -1997,16 +1997,32 @@ def clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject] {
     return state.PrepareProtocolType;
 }
 
+# clinic_state(): the state of the receiver's module; in Row's __new__ the
+# receiver is the type.
+def:priv clinic_state(receiver: ptr[PyObject]) -> SqliteState {
+    state = state_by_type(
+        receiver if jacpy_is_type(receiver) != 0 else Py_TYPE(receiver)
+    );
+    if state is None {
+        raise boundary_failure();
+    }
+    return state;
+}
+
 # object(subclass_of='clinic_state()->ConnectionType').
-def subclass_clinic_state_ConnectionType(value: ptr[PyObject], fname: str, label: str) {
-    if jacpy_binding_matches(value, Connection_token.handle) == 0 {
+def subclass_clinic_state_ConnectionType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) {
+    if jacpy_type_check(value, clinic_state(receiver).ConnectionType) == 0 {
         bad_argument(fname, label, "sqlite3.Connection", value);
     }
 }
 
 # object(subclass_of='clinic_state()->CursorType').
-def subclass_clinic_state_CursorType(value: ptr[PyObject], fname: str, label: str) {
-    if jacpy_binding_matches(value, Cursor_token.handle) == 0 {
+def subclass_clinic_state_CursorType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) {
+    if jacpy_type_check(value, clinic_state(receiver).CursorType) == 0 {
         bad_argument(fname, label, "sqlite3.Cursor", value);
     }
 }

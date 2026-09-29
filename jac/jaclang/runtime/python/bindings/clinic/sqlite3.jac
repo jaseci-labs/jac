@@ -869,7 +869,9 @@ glob:priv pysqlite_connection_backup_signature = CallSignature(
 def:priv pysqlite_connection_backup_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    subclass_clinic_state_ConnectionType(value, "backup", argument_label("target", 1));
+    subclass_clinic_state_ConnectionType(
+        receiver, value, "backup", argument_label("target", 1)
+    );
     target: ptr[PyObject] = value;
     pages: i32 = -1;
     if args.values[1] != NULL {
@@ -1115,7 +1117,9 @@ glob:priv pysqlite_cursor_init_signature = CallSignature(
 def:priv pysqlite_cursor_init_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    subclass_clinic_state_ConnectionType(value, "Cursor", argument_label("", 1));
+    subclass_clinic_state_ConnectionType(
+        receiver, value, "Cursor", argument_label("", 1)
+    );
     connection: ptr[PyObject] = value;
     return return_int(pysqlite_cursor_init_impl(receiver, connection));
 }
@@ -1459,7 +1463,7 @@ glob:priv pysqlite_row_new_signature = CallSignature(
 def:priv pysqlite_row_new_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
-    subclass_clinic_state_CursorType(value, "Row", argument_label("", 1));
+    subclass_clinic_state_CursorType(receiver, value, "Row", argument_label("", 1));
     cursor: ptr[PyObject] = value;
     value = args.values[1];
     if jacpy_is_tuple(value) == 0 {
