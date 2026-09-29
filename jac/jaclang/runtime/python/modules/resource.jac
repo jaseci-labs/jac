@@ -22,11 +22,13 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_Index,
     PyObject,
     PySequence_Tuple,
-    PyStructSequence_New,
-    PyStructSequence_SetItem,
     PySys_AuditTuple,
     PyTuple_GetItem,
     PyTuple_Size
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_New,
+    PyStructSequence_SetItem
 }
 import from jaclang.runtime.python.capi { object_error, object_tuple }
 import from jaclang.runtime.python.bindings.converters { borrowed_none }
