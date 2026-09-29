@@ -7,7 +7,7 @@ are declared.
 import from jaclang.runtime.python.modules.stat_records { _Py_stat_struct }
 import from jaclang.runtime.python.modules.time_records { timespec, timeval, tm }
 import from c {
-    obj PyObject;  obj PyThreadState;  obj PyInterpreterState;  obj PyUnicodeWriter;  obj PyModuleDef;  obj PyType_Spec;  obj PyCompilerFlags;  obj PyBytesWriter;  obj PyMemberDef {
+    obj PyObject;  obj PyThreadState;  obj PyInterpreterState;  obj PyUnicodeWriter;  obj PyModuleDef;  obj PyType_Spec;  obj PyCompilerFlags;  obj PyBytesWriter;  obj PyMutex;  obj PyMemberDef {
         has name: ptr[u8] = ptr[u8](),
             type_: i32 = 0,
             offset: i64 = 0,
@@ -121,7 +121,9 @@ import from c {
         mp: ptr[PyObject], other: ptr[PyObject]
     ) -> i32;  def PyErr_CheckSignals -> i32;  def PyErr_Clear;  def PyErr_ExceptionMatches(
         arg0: ptr[PyObject]
-    ) -> i32;  def PyErr_FormatUnraisable(arg0: str, *args: any);  def PyErr_GetRaisedException -> ptr[
+    ) -> i32;  def PyErr_Format(
+        exception: ptr[PyObject], format_: str, *args: any
+    ) -> ptr[PyObject];  def PyErr_FormatUnraisable(arg0: str, *args: any);  def PyErr_GetRaisedException -> ptr[
         PyObject
     ];  def PyErr_NoMemory -> ptr[PyObject];  def PyErr_Occurred -> ptr[PyObject];  def PyErr_SetFromErrno(
         arg0: ptr[PyObject]
@@ -176,25 +178,25 @@ import from c {
         arg0: ptr[PyObject]
     ) -> i64;  def PyLong_AsNativeBytes(
         v: ptr[PyObject], buffer: ptr, n_bytes: i64, flags: i32
-    ) -> i64;  def PyLong_AsSsize_t(arg0: ptr[PyObject]) -> i64;  def PyLong_AsUnsignedLong(
+    ) -> i64;  def PyLong_AsSize_t(arg0: ptr[PyObject]) -> u64;  def PyLong_AsSsize_t(
         arg0: ptr[PyObject]
-    ) -> u64;  def PyLong_AsUnsignedLongLong(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongLongMask(
+    ) -> i64;  def PyLong_AsUnsignedLong(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongLong(
         arg0: ptr[PyObject]
-    ) -> u64;  def PyLong_AsUnsignedLongMask(arg0: ptr[PyObject]) -> u64;  def PyLong_AsVoidPtr(
+    ) -> u64;  def PyLong_AsUnsignedLongLongMask(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongMask(
         arg0: ptr[PyObject]
-    ) -> ptr;  def PyLong_FromDouble(arg0: f64) -> ptr[PyObject];  def PyLong_FromLong(
+    ) -> u64;  def PyLong_AsVoidPtr(arg0: ptr[PyObject]) -> ptr;  def PyLong_FromDouble(
+        arg0: f64
+    ) -> ptr[PyObject];  def PyLong_FromLong(arg0: i64) -> ptr[PyObject];  def PyLong_FromLongLong(
         arg0: i64
-    ) -> ptr[PyObject];  def PyLong_FromLongLong(arg0: i64) -> ptr[PyObject];  def PyLong_FromSize_t(
+    ) -> ptr[PyObject];  def PyLong_FromSize_t(arg0: u64) -> ptr[PyObject];  def PyLong_FromSsize_t(
+        arg0: i64
+    ) -> ptr[PyObject];  def PyLong_FromUnsignedLong(arg0: u64) -> ptr[PyObject];  def PyLong_FromUnsignedLongLong(
         arg0: u64
-    ) -> ptr[PyObject];  def PyLong_FromSsize_t(arg0: i64) -> ptr[PyObject];  def PyLong_FromUnsignedLong(
-        arg0: u64
-    ) -> ptr[PyObject];  def PyLong_FromUnsignedLongLong(arg0: u64) -> ptr[PyObject];  def PyLong_FromVoidPtr(
-        arg0: ptr
-    ) -> ptr[PyObject];  def PyLong_IsNegative(obj_: ptr[PyObject]) -> i32;  def PyMapping_Items(
-        o: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyMem_Calloc(nelem: u64, elsize: u64) -> ptr;  def PyMem_Free(
-        ptr_: ptr
-    );  def PyMem_Malloc(size: u64) -> ptr;  def PyMem_RawCalloc(
+    ) -> ptr[PyObject];  def PyLong_FromVoidPtr(arg0: ptr) -> ptr[PyObject];  def PyLong_IsNegative(
+        obj_: ptr[PyObject]
+    ) -> i32;  def PyMapping_Items(o: ptr[PyObject]) -> ptr[PyObject];  def PyMem_Calloc(
+        nelem: u64, elsize: u64
+    ) -> ptr;  def PyMem_Free(ptr_: ptr);  def PyMem_Malloc(size: u64) -> ptr;  def PyMem_RawCalloc(
         nelem: u64, elsize: u64
     ) -> ptr;  def PyMem_RawFree(ptr_: ptr);  def PyMem_RawMalloc(size: u64) -> ptr;  def PyMem_RawRealloc(
         ptr_: ptr, new_size: u64
@@ -212,7 +214,9 @@ import from c {
         arg0: ptr[PyObject], arg1: str, arg2: str
     ) -> i32;  def PyModule_GetDict(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyModule_GetNameObject(
         arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyNumber_Absolute(o: ptr[PyObject]) -> ptr[PyObject];  def PyNumber_Add(
+    ) -> ptr[PyObject];  def PyMutex_Lock(m: ptr[PyMutex]);  def PyMutex_Unlock(
+        m: ptr[PyMutex]
+    );  def PyNumber_Absolute(o: ptr[PyObject]) -> ptr[PyObject];  def PyNumber_Add(
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyNumber_And(
         o1: ptr[PyObject], o2: ptr[PyObject]
@@ -308,6 +312,8 @@ import from c {
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: i32
     ) -> i32;  def PyObject_SetAttr(
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: ptr[PyObject]
+    ) -> i32;  def PyObject_SetAttrString(
+        arg0: ptr[PyObject], arg1: str, arg2: ptr[PyObject]
     ) -> i32;  def PyObject_SetItem(
         o: ptr[PyObject], key: ptr[PyObject], v: ptr[PyObject]
     ) -> i32;  def PyObject_Str(arg0: ptr[PyObject]) -> ptr[PyObject];  def PySequence_Check(
@@ -362,13 +368,15 @@ import from c {
         arg0: i64, *args: any
     ) -> ptr[PyObject];  def PyTuple_SetItem(
         arg0: ptr[PyObject], arg1: i64, arg2: ptr[PyObject]
-    ) -> i32;  def PyTuple_Size(arg0: ptr[PyObject]) -> i64;  def PyType_GetDict(
+    ) -> i32;  def PyTuple_Size(arg0: ptr[PyObject]) -> i64;  def PyType_Freeze(
+        type_: ptr[PyObject]
+    ) -> i32;  def PyType_GetDict(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyType_GetFlags(
         arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyType_GetFlags(arg0: ptr[PyObject]) -> u64;  def PyType_GetModule(
-        arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyType_GetSlot(arg0: ptr[PyObject], arg1: i32) -> ptr;  def PyType_IsSubtype(
-        arg0: ptr[PyObject], arg1: ptr[PyObject]
-    ) -> i32;  def PyUnicodeWriter_Create(length: i64) -> ptr[PyUnicodeWriter];  def PyUnicodeWriter_Discard(
+    ) -> u64;  def PyType_GetModule(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyType_GetSlot(
+        arg0: ptr[PyObject], arg1: i32
+    ) -> ptr;  def PyType_IsSubtype(arg0: ptr[PyObject], arg1: ptr[PyObject]) -> i32;  def PyUnicodeWriter_Create(
+        length: i64
+    ) -> ptr[PyUnicodeWriter];  def PyUnicodeWriter_Discard(
         writer: ptr[PyUnicodeWriter]
     );  def PyUnicodeWriter_Finish(writer: ptr[PyUnicodeWriter]) -> ptr[PyObject];  def PyUnicodeWriter_WriteASCII(
         writer: ptr[PyUnicodeWriter], str_: str, size: i64
@@ -448,7 +456,7 @@ import from c {
         ob: ptr[PyObject], callback: ptr[PyObject]
     ) -> ptr[PyObject];  def Py_BuildValue(arg0: str, *args: any) -> ptr[PyObject];  def Py_GenericAlias(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
-    ) -> ptr[PyObject];  def Py_GetConstantBorrowed(
+    ) -> ptr[PyObject];  def Py_GetConstant(constant_id: u32) -> ptr[PyObject];  def Py_GetConstantBorrowed(
         constant_id: u32
     ) -> ptr[PyObject];  def Py_LeaveRecursiveCall;  def Py_MakePendingCalls -> i32;  def Py_NewRef(
         obj_: ptr[PyObject]
