@@ -1835,6 +1835,30 @@ impl NaIRGenPass._emit_nogc_field_drops(
         if fname in borrow_fields {
             continue;
         }
+        if fname == EXC_MESSAGE_FIELD {
+            _msg_idx = field_indices.get(fname, -1);
+            if _msg_idx < 0 {
+                continue;
+            }
+            _msg = b.load(
+                b.gep(
+                    _dobj,
+                    [ir.Constant(i32, 0), ir.Constant(i32, _msg_idx)],
+                    name="drop.exc.msg.p"
+                ),
+                name="drop.exc.msg"
+            );
+            if self._str_desc_ty is not None and _msg.type == self._str_desc_ty {
+                _msg = b.extract_value(_msg, 0, name="drop.exc.msg.data");
+            }
+            if isinstance(_msg.type, ir.PointerType) {
+                b.call(
+                    self._get_or_declare_extern("free", ir.VoidType(), [i8p]),
+                    [b.bitcast(_msg, i8p, name="drop.exc.msg.i8")]
+                );
+            }
+            continue;
+        }
         if fname in self.struct_field_inline.get(type_name, set()) {
             _in_idx = field_indices.get(fname, -1);
             _in_name = getattr(ftype, "name", "") or "";

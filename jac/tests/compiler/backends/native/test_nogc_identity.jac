@@ -108,6 +108,12 @@ test "rebound and freshly built string locals leave nothing behind" {
     _assert_nogc_leak_free("rebind_leaks.jac");
 }
 
+test "caught exceptions are freed when their handler ends" {
+    out = assert_native_identity(_fixture("caught_exception_leaks.jac"));
+    assert out.strip() == "1770" , out;
+    _assert_nogc_leak_free("caught_exception_leaks.jac");
+}
+
 test "an own field held by pointer drops the object each store replaces" {
     out = assert_native_identity(_fixture("pointer_field_move.jac"));
     assert out.splitlines()
