@@ -169,7 +169,7 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         }
         if pinned is not None and isinstance(call, CgNode) and call.cls == 'Call' {
             spec = c_type_spec(pinned.type, None);
-            call.items('args').append(self.const_of(json.dumps(spec)));
+            call.push('args', self.const_of(json.dumps(spec)));
         }
         return;
     }
