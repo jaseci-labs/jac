@@ -13,7 +13,8 @@ import from jaclang.compiler.c_interop {
     is_builtin_pin_call,
     is_pinned_type,
     is_ptr_type,
-    is_ptr_view_type
+    is_ptr_view_type,
+    named_function
 }
 
 impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
@@ -932,7 +933,7 @@ impl NaIRGenPass._c_const_init(
         if isinstance(expr, uni.Name) and expr.sym_name in self._clib_exports {
             return self._clib_exports[expr.sym_name].bitcast(llt) as ir.Constant;
         }
-        if target.function_type != llt.pointee {
+        if not self._c_abi_same(target.function_type, llt.pointee) {
             target = self._emit_clib_c_trampoline(target, llt);
         }
         return target.bitcast(llt) as ir.Constant;
@@ -941,6 +942,33 @@ impl NaIRGenPass._c_const_init(
         return self._c_const_address(expr);
     }
     return self._c_const_scalar(expr, llt);
+}
+
+# Whether C calls a function of type `have` exactly as one of type `want`: the
+# same parameters and result, where a pointer and a 64-bit integer (Jac's
+# representation of `ptr[T]`) are passed alike, so no trampoline is needed and
+# a slot holds the function's own address, as C code comparing slots expects.
+impl NaIRGenPass._c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool {
+    if have == want {
+        return True;
+    }
+    if have.var_arg != want.var_arg or len(have.args) != len(want.args) {
+        return False;
+    }
+    pairs = list(zip(have.args, want.args));
+    pairs.append((have.return_type, want.return_type));
+    word = ir.IntType(64);
+    for (a, b) in pairs {
+        if a == b {
+            continue;
+        }
+        pointer_like = (isinstance(a, ir.PointerType) or a == word)
+            and (isinstance(b, ir.PointerType) or b == word);
+        if not pointer_like {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl NaIRGenPass._c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None) {
@@ -1041,10 +1069,7 @@ impl NaIRGenPass._c_function_address(
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
-    decl = expr.sym.decl
-        if isinstance(expr, uni.Name) and expr.sym is not None
-        else None;
-    if decl is None or not isinstance(decl.name_of, uni.Ability) {
+    if named_function(expr) is None {
         return (False, None);
     }
     i64 = ir.IntType(64);

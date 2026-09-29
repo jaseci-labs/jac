@@ -646,3 +646,41 @@ with entry {
     }
     assert "erased 7 12 -9" in out.splitlines() , out;
 }
+
+test "callback fields and ptr(f) take functions another module defines" {
+    decls = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpErased { has name: ptr[u8], fn: ptr; }
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr;
+    }
+    def cp_erased_call(e: ptr[CpErased], a: i64, b: i64) -> i64;
+    def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;
+}
+def triple(v: i32) -> i32 {
+    return v * i32(3);
+}
+def difference(a: i64, b: i64) -> i64 {
+    return a - b;
+}
+''';
+    user = '''import from cdecls {
+    CpErased, CpRecipe, cp_erased_call, cp_recipe_run, difference, triple
+}
+import from "CLIB_POINTERS_LIBRARY" {
+    glob user_entry: CpErased = CpErased(name=ptr[u8]("difference"), fn=ptr(difference)),
+         user_recipe: CpRecipe = CpRecipe(count=i32(1), scale=triple);
+}
+with entry {
+    print(
+        "imported",
+        cp_erased_call(addressof(user_entry), i64(10), i64(4)),
+        cp_recipe_run(addressof(user_recipe), i32(5))
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, decls, "cdecls.jac");
+        out = assert_native_identity(stage_source(directory, user, "user.jac"));
+    }
+    assert "imported 6 16" in out.splitlines() , out;
+}
