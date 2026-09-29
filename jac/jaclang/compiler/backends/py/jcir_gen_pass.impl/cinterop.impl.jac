@@ -435,10 +435,10 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
 
 impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
     import from jaclang.compiler.c_interop {
-        clib_global_of_symbol,
+        clib_global_of_name,
         is_builtin_addressof_call
     }
-    if clib_global_of_symbol(nd.sym) is None
+    if clib_global_of_name(nd) is None
         or nd.find_parent_of_type(Import) is not None {
         return False;
     }

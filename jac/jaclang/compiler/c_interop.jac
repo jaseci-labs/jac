@@ -355,6 +355,50 @@ def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
     return clib_global_assignment(resolved_decl_of(sym)) if sym is not None else None;
 }
 
+"""The C data global the name `nd` denotes. Assigning to a module-level global
+inside a function rebinds it (Jac binds the name to the global, not a new
+local), so a name a function binds only by assigning to it, which the module
+also imports as C data from another module, is that C data: symbol
+resolution makes the assigned name a function local, since which module an
+imported name comes from, and so whether it is C data, is known only once the
+imports are resolved."""
+def clib_global_of_name(nd: (UniNode | None)) -> (Assignment | None) {
+    import from jaclang.compiler.frontend.unitree {
+        Ability,
+        ImplDef,
+        LambdaExpr,
+        Module,
+        Test
+    }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    sym = nd.sym;
+    found = clib_global_of_symbol(sym);
+    if found is not None or sym.imported {
+        return found;
+    }
+    if not isinstance(sym.parent_tab, (Ability, ImplDef, Test, LambdaExpr)) {
+        return None;
+    }
+    decl = sym.decl;
+    if decl is None
+        or not isinstance(decl.parent, Assignment)
+        or decl.parent.type_tag is not None
+        or any(
+            not isinstance(defn.parent, Assignment) or defn.parent.type_tag is not None
+            for defn in sym.defn
+        ) {
+        return None;
+    }
+    module = nd.find_parent_of_type(Module);
+    outer = module.names_in_scope.get(nd.sym_name) if module is not None else None;
+    if outer is None or not outer.imported {
+        return None;
+    }
+    return clib_global_of_symbol(outer);
+}
+
 def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     import from jaclang.compiler.frontend.unitree {
         FString,
