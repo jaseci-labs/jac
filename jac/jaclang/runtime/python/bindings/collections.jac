@@ -80,10 +80,12 @@ import from jaclang.runtime.python.bindings.references { ReferenceState, owned_t
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
+    PARSE_FORMAT,
     invoke,
     index_value,
     invoke_vector
 }
+import from jaclang.runtime.python.bindings.converters { bad_argument }
 import from jaclang.runtime.python.modules.collections {
     deque_state,
     deque_cursor,
@@ -629,8 +631,10 @@ def:priv iterator_hint(
     );
 }
 
+# dequeiter_new: PyArg_ParseTuple(args, "O!|n", ...), without a function
+# name; keyword arguments are ignored.
 glob:priv iterator_signature = CallSignature(
-         "deque iterator", ["deque", "index"], 1, 2, 2
+         "", ["deque", "index"], 1, 2, 2, parser=PARSE_FORMAT
      );
 
 def:priv iterator_create_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -639,8 +643,7 @@ def:priv iterator_create_bound(args: BoundArguments) -> ptr[PyObject] {
         return NULL;
     }
     if jacpy_type_check(args.values[0], jacpy_binding_state_get(module, 0)) == 0 {
-        object_error(PyExc_TypeError, "argument must be a deque");
-        return NULL;
+        bad_argument("", "argument 1", "collections.deque", args.values[0]);
     }
     advance: i64 = 0;
     if args.values[1] != 0 {
@@ -661,7 +664,7 @@ def:priv iterator_create_bound(args: BoundArguments) -> ptr[PyObject] {
 def:priv iterator_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(iterator_signature, args, kwargs, iterator_create_bound, type);
+    return invoke(iterator_signature, args, NULL, iterator_create_bound, type);
 }
 
 def:priv iterator_reduce(

@@ -86,9 +86,14 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
     invoke,
+    PARSE_FORMAT,
+    PARSE_KEYWORDS,
     index_value,
-    character_value,
     invoke_vector
+}
+import from jaclang.runtime.python.bindings.converters {
+    bad_argument,
+    convert_unicode_char
 }
 import from jaclang.runtime.python.bindings.buffer {
     BufferArgument,
@@ -235,16 +240,13 @@ def:priv append_buffer(state: array_state, value: ptr[PyObject]) -> i64 {
     return jacpy_array_frombytes(state, buffer.address(), buffer.size());
 }
 
+# array_new: PyArg_ParseTuple(args, "C|O:array", ...).
 glob:priv array_signature = CallSignature(
-         "array", ["typecode", "initializer"], 1, 2, 2
+         "array", ["typecode", "initializer"], 1, 2, 2, parser=PARSE_FORMAT
      );
 
 def:priv create_bound(args: BoundArguments) -> ptr[PyObject] {
-    character = character_value(args.values[0], "array");
-    if character is None {
-        return NULL;
-    }
-    code: i64 = character;
+    code = i64(convert_unicode_char(args.values[0], "array", "argument 1", False));
     initial = args.values[1];
     audit = owned_tuple(
         [
@@ -557,7 +559,16 @@ def:priv contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
 glob:priv insert_signature = CallSignature("insert", ["index", "value"], 2, 2, 2),
      pop_signature = CallSignature("pop", ["index"], 0, 1, 1),
      index_signature = CallSignature("index", ["value", "start", "stop"], 1, 3, 3),
-     fromfile_signature = CallSignature("fromfile", ["file", "n"], 2, 2, 2),
+     # The defining-class methods (METH_METHOD|METH_FASTCALL|METH_KEYWORDS)
+     # bind through _PyArg_UnpackKeywords.
+     fromfile_signature = CallSignature(
+         "fromfile", ["f", "n"], 2, 2, 2, parser=PARSE_KEYWORDS
+     ),
+     tofile_signature = CallSignature("tofile", ["f"], 1, 1, 1, parser=PARSE_KEYWORDS),
+     extend_signature = CallSignature("extend", ["bb"], 1, 1, 1, parser=PARSE_KEYWORDS),
+     reduce_signature = CallSignature(
+         "__reduce_ex__", ["value"], 1, 1, 1, parser=PARSE_KEYWORDS
+     ),
      reconstruct_signature = CallSignature(
          "_array_reconstructor", ["type", "typecode", "mformat", "items"], 4, 4, 4
      );
@@ -642,8 +653,60 @@ def:priv fromfile_bound(args: BoundArguments) -> ptr[PyObject] {
     return done(jacpy_array_fromfile(state.native, args.values[0], count));
 }
 
-def:priv fromfile(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(fromfile_signature, args, NULL, fromfile_bound, instance);
+def:priv fromfile(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        fromfile_signature, args, nargs, kwnames, fromfile_bound, instance
+    );
+}
+
+def:priv tofile_bound(args: BoundArguments) -> ptr[PyObject] {
+    return tofile(args.context, args.values[0]);
+}
+
+def:priv tofile_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        tofile_signature, args, nargs, kwnames, tofile_bound, instance
+    );
+}
+
+def:priv extend_bound(args: BoundArguments) -> ptr[PyObject] {
+    return extend(args.context, args.values[0]);
+}
+
+def:priv extend_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        extend_signature, args, nargs, kwnames, extend_bound, instance
+    );
+}
+
+def:priv reduce_bound(args: BoundArguments) -> ptr[PyObject] {
+    return reduce(args.context, args.values[0]);
+}
+
+def:priv reduce_call(
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        reduce_signature, args, nargs, kwnames, reduce_bound, instance
+    );
 }
 
 def:priv frombytes(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
@@ -664,8 +727,11 @@ def:priv fromlist(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject
 
 def:priv fromunicode(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(value) == 0 {
-        object_error(PyExc_TypeError, "fromunicode() argument must be str");
-        return NULL;
+        try {
+            bad_argument("fromunicode", "argument", "str", value);
+        } except boundary_failure {
+            return NULL;
+        }
     }
     state = state_for(instance);
     return done(jacpy_array_fromunicode(state.native, value))
@@ -793,11 +859,9 @@ def:priv reduce(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] 
 }
 
 def:priv reconstruct_bound(args: BoundArguments) -> ptr[PyObject] {
-    character = character_value(args.values[1], "_array_reconstructor");
-    if character is None {
-        return NULL;
-    }
-    code: i64 = character;
+    code = i64(
+        convert_unicode_char(args.values[1], "_array_reconstructor", "argument 2")
+    );
     format = PyLong_AsInt(args.values[2]);
     if jacpy_error_pending() != 0 {
         return NULL;
@@ -1033,13 +1097,16 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "",
          [
              MethodDefinition(
-                 "fromfile", MethodCallbacks(positional=fromfile), "", flags=1
+                 "fromfile", MethodCallbacks(fast_keywords=fromfile), "", flags=130
              ),
              MethodDefinition(
-                 "tofile", MethodCallbacks(positional=tofile), "", flags=8
+                 "tofile", MethodCallbacks(fast_keywords=tofile_call), "", flags=130
              ),
              MethodDefinition(
-                 "__reduce_ex__", MethodCallbacks(positional=reduce), "", flags=8
+                 "__reduce_ex__",
+                 MethodCallbacks(fast_keywords=reduce_call),
+                 "",
+                 flags=130
              ),
              MethodDefinition(
                  "append", MethodCallbacks(positional=append), "", flags=8
@@ -1059,7 +1126,7 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
                  "byteswap", MethodCallbacks(positional=byteswap), "", flags=4
              ),
              MethodDefinition(
-                 "extend", MethodCallbacks(positional=extend), "", flags=8
+                 "extend", MethodCallbacks(fast_keywords=extend_call), "", flags=130
              ),
              MethodDefinition(
                  "fromlist", MethodCallbacks(positional=fromlist), "", flags=8

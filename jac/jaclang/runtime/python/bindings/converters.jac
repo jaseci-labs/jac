@@ -10,6 +10,8 @@ Python/getargs.c and Tools/clinic so upstream tests see the same text.
 import from jaclang.runtime.python.cpython_api {
     jacpy_is_float,
     jacpy_is_unicode,
+    jacpy_unicode_size,
+    PyUnicode_ReadChar,
     jacpy_release,
     jacpy_unicode_size,
     jacpy_unsigned_converter,
@@ -72,8 +74,30 @@ def bad_argument(
     shown = type_name(value, True)
         if qualified
         else ("None" if value == Py_None else type_name(value));
-    object_error(PyExc_TypeError, f"{fname}() {label} must be {expected}, not {shown}");
+    # getargs' seterror() omits the "name() " of a format without one.
+    caller = f"{fname}() " if fname else "";
+    object_error(PyExc_TypeError, f"{caller}{label} must be {expected}, not {shown}");
     raise boundary_failure();
+}
+
+# One unicode character as its code point: clinic's int(accept={str})
+# (`clinic`, whose length error reads "name(): ...") or getargs' "C" unit.
+def convert_unicode_char(
+    value: ptr[PyObject], fname: str, label: str, clinic: bool = True
+) -> u32 {
+    if jacpy_is_unicode(value) == 0 {
+        bad_argument(fname, label, "a unicode character", value);
+    }
+    size = jacpy_unicode_size(value);
+    if size != 1 {
+        caller = f"{fname}():" if clinic else f"{fname}()";
+        object_error(
+            PyExc_TypeError,
+            f"{caller} {label} must be a unicode character, not a string of length {size}"
+        );
+        raise boundary_failure();
+    }
+    return u32(PyUnicode_ReadChar(value, 0));
 }
 
 def failed -> bool {
@@ -288,23 +312,6 @@ def convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
         raise boundary_failure();
     }
     return text;
-}
-
-# int(accept={str}), clinic's "C" unit: a str of one character as its code
-# point.
-def convert_char(value: ptr[PyObject], fname: str, label: str) -> i32 {
-    if jacpy_is_unicode(value) == 0 {
-        bad_argument(fname, label, "a unicode character", value);
-    }
-    size = jacpy_unicode_size(value);
-    if size != 1 {
-        object_error(
-            PyExc_TypeError,
-            f"{fname}() {label} must be a unicode character, not a string of length {size}"
-        );
-        raise boundary_failure();
-    }
-    return i32(PyUnicode_ReadChar(value, 0));
 }
 
 # A C string and its size, as the "s#" unit passes them to an _impl function.
