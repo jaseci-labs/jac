@@ -79,3 +79,4 @@ _zoneinfo       test.test_zoneinfo
 unicodedata     test.test_unicodedata,test.test_ucn
 _datetime       test.test_datetime
 _decimal        test.test_decimal                       -lmpdec -lm
+_socket         test.test_socket,test.test_selectors

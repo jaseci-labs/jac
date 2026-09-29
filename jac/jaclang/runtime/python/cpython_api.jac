@@ -96,13 +96,15 @@ import from c {
             step: i64,
             count: i64,
             valid: i64;
-    }  def PyArg_Parse(arg0: ptr[PyObject], arg1: str, *args: any) -> i32;  def PyArg_ParseTupleAndKeywords(
+    }  def PyArg_Parse(arg0: ptr[PyObject], arg1: str, *args: any) -> i32;  def PyArg_ParseTuple(
+        arg0: ptr[PyObject], arg1: str, *args: any
+    ) -> i32;  def PyArg_ParseTupleAndKeywords(
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: str, arg3: ptr, *args: any
     ) -> i32;  def PyArg_UnpackTuple(
         arg0: ptr[PyObject], arg1: str, arg2: i64, arg3: i64, *args: any
-    ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyByteArray_FromObject(
-        arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyByteArray_Resize(
+    ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyBuffer_Release(
+        view: ptr[Py_buffer]
+    );  def PyByteArray_FromObject(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyByteArray_Resize(
         arg0: ptr[PyObject], arg1: i64
     ) -> i32;  def PyBytes_AsString(arg0: ptr[PyObject]) -> ptr[u8];  def PyBytes_DecodeEscape(
         arg0: ptr, arg1: i64, arg2: ptr[u8], arg3: i64, arg4: ptr[u8]
@@ -736,7 +738,7 @@ import from c {
     ) -> i32;  def _Py_fstat(fd: i32, status: &mut _Py_stat_struct) -> i32;  def _Py_fstat_noraise(
         fd: i32, status: &mut _Py_stat_struct
     ) -> i32;  def _Py_open_noraise(pathname: ptr, flags: i32) -> i32;  def _Py_set_inheritable(
-        fd: i32, inheritable: i32, atomic_flag_works: &mut i32
+        fd: i32, inheritable: i32, atomic_flag_works: &mut i32 | None
     ) -> i32;  def _Py_set_inheritable_async_safe(
         fd: i32, inheritable: i32, atomic_flag_works: ptr
     ) -> i32;  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_strhex_bytes_with_sep(
@@ -1012,6 +1014,7 @@ import from c {
          PyExc_SyntaxWarning: ptr[PyObject],
          PyExc_SystemError: ptr[PyObject],
          PyExc_TabError: ptr[PyObject],
+         PyExc_TimeoutError: ptr[PyObject],
          PyExc_TypeError: ptr[PyObject],
          PyExc_UnicodeDecodeError: ptr[PyObject],
          PyExc_UnicodeEncodeError: ptr[PyObject],

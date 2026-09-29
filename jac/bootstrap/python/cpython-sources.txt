@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 103 C files / 165,801 lines; 86 headers / 59,309 lines.
-#   Total: 189 files / 225,110 source lines.
+#   Excluded: 104 C files / 175,106 lines; 87 headers / 59,685 lines.
+#   Total: 191 files / 234,791 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -556,7 +556,7 @@ Modules/clinic/pyexpat.c.h
 # Modules/clinic/sha2module.c.h  # removed: 510 source lines
 # Modules/clinic/sha3module.c.h  # removed: 291 source lines
 Modules/clinic/signalmodule.c.h
-Modules/clinic/socketmodule.c.h
+# Modules/clinic/socketmodule.c.h  # removed: 376 source lines
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
 Modules/clinic/termios.c.h
@@ -597,7 +597,7 @@ Modules/rotatingtree.h
 # Modules/sha2module.c  # removed: 954 source lines
 # Modules/sha3module.c  # removed: 680 source lines
 Modules/signalmodule.c
-Modules/socketmodule.c
+# Modules/socketmodule.c  # removed: 9,305 source lines
 Modules/socketmodule.h
 # Modules/symtablemodule.c  # removed: 130 source lines
 # Modules/syslogmodule.c  # removed: 469 source lines

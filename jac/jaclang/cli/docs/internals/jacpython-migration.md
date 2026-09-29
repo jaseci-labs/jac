@@ -120,6 +120,15 @@ Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
 `Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
 token for `PyType_GetBaseByToken()`, as in C.
 
+A module whose object layout other C code reads keeps that layout: `_socket`'s
+`PySocketSockObject` and `PySocketModule_APIObject` are read from
+`Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES` entry, with
+the scalar typedefs its structs name), so the `_socket.CAPI` capsule `_ssl.c`
+imports is the C module's. `gen_constants.jac` can leave out names published
+only under conditions no target meets (`UNSUPPORTED` blocks such as
+`USE_BLUETOOTH`), read enumerators under their header's presence (`GUARDS`) and
+supply values the C module defines itself (`DEFAULTS`).
+
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
 `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini` in an

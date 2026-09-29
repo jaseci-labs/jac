@@ -38,3 +38,4 @@ _zoneinfo
 unicodedata
 _datetime
 _sqlite3
+_socket
