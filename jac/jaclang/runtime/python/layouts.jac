@@ -21,7 +21,7 @@ Pointers to records no port reads yet are opaque.
 import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
 
 import from c {
-    obj PyBufferProcs;  obj _object {
+    obj PyBufferProcs;  obj _socket_state;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -374,6 +374,19 @@ import from c {
                     [i32, i32, i32, i32, ptr[PyObject], i32, ptr[PyTypeObject]],
                     ptr[PyObject]
                 ];
+    }  obj PySocketSockObject {
+        has ob_base: _object,
+            sock_fd: i32,
+            sock_family: i32,
+            sock_type: i32,
+            sock_proto: i32,
+            errorhandler: Callable[[], ptr[PyObject]],
+            sock_timeout: i64,
+            state: ptr[_socket_state];
+    }  obj PySocketModule_APIObject {
+        has Sock_Type: ptr[PyTypeObject],
+            error: ptr[PyObject],
+            timeout_error: ptr[PyObject];
     }
 }
 
@@ -456,6 +469,8 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      Py_tp_iter: Final[i32] = 62,
      Py_tp_init: Final[i32] = 60,
      Py_tp_token: Final[i32] = 83,
+     Py_tp_members: Final[i32] = 72,
+     Py_tp_finalize: Final[i32] = 80,
      Py_mp_length: Final[i32] = 4,
      Py_mp_subscript: Final[i32] = 5,
      Py_mp_ass_subscript: Final[i32] = 3,
@@ -487,4 +502,12 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      Py_CONSTANT_ONE: Final[u32] = 6,
      Py_CONSTANT_EMPTY_STR: Final[u32] = 7,
      _PyTime_ROUND_FLOOR: Final[i32] = 0,
-     _PyTime_ROUND_HALF_EVEN: Final[i32] = 2;
+     _PyTime_ROUND_HALF_EVEN: Final[i32] = 2,
+     _PyTime_ROUND_CEILING: Final[i32] = 1,
+     _PyTime_ROUND_TIMEOUT: Final[i32] = 3,
+     PY_SOCKET_OBJECT_SIZE: Final[i64] = 56,
+     PY_SOCKET_FAMILY_OFFSET: Final[i64] = 20,
+     PY_SOCKET_TYPE_OFFSET: Final[i64] = 24,
+     PY_SOCKET_PROTO_OFFSET: Final[i64] = 28,
+     PY_SOCKET_API_SIZE: Final[i64] = 24,
+     Py_CLEANUP_SUPPORTED: Final[i32] = 131072;

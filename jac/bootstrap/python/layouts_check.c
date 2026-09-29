@@ -16,6 +16,7 @@
 
 /* The private object structs of the ported Objects/ files, as the
  * pinned sources define them. */
+typedef int SOCKET_T;
 typedef struct { PyObject_HEAD PyObject *ns_dict; } _PyNamespaceObject;
 typedef struct { PyObject_HEAD void *pointer; const char *name; void *context; PyCapsule_Destructor destructor; traverseproc traverse_func; inquiry clear_func; } PyCapsule;
 typedef struct { PyObject_HEAD Py_ssize_t it_index; PyObject *it_seq; } seqiterobject;
@@ -25,6 +26,8 @@ typedef struct { PyObject_HEAD Py_ssize_t en_index; PyObject* en_sit; PyObject* 
 typedef struct { PyObject_HEAD Py_ssize_t index; PyObject* seq; } reversedobject;
 typedef struct { PyObject_HEAD PyObject *start; PyObject *stop; PyObject *step; PyObject *length; } rangeobject;
 typedef struct { PyObject_HEAD PyObject *start; PyObject *step; PyObject *len; } longrangeiterobject;
+typedef struct { PyObject_HEAD SOCKET_T sock_fd; int sock_family; int sock_type; int sock_proto; PyObject *(*errorhandler)(void); PyTime_t sock_timeout; struct _socket_state *state; } PySocketSockObject;
+typedef struct { PyTypeObject *Sock_Type; PyObject *error; PyObject *timeout_error; } PySocketModule_APIObject;
 
 #define FIELD(type, field, offset, size) \
     _Static_assert(offsetof(type, field) == (offset), #type "." #field " offset"); \
@@ -722,6 +725,39 @@ FIELD(PyDateTime_CAPI, Time_FromTimeAndFold, 112, 8);
 KIND(PyDateTime_CAPI, Time_FromTimeAndFold, 5);
 LAYOUT(PyDateTime_CAPI, 120, 8);
 
+/* PySocketSockObject */
+FIELD(PySocketSockObject, ob_base, 0, 16);
+KIND(PySocketSockObject, ob_base, 12);
+FIELD(PySocketSockObject, sock_fd, 16, 4);
+KIND(PySocketSockObject, sock_fd, 1);
+SIGNED(PySocketSockObject, sock_fd, 1);
+FIELD(PySocketSockObject, sock_family, 20, 4);
+KIND(PySocketSockObject, sock_family, 1);
+SIGNED(PySocketSockObject, sock_family, 1);
+FIELD(PySocketSockObject, sock_type, 24, 4);
+KIND(PySocketSockObject, sock_type, 1);
+SIGNED(PySocketSockObject, sock_type, 1);
+FIELD(PySocketSockObject, sock_proto, 28, 4);
+KIND(PySocketSockObject, sock_proto, 1);
+SIGNED(PySocketSockObject, sock_proto, 1);
+FIELD(PySocketSockObject, errorhandler, 32, 8);
+KIND(PySocketSockObject, errorhandler, 5);
+FIELD(PySocketSockObject, sock_timeout, 40, 8);
+KIND(PySocketSockObject, sock_timeout, 1);
+SIGNED(PySocketSockObject, sock_timeout, 1);
+FIELD(PySocketSockObject, state, 48, 8);
+KIND(PySocketSockObject, state, 5);
+LAYOUT(PySocketSockObject, 56, 8);
+
+/* PySocketModule_APIObject */
+FIELD(PySocketModule_APIObject, Sock_Type, 0, 8);
+KIND(PySocketModule_APIObject, Sock_Type, 5);
+FIELD(PySocketModule_APIObject, error, 8, 8);
+KIND(PySocketModule_APIObject, error, 5);
+FIELD(PySocketModule_APIObject, timeout_error, 16, 8);
+KIND(PySocketModule_APIObject, timeout_error, 5);
+LAYOUT(PySocketModule_APIObject, 24, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
 CONSTANT(Py_TPFLAGS_TUPLE_SUBCLASS, 67108864LL);
@@ -801,6 +837,8 @@ CONSTANT(Py_tp_richcompare, 67LL);
 CONSTANT(Py_tp_iter, 62LL);
 CONSTANT(Py_tp_init, 60LL);
 CONSTANT(Py_tp_token, 83LL);
+CONSTANT(Py_tp_members, 72LL);
+CONSTANT(Py_tp_finalize, 80LL);
 CONSTANT(Py_mp_length, 4LL);
 CONSTANT(Py_mp_subscript, 5LL);
 CONSTANT(Py_mp_ass_subscript, 3LL);
@@ -833,3 +871,11 @@ CONSTANT(Py_CONSTANT_ONE, 6LL);
 CONSTANT(Py_CONSTANT_EMPTY_STR, 7LL);
 CONSTANT(_PyTime_ROUND_FLOOR, 0LL);
 CONSTANT(_PyTime_ROUND_HALF_EVEN, 2LL);
+CONSTANT(_PyTime_ROUND_CEILING, 1LL);
+CONSTANT(_PyTime_ROUND_TIMEOUT, 3LL);
+CONSTANT(sizeof(PySocketSockObject), 56LL);
+CONSTANT(offsetof(PySocketSockObject, sock_family), 20LL);
+CONSTANT(offsetof(PySocketSockObject, sock_type), 24LL);
+CONSTANT(offsetof(PySocketSockObject, sock_proto), 28LL);
+CONSTANT(sizeof(PySocketModule_APIObject), 24LL);
+CONSTANT(Py_CLEANUP_SUPPORTED, 131072LL);
