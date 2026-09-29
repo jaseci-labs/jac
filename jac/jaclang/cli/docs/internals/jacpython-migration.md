@@ -250,7 +250,15 @@ the Jac form, not a C helper:
    block defines a C function under that exact symbol with the C calling
    convention, including structs by value in either direction; C code and
    other modules call it as any C function. CPython's API functions a port
-   defines (`PyBool_FromLong`) are written this way.
+   defines (`PyBool_FromLong`) are written this way. Its entry (and a
+   callback trampoline's) never runs the Jac body inside the caller's open
+   region: an inline test of the thread's current region picks between one
+   `musttail` jump into the body (no region open, the common case) and a
+   call bracketed by `__jac_region_escape` / `__jac_region_restore`. A C
+   symbol has one signature program-wide, so a definition whose name
+   another linked module declares differently is `E1158`. C blocks are
+   order-independent: a function above a block reads and writes the C data
+   it declares.
 
 7. **Tail calls.** `return tail f(args);` is a guaranteed tail call: the
    native backend lowers it to `musttail`, so the evaluator's tail-call
