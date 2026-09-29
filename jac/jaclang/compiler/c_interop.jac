@@ -30,8 +30,6 @@ def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
     return None;
 }
 
-"""Whether a C block defines code or data (a function with a body or a glob
-with a value) rather than only declaring what a library provides."""
 def clib_block_defines(imp: (UniNode | None)) -> bool {
     import from jaclang.compiler.frontend.unitree { Ability }
     if not isinstance(imp, Import) or not imp.clib_decls {
@@ -164,8 +162,6 @@ def reads_foreign_storage(nd: (UniNode | None)) -> bool {
     return is_ptr_view_type(base_type);
 }
 
-"""The foreign struct and field index an attribute read names
-(`rec.view(1)[0].destructor`), or None."""
 def foreign_field_of(nd: (UniNode | None)) -> (tuple[Archetype, int] | None) {
     while isinstance(nd, AtomUnit) and isinstance(nd.value, Expr) {
         nd = nd.value;
@@ -268,10 +264,6 @@ def c_call_borrows_args(call: (UniNode | None)) -> bool {
     return is_ptr_type(call.target.type);
 }
 
-"""The element type `T` when a borrowed argument of type `operand_type` lends
-its address to a `ptr[T]` parameter: `T` is a C scalar (other than bool, whose
-Jac storage is not C's), a C pointer or a foreign struct, and the operand is
-exactly `T`. None otherwise."""
 def c_lent_elem(
     param_type: (TypeBase | None), operand_type: (TypeBase | None)
 ) -> (TypeBase | None) {
@@ -289,8 +281,6 @@ def c_lent_elem(
     return elem if c_type_spec(operand_type, None) == spec else None;
 }
 
-"""The callee of a call when it has the C ABI: a C library declaration or a
-function a C block defines, in this module or another. None otherwise."""
 def c_abi_callee(call: (UniNode | None)) -> (Ability | None) {
     import from jaclang.compiler.frontend.unitree { FuncCall }
     import from jaclang.compiler.symbol_utils { resolved_callee }
@@ -304,10 +294,6 @@ def c_abi_callee(call: (UniNode | None)) -> (Ability | None) {
     return callee;
 }
 
-"""The `ptr[T]` element type a borrowed argument (`&mut x` or `&x`) of a
-C-ABI call lends `x`'s address to for the call, as C's `&x` does; None when
-the argument is not such a loan. The parameter must be a plain `ptr[T]`
-(a borrowed C parameter keeps its own path) and `x` exactly `T`."""
 def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None) {
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     if not isinstance(arg, UnaryExpr) or not is_borrow_kind(arg.ownership) {
@@ -321,8 +307,6 @@ def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None) {
     return c_lent_elem(c_param_type(call, param), arg.operand.type);
 }
 
-"""A C-ABI callee parameter's type: its own, or (for a callee another module
-defines, whose parameter nodes are not typed here) the called function type's."""
 def c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None) {
     import from jaclang.compiler.frontend.unitree { FuncCall }
     import from jaclang.compiler.types.types { FunctionType }
@@ -342,8 +326,6 @@ def c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None) {
     return None;
 }
 
-"""The plain (not borrowed) parameter of a C-ABI callee that a positional
-call argument binds to, or None."""
 def c_lent_param(arg: UniNode) -> (ParamVar | None) {
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     import from jaclang.compiler.frontend.unitree { FuncCall, FuncSignature, KWPair }
@@ -504,8 +486,6 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     return literal_string_value(expr);
 }
 
-"""The function a C constant `ptr(name)` takes the address of: the def `nd`
-names, local or imported, or None when it names anything else."""
 def named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
     import from jaclang.compiler.frontend.unitree { Ability, Name }
     while isinstance(nd, AtomUnit) and isinstance(nd.value, Expr) {
@@ -641,7 +621,6 @@ def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None) {
     return args[0] if args else None;
 }
 
-# The bytes of a bytes literal (`b"..."`, or adjacent ones), else None.
 def c_bytes_literal(expr: (UniNode | None)) -> (bytes | None) {
     import from jaclang.compiler.frontend.unitree { MultiString, String }
     while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
@@ -658,8 +637,6 @@ def c_bytes_literal(expr: (UniNode | None)) -> (bytes | None) {
     return value if isinstance(value, bytes) else None;
 }
 
-# (width in bytes, signed) of a C array element a bytes literal can lay out:
-# a sized integer type (u8 .. i64); None for any other element type.
 def c_bytes_elem_shape(elem: (TypeBase | None)) -> (tuple[int, bool] | None) {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     cls = _class_of(elem);
@@ -673,9 +650,6 @@ def c_bytes_elem_shape(elem: (TypeBase | None)) -> (tuple[int, bool] | None) {
     return (shape.size_bytes(), shape.signed);
 }
 
-# The elements a bytes literal gives a C integer array: consecutive
-# little-endian groups of the element width, so one literal is the same
-# array on every target. The length is a multiple of the width.
 def c_bytes_array_values(data: bytes, width: int, signed: bool) -> list[int] {
     return [
         int.from_bytes(data[i:i + width], "little", signed=signed)
@@ -683,8 +657,6 @@ def c_bytes_array_values(data: bytes, width: int, signed: bool) -> list[int] {
     ];
 }
 
-# A C data definition of an array from a bytes literal, which the C-constant
-# check (E1155) validates in place of ordinary assignability.
 def c_bytes_array_definition(assign: Assignment, ctype: (TypeBase | None)) -> bool {
     import from jaclang.compiler.frontend.unitree { MultiString, String }
     value = assign.value;

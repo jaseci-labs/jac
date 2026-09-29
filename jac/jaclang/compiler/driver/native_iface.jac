@@ -429,9 +429,6 @@ obj NativeIface {
         deps: list[str] = [],
         coverage: dict[str, any] = {},
         headerless: bool = False,
-        # Link symbols of the globals this unit's initializer computes at run
-        # time, and of other units' globals that initializer reads; the link
-        # plan orders initializers by them.
         runtime_globals: list[str] = [],
         init_reads: list[str] = [];
 

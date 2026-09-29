@@ -145,16 +145,6 @@ def scope_allows_inferred_path(mod_path: str) -> bool {
     return not native_unit_compile_active() or not package_host_edge(mod_path);
 }
 
-"""Does `mod_path` define archetypes that keep their bare native names?
-
-The backend addresses the language runtime's archetypes (`Root`,
-`GenericEdge`, the kernel ABI units' `OspRuntime`) and the classes of the
-bundled type stubs (`dict`, `list`) by name, and the host binds the native
-compiler's own classes by name, so those keep bare names. Every other module,
-including the rest of the jaclang package (the bundled stdlib, JacPython's
-runtime), scopes its archetypes by module like any program, so same-named
-classes in two modules of one build are distinct types.
-"""
 def binds_bare_arch_names(mod_path: str) -> bool {
     import from jaclang.compiler.kernel_target { target_package_rel }
     import from jaclang.compiler.frontend.codeinfo { kernel_unit_rels }

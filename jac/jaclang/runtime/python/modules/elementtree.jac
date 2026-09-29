@@ -572,7 +572,7 @@ def:priv element_resize(instance: ptr[PyObject], more: i64) -> i32 {
     if size > block[0].allocated {
         size = (size >> 3) + (3 if size < 9 else 6) + size;
         # Always room for at least one child.
-        size = size if size else i64(1);
+        size = size or i64(1);
         if size > PY_SSIZE_T_MAX // 8 {
             PyErr_NoMemory();
             return i32(-1);
@@ -808,9 +808,7 @@ def subelement(
     }
     parent = PyTuple_GetItem(args, 0);
     if not is_element(state, parent) {
-        bad_argument_value(
-            "SubElement", 1, ELEMENT_TYPE_NAME, parent
-        );
+        bad_argument_value("SubElement", 1, ELEMENT_TYPE_NAME, parent);
         return NULL;
     }
     tag = PyTuple_GetItem(args, 1);
@@ -2413,9 +2411,7 @@ def _elementtree__set_factories_impl(
         return NULL;
     }
     old = PyTuple_Pack(
-        2,
-        state.comment_factory if state.comment_factory else Py_None,
-        state.pi_factory if state.pi_factory else Py_None
+        2, state.comment_factory or Py_None, state.pi_factory or Py_None
     );
     previous = state.comment_factory;
     state.comment_factory = NULL
@@ -2797,7 +2793,7 @@ def _elementtree_TreeBuilder_pi_impl(
 
 def:priv treebuilder_done(builder: ptr[PyObject]) -> ptr[PyObject] {
     top = treebuilder(builder).view(1)[0].root_node;
-    return Py_NewRef(top if top else Py_None);
+    return Py_NewRef(top or Py_None);
 }
 
 def _elementtree_TreeBuilder_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
@@ -3117,8 +3113,8 @@ def expat_start_ns_handler(op: ptr, prefix_in: ptr[u8], uri_in: ptr[u8]) {
     if PyErr_Occurred() {
         return;
     }
-    uri_text = uri_in if uri_in else empty_text.get();
-    prefix_text = prefix_in if prefix_in else empty_text.get();
+    uri_text = uri_in or empty_text.get();
+    prefix_text = prefix_in or empty_text.get();
     state = parser_state(instance);
     record = xmlparser(instance).view(1);
     result: ptr[PyObject] = NULL;
@@ -3164,7 +3160,7 @@ def expat_end_ns_handler(op: ptr, prefix_in: ptr[u8]) {
     if PyErr_Occurred() {
         return;
     }
-    prefix_text = prefix_in if prefix_in else empty_text.get();
+    prefix_text = prefix_in or empty_text.get();
     state = parser_state(instance);
     record = xmlparser(instance).view(1);
     result: ptr[PyObject] = NULL;
@@ -3807,7 +3803,9 @@ def import_expat_capi(state: ElementTreeState) -> bool {
         return False;
     }
     state.expat_capsule = capsule;
-    capi = ptr[PyExpat_CAPI](PyCapsule_GetPointer(capsule, ptr[u8]("pyexpat.expat_CAPI")));
+    capi = ptr[PyExpat_CAPI](
+        PyCapsule_GetPointer(capsule, ptr[u8]("pyexpat.expat_CAPI"))
+    );
     if not capi {
         return False;
     }
