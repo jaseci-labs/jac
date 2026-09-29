@@ -74,6 +74,29 @@ test "a named own local moved into an inline-flattened own field drops once" {
         == ["drop node 0", "h.slot.v=2", "drop node 2", "done"] , out;
 }
 
+test "str() of a string returns a value its consumer owns" {
+    out = assert_native_identity(_fixture("str_builtin_ownership.jac"));
+    assert out.splitlines() == ["caught: out of range", "literal item3 580"] , out;
+}
+
+test "str() copies and len() temporaries leave nothing behind" {
+    import shutil;
+    import subprocess;
+    import tempfile;
+    import from tests.support { native_build }
+    out = assert_native_identity(_fixture("str_builtin_leaks.jac"));
+    assert out.strip() == "literal 870" , out;
+    if not shutil.which("leaks") {
+        testskip("the macOS leaks tool is not available");
+    }
+    binary = os.path.join(tempfile.mkdtemp(), "str_leaks.nogc");
+    native_build(_fixture("str_builtin_leaks.jac"), binary, memory="nogc");
+    lk = subprocess.run(
+        ["leaks", "--atExit", "--", binary], capture_output=True, text=True, timeout=300
+    );
+    assert "0 leaks for 0 total leaked bytes" in lk.stdout , lk.stdout[-1500:];
+}
+
 test "an own field held by pointer drops the object each store replaces" {
     out = assert_native_identity(_fixture("pointer_field_move.jac"));
     assert out.splitlines()

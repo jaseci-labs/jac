@@ -24,14 +24,16 @@ glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
          "call_arg",
          "list_method_arg",
          "last_use",
-         "del_stmt"
+         "del_stmt",
+         "len_arg"
      ),
      _NOGC_TEMP_FREE_OPS: tuple[str, ...] = (
          "binop_lhs",
          "binop_rhs",
          "binop_list",
          "str_rhs",
-         "ba_aug"
+         "ba_aug",
+         "len_arg"
      );
 
 impl NaIRGenPass._gc_mode -> str {
