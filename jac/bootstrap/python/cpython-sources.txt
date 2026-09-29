@@ -260,7 +260,7 @@ Objects/funcobject.c
 Objects/genericaliasobject.c
 Objects/genobject.c
 Objects/interpolationobject.c
-Objects/iterobject.c
+# Objects/iterobject.c  # removed: 541 source lines
 Objects/listobject.c
 Objects/longobject.c
 Objects/memoryobject.c
