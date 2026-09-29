@@ -13,7 +13,8 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_POSITIONAL,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -25,7 +26,12 @@ import from jaclang.runtime.python.modules.suggestions {
 }
 
 glob:priv _suggestions__generate_suggestions_signature = CallSignature(
-         "_generate_suggestions", ["candidates", "item"], 2, 2, 2
+         "_generate_suggestions",
+         ["candidates", "item"],
+         2,
+         2,
+         2,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _suggestions__generate_suggestions_bound(
@@ -42,12 +48,13 @@ def:priv _suggestions__generate_suggestions_bound(
 }
 
 def:priv _suggestions__generate_suggestions_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _suggestions__generate_suggestions_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _suggestions__generate_suggestions_bound,
         receiver
     );
@@ -56,9 +63,9 @@ def:priv _suggestions__generate_suggestions_call(
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "_generate_suggestions",
-             MethodCallbacks(keywords=_suggestions__generate_suggestions_call),
+             MethodCallbacks(fast=_suggestions__generate_suggestions_call),
              "_generate_suggestions($module, candidates, item, /)\n--\n\nReturns the candidate in candidates that's closest to item",
-             3
+             128
          ),
 
      ];

@@ -19,7 +19,11 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    PARSE_POSITIONAL,
+    invoke,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -56,7 +60,12 @@ import from jaclang.runtime.python.modules.zstd {
 }
 
 glob:priv _zstd_train_dict_signature = CallSignature(
-         "train_dict", ["samples_bytes", "samples_sizes", "dict_size"], 3, 3, 3
+         "train_dict",
+         ["samples_bytes", "samples_sizes", "dict_size"],
+         3,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _zstd_train_dict_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -77,10 +86,10 @@ def:priv _zstd_train_dict_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _zstd_train_dict_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _zstd_train_dict_signature, args, kwargs, _zstd_train_dict_bound, receiver
+    return invoke_vector(
+        _zstd_train_dict_signature, args, nargs, NULL, _zstd_train_dict_bound, receiver
     );
 }
 
@@ -95,7 +104,8 @@ glob:priv _zstd_finalize_dict_signature = CallSignature(
          ],
          5,
          5,
-         5
+         5,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _zstd_finalize_dict_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -130,15 +140,25 @@ def:priv _zstd_finalize_dict_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _zstd_finalize_dict_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _zstd_finalize_dict_signature, args, kwargs, _zstd_finalize_dict_bound, receiver
+    return invoke_vector(
+        _zstd_finalize_dict_signature,
+        args,
+        nargs,
+        NULL,
+        _zstd_finalize_dict_bound,
+        receiver
     );
 }
 
 glob:priv _zstd_get_param_bounds_signature = CallSignature(
-         "get_param_bounds", ["parameter", "is_compress"], 2, 2, 0
+         "get_param_bounds",
+         ["parameter", "is_compress"],
+         2,
+         2,
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_get_param_bounds_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -151,19 +171,23 @@ def:priv _zstd_get_param_bounds_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _zstd_get_param_bounds_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_get_param_bounds_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_get_param_bounds_bound,
         receiver
     );
 }
 
 glob:priv _zstd_get_frame_size_signature = CallSignature(
-         "get_frame_size", ["frame_buffer"], 1, 1, 0
+         "get_frame_size", ["frame_buffer"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_get_frame_size_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -176,19 +200,23 @@ def:priv _zstd_get_frame_size_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _zstd_get_frame_size_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_get_frame_size_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_get_frame_size_bound,
         receiver
     );
 }
 
 glob:priv _zstd_get_frame_info_signature = CallSignature(
-         "get_frame_info", ["frame_buffer"], 1, 1, 0
+         "get_frame_info", ["frame_buffer"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_get_frame_info_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -201,19 +229,28 @@ def:priv _zstd_get_frame_info_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _zstd_get_frame_info_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_get_frame_info_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_get_frame_info_bound,
         receiver
     );
 }
 
 glob:priv _zstd_set_parameter_types_signature = CallSignature(
-         "set_parameter_types", ["c_parameter_type", "d_parameter_type"], 2, 2, 0
+         "set_parameter_types",
+         ["c_parameter_type", "d_parameter_type"],
+         2,
+         2,
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_set_parameter_types_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -236,19 +273,23 @@ def:priv _zstd_set_parameter_types_bound(args: BoundArguments) -> ptr[PyObject] 
 }
 
 def:priv _zstd_set_parameter_types_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_set_parameter_types_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_set_parameter_types_bound,
         receiver
     );
 }
 
 glob:priv _zstd_ZstdDict_new_signature = CallSignature(
-         "ZstdDict", ["dict_content", "is_raw"], 1, 1, 1
+         "ZstdDict", ["dict_content", "is_raw"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_ZstdDict_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -298,7 +339,12 @@ def:priv _zstd_ZstdDict_as_prefix_get(
 }
 
 glob:priv _zstd_ZstdCompressor_new_signature = CallSignature(
-         "ZstdCompressor", ["level", "options", "zstd_dict"], 0, 3, 0
+         "ZstdCompressor",
+         ["level", "options", "zstd_dict"],
+         0,
+         3,
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_ZstdCompressor_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -334,7 +380,7 @@ def:pub _zstd_ZstdCompressor_new_new(
 }
 
 glob:priv _zstd_ZstdCompressor_compress_signature = CallSignature(
-         "compress", ["data", "mode"], 1, 2, 0
+         "compress", ["data", "mode"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_ZstdCompressor_compress_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -350,19 +396,23 @@ def:priv _zstd_ZstdCompressor_compress_bound(args: BoundArguments) -> ptr[PyObje
 }
 
 def:priv _zstd_ZstdCompressor_compress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_ZstdCompressor_compress_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_ZstdCompressor_compress_bound,
         receiver
     );
 }
 
 glob:priv _zstd_ZstdCompressor_flush_signature = CallSignature(
-         "flush", ["mode"], 0, 1, 0
+         "flush", ["mode"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_ZstdCompressor_flush_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -376,20 +426,20 @@ def:priv _zstd_ZstdCompressor_flush_bound(args: BoundArguments) -> ptr[PyObject]
 }
 
 def:priv _zstd_ZstdCompressor_flush_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_ZstdCompressor_flush_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_ZstdCompressor_flush_bound,
         receiver
     );
 }
-
-glob:priv _zstd_ZstdCompressor_set_pledged_input_size_signature = CallSignature(
-         "set_pledged_input_size", ["size"], 1, 1, 1
-     );
 
 def:priv _zstd_ZstdCompressor_set_pledged_input_size_bound(
     args: BoundArguments
@@ -403,19 +453,15 @@ def:priv _zstd_ZstdCompressor_set_pledged_input_size_bound(
 }
 
 def:priv _zstd_ZstdCompressor_set_pledged_input_size_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _zstd_ZstdCompressor_set_pledged_input_size_signature,
-        args,
-        kwargs,
-        _zstd_ZstdCompressor_set_pledged_input_size_bound,
-        receiver
+    return invoke_given(
+        value, _zstd_ZstdCompressor_set_pledged_input_size_bound, receiver
     );
 }
 
 glob:priv _zstd_ZstdDecompressor_new_signature = CallSignature(
-         "ZstdDecompressor", ["zstd_dict", "options"], 0, 2, 0
+         "ZstdDecompressor", ["zstd_dict", "options"], 0, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_ZstdDecompressor_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -452,7 +498,7 @@ def:priv _zstd_ZstdDecompressor_unused_data_get(
 }
 
 glob:priv _zstd_ZstdDecompressor_decompress_signature = CallSignature(
-         "decompress", ["data", "max_length"], 1, 2, 0
+         "decompress", ["data", "max_length"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _zstd_ZstdDecompressor_decompress_bound(
@@ -472,12 +518,16 @@ def:priv _zstd_ZstdDecompressor_decompress_bound(
 }
 
 def:priv _zstd_ZstdDecompressor_decompress_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _zstd_ZstdDecompressor_decompress_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _zstd_ZstdDecompressor_decompress_bound,
         receiver
     );
@@ -489,69 +539,71 @@ glob ZstdCompressor_doc: str = "ZstdCompressor(level=None, options=None, zstd_di
      ZstdCompressor_methods: list[MethodDefinition] = [
          MethodDefinition(
              "compress",
-             MethodCallbacks(keywords=_zstd_ZstdCompressor_compress_call),
+             MethodCallbacks(fast_keywords=_zstd_ZstdCompressor_compress_call),
              "compress($self, /, data, mode=ZstdCompressor.CONTINUE)\n--\n\nProvide data to the compressor object.\n\n  mode\n    Can be these 3 values ZstdCompressor.CONTINUE,\n    ZstdCompressor.FLUSH_BLOCK, ZstdCompressor.FLUSH_FRAME\n\nReturn a chunk of compressed data if possible, or b'' otherwise.\nWhen you have finished providing data to the compressor, call the\nflush() method to finish the compression process.",
-             3
+             130
          ),
          MethodDefinition(
              "flush",
-             MethodCallbacks(keywords=_zstd_ZstdCompressor_flush_call),
+             MethodCallbacks(fast_keywords=_zstd_ZstdCompressor_flush_call),
              "flush($self, /, mode=ZstdCompressor.FLUSH_FRAME)\n--\n\nFinish the compression process.\n\n  mode\n    Can be these 2 values ZstdCompressor.FLUSH_FRAME,\n    ZstdCompressor.FLUSH_BLOCK\n\nFlush any remaining data left in internal buffers.  Since Zstandard\ndata consists of one or more independent frames, the compressor\nobject can still be used after this method is called.",
-             3
+             130
          ),
          MethodDefinition(
              "set_pledged_input_size",
-             MethodCallbacks(keywords=_zstd_ZstdCompressor_set_pledged_input_size_call),
+             MethodCallbacks(
+                 positional=_zstd_ZstdCompressor_set_pledged_input_size_call
+             ),
              "set_pledged_input_size($self, size, /)\n--\n\nSet the uncompressed content size to be written into the frame header.\n\n  size\n    The size of the uncompressed data to be provided to the compressor.\n\nThis method can be used to ensure the header of the frame about to\nbe written includes the size of the data, unless the\nCompressionParameter.content_size_flag is set to False.\nIf last_mode != FLUSH_FRAME, then a RuntimeError is raised.\n\nIt is important to ensure that the pledged data size matches the\nactual data size.  If they do not match the compressed output data\nmay be corrupted and the final chunk written may be lost.",
-             3
+             8
          ),
 
      ],
      ZstdDecompressor_methods: list[MethodDefinition] = [
          MethodDefinition(
              "decompress",
-             MethodCallbacks(keywords=_zstd_ZstdDecompressor_decompress_call),
+             MethodCallbacks(fast_keywords=_zstd_ZstdDecompressor_decompress_call),
              "decompress($self, /, data, max_length=-1)\n--\n\nDecompress *data*, returning uncompressed bytes if possible, or b'' otherwise.\n\n  data\n    A bytes-like object, Zstandard data to be decompressed.\n  max_length\n    Maximum size of returned data. When it is negative, the size of\n    output buffer is unlimited. When it is nonnegative, returns at\n    most max_length bytes of decompressed data.\n\nIf *max_length* is nonnegative, returns at most *max_length* bytes\nof decompressed data.  If this limit is reached and further output\ncan be produced, *self.needs_input* will be set to ``False``.  In\nthis case, the next call to *decompress()* may provide *data* as b''\nto obtain more of the output.\n\nIf all of the input data was decompressed and returned (either\nbecause this was less than *max_length* bytes, or because\n*max_length* was negative), *self.needs_input* will be set to True.\n\nAttempting to decompress data after the end of a frame is reached\nraises an EOFError.  Any data found after the end of the frame is\nignored and saved in the self.unused_data attribute.",
-             3
+             130
          ),
 
      ],
      module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "train_dict",
-             MethodCallbacks(keywords=_zstd_train_dict_call),
+             MethodCallbacks(fast=_zstd_train_dict_call),
              "train_dict($module, samples_bytes, samples_sizes, dict_size, /)\n--\n\nTrain a Zstandard dictionary on sample data.\n\n  samples_bytes\n    Concatenation of samples.\n  samples_sizes\n    Tuple of samples' sizes.\n  dict_size\n    The size of the dictionary.",
-             3
+             128
          ),
          MethodDefinition(
              "finalize_dict",
-             MethodCallbacks(keywords=_zstd_finalize_dict_call),
+             MethodCallbacks(fast=_zstd_finalize_dict_call),
              "finalize_dict($module, custom_dict_bytes, samples_bytes, samples_sizes,\n              dict_size, compression_level, /)\n--\n\nFinalize a Zstandard dictionary.\n\n  custom_dict_bytes\n    Custom dictionary content.\n  samples_bytes\n    Concatenation of samples.\n  samples_sizes\n    Tuple of samples' sizes.\n  dict_size\n    The size of the dictionary.\n  compression_level\n    Optimize for a specific Zstandard compression level, 0 means default.",
-             3
+             128
          ),
          MethodDefinition(
              "get_param_bounds",
-             MethodCallbacks(keywords=_zstd_get_param_bounds_call),
+             MethodCallbacks(fast_keywords=_zstd_get_param_bounds_call),
              "get_param_bounds($module, /, parameter, is_compress)\n--\n\nGet CompressionParameter/DecompressionParameter bounds.\n\n  parameter\n    The parameter to get bounds.\n  is_compress\n    True for CompressionParameter, False for DecompressionParameter.",
-             3
+             130
          ),
          MethodDefinition(
              "get_frame_size",
-             MethodCallbacks(keywords=_zstd_get_frame_size_call),
+             MethodCallbacks(fast_keywords=_zstd_get_frame_size_call),
              "get_frame_size($module, /, frame_buffer)\n--\n\nGet the size of a Zstandard frame, including the header and optional checksum.\n\n  frame_buffer\n    A bytes-like object, it should start from the beginning of a frame,\n    and contains at least one complete frame.",
-             3
+             130
          ),
          MethodDefinition(
              "get_frame_info",
-             MethodCallbacks(keywords=_zstd_get_frame_info_call),
+             MethodCallbacks(fast_keywords=_zstd_get_frame_info_call),
              "get_frame_info($module, /, frame_buffer)\n--\n\nGet Zstandard frame infomation from a frame header.\n\n  frame_buffer\n    A bytes-like object, containing the header of a Zstandard frame.",
-             3
+             130
          ),
          MethodDefinition(
              "set_parameter_types",
-             MethodCallbacks(keywords=_zstd_set_parameter_types_call),
+             MethodCallbacks(fast_keywords=_zstd_set_parameter_types_call),
              "set_parameter_types($module, /, c_parameter_type, d_parameter_type)\n--\n\nSet CompressionParameter and DecompressionParameter types for validity check.\n\n  c_parameter_type\n    CompressionParameter IntEnum type object\n  d_parameter_type\n    DecompressionParameter IntEnum type object",
-             3
+             130
          ),
 
      ],

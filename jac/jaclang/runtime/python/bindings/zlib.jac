@@ -34,6 +34,7 @@ import from jaclang.runtime.python.bindings.payload {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
+    PARSE_FORMAT_KEYWORDS,
     invoke
 }
 import from jaclang.runtime.python.bindings.converters { convert_int }
@@ -190,14 +191,16 @@ def:priv decompressor_needs_input(
 
 # PyArg_ParseTupleAndKeywords(args, kwargs, "|iO:_ZlibDecompressor", ...).
 glob:priv decompressor_signature = CallSignature(
-         "_ZlibDecompressor", ["wbits", "zdict"], 0, 2
+         "_ZlibDecompressor", ["wbits", "zdict"], 0, 2, parser=PARSE_FORMAT_KEYWORDS
      );
 
 def:priv decompressor_bound(args: BoundArguments) -> ptr[PyObject] {
     wbits = MAX_WBITS;
+    args.reach(0);
     if args.values[0] != NULL {
         wbits = convert_int(args.values[0]);
     }
+    args.reach(2);
     return zlib_decompressor_new(args.context, wbits, args.values[1]);
 }
 

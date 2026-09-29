@@ -13,7 +13,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -42,7 +44,7 @@ import from jaclang.runtime.python.modules.opcode {
 }
 
 glob:priv _opcode_stack_effect_signature = CallSignature(
-         "stack_effect", ["opcode", "oparg", "jump"], 1, 2, 2
+         "stack_effect", ["opcode", "oparg", "jump"], 1, 2, 2, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_stack_effect_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -63,19 +65,23 @@ def:priv _opcode_stack_effect_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_stack_effect_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _opcode_stack_effect_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _opcode_stack_effect_bound,
         receiver
     );
 }
 
 glob:priv _opcode_is_valid_signature = CallSignature(
-         "is_valid", ["opcode"], 1, 1, 0
+         "is_valid", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_is_valid_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -86,15 +92,23 @@ def:priv _opcode_is_valid_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_is_valid_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_is_valid_signature, args, kwargs, _opcode_is_valid_bound, receiver
+    return invoke_vector(
+        _opcode_is_valid_signature,
+        args,
+        nargs,
+        kwnames,
+        _opcode_is_valid_bound,
+        receiver
     );
 }
 
 glob:priv _opcode_has_arg_signature = CallSignature(
-         "has_arg", ["opcode"], 1, 1, 0
+         "has_arg", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_arg_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -105,15 +119,18 @@ def:priv _opcode_has_arg_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_arg_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_arg_signature, args, kwargs, _opcode_has_arg_bound, receiver
+    return invoke_vector(
+        _opcode_has_arg_signature, args, nargs, kwnames, _opcode_has_arg_bound, receiver
     );
 }
 
 glob:priv _opcode_has_const_signature = CallSignature(
-         "has_const", ["opcode"], 1, 1, 0
+         "has_const", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_const_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -124,15 +141,23 @@ def:priv _opcode_has_const_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_const_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_const_signature, args, kwargs, _opcode_has_const_bound, receiver
+    return invoke_vector(
+        _opcode_has_const_signature,
+        args,
+        nargs,
+        kwnames,
+        _opcode_has_const_bound,
+        receiver
     );
 }
 
 glob:priv _opcode_has_name_signature = CallSignature(
-         "has_name", ["opcode"], 1, 1, 0
+         "has_name", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_name_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -143,15 +168,23 @@ def:priv _opcode_has_name_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_name_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_name_signature, args, kwargs, _opcode_has_name_bound, receiver
+    return invoke_vector(
+        _opcode_has_name_signature,
+        args,
+        nargs,
+        kwnames,
+        _opcode_has_name_bound,
+        receiver
     );
 }
 
 glob:priv _opcode_has_jump_signature = CallSignature(
-         "has_jump", ["opcode"], 1, 1, 0
+         "has_jump", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_jump_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -162,15 +195,23 @@ def:priv _opcode_has_jump_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_jump_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_jump_signature, args, kwargs, _opcode_has_jump_bound, receiver
+    return invoke_vector(
+        _opcode_has_jump_signature,
+        args,
+        nargs,
+        kwnames,
+        _opcode_has_jump_bound,
+        receiver
     );
 }
 
 glob:priv _opcode_has_free_signature = CallSignature(
-         "has_free", ["opcode"], 1, 1, 0
+         "has_free", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_free_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -181,15 +222,23 @@ def:priv _opcode_has_free_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_free_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_free_signature, args, kwargs, _opcode_has_free_bound, receiver
+    return invoke_vector(
+        _opcode_has_free_signature,
+        args,
+        nargs,
+        kwnames,
+        _opcode_has_free_bound,
+        receiver
     );
 }
 
 glob:priv _opcode_has_local_signature = CallSignature(
-         "has_local", ["opcode"], 1, 1, 0
+         "has_local", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_local_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -200,15 +249,23 @@ def:priv _opcode_has_local_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_local_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_local_signature, args, kwargs, _opcode_has_local_bound, receiver
+    return invoke_vector(
+        _opcode_has_local_signature,
+        args,
+        nargs,
+        kwnames,
+        _opcode_has_local_bound,
+        receiver
     );
 }
 
 glob:priv _opcode_has_exc_signature = CallSignature(
-         "has_exc", ["opcode"], 1, 1, 0
+         "has_exc", ["opcode"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_has_exc_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -219,16 +276,15 @@ def:priv _opcode_has_exc_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_has_exc_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_has_exc_signature, args, kwargs, _opcode_has_exc_bound, receiver
+    return invoke_vector(
+        _opcode_has_exc_signature, args, nargs, kwnames, _opcode_has_exc_bound, receiver
     );
 }
-
-glob:priv _opcode_get_specialization_stats_signature = CallSignature(
-         "get_specialization_stats", [], 0, 0, 0
-     );
 
 def:priv _opcode_get_specialization_stats_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -236,34 +292,21 @@ def:priv _opcode_get_specialization_stats_bound(args: BoundArguments) -> ptr[PyO
 }
 
 def:priv _opcode_get_specialization_stats_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_get_specialization_stats_signature,
-        args,
-        kwargs,
-        _opcode_get_specialization_stats_bound,
-        receiver
-    );
+    return invoke_given(NULL, _opcode_get_specialization_stats_bound, receiver);
 }
 
-glob:priv _opcode_get_nb_ops_signature = CallSignature("get_nb_ops", [], 0, 0, 0);
 def:priv _opcode_get_nb_ops_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _opcode_get_nb_ops_impl(receiver);
 }
 
 def:priv _opcode_get_nb_ops_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_get_nb_ops_signature, args, kwargs, _opcode_get_nb_ops_bound, receiver
-    );
+    return invoke_given(NULL, _opcode_get_nb_ops_bound, receiver);
 }
-
-glob:priv _opcode_get_intrinsic1_descs_signature = CallSignature(
-         "get_intrinsic1_descs", [], 0, 0, 0
-     );
 
 def:priv _opcode_get_intrinsic1_descs_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -271,20 +314,10 @@ def:priv _opcode_get_intrinsic1_descs_bound(args: BoundArguments) -> ptr[PyObjec
 }
 
 def:priv _opcode_get_intrinsic1_descs_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_get_intrinsic1_descs_signature,
-        args,
-        kwargs,
-        _opcode_get_intrinsic1_descs_bound,
-        receiver
-    );
+    return invoke_given(NULL, _opcode_get_intrinsic1_descs_bound, receiver);
 }
-
-glob:priv _opcode_get_intrinsic2_descs_signature = CallSignature(
-         "get_intrinsic2_descs", [], 0, 0, 0
-     );
 
 def:priv _opcode_get_intrinsic2_descs_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -292,20 +325,10 @@ def:priv _opcode_get_intrinsic2_descs_bound(args: BoundArguments) -> ptr[PyObjec
 }
 
 def:priv _opcode_get_intrinsic2_descs_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_get_intrinsic2_descs_signature,
-        args,
-        kwargs,
-        _opcode_get_intrinsic2_descs_bound,
-        receiver
-    );
+    return invoke_given(NULL, _opcode_get_intrinsic2_descs_bound, receiver);
 }
-
-glob:priv _opcode_get_special_method_names_signature = CallSignature(
-         "get_special_method_names", [], 0, 0, 0
-     );
 
 def:priv _opcode_get_special_method_names_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -313,19 +336,13 @@ def:priv _opcode_get_special_method_names_bound(args: BoundArguments) -> ptr[PyO
 }
 
 def:priv _opcode_get_special_method_names_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _opcode_get_special_method_names_signature,
-        args,
-        kwargs,
-        _opcode_get_special_method_names_bound,
-        receiver
-    );
+    return invoke_given(NULL, _opcode_get_special_method_names_bound, receiver);
 }
 
 glob:priv _opcode_get_executor_signature = CallSignature(
-         "get_executor", ["code", "offset"], 2, 2, 0
+         "get_executor", ["code", "offset"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _opcode_get_executor_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -338,12 +355,16 @@ def:priv _opcode_get_executor_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _opcode_get_executor_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _opcode_get_executor_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _opcode_get_executor_bound,
         receiver
     );
@@ -352,93 +373,93 @@ def:priv _opcode_get_executor_call(
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "stack_effect",
-             MethodCallbacks(keywords=_opcode_stack_effect_call),
+             MethodCallbacks(fast_keywords=_opcode_stack_effect_call),
              "stack_effect($module, opcode, oparg=None, /, *, jump=None)\n--\n\nCompute the stack effect of the opcode.",
-             3
+             130
          ),
          MethodDefinition(
              "is_valid",
-             MethodCallbacks(keywords=_opcode_is_valid_call),
+             MethodCallbacks(fast_keywords=_opcode_is_valid_call),
              "is_valid($module, /, opcode)\n--\n\nReturn True if opcode is valid, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "has_arg",
-             MethodCallbacks(keywords=_opcode_has_arg_call),
+             MethodCallbacks(fast_keywords=_opcode_has_arg_call),
              "has_arg($module, /, opcode)\n--\n\nReturn True if the opcode uses its oparg, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "has_const",
-             MethodCallbacks(keywords=_opcode_has_const_call),
+             MethodCallbacks(fast_keywords=_opcode_has_const_call),
              "has_const($module, /, opcode)\n--\n\nReturn True if the opcode accesses a constant, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "has_name",
-             MethodCallbacks(keywords=_opcode_has_name_call),
+             MethodCallbacks(fast_keywords=_opcode_has_name_call),
              "has_name($module, /, opcode)\n--\n\nReturn True if the opcode accesses an attribute by name, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "has_jump",
-             MethodCallbacks(keywords=_opcode_has_jump_call),
+             MethodCallbacks(fast_keywords=_opcode_has_jump_call),
              "has_jump($module, /, opcode)\n--\n\nReturn True if the opcode has a jump target, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "has_free",
-             MethodCallbacks(keywords=_opcode_has_free_call),
+             MethodCallbacks(fast_keywords=_opcode_has_free_call),
              "has_free($module, /, opcode)\n--\n\nReturn True if the opcode accesses a free variable, False otherwise.\n\nNote that 'free' in this context refers to names in the current scope\nthat are referenced by inner scopes or names in outer scopes that are\nreferenced from this scope. It does not include references to global\nor builtin scopes.",
-             3
+             130
          ),
          MethodDefinition(
              "has_local",
-             MethodCallbacks(keywords=_opcode_has_local_call),
+             MethodCallbacks(fast_keywords=_opcode_has_local_call),
              "has_local($module, /, opcode)\n--\n\nReturn True if the opcode accesses a local variable, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "has_exc",
-             MethodCallbacks(keywords=_opcode_has_exc_call),
+             MethodCallbacks(fast_keywords=_opcode_has_exc_call),
              "has_exc($module, /, opcode)\n--\n\nReturn True if the opcode sets an exception handler, False otherwise.",
-             3
+             130
          ),
          MethodDefinition(
              "get_specialization_stats",
-             MethodCallbacks(keywords=_opcode_get_specialization_stats_call),
+             MethodCallbacks(positional=_opcode_get_specialization_stats_call),
              "get_specialization_stats($module, /)\n--\n\nReturn the specialization stats",
-             3
+             4
          ),
          MethodDefinition(
              "get_nb_ops",
-             MethodCallbacks(keywords=_opcode_get_nb_ops_call),
+             MethodCallbacks(positional=_opcode_get_nb_ops_call),
              "get_nb_ops($module, /)\n--\n\nReturn array of symbols of binary ops.\n\nIndexed by the BINARY_OP oparg value.",
-             3
+             4
          ),
          MethodDefinition(
              "get_intrinsic1_descs",
-             MethodCallbacks(keywords=_opcode_get_intrinsic1_descs_call),
+             MethodCallbacks(positional=_opcode_get_intrinsic1_descs_call),
              "get_intrinsic1_descs($module, /)\n--\n\nReturn a list of names of the unary intrinsics.",
-             3
+             4
          ),
          MethodDefinition(
              "get_intrinsic2_descs",
-             MethodCallbacks(keywords=_opcode_get_intrinsic2_descs_call),
+             MethodCallbacks(positional=_opcode_get_intrinsic2_descs_call),
              "get_intrinsic2_descs($module, /)\n--\n\nReturn a list of names of the binary intrinsics.",
-             3
+             4
          ),
          MethodDefinition(
              "get_special_method_names",
-             MethodCallbacks(keywords=_opcode_get_special_method_names_call),
+             MethodCallbacks(positional=_opcode_get_special_method_names_call),
              "get_special_method_names($module, /)\n--\n\nReturn a list of special method names.",
-             3
+             4
          ),
          MethodDefinition(
              "get_executor",
-             MethodCallbacks(keywords=_opcode_get_executor_call),
+             MethodCallbacks(fast_keywords=_opcode_get_executor_call),
              "get_executor($module, /, code, offset)\n--\n\nReturn the executor object at offset in code if exists, None otherwise.",
-             3
+             130
          ),
 
      ];

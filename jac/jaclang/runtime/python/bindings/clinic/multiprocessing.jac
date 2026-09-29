@@ -20,7 +20,12 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_FORMAT,
+    PARSE_KEYWORDS,
+    PARSE_POSITIONAL,
+    invoke,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -47,10 +52,6 @@ import from jaclang.runtime.python.modules.multiprocessing {
     convert_SEM_HANDLE
 }
 
-glob:priv _multiprocessing_sem_unlink_signature = CallSignature(
-         "sem_unlink", ["name"], 1, 1, 1
-     );
-
 def:priv _multiprocessing_sem_unlink_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -59,19 +60,13 @@ def:priv _multiprocessing_sem_unlink_bound(args: BoundArguments) -> ptr[PyObject
 }
 
 def:priv _multiprocessing_sem_unlink_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_sem_unlink_signature,
-        args,
-        kwargs,
-        _multiprocessing_sem_unlink_bound,
-        receiver
-    );
+    return invoke_given(value, _multiprocessing_sem_unlink_bound, receiver);
 }
 
 glob:priv _multiprocessing_SemLock_acquire_signature = CallSignature(
-         "acquire", ["block", "timeout"], 0, 2, 0
+         "acquire", ["block", "timeout"], 0, 2, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _multiprocessing_SemLock_acquire_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -90,20 +85,20 @@ def:priv _multiprocessing_SemLock_acquire_bound(args: BoundArguments) -> ptr[PyO
 }
 
 def:priv _multiprocessing_SemLock_acquire_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _multiprocessing_SemLock_acquire_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _multiprocessing_SemLock_acquire_bound,
         receiver
     );
 }
-
-glob:priv _multiprocessing_SemLock_release_signature = CallSignature(
-         "release", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock_release_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -111,19 +106,18 @@ def:priv _multiprocessing_SemLock_release_bound(args: BoundArguments) -> ptr[PyO
 }
 
 def:priv _multiprocessing_SemLock_release_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock_release_signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock_release_bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock_release_bound, receiver);
 }
 
 glob:priv _multiprocessing_SemLock_signature = CallSignature(
-         "SemLock", ["kind", "value", "maxvalue", "name", "unlink"], 5, 5, 0
+         "SemLock",
+         ["kind", "value", "maxvalue", "name", "unlink"],
+         5,
+         5,
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv _multiprocessing_SemLock_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -156,7 +150,12 @@ def:pub _multiprocessing_SemLock_new(
 }
 
 glob:priv _multiprocessing_SemLock__rebuild_signature = CallSignature(
-         "_rebuild", ["handle", "kind", "maxvalue", "name"], 4, 4, 4
+         "_rebuild",
+         ["handle", "kind", "maxvalue", "name"],
+         4,
+         4,
+         4,
+         parser=PARSE_FORMAT
      );
 
 def:priv _multiprocessing_SemLock__rebuild_bound(
@@ -177,20 +176,17 @@ def:priv _multiprocessing_SemLock__rebuild_bound(
 }
 
 def:priv _multiprocessing_SemLock__rebuild_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _multiprocessing_SemLock__rebuild_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _multiprocessing_SemLock__rebuild_bound,
         receiver
     );
 }
-
-glob:priv _multiprocessing_SemLock__count_signature = CallSignature(
-         "_count", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock__count_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -198,20 +194,10 @@ def:priv _multiprocessing_SemLock__count_bound(args: BoundArguments) -> ptr[PyOb
 }
 
 def:priv _multiprocessing_SemLock__count_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock__count_signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock__count_bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock__count_bound, receiver);
 }
-
-glob:priv _multiprocessing_SemLock__is_mine_signature = CallSignature(
-         "_is_mine", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock__is_mine_bound(
     args: BoundArguments
@@ -221,20 +207,10 @@ def:priv _multiprocessing_SemLock__is_mine_bound(
 }
 
 def:priv _multiprocessing_SemLock__is_mine_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock__is_mine_signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock__is_mine_bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock__is_mine_bound, receiver);
 }
-
-glob:priv _multiprocessing_SemLock__get_value_signature = CallSignature(
-         "_get_value", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock__get_value_bound(
     args: BoundArguments
@@ -244,20 +220,10 @@ def:priv _multiprocessing_SemLock__get_value_bound(
 }
 
 def:priv _multiprocessing_SemLock__get_value_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock__get_value_signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock__get_value_bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock__get_value_bound, receiver);
 }
-
-glob:priv _multiprocessing_SemLock__is_zero_signature = CallSignature(
-         "_is_zero", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock__is_zero_bound(
     args: BoundArguments
@@ -267,20 +233,10 @@ def:priv _multiprocessing_SemLock__is_zero_bound(
 }
 
 def:priv _multiprocessing_SemLock__is_zero_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock__is_zero_signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock__is_zero_bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock__is_zero_bound, receiver);
 }
-
-glob:priv _multiprocessing_SemLock__after_fork_signature = CallSignature(
-         "_after_fork", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock__after_fork_bound(
     args: BoundArguments
@@ -290,20 +246,10 @@ def:priv _multiprocessing_SemLock__after_fork_bound(
 }
 
 def:priv _multiprocessing_SemLock__after_fork_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock__after_fork_signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock__after_fork_bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock__after_fork_bound, receiver);
 }
-
-glob:priv _multiprocessing_SemLock___enter___signature = CallSignature(
-         "__enter__", [], 0, 0, 0
-     );
 
 def:priv _multiprocessing_SemLock___enter___bound(
     args: BoundArguments
@@ -313,19 +259,18 @@ def:priv _multiprocessing_SemLock___enter___bound(
 }
 
 def:priv _multiprocessing_SemLock___enter___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _multiprocessing_SemLock___enter___signature,
-        args,
-        kwargs,
-        _multiprocessing_SemLock___enter___bound,
-        receiver
-    );
+    return invoke_given(NULL, _multiprocessing_SemLock___enter___bound, receiver);
 }
 
 glob:priv _multiprocessing_SemLock___exit___signature = CallSignature(
-         "__exit__", ["exc_type", "exc_value", "exc_tb"], 0, 3, 3
+         "__exit__",
+         ["exc_type", "exc_value", "exc_tb"],
+         0,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _multiprocessing_SemLock___exit___bound(
@@ -353,12 +298,13 @@ def:priv _multiprocessing_SemLock___exit___bound(
 }
 
 def:priv _multiprocessing_SemLock___exit___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _multiprocessing_SemLock___exit___signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _multiprocessing_SemLock___exit___bound,
         receiver
     );
@@ -368,72 +314,72 @@ glob SemLock_doc: str = "",
      SemLock_methods: list[MethodDefinition] = [
          MethodDefinition(
              "acquire",
-             MethodCallbacks(keywords=_multiprocessing_SemLock_acquire_call),
+             MethodCallbacks(fast_keywords=_multiprocessing_SemLock_acquire_call),
              "acquire($self, /, block=True, timeout=None)\n--\n\nAcquire the semaphore/lock.",
-             3
+             130
          ),
          MethodDefinition(
              "release",
-             MethodCallbacks(keywords=_multiprocessing_SemLock_release_call),
+             MethodCallbacks(positional=_multiprocessing_SemLock_release_call),
              "release($self, /)\n--\n\nRelease the semaphore/lock.",
-             3
+             4
          ),
          MethodDefinition(
              "_rebuild",
-             MethodCallbacks(keywords=_multiprocessing_SemLock__rebuild_call),
+             MethodCallbacks(fast=_multiprocessing_SemLock__rebuild_call),
              "_rebuild($type, handle, kind, maxvalue, name, /)\n--\n\n",
-             19
+             144
          ),
          MethodDefinition(
              "_count",
-             MethodCallbacks(keywords=_multiprocessing_SemLock__count_call),
+             MethodCallbacks(positional=_multiprocessing_SemLock__count_call),
              "_count($self, /)\n--\n\nNum of `acquire()`s minus num of `release()`s for this process.",
-             3
+             4
          ),
          MethodDefinition(
              "_is_mine",
-             MethodCallbacks(keywords=_multiprocessing_SemLock__is_mine_call),
+             MethodCallbacks(positional=_multiprocessing_SemLock__is_mine_call),
              "_is_mine($self, /)\n--\n\nWhether the lock is owned by this thread.",
-             3
+             4
          ),
          MethodDefinition(
              "_get_value",
-             MethodCallbacks(keywords=_multiprocessing_SemLock__get_value_call),
+             MethodCallbacks(positional=_multiprocessing_SemLock__get_value_call),
              "_get_value($self, /)\n--\n\nGet the value of the semaphore.",
-             3
+             4
          ),
          MethodDefinition(
              "_is_zero",
-             MethodCallbacks(keywords=_multiprocessing_SemLock__is_zero_call),
+             MethodCallbacks(positional=_multiprocessing_SemLock__is_zero_call),
              "_is_zero($self, /)\n--\n\nReturn whether semaphore has value zero.",
-             3
+             4
          ),
          MethodDefinition(
              "_after_fork",
-             MethodCallbacks(keywords=_multiprocessing_SemLock__after_fork_call),
+             MethodCallbacks(positional=_multiprocessing_SemLock__after_fork_call),
              "_after_fork($self, /)\n--\n\nRezero the net acquisition count after fork().",
-             3
+             4
          ),
          MethodDefinition(
              "__enter__",
-             MethodCallbacks(keywords=_multiprocessing_SemLock___enter___call),
+             MethodCallbacks(positional=_multiprocessing_SemLock___enter___call),
              "__enter__($self, /)\n--\n\nEnter the semaphore/lock.",
-             3
+             4
          ),
          MethodDefinition(
              "__exit__",
-             MethodCallbacks(keywords=_multiprocessing_SemLock___exit___call),
+             MethodCallbacks(fast=_multiprocessing_SemLock___exit___call),
              "__exit__($self, exc_type=None, exc_value=None, exc_tb=None, /)\n--\n\nExit the semaphore/lock.",
-             3
+             128
          ),
 
      ],
      module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "sem_unlink",
-             MethodCallbacks(keywords=_multiprocessing_sem_unlink_call),
+             MethodCallbacks(positional=_multiprocessing_sem_unlink_call),
              "sem_unlink($module, name, /)\n--\n\n",
-             3
+             8
          ),
 
      ];

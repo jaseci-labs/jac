@@ -87,7 +87,8 @@ import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     invoke,
     index_value,
-    character_value
+    character_value,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer {
     BufferArgument,
@@ -573,8 +574,10 @@ def:priv insert_bound(args: BoundArguments) -> ptr[PyObject] {
     return done(jacpy_array_insert(state.native, index, args.values[1]));
 }
 
-def:priv insert(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(insert_signature, args, NULL, insert_bound, instance);
+def:priv insert(
+    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(insert_signature, args, nargs, NULL, insert_bound, instance);
 }
 
 def:priv pop_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -590,8 +593,10 @@ def:priv pop_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_array_pop(state.native, index) if state is not None else NULL;
 }
 
-def:priv pop(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(pop_signature, args, NULL, pop_bound, instance);
+def:priv pop(
+    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(pop_signature, args, nargs, NULL, pop_bound, instance);
 }
 
 def:priv index_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -619,8 +624,10 @@ def:priv index_bound(args: BoundArguments) -> ptr[PyObject] {
     return PyLong_FromLongLong(result) if result >= 0 else NULL;
 }
 
-def:priv index(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(index_signature, args, NULL, index_bound, instance);
+def:priv index(
+    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(index_signature, args, nargs, NULL, index_bound, instance);
 }
 
 def:priv fromfile_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -808,8 +815,12 @@ def:priv reconstruct_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_array_reconstruct_object(args.values[0], code, format, args.values[3]);
 }
 
-def:priv reconstruct(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(reconstruct_signature, args, NULL, reconstruct_bound, module);
+def:priv reconstruct(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(
+        reconstruct_signature, args, nargs, NULL, reconstruct_bound, module
+    );
 }
 
 def:priv iterate(instance: ptr[PyObject]) -> ptr[PyObject] {
@@ -1033,11 +1044,9 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              MethodDefinition(
                  "append", MethodCallbacks(positional=append), "", flags=8
              ),
-             MethodDefinition(
-                 "insert", MethodCallbacks(positional=insert), "", flags=1
-             ),
-             MethodDefinition("pop", MethodCallbacks(positional=pop), "", flags=1),
-             MethodDefinition("index", MethodCallbacks(positional=index), "", flags=1),
+             MethodDefinition("insert", MethodCallbacks(fast=insert), "", flags=128),
+             MethodDefinition("pop", MethodCallbacks(fast=pop), "", flags=128),
+             MethodDefinition("index", MethodCallbacks(fast=index), "", flags=128),
              MethodDefinition("count", MethodCallbacks(positional=count), "", flags=8),
              MethodDefinition(
                  "remove", MethodCallbacks(positional=remove), "", flags=8
@@ -1167,9 +1176,9 @@ glob:priv definition = ModuleDefinition(
          [
              MethodDefinition(
                  "_array_reconstructor",
-                 MethodCallbacks(positional=reconstruct),
+                 MethodCallbacks(fast=reconstruct),
                  "",
-                 flags=1
+                 flags=128
              )
          ],
          hooks=ModuleHooks(execute=execute),

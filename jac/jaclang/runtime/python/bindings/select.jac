@@ -47,8 +47,6 @@ import from jaclang.runtime.python.modules.select {
     epoll_of,
     epoll_token,
     have_broken_poll,
-    kevent_member_get,
-    kevent_member_set,
     kevent_token,
     kqueue_closed_get,
     kqueue_event_init,
@@ -65,6 +63,7 @@ import from jaclang.runtime.python.modules.select_platform {
     HAS_EPOLL,
     HAS_KQUEUE,
     KEVENT_MEMBERS,
+    KEVENT_SIZE,
     PROBE_BROKEN_POLL
 }
 
@@ -106,21 +105,6 @@ def:priv kqueue_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, kqueue_token.handle);
 }
 
-def:priv kevent_properties -> list[PropertyDefinition] {
-    properties: list[PropertyDefinition] = [];
-    for index in range(len(KEVENT_MEMBERS)) {
-        properties.append(
-            PropertyDefinition(
-                KEVENT_MEMBERS[index].name,
-                PropertyCallbacks(read=kevent_member_get, write=kevent_member_set),
-                u64(index),
-                ""
-            )
-        );
-    }
-    return properties;
-}
-
 glob:priv poll_type = TypeDefinition(
          "select.poll",
          "",
@@ -155,8 +139,9 @@ glob:priv poll_type = TypeDefinition(
              repr=kqueue_event_repr,
              compare=kqueue_event_richcompare
          ),
-         kevent_properties(),
-         unhashable=True
+         unhashable=True,
+         members=KEVENT_MEMBERS,
+         record_size=KEVENT_SIZE
      ),
      kqueue_type = TypeDefinition(
          "select.kqueue",

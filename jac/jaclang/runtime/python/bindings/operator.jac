@@ -45,7 +45,8 @@ import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     invoke,
     invoke_one,
-    index_value
+    index_value,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.capi {
@@ -153,8 +154,10 @@ def:priv add_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_add(args.values[0], args.values[1]);
 }
 
-def:priv add_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(add_signature, args, NULL, add_bound);
+def:priv add_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(add_signature, args, nargs, NULL, add_bound);
 }
 
 glob:priv sub_signature = CallSignature("sub", ["a", "b"], 2, 2, 2);
@@ -162,8 +165,10 @@ def:priv sub_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_sub(args.values[0], args.values[1]);
 }
 
-def:priv sub_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(sub_signature, args, NULL, sub_bound);
+def:priv sub_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(sub_signature, args, nargs, NULL, sub_bound);
 }
 
 glob:priv mul_signature = CallSignature("mul", ["a", "b"], 2, 2, 2);
@@ -171,8 +176,10 @@ def:priv mul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_mul(args.values[0], args.values[1]);
 }
 
-def:priv mul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(mul_signature, args, NULL, mul_bound);
+def:priv mul_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(mul_signature, args, nargs, NULL, mul_bound);
 }
 
 glob:priv matmul_signature = CallSignature("matmul", ["a", "b"], 2, 2, 2);
@@ -180,8 +187,10 @@ def:priv matmul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_matmul(args.values[0], args.values[1]);
 }
 
-def:priv matmul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(matmul_signature, args, NULL, matmul_bound);
+def:priv matmul_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(matmul_signature, args, nargs, NULL, matmul_bound);
 }
 
 glob:priv floordiv_signature = CallSignature("floordiv", ["a", "b"], 2, 2, 2);
@@ -189,8 +198,10 @@ def:priv floordiv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_floordiv(args.values[0], args.values[1]);
 }
 
-def:priv floordiv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(floordiv_signature, args, NULL, floordiv_bound);
+def:priv floordiv_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(floordiv_signature, args, nargs, NULL, floordiv_bound);
 }
 
 glob:priv truediv_signature = CallSignature("truediv", ["a", "b"], 2, 2, 2);
@@ -198,8 +209,10 @@ def:priv truediv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_truediv(args.values[0], args.values[1]);
 }
 
-def:priv truediv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(truediv_signature, args, NULL, truediv_bound);
+def:priv truediv_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(truediv_signature, args, nargs, NULL, truediv_bound);
 }
 
 glob:priv mod_signature = CallSignature("mod", ["a", "b"], 2, 2, 2);
@@ -207,8 +220,10 @@ def:priv mod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_mod(args.values[0], args.values[1]);
 }
 
-def:priv mod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(mod_signature, args, NULL, mod_bound);
+def:priv mod_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(mod_signature, args, nargs, NULL, mod_bound);
 }
 
 glob:priv lshift_signature = CallSignature("lshift", ["a", "b"], 2, 2, 2);
@@ -216,8 +231,10 @@ def:priv lshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_lshift(args.values[0], args.values[1]);
 }
 
-def:priv lshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(lshift_signature, args, NULL, lshift_bound);
+def:priv lshift_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(lshift_signature, args, nargs, NULL, lshift_bound);
 }
 
 glob:priv rshift_signature = CallSignature("rshift", ["a", "b"], 2, 2, 2);
@@ -225,8 +242,10 @@ def:priv rshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_rshift(args.values[0], args.values[1]);
 }
 
-def:priv rshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(rshift_signature, args, NULL, rshift_bound);
+def:priv rshift_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(rshift_signature, args, nargs, NULL, rshift_bound);
 }
 
 glob:priv and__signature = CallSignature("and_", ["a", "b"], 2, 2, 2);
@@ -234,8 +253,10 @@ def:priv and__bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_and_(args.values[0], args.values[1]);
 }
 
-def:priv and__call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(and__signature, args, NULL, and__bound);
+def:priv and__call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(and__signature, args, nargs, NULL, and__bound);
 }
 
 glob:priv xor_signature = CallSignature("xor", ["a", "b"], 2, 2, 2);
@@ -243,8 +264,10 @@ def:priv xor_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_xor(args.values[0], args.values[1]);
 }
 
-def:priv xor_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(xor_signature, args, NULL, xor_bound);
+def:priv xor_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(xor_signature, args, nargs, NULL, xor_bound);
 }
 
 glob:priv or__signature = CallSignature("or_", ["a", "b"], 2, 2, 2);
@@ -252,8 +275,10 @@ def:priv or__bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_or_(args.values[0], args.values[1]);
 }
 
-def:priv or__call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(or__signature, args, NULL, or__bound);
+def:priv or__call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(or__signature, args, nargs, NULL, or__bound);
 }
 
 glob:priv iadd_signature = CallSignature("iadd", ["a", "b"], 2, 2, 2);
@@ -261,8 +286,10 @@ def:priv iadd_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_iadd(args.values[0], args.values[1]);
 }
 
-def:priv iadd_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(iadd_signature, args, NULL, iadd_bound);
+def:priv iadd_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(iadd_signature, args, nargs, NULL, iadd_bound);
 }
 
 glob:priv isub_signature = CallSignature("isub", ["a", "b"], 2, 2, 2);
@@ -270,8 +297,10 @@ def:priv isub_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_isub(args.values[0], args.values[1]);
 }
 
-def:priv isub_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(isub_signature, args, NULL, isub_bound);
+def:priv isub_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(isub_signature, args, nargs, NULL, isub_bound);
 }
 
 glob:priv imul_signature = CallSignature("imul", ["a", "b"], 2, 2, 2);
@@ -279,8 +308,10 @@ def:priv imul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_imul(args.values[0], args.values[1]);
 }
 
-def:priv imul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(imul_signature, args, NULL, imul_bound);
+def:priv imul_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(imul_signature, args, nargs, NULL, imul_bound);
 }
 
 glob:priv imatmul_signature = CallSignature("imatmul", ["a", "b"], 2, 2, 2);
@@ -288,8 +319,10 @@ def:priv imatmul_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_imatmul(args.values[0], args.values[1]);
 }
 
-def:priv imatmul_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(imatmul_signature, args, NULL, imatmul_bound);
+def:priv imatmul_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(imatmul_signature, args, nargs, NULL, imatmul_bound);
 }
 
 glob:priv ifloordiv_signature = CallSignature("ifloordiv", ["a", "b"], 2, 2, 2);
@@ -297,8 +330,10 @@ def:priv ifloordiv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ifloordiv(args.values[0], args.values[1]);
 }
 
-def:priv ifloordiv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ifloordiv_signature, args, NULL, ifloordiv_bound);
+def:priv ifloordiv_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ifloordiv_signature, args, nargs, NULL, ifloordiv_bound);
 }
 
 glob:priv itruediv_signature = CallSignature("itruediv", ["a", "b"], 2, 2, 2);
@@ -306,8 +341,10 @@ def:priv itruediv_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_itruediv(args.values[0], args.values[1]);
 }
 
-def:priv itruediv_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(itruediv_signature, args, NULL, itruediv_bound);
+def:priv itruediv_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(itruediv_signature, args, nargs, NULL, itruediv_bound);
 }
 
 glob:priv imod_signature = CallSignature("imod", ["a", "b"], 2, 2, 2);
@@ -315,8 +352,10 @@ def:priv imod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_imod(args.values[0], args.values[1]);
 }
 
-def:priv imod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(imod_signature, args, NULL, imod_bound);
+def:priv imod_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(imod_signature, args, nargs, NULL, imod_bound);
 }
 
 glob:priv ilshift_signature = CallSignature("ilshift", ["a", "b"], 2, 2, 2);
@@ -324,8 +363,10 @@ def:priv ilshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ilshift(args.values[0], args.values[1]);
 }
 
-def:priv ilshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ilshift_signature, args, NULL, ilshift_bound);
+def:priv ilshift_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ilshift_signature, args, nargs, NULL, ilshift_bound);
 }
 
 glob:priv irshift_signature = CallSignature("irshift", ["a", "b"], 2, 2, 2);
@@ -333,8 +374,10 @@ def:priv irshift_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_irshift(args.values[0], args.values[1]);
 }
 
-def:priv irshift_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(irshift_signature, args, NULL, irshift_bound);
+def:priv irshift_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(irshift_signature, args, nargs, NULL, irshift_bound);
 }
 
 glob:priv iand_signature = CallSignature("iand", ["a", "b"], 2, 2, 2);
@@ -342,8 +385,10 @@ def:priv iand_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_iand(args.values[0], args.values[1]);
 }
 
-def:priv iand_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(iand_signature, args, NULL, iand_bound);
+def:priv iand_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(iand_signature, args, nargs, NULL, iand_bound);
 }
 
 glob:priv ixor_signature = CallSignature("ixor", ["a", "b"], 2, 2, 2);
@@ -351,8 +396,10 @@ def:priv ixor_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ixor(args.values[0], args.values[1]);
 }
 
-def:priv ixor_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ixor_signature, args, NULL, ixor_bound);
+def:priv ixor_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ixor_signature, args, nargs, NULL, ixor_bound);
 }
 
 glob:priv ior_signature = CallSignature("ior", ["a", "b"], 2, 2, 2);
@@ -360,8 +407,10 @@ def:priv ior_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ior(args.values[0], args.values[1]);
 }
 
-def:priv ior_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ior_signature, args, NULL, ior_bound);
+def:priv ior_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ior_signature, args, nargs, NULL, ior_bound);
 }
 
 glob:priv concat_signature = CallSignature("concat", ["a", "b"], 2, 2, 2);
@@ -369,8 +418,10 @@ def:priv concat_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_concat(args.values[0], args.values[1]);
 }
 
-def:priv concat_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(concat_signature, args, NULL, concat_bound);
+def:priv concat_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(concat_signature, args, nargs, NULL, concat_bound);
 }
 
 glob:priv iconcat_signature = CallSignature("iconcat", ["a", "b"], 2, 2, 2);
@@ -378,8 +429,10 @@ def:priv iconcat_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_iconcat(args.values[0], args.values[1]);
 }
 
-def:priv iconcat_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(iconcat_signature, args, NULL, iconcat_bound);
+def:priv iconcat_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(iconcat_signature, args, nargs, NULL, iconcat_bound);
 }
 
 glob:priv getitem_signature = CallSignature("getitem", ["a", "b"], 2, 2, 2);
@@ -387,8 +440,10 @@ def:priv getitem_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_getitem(args.values[0], args.values[1]);
 }
 
-def:priv getitem_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(getitem_signature, args, NULL, getitem_bound);
+def:priv getitem_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(getitem_signature, args, nargs, NULL, getitem_bound);
 }
 
 glob:priv is__signature = CallSignature("is_", ["a", "b"], 2, 2, 2);
@@ -396,8 +451,10 @@ def:priv is__bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_is_(args.values[0], args.values[1]);
 }
 
-def:priv is__call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(is__signature, args, NULL, is__bound);
+def:priv is__call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(is__signature, args, nargs, NULL, is__bound);
 }
 
 glob:priv is_not_signature = CallSignature("is_not", ["a", "b"], 2, 2, 2);
@@ -405,8 +462,10 @@ def:priv is_not_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_is_not(args.values[0], args.values[1]);
 }
 
-def:priv is_not_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(is_not_signature, args, NULL, is_not_bound);
+def:priv is_not_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(is_not_signature, args, nargs, NULL, is_not_bound);
 }
 
 glob:priv pow_signature = CallSignature("pow", ["a", "b"], 2, 2, 2);
@@ -414,8 +473,10 @@ def:priv pow_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_pow(args.values[0], args.values[1]);
 }
 
-def:priv pow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(pow_signature, args, NULL, pow_bound);
+def:priv pow_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(pow_signature, args, nargs, NULL, pow_bound);
 }
 
 glob:priv ipow_signature = CallSignature("ipow", ["a", "b"], 2, 2, 2);
@@ -423,8 +484,10 @@ def:priv ipow_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_ipow(args.values[0], args.values[1]);
 }
 
-def:priv ipow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ipow_signature, args, NULL, ipow_bound);
+def:priv ipow_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ipow_signature, args, nargs, NULL, ipow_bound);
 }
 
 glob:priv contains_signature = CallSignature("contains", ["a", "b"], 2, 2, 2);
@@ -432,8 +495,10 @@ def:priv contains_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_contains(args.values[0], args.values[1]);
 }
 
-def:priv contains_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(contains_signature, args, NULL, contains_bound);
+def:priv contains_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(contains_signature, args, nargs, NULL, contains_bound);
 }
 
 glob:priv indexOf_signature = CallSignature("indexOf", ["a", "b"], 2, 2, 2);
@@ -441,8 +506,10 @@ def:priv indexOf_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_indexOf(args.values[0], args.values[1]);
 }
 
-def:priv indexOf_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(indexOf_signature, args, NULL, indexOf_bound);
+def:priv indexOf_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(indexOf_signature, args, nargs, NULL, indexOf_bound);
 }
 
 glob:priv countOf_signature = CallSignature("countOf", ["a", "b"], 2, 2, 2);
@@ -450,8 +517,10 @@ def:priv countOf_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_countOf(args.values[0], args.values[1]);
 }
 
-def:priv countOf_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(countOf_signature, args, NULL, countOf_bound);
+def:priv countOf_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(countOf_signature, args, nargs, NULL, countOf_bound);
 }
 
 glob:priv delitem_signature = CallSignature("delitem", ["a", "b"], 2, 2, 2);
@@ -459,8 +528,10 @@ def:priv delitem_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_delitem(args.values[0], args.values[1]);
 }
 
-def:priv delitem_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(delitem_signature, args, NULL, delitem_bound);
+def:priv delitem_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(delitem_signature, args, nargs, NULL, delitem_bound);
 }
 
 glob:priv lt_signature = CallSignature("lt", ["a", "b"], 2, 2, 2);
@@ -468,8 +539,10 @@ def:priv lt_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(0));
 }
 
-def:priv lt_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(lt_signature, args, NULL, lt_bound);
+def:priv lt_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(lt_signature, args, nargs, NULL, lt_bound);
 }
 
 glob:priv le_signature = CallSignature("le", ["a", "b"], 2, 2, 2);
@@ -477,8 +550,10 @@ def:priv le_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(1));
 }
 
-def:priv le_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(le_signature, args, NULL, le_bound);
+def:priv le_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(le_signature, args, nargs, NULL, le_bound);
 }
 
 glob:priv eq_signature = CallSignature("eq", ["a", "b"], 2, 2, 2);
@@ -486,8 +561,10 @@ def:priv eq_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(2));
 }
 
-def:priv eq_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(eq_signature, args, NULL, eq_bound);
+def:priv eq_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(eq_signature, args, nargs, NULL, eq_bound);
 }
 
 glob:priv ne_signature = CallSignature("ne", ["a", "b"], 2, 2, 2);
@@ -495,8 +572,10 @@ def:priv ne_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(3));
 }
 
-def:priv ne_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ne_signature, args, NULL, ne_bound);
+def:priv ne_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ne_signature, args, nargs, NULL, ne_bound);
 }
 
 glob:priv gt_signature = CallSignature("gt", ["a", "b"], 2, 2, 2);
@@ -504,8 +583,10 @@ def:priv gt_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(4));
 }
 
-def:priv gt_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(gt_signature, args, NULL, gt_bound);
+def:priv gt_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(gt_signature, args, nargs, NULL, gt_bound);
 }
 
 glob:priv ge_signature = CallSignature("ge", ["a", "b"], 2, 2, 2);
@@ -513,8 +594,10 @@ def:priv ge_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_compare(args.values[0], args.values[1], i64(5));
 }
 
-def:priv ge_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ge_signature, args, NULL, ge_bound);
+def:priv ge_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ge_signature, args, nargs, NULL, ge_bound);
 }
 
 glob:priv setitem_signature = CallSignature("setitem", ["a", "b", "c"], 3, 3, 3),
@@ -525,8 +608,10 @@ def:priv setitem_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_setitem(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv setitem_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(setitem_signature, args, NULL, setitem_bound);
+def:priv setitem_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(setitem_signature, args, nargs, NULL, setitem_bound);
 }
 
 def:priv length_hint_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -541,8 +626,10 @@ def:priv length_hint_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_length_hint(args.values[0], fallback);
 }
 
-def:priv length_hint_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(length_hint_signature, args, NULL, length_hint_bound);
+def:priv length_hint_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(length_hint_signature, args, nargs, NULL, length_hint_bound);
 }
 
 def:priv call_call(
@@ -595,8 +682,10 @@ def:priv digest_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_operator_digest(av.address(), bv.address(), av.size(), bv.size());
 }
 
-def:priv digest_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(digest_signature, args, NULL, digest_bound);
+def:priv digest_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(digest_signature, args, nargs, NULL, digest_bound);
 }
 
 obj AccessorState(ReferenceState) {
@@ -988,261 +1077,261 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "add",
-                 MethodCallbacks(positional=add_call),
+                 MethodCallbacks(fast=add_call),
                  "add($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "sub",
-                 MethodCallbacks(positional=sub_call),
+                 MethodCallbacks(fast=sub_call),
                  "sub($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "mul",
-                 MethodCallbacks(positional=mul_call),
+                 MethodCallbacks(fast=mul_call),
                  "mul($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "matmul",
-                 MethodCallbacks(positional=matmul_call),
+                 MethodCallbacks(fast=matmul_call),
                  "matmul($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "floordiv",
-                 MethodCallbacks(positional=floordiv_call),
+                 MethodCallbacks(fast=floordiv_call),
                  "floordiv($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "truediv",
-                 MethodCallbacks(positional=truediv_call),
+                 MethodCallbacks(fast=truediv_call),
                  "truediv($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "mod",
-                 MethodCallbacks(positional=mod_call),
+                 MethodCallbacks(fast=mod_call),
                  "mod($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "lshift",
-                 MethodCallbacks(positional=lshift_call),
+                 MethodCallbacks(fast=lshift_call),
                  "lshift($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "rshift",
-                 MethodCallbacks(positional=rshift_call),
+                 MethodCallbacks(fast=rshift_call),
                  "rshift($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "and_",
-                 MethodCallbacks(positional=and__call),
+                 MethodCallbacks(fast=and__call),
                  "and_($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "xor",
-                 MethodCallbacks(positional=xor_call),
+                 MethodCallbacks(fast=xor_call),
                  "xor($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "or_",
-                 MethodCallbacks(positional=or__call),
+                 MethodCallbacks(fast=or__call),
                  "or_($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "iadd",
-                 MethodCallbacks(positional=iadd_call),
+                 MethodCallbacks(fast=iadd_call),
                  "iadd($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "isub",
-                 MethodCallbacks(positional=isub_call),
+                 MethodCallbacks(fast=isub_call),
                  "isub($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "imul",
-                 MethodCallbacks(positional=imul_call),
+                 MethodCallbacks(fast=imul_call),
                  "imul($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "imatmul",
-                 MethodCallbacks(positional=imatmul_call),
+                 MethodCallbacks(fast=imatmul_call),
                  "imatmul($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ifloordiv",
-                 MethodCallbacks(positional=ifloordiv_call),
+                 MethodCallbacks(fast=ifloordiv_call),
                  "ifloordiv($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "itruediv",
-                 MethodCallbacks(positional=itruediv_call),
+                 MethodCallbacks(fast=itruediv_call),
                  "itruediv($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "imod",
-                 MethodCallbacks(positional=imod_call),
+                 MethodCallbacks(fast=imod_call),
                  "imod($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ilshift",
-                 MethodCallbacks(positional=ilshift_call),
+                 MethodCallbacks(fast=ilshift_call),
                  "ilshift($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "irshift",
-                 MethodCallbacks(positional=irshift_call),
+                 MethodCallbacks(fast=irshift_call),
                  "irshift($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "iand",
-                 MethodCallbacks(positional=iand_call),
+                 MethodCallbacks(fast=iand_call),
                  "iand($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ixor",
-                 MethodCallbacks(positional=ixor_call),
+                 MethodCallbacks(fast=ixor_call),
                  "ixor($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ior",
-                 MethodCallbacks(positional=ior_call),
+                 MethodCallbacks(fast=ior_call),
                  "ior($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "concat",
-                 MethodCallbacks(positional=concat_call),
+                 MethodCallbacks(fast=concat_call),
                  "concat($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "iconcat",
-                 MethodCallbacks(positional=iconcat_call),
+                 MethodCallbacks(fast=iconcat_call),
                  "iconcat($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "getitem",
-                 MethodCallbacks(positional=getitem_call),
+                 MethodCallbacks(fast=getitem_call),
                  "getitem($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "is_",
-                 MethodCallbacks(positional=is__call),
+                 MethodCallbacks(fast=is__call),
                  "is_($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "is_not",
-                 MethodCallbacks(positional=is_not_call),
+                 MethodCallbacks(fast=is_not_call),
                  "is_not($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "pow",
-                 MethodCallbacks(positional=pow_call),
+                 MethodCallbacks(fast=pow_call),
                  "pow($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ipow",
-                 MethodCallbacks(positional=ipow_call),
+                 MethodCallbacks(fast=ipow_call),
                  "ipow($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "contains",
-                 MethodCallbacks(positional=contains_call),
+                 MethodCallbacks(fast=contains_call),
                  "contains($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "indexOf",
-                 MethodCallbacks(positional=indexOf_call),
+                 MethodCallbacks(fast=indexOf_call),
                  "indexOf($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "countOf",
-                 MethodCallbacks(positional=countOf_call),
+                 MethodCallbacks(fast=countOf_call),
                  "countOf($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "delitem",
-                 MethodCallbacks(positional=delitem_call),
+                 MethodCallbacks(fast=delitem_call),
                  "delitem($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "lt",
-                 MethodCallbacks(positional=lt_call),
+                 MethodCallbacks(fast=lt_call),
                  "lt($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "le",
-                 MethodCallbacks(positional=le_call),
+                 MethodCallbacks(fast=le_call),
                  "le($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "eq",
-                 MethodCallbacks(positional=eq_call),
+                 MethodCallbacks(fast=eq_call),
                  "eq($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ne",
-                 MethodCallbacks(positional=ne_call),
+                 MethodCallbacks(fast=ne_call),
                  "ne($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "gt",
-                 MethodCallbacks(positional=gt_call),
+                 MethodCallbacks(fast=gt_call),
                  "gt($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ge",
-                 MethodCallbacks(positional=ge_call),
+                 MethodCallbacks(fast=ge_call),
                  "ge($module, a, b, /)\n--\n\nApply the Python operator.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "setitem",
-                 MethodCallbacks(positional=setitem_call),
+                 MethodCallbacks(fast=setitem_call),
                  "setitem($module, a, b, c, /)\n--\n\nSame as a[b] = c.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "length_hint",
-                 MethodCallbacks(positional=length_hint_call),
+                 MethodCallbacks(fast=length_hint_call),
                  "length_hint($module, obj, default=0, /)\n--\n\nEstimate an iterable's length.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "call",
@@ -1251,9 +1340,9 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "_compare_digest",
-                 MethodCallbacks(positional=digest_call),
+                 MethodCallbacks(fast=digest_call),
                  "_compare_digest($module, a, b, /)\n--\n\nCompare without content-dependent timing.",
-                 flags=1
+                 flags=128
              )
          ],
          ModuleHooks(execute=execute)

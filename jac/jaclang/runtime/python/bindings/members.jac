@@ -19,6 +19,7 @@ enum MemberType {
     LONG = 2,
     FLOAT = 3,
     DOUBLE = 4,
+    STRING = 5,
     CHAR = 7,
     BYTE = 8,
     UBYTE = 9,
@@ -33,13 +34,14 @@ enum MemberType {
 
 glob READONLY: i32 = 1;
 
-# One scalar field: the attribute name, its Py_T_* type and byte offset in
-# the record.
+# One field: the attribute name, its Py_T_* type and byte offset in the
+# record, and its docstring (None is C's NULL doc).
 obj MemberField {
     has name: str,
         kind: int,
         offset: int,
-        readonly: bool = False;
+        readonly: bool = False,
+        doc: (str | None) = None;
 
     def record -> PyMemberDef {
         return PyMemberDef(

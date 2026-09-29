@@ -13,7 +13,8 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_POSITIONAL,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -31,7 +32,7 @@ import from jaclang.runtime.python.modules.fcntl {
 }
 
 glob:priv fcntl_fcntl_signature = CallSignature(
-         "fcntl", ["fd", "cmd", "arg"], 2, 3, 3
+         "fcntl", ["fd", "cmd", "arg"], 2, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv fcntl_fcntl_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -49,13 +50,20 @@ def:priv fcntl_fcntl_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv fcntl_fcntl_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(fcntl_fcntl_signature, args, kwargs, fcntl_fcntl_bound, receiver);
+    return invoke_vector(
+        fcntl_fcntl_signature, args, nargs, NULL, fcntl_fcntl_bound, receiver
+    );
 }
 
 glob:priv fcntl_ioctl_signature = CallSignature(
-         "ioctl", ["fd", "request", "arg", "mutate_flag"], 2, 4, 4
+         "ioctl",
+         ["fd", "request", "arg", "mutate_flag"],
+         2,
+         4,
+         4,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv fcntl_ioctl_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -78,13 +86,15 @@ def:priv fcntl_ioctl_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv fcntl_ioctl_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(fcntl_ioctl_signature, args, kwargs, fcntl_ioctl_bound, receiver);
+    return invoke_vector(
+        fcntl_ioctl_signature, args, nargs, NULL, fcntl_ioctl_bound, receiver
+    );
 }
 
 glob:priv fcntl_flock_signature = CallSignature(
-         "flock", ["fd", "operation"], 2, 2, 2
+         "flock", ["fd", "operation"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv fcntl_flock_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -97,13 +107,20 @@ def:priv fcntl_flock_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv fcntl_flock_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(fcntl_flock_signature, args, kwargs, fcntl_flock_bound, receiver);
+    return invoke_vector(
+        fcntl_flock_signature, args, nargs, NULL, fcntl_flock_bound, receiver
+    );
 }
 
 glob:priv fcntl_lockf_signature = CallSignature(
-         "lockf", ["fd", "cmd", "len", "start", "whence"], 2, 5, 5
+         "lockf",
+         ["fd", "cmd", "len", "start", "whence"],
+         2,
+         5,
+         5,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv fcntl_lockf_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -131,35 +148,37 @@ def:priv fcntl_lockf_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv fcntl_lockf_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(fcntl_lockf_signature, args, kwargs, fcntl_lockf_bound, receiver);
+    return invoke_vector(
+        fcntl_lockf_signature, args, nargs, NULL, fcntl_lockf_bound, receiver
+    );
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "fcntl",
-             MethodCallbacks(keywords=fcntl_fcntl_call),
+             MethodCallbacks(fast=fcntl_fcntl_call),
              "fcntl($module, fd, cmd, arg=0, /)\n--\n\nPerform the operation cmd on file descriptor fd.\n\nThe values used for cmd are operating system dependent, and are\navailable as constants in the fcntl module, using the same names as used\nin the relevant C header files.  The argument arg is optional, and\ndefaults to 0; it may be an integer, a bytes-like object or a string.\nIf arg is given as a string, it will be encoded to binary using the\nUTF-8 encoding.\n\nIf the arg given is an integer or if none is specified, the result value\nis an integer corresponding to the return value of the fcntl() call in\nthe C code.\n\nIf arg is given as a bytes-like object, the return value of fcntl() is a\nbytes object of that length, containing the resulting value put in the\narg buffer by the operating system.  The length of the arg buffer is not\nallowed to exceed 1024 bytes.",
-             3
+             128
          ),
          MethodDefinition(
              "ioctl",
-             MethodCallbacks(keywords=fcntl_ioctl_call),
+             MethodCallbacks(fast=fcntl_ioctl_call),
              "ioctl($module, fd, request, arg=0, mutate_flag=True, /)\n--\n\nPerform the operation request on file descriptor fd.\n\nThe values used for request are operating system dependent, and are\navailable as constants in the fcntl or termios library modules, using\nthe same names as used in the relevant C header files.\n\nThe argument arg is optional, and defaults to 0; it may be an integer, a\nbytes-like object or a string.  If arg is given as a string, it will be\nencoded to binary using the UTF-8 encoding.\n\nIf the arg given is an integer or if none is specified, the result value\nis an integer corresponding to the return value of the ioctl() call in\nthe C code.\n\nIf the argument is a mutable buffer (such as a bytearray) and the\nmutate_flag argument is true (default) then the buffer is (in effect)\npassed to the operating system and changes made by the OS will be\nreflected in the contents of the buffer after the call has returned.\nThe return value is the integer returned by the ioctl() system call.\n\nIf the argument is a mutable buffer and the mutable_flag argument is\nfalse, the behavior is as if an immutable buffer had been passed.\n\nIf the argument is an immutable buffer then a copy of the buffer is\npassed to the operating system and the return value is a bytes object of\nthe same length containing whatever the operating system put in the\nbuffer.  The length of the arg buffer in this case is not allowed to\nexceed 1024 bytes.",
-             3
+             128
          ),
          MethodDefinition(
              "flock",
-             MethodCallbacks(keywords=fcntl_flock_call),
+             MethodCallbacks(fast=fcntl_flock_call),
              "flock($module, fd, operation, /)\n--\n\nPerform the lock operation on file descriptor fd.\n\nSee the Unix manual page for flock(2) for details (On some systems, this\nfunction is emulated using fcntl()).",
-             3
+             128
          ),
          MethodDefinition(
              "lockf",
-             MethodCallbacks(keywords=fcntl_lockf_call),
+             MethodCallbacks(fast=fcntl_lockf_call),
              "lockf($module, fd, cmd, len=0, start=0, whence=0, /)\n--\n\nA wrapper around the fcntl() locking calls.\n\nfd is the file descriptor of the file to lock or unlock, and operation\nis one of the following values:\n\n    LOCK_UN - unlock\n    LOCK_SH - acquire a shared lock\n    LOCK_EX - acquire an exclusive lock\n\nWhen operation is LOCK_SH or LOCK_EX, it can also be bitwise ORed with\nLOCK_NB to avoid blocking on lock acquisition.  If LOCK_NB is used and\nthe lock cannot be acquired, an OSError will be raised and the exception\nwill have an errno attribute set to EACCES or EAGAIN (depending on the\noperating system -- for portability, check for either value).\n\nlen is the number of bytes to lock, with the default meaning to lock to\nEOF.  start is the byte offset, relative to whence, to that the lock\nstarts.  whence is as with fileobj.seek(), specifically:\n\n    0 - relative to the start of the file (SEEK_SET)\n    1 - relative to the current buffer position (SEEK_CUR)\n    2 - relative to the end of the file (SEEK_END)",
-             3
+             128
          ),
 
      ];

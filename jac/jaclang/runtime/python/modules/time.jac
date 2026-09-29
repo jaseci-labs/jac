@@ -128,6 +128,8 @@ import from c {
 }
 import from c { def time(result: ptr) -> i64;  }
 
+# The error handler tm_zone decodes with, as a C string for the process.
+
 glob:priv SEC_TO_NS: i64 = 1000000000,
      INT_MAX: int = 2147483647,
      INT_MIN: int = -2147483648,
