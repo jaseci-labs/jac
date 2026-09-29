@@ -385,8 +385,7 @@ impl EsastGenPass._convert_assignment_target(
         (es.Pattern | es.Expression),
         target.gen.es_ast or self.sync_loc(es.Identifier(name='temp'), jac_node=target)
     );
-    reference = cast(es.Expression, left) if isinstance(left, es.Node) else None;
-    return (left, reference, None);
+    return (left, cast(es.Expression, left), None);
 }
 
 impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Pattern {

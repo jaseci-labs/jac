@@ -1,5 +1,5 @@
 import json;
-import from jaclang.compiler.frontend.constant { is_borrow_kind }
+import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
 
 impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     import from jaclang.compiler.c_interop {
@@ -48,7 +48,11 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
                 tag = p.type_tag.tag if p.type_tag else None;
                 spec = c_type_spec(p.type, tag);
                 if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
-                    spec = ["ref", p.type_tag.ownership.name == "MUT_BORROW", spec];
+                    spec = [
+                        "ref",
+                        p.type_tag.ownership == OwnershipKind.MUT_BORROW,
+                        spec
+                    ];
                 }
                 params.append([p.name.value, spec]);
             }
@@ -98,8 +102,18 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
             jac_node=imp
         )
     ];
-    declared: list[str] = desc["opaque"] + [s["name"] for s in desc["structs"]];
-    declared += [f["name"] for f in desc["functions"]];
+    declared: list[str] = [];
+    for key in ["opaque", "structs", "functions"] {
+        entries: list[any] = desc[key];
+        for item in entries {
+            if isinstance(item, str) {
+                declared.append(item);
+            } else {
+                named: dict[str, any] = item;
+                declared.append(str(named["name"]));
+            }
+        }
+    }
     for name in declared {
         out.append(
             self.nod(
