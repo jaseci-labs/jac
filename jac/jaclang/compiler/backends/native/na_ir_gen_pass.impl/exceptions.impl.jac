@@ -259,10 +259,7 @@ impl NaIRGenPass._emit_runtime_raise(
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     func = self.builder.function;
-    # The raise of one exception and message is one block per function when
-    # nothing is released on the way out: every check branches to it, so a
-    # function of many checks (C memory views, conversions) stays small
-    # enough to inline.
+
     shared = not release_on_error and not self._slot_lowering_active();
     key = f"{func.name}|{exc_type_name}|{msg}";
     cached = self._shared_raise_blocks.get(key) if shared else None;
@@ -1451,10 +1448,9 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         ) = saved;
     }
     entry_blk = func.entry_basic_block;
-    # A function that arms handlers fetched the thread's context in its entry
-    # block; the chain link reuses it. It is lifted out and put back just
-    # before the link, after every leading local, still ahead of each use.
-    cached = self._exc_context_cache.get(id(func));
+
+    found = self._exc_context_cache.get(id(func));
+    cached = found if isinstance(found, ir.Instruction) else None;
     if cached is not None {
         entry_blk.instructions.remove(cached);
     }
@@ -2249,8 +2245,7 @@ impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
         }
         index += 1;
     }
-    # Insert at `index` of the entry block with `b` itself, then put `b`
-    # back where it was, one further on when that is after the insertion.
+
     saved_block: any = b.block;
     saved_anchor: int = b._anchor;
     b.position_at_start(first_block);

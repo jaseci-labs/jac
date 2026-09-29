@@ -646,9 +646,11 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     }
     if var_name in self.global_vars {
         global_var = self.global_vars[var_name];
-        folded = self._final_scalar_value(nd, global_var.type.pointee);
-        if folded is not None {
-            return folded;
+        if isinstance(global_var.type, ir.PointerType) {
+            folded = self._final_scalar_value(nd, global_var.type.pointee);
+            if folded is not None {
+                return folded;
+            }
         }
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
@@ -3049,9 +3051,6 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
     return self._arch_key(arch) if arch is not None else None;
 }
 
-# A read of a Final glob whose value is a C scalar constant is that constant,
-# in every unit that reads it: a layout offset or flag folds into the code
-# instead of a load of another module's global.
 impl NaIRGenPass._final_scalar_value(
     nd: uni.Name, value_type: ir.Type
 ) -> (ir.Value | None) {
