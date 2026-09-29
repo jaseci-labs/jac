@@ -319,6 +319,50 @@ def integer(p: ptr[u8]) -> bool { return p < 16; }
     assert checker_codes(code) == ["E1110", "E1110", "E1110"];
 }
 
+test "a function rebinds a C data glob of another module in place" {
+    holder = '''import from c {
+    obj GbRec {
+        has a: i32;
+    }
+    glob:priv gb_kept: ptr[GbRec] = ptr[GbRec]();
+    glob gb_count: i32 = i32(0);
+    glob gb_recs: list[GbRec] = [GbRec(a=i32(5)), GbRec(a=i32(6))];
+}
+glob gb_calls: int = 0;
+
+def keep(p: ptr[GbRec]) {
+    gb_kept = p;
+    gb_count += i32(1);
+    gb_calls = gb_calls + 1;
+}
+
+def kept_value -> i32 {
+    return gb_kept.view(1)[0].a;
+}
+
+def calls -> int {
+    return gb_calls;
+}
+''';
+    main = '''import from holder { calls, gb_count, gb_recs, keep, kept_value }
+with entry {
+    keep(addressof(gb_recs));
+    print("first", kept_value(), gb_count, calls());
+    keep(addressof(gb_recs) + 1);
+    print("second", kept_value(), gb_count, calls());
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "holder.jac").write_text(holder);
+        path = Path(directory) / "rebind.jac";
+        path.write_text(main);
+        out = assert_native_identity(str(path));
+    }
+    lines = out.splitlines();
+    assert "first 5 1 1" in lines , out;
+    assert "second 6 2 2" in lines , out;
+}
+
 test "C data symbols are declared without a value and C objects are used by address" {
     code = DECLS
         + '''
