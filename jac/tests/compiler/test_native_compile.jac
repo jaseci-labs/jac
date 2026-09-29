@@ -177,3 +177,28 @@ test "get_bytecode adopts a kernel compile and keeps no host tree" {
         assert "go" in names or "Tally" in names , sorted(names);
     }
 }
+
+"""A client component makes the ES pass register the framework runtime module
+even though the source never imports it, so the snapshot has to carry that
+module's path; a kernel compile then emits the host's client artifact."""
+test "a client module compiles in the kernel with the host's products" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'app.jac').write_text(
+            'def:pub greet(name: str) -> str { return "hi " + name; }\n\n'
+                + 'def:pub app -> JsxElement {\n'
+                + '    has label: str = "";\n'
+                + '    async can with entry { label = await greet("you"); }\n'
+                + '    return <div>{label}</div>;\n}\n'
+        );
+        entry_file = str(base / 'app.jac');
+        expected = host_products(entry_file);
+        assert expected.client is not None , "the fixture compiled no client code";
+        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+    }
+}

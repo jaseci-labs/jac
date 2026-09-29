@@ -258,7 +258,7 @@ def native_arch_scope(mod_path: str) -> str {
     }
     source = os.path.realpath(mod_path);
     out = "";
-    if not toolchain_runtime_unit(source) {
+    if source.endswith(".jac") and not toolchain_runtime_unit(source) {
         stem = os.path.basename(source);
         dot = stem.find(".");
         if dot > 0 {

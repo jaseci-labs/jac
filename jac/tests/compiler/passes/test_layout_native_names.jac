@@ -50,3 +50,20 @@ test "a class from a Python stub keeps its bare name" {
     typ = interface_class(module, "/stubs/builtins.pyi", "Thing");
     assert class_type_native_name(typ) == "Thing";
 }
+
+"""A class a Python stub declares is never laid out by a native unit, so it
+keeps its bare name however its tree was loaded: with the stub catalog off,
+builtins.pyi parses to Archetypes, and a scoped `int` or `list` would no
+longer be the primitive the backend lowers."""
+test "only Jac sources give their classes module-scoped names" {
+    stub = os.path.join(os.path.dirname(__file__), "builtins.pyi");
+    assert native_arch_name(stub, "int") == "int";
+    assert native_arch_name(
+        os.path.join(os.path.dirname(__file__), "helpers.py"), "Box"
+    )
+        == "Box";
+    scoped = native_arch_name(
+        os.path.join(os.path.dirname(__file__), "model.jac"), "Box"
+    );
+    assert scoped != "Box" and scoped.startswith("Box") , scoped;
+}
