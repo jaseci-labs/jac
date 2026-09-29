@@ -7,6 +7,7 @@
 #endif
 #include "Python.h"
 #include "internal/pycore_long.h"
+#include "internal/pycore_time.h"
 #include "datetime.h"
 #include <stddef.h>
 
@@ -269,6 +270,179 @@ KIND(PyStatus, exitcode, 1);
 SIGNED(PyStatus, exitcode, 1);
 LAYOUT(PyStatus, 32, 8);
 
+/* PyGetSetDef */
+FIELD(struct PyGetSetDef, name, 0, 8);
+KIND(struct PyGetSetDef, name, 5);
+FIELD(struct PyGetSetDef, get, 8, 8);
+KIND(struct PyGetSetDef, get, 5);
+FIELD(struct PyGetSetDef, set, 16, 8);
+KIND(struct PyGetSetDef, set, 5);
+FIELD(struct PyGetSetDef, doc, 24, 8);
+KIND(struct PyGetSetDef, doc, 5);
+FIELD(struct PyGetSetDef, closure, 32, 8);
+KIND(struct PyGetSetDef, closure, 5);
+LAYOUT(struct PyGetSetDef, 40, 8);
+
+/* PyDateTime_Delta */
+FIELD(PyDateTime_Delta, ob_base, 0, 16);
+KIND(PyDateTime_Delta, ob_base, 12);
+FIELD(PyDateTime_Delta, hashcode, 16, 8);
+KIND(PyDateTime_Delta, hashcode, 1);
+SIGNED(PyDateTime_Delta, hashcode, 1);
+FIELD(PyDateTime_Delta, days, 24, 4);
+KIND(PyDateTime_Delta, days, 1);
+SIGNED(PyDateTime_Delta, days, 1);
+FIELD(PyDateTime_Delta, seconds, 28, 4);
+KIND(PyDateTime_Delta, seconds, 1);
+SIGNED(PyDateTime_Delta, seconds, 1);
+FIELD(PyDateTime_Delta, microseconds, 32, 4);
+KIND(PyDateTime_Delta, microseconds, 1);
+SIGNED(PyDateTime_Delta, microseconds, 1);
+LAYOUT(PyDateTime_Delta, 40, 8);
+
+/* PyDateTime_TZInfo */
+FIELD(PyDateTime_TZInfo, ob_base, 0, 16);
+KIND(PyDateTime_TZInfo, ob_base, 12);
+LAYOUT(PyDateTime_TZInfo, 16, 8);
+
+/* _PyDateTime_BaseTZInfo */
+FIELD(_PyDateTime_BaseTZInfo, ob_base, 0, 16);
+KIND(_PyDateTime_BaseTZInfo, ob_base, 12);
+FIELD(_PyDateTime_BaseTZInfo, hashcode, 16, 8);
+KIND(_PyDateTime_BaseTZInfo, hashcode, 1);
+SIGNED(_PyDateTime_BaseTZInfo, hashcode, 1);
+FIELD(_PyDateTime_BaseTZInfo, hastzinfo, 24, 1);
+KIND(_PyDateTime_BaseTZInfo, hastzinfo, 1);
+SIGNED(_PyDateTime_BaseTZInfo, hastzinfo, 1);
+LAYOUT(_PyDateTime_BaseTZInfo, 32, 8);
+
+/* _PyDateTime_BaseTime */
+FIELD(_PyDateTime_BaseTime, ob_base, 0, 16);
+KIND(_PyDateTime_BaseTime, ob_base, 12);
+FIELD(_PyDateTime_BaseTime, hashcode, 16, 8);
+KIND(_PyDateTime_BaseTime, hashcode, 1);
+SIGNED(_PyDateTime_BaseTime, hashcode, 1);
+FIELD(_PyDateTime_BaseTime, hastzinfo, 24, 1);
+KIND(_PyDateTime_BaseTime, hastzinfo, 1);
+SIGNED(_PyDateTime_BaseTime, hastzinfo, 1);
+FIELD(_PyDateTime_BaseTime, data[0], 25, 1);
+KIND(_PyDateTime_BaseTime, data[0], 1);
+SIGNED(_PyDateTime_BaseTime, data[0], 0);
+FIELD(_PyDateTime_BaseTime, data[1], 26, 1);
+KIND(_PyDateTime_BaseTime, data[1], 1);
+SIGNED(_PyDateTime_BaseTime, data[1], 0);
+FIELD(_PyDateTime_BaseTime, data[2], 27, 1);
+KIND(_PyDateTime_BaseTime, data[2], 1);
+SIGNED(_PyDateTime_BaseTime, data[2], 0);
+FIELD(_PyDateTime_BaseTime, data[3], 28, 1);
+KIND(_PyDateTime_BaseTime, data[3], 1);
+SIGNED(_PyDateTime_BaseTime, data[3], 0);
+FIELD(_PyDateTime_BaseTime, data[4], 29, 1);
+KIND(_PyDateTime_BaseTime, data[4], 1);
+SIGNED(_PyDateTime_BaseTime, data[4], 0);
+FIELD(_PyDateTime_BaseTime, data[5], 30, 1);
+KIND(_PyDateTime_BaseTime, data[5], 1);
+SIGNED(_PyDateTime_BaseTime, data[5], 0);
+LAYOUT(_PyDateTime_BaseTime, 32, 8);
+
+/* PyDateTime_Time */
+FIELD(PyDateTime_Time, ob_base, 0, 16);
+KIND(PyDateTime_Time, ob_base, 12);
+FIELD(PyDateTime_Time, hashcode, 16, 8);
+KIND(PyDateTime_Time, hashcode, 1);
+SIGNED(PyDateTime_Time, hashcode, 1);
+FIELD(PyDateTime_Time, hastzinfo, 24, 1);
+KIND(PyDateTime_Time, hastzinfo, 1);
+SIGNED(PyDateTime_Time, hastzinfo, 1);
+FIELD(PyDateTime_Time, data[0], 25, 1);
+KIND(PyDateTime_Time, data[0], 1);
+SIGNED(PyDateTime_Time, data[0], 0);
+FIELD(PyDateTime_Time, data[1], 26, 1);
+KIND(PyDateTime_Time, data[1], 1);
+SIGNED(PyDateTime_Time, data[1], 0);
+FIELD(PyDateTime_Time, data[2], 27, 1);
+KIND(PyDateTime_Time, data[2], 1);
+SIGNED(PyDateTime_Time, data[2], 0);
+FIELD(PyDateTime_Time, data[3], 28, 1);
+KIND(PyDateTime_Time, data[3], 1);
+SIGNED(PyDateTime_Time, data[3], 0);
+FIELD(PyDateTime_Time, data[4], 29, 1);
+KIND(PyDateTime_Time, data[4], 1);
+SIGNED(PyDateTime_Time, data[4], 0);
+FIELD(PyDateTime_Time, data[5], 30, 1);
+KIND(PyDateTime_Time, data[5], 1);
+SIGNED(PyDateTime_Time, data[5], 0);
+FIELD(PyDateTime_Time, fold, 31, 1);
+KIND(PyDateTime_Time, fold, 1);
+SIGNED(PyDateTime_Time, fold, 0);
+FIELD(PyDateTime_Time, tzinfo, 32, 8);
+KIND(PyDateTime_Time, tzinfo, 5);
+LAYOUT(PyDateTime_Time, 40, 8);
+
+/* PyDateTime_Date */
+FIELD(PyDateTime_Date, ob_base, 0, 16);
+KIND(PyDateTime_Date, ob_base, 12);
+FIELD(PyDateTime_Date, hashcode, 16, 8);
+KIND(PyDateTime_Date, hashcode, 1);
+SIGNED(PyDateTime_Date, hashcode, 1);
+FIELD(PyDateTime_Date, hastzinfo, 24, 1);
+KIND(PyDateTime_Date, hastzinfo, 1);
+SIGNED(PyDateTime_Date, hastzinfo, 1);
+FIELD(PyDateTime_Date, data[0], 25, 1);
+KIND(PyDateTime_Date, data[0], 1);
+SIGNED(PyDateTime_Date, data[0], 0);
+FIELD(PyDateTime_Date, data[1], 26, 1);
+KIND(PyDateTime_Date, data[1], 1);
+SIGNED(PyDateTime_Date, data[1], 0);
+FIELD(PyDateTime_Date, data[2], 27, 1);
+KIND(PyDateTime_Date, data[2], 1);
+SIGNED(PyDateTime_Date, data[2], 0);
+FIELD(PyDateTime_Date, data[3], 28, 1);
+KIND(PyDateTime_Date, data[3], 1);
+SIGNED(PyDateTime_Date, data[3], 0);
+LAYOUT(PyDateTime_Date, 32, 8);
+
+/* _PyDateTime_BaseDateTime */
+FIELD(_PyDateTime_BaseDateTime, ob_base, 0, 16);
+KIND(_PyDateTime_BaseDateTime, ob_base, 12);
+FIELD(_PyDateTime_BaseDateTime, hashcode, 16, 8);
+KIND(_PyDateTime_BaseDateTime, hashcode, 1);
+SIGNED(_PyDateTime_BaseDateTime, hashcode, 1);
+FIELD(_PyDateTime_BaseDateTime, hastzinfo, 24, 1);
+KIND(_PyDateTime_BaseDateTime, hastzinfo, 1);
+SIGNED(_PyDateTime_BaseDateTime, hastzinfo, 1);
+FIELD(_PyDateTime_BaseDateTime, data[0], 25, 1);
+KIND(_PyDateTime_BaseDateTime, data[0], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[0], 0);
+FIELD(_PyDateTime_BaseDateTime, data[1], 26, 1);
+KIND(_PyDateTime_BaseDateTime, data[1], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[1], 0);
+FIELD(_PyDateTime_BaseDateTime, data[2], 27, 1);
+KIND(_PyDateTime_BaseDateTime, data[2], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[2], 0);
+FIELD(_PyDateTime_BaseDateTime, data[3], 28, 1);
+KIND(_PyDateTime_BaseDateTime, data[3], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[3], 0);
+FIELD(_PyDateTime_BaseDateTime, data[4], 29, 1);
+KIND(_PyDateTime_BaseDateTime, data[4], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[4], 0);
+FIELD(_PyDateTime_BaseDateTime, data[5], 30, 1);
+KIND(_PyDateTime_BaseDateTime, data[5], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[5], 0);
+FIELD(_PyDateTime_BaseDateTime, data[6], 31, 1);
+KIND(_PyDateTime_BaseDateTime, data[6], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[6], 0);
+FIELD(_PyDateTime_BaseDateTime, data[7], 32, 1);
+KIND(_PyDateTime_BaseDateTime, data[7], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[7], 0);
+FIELD(_PyDateTime_BaseDateTime, data[8], 33, 1);
+KIND(_PyDateTime_BaseDateTime, data[8], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[8], 0);
+FIELD(_PyDateTime_BaseDateTime, data[9], 34, 1);
+KIND(_PyDateTime_BaseDateTime, data[9], 1);
+SIGNED(_PyDateTime_BaseDateTime, data[9], 0);
+LAYOUT(_PyDateTime_BaseDateTime, 40, 8);
+
 /* PyDateTime_DateTime */
 FIELD(PyDateTime_DateTime, ob_base, 0, 16);
 KIND(PyDateTime_DateTime, ob_base, 12);
@@ -358,3 +532,39 @@ CONSTANT(sizeof(digit), 4LL);
 CONSTANT(_PyStatus_TYPE_OK, 0LL);
 CONSTANT(_PyStatus_TYPE_ERROR, 1LL);
 CONSTANT(sizeof(Py_buffer), 80LL);
+CONSTANT(sizeof(PyObject), 16LL);
+CONSTANT(sizeof(PyTupleObject), 40LL);
+CONSTANT(Py_TPFLAGS_BASETYPE, 1024LL);
+CONSTANT(Py_TPFLAGS_HAVE_GC, 16384LL);
+CONSTANT(Py_TPFLAGS_IMMUTABLETYPE, 256LL);
+CONSTANT(METH_VARARGS, 1LL);
+CONSTANT(METH_KEYWORDS, 2LL);
+CONSTANT(METH_NOARGS, 4LL);
+CONSTANT(METH_O, 8LL);
+CONSTANT(METH_CLASS, 16LL);
+CONSTANT(METH_STATIC, 32LL);
+CONSTANT(METH_FASTCALL, 128LL);
+CONSTANT(Py_T_INT, 1LL);
+CONSTANT(Py_READONLY, 1LL);
+CONSTANT(Py_tp_dealloc, 52LL);
+CONSTANT(Py_tp_doc, 56LL);
+CONSTANT(Py_tp_getset, 73LL);
+CONSTANT(Py_tp_methods, 64LL);
+CONSTANT(Py_tp_new, 65LL);
+CONSTANT(Py_tp_repr, 66LL);
+CONSTANT(Py_tp_traverse, 71LL);
+CONSTANT(sizeof(PyDateTime_Delta), 40LL);
+CONSTANT(sizeof(PyDateTime_TZInfo), 16LL);
+CONSTANT(sizeof(PyDateTime_Date), 32LL);
+CONSTANT(sizeof(_PyDateTime_BaseTime), 32LL);
+CONSTANT(sizeof(PyDateTime_Time), 40LL);
+CONSTANT(sizeof(_PyDateTime_BaseDateTime), 40LL);
+CONSTANT(sizeof(PyDateTime_DateTime), 48LL);
+CONSTANT(offsetof(PyDateTime_Date, data), 25LL);
+CONSTANT(offsetof(PyDateTime_Delta, days), 24LL);
+CONSTANT(offsetof(PyDateTime_Delta, seconds), 28LL);
+CONSTANT(offsetof(PyDateTime_Delta, microseconds), 32LL);
+CONSTANT(Py_CONSTANT_ONE, 6LL);
+CONSTANT(Py_CONSTANT_EMPTY_STR, 7LL);
+CONSTANT(_PyTime_ROUND_FLOOR, 0LL);
+CONSTANT(_PyTime_ROUND_HALF_EVEN, 2LL);

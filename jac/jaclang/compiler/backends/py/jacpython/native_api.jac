@@ -88,6 +88,7 @@ import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.bindings.locale { PyInit__locale }
 import from jaclang.runtime.python.bindings.zoneinfo { PyInit__zoneinfo }
 import from jaclang.runtime.python.bindings.unicodedata { PyInit_unicodedata }
+import from jaclang.runtime.python.bindings.datetime { PyInit__datetime }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

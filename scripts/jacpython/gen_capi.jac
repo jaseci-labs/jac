@@ -54,7 +54,6 @@ glob OPAQUE: list[str] = [
          "PyInterpreterState",
          "PyUnicodeWriter",
          "PyModuleDef",
-         "PyType_Spec",
          "PyCompilerFlags",
          "PyBytesWriter",
          "PyMutex"
@@ -93,6 +92,12 @@ glob OPAQUE: list[str] = [
          "PyMemberDef": (
              "obj PyMemberDef { has name: ptr[u8] = ptr[u8](), type_: i32 = 0, "
              + "offset: i64 = 0, flags: i32 = 0, doc: ptr[u8] = ptr[u8](); }"
+         ),
+         # A heap type's spec, for PyType_FromModuleAndSpec from C data.
+         "PyType_Slot": "obj PyType_Slot { has slot: i32 = 0, pfunc: ptr = ptr(); }",
+         "PyType_Spec": (
+             "obj PyType_Spec { has name: ptr[u8] = ptr[u8](), basicsize: i32 = 0, "
+             + "itemsize: i32 = 0, flags: u32 = 0, slots: ptr[PyType_Slot] = ptr[PyType_Slot](); }"
          ),
          "_PyTimeFraction": "obj _PyTimeFraction { has numer: i64 = 0, denom: i64 = 0; }",
          "_Py_clock_info_t": (
@@ -237,6 +242,7 @@ glob OPAQUE: list[str] = [
      # out-pointer takes `&mut T | None`, so None passes NULL.
      NULLABLE_PARAMETERS: dict[str, set[int]] = {
          "PyBytes_DecodeEscape": {2, 4},
+         "PyCapsule_New": {1},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
          "PyErr_WarnExplicit": {4},

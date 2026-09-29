@@ -2492,7 +2492,8 @@ impl TypeCheckPass._c_const_problem(
         c_string_literal,
         foreign_struct_of_type,
         is_builtin_addressof_call,
-        is_ptr_type
+        is_ptr_type,
+        named_function_of
     }
     while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
         expr = expr.value;
@@ -2563,10 +2564,8 @@ impl TypeCheckPass._c_const_problem(
         return None;
     }
     if isinstance(ctype, FunctionType) {
-        decl = expr.sym.decl
-            if isinstance(expr, Name) and expr.sym is not None
-            else None;
-        if decl is not None and isinstance(decl.name_of, Ability) {
+        # A def of this module or one it imports.
+        if named_function_of(expr) is not None {
             return None;
         }
         return "sets a callback field to something other than a named function";
@@ -2588,6 +2587,8 @@ impl TypeCheckPass._c_const_problem(
                         and (
                             c_string_literal(params[0]) is not None
                             or c_scalar_constant(params[0])[0]
+                            or named_function_of(params[0]) is not None
+                            or is_builtin_addressof_call(params[0])
                         )
                     )
                 ) {

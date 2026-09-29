@@ -348,6 +348,18 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None) {
     return literal_string_value(expr);
 }
 
+"""The function a C constant `ptr(name)` takes the address of: the def `nd`
+names, local or imported, or None when it names anything else."""
+def named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
+    import from jaclang.compiler.frontend.unitree { Ability, Name }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    decl = resolved_decl_of(nd.sym);
+    owner = decl.name_of if decl is not None else None;
+    return owner if isinstance(owner, Ability) else None;
+}
+
 def final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
     import from jaclang.compiler.frontend.unitree { Name }
     if not isinstance(nd, Name) or nd.sym is None {

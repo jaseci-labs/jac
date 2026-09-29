@@ -55,11 +55,16 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/longintrepr.h",
          "Include/cpython/tupleobject.h",
          "Include/cpython/initconfig.h",
+         "Include/descrobject.h",
          "Include/datetime.h"
      ],
      # Headers the generated asserts and the constant probe include beyond
      # Python.h (datetime.h is not part of it).
-     INCLUDES: list[str] = ["internal/pycore_long.h", "datetime.h"],
+     INCLUDES: list[str] = [
+         "internal/pycore_long.h",
+         "internal/pycore_time.h",
+         "datetime.h"
+     ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
      # opaque.
@@ -72,6 +77,14 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyLongObject", "struct _longobject"),
          ("PyTupleObject", "PyTupleObject"),
          ("PyStatus", "PyStatus"),
+         ("PyGetSetDef", "struct PyGetSetDef"),
+         ("PyDateTime_Delta", "PyDateTime_Delta"),
+         ("PyDateTime_TZInfo", "PyDateTime_TZInfo"),
+         ("_PyDateTime_BaseTZInfo", "_PyDateTime_BaseTZInfo"),
+         ("_PyDateTime_BaseTime", "_PyDateTime_BaseTime"),
+         ("PyDateTime_Time", "PyDateTime_Time"),
+         ("PyDateTime_Date", "PyDateTime_Date"),
+         ("_PyDateTime_BaseDateTime", "_PyDateTime_BaseDateTime"),
          ("PyDateTime_DateTime", "PyDateTime_DateTime"),
          ("PyDateTime_CAPI", "PyDateTime_CAPI")
      ],
@@ -96,7 +109,51 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyLong_DIGIT_SIZE", "sizeof(digit)", "i64"),
          ("_PyStatus_TYPE_OK", "_PyStatus_TYPE_OK", "u32"),
          ("_PyStatus_TYPE_ERROR", "_PyStatus_TYPE_ERROR", "u32"),
-         ("PY_BUFFER_SIZE", "sizeof(Py_buffer)", "u64")
+         ("PY_BUFFER_SIZE", "sizeof(Py_buffer)", "u64"),
+         ("PY_OBJECT_SIZE", "sizeof(PyObject)", "i64"),
+         ("PY_TUPLE_OBJECT_SIZE", "sizeof(PyTupleObject)", "i64"),
+         ("Py_TPFLAGS_BASETYPE", "Py_TPFLAGS_BASETYPE", "u64"),
+         ("Py_TPFLAGS_HAVE_GC", "Py_TPFLAGS_HAVE_GC", "u64"),
+         ("Py_TPFLAGS_IMMUTABLETYPE", "Py_TPFLAGS_IMMUTABLETYPE", "u64"),
+         ("METH_VARARGS", "METH_VARARGS", "i32"),
+         ("METH_KEYWORDS", "METH_KEYWORDS", "i32"),
+         ("METH_NOARGS", "METH_NOARGS", "i32"),
+         ("METH_O", "METH_O", "i32"),
+         ("METH_CLASS", "METH_CLASS", "i32"),
+         ("METH_STATIC", "METH_STATIC", "i32"),
+         ("METH_FASTCALL", "METH_FASTCALL", "i32"),
+         ("Py_T_INT", "Py_T_INT", "i32"),
+         ("Py_READONLY", "Py_READONLY", "i32"),
+         ("Py_tp_dealloc", "Py_tp_dealloc", "i32"),
+         ("Py_tp_doc", "Py_tp_doc", "i32"),
+         ("Py_tp_getset", "Py_tp_getset", "i32"),
+         ("Py_tp_methods", "Py_tp_methods", "i32"),
+         ("Py_tp_new", "Py_tp_new", "i32"),
+         ("Py_tp_repr", "Py_tp_repr", "i32"),
+         ("Py_tp_traverse", "Py_tp_traverse", "i32"),
+         ("PY_DATETIME_DELTA_SIZE", "sizeof(PyDateTime_Delta)", "i64"),
+         ("PY_DATETIME_TZINFO_SIZE", "sizeof(PyDateTime_TZInfo)", "i64"),
+         ("PY_DATETIME_DATE_SIZE", "sizeof(PyDateTime_Date)", "i64"),
+         ("PY_DATETIME_BASE_TIME_SIZE", "sizeof(_PyDateTime_BaseTime)", "i64"),
+         ("PY_DATETIME_TIME_SIZE", "sizeof(PyDateTime_Time)", "i64"),
+         ("PY_DATETIME_BASE_DATETIME_SIZE", "sizeof(_PyDateTime_BaseDateTime)", "i64"),
+         ("PY_DATETIME_DATETIME_SIZE", "sizeof(PyDateTime_DateTime)", "i64"),
+         ("PY_DATETIME_DATA_OFFSET", "offsetof(PyDateTime_Date, data)", "i64"),
+         ("PY_DATETIME_DELTA_DAYS_OFFSET", "offsetof(PyDateTime_Delta, days)", "i64"),
+         (
+             "PY_DATETIME_DELTA_SECONDS_OFFSET",
+             "offsetof(PyDateTime_Delta, seconds)",
+             "i64"
+         ),
+         (
+             "PY_DATETIME_DELTA_MICROSECONDS_OFFSET",
+             "offsetof(PyDateTime_Delta, microseconds)",
+             "i64"
+         ),
+         ("Py_CONSTANT_ONE", "Py_CONSTANT_ONE", "u32"),
+         ("Py_CONSTANT_EMPTY_STR", "Py_CONSTANT_EMPTY_STR", "u32"),
+         ("_PyTime_ROUND_FLOOR", "_PyTime_ROUND_FLOOR", "i32"),
+         ("_PyTime_ROUND_HALF_EVEN", "_PyTime_ROUND_HALF_EVEN", "i32")
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every
      # supported release build (linux and darwin, x86_64 and aarch64).

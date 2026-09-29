@@ -76,3 +76,4 @@ _codecs         test.test_codecs,test.test_codeccallbacks
 _locale         test.test_locale,test.test__locale
 _zoneinfo       test.test_zoneinfo
 unicodedata     test.test_unicodedata,test.test_ucn
+_datetime       test.test_datetime

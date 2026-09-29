@@ -104,6 +104,17 @@ descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
 in the instance and `jacpy_binding_record()` gives their address
 (`select.kevent`, `_multiprocessing.SemLock`).
 
+A module whose types are static in C because a C API exposes them keeps
+them static. `_datetime` defines `PyDateTime_DateType` and the other types,
+the immortal `utc_timezone` and the `PyDateTime_CAPI` capsule record as C
+data under their C names, with the layouts of `Include/datetime.h` from
+`layouts.jac`, so `_zoneinfo` and other C extensions read the objects
+through the header's macros. `_PyDateTime_InitTypes()`, which
+`pylifecycle.c` calls, fills each type's `tp_methods` with
+`method_table()` from its `MethodDefinition` list (clinic glue included)
+before readying it; its IsoCalendarDate heap type is a `PyType_Spec` of C
+data whose slots are `ptr(function)`.
+
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
 `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini` in an
@@ -199,13 +210,15 @@ the Jac form, not a C helper:
    symbol: `glob PyBool_Type: PyTypeObject = PyTypeObject(...);` is C-layout
    storage exported under that name (unless `glob:priv`), built at link time
    from C constants (literals, `ptr[u8]("text")`, `addressof(symbol)`, named
-   functions for callback fields, nested struct constructors). A
-   `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
-   `addressof(table)` is its first element. An array of sized integers may
-   instead be initialized with a bytes literal of its little-endian
-   elements (`glob t: list[u16] = b"\x34\x12";`), one token per line of a
-   large generated table rather than one expression per element; the
-   unicodedata port lays out its 700 KB of Unicode database tables this way.
+   functions for callback fields, `ptr(function)` for a bare `ptr` field
+   such as `PyMethodDef.ml_meth` or `PyType_Slot.pfunc`, nested struct
+   constructors). A `list[T]` symbol is a C array, such as a `PyMethodDef`
+   table, and `addressof(table)` is its first element. An array of sized
+   integers may instead be initialized with a bytes literal of its
+   little-endian elements (`glob t: list[u16] = b"\x34\x12";`), one token
+   per line of a large generated table rather than one expression per
+   element; the unicodedata port lays out its 700 KB of Unicode database
+   tables this way.
 
 5. **Varargs.** A call to a variadic C function passes each extra argument
    with C's default promotions, and a borrowed one (`&mut x`) as the

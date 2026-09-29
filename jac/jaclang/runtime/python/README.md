@@ -154,6 +154,15 @@ Python ABI. Shared serialization error notes live in `capi.jac`, also used by
 JSON. The two upstream pickle size assertions describe retired C layouts;
 smoke checks cover native memo allocation, reclamation, and callback cycles.
 
+`modules/datetime_*.jac` implement `_datetime`: calendar arithmetic and ISO
+8601 parsing (`datetime_calendar.jac`), the shared accessors, constructors and
+tzinfo helpers (`datetime_objects.jac`), strftime preprocessing
+(`datetime_format.jac`) and one file per type. The types, the UTC singleton and
+the datetime C API capsule are static C data with `Include/datetime.h`'s
+layouts, because C extensions such as `_zoneinfo` read them through the header's
+macros; `bindings/datetime.jac` readies them for each interpreter and defines the
+module.
+
 `modules/posixsubprocess.jac` converts every `fork_exec()` argument into C
 memory before forking: argv, envp and the executable list as char* arrays,
 the descriptors to keep, the group list, the child's messages and scratch

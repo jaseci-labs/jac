@@ -36,3 +36,4 @@ _locale
 _lzma
 _zoneinfo
 unicodedata
+_datetime
