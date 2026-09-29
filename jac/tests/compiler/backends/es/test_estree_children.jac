@@ -21,12 +21,18 @@ test "es_children names exactly the declared fields of every ESTree node" {
         declared = {f.name for f in fields(cls)} - {"type", "loc"};
         instance: any = cls.__new__(cls);
         for field_name in declared | {"type", "loc"} {
-            setattr(instance, field_name, None);
+            setattr(instance, field_name, f"{name}.{field_name}");
         }
-        listed = set(es.es_children(instance).keys());
+        children = es.es_children(instance);
+        listed = set(children.keys());
         assert listed == declared , f"{name}: es_children lists {sorted(
             listed
         )}, the class declares {sorted(declared)}";
+        for field_name in declared {
+            assert children[field_name] == f"{name}.{field_name}" , (
+                f"{name}.{field_name}: es_children reads something other than the field"
+            );
+        }
         checked += 1;
     }
     assert checked > 60 , checked;

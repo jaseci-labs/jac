@@ -58,7 +58,12 @@ impl es_children(nd: Node) -> dict[str, any] {
         return {"test": nd.test, "body": nd.body};
     }
     if isinstance(nd, ForStatement) {
-        return {"init": nd.init, "test": nd.test, "update": nd.update, "body": nd.body};
+        return {
+            "init": nd.`init,
+            "test": nd.test,
+            "update": nd.update,
+            "body": nd.body
+        };
     }
     if isinstance(nd, ForOfStatement) {
         return {
@@ -81,7 +86,7 @@ impl es_children(nd: Node) -> dict[str, any] {
         return {"declarations": nd.declarations, "kind": nd.kind};
     }
     if isinstance(nd, VariableDeclarator) {
-        return {"id": nd.id, "init": nd.init};
+        return {"id": nd.id, "init": nd.`init};
     }
     if isinstance(nd, ThisExpression) {
         return {};
