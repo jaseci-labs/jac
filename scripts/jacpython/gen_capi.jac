@@ -54,10 +54,11 @@ glob OPAQUE: list[str] = [
          "PyInterpreterState",
          "PyUnicodeWriter",
          "PyModuleDef",
-         "PyType_Spec",
          "PyCompilerFlags",
          "PyBytesWriter",
-         "PyMutex"
+         "PyMutex",
+         "_Py_freelists",
+         "PyLongWriter"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -93,6 +94,21 @@ glob OPAQUE: list[str] = [
          "PyMemberDef": (
              "obj PyMemberDef { has name: ptr[u8] = ptr[u8](), type_: i32 = 0, "
              + "offset: i64 = 0, flags: i32 = 0, doc: ptr[u8] = ptr[u8](); }"
+         ),
+         # PyLong_Export() and PyLong_GetNativeLayout() (Include/cpython/longintrepr.h).
+         "PyLongExport": (
+             "obj PyLongExport { has value: i64 = 0, negative: u8 = 0, ndigits: i64 = 0, "
+             + "digits: ptr = ptr(), _reserved: u64 = 0; }"
+         ),
+         "PyLongLayout": (
+             "obj PyLongLayout { has bits_per_digit: u8 = 0, digit_size: u8 = 0, "
+             + "digits_order: i8 = 0, digit_endianness: i8 = 0; }"
+         ),
+         # A heap type's spec, for PyType_FromModuleAndSpec from C data.
+         "PyType_Slot": "obj PyType_Slot { has slot: i32 = 0, pfunc: ptr = ptr(); }",
+         "PyType_Spec": (
+             "obj PyType_Spec { has name: ptr[u8] = ptr[u8](), basicsize: i32 = 0, "
+             + "itemsize: i32 = 0, flags: u32 = 0, slots: ptr[PyType_Slot] = ptr[PyType_Slot](); }"
          ),
          "_PyTimeFraction": "obj _PyTimeFraction { has numer: i64 = 0, denom: i64 = 0; }",
          "_Py_clock_info_t": (
@@ -137,7 +153,12 @@ glob OPAQUE: list[str] = [
      },
      # Records a caller builds in Jac and lends for the call: a pointer
      # parameter to one is a borrow (`&T` when const, else `&mut T`).
-     BORROWED: set[str] = {"PyMemberDef", "_PyTimeFraction", "_Py_clock_info_t"},
+     BORROWED: set[str] = {
+         "PyMemberDef",
+         "_PyTimeFraction",
+         "_Py_clock_info_t",
+         "PyLongExport"
+     },
      # C library records whose layout differs between platforms. They are
      # declared by per-OS variant modules, imported from there, and borrowed.
      PLATFORM_RECORDS: dict[str, str] = {
@@ -193,6 +214,7 @@ glob OPAQUE: list[str] = [
      # Pointer typedefs passed through opaquely; a function pointer typedef
      # here can be passed NULL but not a Jac callback.
      POINTER_TYPEDEFS: dict[str, str] = {
+         "PyCapsule_Destructor": "ptr",
          "PyThread_type_lock": "ptr",
          "Py_tracefunc": "ptr"
      },
@@ -218,8 +240,10 @@ glob OPAQUE: list[str] = [
      },
      # Pointer parameters that take memory the caller holds as a raw address
      # (a HACL* digest buffer, a Py_buffer, a path read after fork(), an
-     # optional out-flag passed as NULL), not a Jac value; they take `ptr`.
+     # optional out-flag passed as NULL, a keyword-name array defined as C
+     # data), not a Jac value; they take `ptr`.
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
+         "PyArg_ParseTupleAndKeywords": {3},
          "_Py_strhex": {0},
          "_PyBytes_Find": {0, 2},
          "_PyBytes_ReverseFind": {0, 2},
@@ -229,6 +253,7 @@ glob OPAQUE: list[str] = [
          "PyMember_SetOne": {0},
          "PyUnicode_DecodeASCII": {0},
          "PyUnicode_DecodeCharmap": {0},
+         "PyUnicodeDecodeError_Create": {0, 1},
          "PyUnicode_DecodeLatin1": {0},
          "PyUnicode_DecodeLocale": {0},
          "PyUnicode_DecodeLocaleAndSize": {0},
@@ -281,10 +306,14 @@ glob OPAQUE: list[str] = [
      },
      # `void *` parameters of a PyArg converter (`int conv(PyObject *, void *)`)
      # that receive the converted object.
-     OBJECT_OUT_PARAMETERS: dict[str, set[int]] = {"PyUnicode_FSConverter": {1}},
+     OBJECT_OUT_PARAMETERS: dict[str, set[int]] = {
+         "PyUnicode_FSConverter": {1},
+         "PyType_GetBaseByToken": {2}
+     },
      # Pointer out-parameters the Jac side writes through `&mut`.
      OUT_POINTERS: dict[str, str] = {
          "PyObject **": "&mut ptr[PyObject]",
+         "void **": "&mut ptr",
          "Py_ssize_t *": "&mut i64",
          "int *": "&mut i32",
          "double *": "&mut f64",
@@ -505,7 +534,7 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         out = OUT_POINTERS.get(ctype, OUT_POINTERS.get(base));
         return f"{out} | None" if nullable else out;
     }
-    hit = re.match(r"^(\w+) \*$", base);
+    hit = re.match(r"^(\w+(?: \w+)*) \*$", base);
     if hit {
         pointee = hit.group(1);
         if pointee in OBJECT_LAYOUTS {

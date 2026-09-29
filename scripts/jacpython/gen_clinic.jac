@@ -496,9 +496,15 @@ obj Emitter {
             }
             return ("ptr[PyObject]", "value", [f"{check}(value, {where});"]);
         }
+        # int(accept={str}) keeps its accepted types only as the "C" unit.
         if kind == "int" {
-            if "str" in accept_names {
-                raise Unsupported("int(accept={str})");
+            # int(accept={str}) is clinic's "C" unit: one unicode character.
+            if "str" in accept_names or getattr(conv, "format_unit", "") == "C" {
+                return (
+                    "i32",
+                    f"i32({self.use('convert_unicode_char')}(value, {where}))",
+                    []
+                );
             }
             return ("i32", self.use("convert_int") + "(value)", []);
         }
@@ -557,6 +563,15 @@ obj Emitter {
         # as the getargs format unit it selects.
         unit = getattr(conv, "format_unit", "");
         if kind == "str" {
+            # "s#" as clinic parses it for a METH_O function, with PyArg_Parse;
+            # the _impl takes the C string and its size.
+            if unit == "s#" and position == 0 and not getattr(conv, "encoding", "") {
+                return (
+                    self.use("SizedText"),
+                    self.use("convert_sized_str") + f"(value, {where})",
+                    []
+                );
+            }
             if unit not in ("s", "z") or getattr(conv, "encoding", "") {
                 raise Unsupported(f"str converter '{unit}'");
             }
@@ -854,7 +869,11 @@ obj Emitter {
                     f"{var}: {jtype} = {expr};" if jtype else f"{var} = {expr};"
                 );
             }
-            call_args.append(var);
+            if jtype == "SizedText" {
+                call_args += [f"{var}.data", f"{var}.size"];
+            } else {
+                call_args.append(var);
+            }
         }
         if stepwise {
             body.append(f"args.reach({len(params)});");

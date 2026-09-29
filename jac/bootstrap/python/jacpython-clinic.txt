@@ -35,6 +35,9 @@ _codecs
 _locale
 _lzma
 _zoneinfo
+unicodedata
+_datetime
 _sqlite3
+_multibytecodec
 pyexpat
 _elementtree

@@ -46,7 +46,8 @@ import from jaclang.runtime.python.bindings.arguments {
     invoke,
     invoke_one,
     index_value,
-    invoke_vector
+    invoke_vector,
+    check_positional
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.capi {
@@ -705,6 +706,9 @@ def:priv accessor_state(
     return None;
 }
 
+# The names _operator.c's constructors and calls report, by accessor kind.
+glob:priv ACCESSOR_NAMES: list[str] = ["itemgetter", "attrgetter", "methodcaller"];
+
 def:priv accessor_create(
     type: ptr[PyObject],
     args: ptr[PyObject],
@@ -712,18 +716,25 @@ def:priv accessor_create(
     definition: ptr,
     kind: i64
 ) -> ptr[PyObject] {
-    if kind != 2 and jacpy_dict_size(kwargs) != 0 {
-        object_error(
-            PyExc_TypeError, f"{type_name(type, True)}() takes no keyword arguments"
-        );
-        return NULL;
-    }
-    if PyTuple_Size(args) < 1 {
-        object_error(
-            PyExc_TypeError,
-            f"{type_name(type, True)} expected at least 1 argument, got 0"
-        );
-        return NULL;
+    name = ACCESSOR_NAMES[int(kind)];
+    count = int(PyTuple_Size(args));
+    if kind == 2 {
+        if count < 1 {
+            object_error(
+                PyExc_TypeError,
+                "methodcaller needs at least one argument, the method name"
+            );
+            return NULL;
+        }
+    } else {
+        # _PyArg_NoKeywords(), then PyArg_UnpackTuple(args, name, 1, 1).
+        if kwargs != 0 and jacpy_dict_size(kwargs) != 0 {
+            object_error(PyExc_TypeError, f"{name}() takes no keyword arguments");
+            return NULL;
+        }
+        if count < 1 and not check_positional(name, count, 1, 1) {
+            return NULL;
+        }
     }
     prepared = jacpy_operator_prepare(kind, args);
     if prepared == 0 {
@@ -743,6 +754,8 @@ def:priv accessor_create(
     return instance;
 }
 
+# The vectorcall of an accessor: _PyArg_NoKwnames() and
+# _PyArg_CheckPositional(name, nargs, 1, 1).
 def:priv accessor_vector(
     instance: ptr[PyObject],
     args: ptr,
@@ -750,21 +763,17 @@ def:priv accessor_vector(
     names: ptr[PyObject],
     definition: ptr
 ) -> ptr[PyObject] {
+    state = accessor_state(instance, definition);
+    if state is None {
+        return NULL;
+    }
+    name = ACCESSOR_NAMES[int(state.kind)];
     if names != 0 and PyTuple_Size(names) != 0 {
-        object_error(
-            PyExc_TypeError, f"{type_name(instance)}() takes no keyword arguments"
-        );
+        object_error(PyExc_TypeError, f"{name}() takes no keyword arguments");
         return NULL;
     }
     size = PyVectorcall_NARGS(count);
-    if size != 1 {
-        object_error(
-            PyExc_TypeError, f"{type_name(instance)} expected 1 argument, got {size}"
-        );
-        return NULL;
-    }
-    state = accessor_state(instance, definition);
-    if state is None {
+    if not check_positional(name, int(size), 1, 1) {
         return NULL;
     }
     return jacpy_operator_apply(

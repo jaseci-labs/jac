@@ -28,7 +28,11 @@ CPython license is retained.
 The native object is built with Jac's `rc` memory profile and the same LLVM
 module pipeline as every other native artifact. Each compile request runs inside
 one region, so the tokens, trees, symbol tables and code units it builds are
-reclaimed together once its CPython result exists.
+reclaimed together once its CPython result exists. A request can re-enter
+native modules through CPython (the tokenizer imports `unicodedata` to decode
+`\N{...}`); every binding callback is a Jac function C calls, which runs with
+no current region, so module state and objects built there never land in the
+request's region.
 
 The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
 backend to emit the replacement object, rejects interpreted demotions, and
@@ -63,7 +67,12 @@ their initializers use; `bootstrap/python/layouts_check.c` asserts every offset,
 size and constant against the configured headers of each build. A port defines
 its static type objects and singletons as C data under their C names
 (`object_model/bool.jac` defines `PyBool_Type`, `_Py_FalseStruct` and
-`_Py_TrueStruct`), so the interpreter's C code uses them unchanged.
+`_Py_TrueStruct`), so the interpreter's C code uses them unchanged. The ported
+files are `boolobject.c`, `cellobject.c`, `namespaceobject.c`, `capsule.c`,
+`iterobject.c`, `enumobject.c`, `sliceobject.c` and `rangeobject.c`
+(`bool.jac`, `cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
+`enumerate.jac`, `slice.jac`, `range.jac`); `header.jac` holds the object
+header's inline operations they share.
 
 `modules/` contains the native standard-library algorithms. `bindings/` implements
 every module adapter in native Jac, including the `PyInit_*` entry points,
@@ -149,6 +158,27 @@ CPython dictionaries store memo entries, and buffer objects keep their existing
 Python ABI. Shared serialization error notes live in `capi.jac`, also used by
 JSON. The two upstream pickle size assertions describe retired C layouts;
 smoke checks cover native memo allocation, reclamation, and callback cycles.
+
+`modules/datetime_*.jac` implement `_datetime`: calendar arithmetic and ISO
+8601 parsing (`datetime_calendar.jac`), the shared accessors, constructors and
+tzinfo helpers (`datetime_objects.jac`), strftime preprocessing
+(`datetime_format.jac`) and one file per type. The types, the UTC singleton and
+the datetime C API capsule are static C data with `Include/datetime.h`'s
+layouts, because C extensions such as `_zoneinfo` read them through the header's
+macros; `bindings/datetime.jac` readies them for each interpreter and defines the
+module.
+
+`modules/decimal_*.jac` implement `_decimal` over libmpdec, which stays the C
+library the build links (`-lmpdec`) and is declared in `modules/mpdecimal.jac`.
+A Decimal keeps its `mpd_t` and a four-word static coefficient inside the object
+and a Context its `mpd_context_t`, laid out as `_decimal.c`'s structs, so
+libmpdec works on them in place. `decimal_objects.jac` holds the layouts, module
+state, signal maps and the contextvar-based current context,
+`decimal_convert.jac` the conversions, `decimal_number.jac` the Decimal type,
+`decimal_context.jac` Context, SignalDictMixin and the context manager, and
+`decimal_ops.jac` names the libmpdec operation each method family applies. The
+heap types come from `PyType_Spec`s of C data in `bindings/decimal.jac`, each spec
+its type's token.
 
 `modules/posixsubprocess.jac` converts every `fork_exec()` argument into C
 memory before forking: argv, envp and the executable list as char* arrays,

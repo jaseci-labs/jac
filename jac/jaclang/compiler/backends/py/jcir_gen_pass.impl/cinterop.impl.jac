@@ -221,9 +221,40 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
 
 impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
+        c_lent_arg_elem,
+        c_lent_param,
+        c_param_type,
         c_type_spec,
         c_variadic_param,
-        is_builtin_pin_call
+        is_builtin_pin_call,
+        is_ptr_type,
+        named_function_of
+    }
+    callee_type = nd.target.type if nd.target is not None else None;
+    cast_args = list(nd.params or []);
+    if is_ptr_type(callee_type)
+        and callee_type is not None
+        and not callee_type.is_instance()
+        and len(cast_args) == 1
+        and named_function_of(cast_args[0]) is not None {
+        # `ptr(f)`: a C callback for the named function, kept alive for good.
+        call = self.outs(nd)[0] if self.outs(nd) else None;
+        if isinstance(call, CgNode) and call.cls == 'Call' {
+            fn_spec = self.const_of(json.dumps(c_type_spec(cast_args[0].type, None)));
+            scope = self.call_node(self.name_load('globals'), [], []);
+            self.set_out(
+                nd,
+                [
+                    self.call_node(
+                        self.builtin_name('_jac_c_function_ptr'),
+                        [call.get('args')[0], fn_spec, scope],
+                        [],
+                        jac_node=nd
+                    )
+                ]
+            );
+        }
+        return;
     }
     if is_builtin_pin_call(nd) {
         args = [
@@ -238,6 +269,20 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         }
         return;
     }
+    # `&mut x` passed to a `ptr[T]` parameter of a C-ABI function lends x's
+    # address: a C cell holding x, read back after the call, or a foreign
+    # struct's own storage. Each entry is (index, cell spec, lent ptr spec).
+    borrowed: list[tuple[int, list[any], (list[any] | None)]] = [];
+    for (i, arg) in enumerate(list(nd.params or [])) {
+        lent = c_lent_arg_elem(arg);
+        lent_param = c_lent_param(arg) if lent is not None else None;
+        if lent is not None and lent_param is not None {
+            param_type = c_param_type(nd, lent_param);
+            borrowed.append(
+                (i, c_type_spec(lent, None), c_type_spec(param_type, None))
+            );
+        }
+    }
     callee = nd.callee_decl;
     callee_sig = callee.signature if isinstance(callee, Ability) else None;
     if isinstance(callee_sig, FuncSignature)
@@ -246,43 +291,34 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         self._c_vararg_rewrite(
             nd, len(callee_sig.posonly_params) + len(callee_sig.params or [])
         );
-        return;
-    }
-    if nd.call_kind != "clib" or not isinstance(nd.callee_decl, Ability) {
-        return;
-    }
-    sig = nd.callee_decl.signature;
-    if not isinstance(sig, FuncSignature) {
-        return;
-    }
-    decl_params = [
-        p
-        for p in sig.get_parameters()
-        if not (p.is_vararg or p.is_kwargs)
-    ];
-    if sig.varargs is not None {
-        self._c_vararg_rewrite(nd, len(decl_params));
-    }
-    borrowed: list[tuple[int, list[any]]] = [];
-    for (i, p) in enumerate(decl_params) {
-        if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
-            continue;
+    } elif nd.call_kind == "clib" and isinstance(callee_sig, FuncSignature) {
+        decl_params = [
+            p
+            for p in callee_sig.get_parameters()
+            if not (p.is_vararg or p.is_kwargs)
+        ];
+        if callee_sig.varargs is not None {
+            self._c_vararg_rewrite(nd, len(decl_params));
         }
-        spec = c_type_spec(p.type, p.type_tag.tag);
-        inner = spec[1] if spec[0] == "opt" else spec;
-        if inner[0] in ("s", "ptr") {
-            borrowed.append((i, inner));
+        for (i, p) in enumerate(decl_params) {
+            if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
+                continue;
+            }
+            spec = c_type_spec(p.type, p.type_tag.tag);
+            inner = spec[1] if spec[0] == "opt" else spec;
+            if inner[0] in ("s", "ptr") {
+                borrowed.append((i, inner, None));
+            }
         }
-    }
-
-    if sig.varargs is not None {
-        for (i, arg) in enumerate(list(nd.params or [])) {
-            if i >= len(decl_params)
-                and isinstance(arg, UnaryExpr)
-                and is_borrow_kind(arg.ownership) {
-                spec = c_type_spec(arg.operand.type, None);
-                if spec[0] in ("s", "ptr") {
-                    borrowed.append((i, spec));
+        if callee_sig.varargs is not None {
+            for (i, arg) in enumerate(list(nd.params or [])) {
+                if i >= len(decl_params)
+                    and isinstance(arg, UnaryExpr)
+                    and is_borrow_kind(arg.ownership) {
+                    spec = c_type_spec(arg.operand.type, None);
+                    if spec[0] in ("s", "ptr") {
+                        borrowed.append((i, spec, None));
+                    }
                 }
             }
         }
@@ -302,16 +338,32 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     pre: list[CgNode] = [];
     post: list[CgNode] = [];
     scope = self.call_node(self.name_load('globals'), [], []);
-    for (i, spec) in borrowed {
+    for (i, spec, lent_spec) in borrowed {
         if i >= len(params) or isinstance(params[i], Null) {
             continue;
         }
         spec_const = self.const_of(json.dumps(spec));
+        if lent_spec is not None and spec[0] == "struct" {
+            # A foreign struct is its own C storage; C writes it in place.
+            call_args[i] = self.call_node(
+                self.builtin_name('_jac_c_lend'),
+                [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                []
+            );
+            continue;
+        }
         parts = self._place_parts(params[i]);
         if parts is None {
             call_args[i] = self.call_node(
                 self.builtin_name('_jac_c_cell'), [spec_const, call_args[i], scope], []
             );
+            if lent_spec is not None {
+                call_args[i] = self.call_node(
+                    self.builtin_name('_jac_c_lend'),
+                    [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                    []
+                );
+            }
             continue;
         }
         (kind, owner, key) = parts;
@@ -349,6 +401,13 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
                 self.builtin_name('_jac_c_cell'), [spec_const, initial, scope], []
             )
         );
+        if lent_spec is not None {
+            call_args[i] = self.call_node(
+                self.builtin_name('_jac_c_lend'),
+                [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                []
+            );
+        }
         readback = self.call_node(
             self.nod(
                 'Attribute',

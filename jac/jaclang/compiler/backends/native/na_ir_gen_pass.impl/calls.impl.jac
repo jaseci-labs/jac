@@ -1,4 +1,5 @@
 import from jaclang.compiler.frontend.constant { OwnershipKind }
+import from jaclang.compiler.c_interop { clib_import_of }
 
 glob _NA_ABC_REDUCTIONS: dict[str, tuple[str, ...]] = {
          "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
@@ -2435,6 +2436,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
+            if sig.return_type is None and clib_import_of(sig) is not None {
+                ret_ir_type = ir.VoidType();
+            }
             _extern_sym = func_name;
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(
@@ -2601,7 +2605,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     self._release_owned_args(release_args, op="call_arg");
-    self._emit_err_check(self._callee_ability_of(nd) or self._linked_callee_decl(func));
+    self._emit_err_check(
+        self._callee_ability_of(nd) or self._linked_callee_decl(func), site=nd
+    );
 
     if _is_foreign {
         foreign_decl = self._foreign_fns().get(func_name);
@@ -3398,6 +3404,14 @@ impl NaIRGenPass._emit_isinstance_mixed(
                 if user_or is None
                 else self.builder.or_(user_or, eq, name="isinst.mix.uor");
         }
+        if user_or is not None {
+            user_or = self._isinstance_name_fallback(
+                user_or,
+                self.builder.inttoptr(payload, i8.as_pointer(), name="isinst.mix.o"),
+                names,
+                "isinst.mix"
+            );
+        }
     }
     end_load = self.builder.block;
     self.builder.branch(merge_bb);
@@ -3489,6 +3503,8 @@ impl NaIRGenPass._emit_isinstance_user(
             self._flow_narrowed_type_of(nd.params[0] if nd.params else None)
         ) {
         cmp = self._isinstance_vtable_fallback(cmp, vptr, names, "isinst");
+    } elif cmp is not None {
+        cmp = self._isinstance_name_fallback(cmp, operand, names, "isinst");
     }
 
     if self._is_owned(operand) {

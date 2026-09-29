@@ -86,10 +86,27 @@ import from jaclang.runtime.python.bindings.posixshmem { PyInit__posixshmem }
 # Object-model ports define interpreter types and objects under their C names
 # (Objects/boolobject.c: PyBool_Type, _Py_FalseStruct, _Py_TrueStruct).
 import from jaclang.runtime.python.object_model.bool { PyBool_Type }
+import from jaclang.runtime.python.object_model.capsule { PyCapsule_Type }
+import from jaclang.runtime.python.object_model.cell { PyCell_Type }
+import from jaclang.runtime.python.object_model.enumerate { PyEnum_Type }
+import from jaclang.runtime.python.object_model.iterator { PySeqIter_Type }
+import from jaclang.runtime.python.object_model.namespace { _PyNamespace_Type }
+import from jaclang.runtime.python.object_model.range { PyRange_Type }
+import from jaclang.runtime.python.object_model.slice { PySlice_Type }
 import from jaclang.runtime.python.bindings.abc { PyInit__abc }
 import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.bindings.locale { PyInit__locale }
 import from jaclang.runtime.python.bindings.zoneinfo { PyInit__zoneinfo }
+import from jaclang.runtime.python.bindings.unicodedata { PyInit_unicodedata }
+import from jaclang.runtime.python.bindings.datetime { PyInit__datetime }
+import from jaclang.runtime.python.bindings.decimal { PyInit__decimal }
+import from jaclang.runtime.python.bindings.multibytecodec { PyInit__multibytecodec }
+import from jaclang.runtime.python.bindings.codecs_cn { PyInit__codecs_cn }
+import from jaclang.runtime.python.bindings.codecs_hk { PyInit__codecs_hk }
+import from jaclang.runtime.python.bindings.codecs_iso2022 { PyInit__codecs_iso2022 }
+import from jaclang.runtime.python.bindings.codecs_jp { PyInit__codecs_jp }
+import from jaclang.runtime.python.bindings.codecs_kr { PyInit__codecs_kr }
+import from jaclang.runtime.python.bindings.codecs_tw { PyInit__codecs_tw }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

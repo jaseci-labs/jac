@@ -10,7 +10,6 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyNumber_AsSsize_t,
     PyObject,
-    PyTuple_GetSlice,
     PyTuple_Size,
     PyUnicode_AsEncodedString,
     Py_NewRef,
@@ -60,7 +59,10 @@ import from jaclang.runtime.python.bindings.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    invoke,
+    invoke_given,
+    invoke_vector,
+    vector_tuple
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.capi {
@@ -330,9 +332,9 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     return Py_NewRef(Py_None);
 }
 
-glob:priv unpack_signature = CallSignature("unpack", ["buffer"], 1, 1, 1),
-     unpack_from_signature = CallSignature("unpack_from", ["buffer", "offset"], 1, 2),
-     iter_unpack_signature = CallSignature("iter_unpack", ["buffer"], 1, 1, 1);
+glob:priv unpack_from_signature = CallSignature(
+         "unpack_from", ["buffer", "offset"], 1, 2
+     );
 
 def:priv unpack_bound(args: BoundArguments) -> ptr[PyObject] {
     state = state_for(args.context);
@@ -356,13 +358,12 @@ def:priv unpack_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_struct_unpack(plan, buffer.address());
 }
 
-def:priv unpack(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
+# Struct.unpack(buffer, /): METH_O.
+def:priv unpack(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if state_for(instance) is None {
         return NULL;
     }
-    return invoke(unpack_signature, args, kwargs, unpack_bound, instance);
+    return invoke_given(value, unpack_bound, instance);
 }
 
 def:priv unpack_from_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -394,13 +395,19 @@ def:priv unpack_from_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_struct_unpack(plan, buffer.address() + offset);
 }
 
+# Struct.unpack_from(buffer, offset=0): METH_FASTCALL|METH_KEYWORDS.
 def:priv unpack_from(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    instance: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if state_for(instance) is None {
         return NULL;
     }
-    return invoke(unpack_from_signature, args, kwargs, unpack_from_bound, instance);
+    return invoke_vector(
+        unpack_from_signature, args, nargs, kwnames, unpack_from_bound, instance
+    );
 }
 
 def:priv iterator_state(instance: ptr[PyObject]) -> (UnpackState | None) {
@@ -488,13 +495,38 @@ def:priv iter_unpack_bound(args: BoundArguments) -> ptr[PyObject] {
     return iterator;
 }
 
-def:priv iter_unpack(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
+# Struct.iter_unpack(buffer, /): METH_O.
+def:priv iter_unpack(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if state_for(instance) is None {
         return NULL;
     }
-    return invoke(iter_unpack_signature, args, kwargs, iter_unpack_bound, instance);
+    return invoke_given(value, iter_unpack_bound, instance);
+}
+
+# Struct.pack(*values) and Struct.pack_into(buffer, offset, *values):
+# METH_FASTCALL over the values.
+def:priv pack_call(
+    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    values = vector_tuple(args, nargs);
+    if values == 0 {
+        return NULL;
+    }
+    result = pack(instance, values);
+    jacpy_release(values);
+    return result;
+}
+
+def:priv pack_into_call(
+    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    values = vector_tuple(args, nargs);
+    if values == 0 {
+        return NULL;
+    }
+    result = pack_into(instance, values);
+    jacpy_release(values);
+    return result;
 }
 
 def:priv deallocate(instance: ptr[PyObject]) {
@@ -530,26 +562,31 @@ glob:priv struct_type = TypeDefinition(
          "Compiled binary layout.",
          [
              MethodDefinition(
-                 "pack", MethodCallbacks(positional=pack), "Pack values.", flags=1
+                 "pack", MethodCallbacks(fast=pack_call), "Pack values.", flags=128
              ),
              MethodDefinition(
                  "pack_into",
-                 MethodCallbacks(positional=pack_into),
+                 MethodCallbacks(fast=pack_into_call),
                  "Pack into a writable buffer.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
-                 "unpack", MethodCallbacks(keywords=unpack), "Unpack a buffer."
+                 "unpack",
+                 MethodCallbacks(positional=unpack),
+                 "Unpack a buffer.",
+                 flags=8
              ),
              MethodDefinition(
                  "unpack_from",
-                 MethodCallbacks(keywords=unpack_from),
-                 "Unpack from a buffer offset."
+                 MethodCallbacks(fast_keywords=unpack_from),
+                 "Unpack from a buffer offset.",
+                 flags=130
              ),
              MethodDefinition(
                  "iter_unpack",
-                 MethodCallbacks(keywords=iter_unpack),
-                 "Iterate over packed records."
+                 MethodCallbacks(positional=iter_unpack),
+                 "Iterate over packed records.",
+                 flags=8
              ),
              MethodDefinition(
                  "__sizeof__",
@@ -606,63 +643,125 @@ glob:priv struct_type = TypeDefinition(
          )
      );
 
-def:priv module_call(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject], operation: int
+# The module functions compile `format` through the Struct cache
+# (cache_struct_converter) and apply the Struct operation.
+def:priv cached_struct(module: ptr[PyObject], format: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_struct_cached(
+        jacpy_binding_state_get(module, 3), jacpy_binding_state_get(module, 1), format
+    );
+}
+
+# pack(format, *values) and pack_into(format, buffer, offset, *values):
+# METH_FASTCALL, "missing format argument" without one.
+def:priv module_pack_values(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, into: bool
 ) -> ptr[PyObject] {
-    if PyTuple_Size(args) == 0 {
+    if nargs == 0 {
         object_error(PyExc_TypeError, "missing format argument");
         return NULL;
     }
-    format = jacpy_tuple_item(args, 0);
-    instance = jacpy_struct_cached(
-        jacpy_binding_state_get(module, 3), jacpy_binding_state_get(module, 1), format
-    );
-    jacpy_release(format);
+    instance = cached_struct(module, args.view(1)[0]);
     if instance == 0 {
         return NULL;
     }
-    rest = PyTuple_GetSlice(args, 1, PyTuple_Size(args));
+    values = vector_tuple(args + 1, nargs - 1);
     result: ptr[PyObject] = NULL;
-    if rest != 0 {
-        if operation == 0 {
-            result = pack(instance, rest);
-        } elif operation == 1 {
-            result = pack_into(instance, rest);
-        } elif operation == 2 {
-            result = unpack(instance, rest, NULL);
-        } elif operation == 3 {
-            result = unpack_from(instance, rest, kwargs);
-        } else {
-            result = iter_unpack(instance, rest, NULL);
-        }
-        jacpy_release(rest);
+    if values != 0 {
+        result = pack_into(instance, values) if into else pack(instance, values);
+        jacpy_release(values);
     }
     jacpy_release(instance);
     return result;
 }
 
-def:priv module_pack(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return module_call(module, args, NULL, 0);
+def:priv module_pack(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return module_pack_values(module, args, nargs, False);
 }
 
-def:priv module_pack_into(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return module_call(module, args, NULL, 1);
+def:priv module_pack_into(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return module_pack_values(module, args, nargs, True);
 }
 
-def:priv module_unpack(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return module_call(module, args, NULL, 2);
+glob:priv module_unpack_signature = CallSignature(
+         "unpack", ["format", "buffer"], 2, 2, 2
+     ),
+     module_unpack_from_signature = CallSignature(
+         "unpack_from", ["format", "buffer", "offset"], 2, 3, 1
+     ),
+     module_iter_unpack_signature = CallSignature(
+         "iter_unpack", ["format", "buffer"], 2, 2, 2
+     );
+
+# Apply `operation` (a Struct method's bound function) with the arguments
+# after the format to the cached Struct for args.values[0].
+def:priv with_cached(
+    args: BoundArguments, operation: Callable[[BoundArguments], ptr[PyObject]]
+) -> ptr[PyObject] {
+    instance = cached_struct(args.context, args.values[0]);
+    if instance == 0 {
+        return NULL;
+    }
+    rest = BoundArguments(
+        [Py_NewRef(value) if value != 0 else NULL for value in args.values[1:]],
+        instance
+    );
+    try {
+        return operation(rest);
+    } except boundary_failure {
+        return NULL;
+    } finally {
+        jacpy_release(instance);
+    }
+}
+
+def:priv module_unpack_bound(args: BoundArguments) -> ptr[PyObject] {
+    return with_cached(args, unpack_bound);
+}
+
+def:priv module_unpack_from_bound(args: BoundArguments) -> ptr[PyObject] {
+    return with_cached(args, unpack_from_bound);
+}
+
+def:priv module_iter_unpack_bound(args: BoundArguments) -> ptr[PyObject] {
+    return with_cached(args, iter_unpack_bound);
+}
+
+def:priv module_unpack(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(
+        module_unpack_signature, args, nargs, NULL, module_unpack_bound, module
+    );
 }
 
 def:priv module_unpack_from(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return module_call(module, args, kwargs, 3);
+    return invoke_vector(
+        module_unpack_from_signature,
+        args,
+        nargs,
+        kwnames,
+        module_unpack_from_bound,
+        module
+    );
 }
 
 def:priv module_iter_unpack(
-    module: ptr[PyObject], args: ptr[PyObject]
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return module_call(module, args, NULL, 4);
+    return invoke_vector(
+        module_iter_unpack_signature,
+        args,
+        nargs,
+        NULL,
+        module_iter_unpack_bound,
+        module
+    );
 }
 
 def:priv module_calcsize(
@@ -727,33 +826,31 @@ glob:priv definition = ModuleDefinition(
                  flags=4
              ),
              MethodDefinition(
-                 "pack",
-                 MethodCallbacks(positional=module_pack),
-                 "Pack values.",
-                 flags=1
+                 "pack", MethodCallbacks(fast=module_pack), "Pack values.", flags=128
              ),
              MethodDefinition(
                  "pack_into",
-                 MethodCallbacks(positional=module_pack_into),
+                 MethodCallbacks(fast=module_pack_into),
                  "Pack into a buffer.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "unpack",
-                 MethodCallbacks(positional=module_unpack),
+                 MethodCallbacks(fast=module_unpack),
                  "Unpack a buffer.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "unpack_from",
-                 MethodCallbacks(keywords=module_unpack_from),
-                 "Unpack from an offset."
+                 MethodCallbacks(fast_keywords=module_unpack_from),
+                 "Unpack from an offset.",
+                 flags=130
              ),
              MethodDefinition(
                  "iter_unpack",
-                 MethodCallbacks(positional=module_iter_unpack),
+                 MethodCallbacks(fast=module_iter_unpack),
                  "Iterate packed records.",
-                 flags=1
+                 flags=128
              )
          ],
          ModuleHooks(execute=execute),

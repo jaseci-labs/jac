@@ -5,6 +5,13 @@
 target rather than the host. A call into such a module reaches the variant's
 declaration, including a C function its library block declares, rather than
 the portable module the type checker reads.
+
+A variant is reached by native module resolution alone, never by an import
+the checker reads, so no import edge placed it: it used to parse with no
+codespace, its globals and functions were never lowered, and a standalone
+binary reading a variant global aborted at load on the missing symbol. A
+platform variant is a native unit by what it is, so its own unit is the one
+compiled and linked.
 """
 import os;
 import tempfile;
@@ -42,7 +49,14 @@ test "the most specific platform variant of a native module wins" {
     }
 }
 
-glob PORTABLE_PLATFORM: str = '''def frexp(value: f64, exponent: &mut i32) -> f64 {
+glob PORTABLE_PLATFORM: str = '''glob HAS_C: bool = False,
+     PLATFORM_CODE: int = 1;
+
+def platform_answer -> int {
+    return 0;
+}
+
+def frexp(value: f64, exponent: &mut i32) -> f64 {
     return 0.0;
 }
 
@@ -54,8 +68,21 @@ def snprintf(buf: ptr[u8], size: u64, fmt: ptr[u8]) -> i32 {
     def frexp(value: f64, exponent: &mut i32) -> f64;
     def snprintf(buf: ptr[u8], size: u64, fmt: ptr[u8], *args: any) -> i32;
 }
+
+glob HAS_C: bool = True,
+     PLATFORM_CODE: int = 7;
+
+def platform_answer -> int {
+    return 42;
+}
 ''',
-     PLATFORM_USER: str = '''import from platform_facts { frexp, snprintf }
+     PLATFORM_USER: str = '''import from platform_facts {
+    frexp,
+    snprintf,
+    HAS_C,
+    PLATFORM_CODE,
+    platform_answer
+}
 import from c { def malloc(size: u64) -> ptr[u8]; }
 
 with entry {
@@ -63,6 +90,7 @@ with entry {
     mantissa = frexp(8.0, &mut exponent);
     print("frexp", mantissa, exponent);
     print("snprintf", snprintf(malloc(u64(16)), u64(16), ptr[u8]("seven")));
+    print("facts", HAS_C, PLATFORM_CODE, platform_answer());
 }
 ''';
 
@@ -82,5 +110,5 @@ test "a call through a platform variant reaches the variant's C declaration" {
         native_build(os.path.join(scratch, "platform_user.jac"), binary, memory="nogc");
         out = native_run(binary);
     }
-    assert out.splitlines() == ["frexp 0.5 4", "snprintf 5"] , out;
+    assert out.splitlines() == ["frexp 0.5 4", "snprintf 5", "facts True 7 42"] , out;
 }

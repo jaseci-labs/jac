@@ -101,8 +101,6 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Check,
     PySequence_GetItem,
     PySequence_Size,
-    PySlice_AdjustIndices,
-    PySlice_Unpack,
     PySys_Audit,
     PyThread_get_thread_ident,
     PyTuple_GetItem,
@@ -154,6 +152,10 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.object_model.slice {
+    PySlice_AdjustIndices,
+    PySlice_Unpack
+}
 import from jaclang.runtime.python.capi {
     boundary_failure,
     c_string_copy,
