@@ -45,7 +45,8 @@ import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     invoke,
     invoke_one,
-    index_value
+    index_value,
+    PARSE_FORMAT
 }
 import from jaclang.runtime.python.modules.json {
     jacpy_json_escape,
@@ -112,8 +113,9 @@ def:priv escape_ascii_call(
     return invoke_one(value, escape_ascii_value);
 }
 
+# PyArg_ParseTuple(args, "On|p:scanstring", ...).
 glob:priv scanstring_signature = CallSignature(
-         "scanstring", ["string", "end", "strict"], 2, 3, 3
+         "scanstring", ["string", "end", "strict"], 2, 3, 3, parser=PARSE_FORMAT
      );
 
 def:priv scanstring_bound(args: BoundArguments) -> ptr[PyObject] {

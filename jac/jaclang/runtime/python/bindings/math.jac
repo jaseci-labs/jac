@@ -1,6 +1,11 @@
 """Python math signatures, constants, and native initialization."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyFloat_FromDouble, PyObject }
+import from jaclang.runtime.python.cpython_api {
+    jacpy_release,
+    NULL,
+    PyFloat_FromDouble,
+    PyObject
+}
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -11,7 +16,9 @@ import from jaclang.runtime.python.bindings.module {
 import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     BoundArguments,
-    invoke
+    invoke,
+    invoke_vector,
+    vector_tuple
 }
 
 import from jaclang.runtime.python.modules.math {
@@ -42,12 +49,31 @@ def:priv isqrt_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject
     return jacpy_math_isqrt(value);
 }
 
-def:priv gcd_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_gcd(args, 0);
+# gcd(), lcm() and hypot() are METH_FASTCALL over *args in C.
+def:priv varargs_call(
+    args: ptr[ptr[PyObject]], nargs: i64, kind: int
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if not arguments {
+        return NULL;
+    }
+    result = jacpy_math_hypot(arguments)
+        if kind == 2
+        else jacpy_math_gcd(arguments, i64(kind));
+    jacpy_release(arguments);
+    return result;
 }
 
-def:priv lcm_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_gcd(args, 1);
+def:priv gcd_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return varargs_call(args, nargs, 0);
+}
+
+def:priv lcm_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return varargs_call(args, nargs, 1);
 }
 
 glob:priv comb_signature = CallSignature("comb", ["n", "k"], 2, 2, 2);
@@ -55,8 +81,10 @@ def:priv comb_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_comb(args.values[0], args.values[1], 1);
 }
 
-def:priv comb_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(comb_signature, args, NULL, comb_bound);
+def:priv comb_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(comb_signature, args, nargs, NULL, comb_bound);
 }
 
 glob:priv perm_signature = CallSignature("perm", ["n", "k"], 1, 2, 2);
@@ -64,8 +92,10 @@ def:priv perm_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_comb(args.values[0], args.values[1], 0);
 }
 
-def:priv perm_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(perm_signature, args, NULL, perm_bound);
+def:priv perm_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(perm_signature, args, nargs, NULL, perm_bound);
 }
 
 def:priv acos_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
@@ -209,8 +239,10 @@ def:priv atan2_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(0, args.values[0], args.values[1]);
 }
 
-def:priv atan2_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(atan2_signature, args, NULL, atan2_bound);
+def:priv atan2_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(atan2_signature, args, nargs, NULL, atan2_bound);
 }
 
 glob:priv copysign_signature = CallSignature("copysign", ["x", "y"], 2, 2, 2);
@@ -218,8 +250,10 @@ def:priv copysign_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(1, args.values[0], args.values[1]);
 }
 
-def:priv copysign_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(copysign_signature, args, NULL, copysign_bound);
+def:priv copysign_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(copysign_signature, args, nargs, NULL, copysign_bound);
 }
 
 glob:priv fmod_signature = CallSignature("fmod", ["x", "y"], 2, 2, 2);
@@ -227,8 +261,10 @@ def:priv fmod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(2, args.values[0], args.values[1]);
 }
 
-def:priv fmod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(fmod_signature, args, NULL, fmod_bound);
+def:priv fmod_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(fmod_signature, args, nargs, NULL, fmod_bound);
 }
 
 glob:priv remainder_signature = CallSignature("remainder", ["x", "y"], 2, 2, 2);
@@ -236,8 +272,10 @@ def:priv remainder_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(3, args.values[0], args.values[1]);
 }
 
-def:priv remainder_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(remainder_signature, args, NULL, remainder_bound);
+def:priv remainder_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(remainder_signature, args, nargs, NULL, remainder_bound);
 }
 
 glob:priv pow_signature = CallSignature("pow", ["x", "y"], 2, 2, 2);
@@ -245,8 +283,10 @@ def:priv pow_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(4, args.values[0], args.values[1]);
 }
 
-def:priv pow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(pow_signature, args, NULL, pow_bound);
+def:priv pow_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(pow_signature, args, nargs, NULL, pow_bound);
 }
 
 glob:priv log_signature = CallSignature("log", ["x", "base"], 1, 2, 2);
@@ -254,8 +294,10 @@ def:priv log_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_log(args.values[0], args.values[1]);
 }
 
-def:priv log_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(log_signature, args, NULL, log_bound);
+def:priv log_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(log_signature, args, nargs, NULL, log_bound);
 }
 
 glob:priv ldexp_signature = CallSignature("ldexp", ["x", "i"], 2, 2, 2);
@@ -263,8 +305,10 @@ def:priv ldexp_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_ldexp(args.values[0], args.values[1]);
 }
 
-def:priv ldexp_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ldexp_signature, args, NULL, ldexp_bound);
+def:priv ldexp_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(ldexp_signature, args, nargs, NULL, ldexp_bound);
 }
 
 glob:priv fma_signature = CallSignature("fma", ["x", "y", "z"], 3, 3, 3);
@@ -272,8 +316,10 @@ def:priv fma_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_fma(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv fma_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(fma_signature, args, NULL, fma_bound);
+def:priv fma_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(fma_signature, args, nargs, NULL, fma_bound);
 }
 
 def:priv frexp_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
@@ -318,8 +364,10 @@ def:priv fsum_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject]
     return jacpy_math_fsum(value);
 }
 
-def:priv hypot_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_hypot(args);
+def:priv hypot_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return varargs_call(args, nargs, 2);
 }
 
 glob:priv dist_signature = CallSignature("dist", ["p", "q"], 2, 2, 2);
@@ -327,8 +375,10 @@ def:priv dist_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_dist(args.values[0], args.values[1]);
 }
 
-def:priv dist_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(dist_signature, args, NULL, dist_bound);
+def:priv dist_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(dist_signature, args, nargs, NULL, dist_bound);
 }
 
 glob:priv sumprod_signature = CallSignature("sumprod", ["p", "q"], 2, 2, 2);
@@ -336,8 +386,10 @@ def:priv sumprod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_sumprod(args.values[0], args.values[1]);
 }
 
-def:priv sumprod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(sumprod_signature, args, NULL, sumprod_bound);
+def:priv sumprod_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(sumprod_signature, args, nargs, NULL, sumprod_bound);
 }
 
 glob:priv prod_signature = CallSignature("prod", ["iterable", "start"], 1, 1, 1);
@@ -386,27 +438,27 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "gcd",
-                 MethodCallbacks(positional=gcd_call),
+                 MethodCallbacks(fast=gcd_call),
                  "gcd($module, *integers)\n--\n\nGreatest common divisor.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "lcm",
-                 MethodCallbacks(positional=lcm_call),
+                 MethodCallbacks(fast=lcm_call),
                  "lcm($module, *integers)\n--\n\nLeast common multiple.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "comb",
-                 MethodCallbacks(positional=comb_call),
+                 MethodCallbacks(fast=comb_call),
                  "comb($module, n, k, /)\n--\n\nNumber of unordered selections without repetition.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "perm",
-                 MethodCallbacks(positional=perm_call),
+                 MethodCallbacks(fast=perm_call),
                  "perm($module, n, k=None, /)\n--\n\nNumber of ordered selections without repetition.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "acos",
@@ -614,51 +666,51 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "atan2",
-                 MethodCallbacks(positional=atan2_call),
+                 MethodCallbacks(fast=atan2_call),
                  "Return the arc tangent (measured in radians) of y/x.\n\nUnlike atan(y/x), the signs of both x and y are considered.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "copysign",
-                 MethodCallbacks(positional=copysign_call),
+                 MethodCallbacks(fast=copysign_call),
                  "Return a float with the magnitude (absolute value) of x but the sign of y.\n\nOn platforms that support signed zeros, copysign(1.0, -0.0)\nreturns -1.0.\n",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "fmod",
-                 MethodCallbacks(positional=fmod_call),
+                 MethodCallbacks(fast=fmod_call),
                  "Return fmod(x, y), according to platform C.\n\nx % y may differ.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "remainder",
-                 MethodCallbacks(positional=remainder_call),
+                 MethodCallbacks(fast=remainder_call),
                  "Difference between x and the closest integer multiple of y.\n\nReturn x - n*y where n*y is the closest integer multiple of y.\nIn the case where x is exactly halfway between two multiples of\ny, the nearest even value of n is used. The result is always exact.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "pow",
-                 MethodCallbacks(positional=pow_call),
+                 MethodCallbacks(fast=pow_call),
                  "Return x**y (x to the power of y).",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "log",
-                 MethodCallbacks(positional=log_call),
+                 MethodCallbacks(fast=log_call),
                  "log(x, [base=math.e])\nReturn the logarithm of x to the given base.\n\nIf the base is not specified, returns the natural logarithm (base e) of x.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "ldexp",
-                 MethodCallbacks(positional=ldexp_call),
+                 MethodCallbacks(fast=ldexp_call),
                  "Return x * (2**i).\n\nThis is essentially the inverse of frexp().",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "fma",
-                 MethodCallbacks(positional=fma_call),
+                 MethodCallbacks(fast=fma_call),
                  "Fused multiply-add operation.\n\nCompute (x * y) + z with a single round.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "frexp",
@@ -690,21 +742,21 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "hypot",
-                 MethodCallbacks(positional=hypot_call),
+                 MethodCallbacks(fast=hypot_call),
                  "Multidimensional Euclidean distance from the origin to a point.\n\nRoughly equivalent to:\n    sqrt(sum(x**2 for x in coordinates))\n\nFor a two dimensional point (x, y), gives the hypotenuse\nusing the Pythagorean theorem:  sqrt(x*x + y*y).\n\nFor example, the hypotenuse of a 3/4/5 right triangle is:\n\n    >>> hypot(3.0, 4.0)\n    5.0",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "dist",
-                 MethodCallbacks(positional=dist_call),
+                 MethodCallbacks(fast=dist_call),
                  "Return the Euclidean distance between two points p and q.\n\nThe points should be specified as sequences (or iterables) of\ncoordinates.  Both inputs must have the same dimension.\n\nRoughly equivalent to:\n    sqrt(sum((px - qx) ** 2.0 for px, qx in zip(p, q)))",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "sumprod",
-                 MethodCallbacks(positional=sumprod_call),
+                 MethodCallbacks(fast=sumprod_call),
                  "Return the sum of products of values from two iterables p and q.\n\nRoughly equivalent to:\n\n    sum(map(operator.mul, p, q, strict=True))\n\nFor float and mixed int/float inputs, the intermediate products\nand sums are computed with extended precision.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "prod",
