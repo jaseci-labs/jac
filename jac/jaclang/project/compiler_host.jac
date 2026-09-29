@@ -1,4 +1,3 @@
-import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from jaclang.compiler.frontend.host {
     CheckSettings,
