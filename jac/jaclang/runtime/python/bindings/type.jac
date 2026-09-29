@@ -73,7 +73,8 @@ import from c {
             release_buffer: Callable[[ptr[PyObject], ptr[Py_buffer]], None] = 0,
             get_attribute: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
             set_attribute:
-                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0;
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0,
+            string: Callable[[ptr[PyObject]], ptr[PyObject]] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,

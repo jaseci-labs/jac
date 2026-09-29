@@ -33,3 +33,5 @@ _posixshmem
 _abc
 _codecs
 _locale
+_lzma
+_zoneinfo
