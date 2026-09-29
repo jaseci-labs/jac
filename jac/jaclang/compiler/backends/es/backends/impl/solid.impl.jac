@@ -428,6 +428,7 @@ impl SolidBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expr
         );
     }
     attr_nodes = [self._jsx_attr(a, locator) for a in view.attrs];
+    name_node: (es.JsxIdentifier | es.JsxMemberExpression);
     if isinstance(tag, HostTag) {
         name_node = locator.at(es.JsxIdentifier(name=tag.name), jac_node=tag.jac_node);
     } elif isinstance(tag, ComponentTag) {
