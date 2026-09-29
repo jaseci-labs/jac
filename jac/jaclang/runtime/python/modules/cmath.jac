@@ -11,10 +11,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_math_errno,
     jacpy_release,
     NULL,
-    _Py_c_abs,
-    PyComplex_FromDoubles,
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble,
     PyErr_ExceptionMatches,
     PyExc_OverflowError,
     PyExc_ValueError,
@@ -23,6 +19,12 @@ import from jaclang.runtime.python.cpython_api {
     PyFloat_FromDouble,
     PyNumber_TrueDivide,
     PyObject
+}
+import from jaclang.runtime.python.object_model.complex {
+    PyComplex_FromDoubles,
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble,
+    _Py_c_abs
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.numeric {

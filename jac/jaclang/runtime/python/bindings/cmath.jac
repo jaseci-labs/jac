@@ -1,11 +1,7 @@
 """Python complex-math signatures, constants, and native initialization."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyComplex_FromDoubles,
-    PyFloat_FromDouble,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { NULL, PyFloat_FromDouble, PyObject }
+import from jaclang.runtime.python.object_model.complex { PyComplex_FromDoubles }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
