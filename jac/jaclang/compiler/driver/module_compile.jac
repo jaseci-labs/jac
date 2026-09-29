@@ -290,7 +290,8 @@ def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
     from_pass: type = JcirGenPass;
     native = native_codegen();
     if native is not None {
-        for step in native() {
+        schedule: PassSchedule = native();
+        for step in schedule {
             from_pass = step;
         }
     }
