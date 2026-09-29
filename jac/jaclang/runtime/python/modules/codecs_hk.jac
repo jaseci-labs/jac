@@ -49,7 +49,7 @@ import from jaclang.runtime.python.modules.cjkcodecs_mappings_hk {
 import from c {
     # The big5 map of _codecs_tw, which big5hkscs_codec_init imports (the
     # C's CJK_MOD_SPECIFIC_STATE).
-    glob:priv imported_big5: list[ptr[DbcsMap]] = [ptr[DbcsMap]()];
+    glob:priv big5_map: ptr[DbcsMap] = ptr[DbcsMap]();
     # There are four possible pair unicode -> big5hkscs maps as in HKSCS 2004:
     #  U+00CA U+0304 -> 8862  (U+00CA alone is mapped to 8866)
     #  U+00CA U+030C -> 8864
@@ -64,10 +64,6 @@ import from c {
          ];
 }
 
-def:priv big5_map -> ptr[DbcsMap] {
-    return addressof(imported_big5).view(1)[0];
-}
-
 # BIG5HKSCS codec
 
 def big5hkscs_codec_init(codec: ptr[MultibyteCodec]) -> i32 {
@@ -75,7 +71,7 @@ def big5hkscs_codec_init(codec: ptr[MultibyteCodec]) -> i32 {
     if map.is_null() {
         return i32(-1);
     }
-    addressof(imported_big5).view(1)[0] = map;
+    big5_map = map;
     return i32(0);
 }
 
@@ -135,7 +131,7 @@ def big5hkscs_encode(
                     }
                 }
             } else {
-                code = map_encode(big5_map(), c);
+                code = map_encode(big5_map, c);
                 if code == NOCHAR {
                     return 1;
                 }
@@ -186,7 +182,7 @@ def big5hkscs_decode(
         }
         c2 = inbyte(inbuf, 1);
         if 0xC6 > c or c > 0xC8 or (c < 0xC7 and c2 < 0xA1) {
-            decoded = map_decode(big5_map(), c, c2);
+            decoded = map_decode(big5_map, c, c2);
             if decoded != UNIINV {
                 if not outchar(writer, decoded) {
                     return MBERR_EXCEPTION;

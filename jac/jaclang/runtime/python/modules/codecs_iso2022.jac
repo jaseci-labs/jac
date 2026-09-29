@@ -99,22 +99,7 @@ glob:priv ESC: int = 0x1B,
      # iso2022_config.flags
      NO_SHIFT: Final[i32] = 0x01,
      USE_G2: Final[i32] = 0x02,
-     USE_JISX0208_EXT: Final[i32] = 0x04,
-     # The imported maps (the C's CJK_MOD_SPECIFIC_STATE), by slot.
-     KR_CP949: int = 0,
-     KR_KSX1001: int = 1,
-     JP_JISXCOMMON: int = 2,
-     JP_JISX0208: int = 3,
-     JP_JISX0212: int = 4,
-     JP_JISX0213_BMP: int = 5,
-     JP_JISX0213_1_BMP: int = 6,
-     JP_JISX0213_2_BMP: int = 7,
-     JP_JISX0213_EMP: int = 8,
-     JP_JISX0213_1_EMP: int = 9,
-     JP_JISX0213_2_EMP: int = 10,
-     JP_JISX0213_PAIR: int = 11,
-     CN_GBCOMMON: int = 12,
-     CN_GB2312: int = 13;
+     USE_JISX0208_EXT: Final[i32] = 0x04;
 
 import from c {
     # struct iso2022_designation. An entry without an initializer has the
@@ -131,36 +116,22 @@ import from c {
     obj Iso2022Config {
         has flags: i32,
             designations: ptr[Iso2022Designation];
-    }  glob:priv imported_maps: list[ptr[DbcsMap]] = [
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap](),
-             ptr[DbcsMap]()
-         ];
-}
-
-def:priv imported(slot: int) -> ptr[DbcsMap] {
-    return (addressof(imported_maps) + slot).view(1)[0];
-}
-
-# IMPORT_MAP(locale, charset, ...): False with the exception set on failure.
-def:priv import_map(slot: int, locale: str, charset: str) -> bool {
-    map = importmap("_codecs_" + locale, "__map_" + charset);
-    if map.is_null() {
-        return False;
     }
-    (addressof(imported_maps) + slot).view(1)[0] = map;
-    return True;
+    # The imported maps (the C's CJK_MOD_SPECIFIC_STATE).
+    glob:priv cp949_map: ptr[DbcsMap] = ptr[DbcsMap](); glob:priv ksx1001_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisxcommon_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0208_map: ptr[DbcsMap] = ptr[
+             DbcsMap
+         ](); glob:priv jisx0212_map: ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_bmp_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_1_bmp_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_2_bmp_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_emp_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_1_emp_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_2_emp_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv jisx0213_pair_map:
+             ptr[DbcsMap] = ptr[DbcsMap](); glob:priv gbcommon_map: ptr[DbcsMap] = ptr[
+             DbcsMap
+         ](); glob:priv gb2312_map: ptr[DbcsMap] = ptr[DbcsMap]();
 }
 
 def:priv config_of(codec: ptr[MultibyteCodec]) -> ptr[Iso2022Config] {
@@ -786,15 +757,21 @@ def:priv data_at(data: ptr[u8], index: int) -> int {
 }
 
 def ksx1001_init(codec: ptr[MultibyteCodec]) -> i32 {
-    if not import_map(KR_CP949, "kr", "cp949")
-        or not import_map(KR_KSX1001, "kr", "ksx1001") {
+    map = importmap("_codecs_kr", "__map_cp949");
+    if map.is_null() {
         return i32(-1);
     }
+    cp949_map = map;
+    map = importmap("_codecs_kr", "__map_ksx1001");
+    if map.is_null() {
+        return i32(-1);
+    }
+    ksx1001_map = map;
     return i32(0);
 }
 
 def ksx1001_decoder(codec: ptr[MultibyteCodec], data: ptr[u8]) -> u32 {
-    u = map_decode(imported(KR_KSX1001), data_at(data, 0), data_at(data, 1));
+    u = map_decode(ksx1001_map, data_at(data, 0), data_at(data, 1));
     return u32(MAP_UNMAPPABLE if u == UNIINV else u);
 }
 
@@ -803,7 +780,7 @@ def ksx1001_encoder(
 ) -> u16 {
     c = int(data.view(1)[0]);
     if c < 0x10000 {
-        coded = map_encode(imported(KR_CP949), c);
+        coded = map_encode(cp949_map, c);
         if coded != NOCHAR and (coded & 0x8000) == 0 {
             return u16(coded);
         }
@@ -812,10 +789,16 @@ def ksx1001_encoder(
 }
 
 def jisx0208_init(codec: ptr[MultibyteCodec]) -> i32 {
-    if not import_map(JP_JISXCOMMON, "jp", "jisxcommon")
-        or not import_map(JP_JISX0208, "jp", "jisx0208") {
+    map = importmap("_codecs_jp", "__map_jisxcommon");
+    if map.is_null() {
         return i32(-1);
     }
+    jisxcommon_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0208");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0208_map = map;
     return i32(0);
 }
 
@@ -824,7 +807,7 @@ def jisx0208_decoder(codec: ptr[MultibyteCodec], data: ptr[u8]) -> u32 {
     if data_at(data, 0) == 0x21 and data_at(data, 1) == 0x40 {
         return u32(0xFF3C);
     }
-    u = map_decode(imported(JP_JISX0208), data_at(data, 0), data_at(data, 1));
+    u = map_decode(jisx0208_map, data_at(data, 0), data_at(data, 1));
     return u32(MAP_UNMAPPABLE if u == UNIINV else u);
 }
 
@@ -837,7 +820,7 @@ def jisx0208_encoder(
         if c == 0xFF3C {
             return u16(0x2140);
         }
-        coded = map_encode(imported(JP_JISXCOMMON), c);
+        coded = map_encode(jisxcommon_map, c);
         if coded != NOCHAR and (coded & 0x8000) == 0 {
             return u16(coded);
         }
@@ -846,15 +829,21 @@ def jisx0208_encoder(
 }
 
 def jisx0212_init(codec: ptr[MultibyteCodec]) -> i32 {
-    if not import_map(JP_JISXCOMMON, "jp", "jisxcommon")
-        or not import_map(JP_JISX0212, "jp", "jisx0212") {
+    map = importmap("_codecs_jp", "__map_jisxcommon");
+    if map.is_null() {
         return i32(-1);
     }
+    jisxcommon_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0212");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0212_map = map;
     return i32(0);
 }
 
 def jisx0212_decoder(codec: ptr[MultibyteCodec], data: ptr[u8]) -> u32 {
-    u = map_decode(imported(JP_JISX0212), data_at(data, 0), data_at(data, 1));
+    u = map_decode(jisx0212_map, data_at(data, 0), data_at(data, 1));
     return u32(MAP_UNMAPPABLE if u == UNIINV else u);
 }
 
@@ -863,7 +852,7 @@ def jisx0212_encoder(
 ) -> u16 {
     c = int(data.view(1)[0]);
     if c < 0x10000 {
-        coded = map_encode(imported(JP_JISXCOMMON), c);
+        coded = map_encode(jisxcommon_map, c);
         if coded != NOCHAR and (coded & 0x8000) != 0 {
             return u16(coded & 0x7FFF);
         }
@@ -872,16 +861,44 @@ def jisx0212_encoder(
 }
 
 def jisx0213_init(codec: ptr[MultibyteCodec]) -> i32 {
-    if jisx0208_init(codec) != 0
-        or not import_map(JP_JISX0213_BMP, "jp", "jisx0213_bmp")
-        or not import_map(JP_JISX0213_1_BMP, "jp", "jisx0213_1_bmp")
-        or not import_map(JP_JISX0213_2_BMP, "jp", "jisx0213_2_bmp")
-        or not import_map(JP_JISX0213_EMP, "jp", "jisx0213_emp")
-        or not import_map(JP_JISX0213_1_EMP, "jp", "jisx0213_1_emp")
-        or not import_map(JP_JISX0213_2_EMP, "jp", "jisx0213_2_emp")
-        or not import_map(JP_JISX0213_PAIR, "jp", "jisx0213_pair") {
+    if jisx0208_init(codec) != 0 {
         return i32(-1);
     }
+    map = importmap("_codecs_jp", "__map_jisx0213_bmp");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_bmp_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0213_1_bmp");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_1_bmp_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0213_2_bmp");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_2_bmp_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0213_emp");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_emp_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0213_1_emp");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_1_emp_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0213_2_emp");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_2_emp_map = map;
+    map = importmap("_codecs_jp", "__map_jisx0213_pair");
+    if map.is_null() {
+        return i32(-1);
+    }
+    jisx0213_pair_map = map;
     return i32(0);
 }
 
@@ -889,7 +906,7 @@ def:priv pair_code(body: int, modifier: int) -> int {
     return find_pairencmap(
         body,
         modifier,
-        ptr[PairEncodeMap](imported(JP_JISX0213_PAIR).view(1)[0].encdata),
+        ptr[PairEncodeMap](jisx0213_pair_map.view(1)[0].encdata),
         JISX0213_ENCPAIRS
     );
 }
@@ -902,19 +919,19 @@ def:priv jisx0213_1_decode(data: ptr[u8]) -> int {
     if c1 == 0x21 and c2 == 0x40 {
         return 0xFF3C;
     }
-    u = map_decode(imported(JP_JISX0208), c1, c2);
+    u = map_decode(jisx0208_map, c1, c2);
     if u != UNIINV {
         return u;
     }
-    u = map_decode(imported(JP_JISX0213_1_BMP), c1, c2);
+    u = map_decode(jisx0213_1_bmp_map, c1, c2);
     if u != UNIINV {
         return u;
     }
-    u = map_decode(imported(JP_JISX0213_1_EMP), c1, c2);
+    u = map_decode(jisx0213_1_emp_map, c1, c2);
     if u != UNIINV {
         return u | 0x20000;
     }
-    u = map_decode_wide(imported(JP_JISX0213_PAIR), c1, c2);
+    u = map_decode_wide(jisx0213_pair_map, c1, c2);
     if u != UNIINV {
         return u;
     }
@@ -924,11 +941,11 @@ def:priv jisx0213_1_decode(data: ptr[u8]) -> int {
 def:priv jisx0213_2_decode(data: ptr[u8]) -> int {
     c1 = data_at(data, 0);
     c2 = data_at(data, 1);
-    u = map_decode(imported(JP_JISX0213_2_BMP), c1, c2);
+    u = map_decode(jisx0213_2_bmp_map, c1, c2);
     if u != UNIINV {
         return u;
     }
-    u = map_decode(imported(JP_JISX0213_2_EMP), c1, c2);
+    u = map_decode(jisx0213_2_emp_map, c1, c2);
     if u != UNIINV {
         return u | 0x20000;
     }
@@ -970,7 +987,7 @@ def:priv jisx0213_encoder(
                 if emulate_2000_encode_emp(config, c) {
                     return MAP_UNMAPPABLE;
                 }
-                coded = map_encode(imported(JP_JISX0213_EMP), c & 0xFFFF);
+                coded = map_encode(jisx0213_emp_map, c & 0xFFFF);
                 if coded != NOCHAR {
                     return coded;
                 }
@@ -984,14 +1001,14 @@ def:priv jisx0213_encoder(
         if emulated != 0 {
             return emulated;
         }
-        coded = map_encode(imported(JP_JISX0213_BMP), c);
+        coded = map_encode(jisx0213_bmp_map, c);
         if coded != NOCHAR {
             if coded == MULTIC {
                 return MAP_MULTIPLE_AVAIL;
             }
             return coded;
         }
-        coded = map_encode(imported(JP_JISXCOMMON), c);
+        coded = map_encode(jisxcommon_map, c);
         if coded != NOCHAR {
             if (coded & 0x8000) != 0 {
                 return MAP_UNMAPPABLE;
@@ -1126,15 +1143,21 @@ def jisx0201_k_encoder(
 }
 
 def gb2312_init(codec: ptr[MultibyteCodec]) -> i32 {
-    if not import_map(CN_GBCOMMON, "cn", "gbcommon")
-        or not import_map(CN_GB2312, "cn", "gb2312") {
+    map = importmap("_codecs_cn", "__map_gbcommon");
+    if map.is_null() {
         return i32(-1);
     }
+    gbcommon_map = map;
+    map = importmap("_codecs_cn", "__map_gb2312");
+    if map.is_null() {
+        return i32(-1);
+    }
+    gb2312_map = map;
     return i32(0);
 }
 
 def gb2312_decoder(codec: ptr[MultibyteCodec], data: ptr[u8]) -> u32 {
-    u = map_decode(imported(CN_GB2312), data_at(data, 0), data_at(data, 1));
+    u = map_decode(gb2312_map, data_at(data, 0), data_at(data, 1));
     return u32(MAP_UNMAPPABLE if u == UNIINV else u);
 }
 
@@ -1143,7 +1166,7 @@ def gb2312_encoder(
 ) -> u16 {
     c = int(data.view(1)[0]);
     if c < 0x10000 {
-        coded = map_encode(imported(CN_GBCOMMON), c);
+        coded = map_encode(gbcommon_map, c);
         if coded != NOCHAR and (coded & 0x8000) == 0 {
             return u16(coded);
         }
