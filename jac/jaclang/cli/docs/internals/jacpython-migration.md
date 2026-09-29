@@ -206,10 +206,14 @@ pilot port; it established the pieces below.
 
 **Layouts are generated and verified.** `scripts/jacpython/gen_layouts.jac`
 writes `runtime/python/layouts.jac`: one C-layout struct per layout it lists
-(`_object`, `PyVarObject`, `PyTypeObject`, `PyNumberMethods`, `_PyLongValue`,
-`PyLongObject`, `PyTupleObject` so far), read from the pinned headers through
+(`_object`, `PyVarObject`, `PyTypeObject`, the slot tables, `PyGetSetDef`,
+`PyLongObject`, `PyTupleObject`, `PyCellObject`, `PySliceObject`,
+`_PyRangeIterObject`, ...), read from the pinned headers through
 a small preprocessor that keeps the `#if` branches of the release build
-(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots are
+(64-bit, little-endian, GIL-enabled, 30-bit digits). An object struct a `.c`
+file keeps private (`rangeobject`, `PyCapsule`, `enumobject`) is read from that
+file (`OBJECT_SOURCES`); the port owns it from then on, and the check below
+repeats the upstream definition so the Jac layout is still asserted against C. Function-pointer slots are
 `Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
 pointers to records no port reads yet are opaque. `PyObject` stays the opaque
 handle of `cpython_api.jac`; its layout is `_object`, reached by casting a
@@ -276,6 +280,41 @@ What boolobject needed beyond the layouts:
   `import from c` block instead (`def PyBool_FromLong(ok: i64) ->
   ptr[PyObject] { ... }`), which exports the exact C name with the C ABI.
 
+The leaf types (`cellobject.c`, `namespaceobject.c`, `capsule.c`,
+`iterobject.c`, `enumobject.c`, `sliceobject.c`, `rangeobject.c`) followed,
+as `object_model/cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
+`enumerate.jac`, `slice.jac` and `range.jac`. Every exported function and the
+interpreter-internal ones other C files call (`_PyBuildSlice_ConsumeRefs`,
+`_PySlice_GetLongIndices`, `PyAnextAwaitable_New`, `_PyNamespace_New`) are C
+definitions under their names; tables and types are C data. What they added:
+
+- Method tables are `list[PyMethodDef]` C data. `ml_meth` is a `ptr`, and
+  `ptr(f)` is the address of the named function `f` whatever its calling
+  convention, as `_PyCFunction_CAST(f)` erases it in C (`ptr(range_count)`,
+  `ptr(namespace_replace)`, `ptr(Py_GenericAlias)`). Slots and callback fields
+  may name functions other modules define (`tp_getattro=PyObject_GenericGetAttr`),
+  and a slot holds the function's own address when only Jac's integer
+  representation of pointers differs, so the interpreter's slot comparisons
+  hold.
+- A callback field read as an address, `int(cap.view(1)[0].destructor)`,
+  tests or returns the pointer C stored (`PyCapsule_GetDestructor`,
+  `tp_iternext == NULL`); an address is stored with `field = int(p)`.
+- `tp_traverse` implementations take the visitor as a `ptr` and visit with
+  `bindings/module.jac`'s `visit_reference` (Py_VISIT).
+- The slice and range freelists are `struct _Py_freelists` fields of the
+  interpreter state; `jacpy_freelists()` in `object_api.c` returns that
+  struct, and `header.jac`'s `freelist_pop` / `freelist_push` implement
+  `_Py_FREELIST_POP` / `_Py_FREELIST_FREE` over the `_Py_freelists_*` offsets
+  gen_layouts asserts.
+- `header.jac` also holds `Py_REFCNT`, the tuple item macros,
+  `_PyTuple_Recycle`, `PyObject_TypeCheck`, `Py_RETURN_RICHCOMPARE` and
+  `_PyEval_GetBuiltin(&_Py_ID(name))` (by interning, as bool_repr does).
+- Unsigned C arithmetic (the range length formula, the slice hash) uses
+  `u64.wrap` and the `wrapping_*` builtins; sized-int arithmetic otherwise
+  traps on overflow, which C leaves undefined and the ports never reach.
+- `enumerate.__new__` parses with `PyArg_ParseTupleAndKeywords` over a C data
+  keyword array, as the clinic glue's messages are getargs.c's.
+
 Refcounting from Jac is still a call into C (`Py_IncRef`, `jacpy_release`);
 with `_object` declared, inline immortality-aware reference operations in Jac
 are the next shared helper. `jacpython.o` enters the link as machine code,
@@ -283,10 +322,7 @@ so a call into C costs a call ThinLTO cannot remove; emitting it as bitcode
 for the ThinLTO link removes that boundary if Jac's LLVM and Zig's LLVM agree
 on the bitcode version.
 
-Order after `boolobject.c`: leaf types with little behaviour
-(`cellobject.c` 212, `namespaceobject.c` 332, `capsule.c` 366,
-`iterobject.c` 541, `enumobject.c` 585, `sliceobject.c` 710,
-`rangeobject.c` 1,317), then containers (`tupleobject.c`, `listobject.c`,
+Order after the leaf types: containers (`tupleobject.c`, `listobject.c`,
 `setobject.c`, `dictobject.c`), then numbers and text (`floatobject.c`,
 `complexobject.c`, `longobject.c`, `bytesobject.c`, `unicodeobject.c`), and
 `typeobject.c` (12,312 lines) last. `mimalloc` and `obmalloc.c` stay the

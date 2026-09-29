@@ -63,7 +63,12 @@ their initializers use; `bootstrap/python/layouts_check.c` asserts every offset,
 size and constant against the configured headers of each build. A port defines
 its static type objects and singletons as C data under their C names
 (`object_model/bool.jac` defines `PyBool_Type`, `_Py_FalseStruct` and
-`_Py_TrueStruct`), so the interpreter's C code uses them unchanged.
+`_Py_TrueStruct`), so the interpreter's C code uses them unchanged. The ported
+files are `boolobject.c`, `cellobject.c`, `namespaceobject.c`, `capsule.c`,
+`iterobject.c`, `enumobject.c`, `sliceobject.c` and `rangeobject.c`
+(`bool.jac`, `cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
+`enumerate.jac`, `slice.jac`, `range.jac`); `header.jac` holds the object
+header's inline operations they share.
 
 `modules/` contains the native standard-library algorithms. `bindings/` implements
 every module adapter in native Jac, including the `PyInit_*` entry points,

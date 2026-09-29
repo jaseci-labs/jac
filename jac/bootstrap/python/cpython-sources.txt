@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 78 C files / 132,243 lines; 56 headers / 23,827 lines.
-#   Total: 134 files / 156,070 source lines.
+#   Excluded: 85 C files / 136,306 lines; 57 headers / 23,940 lines.
+#   Total: 142 files / 160,246 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
