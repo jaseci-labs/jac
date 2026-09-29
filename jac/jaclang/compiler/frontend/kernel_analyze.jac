@@ -340,6 +340,16 @@ def run_kernel_session(
     } except Exception as err {
         run.status = ANALYSIS_CRASHED;
         run.message = f"{type(err).__name__}: {err}";
+        running = run.program.analysis.running;
+        if running is not None {
+            where = running.pass_name;
+            visiting = running.current_node;
+            if visiting is not None and visiting.loc {
+                loc = visiting.loc;
+                where += f" at {loc.mod_path}:{loc.first_line}:{loc.col_start}";
+            }
+            run.message += f" (in {where})";
+        }
     } finally {
         install_host(previous);
     }

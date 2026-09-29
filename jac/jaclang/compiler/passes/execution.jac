@@ -65,7 +65,15 @@ def run_walker[W: CompilerPass](
         errors_had=errors_had,
         warnings_had=warnings_had
     );
+    ledger = prog.analysis if prog is not None else None;
+    outer = ledger.running if ledger is not None else None;
+    if ledger is not None {
+        ledger.running = ctx;
+    }
     walk = walker_type(module=module, ctx=ctx);
     walk_pass(walk);
+    if ledger is not None {
+        ledger.running = outer;
+    }
     return walk;
 }

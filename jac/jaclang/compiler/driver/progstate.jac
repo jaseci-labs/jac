@@ -2,7 +2,7 @@ import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
-import from jaclang.compiler.passes.context { Alert }
+import from jaclang.compiler.passes.context { Alert, CompileContext }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
 import type from jaclang.compiler.placement.placement { PlacementSummary }
@@ -324,7 +324,8 @@ class AnalysisCaches {
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, uni.Module],
-        cache_events: dict[str, int];
+        cache_events: dict[str, int],
+        running: (CompileContext | None);
 
     def init(self: AnalysisCaches) {
         self.placement_summaries: dict[str, PlacementSummary] = {};
@@ -340,6 +341,7 @@ class AnalysisCaches {
         self.product_tasks: dict[int, dict[CompilationProduct, ProductTask]] = {};
         self.task_owners: dict[int, uni.Module] = {};
         self.cache_events: dict[str, int] = {};
+        self.running: (CompileContext | None) = None;
     }
 
     def retain_tasks(self: AnalysisCaches, module: uni.Module) {
