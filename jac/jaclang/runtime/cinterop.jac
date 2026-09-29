@@ -691,7 +691,6 @@ class CFunction {
             if i < len(self._params) {
                 c_args.append(self._to_c(self._params[i][1], value, keep));
             } elif isinstance(value, CCell) {
-                # A borrowed variadic argument passes the cell's address.
                 c_args.append(ctypes.c_void_p(ctypes.addressof(value.c)));
             } else {
                 c_args.append(value);

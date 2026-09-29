@@ -659,9 +659,6 @@ impl NaIRGenPass._c_vararg(arg: uni.Expr) -> (ir.Value | None) {
     return self._c_vararg_value(val, arg) if val is not None else None;
 }
 
-# A borrowed C variadic argument (`&mut x`, as `PyArg_UnpackTuple(..., &mut x)`
-# or `sscanf(text, "%d", &mut n)` pass it) is the address of the variable, which
-# the callee writes in place; the variable's storage is its C scalar or pointer.
 impl NaIRGenPass._c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None) {
     slot = self._clib_place_ptr(arg);
     if slot is not None and isinstance(slot.type, ir.PointerType) {
