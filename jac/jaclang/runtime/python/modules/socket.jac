@@ -208,19 +208,6 @@ glob:priv
 # ---------------------------------------------------------------------------
 # Clinic converters of this module.
 
-"""unicode_fs_encoded (PyUnicode_FSConverter): the bytes of a str encoded
-with the filesystem encoding, or of a bytes-like object; a new reference
-the _impl function releases."""
-def convert_PyUnicode_FSConverter(
-    value: ptr[PyObject], fname: str, label: str
-) -> ptr[PyObject] {
-    result = NULL;
-    if PyUnicode_FSConverter(value, &mut result) == 0 {
-        raise boundary_failure();
-    }
-    return result;
-}
-
 """NET_IFINDEX: an unsigned int (_PyLong_UnsignedInt_Converter) outside
 Windows."""
 def convert__PyLong_NetIfindex_Converter(

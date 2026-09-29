@@ -47,6 +47,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_IsTrue,
     PyArg_Parse,
     PyUnicode_AsUTF8AndSize,
+    PyUnicode_FSConverter,
     PyUnicode_ReadChar
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
@@ -295,6 +296,19 @@ def convert_bool_int(value: ptr[PyObject]) -> bool {
         raise boundary_failure();
     }
     return convert_int(value) != 0;
+}
+
+"""unicode_fs_encoded (PyUnicode_FSConverter): the bytes of a str encoded
+with the filesystem encoding, or of a bytes-like object; a new reference
+the _impl function releases."""
+def convert_PyUnicode_FSConverter(
+    value: ptr[PyObject], fname: str, label: str
+) -> ptr[PyObject] {
+    result = NULL;
+    if PyUnicode_FSConverter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
 }
 
 def convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObject] {

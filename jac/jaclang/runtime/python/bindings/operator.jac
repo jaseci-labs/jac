@@ -2,19 +2,15 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyExc_BufferError,
     PyExc_SystemError,
     PyExc_TypeError,
     PyObject,
-    PyObject_CheckBuffer,
     PyTuple_Size,
     PyVectorcall_NARGS,
     Py_NewRef,
     Py_TYPE,
     jacpy_dict_size,
-    jacpy_is_unicode,
-    jacpy_release,
-    jacpy_unicode_ascii
+    jacpy_release
 }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -49,13 +45,8 @@ import from jaclang.runtime.python.bindings.arguments {
     invoke_vector,
     check_positional
 }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi {
-    object_error,
-    type_name,
-    text_object,
-    boundary_failure
-}
+import from jaclang.runtime.python.modules.hashlib { compare_digest }
+import from jaclang.runtime.python.capi { object_error, text_object, boundary_failure }
 import from jaclang.runtime.python.modules.operator {
     jacpy_operator_neg,
     jacpy_operator_pos,
@@ -105,7 +96,6 @@ import from jaclang.runtime.python.modules.operator {
     jacpy_operator_setitem,
     jacpy_operator_length_hint,
     jacpy_operator_call,
-    jacpy_operator_digest,
     jacpy_operator_prepare,
     jacpy_operator_apply,
     jacpy_operator_repr,
@@ -644,43 +634,7 @@ def:priv call_call(
 }
 
 def:priv digest_bound(args: BoundArguments) -> ptr[PyObject] {
-    a = args.values[0];
-    b = args.values[1];
-    ascii = jacpy_is_unicode(a) != 0 and jacpy_is_unicode(b) != 0;
-    if ascii {
-        if jacpy_unicode_ascii(a) == 0 or jacpy_unicode_ascii(b) == 0 {
-            object_error(
-                PyExc_TypeError,
-                "comparing strings with non-ASCII characters is not supported"
-            );
-            return NULL;
-        }
-    } elif PyObject_CheckBuffer(a) == 0 and PyObject_CheckBuffer(b) == 0 {
-        object_error(
-            PyExc_TypeError,
-            f"unsupported operand types(s) or combination of types: '{type_name(a)[:100]}' and '{type_name(
-                b
-            )[:100]}'"
-        );
-        return NULL;
-    }
-    av = BufferArgument();
-    bv = BufferArgument();
-    if not av.acquire(a, ascii) {
-        return NULL;
-    }
-    if av.dimensions() > 1 {
-        object_error(PyExc_BufferError, "Buffer must be single dimension");
-        return NULL;
-    }
-    if not bv.acquire(b, ascii) {
-        return NULL;
-    }
-    if bv.dimensions() > 1 {
-        object_error(PyExc_BufferError, "Buffer must be single dimension");
-        return NULL;
-    }
-    return jacpy_operator_digest(av.address(), bv.address(), av.size(), bv.size());
+    return compare_digest(args.values[0], args.values[1]);
 }
 
 def:priv digest_call(

@@ -4,7 +4,6 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
-    jacpy_crypto_compare,
     jacpy_dict_size,
     jacpy_error_pending,
     jacpy_is_unicode,
@@ -603,14 +602,4 @@ def:pub jacpy_operator_call(
     } except boundary_failure {
         return NULL;
     }
-}
-
-# Reuse the cryptographic constant-time primitive already supplied by OpenSSL.
-# Comparisons of unequal sizes still read the second operand in full.
-def:pub jacpy_operator_digest(
-    a: ptr, b: ptr, a_size: i64, b_size: i64
-) -> ptr[PyObject] {
-    left = a if a_size == b_size else b;
-    difference = jacpy_crypto_compare(left, b, b_size);
-    return PyBool_FromLong(i64((difference == 0) and (a_size == b_size)));
 }

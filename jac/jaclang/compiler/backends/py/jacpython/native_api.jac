@@ -99,6 +99,7 @@ import from jaclang.runtime.python.bindings.unicodedata { PyInit_unicodedata }
 import from jaclang.runtime.python.bindings.datetime { PyInit__datetime }
 import from jaclang.runtime.python.bindings.decimal { PyInit__decimal }
 import from jaclang.runtime.python.bindings.socket { PyInit__socket }
+import from jaclang.runtime.python.bindings.hashopenssl { PyInit__hashlib }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

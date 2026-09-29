@@ -130,9 +130,11 @@ import from c {
         name: str, default_value: ptr[PyObject]
     ) -> ptr[PyObject];  def PyContextVar_Set(
         var: ptr[PyObject], value: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyDict_Clear(mp: ptr[PyObject]);  def PyDict_Contains(
-        mp: ptr[PyObject], key: ptr[PyObject]
-    ) -> i32;  def PyDict_Copy(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_DelItem(
+    ) -> ptr[PyObject];  def PyDictProxy_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyDict_Clear(
+        mp: ptr[PyObject]
+    );  def PyDict_Contains(mp: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyDict_Copy(
+        mp: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyDict_DelItem(
         mp: ptr[PyObject], key: ptr[PyObject]
     ) -> i32;  def PyDict_GetItemRef(
         mp: ptr[PyObject], key: ptr[PyObject], result: &mut ptr[PyObject]
@@ -193,7 +195,9 @@ import from c {
         PyThreadState
     ];  def PyFloat_AsDouble(arg0: ptr[PyObject]) -> f64;  def PyFloat_FromDouble(
         arg0: f64
-    ) -> ptr[PyObject];  def PyFloat_FromString(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyGC_Disable -> i32;  def PyGC_Enable -> i32;  def PyGILState_Ensure -> i32;  def PyGILState_Release(
+    ) -> ptr[PyObject];  def PyFloat_FromString(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyFrozenSet_New(
+        arg0: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyGC_Disable -> i32;  def PyGC_Enable -> i32;  def PyGILState_Ensure -> i32;  def PyGILState_Release(
         arg0: i32
     );  def PyImport_Import(name: ptr[PyObject]) -> ptr[PyObject];  def PyImport_ImportModule(
         name: str

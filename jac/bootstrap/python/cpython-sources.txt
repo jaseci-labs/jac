@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 104 C files / 175,106 lines; 87 headers / 59,685 lines.
-#   Total: 191 files / 234,791 source lines.
+#   Excluded: 105 C files / 177,496 lines; 89 headers / 61,779 lines.
+#   Total: 194 files / 239,275 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -377,7 +377,7 @@ Modules/_hacl/lib_memzero0.h
 Modules/_hacl/libintvector-shim.h
 Modules/_hacl/libintvector.h
 Modules/_hacl/python_hacl_namespaces.h
-Modules/_hashopenssl.c
+# Modules/_hashopenssl.c  # removed: 2,390 source lines
 # Modules/_heapqmodule.c  # removed: 811 source lines
 Modules/_interpchannelsmodule.c
 Modules/_interpqueuesmodule.c
@@ -513,7 +513,7 @@ Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
 Modules/clinic/_elementtree.c.h
 # Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
-Modules/clinic/_hashopenssl.c.h
+# Modules/clinic/_hashopenssl.c.h  # removed: 1,987 source lines
 # Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
 Modules/clinic/_localemodule.c.h
 # Modules/clinic/_lsprof.c.h  # removed: 479 source lines
@@ -576,7 +576,7 @@ Modules/getpath.c
 Modules/getpath.py
 Modules/getpath_noop.c
 # Modules/grpmodule.c  # removed: 409 source lines
-Modules/hashlib.h
+# Modules/hashlib.h  # removed: 107 source lines
 # Modules/hmacmodule.c  # removed: 1,865 source lines
 # Modules/itertoolsmodule.c  # removed: 4,103 source lines
 Modules/ld_so_aix.in

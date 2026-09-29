@@ -123,6 +123,15 @@ def c_int(value: int) -> i32 {
     return i32(bits);
 }
 
+# `value` converted to a C size_t as a C cast does: a negative value wraps to
+# its two's complement (-1 is SIZE_MAX), where a Jac `u64(value)` traps.
+def c_size(value: i64) -> u64 {
+    if value >= 0 {
+        return u64(value);
+    }
+    return ~u64(-(value + 1));
+}
+
 # The byte at `address + offset` of C memory.
 def memory_byte(address: ptr, offset: i64) -> i64 {
     return i64(ptr[u8](int(address) + int(offset)).view(1)[0]);

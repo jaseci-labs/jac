@@ -39,3 +39,4 @@ unicodedata
 _datetime
 _sqlite3
 _socket
+_hashlib        hashopenssl
