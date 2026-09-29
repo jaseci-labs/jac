@@ -49,6 +49,7 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_Subtract,
     PyObject,
     PyObject_GetIter,
+    PyObject_IsTrue,
     PyObject_RichCompareBool,
     PySequence_Tuple,
     PyTuple_Size,
@@ -56,6 +57,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyLong_Frexp
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
+import from jaclang.runtime.python.bindings.arguments { vector_tuple }
 import from jaclang.runtime.python.capi { object_error, required, boundary_failure }
 
 import from jaclang.runtime.python.modules.numeric {
@@ -1475,4 +1477,250 @@ def:pub jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] 
         jacpy_release(result);
     }
     return NULL;
+}
+
+# The Argument Clinic _impl functions. A double parameter arrives converted;
+# the shared kernels take Python numbers, so it is passed back as a float.
+def:priv float_object(value: f64) -> ptr[PyObject] {
+    return PyFloat_FromDouble(value);
+}
+
+def:priv unary_float(operation: int, x: f64) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_unary(i64(operation), value);
+    jacpy_release(value);
+    return result;
+}
+
+def:priv binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject] {
+    left = float_object(x);
+    right = float_object(y);
+    result: ptr[PyObject] = NULL;
+    if left != 0 and right != 0 {
+        result = jacpy_math_binary(i64(operation), left, right);
+    }
+    jacpy_release(left);
+    jacpy_release(right);
+    return result;
+}
+
+def math_gcd_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if arguments == 0 {
+        return NULL;
+    }
+    result = jacpy_math_gcd(arguments, 0);
+    jacpy_release(arguments);
+    return result;
+}
+
+def math_lcm_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if arguments == 0 {
+        return NULL;
+    }
+    result = jacpy_math_gcd(arguments, 1);
+    jacpy_release(arguments);
+    return result;
+}
+
+def math_hypot_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if arguments == 0 {
+        return NULL;
+    }
+    result = jacpy_math_hypot(arguments);
+    jacpy_release(arguments);
+    return result;
+}
+
+def math_ceil_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(28, x);
+}
+
+def math_floor_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(29, x);
+}
+
+def math_trunc_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(30, x);
+}
+
+def math_log10_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(31, x);
+}
+
+def math_log2_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(32, x);
+}
+
+def math_fsum_impl(module: ptr[PyObject], seq: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_fsum(seq);
+}
+
+def math_isqrt_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_isqrt(n);
+}
+
+def math_factorial_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_factorial(n);
+}
+
+def math_frexp_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_parts(0, value);
+    jacpy_release(value);
+    return result;
+}
+
+def math_modf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_parts(1, value);
+    jacpy_release(value);
+    return result;
+}
+
+def math_ldexp_impl(module: ptr[PyObject], x: f64, i: ptr[PyObject]) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_ldexp(value, i);
+    jacpy_release(value);
+    return result;
+}
+
+def math_fma_impl(module: ptr[PyObject], x: f64, y: f64, z: f64) -> ptr[PyObject] {
+    values = [float_object(x), float_object(y), float_object(z)];
+    result: ptr[PyObject] = NULL;
+    if 0 not in values {
+        result = jacpy_math_fma(values[0], values[1], values[2]);
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    return result;
+}
+
+def math_fmod_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
+    return binary_float(2, x, y);
+}
+
+def math_pow_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
+    return binary_float(4, x, y);
+}
+
+def math_dist_impl(
+    module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_dist(p, q);
+}
+
+def math_sumprod_impl(
+    module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_sumprod(p, q);
+}
+
+def math_degrees_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(23, x);
+}
+
+def math_radians_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(24, x);
+}
+
+def math_isfinite_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(25, x);
+}
+
+def math_isinf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(26, x);
+}
+
+def math_isnan_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(27, x);
+}
+
+# isclose returns clinic's bool: -1 with the error set on failure.
+def math_isclose_impl(
+    module: ptr[PyObject], a: f64, b: f64, rel_tol: f64, abs_tol: f64
+) -> i32 {
+    values = [
+        float_object(a),
+        float_object(b),
+        float_object(rel_tol),
+        float_object(abs_tol)
+    ];
+    result: ptr[PyObject] = NULL;
+    if 0 not in values {
+        result = jacpy_math_isclose(values[0], values[1], values[2], values[3]);
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    if result == 0 {
+        return i32(-1);
+    }
+    truth = PyObject_IsTrue(result);
+    jacpy_release(result);
+    return i32(truth);
+}
+
+def math_prod_impl(
+    module: ptr[PyObject], iterable: ptr[PyObject], start: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_prod(iterable, start);
+}
+
+def math_perm_impl(
+    module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_comb(n, k, 0);
+}
+
+def math_comb_impl(
+    module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_comb(n, k, 1);
+}
+
+def math_nextafter_impl(
+    module: ptr[PyObject], x: f64, y: f64, steps: ptr[PyObject]
+) -> ptr[PyObject] {
+    left = float_object(x);
+    right = float_object(y);
+    result: ptr[PyObject] = NULL;
+    if left != 0 and right != 0 {
+        result = jacpy_math_nextafter(left, right, steps);
+    }
+    jacpy_release(left);
+    jacpy_release(right);
+    return result;
+}
+
+# ulp returns clinic's double: -1.0 with the error set on failure.
+def math_ulp_impl(module: ptr[PyObject], x: f64) -> f64 {
+    result = unary_float(33, x);
+    if result == 0 {
+        return -1.0;
+    }
+    value = PyFloat_AsDouble(result);
+    jacpy_release(result);
+    return value;
 }
