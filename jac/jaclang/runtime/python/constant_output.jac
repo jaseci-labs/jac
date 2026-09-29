@@ -15,10 +15,10 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyNumber_Negative,
     PyObject,
-    PySlice_New,
     PyTuple_New
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
+import from jaclang.runtime.python.object_model.slice { PySlice_New }
 import from jaclang.runtime.python.objects {
     PyObj,
     PyNoneType,

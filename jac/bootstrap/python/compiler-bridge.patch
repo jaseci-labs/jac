@@ -346,6 +346,8 @@
 -		Objects/iterobject.o \
 @@ -551,1 +500,0 @@
 -		Objects/namespaceobject.o \
+@@ -557,1 +505,0 @@
+-		Objects/sliceobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer

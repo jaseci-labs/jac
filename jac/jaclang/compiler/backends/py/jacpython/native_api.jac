@@ -86,6 +86,7 @@ import from jaclang.runtime.python.object_model.cell { PyCell_Type }
 import from jaclang.runtime.python.object_model.enumerate { PyEnum_Type }
 import from jaclang.runtime.python.object_model.iterator { PySeqIter_Type }
 import from jaclang.runtime.python.object_model.namespace { _PyNamespace_Type }
+import from jaclang.runtime.python.object_model.slice { PySlice_Type }
 import from jaclang.runtime.python.bindings.abc { PyInit__abc }
 import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.bindings.locale { PyInit__locale }
