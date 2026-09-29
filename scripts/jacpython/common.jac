@@ -73,27 +73,38 @@ def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
     return next(target.iterdir());
 }
 
-# Format `text` as `jac fmt --lintfix` formats it at `target`. The scratch file
-# sits beside the target so the project's jac.toml applies, and formatting is
-# repeated to a fixed point because one pass can add blank lines a second keeps.
+# Format `text` as `jac fmt --lintfix` formats it at `target`.
 def format_jac(text: str, target: Path) -> str {
+    return format_jac_many([(text, target)])[0];
+}
+
+# Format each (text, target) pair as `jac fmt --lintfix` formats it at its
+# target, in one formatter run: the scratch directory sits beside the first
+# target so the project's jac.toml applies, and formatting is repeated to a
+# fixed point because one pass can add blank lines a second keeps.
+def format_jac_many(items: list[tuple[str, Path]]) -> list[str] {
+    if not items {
+        return [];
+    }
     jac = shutil.which("jac");
     if jac is None {
         sys.exit("jac is not on PATH; generated Jac is formatted with `jac fmt`");
     }
-    target.parent.mkdir(parents=True, exist_ok=True);
-    scratch = tempfile.mkstemp(prefix=".gen_", suffix=".jac", dir=target.parent);
-    os.close(scratch[0]);
-    path = Path(scratch[1]);
-    # The scratch file sits in the compiler's source tree, so a native
-    # compiler kernel keyed on that tree would be rebuilt for every call.
+    home = items[0][1].parent;
+    home.mkdir(parents=True, exist_ok=True);
+    scratch = Path(tempfile.mkdtemp(prefix=".gen_", dir=home));
+    # The scratch files sit in the compiler's source tree, so a native
+    # compiler kernel keyed on that tree would be rebuilt for every run.
     environment = {** os.environ, "JAC_COMPILER_LIB": "off"};
+    paths = [scratch / f"{index}_{target.name}" for (index, (_, target)) in enumerate(items)];
     try {
-        path.write_text(text);
+        for (path, (text, _)) in zip(paths, items) {
+            path.write_text(text);
+        }
         for _ in range(3) {
-            before = path.read_text();
+            before = [path.read_text() for path in paths];
             result = subprocess.run(
-                [jac, "fmt", "--lintfix", str(path)],
+                [jac, "fmt", "--lintfix", str(scratch)],
                 capture_output=True,
                 text=True,
                 env=environment
@@ -103,13 +114,13 @@ def format_jac(text: str, target: Path) -> str {
                     f"jac fmt failed on generated Jac:\n{result.stdout}{result.stderr}"
                 );
             }
-            if path.read_text() == before {
+            if [path.read_text() for path in paths] == before {
                 break;
             }
         }
-        return path.read_text();
+        return [path.read_text() for path in paths];
     } finally {
-        path.unlink(missing_ok=True);
+        shutil.rmtree(scratch, ignore_errors=True);
     }
 }
 

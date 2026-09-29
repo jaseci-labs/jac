@@ -29,7 +29,7 @@ import re;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from common { BOOTSTRAP, REPO, RUNTIME, extract_tree, format_jac, pin }
+import from common { BOOTSTRAP, REPO, RUNTIME, extract_tree, format_jac_many, pin }
 
 glob OUTPUT: Path = RUNTIME / "bindings/clinic",
      MODULES: str = "jaclang.runtime.python.modules",
@@ -195,9 +195,10 @@ def module_sources(tree: Path, module: str) -> list[Path] {
     sys.exit(f"{module} is not built by Modules/Setup.stdlib.in or Setup.bootstrap.in");
 }
 
-# The preprocessor condition each clinic function is compiled under, by full
-# name, as Tools/clinic sees it while rendering the block ("" when none).
-glob CONDITIONS: dict[str, str] = {};
+# The preprocessor condition each clinic function is compiled under, as
+# Tools/clinic sees it while rendering the block ("" when none). Keyed by the
+# function object: a C file may define one name under several conditions.
+glob CONDITIONS: dict[int, str] = {};
 
 # JacPython builds only POSIX targets, where a function compiled only under a
 # Windows condition does not exist.
@@ -222,7 +223,7 @@ def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
         def record_conditions(clinic: any, signatures: any) -> any {
             for signature in signatures {
                 if isinstance(signature, function_type) {
-                    CONDITIONS[signature.full_name] = language.cpp.condition();
+                    CONDITIONS[id(signature)] = language.cpp.condition();
                 }
             }
             return render(clinic, signatures);
@@ -825,7 +826,7 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];
-        if windows_only(CONDITIONS.get(f.full_name, "")) {
+        if windows_only(CONDITIONS.get(id(f), "")) {
             emitter.windows.append(f.full_name);
             continue;
         }
@@ -840,10 +841,7 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
         }
     }
     relative = [str(s.relative_to(tree)) for s in sources];
-    return (
-        name,
-        format_jac(emitter.render(relative, version), OUTPUT / f"{name}.jac")
-    );
+    return (name, emitter.render(relative, version));
 }
 
 def registered -> list[str] {
@@ -871,17 +869,20 @@ with entry:__main__ {
     stale: list[str] = [];
     with tempfile.TemporaryDirectory() as scratch {
         tree = extract_tree(Path(scratch), ("Tools/clinic/", "Modules/"));
-        for module in args.modules or registered() {
-            generated = generate(tree, module, version);
-            target = (args.out or OUTPUT) / f"{generated[0]}.jac";
+        rendered = [generate(tree, module, version) for module in args.modules or registered()];
+        targets = [(args.out or OUTPUT) / f"{name}.jac" for (name, _) in rendered];
+        formatted = format_jac_many(
+            [(text, target) for ((_, text), target) in zip(rendered, targets)]
+        );
+        for (target, text) in zip(targets, formatted) {
             if args.check {
-                if not target.is_file() or target.read_text() != generated[1] {
+                if not target.is_file() or target.read_text() != text {
                     stale.append(str(target.relative_to(REPO)));
                 }
                 continue;
             }
             target.parent.mkdir(parents=True, exist_ok=True);
-            target.write_text(generated[1]);
+            target.write_text(text);
             print(f"wrote {target}");
         }
     }
