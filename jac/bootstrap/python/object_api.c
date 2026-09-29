@@ -567,6 +567,62 @@ void *jacpy_opendir(const char *path) { return opendir(path); }
 const char *jacpy_readdir_name(void *directory) { struct dirent *entry = readdir((DIR *)directory); return entry ? entry->d_name : NULL; }
 int32_t jacpy_dirfd(void *directory) { return dirfd((DIR *)directory); }
 int32_t jacpy_closedir(void *directory) { return closedir((DIR *)directory); }
+void *jacpy_fdopendir(int32_t fd) { return fdopendir(fd); }
+void jacpy_rewinddir(void *directory) { rewinddir((DIR *)directory); }
+/* The next entry's name (NULL at the end) with its d_type, DT_UNKNOWN where
+ * the C library has none, and its inode number. */
+const char *jacpy_readdir_entry(void *directory, int64_t *type, uint64_t *inode) {
+    struct dirent *entry = readdir((DIR *)directory);
+    if (entry == NULL) return NULL;
+#ifdef HAVE_DIRENT_D_TYPE
+    *type = entry->d_type;
+#else
+    *type = DT_UNKNOWN;
+#endif
+    *inode = (uint64_t)entry->d_ino;
+    return entry->d_name;
+}
+
+/* The stat family binds $INODE64 symbol variants on macOS x86_64 (and is
+ * libc_nonshared inline wrappers on older glibc); each fills the target's
+ * struct stat, which stat_records.jac lays out per target. */
+#include <sys/stat.h>
+#include "internal/pycore_fileutils.h"
+int32_t jacpy_stat(const char *path, struct _Py_stat_struct *status) { return stat(path, status); }
+int32_t jacpy_lstat(const char *path, struct _Py_stat_struct *status) { return lstat(path, status); }
+int32_t jacpy_fstat(int32_t fd, struct _Py_stat_struct *status) { return fstat(fd, status); }
+int32_t jacpy_fstatat(int32_t dir_fd, const char *path, struct _Py_stat_struct *status, int32_t flags) {
+    return fstatat(dir_fd, path, status, flags);
+}
+
+/* The fork hooks: the at-fork callback lists are interpreter-state fields,
+ * HEAD_LOCK is a _PyRuntime field, and a forked child resets thread-state
+ * fields (native id, remote-debugger request, asyncio task list), all of
+ * whose offsets differ between builds. `which` is 0 for before_forkers, 1
+ * for after_forkers_parent and 2 for after_forkers_child. */
+#include "internal/pycore_llist.h"
+#include "internal/pycore_tstate.h"
+PyObject **jacpy_fork_callbacks(PyInterpreterState *interp, int64_t which) {
+    return which == 0 ? &interp->before_forkers
+        : which == 1 ? &interp->after_forkers_parent : &interp->after_forkers_child;
+}
+void jacpy_runtime_head_lock(void) { HEAD_LOCK(&_PyRuntime); }
+void jacpy_runtime_head_unlock(void) { HEAD_UNLOCK(&_PyRuntime); }
+void jacpy_thread_state_native_id(PyThreadState *tstate) {
+#ifdef PY_HAVE_THREAD_NATIVE_ID
+    tstate->native_thread_id = PyThread_get_thread_native_id();
+#else
+    (void)tstate;
+#endif
+}
+void jacpy_thread_state_fork_reset(PyThreadState *tstate) {
+    tstate->remote_debugger_support.debugger_pending_call = 0;
+    memset(tstate->remote_debugger_support.debugger_script_path, 0, _Py_MAX_SCRIPT_PATH_SIZE);
+    _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
+    llist_init(&impl->asyncio_tasks_head);
+    impl->asyncio_running_loop = NULL;
+    impl->asyncio_running_task = NULL;
+}
 
 /* _PyInterpreterState_GetFinalizing() is static inline. */
 int64_t jacpy_interpreter_finalizing(void) { return _PyInterpreterState_GetFinalizing(_PyInterpreterState_GET()) != NULL; }

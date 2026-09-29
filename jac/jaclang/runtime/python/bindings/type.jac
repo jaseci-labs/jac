@@ -279,3 +279,59 @@ def descriptor_get(
     PyMem_Free(cell);
     return result;
 }
+
+import from jaclang.runtime.python.cpython_api { PyErr_NoMemory, PyMem_RawCalloc }
+import from jaclang.runtime.python.layouts {
+    PY_STRUCT_SEQUENCE_DESC_SIZE,
+    PY_STRUCT_SEQUENCE_FIELD_SIZE,
+    PyStructSequence_Desc,
+    PyStructSequence_Field
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_NewType,
+    PyStructSequence_UnnamedField
+}
+import from jaclang.runtime.python.capi { c_string_copy }
+
+# A C string kept for the process, NULL for "" when `empty_is_null`.
+def:priv kept_text(text: str, empty_is_null: bool) -> ptr[u8] {
+    if empty_is_null and not text {
+        return ptr[u8]();
+    }
+    return c_string_copy(text);
+}
+
+"""PyStructSequence_NewType() over a descriptor built from (name, doc) fields,
+the first `visible` of them in the tuple. A name of "" is an unnamed field
+(PyStructSequence_UnnamedField) and a doc of "" is NULL, as in a C module's
+static field array. The descriptor and its strings are raw memory kept for
+the process, as that static array is. NULL with the exception set."""
+def struct_sequence_type(
+    name: str, doc: str, fields: list[tuple[str, str]], visible: int
+) -> ptr[PyObject] {
+    table = ptr[PyStructSequence_Field](
+        PyMem_RawCalloc(
+            u64(len(fields) + 1), u64(PY_STRUCT_SEQUENCE_FIELD_SIZE)
+        )
+    );
+    desc = ptr[PyStructSequence_Desc](
+        PyMem_RawCalloc(1, u64(PY_STRUCT_SEQUENCE_DESC_SIZE))
+    );
+    if not table or not desc {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    for index in range(len(fields)) {
+        (field_name, field_doc) = fields[index];
+        entry_address = table + index;
+        entry_address.view(1)[0].name = PyStructSequence_UnnamedField
+            if not field_name
+            else kept_text(field_name, False);
+        entry_address.view(1)[0].doc = kept_text(field_doc, True);
+    }
+    desc.view(1)[0].name = kept_text(name, False);
+    desc.view(1)[0].doc = kept_text(doc, True);
+    desc.view(1)[0].fields = table;
+    desc.view(1)[0].n_in_sequence = i32(visible);
+    return PyStructSequence_NewType(desc);
+}

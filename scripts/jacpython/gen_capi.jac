@@ -59,7 +59,8 @@ glob OPAQUE: list[str] = [
          "PyMutex",
          "_Py_freelists",
          "PyLongWriter",
-         "_PyUnicodeWriter"
+         "_PyUnicodeWriter",
+         "_PyRuntimeState"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -277,6 +278,7 @@ glob OPAQUE: list[str] = [
          "PyOS_double_to_string": {4},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
+         "PyDict_SetDefaultRef": {3},
          "PyErr_WarnExplicit": {4},
          "PyUnicode_AsWideCharString": {1},
          "PyUnicode_DecodeASCII": {2},
@@ -488,6 +490,10 @@ def data_type(ctype: str) -> str | None {
     if base in INTERNAL_STRUCTS {
         return base;
     }
+    # An opaque C object (_PyRuntime) is used by address.
+    if base in OPAQUE {
+        return base;
+    }
     return SCALARS.get(base);
 }
 
@@ -643,6 +649,15 @@ def used_names(known: set[str]) -> set[str] {
             defined.update(
                 re.findall(
                     r"(?m)(?:^|\})\s*def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b[^;{]*\{",
+                    text
+                )
+            );
+            # A source may declare a function itself when its C type has no
+            # mapping here (a PyStatus returned by value, typed with the
+            # layouts.jac record).
+            defined.update(
+                re.findall(
+                    r"(?m)(?:^|(?<=[;}]))\s*def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b[^;{]*;",
                     text
                 )
             );

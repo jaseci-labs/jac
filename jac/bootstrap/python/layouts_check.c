@@ -1052,6 +1052,8 @@ CONSTANT(offsetof(Py_buffer, itemsize), 24LL);
 CONSTANT(sizeof(PyMemberDef), 40LL);
 CONSTANT(sizeof(PyType_Slot), 16LL);
 CONSTANT(sizeof(PyType_Spec), 32LL);
+CONSTANT(sizeof(PyStructSequence_Field), 16LL);
+CONSTANT(sizeof(PyStructSequence_Desc), 32LL);
 CONSTANT(offsetof(PyPickleBufferObject, weakreflist), 96LL);
 CONSTANT(sizeof(interpolationobject), 48LL);
 CONSTANT(offsetof(interpolationobject, value), 16LL);

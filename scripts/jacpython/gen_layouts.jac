@@ -297,6 +297,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_TYPE_SLOT_SIZE", "sizeof(PyType_Slot)", "i64"),
          ("PY_TYPE_SPEC_SIZE", "sizeof(PyType_Spec)", "i64"),
          (
+             "PY_STRUCT_SEQUENCE_FIELD_SIZE",
+             "sizeof(PyStructSequence_Field)",
+             "i64"
+         ),
+         ("PY_STRUCT_SEQUENCE_DESC_SIZE", "sizeof(PyStructSequence_Desc)", "i64"),
+         (
              "PyPickleBufferObject_WEAKREFLIST",
              "offsetof(PyPickleBufferObject, weakreflist)",
              "i64"
