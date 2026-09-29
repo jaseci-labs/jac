@@ -1232,6 +1232,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _note_native_dep(path: str) -> None;
+    def _glob_init_symbols -> tuple[list[str], list[str]];
     def _is_catalog_module(mod: uni.Module) -> bool;
     def _full_ast_of(full_path: str) -> (uni.Module | None);
     def _dep_iface(imported_mod: uni.Module) -> (NativeIface | None);
