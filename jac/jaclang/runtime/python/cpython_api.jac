@@ -381,7 +381,7 @@ import from c {
         ptr_: ptr
     );  def PyObject_GC_Del(arg0: ptr);  def PyObject_GC_IsTracked(
         arg0: ptr[PyObject]
-    ) -> i32;  def PyObject_GenericGetAttr(
+    ) -> i32;  def PyObject_GC_Track(arg0: ptr);  def PyObject_GC_UnTrack(arg0: ptr);  def PyObject_GenericGetAttr(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_GenericGetDict(
         arg0: ptr[PyObject], arg1: ptr
