@@ -660,8 +660,13 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
     for imp in mod.get_all_sub_nodes(uni.Import) {
         target = native_only_import_target(imp, self);
         drop = needs_native
-            and target is not None
-            and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target);
+            and (
+                bool(imp.clib_decls)
+                or (
+                    target is not None
+                    and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target)
+                )
+            );
         if drop {
             if py_refs is None {
                 py_refs = python_side_name_refs(mod);
