@@ -14,7 +14,9 @@ supported (little-endian) target. A trailing C array `T name[1]`
 the same offset, size and alignment: element 0 is that field, and the
 object's further elements follow it in memory, reached by pointer
 arithmetic from the field's offset exactly as C indexes past the declared
-bound. Pointers to records no port reads yet are opaque.
+bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T
+fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.
+Pointers to records no port reads yet are opaque.
 """
 import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
 
@@ -152,6 +154,78 @@ import from c {
             func: ptr[u8],
             err_msg: ptr[u8],
             exitcode: i32;
+    }  obj PyDateTime_DateTime {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8,
+            data: u8,
+            data_1: u8,
+            data_2: u8,
+            data_3: u8,
+            data_4: u8,
+            data_5: u8,
+            data_6: u8,
+            data_7: u8,
+            data_8: u8,
+            data_9: u8,
+            fold: u8,
+            tzinfo: ptr[PyObject];
+    }  obj PyDateTime_CAPI {
+        has DateType: ptr[PyTypeObject],
+            DateTimeType: ptr[PyTypeObject],
+            TimeType: ptr[PyTypeObject],
+            DeltaType: ptr[PyTypeObject],
+            TZInfoType: ptr[PyTypeObject],
+            TimeZone_UTC: ptr[PyObject],
+            Date_FromDate: Callable[[i32, i32, i32, ptr[PyTypeObject]], ptr[PyObject]],
+            DateTime_FromDateAndTime:
+                Callable[
+                    [
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        ptr[PyObject],
+                        ptr[PyTypeObject]
+                    ],
+                    ptr[PyObject]
+                ],
+            Time_FromTime:
+                Callable[
+                    [i32, i32, i32, i32, ptr[PyObject], ptr[PyTypeObject]],
+                    ptr[PyObject]
+                ],
+            Delta_FromDelta:
+                Callable[[i32, i32, i32, i32, ptr[PyTypeObject]], ptr[PyObject]],
+            TimeZone_FromTimeZone:
+                Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            DateTime_FromTimestamp:
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            Date_FromTimestamp: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            DateTime_FromDateAndTimeAndFold:
+                Callable[
+                    [
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        ptr[PyObject],
+                        i32,
+                        ptr[PyTypeObject]
+                    ],
+                    ptr[PyObject]
+                ],
+            Time_FromTimeAndFold:
+                Callable[
+                    [i32, i32, i32, i32, ptr[PyObject], i32, ptr[PyTypeObject]],
+                    ptr[PyObject]
+                ];
     }
 }
 

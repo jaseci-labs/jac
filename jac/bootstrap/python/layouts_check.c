@@ -7,6 +7,7 @@
 #endif
 #include "Python.h"
 #include "internal/pycore_long.h"
+#include "datetime.h"
 #include <stddef.h>
 
 #define FIELD(type, field, offset, size) \
@@ -267,6 +268,85 @@ FIELD(PyStatus, exitcode, 24, 4);
 KIND(PyStatus, exitcode, 1);
 SIGNED(PyStatus, exitcode, 1);
 LAYOUT(PyStatus, 32, 8);
+
+/* PyDateTime_DateTime */
+FIELD(PyDateTime_DateTime, ob_base, 0, 16);
+KIND(PyDateTime_DateTime, ob_base, 12);
+FIELD(PyDateTime_DateTime, hashcode, 16, 8);
+KIND(PyDateTime_DateTime, hashcode, 1);
+SIGNED(PyDateTime_DateTime, hashcode, 1);
+FIELD(PyDateTime_DateTime, hastzinfo, 24, 1);
+KIND(PyDateTime_DateTime, hastzinfo, 1);
+SIGNED(PyDateTime_DateTime, hastzinfo, 1);
+FIELD(PyDateTime_DateTime, data[0], 25, 1);
+KIND(PyDateTime_DateTime, data[0], 1);
+SIGNED(PyDateTime_DateTime, data[0], 0);
+FIELD(PyDateTime_DateTime, data[1], 26, 1);
+KIND(PyDateTime_DateTime, data[1], 1);
+SIGNED(PyDateTime_DateTime, data[1], 0);
+FIELD(PyDateTime_DateTime, data[2], 27, 1);
+KIND(PyDateTime_DateTime, data[2], 1);
+SIGNED(PyDateTime_DateTime, data[2], 0);
+FIELD(PyDateTime_DateTime, data[3], 28, 1);
+KIND(PyDateTime_DateTime, data[3], 1);
+SIGNED(PyDateTime_DateTime, data[3], 0);
+FIELD(PyDateTime_DateTime, data[4], 29, 1);
+KIND(PyDateTime_DateTime, data[4], 1);
+SIGNED(PyDateTime_DateTime, data[4], 0);
+FIELD(PyDateTime_DateTime, data[5], 30, 1);
+KIND(PyDateTime_DateTime, data[5], 1);
+SIGNED(PyDateTime_DateTime, data[5], 0);
+FIELD(PyDateTime_DateTime, data[6], 31, 1);
+KIND(PyDateTime_DateTime, data[6], 1);
+SIGNED(PyDateTime_DateTime, data[6], 0);
+FIELD(PyDateTime_DateTime, data[7], 32, 1);
+KIND(PyDateTime_DateTime, data[7], 1);
+SIGNED(PyDateTime_DateTime, data[7], 0);
+FIELD(PyDateTime_DateTime, data[8], 33, 1);
+KIND(PyDateTime_DateTime, data[8], 1);
+SIGNED(PyDateTime_DateTime, data[8], 0);
+FIELD(PyDateTime_DateTime, data[9], 34, 1);
+KIND(PyDateTime_DateTime, data[9], 1);
+SIGNED(PyDateTime_DateTime, data[9], 0);
+FIELD(PyDateTime_DateTime, fold, 35, 1);
+KIND(PyDateTime_DateTime, fold, 1);
+SIGNED(PyDateTime_DateTime, fold, 0);
+FIELD(PyDateTime_DateTime, tzinfo, 40, 8);
+KIND(PyDateTime_DateTime, tzinfo, 5);
+LAYOUT(PyDateTime_DateTime, 48, 8);
+
+/* PyDateTime_CAPI */
+FIELD(PyDateTime_CAPI, DateType, 0, 8);
+KIND(PyDateTime_CAPI, DateType, 5);
+FIELD(PyDateTime_CAPI, DateTimeType, 8, 8);
+KIND(PyDateTime_CAPI, DateTimeType, 5);
+FIELD(PyDateTime_CAPI, TimeType, 16, 8);
+KIND(PyDateTime_CAPI, TimeType, 5);
+FIELD(PyDateTime_CAPI, DeltaType, 24, 8);
+KIND(PyDateTime_CAPI, DeltaType, 5);
+FIELD(PyDateTime_CAPI, TZInfoType, 32, 8);
+KIND(PyDateTime_CAPI, TZInfoType, 5);
+FIELD(PyDateTime_CAPI, TimeZone_UTC, 40, 8);
+KIND(PyDateTime_CAPI, TimeZone_UTC, 5);
+FIELD(PyDateTime_CAPI, Date_FromDate, 48, 8);
+KIND(PyDateTime_CAPI, Date_FromDate, 5);
+FIELD(PyDateTime_CAPI, DateTime_FromDateAndTime, 56, 8);
+KIND(PyDateTime_CAPI, DateTime_FromDateAndTime, 5);
+FIELD(PyDateTime_CAPI, Time_FromTime, 64, 8);
+KIND(PyDateTime_CAPI, Time_FromTime, 5);
+FIELD(PyDateTime_CAPI, Delta_FromDelta, 72, 8);
+KIND(PyDateTime_CAPI, Delta_FromDelta, 5);
+FIELD(PyDateTime_CAPI, TimeZone_FromTimeZone, 80, 8);
+KIND(PyDateTime_CAPI, TimeZone_FromTimeZone, 5);
+FIELD(PyDateTime_CAPI, DateTime_FromTimestamp, 88, 8);
+KIND(PyDateTime_CAPI, DateTime_FromTimestamp, 5);
+FIELD(PyDateTime_CAPI, Date_FromTimestamp, 96, 8);
+KIND(PyDateTime_CAPI, Date_FromTimestamp, 5);
+FIELD(PyDateTime_CAPI, DateTime_FromDateAndTimeAndFold, 104, 8);
+KIND(PyDateTime_CAPI, DateTime_FromDateAndTimeAndFold, 5);
+FIELD(PyDateTime_CAPI, Time_FromTimeAndFold, 112, 8);
+KIND(PyDateTime_CAPI, Time_FromTimeAndFold, 5);
+LAYOUT(PyDateTime_CAPI, 120, 8);
 
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
