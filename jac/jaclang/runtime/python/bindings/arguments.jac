@@ -33,17 +33,21 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_IsTrue,
     PyTuple_GetItem,
     PyTuple_Size,
+    PyType_IsSubtype,
+    Py_TYPE,
     PyUnicode_AsUTF8AndSize,
     PyUnicode_FromString,
     PyUnicode_ReadChar
 }
 import from jaclang.runtime.python.capi {
     boundary_failure,
+    c_string_text,
     required,
     object_error,
     text_value,
     type_name
 }
+import from jaclang.runtime.python.layouts { PyTypeObject }
 
 obj BoundArguments {
     has values: list[ptr[PyObject]],
@@ -234,15 +238,18 @@ obj ArgumentValue {
 
 # PyArg_ParseTuple() and PyArg_ParseTupleAndKeywords() over formats of
 # single units, with Python/getargs.c's conversions and messages. Units:
-# "O" object, "U" str, "s" str without NUL, "i" int, "h" short, "l" long,
-# "L" long long, "n" Py_ssize_t, "p" predicate, and the bitfields "B",
-# "H", "I", "k", "K"; "|" starts the optional arguments and "$" the
-# keyword-only ones. `name` is the text after a format's ':' ("" for none),
-# `message` the text after its ';', which replaces the arity and "must be"
-# messages. A failure sets the exception and raises boundary_failure.
+# "O" object, "O!" object of a type (taken in order from `types`), "U" str,
+# "s" str without NUL, "C" a str of one character (its code point in
+# `signed`), "i" int, "h" short, "l" long, "L" long long, "n" Py_ssize_t,
+# "p" predicate, and the bitfields "B", "H", "I", "k", "K"; "|" starts the
+# optional arguments and "$" the keyword-only ones. `name` is the text after
+# a format's ':' ("" for none), `message` the text after its ';', which
+# replaces the arity and "must be" messages. A failure sets the exception and
+# raises boundary_failure.
 obj ArgumentFormat {
     has name: str = "",
-        message: str = "";
+        message: str = "",
+        types: list[ptr[PyObject]] = [];
 
     def caller -> str {
         return f"{self.name}()" if self.name else "function";
@@ -250,17 +257,47 @@ obj ArgumentFormat {
 
     # seterror(): "<name>() argument <position> must be <expected>, not <type>".
     def mismatch(position: int, expected: str, value: ptr[PyObject]) {
+        shown = "None" if value == Py_None else type_name(value);
+        self.reject(position, f"must be {expected}, not {shown}");
+    }
+
+    # seterror() with converterr()'s or convertcharerr()'s `detail`.
+    def reject(position: int, detail: str) {
         if self.message {
             object_error(PyExc_TypeError, self.message);
             raise boundary_failure();
         }
-        shown = "None" if value == Py_None else type_name(value);
         caller = f"{self.name}() " if self.name else "";
-        object_error(
-            PyExc_TypeError,
-            f"{caller}argument {position} must be {expected}, not {shown}"
-        );
+        object_error(PyExc_TypeError, f"{caller}argument {position} {detail}");
         raise boundary_failure();
+    }
+
+    # The units of `format`, "O!" as one, with the "|" and "$" markers.
+    def units_of(format: str) -> list[str] {
+        units: list[str] = [];
+        for character in format {
+            if character == "!" and units and units[-1] == "O" {
+                units[-1] = "O!";
+            } else {
+                units.append(character);
+            }
+        }
+        return units;
+    }
+
+    # The type each "O!" unit of `kinds` checks against, NULL for the others.
+    def expected_types(kinds: list[str]) -> list[ptr[PyObject]] {
+        expected: list[ptr[PyObject]] = [];
+        next_type = 0;
+        for unit in kinds {
+            if unit == "O!" {
+                expected.append(self.types[next_type]);
+                next_type += 1;
+            } else {
+                expected.append(NULL);
+            }
+        }
+        return expected;
     }
 
     def failed -> bool {
@@ -279,10 +316,40 @@ obj ArgumentFormat {
         return value;
     }
 
-    # convertsimple(): one unit of the format applied to `value`.
-    def convert(unit: str, value: ptr[PyObject], position: int) -> ArgumentValue {
+    # convertsimple(): one unit of the format applied to `value`; `type` is
+    # the type an "O!" unit requires.
+    def convert(
+        unit: str, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
+    ) -> ArgumentValue {
         result = ArgumentValue(given=True, object=value);
         if unit == "O" {
+            return result;
+        }
+        if unit == "O!" {
+            if PyType_IsSubtype(Py_TYPE(value), type) == 0 {
+                expected = required(
+                    c_string_text(ptr[PyTypeObject](type).view(1)[0].tp_name)
+                );
+                try {
+                    self.mismatch(position, text_value(expected), value);
+                } finally {
+                    jacpy_release(expected);
+                }
+            }
+            return result;
+        }
+        if unit == "C" {
+            if jacpy_is_unicode(value) == 0 {
+                self.mismatch(position, "a unicode character", value);
+            }
+            length = jacpy_unicode_size(value);
+            if length != 1 {
+                self.reject(
+                    position,
+                    f"must be a unicode character, not a string of length {length}"
+                );
+            }
+            result.signed = PyUnicode_ReadChar(value, 0);
             return result;
         }
         if unit == "U" or unit == "s" {
@@ -390,13 +457,19 @@ obj ArgumentFormat {
 
     # PyArg_ParseTuple(args, units).
     def parse(args: ptr[PyObject], units: str) -> list[ArgumentValue] {
-        kinds = units.replace("|", "");
-        minimum = units.index("|") if "|" in units else len(units);
+        format = self.units_of(units);
+        kinds = [
+            u
+            for u in format
+            if u != "|"
+        ];
+        minimum = format.index("|") if "|" in format else len(format);
+        expected = self.expected_types(kinds);
         items = self.unpack(args, minimum, len(kinds));
         values: list[ArgumentValue] = [];
         for i in range(len(kinds)) {
             values.append(
-                self.convert(kinds[i], items[i], i + 1)
+                self.convert(kinds[i], items[i], i + 1, expected[i])
                     if i < len(items)
                     else ArgumentValue()
             );
@@ -409,12 +482,26 @@ obj ArgumentFormat {
     def parse_keywords(
         args: ptr[PyObject], kwargs: ptr[PyObject], units: str, keywords: list[str]
     ) -> list[ArgumentValue] {
-        kinds = units.replace("|", "").replace("$", "");
+        format = self.units_of(units);
+        kinds = [
+            u
+            for u in format
+            if u != "|" and u != "$"
+        ];
+        expected = self.expected_types(kinds);
         count = len(keywords);
-        minimum = units.replace("$", "").find("|");
-        minimum = count if minimum < 0 else minimum;
-        maximum = units.replace("|", "").find("$");
-        maximum = count if maximum < 0 else maximum;
+        optional = [
+            u
+            for u in format
+            if u != "$"
+        ];
+        minimum = optional.index("|") if "|" in optional else count;
+        positional = [
+            u
+            for u in format
+            if u != "|"
+        ];
+        maximum = positional.index("$") if "$" in positional else count;
         nargs = int(PyTuple_Size(args));
         nkwargs = int(PyDict_Size(kwargs)) if kwargs else 0;
         shown = self.name or "function";
@@ -467,7 +554,7 @@ obj ArgumentFormat {
             }
             if current {
                 try {
-                    values[i] = self.convert(kinds[i], current, i + 1);
+                    values[i] = self.convert(kinds[i], current, i + 1, expected[i]);
                 } finally {
                     if owned {
                         jacpy_release(current);

@@ -14,12 +14,13 @@ supported (little-endian) target. A trailing C array `T name[1]`
 the same offset, size and alignment: element 0 is that field, and the
 object's further elements follow it in memory, reached by pointer
 arithmetic from the field's offset exactly as C indexes past the declared
-bound. Pointers to records no port reads yet are opaque.
+bound. A fixed array `T name[N]` (`PyDateTime_Date.data`) is N fields
+`name_0` .. `name_{N-1}`. Pointers to records no port reads yet are opaque.
 """
 import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
 
 import from c {
-    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyGetSetDef;  obj PyMappingMethods;  obj PySequenceMethods;  obj _object {
+    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyMappingMethods;  obj PySequenceMethods;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -152,6 +153,140 @@ import from c {
             func: ptr[u8],
             err_msg: ptr[u8],
             exitcode: i32;
+    }  obj PyGetSetDef {
+        has name: ptr[u8],
+            get: Callable[[ptr[PyObject], ptr], ptr[PyObject]],
+            set: Callable[[ptr[PyObject], ptr[PyObject], ptr], i32],
+            doc: ptr[u8],
+            closure: ptr;
+    }  obj PyDateTime_Delta {
+        has ob_base: _object,
+            hashcode: i64,
+            days: i32,
+            seconds: i32,
+            microseconds: i32;
+    }  obj PyDateTime_TZInfo {
+        has ob_base: _object;
+    }  obj _PyDateTime_BaseTZInfo {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8;
+    }  obj _PyDateTime_BaseTime {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8,
+            data_0: u8,
+            data_1: u8,
+            data_2: u8,
+            data_3: u8,
+            data_4: u8,
+            data_5: u8;
+    }  obj PyDateTime_Time {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8,
+            data_0: u8,
+            data_1: u8,
+            data_2: u8,
+            data_3: u8,
+            data_4: u8,
+            data_5: u8,
+            fold: u8,
+            tzinfo: ptr[PyObject];
+    }  obj PyDateTime_Date {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8,
+            data_0: u8,
+            data_1: u8,
+            data_2: u8,
+            data_3: u8;
+    }  obj _PyDateTime_BaseDateTime {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8,
+            data_0: u8,
+            data_1: u8,
+            data_2: u8,
+            data_3: u8,
+            data_4: u8,
+            data_5: u8,
+            data_6: u8,
+            data_7: u8,
+            data_8: u8,
+            data_9: u8;
+    }  obj PyDateTime_DateTime {
+        has ob_base: _object,
+            hashcode: i64,
+            hastzinfo: i8,
+            data_0: u8,
+            data_1: u8,
+            data_2: u8,
+            data_3: u8,
+            data_4: u8,
+            data_5: u8,
+            data_6: u8,
+            data_7: u8,
+            data_8: u8,
+            data_9: u8,
+            fold: u8,
+            tzinfo: ptr[PyObject];
+    }  obj PyDateTime_CAPI {
+        has DateType: ptr[PyTypeObject],
+            DateTimeType: ptr[PyTypeObject],
+            TimeType: ptr[PyTypeObject],
+            DeltaType: ptr[PyTypeObject],
+            TZInfoType: ptr[PyTypeObject],
+            TimeZone_UTC: ptr[PyObject],
+            Date_FromDate: Callable[[i32, i32, i32, ptr[PyTypeObject]], ptr[PyObject]],
+            DateTime_FromDateAndTime:
+                Callable[
+                    [
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        ptr[PyObject],
+                        ptr[PyTypeObject]
+                    ],
+                    ptr[PyObject]
+                ],
+            Time_FromTime:
+                Callable[
+                    [i32, i32, i32, i32, ptr[PyObject], ptr[PyTypeObject]],
+                    ptr[PyObject]
+                ],
+            Delta_FromDelta:
+                Callable[[i32, i32, i32, i32, ptr[PyTypeObject]], ptr[PyObject]],
+            TimeZone_FromTimeZone:
+                Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            DateTime_FromTimestamp:
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            Date_FromTimestamp: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            DateTime_FromDateAndTimeAndFold:
+                Callable[
+                    [
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        i32,
+                        ptr[PyObject],
+                        i32,
+                        ptr[PyTypeObject]
+                    ],
+                    ptr[PyObject]
+                ],
+            Time_FromTimeAndFold:
+                Callable[
+                    [i32, i32, i32, i32, ptr[PyObject], i32, ptr[PyTypeObject]],
+                    ptr[PyObject]
+                ];
     }
 }
 
@@ -164,4 +299,39 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      PyLong_DIGIT_SIZE: Final[i64] = 4,
      _PyStatus_TYPE_OK: Final[u32] = 0,
      _PyStatus_TYPE_ERROR: Final[u32] = 1,
-     PY_BUFFER_SIZE: Final[u64] = 80;
+     PY_BUFFER_SIZE: Final[u64] = 80,
+     PY_OBJECT_SIZE: Final[i64] = 16,
+     PY_TUPLE_OBJECT_SIZE: Final[i64] = 40,
+     Py_TPFLAGS_BASETYPE: Final[u64] = 1024,
+     Py_TPFLAGS_HAVE_GC: Final[u64] = 16384,
+     Py_TPFLAGS_IMMUTABLETYPE: Final[u64] = 256,
+     METH_VARARGS: Final[i32] = 1,
+     METH_KEYWORDS: Final[i32] = 2,
+     METH_NOARGS: Final[i32] = 4,
+     METH_O: Final[i32] = 8,
+     METH_CLASS: Final[i32] = 16,
+     METH_STATIC: Final[i32] = 32,
+     Py_T_INT: Final[i32] = 1,
+     Py_READONLY: Final[i32] = 1,
+     Py_tp_dealloc: Final[i32] = 52,
+     Py_tp_doc: Final[i32] = 56,
+     Py_tp_getset: Final[i32] = 73,
+     Py_tp_methods: Final[i32] = 64,
+     Py_tp_new: Final[i32] = 65,
+     Py_tp_repr: Final[i32] = 66,
+     Py_tp_traverse: Final[i32] = 71,
+     PY_DATETIME_DELTA_SIZE: Final[i64] = 40,
+     PY_DATETIME_TZINFO_SIZE: Final[i64] = 16,
+     PY_DATETIME_DATE_SIZE: Final[i64] = 32,
+     PY_DATETIME_BASE_TIME_SIZE: Final[i64] = 32,
+     PY_DATETIME_TIME_SIZE: Final[i64] = 40,
+     PY_DATETIME_BASE_DATETIME_SIZE: Final[i64] = 40,
+     PY_DATETIME_DATETIME_SIZE: Final[i64] = 48,
+     PY_DATETIME_DATA_OFFSET: Final[i64] = 25,
+     PY_DATETIME_DELTA_DAYS_OFFSET: Final[i64] = 24,
+     PY_DATETIME_DELTA_SECONDS_OFFSET: Final[i64] = 28,
+     PY_DATETIME_DELTA_MICROSECONDS_OFFSET: Final[i64] = 32,
+     Py_CONSTANT_ONE: Final[u32] = 6,
+     Py_CONSTANT_EMPTY_STR: Final[u32] = 7,
+     _PyTime_ROUND_FLOOR: Final[i32] = 0,
+     _PyTime_ROUND_HALF_EVEN: Final[i32] = 2;

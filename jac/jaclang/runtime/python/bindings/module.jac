@@ -130,6 +130,59 @@ import from c {
     }
 }
 
+import from c {
+    # A PyMethodDef whose callback takes (self, args, kwargs)
+    # (METH_VARARGS | METH_KEYWORDS).
+    obj KeywordMethodRecord {
+        has ml_name: ptr[u8] = ptr[u8](),
+            ml_meth:
+                Callable[
+                    [ptr[PyObject], ptr[PyObject], ptr[PyObject]],
+                    ptr[PyObject]
+                ] = 0,
+            ml_flags: i32 = 0,
+            ml_doc: ptr[u8] = ptr[u8]();
+    }
+}
+
+# A NULL-terminated PyMethodDef table of `methods` for a static type's
+# tp_methods: an object-model port defines its types as C data and fills
+# their method tables, clinic glue included, before readying them. Like a
+# static table it lives for the process lifetime; an empty doc is C's NULL.
+# NULL with MemoryError when allocation fails.
+def method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef] {
+    count = len(methods);
+    table = ptr[PyMethodDef](PyMem_RawCalloc(u64(count + 1), 32));
+    if table.is_null() {
+        PyErr_NoMemory();
+        return table;
+    }
+    for index in range(count) {
+        method = methods[index];
+        name = c_string_copy(method.name);
+        doc = c_string_copy(method.doc) if method.doc else ptr[u8]();
+        if name.is_null() or (method.doc and doc.is_null()) {
+            PyErr_NoMemory();
+            return ptr[PyMethodDef]();
+        }
+        slot = table + index;
+        if (method.flags & 2) != 0 {
+            keyword = ptr[KeywordMethodRecord](slot).view(1);
+            keyword[0].ml_name = name;
+            keyword[0].ml_meth = method.callbacks.keywords;
+            keyword[0].ml_flags = i32(method.flags);
+            keyword[0].ml_doc = doc;
+        } else {
+            positional = ptr[PositionalMethodRecord](slot).view(1);
+            positional[0].ml_name = name;
+            positional[0].ml_meth = method.callbacks.positional;
+            positional[0].ml_flags = i32(method.flags);
+            positional[0].ml_doc = doc;
+        }
+    }
+    return table;
+}
+
 # PyCFunction_New(): a builtin function over a positional callback, bound to
 # `owner`. Its method record lives for the process, as a static PyMethodDef does.
 def builtin_function(
@@ -166,6 +219,10 @@ def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
     return True;
 }
 
+# A module definition. Its state (`state_count` references and any native
+# state) is traversed and cleared by traverse_state() and clear_state(); a
+# module whose teardown does more gives `own_lifecycle` and its own
+# traverse, clear and free hooks, which call those two for the state.
 obj ModuleDefinition {
     has handle: ptr = NULL;
 
@@ -174,14 +231,17 @@ obj ModuleDefinition {
         doc: str,
         methods: list[MethodDefinition],
         hooks: ModuleHooks = ModuleHooks(),
-        state_count: int = 0
+        state_count: int = 0,
+        own_lifecycle: bool = False
     ) {
-        lifecycle = ModuleHooks(
-            execute=hooks.execute,
-            traverse=traverse_state,
-            clear=clear_state,
-            free=free_state
-        );
+        lifecycle = hooks
+            if own_lifecycle
+            else ModuleHooks(
+                execute=hooks.execute,
+                traverse=traverse_state,
+                clear=clear_state,
+                free=free_state
+            );
         self.handle = jacpy_binding_module(
             name, doc, i64(len(methods)), lifecycle, i64(state_count)
         );
