@@ -17,7 +17,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_POSITIONAL,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -51,49 +53,43 @@ import from jaclang.runtime.python.modules.mmap {
     mmap_mmap_write_impl
 }
 
-glob:priv mmap_mmap_close_signature = CallSignature("close", [], 0, 0, 0);
 def:priv mmap_mmap_close_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap_close_impl(receiver);
 }
 
 def:priv mmap_mmap_close_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_close_signature, args, kwargs, mmap_mmap_close_bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap_close_bound, receiver);
 }
 
-glob:priv mmap_mmap_read_byte_signature = CallSignature("read_byte", [], 0, 0, 0);
 def:priv mmap_mmap_read_byte_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap_read_byte_impl(receiver);
 }
 
 def:priv mmap_mmap_read_byte_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_read_byte_signature, args, kwargs, mmap_mmap_read_byte_bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap_read_byte_bound, receiver);
 }
 
-glob:priv mmap_mmap_readline_signature = CallSignature("readline", [], 0, 0, 0);
 def:priv mmap_mmap_readline_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap_readline_impl(receiver);
 }
 
 def:priv mmap_mmap_readline_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_readline_signature, args, kwargs, mmap_mmap_readline_bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap_readline_bound, receiver);
 }
 
-glob:priv mmap_mmap_read_signature = CallSignature("read", ["n"], 0, 1, 1);
+glob:priv mmap_mmap_read_signature = CallSignature(
+         "read", ["n"], 0, 1, 1, parser=PARSE_POSITIONAL
+     );
+
 def:priv mmap_mmap_read_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     n: i64 = PY_SSIZE_T_MAX;
@@ -104,15 +100,15 @@ def:priv mmap_mmap_read_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_read_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_read_signature, args, kwargs, mmap_mmap_read_bound, receiver
+    return invoke_vector(
+        mmap_mmap_read_signature, args, nargs, NULL, mmap_mmap_read_bound, receiver
     );
 }
 
 glob:priv mmap_mmap_find_signature = CallSignature(
-         "find", ["view", "start", "end"], 1, 3, 3
+         "find", ["view", "start", "end"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap_find_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -133,15 +129,15 @@ def:priv mmap_mmap_find_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_find_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_find_signature, args, kwargs, mmap_mmap_find_bound, receiver
+    return invoke_vector(
+        mmap_mmap_find_signature, args, nargs, NULL, mmap_mmap_find_bound, receiver
     );
 }
 
 glob:priv mmap_mmap_rfind_signature = CallSignature(
-         "rfind", ["view", "start", "end"], 1, 3, 3
+         "rfind", ["view", "start", "end"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap_rfind_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -162,14 +158,13 @@ def:priv mmap_mmap_rfind_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_rfind_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_rfind_signature, args, kwargs, mmap_mmap_rfind_bound, receiver
+    return invoke_vector(
+        mmap_mmap_rfind_signature, args, nargs, NULL, mmap_mmap_rfind_bound, receiver
     );
 }
 
-glob:priv mmap_mmap_write_signature = CallSignature("write", ["bytes"], 1, 1, 1);
 def:priv mmap_mmap_write_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -178,16 +173,10 @@ def:priv mmap_mmap_write_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_write_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_write_signature, args, kwargs, mmap_mmap_write_bound, receiver
-    );
+    return invoke_given(value, mmap_mmap_write_bound, receiver);
 }
-
-glob:priv mmap_mmap_write_byte_signature = CallSignature(
-         "write_byte", ["byte"], 1, 1, 1
-     );
 
 def:priv mmap_mmap_write_byte_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -201,34 +190,21 @@ def:priv mmap_mmap_write_byte_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_write_byte_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_write_byte_signature,
-        args,
-        kwargs,
-        mmap_mmap_write_byte_bound,
-        receiver
-    );
+    return invoke_given(value, mmap_mmap_write_byte_bound, receiver);
 }
 
-glob:priv mmap_mmap_size_signature = CallSignature("size", [], 0, 0, 0);
 def:priv mmap_mmap_size_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap_size_impl(receiver);
 }
 
 def:priv mmap_mmap_size_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_size_signature, args, kwargs, mmap_mmap_size_bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap_size_bound, receiver);
 }
-
-glob:priv mmap_mmap_resize_signature = CallSignature(
-         "resize", ["newsize"], 1, 1, 1
-     );
 
 def:priv mmap_mmap_resize_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -238,29 +214,24 @@ def:priv mmap_mmap_resize_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_resize_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_resize_signature, args, kwargs, mmap_mmap_resize_bound, receiver
-    );
+    return invoke_given(value, mmap_mmap_resize_bound, receiver);
 }
 
-glob:priv mmap_mmap_tell_signature = CallSignature("tell", [], 0, 0, 0);
 def:priv mmap_mmap_tell_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap_tell_impl(receiver);
 }
 
 def:priv mmap_mmap_tell_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_tell_signature, args, kwargs, mmap_mmap_tell_bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap_tell_bound, receiver);
 }
 
 glob:priv mmap_mmap_flush_signature = CallSignature(
-         "flush", ["offset", "size"], 0, 2, 2
+         "flush", ["offset", "size"], 0, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap_flush_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -279,15 +250,15 @@ def:priv mmap_mmap_flush_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_flush_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_flush_signature, args, kwargs, mmap_mmap_flush_bound, receiver
+    return invoke_vector(
+        mmap_mmap_flush_signature, args, nargs, NULL, mmap_mmap_flush_bound, receiver
     );
 }
 
 glob:priv mmap_mmap_seek_signature = CallSignature(
-         "seek", ["pos", "whence"], 1, 2, 2
+         "seek", ["pos", "whence"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap_seek_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -303,29 +274,26 @@ def:priv mmap_mmap_seek_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_seek_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_seek_signature, args, kwargs, mmap_mmap_seek_bound, receiver
+    return invoke_vector(
+        mmap_mmap_seek_signature, args, nargs, NULL, mmap_mmap_seek_bound, receiver
     );
 }
 
-glob:priv mmap_mmap_seekable_signature = CallSignature("seekable", [], 0, 0, 0);
 def:priv mmap_mmap_seekable_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap_seekable_impl(receiver);
 }
 
 def:priv mmap_mmap_seekable_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_seekable_signature, args, kwargs, mmap_mmap_seekable_bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap_seekable_bound, receiver);
 }
 
 glob:priv mmap_mmap_move_signature = CallSignature(
-         "move", ["dest", "src", "count"], 3, 3, 3
+         "move", ["dest", "src", "count"], 3, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap_move_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -340,29 +308,31 @@ def:priv mmap_mmap_move_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_move_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_move_signature, args, kwargs, mmap_mmap_move_bound, receiver
+    return invoke_vector(
+        mmap_mmap_move_signature, args, nargs, NULL, mmap_mmap_move_bound, receiver
     );
 }
 
-glob:priv mmap_mmap___enter___signature = CallSignature("__enter__", [], 0, 0, 0);
 def:priv mmap_mmap___enter___bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return mmap_mmap___enter___impl(receiver);
 }
 
 def:priv mmap_mmap___enter___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap___enter___signature, args, kwargs, mmap_mmap___enter___bound, receiver
-    );
+    return invoke_given(NULL, mmap_mmap___enter___bound, receiver);
 }
 
 glob:priv mmap_mmap___exit___signature = CallSignature(
-         "__exit__", ["exc_type", "exc_value", "traceback"], 3, 3, 3
+         "__exit__",
+         ["exc_type", "exc_value", "traceback"],
+         3,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap___exit___bound(args: BoundArguments) -> ptr[PyObject] {
@@ -377,15 +347,20 @@ def:priv mmap_mmap___exit___bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap___exit___call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap___exit___signature, args, kwargs, mmap_mmap___exit___bound, receiver
+    return invoke_vector(
+        mmap_mmap___exit___signature,
+        args,
+        nargs,
+        NULL,
+        mmap_mmap___exit___bound,
+        receiver
     );
 }
 
 glob:priv mmap_mmap_madvise_signature = CallSignature(
-         "madvise", ["option", "start", "length"], 1, 3, 3
+         "madvise", ["option", "start", "length"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv mmap_mmap_madvise_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -406,121 +381,126 @@ def:priv mmap_mmap_madvise_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv mmap_mmap_madvise_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        mmap_mmap_madvise_signature, args, kwargs, mmap_mmap_madvise_bound, receiver
+    return invoke_vector(
+        mmap_mmap_madvise_signature,
+        args,
+        nargs,
+        NULL,
+        mmap_mmap_madvise_bound,
+        receiver
     );
 }
 
 glob mmap_methods: list[MethodDefinition] = [
          MethodDefinition(
              "close",
-             MethodCallbacks(keywords=mmap_mmap_close_call),
+             MethodCallbacks(positional=mmap_mmap_close_call),
              "close($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "read_byte",
-             MethodCallbacks(keywords=mmap_mmap_read_byte_call),
+             MethodCallbacks(positional=mmap_mmap_read_byte_call),
              "read_byte($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "readline",
-             MethodCallbacks(keywords=mmap_mmap_readline_call),
+             MethodCallbacks(positional=mmap_mmap_readline_call),
              "readline($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "read",
-             MethodCallbacks(keywords=mmap_mmap_read_call),
+             MethodCallbacks(fast=mmap_mmap_read_call),
              "read($self, n=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "find",
-             MethodCallbacks(keywords=mmap_mmap_find_call),
+             MethodCallbacks(fast=mmap_mmap_find_call),
              "find($self, view, start=None, end=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "rfind",
-             MethodCallbacks(keywords=mmap_mmap_rfind_call),
+             MethodCallbacks(fast=mmap_mmap_rfind_call),
              "rfind($self, view, start=None, end=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "write",
-             MethodCallbacks(keywords=mmap_mmap_write_call),
+             MethodCallbacks(positional=mmap_mmap_write_call),
              "write($self, bytes, /)\n--\n\n",
-             3
+             8
          ),
          MethodDefinition(
              "write_byte",
-             MethodCallbacks(keywords=mmap_mmap_write_byte_call),
+             MethodCallbacks(positional=mmap_mmap_write_byte_call),
              "write_byte($self, byte, /)\n--\n\n",
-             3
+             8
          ),
          MethodDefinition(
              "size",
-             MethodCallbacks(keywords=mmap_mmap_size_call),
+             MethodCallbacks(positional=mmap_mmap_size_call),
              "size($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "resize",
-             MethodCallbacks(keywords=mmap_mmap_resize_call),
+             MethodCallbacks(positional=mmap_mmap_resize_call),
              "resize($self, newsize, /)\n--\n\n",
-             3
+             8
          ),
          MethodDefinition(
              "tell",
-             MethodCallbacks(keywords=mmap_mmap_tell_call),
+             MethodCallbacks(positional=mmap_mmap_tell_call),
              "tell($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "flush",
-             MethodCallbacks(keywords=mmap_mmap_flush_call),
+             MethodCallbacks(fast=mmap_mmap_flush_call),
              "flush($self, offset=0, size=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "seek",
-             MethodCallbacks(keywords=mmap_mmap_seek_call),
+             MethodCallbacks(fast=mmap_mmap_seek_call),
              "seek($self, pos, whence=0, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "seekable",
-             MethodCallbacks(keywords=mmap_mmap_seekable_call),
+             MethodCallbacks(positional=mmap_mmap_seekable_call),
              "seekable($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "move",
-             MethodCallbacks(keywords=mmap_mmap_move_call),
+             MethodCallbacks(fast=mmap_mmap_move_call),
              "move($self, dest, src, count, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "__enter__",
-             MethodCallbacks(keywords=mmap_mmap___enter___call),
+             MethodCallbacks(positional=mmap_mmap___enter___call),
              "__enter__($self, /)\n--\n\n",
-             3
+             4
          ),
          MethodDefinition(
              "__exit__",
-             MethodCallbacks(keywords=mmap_mmap___exit___call),
+             MethodCallbacks(fast=mmap_mmap___exit___call),
              "__exit__($self, exc_type, exc_value, traceback, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "madvise",
-             MethodCallbacks(keywords=mmap_mmap_madvise_call),
+             MethodCallbacks(fast=mmap_mmap_madvise_call),
              "madvise($self, option, start=0, length=None, /)\n--\n\n",
-             3
+             128
          ),
 
      ];

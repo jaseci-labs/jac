@@ -50,6 +50,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E5091,
     E5092,
     E5095,
+    E1145,
     E9001,
     E9002
 }
@@ -494,6 +495,7 @@ walker NaIRGenPass(CompilerPass) {
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _glob_import_sources: dict[str, str] = {},
+        _native_import_items: list[tuple[uni.ModuleItem, str, str]] = [],
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
         _lowered_type_cache: dict[tuple[TypeBase, str], ir.Type] = {},
@@ -1261,6 +1263,10 @@ walker NaIRGenPass(CompilerPass) {
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
+    def _check_native_import_names(
+        imported_mods: list[tuple[str, uni.Module]]
+    ) -> None;
+
     def _declare_clib_struct(decl: uni.Archetype) -> (str | None);
     def _lower_clib_struct(decl: uni.Archetype) -> None;
     def _adopt_foreign_struct(t: any) -> (str | None);
@@ -1722,6 +1728,9 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Function | None);
 
     def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
+    static def _module_ability(
+        mod: uni.Module, func_name: str
+    ) -> (uni.Ability | None);
     def _register_enums(module: uni.Module) -> None;
     def _register_globals(module: uni.Module) -> None;
     def _quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type | None);
@@ -3115,6 +3124,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_take(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_swap(nd: uni.FuncCall) -> (ir.Value | None);
     def _callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _native_variant_decl(decl: uni.Ability) -> uni.Ability;
     def _transfer_own_args(
         nd: uni.FuncCall,
         func: (ir.Function | None),

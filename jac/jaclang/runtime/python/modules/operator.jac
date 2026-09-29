@@ -21,7 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_ReprEnter,
     Py_ReprLeave,
-    PyBool_FromLong,
     PyDict_Next,
     PyExc_RuntimeError,
     PyExc_TypeError,

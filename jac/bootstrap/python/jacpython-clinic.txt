@@ -12,6 +12,7 @@ _tracemalloc
 _weakref
 zlib
 _bz2
+_zstd
 syslog
 resource
 _md5
@@ -32,4 +33,6 @@ _posixshmem
 _abc
 _codecs
 _locale
+_lzma
+_zoneinfo
 _datetime

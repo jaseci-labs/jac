@@ -23,12 +23,13 @@ something lowered. The other half -- `TypeBase.category.__get__` leaving its
 waiver when this landed -- was pinned by `test_type_system_seal_baseline`,
 deleted with the native seal (#8735).
 
-The last case is the one that stays broken on purpose. A flat imported
-ancestor with no vtable slot puts its first field at slot 0 while a subclass
-needs that slot for one, so the subclass's layout cannot hold the inherited
-name and a constructor keyword naming it is dropped. #8253 named the honest
-fix -- stop giving such a subclass a vtable slot it does not need -- and left
-it to its own change; the test pins the state so it cannot drift unnoticed.
+The last case pins the follow-up #8253 named. A flat imported ancestor with
+no vtable slot puts its first field at slot 0, and a subclass kept a vtable
+slot there only because it was an `isinstance` target, so its layout could
+not hold the inherited name and a constructor keyword naming it was dropped.
+A build whose allocations carry a header answers `isinstance` from the class
+name stamped there, so the slot is dropped and the subclass adopts its
+ancestor's slots verbatim.
 """
 
 import os;
@@ -214,7 +215,7 @@ test "a consumer links the declaring module's constants rather than redefining t
 }
 
 
-test "a flat imported ancestor still holds no slot for its field" {
+test "a subclass of a flat imported ancestor adopts its field slot" {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "xmod_isinstance_flat_main.jac"),
@@ -223,13 +224,14 @@ test "a flat imported ancestor still holds no slot for its field" {
     reg = get_layout_registry(ir, prog);
     kid = by_source_name(reg.layouts).get("MainKid");
     assert kid is not None , "no layout for MainKid";
-    assert "x" not in dict(kid.field_index) , (
-        "MainKid adopted its flat ancestor's slot assignment; if that is "
-        "intended, the constructor-keyword drop below is now reachable and "
-        "this pin should become an equality check instead"
+    point = by_source_name(reg.layouts).get("Point");
+    assert point is not None , "no layout for Point";
+    assert dict(kid.field_index).get("x") == dict(point.field_index).get("x") , (
+        f"MainKid must read 'x' where Point put it: kid {dict(kid.field_index)}, "
+        f"point {dict(point.field_index)}"
     );
-    assert kid.has_vtable , (
-        "MainKid lost the vtable slot that makes the ancestor's slot 0 "
-        "unusable; #8253's follow-up landed and this pin is stale"
+    assert not kid.has_vtable , (
+        "MainKid is only an isinstance target; the allocation header answers "
+        "that, so it must not carry a vtable slot its flat ancestor lacks"
     );
 }

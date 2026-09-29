@@ -63,6 +63,7 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
     invoke,
+    invoke_vector,
     index_value
 }
 import from jaclang.runtime.python.capi {
@@ -933,10 +934,13 @@ def:priv tee_call_bound(args: BoundArguments) -> ptr[PyObject] {
     );
 }
 
-def:priv tee_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(
+def:priv tee_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(
         CallSignature("tee", ["iterable", "n"], 1, 2, 2),
         args,
+        nargs,
         NULL,
         tee_call_bound,
         module
@@ -1099,9 +1103,9 @@ glob:priv definition = ModuleDefinition(
          [
              MethodDefinition(
                  "tee",
-                 MethodCallbacks(positional=tee_call),
+                 MethodCallbacks(fast=tee_call),
                  "tee($module, iterable, n=2, /)\n--\n\nReturn n independent iterators.",
-                 flags=1
+                 flags=128
              )
          ],
          hooks=ModuleHooks(execute=execute),

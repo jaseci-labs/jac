@@ -33,6 +33,7 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.layouts {
     METH_CLASS,
+    METH_FASTCALL,
     METH_KEYWORDS,
     METH_NOARGS,
     METH_O,
@@ -69,7 +70,8 @@ import from jaclang.runtime.python.bindings.module {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.converters { convert_int }
 import from jaclang.runtime.python.bindings.clinic.datetime {
@@ -288,14 +290,15 @@ import from c {
 # defaults are the fields of self.
 
 glob:priv date_replace_signature = CallSignature(
-         "replace", ["year", "month", "day"], 0, 3, 0
+         "replace", ["year", "month", "day"], 0, 3, 0, parser=PARSE_KEYWORDS
      ),
      time_replace_signature = CallSignature(
          "replace",
          ["hour", "minute", "second", "microsecond", "tzinfo", "fold"],
          0,
          5,
-         0
+         0,
+         parser=PARSE_KEYWORDS
      ),
      datetime_replace_signature = CallSignature(
          "replace",
@@ -312,7 +315,8 @@ glob:priv date_replace_signature = CallSignature(
          ],
          0,
          8,
-         0
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 """An int argument of replace(), or `unchanged` when it was not given."""
@@ -344,9 +348,11 @@ def:priv date_replace_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def date_replace(
-    self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(date_replace_signature, args, kwargs, date_replace_bound, self);
+    return invoke_vector(
+        date_replace_signature, args, nargs, kwnames, date_replace_bound, self
+    );
 }
 
 def:priv time_replace_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -363,9 +369,11 @@ def:priv time_replace_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def time_replace(
-    self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(time_replace_signature, args, kwargs, time_replace_bound, self);
+    return invoke_vector(
+        time_replace_signature, args, nargs, kwnames, time_replace_bound, self
+    );
 }
 
 def:priv datetime_replace_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -385,10 +393,10 @@ def:priv datetime_replace_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def datetime_replace(
-    self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        datetime_replace_signature, args, kwargs, datetime_replace_bound, self
+    return invoke_vector(
+        datetime_replace_signature, args, nargs, kwnames, datetime_replace_bound, self
     );
 }
 
@@ -483,15 +491,15 @@ glob:priv date_method_list: list[MethodDefinition] = date_methods
              ),
              MethodDefinition(
                  "replace",
-                 MethodCallbacks(keywords=date_replace),
+                 MethodCallbacks(fast_keywords=date_replace),
                  "replace($self, /, year=unchanged, month=unchanged, day=unchanged)\n--\n\nReturn date with new specified fields.",
-                 i64(METH_VARARGS | METH_KEYWORDS)
+                 i64(METH_FASTCALL | METH_KEYWORDS)
              ),
              MethodDefinition(
                  "__replace__",
-                 MethodCallbacks(keywords=date_replace),
+                 MethodCallbacks(fast_keywords=date_replace),
                  "__replace__($self, /, **changes)\n--\n\nThe same as replace().",
-                 i64(METH_VARARGS | METH_KEYWORDS)
+                 i64(METH_FASTCALL | METH_KEYWORDS)
              ),
              MethodDefinition(
                  "__reduce__",
@@ -609,15 +617,15 @@ glob:priv date_method_list: list[MethodDefinition] = date_methods
          ),
          MethodDefinition(
              "replace",
-             MethodCallbacks(keywords=time_replace),
+             MethodCallbacks(fast_keywords=time_replace),
              "replace($self, /, hour=unchanged, minute=unchanged, second=unchanged,\n        microsecond=unchanged, tzinfo=unchanged, *, fold=unchanged)\n--\n\nReturn time with new specified fields.",
-             i64(METH_VARARGS | METH_KEYWORDS)
+             i64(METH_FASTCALL | METH_KEYWORDS)
          ),
          MethodDefinition(
              "__replace__",
-             MethodCallbacks(keywords=time_replace),
+             MethodCallbacks(fast_keywords=time_replace),
              "__replace__($self, /, **changes)\n--\n\nThe same as replace().",
-             i64(METH_VARARGS | METH_KEYWORDS)
+             i64(METH_FASTCALL | METH_KEYWORDS)
          ),
          MethodDefinition(
              "fromisoformat",
@@ -744,15 +752,15 @@ glob:priv date_method_list: list[MethodDefinition] = date_methods
              ),
              MethodDefinition(
                  "replace",
-                 MethodCallbacks(keywords=datetime_replace),
+                 MethodCallbacks(fast_keywords=datetime_replace),
                  "replace($self, /, year=unchanged, month=unchanged, day=unchanged,\n        hour=unchanged, minute=unchanged, second=unchanged,\n        microsecond=unchanged, tzinfo=unchanged, *, fold=unchanged)\n--\n\nReturn datetime with new specified fields.",
-                 i64(METH_VARARGS | METH_KEYWORDS)
+                 i64(METH_FASTCALL | METH_KEYWORDS)
              ),
              MethodDefinition(
                  "__replace__",
-                 MethodCallbacks(keywords=datetime_replace),
+                 MethodCallbacks(fast_keywords=datetime_replace),
                  "__replace__($self, /, **changes)\n--\n\nThe same as replace().",
-                 i64(METH_VARARGS | METH_KEYWORDS)
+                 i64(METH_FASTCALL | METH_KEYWORDS)
              ),
              MethodDefinition(
                  "astimezone",

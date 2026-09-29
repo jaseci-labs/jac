@@ -21,7 +21,10 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    PARSE_POSITIONAL,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -80,10 +83,6 @@ import from jaclang.runtime.python.modules.codecs {
     _codecs_utf_8_encode_impl
 }
 
-glob:priv _codecs_register_signature = CallSignature(
-         "register", ["search_function"], 1, 1, 1
-     );
-
 def:priv _codecs_register_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -92,16 +91,10 @@ def:priv _codecs_register_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_register_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_register_signature, args, kwargs, _codecs_register_bound, receiver
-    );
+    return invoke_given(value, _codecs_register_bound, receiver);
 }
-
-glob:priv _codecs_unregister_signature = CallSignature(
-         "unregister", ["search_function"], 1, 1, 1
-     );
 
 def:priv _codecs_unregister_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -111,16 +104,10 @@ def:priv _codecs_unregister_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_unregister_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_unregister_signature, args, kwargs, _codecs_unregister_bound, receiver
-    );
+    return invoke_given(value, _codecs_unregister_bound, receiver);
 }
-
-glob:priv _codecs_lookup_signature = CallSignature(
-         "lookup", ["encoding"], 1, 1, 1
-     );
 
 def:priv _codecs_lookup_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -130,15 +117,13 @@ def:priv _codecs_lookup_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_lookup_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_lookup_signature, args, kwargs, _codecs_lookup_bound, receiver
-    );
+    return invoke_given(value, _codecs_lookup_bound, receiver);
 }
 
 glob:priv _codecs_encode_signature = CallSignature(
-         "encode", ["obj", "encoding", "errors"], 1, 3, 0
+         "encode", ["obj", "encoding", "errors"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _codecs_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -159,15 +144,18 @@ def:priv _codecs_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_encode_signature, args, kwargs, _codecs_encode_bound, receiver
+    return invoke_vector(
+        _codecs_encode_signature, args, nargs, kwnames, _codecs_encode_bound, receiver
     );
 }
 
 glob:priv _codecs_decode_signature = CallSignature(
-         "decode", ["obj", "encoding", "errors"], 1, 3, 0
+         "decode", ["obj", "encoding", "errors"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _codecs_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -188,15 +176,18 @@ def:priv _codecs_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_decode_signature, args, kwargs, _codecs_decode_bound, receiver
+    return invoke_vector(
+        _codecs_decode_signature, args, nargs, kwnames, _codecs_decode_bound, receiver
     );
 }
 
 glob:priv _codecs_escape_decode_signature = CallSignature(
-         "escape_decode", ["data", "errors"], 1, 2, 2
+         "escape_decode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_escape_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -214,19 +205,20 @@ def:priv _codecs_escape_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_escape_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_escape_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_escape_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_escape_encode_signature = CallSignature(
-         "escape_encode", ["data", "errors"], 1, 2, 2
+         "escape_encode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_escape_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -245,19 +237,20 @@ def:priv _codecs_escape_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_escape_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_escape_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_escape_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_7_decode_signature = CallSignature(
-         "utf_7_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_7_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_7_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -278,19 +271,20 @@ def:priv _codecs_utf_7_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_7_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_7_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_7_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_8_decode_signature = CallSignature(
-         "utf_8_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_8_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_8_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -311,19 +305,20 @@ def:priv _codecs_utf_8_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_8_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_8_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_8_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_decode_signature = CallSignature(
-         "utf_16_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_16_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -346,19 +341,25 @@ def:priv _codecs_utf_16_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_le_decode_signature = CallSignature(
-         "utf_16_le_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_16_le_decode",
+         ["data", "errors", "final"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -381,19 +382,25 @@ def:priv _codecs_utf_16_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_le_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_le_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_le_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_be_decode_signature = CallSignature(
-         "utf_16_be_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_16_be_decode",
+         ["data", "errors", "final"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -416,19 +423,25 @@ def:priv _codecs_utf_16_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_be_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_be_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_be_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_ex_decode_signature = CallSignature(
-         "utf_16_ex_decode", ["data", "errors", "byteorder", "final"], 1, 4, 4
+         "utf_16_ex_decode",
+         ["data", "errors", "byteorder", "final"],
+         1,
+         4,
+         4,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -456,19 +469,20 @@ def:priv _codecs_utf_16_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_ex_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_ex_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_ex_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_decode_signature = CallSignature(
-         "utf_32_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_32_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -491,19 +505,25 @@ def:priv _codecs_utf_32_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_le_decode_signature = CallSignature(
-         "utf_32_le_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_32_le_decode",
+         ["data", "errors", "final"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -526,19 +546,25 @@ def:priv _codecs_utf_32_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_le_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_le_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_le_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_be_decode_signature = CallSignature(
-         "utf_32_be_decode", ["data", "errors", "final"], 1, 3, 3
+         "utf_32_be_decode",
+         ["data", "errors", "final"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -561,19 +587,25 @@ def:priv _codecs_utf_32_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_be_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_be_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_be_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_ex_decode_signature = CallSignature(
-         "utf_32_ex_decode", ["data", "errors", "byteorder", "final"], 1, 4, 4
+         "utf_32_ex_decode",
+         ["data", "errors", "byteorder", "final"],
+         1,
+         4,
+         4,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -601,19 +633,25 @@ def:priv _codecs_utf_32_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_ex_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_ex_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_ex_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_unicode_escape_decode_signature = CallSignature(
-         "unicode_escape_decode", ["data", "errors", "final"], 1, 3, 3
+         "unicode_escape_decode",
+         ["data", "errors", "final"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_unicode_escape_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -638,19 +676,25 @@ def:priv _codecs_unicode_escape_decode_bound(args: BoundArguments) -> ptr[PyObje
 }
 
 def:priv _codecs_unicode_escape_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_unicode_escape_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_unicode_escape_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_raw_unicode_escape_decode_signature = CallSignature(
-         "raw_unicode_escape_decode", ["data", "errors", "final"], 1, 3, 3
+         "raw_unicode_escape_decode",
+         ["data", "errors", "final"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_raw_unicode_escape_decode_bound(
@@ -677,19 +721,20 @@ def:priv _codecs_raw_unicode_escape_decode_bound(
 }
 
 def:priv _codecs_raw_unicode_escape_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_raw_unicode_escape_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_raw_unicode_escape_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_latin_1_decode_signature = CallSignature(
-         "latin_1_decode", ["data", "errors"], 1, 2, 2
+         "latin_1_decode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_latin_1_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -707,19 +752,20 @@ def:priv _codecs_latin_1_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_latin_1_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_latin_1_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_latin_1_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_ascii_decode_signature = CallSignature(
-         "ascii_decode", ["data", "errors"], 1, 2, 2
+         "ascii_decode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_ascii_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -735,19 +781,25 @@ def:priv _codecs_ascii_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_ascii_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_ascii_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_ascii_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_charmap_decode_signature = CallSignature(
-         "charmap_decode", ["data", "errors", "mapping"], 1, 3, 3
+         "charmap_decode",
+         ["data", "errors", "mapping"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_charmap_decode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -770,19 +822,20 @@ def:priv _codecs_charmap_decode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_charmap_decode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_charmap_decode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_charmap_decode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_readbuffer_encode_signature = CallSignature(
-         "readbuffer_encode", ["data", "errors"], 1, 2, 2
+         "readbuffer_encode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_readbuffer_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -800,19 +853,20 @@ def:priv _codecs_readbuffer_encode_bound(args: BoundArguments) -> ptr[PyObject] 
 }
 
 def:priv _codecs_readbuffer_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_readbuffer_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_readbuffer_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_7_encode_signature = CallSignature(
-         "utf_7_encode", ["str", "errors"], 1, 2, 2
+         "utf_7_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_7_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -828,19 +882,20 @@ def:priv _codecs_utf_7_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_7_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_7_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_7_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_8_encode_signature = CallSignature(
-         "utf_8_encode", ["str", "errors"], 1, 2, 2
+         "utf_8_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_8_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -856,19 +911,25 @@ def:priv _codecs_utf_8_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_8_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_8_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_8_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_encode_signature = CallSignature(
-         "utf_16_encode", ["str", "errors", "byteorder"], 1, 3, 3
+         "utf_16_encode",
+         ["str", "errors", "byteorder"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -891,19 +952,20 @@ def:priv _codecs_utf_16_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_le_encode_signature = CallSignature(
-         "utf_16_le_encode", ["str", "errors"], 1, 2, 2
+         "utf_16_le_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_le_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -921,19 +983,20 @@ def:priv _codecs_utf_16_le_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_le_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_le_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_le_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_16_be_encode_signature = CallSignature(
-         "utf_16_be_encode", ["str", "errors"], 1, 2, 2
+         "utf_16_be_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_16_be_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -951,19 +1014,25 @@ def:priv _codecs_utf_16_be_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_16_be_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_16_be_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_16_be_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_encode_signature = CallSignature(
-         "utf_32_encode", ["str", "errors", "byteorder"], 1, 3, 3
+         "utf_32_encode",
+         ["str", "errors", "byteorder"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -986,19 +1055,20 @@ def:priv _codecs_utf_32_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_le_encode_signature = CallSignature(
-         "utf_32_le_encode", ["str", "errors"], 1, 2, 2
+         "utf_32_le_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_le_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1016,19 +1086,20 @@ def:priv _codecs_utf_32_le_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_le_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_le_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_le_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_utf_32_be_encode_signature = CallSignature(
-         "utf_32_be_encode", ["str", "errors"], 1, 2, 2
+         "utf_32_be_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_utf_32_be_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1046,19 +1117,20 @@ def:priv _codecs_utf_32_be_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_utf_32_be_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_utf_32_be_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_utf_32_be_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_unicode_escape_encode_signature = CallSignature(
-         "unicode_escape_encode", ["str", "errors"], 1, 2, 2
+         "unicode_escape_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_unicode_escape_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1078,19 +1150,25 @@ def:priv _codecs_unicode_escape_encode_bound(args: BoundArguments) -> ptr[PyObje
 }
 
 def:priv _codecs_unicode_escape_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_unicode_escape_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_unicode_escape_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_raw_unicode_escape_encode_signature = CallSignature(
-         "raw_unicode_escape_encode", ["str", "errors"], 1, 2, 2
+         "raw_unicode_escape_encode",
+         ["str", "errors"],
+         1,
+         2,
+         2,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_raw_unicode_escape_encode_bound(
@@ -1112,19 +1190,20 @@ def:priv _codecs_raw_unicode_escape_encode_bound(
 }
 
 def:priv _codecs_raw_unicode_escape_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_raw_unicode_escape_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_raw_unicode_escape_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_latin_1_encode_signature = CallSignature(
-         "latin_1_encode", ["str", "errors"], 1, 2, 2
+         "latin_1_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_latin_1_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1142,19 +1221,20 @@ def:priv _codecs_latin_1_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_latin_1_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_latin_1_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_latin_1_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_ascii_encode_signature = CallSignature(
-         "ascii_encode", ["str", "errors"], 1, 2, 2
+         "ascii_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_ascii_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1170,19 +1250,25 @@ def:priv _codecs_ascii_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_ascii_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_ascii_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_ascii_encode_bound,
         receiver
     );
 }
 
 glob:priv _codecs_charmap_encode_signature = CallSignature(
-         "charmap_encode", ["str", "errors", "mapping"], 1, 3, 3
+         "charmap_encode",
+         ["str", "errors", "mapping"],
+         1,
+         3,
+         3,
+         parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_charmap_encode_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1205,20 +1291,17 @@ def:priv _codecs_charmap_encode_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_charmap_encode_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_charmap_encode_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_charmap_encode_bound,
         receiver
     );
 }
-
-glob:priv _codecs_charmap_build_signature = CallSignature(
-         "charmap_build", ["map"], 1, 1, 1
-     );
 
 def:priv _codecs_charmap_build_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -1228,19 +1311,13 @@ def:priv _codecs_charmap_build_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_charmap_build_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_charmap_build_signature,
-        args,
-        kwargs,
-        _codecs_charmap_build_bound,
-        receiver
-    );
+    return invoke_given(value, _codecs_charmap_build_bound, receiver);
 }
 
 glob:priv _codecs_register_error_signature = CallSignature(
-         "register_error", ["errors", "handler"], 2, 2, 2
+         "register_error", ["errors", "handler"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _codecs_register_error_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -1253,20 +1330,17 @@ def:priv _codecs_register_error_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_register_error_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _codecs_register_error_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _codecs_register_error_bound,
         receiver
     );
 }
-
-glob:priv _codecs__unregister_error_signature = CallSignature(
-         "_unregister_error", ["errors"], 1, 1, 1
-     );
 
 def:priv _codecs__unregister_error_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -1276,20 +1350,10 @@ def:priv _codecs__unregister_error_bound(args: BoundArguments) -> ptr[PyObject] 
 }
 
 def:priv _codecs__unregister_error_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs__unregister_error_signature,
-        args,
-        kwargs,
-        _codecs__unregister_error_bound,
-        receiver
-    );
+    return invoke_given(value, _codecs__unregister_error_bound, receiver);
 }
-
-glob:priv _codecs_lookup_error_signature = CallSignature(
-         "lookup_error", ["name"], 1, 1, 1
-     );
 
 def:priv _codecs_lookup_error_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -1299,257 +1363,251 @@ def:priv _codecs_lookup_error_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _codecs_lookup_error_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _codecs_lookup_error_signature,
-        args,
-        kwargs,
-        _codecs_lookup_error_bound,
-        receiver
-    );
+    return invoke_given(value, _codecs_lookup_error_bound, receiver);
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "register",
-             MethodCallbacks(keywords=_codecs_register_call),
+             MethodCallbacks(positional=_codecs_register_call),
              "register($module, search_function, /)\n--\n\nRegister a codec search function.\n\nSearch functions are expected to take one argument, the encoding\nname in all lower case letters, and either return None, or a tuple\nof functions (encoder, decoder, stream_reader, stream_writer) (or\na CodecInfo object).",
-             3
+             8
          ),
          MethodDefinition(
              "unregister",
-             MethodCallbacks(keywords=_codecs_unregister_call),
+             MethodCallbacks(positional=_codecs_unregister_call),
              "unregister($module, search_function, /)\n--\n\nUnregister a codec search function and clear the registry's cache.\n\nIf the search function is not registered, do nothing.",
-             3
+             8
          ),
          MethodDefinition(
              "lookup",
-             MethodCallbacks(keywords=_codecs_lookup_call),
+             MethodCallbacks(positional=_codecs_lookup_call),
              "lookup($module, encoding, /)\n--\n\nLooks up a codec tuple in the Python codec registry and returns a CodecInfo object.",
-             3
+             8
          ),
          MethodDefinition(
              "encode",
-             MethodCallbacks(keywords=_codecs_encode_call),
+             MethodCallbacks(fast_keywords=_codecs_encode_call),
              "encode($module, /, obj, encoding='utf-8', errors='strict')\n--\n\nEncodes obj using the codec registered for encoding.\n\nThe default encoding is 'utf-8'.  errors may be given to set a\ndifferent error handling scheme.  Default is 'strict' meaning that\nencoding errors raise a ValueError.  Other possible values are 'ignore',\n'replace' and 'backslashreplace' as well as any other name registered\nwith codecs.register_error that can handle ValueErrors.",
-             3
+             130
          ),
          MethodDefinition(
              "decode",
-             MethodCallbacks(keywords=_codecs_decode_call),
+             MethodCallbacks(fast_keywords=_codecs_decode_call),
              "decode($module, /, obj, encoding='utf-8', errors='strict')\n--\n\nDecodes obj using the codec registered for encoding.\n\nDefault encoding is 'utf-8'.  errors may be given to set a\ndifferent error handling scheme.  Default is 'strict' meaning that\nencoding errors raise a ValueError.  Other possible values are 'ignore',\n'replace' and 'backslashreplace' as well as any other name registered\nwith codecs.register_error that can handle ValueErrors.",
-             3
+             130
          ),
          MethodDefinition(
              "escape_decode",
-             MethodCallbacks(keywords=_codecs_escape_decode_call),
+             MethodCallbacks(fast=_codecs_escape_decode_call),
              "escape_decode($module, data, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "escape_encode",
-             MethodCallbacks(keywords=_codecs_escape_encode_call),
+             MethodCallbacks(fast=_codecs_escape_encode_call),
              "escape_encode($module, data, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_7_decode",
-             MethodCallbacks(keywords=_codecs_utf_7_decode_call),
+             MethodCallbacks(fast=_codecs_utf_7_decode_call),
              "utf_7_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_8_decode",
-             MethodCallbacks(keywords=_codecs_utf_8_decode_call),
+             MethodCallbacks(fast=_codecs_utf_8_decode_call),
              "utf_8_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_decode",
-             MethodCallbacks(keywords=_codecs_utf_16_decode_call),
+             MethodCallbacks(fast=_codecs_utf_16_decode_call),
              "utf_16_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_le_decode",
-             MethodCallbacks(keywords=_codecs_utf_16_le_decode_call),
+             MethodCallbacks(fast=_codecs_utf_16_le_decode_call),
              "utf_16_le_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_be_decode",
-             MethodCallbacks(keywords=_codecs_utf_16_be_decode_call),
+             MethodCallbacks(fast=_codecs_utf_16_be_decode_call),
              "utf_16_be_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_ex_decode",
-             MethodCallbacks(keywords=_codecs_utf_16_ex_decode_call),
+             MethodCallbacks(fast=_codecs_utf_16_ex_decode_call),
              "utf_16_ex_decode($module, data, errors=None, byteorder=0, final=False,\n                 /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_decode",
-             MethodCallbacks(keywords=_codecs_utf_32_decode_call),
+             MethodCallbacks(fast=_codecs_utf_32_decode_call),
              "utf_32_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_le_decode",
-             MethodCallbacks(keywords=_codecs_utf_32_le_decode_call),
+             MethodCallbacks(fast=_codecs_utf_32_le_decode_call),
              "utf_32_le_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_be_decode",
-             MethodCallbacks(keywords=_codecs_utf_32_be_decode_call),
+             MethodCallbacks(fast=_codecs_utf_32_be_decode_call),
              "utf_32_be_decode($module, data, errors=None, final=False, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_ex_decode",
-             MethodCallbacks(keywords=_codecs_utf_32_ex_decode_call),
+             MethodCallbacks(fast=_codecs_utf_32_ex_decode_call),
              "utf_32_ex_decode($module, data, errors=None, byteorder=0, final=False,\n                 /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "unicode_escape_decode",
-             MethodCallbacks(keywords=_codecs_unicode_escape_decode_call),
+             MethodCallbacks(fast=_codecs_unicode_escape_decode_call),
              "unicode_escape_decode($module, data, errors=None, final=True, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "raw_unicode_escape_decode",
-             MethodCallbacks(keywords=_codecs_raw_unicode_escape_decode_call),
+             MethodCallbacks(fast=_codecs_raw_unicode_escape_decode_call),
              "raw_unicode_escape_decode($module, data, errors=None, final=True, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "latin_1_decode",
-             MethodCallbacks(keywords=_codecs_latin_1_decode_call),
+             MethodCallbacks(fast=_codecs_latin_1_decode_call),
              "latin_1_decode($module, data, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "ascii_decode",
-             MethodCallbacks(keywords=_codecs_ascii_decode_call),
+             MethodCallbacks(fast=_codecs_ascii_decode_call),
              "ascii_decode($module, data, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "charmap_decode",
-             MethodCallbacks(keywords=_codecs_charmap_decode_call),
+             MethodCallbacks(fast=_codecs_charmap_decode_call),
              "charmap_decode($module, data, errors=None, mapping=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "readbuffer_encode",
-             MethodCallbacks(keywords=_codecs_readbuffer_encode_call),
+             MethodCallbacks(fast=_codecs_readbuffer_encode_call),
              "readbuffer_encode($module, data, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_7_encode",
-             MethodCallbacks(keywords=_codecs_utf_7_encode_call),
+             MethodCallbacks(fast=_codecs_utf_7_encode_call),
              "utf_7_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_8_encode",
-             MethodCallbacks(keywords=_codecs_utf_8_encode_call),
+             MethodCallbacks(fast=_codecs_utf_8_encode_call),
              "utf_8_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_encode",
-             MethodCallbacks(keywords=_codecs_utf_16_encode_call),
+             MethodCallbacks(fast=_codecs_utf_16_encode_call),
              "utf_16_encode($module, str, errors=None, byteorder=0, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_le_encode",
-             MethodCallbacks(keywords=_codecs_utf_16_le_encode_call),
+             MethodCallbacks(fast=_codecs_utf_16_le_encode_call),
              "utf_16_le_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_16_be_encode",
-             MethodCallbacks(keywords=_codecs_utf_16_be_encode_call),
+             MethodCallbacks(fast=_codecs_utf_16_be_encode_call),
              "utf_16_be_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_encode",
-             MethodCallbacks(keywords=_codecs_utf_32_encode_call),
+             MethodCallbacks(fast=_codecs_utf_32_encode_call),
              "utf_32_encode($module, str, errors=None, byteorder=0, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_le_encode",
-             MethodCallbacks(keywords=_codecs_utf_32_le_encode_call),
+             MethodCallbacks(fast=_codecs_utf_32_le_encode_call),
              "utf_32_le_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "utf_32_be_encode",
-             MethodCallbacks(keywords=_codecs_utf_32_be_encode_call),
+             MethodCallbacks(fast=_codecs_utf_32_be_encode_call),
              "utf_32_be_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "unicode_escape_encode",
-             MethodCallbacks(keywords=_codecs_unicode_escape_encode_call),
+             MethodCallbacks(fast=_codecs_unicode_escape_encode_call),
              "unicode_escape_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "raw_unicode_escape_encode",
-             MethodCallbacks(keywords=_codecs_raw_unicode_escape_encode_call),
+             MethodCallbacks(fast=_codecs_raw_unicode_escape_encode_call),
              "raw_unicode_escape_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "latin_1_encode",
-             MethodCallbacks(keywords=_codecs_latin_1_encode_call),
+             MethodCallbacks(fast=_codecs_latin_1_encode_call),
              "latin_1_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "ascii_encode",
-             MethodCallbacks(keywords=_codecs_ascii_encode_call),
+             MethodCallbacks(fast=_codecs_ascii_encode_call),
              "ascii_encode($module, str, errors=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "charmap_encode",
-             MethodCallbacks(keywords=_codecs_charmap_encode_call),
+             MethodCallbacks(fast=_codecs_charmap_encode_call),
              "charmap_encode($module, str, errors=None, mapping=None, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "charmap_build",
-             MethodCallbacks(keywords=_codecs_charmap_build_call),
+             MethodCallbacks(positional=_codecs_charmap_build_call),
              "charmap_build($module, map, /)\n--\n\n",
-             3
+             8
          ),
          MethodDefinition(
              "register_error",
-             MethodCallbacks(keywords=_codecs_register_error_call),
+             MethodCallbacks(fast=_codecs_register_error_call),
              "register_error($module, errors, handler, /)\n--\n\nRegister the specified error handler under the name errors.\n\nhandler must be a callable object, that will be called with an exception\ninstance containing information about the location of the\nencoding/decoding error and must return a (replacement, new position)\ntuple.",
-             3
+             128
          ),
          MethodDefinition(
              "_unregister_error",
-             MethodCallbacks(keywords=_codecs__unregister_error_call),
+             MethodCallbacks(positional=_codecs__unregister_error_call),
              "_unregister_error($module, errors, /)\n--\n\nUn-register the specified error handler for the error handling `errors'.\n\nOnly custom error handlers can be un-registered. An exception is raised\nif the error handling is a built-in one (e.g., 'strict'), or if an error\noccurs.\n\nOtherwise, this returns True if a custom handler has been successfully\nun-registered, and False if no custom handler for the specified error\nhandling exists.",
-             3
+             8
          ),
          MethodDefinition(
              "lookup_error",
-             MethodCallbacks(keywords=_codecs_lookup_error_call),
+             MethodCallbacks(positional=_codecs_lookup_error_call),
              "lookup_error($module, name, /)\n--\n\nlookup_error(errors) -> handler\n\nReturn the error handler for the specified error handling name or raise\na LookupError, if no handler exists under this name.",
-             3
+             8
          ),
 
      ];

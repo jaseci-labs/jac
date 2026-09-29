@@ -77,6 +77,24 @@ Functions the C module parses with `PyArg_ParseTuple` or
 `ArgumentFormat` in `bindings/arguments.jac` with the same format units, so
 their conversions and messages are `getargs.c`'s.
 
+Argument errors match CPython's text because the glue uses CPython's own
+calling conventions. `gen_clinic.jac` reads the `PyMethodDef` flags and the
+parser Tools/clinic generates for each function (limited C API sources
+included) and emits the same flags with a callback of that shape
+(`MethodCallbacks.positional` for `METH_NOARGS`/`METH_O`/`METH_VARARGS`,
+`fast` for `METH_FASTCALL`, `fast_keywords` with `METH_KEYWORDS`), so
+CPython's call machinery reports "`_mod.f() takes no keyword arguments`" with
+the qualified name. The `CallSignature` names the getargs routine the C parser
+calls (`parser=PARSE_POSITIONAL` for `_PyArg_CheckPositional`,
+`PARSE_KEYWORDS` for `_PyArg_UnpackKeywords`, `PARSE_FORMAT` and
+`PARSE_FORMAT_KEYWORDS` for `PyArg_ParseTuple` and
+`PyArg_ParseTupleAndKeywords`); `bindings/arguments.jac` implements each with
+its messages. A hand-written binding picks the same flags and parser as the C
+module's clinic output. A C type's `PyMemberDef` fields are real member
+descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
+in the instance and `jacpy_binding_record()` gives their address
+(`select.kevent`, `_multiprocessing.SemLock`).
+
 A module whose types are static in C because a C API exposes them keeps
 them static. `_datetime` defines `PyDateTime_DateType` and the other types,
 the immortal `utc_timezone` and the `PyDateTime_CAPI` capsule record as C
@@ -106,7 +124,10 @@ gettext functions of `_locale`) is filtered by the binding from a flag in a
 `<name>.<os>.jac` variant, as `resource.prlimit` is. A callable made at run
 time with a bound `self`, like `_abc`'s weakref callback, comes from a
 `FunctionTable` in `bindings/module.jac`. A module's own converter (`SEM_HANDLE_converter`) types its variable by the
-Jac converter's return type.
+Jac converter's return type. A `PyBytesObject` or `PyByteArrayObject`
+parameter (format unit `S` or `Y`) is checked as `object(subclass_of=...)`
+over bytes or bytearray. A module built from several C files (`_zstd`'s
+`Modules/_zstd/`) gets one glue file for all of them.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
@@ -150,7 +171,9 @@ an integer is still accepted by the checker, so null tests are written
 matching the casts CPython's own C makes; non-object records
 (`PyThreadState`, `PyUnicodeWriter`, `Py_buffer`, `z_stream`) keep their own
 types. `Py_buffer` and library records like `z_stream` and `struct passwd` are
-C-layout Jac structs, so fields are read directly.
+C-layout Jac structs, so fields are read directly. `PyMutex` is opaque: a port
+keeps one in raw memory (`PyMem_RawCalloc(1, 1)`), so its address stays put
+while threads park on it, and calls `PyMutex_Lock`/`PyMutex_Unlock` (`_zstd`).
 
 ## Language gaps
 
@@ -202,7 +225,7 @@ the Jac form, not a C helper:
 
 Still open:
 
-7. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
+1. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
 
 ## Object model (`Objects/`, 143k lines)
 
@@ -216,15 +239,18 @@ pilot port; it established the pieces below.
 **Layouts are generated and verified.** `scripts/jacpython/gen_layouts.jac`
 writes `runtime/python/layouts.jac`: one C-layout struct per layout it lists
 (`_object`, `PyVarObject`, `PyTypeObject`, `PyNumberMethods`, `_PyLongValue`,
-`PyLongObject`, `PyTupleObject` so far), read from the pinned headers through
+`PyLongObject`, `PyTupleObject`, and datetime.h's `PyDateTime_DateTime` and
+`PyDateTime_CAPI` so far), read from the pinned headers through
 a small preprocessor that keeps the `#if` branches of the release build
-(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots are
-`Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
+(64-bit, little-endian, GIL-enabled, 30-bit digits). Function-pointer slots and
+members are `Callable[...]` fields, pointers to listed layouts are `ptr[Layout]`, and
 pointers to records no port reads yet are opaque. `PyObject` stays the opaque
 handle of `cpython_api.jac`; its layout is `_object`, reached by casting a
 handle (`ptr[_object](op).view(1)[0].ob_type`). The 3.14 refcount union is its
 widest member, `ob_refcnt_full: i64`; a trailing C array `T name[1]` is one
-`T` field, and further elements are reached by pointer arithmetic. The same
+`T` field, and further elements are reached by pointer arithmetic. A fixed
+array `T name[N]` is N fields, `name` and `name_1` to `name_<N-1>`, so
+`_zoneinfo` reads a datetime's year as `(data << 8) | data_1`. The same
 script writes the header constants initializers need (`Py_TPFLAGS_*`, the
 immortal refcount, `_PyLong_*_TAG`, `offsetof`/`sizeof` values) as `Final`
 globs, read back from a configured build's headers.

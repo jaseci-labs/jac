@@ -16,7 +16,8 @@ import from jaclang.runtime.python.bindings.module {
 import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
     BoundArguments,
-    invoke
+    invoke,
+    invoke_vector
 }
 import from jaclang.runtime.python.modules.cmath {
     jacpy_cmath_unary,
@@ -123,12 +124,16 @@ def:priv close_bound(args: BoundArguments) -> ptr[PyObject] {
     );
 }
 
-def:priv log_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(log_signature, args, NULL, log_bound);
+def:priv log_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(log_signature, args, nargs, NULL, log_bound);
 }
 
-def:priv rect_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(rect_signature, args, NULL, rect_bound);
+def:priv rect_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(rect_signature, args, nargs, NULL, rect_bound);
 }
 
 def:priv close_call(
@@ -286,15 +291,15 @@ glob:priv definition = ModuleDefinition(
              ),
              MethodDefinition(
                  "log",
-                 MethodCallbacks(positional=log_call),
+                 MethodCallbacks(fast=log_call),
                  "log($module, z, base=None, /)\n--\n\nComplex logarithm.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "rect",
-                 MethodCallbacks(positional=rect_call),
+                 MethodCallbacks(fast=rect_call),
                  "rect($module, r, phi, /)\n--\n\nConvert polar to rectangular coordinates.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "isclose",

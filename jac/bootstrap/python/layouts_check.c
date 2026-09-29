@@ -8,7 +8,6 @@
 #include "Python.h"
 #include "internal/pycore_long.h"
 #include "internal/pycore_time.h"
-#define _PY_DATETIME_IMPL 1
 #include "datetime.h"
 #include <stddef.h>
 
@@ -544,6 +543,7 @@ CONSTANT(METH_NOARGS, 4LL);
 CONSTANT(METH_O, 8LL);
 CONSTANT(METH_CLASS, 16LL);
 CONSTANT(METH_STATIC, 32LL);
+CONSTANT(METH_FASTCALL, 128LL);
 CONSTANT(Py_T_INT, 1LL);
 CONSTANT(Py_READONLY, 1LL);
 CONSTANT(Py_tp_dealloc, 52LL);

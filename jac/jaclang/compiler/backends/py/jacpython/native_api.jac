@@ -58,6 +58,8 @@ import from jaclang.runtime.python.bindings.weakref { PyInit__weakref }
 import from jaclang.runtime.python.bindings.tracemalloc { PyInit__tracemalloc }
 import from jaclang.runtime.python.bindings.zlib { PyInit_zlib }
 import from jaclang.runtime.python.bindings.bz2 { PyInit__bz2 }
+import from jaclang.runtime.python.bindings.lzma { PyInit__lzma }
+import from jaclang.runtime.python.bindings.zstd { PyInit__zstd }
 import from jaclang.runtime.python.bindings.errno { PyInit_errno }
 import from jaclang.runtime.python.bindings.syslog { PyInit_syslog }
 import from jaclang.runtime.python.bindings.resource { PyInit_resource }
@@ -84,6 +86,7 @@ import from jaclang.runtime.python.object_model.bool { PyBool_Type }
 import from jaclang.runtime.python.bindings.abc { PyInit__abc }
 import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.bindings.locale { PyInit__locale }
+import from jaclang.runtime.python.bindings.zoneinfo { PyInit__zoneinfo }
 import from jaclang.runtime.python.bindings.datetime { PyInit__datetime }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,

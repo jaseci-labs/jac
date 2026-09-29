@@ -10,6 +10,7 @@ import from jaclang.runtime.python.cpython_api {
     PyType_GetSlot
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, install_methods }
+import from jaclang.runtime.python.bindings.members { MemberField }
 
 enum TypeFlags {
     DEFAULT = 0,
@@ -72,7 +73,8 @@ import from c {
             release_buffer: Callable[[ptr[PyObject], ptr[Py_buffer]], None] = 0,
             get_attribute: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
             set_attribute:
-                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0;
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0,
+            string: Callable[[ptr[PyObject]], ptr[PyObject]] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
@@ -81,7 +83,20 @@ import from c {
         hooks: TypeHooks,
         property_count: i64,
         instance_dict: i64,
-        unhashable: i64
+        unhashable: i64,
+        field_count: i64,
+        record_size: i64
+    ) -> ptr;  def jacpy_binding_member(
+        handle: ptr,
+        index: i64,
+        name: str,
+        type: i64,
+        offset: i64,
+        readonly: i64,
+        doc: str,
+        has_doc: i64
+    ) -> i64;  def jacpy_binding_record(
+        object: ptr[PyObject], definition: ptr
     ) -> ptr;  def jacpy_binding_type_discard(handle: ptr);  def jacpy_binding_type_create(
         handle: ptr, module: ptr[PyObject], bases: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_binding_owner(
@@ -126,11 +141,14 @@ obj TypeDefinition {
         hooks: TypeHooks,
         properties: (list[PropertyDefinition] | None) = None,
         instance_dict: bool = False,
-        unhashable: bool = False
+        unhashable: bool = False,
+        members: (list[MemberField] | None) = None,
+        record_size: int = 0
     ) {
         declarations: list[PropertyDefinition] = properties
             if properties is not None
             else [];
+        fields: list[MemberField] = members if members is not None else [];
         self.handle = jacpy_binding_type(
             name,
             doc,
@@ -139,7 +157,9 @@ obj TypeDefinition {
             hooks,
             i64(len(declarations)),
             i64(instance_dict),
-            i64(unhashable)
+            i64(unhashable),
+            i64(len(fields)),
+            i64(record_size)
         );
         if self.handle and not install_methods(self.handle, methods) {
             jacpy_binding_type_discard(self.handle);
@@ -147,6 +167,24 @@ obj TypeDefinition {
         }
         if not self.handle {
             return;
+        }
+        for index in range(len(fields)) {
+            field = fields[index];
+            if jacpy_binding_member(
+                self.handle,
+                i64(index),
+                field.name,
+                i64(field.kind),
+                i64(field.offset),
+                i64(field.readonly),
+                field.doc or "",
+                i64(field.doc is not None)
+            )
+                < 0 {
+                jacpy_binding_type_discard(self.handle);
+                self.handle = ptr();
+                return;
+            }
         }
         for index in range(len(declarations)) {
             property = declarations[index];

@@ -14,8 +14,6 @@ import from jaclang.runtime.python.bindings.module {
     add_owned
 }
 import from jaclang.runtime.python.bindings.type {
-    PropertyCallbacks,
-    PropertyDefinition,
     TypeDefinition,
     TypeFlags,
     TypeHooks
@@ -30,10 +28,9 @@ import from jaclang.runtime.python.bindings.clinic.multiprocessing {
     module_methods
 }
 import from jaclang.runtime.python.modules.multiprocessing {
+    SEMLOCK_FIELDS_SIZE,
     SemLock_token,
-    semlock_handle,
-    semlock_name,
-    semlock_of
+    semlock_members
 }
 import from jaclang.runtime.python.modules.multiprocessing_constants { SEM_VALUE_MAX }
 import from jaclang.runtime.python.modules.semaphore_platform {
@@ -53,28 +50,6 @@ def:priv semlock_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -
     return traverse_payload(instance, SemLock_token.handle, visitor, context);
 }
 
-def:priv handle_member(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = semlock_of(instance);
-    return semlock_handle(state) if state is not None else ptr[PyObject]();
-}
-
-def:priv kind_member(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = semlock_of(instance);
-    return PyLong_FromLong(i64(state.kind)) if state is not None else ptr[PyObject]();
-}
-
-def:priv maxvalue_member(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = semlock_of(instance);
-    return PyLong_FromLong(i64(state.maxvalue))
-        if state is not None
-        else ptr[PyObject]();
-}
-
-def:priv name_member(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = semlock_of(instance);
-    return semlock_name(state) if state is not None else ptr[PyObject]();
-}
-
 glob:priv semlock_type = TypeDefinition(
          "_multiprocessing.SemLock",
          "Semaphore/Mutex type",
@@ -85,12 +60,8 @@ glob:priv semlock_type = TypeDefinition(
              dealloc=semlock_dealloc,
              traverse=semlock_traverse
          ),
-         [
-             PropertyDefinition("handle", PropertyCallbacks(read=handle_member)),
-             PropertyDefinition("kind", PropertyCallbacks(read=kind_member)),
-             PropertyDefinition("maxvalue", PropertyCallbacks(read=maxvalue_member)),
-             PropertyDefinition("name", PropertyCallbacks(read=name_member))
-         ]
+         members=semlock_members(),
+         record_size=SEMLOCK_FIELDS_SIZE
      );
 
 # SemLock, with SEM_VALUE_MAX in its dict; a value that is negative as a C

@@ -13,7 +13,10 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -32,7 +35,12 @@ import from jaclang.runtime.python.modules.sha3 {
 }
 
 glob:priv py_sha3_new_signature = CallSignature(
-         "sha3_224", ["data", "usedforsecurity", "string"], 0, 1, 0
+         "sha3_224",
+         ["data", "usedforsecurity", "string"],
+         0,
+         1,
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv py_sha3_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -61,41 +69,27 @@ def:pub py_sha3_new_new(
     return invoke(py_sha3_new_signature, args, kwargs, py_sha3_new_bound, type);
 }
 
-glob:priv _sha3_sha3_224_copy_signature = CallSignature("copy", [], 0, 0, 0);
 def:priv _sha3_sha3_224_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _sha3_sha3_224_copy_impl(receiver);
 }
 
 def:priv _sha3_sha3_224_copy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _sha3_sha3_224_copy_signature, args, kwargs, _sha3_sha3_224_copy_bound, receiver
-    );
+    return invoke_given(NULL, _sha3_sha3_224_copy_bound, receiver);
 }
 
-glob:priv _sha3_sha3_224_digest_signature = CallSignature("digest", [], 0, 0, 0);
 def:priv _sha3_sha3_224_digest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _sha3_sha3_224_digest_impl(receiver);
 }
 
 def:priv _sha3_sha3_224_digest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _sha3_sha3_224_digest_signature,
-        args,
-        kwargs,
-        _sha3_sha3_224_digest_bound,
-        receiver
-    );
+    return invoke_given(NULL, _sha3_sha3_224_digest_bound, receiver);
 }
-
-glob:priv _sha3_sha3_224_hexdigest_signature = CallSignature(
-         "hexdigest", [], 0, 0, 0
-     );
 
 def:priv _sha3_sha3_224_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -103,20 +97,10 @@ def:priv _sha3_sha3_224_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _sha3_sha3_224_hexdigest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _sha3_sha3_224_hexdigest_signature,
-        args,
-        kwargs,
-        _sha3_sha3_224_hexdigest_bound,
-        receiver
-    );
+    return invoke_given(NULL, _sha3_sha3_224_hexdigest_bound, receiver);
 }
-
-glob:priv _sha3_sha3_224_update_signature = CallSignature(
-         "update", ["data"], 1, 1, 1
-     );
 
 def:priv _sha3_sha3_224_update_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -126,19 +110,13 @@ def:priv _sha3_sha3_224_update_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _sha3_sha3_224_update_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _sha3_sha3_224_update_signature,
-        args,
-        kwargs,
-        _sha3_sha3_224_update_bound,
-        receiver
-    );
+    return invoke_given(value, _sha3_sha3_224_update_bound, receiver);
 }
 
 glob:priv _sha3_shake_128_digest_signature = CallSignature(
-         "digest", ["length"], 1, 1, 0
+         "digest", ["length"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _sha3_shake_128_digest_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -151,19 +129,23 @@ def:priv _sha3_shake_128_digest_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _sha3_shake_128_digest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _sha3_shake_128_digest_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _sha3_shake_128_digest_bound,
         receiver
     );
 }
 
 glob:priv _sha3_shake_128_hexdigest_signature = CallSignature(
-         "hexdigest", ["length"], 1, 1, 0
+         "hexdigest", ["length"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _sha3_shake_128_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -176,12 +158,16 @@ def:priv _sha3_shake_128_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] 
 }
 
 def:priv _sha3_shake_128_hexdigest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _sha3_shake_128_hexdigest_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _sha3_shake_128_hexdigest_bound,
         receiver
     );
@@ -191,42 +177,42 @@ glob sha3_224_doc: str = "sha3_224(data=b'', *, usedforsecurity=True, string=Non
      sha3_224_methods: list[MethodDefinition] = [
          MethodDefinition(
              "copy",
-             MethodCallbacks(keywords=_sha3_sha3_224_copy_call),
+             MethodCallbacks(positional=_sha3_sha3_224_copy_call),
              "copy($self, /)\n--\n\nReturn a copy of the hash object.",
-             3
+             4
          ),
          MethodDefinition(
              "digest",
-             MethodCallbacks(keywords=_sha3_sha3_224_digest_call),
+             MethodCallbacks(positional=_sha3_sha3_224_digest_call),
              "digest($self, /)\n--\n\nReturn the digest value as a bytes object.",
-             3
+             4
          ),
          MethodDefinition(
              "hexdigest",
-             MethodCallbacks(keywords=_sha3_sha3_224_hexdigest_call),
+             MethodCallbacks(positional=_sha3_sha3_224_hexdigest_call),
              "hexdigest($self, /)\n--\n\nReturn the digest value as a string of hexadecimal digits.",
-             3
+             4
          ),
          MethodDefinition(
              "update",
-             MethodCallbacks(keywords=_sha3_sha3_224_update_call),
+             MethodCallbacks(positional=_sha3_sha3_224_update_call),
              "update($self, data, /)\n--\n\nUpdate this hash object's state with the provided bytes-like object.",
-             3
+             8
          ),
 
      ],
      shake_128_methods: list[MethodDefinition] = [
          MethodDefinition(
              "digest",
-             MethodCallbacks(keywords=_sha3_shake_128_digest_call),
+             MethodCallbacks(fast_keywords=_sha3_shake_128_digest_call),
              "digest($self, /, length)\n--\n\nReturn the digest value as a bytes object.",
-             3
+             130
          ),
          MethodDefinition(
              "hexdigest",
-             MethodCallbacks(keywords=_sha3_shake_128_hexdigest_call),
+             MethodCallbacks(fast_keywords=_sha3_shake_128_hexdigest_call),
              "hexdigest($self, /, length)\n--\n\nReturn the digest value as a string of hexadecimal digits.",
-             3
+             130
          ),
 
      ];

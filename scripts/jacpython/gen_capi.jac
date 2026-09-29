@@ -55,7 +55,8 @@ glob OPAQUE: list[str] = [
          "PyUnicodeWriter",
          "PyModuleDef",
          "PyCompilerFlags",
-         "PyBytesWriter"
+         "PyBytesWriter",
+         "PyMutex"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -269,7 +270,8 @@ glob OPAQUE: list[str] = [
          "_PyLong_UnsignedShort_Converter": {1: "&mut u16"},
          "_PyLong_UnsignedInt_Converter": {1: "&mut u32"},
          "_PyLong_UInt16_Converter": {1: "&mut u16"},
-         "_PyLong_UInt32_Converter": {1: "&mut u32"}
+         "_PyLong_UInt32_Converter": {1: "&mut u32"},
+         "_PyLong_UInt64_Converter": {1: "&mut u64"}
      },
      # `void *` parameters of a PyArg converter (`int conv(PyObject *, void *)`)
      # that receive the converted object.

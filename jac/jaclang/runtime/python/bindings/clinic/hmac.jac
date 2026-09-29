@@ -13,7 +13,11 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    PARSE_NO_ARGUMENTS,
+    PARSE_POSITIONAL,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -46,7 +50,7 @@ import from jaclang.runtime.python.modules.hmac {
 }
 
 glob:priv _hmac_new_signature = CallSignature(
-         "new", ["key", "msg", "digestmod"], 1, 3, 0
+         "new", ["key", "msg", "digestmod"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _hmac_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -67,13 +71,18 @@ def:priv _hmac_new_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_new_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(_hmac_new_signature, args, kwargs, _hmac_new_bound, receiver);
+    return invoke_vector(
+        _hmac_new_signature, args, nargs, kwnames, _hmac_new_bound, receiver
+    );
 }
 
 glob:priv _hmac_compute_digest_signature = CallSignature(
-         "compute_digest", ["key", "msg", "digest"], 3, 3, 0
+         "compute_digest", ["key", "msg", "digest"], 3, 3, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv _hmac_compute_digest_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -88,19 +97,23 @@ def:priv _hmac_compute_digest_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_digest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_digest_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         _hmac_compute_digest_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_md5_signature = CallSignature(
-         "compute_md5", ["key", "msg"], 2, 2, 2
+         "compute_md5", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_md5_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -113,15 +126,20 @@ def:priv _hmac_compute_md5_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_md5_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _hmac_compute_md5_signature, args, kwargs, _hmac_compute_md5_bound, receiver
+    return invoke_vector(
+        _hmac_compute_md5_signature,
+        args,
+        nargs,
+        NULL,
+        _hmac_compute_md5_bound,
+        receiver
     );
 }
 
 glob:priv _hmac_compute_sha1_signature = CallSignature(
-         "compute_sha1", ["key", "msg"], 2, 2, 2
+         "compute_sha1", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha1_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -134,15 +152,20 @@ def:priv _hmac_compute_sha1_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha1_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _hmac_compute_sha1_signature, args, kwargs, _hmac_compute_sha1_bound, receiver
+    return invoke_vector(
+        _hmac_compute_sha1_signature,
+        args,
+        nargs,
+        NULL,
+        _hmac_compute_sha1_bound,
+        receiver
     );
 }
 
 glob:priv _hmac_compute_sha2_224_signature = CallSignature(
-         "compute_sha224", ["key", "msg"], 2, 2, 2
+         "compute_sha224", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha2_224_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -155,19 +178,20 @@ def:priv _hmac_compute_sha2_224_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha2_224_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha2_224_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha2_224_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha2_256_signature = CallSignature(
-         "compute_sha256", ["key", "msg"], 2, 2, 2
+         "compute_sha256", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha2_256_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -180,19 +204,20 @@ def:priv _hmac_compute_sha2_256_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha2_256_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha2_256_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha2_256_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha2_384_signature = CallSignature(
-         "compute_sha384", ["key", "msg"], 2, 2, 2
+         "compute_sha384", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha2_384_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -205,19 +230,20 @@ def:priv _hmac_compute_sha2_384_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha2_384_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha2_384_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha2_384_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha2_512_signature = CallSignature(
-         "compute_sha512", ["key", "msg"], 2, 2, 2
+         "compute_sha512", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha2_512_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -230,19 +256,20 @@ def:priv _hmac_compute_sha2_512_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha2_512_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha2_512_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha2_512_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha3_224_signature = CallSignature(
-         "compute_sha3_224", ["key", "msg"], 2, 2, 2
+         "compute_sha3_224", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha3_224_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -255,19 +282,20 @@ def:priv _hmac_compute_sha3_224_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha3_224_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha3_224_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha3_224_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha3_256_signature = CallSignature(
-         "compute_sha3_256", ["key", "msg"], 2, 2, 2
+         "compute_sha3_256", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha3_256_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -280,19 +308,20 @@ def:priv _hmac_compute_sha3_256_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha3_256_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha3_256_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha3_256_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha3_384_signature = CallSignature(
-         "compute_sha3_384", ["key", "msg"], 2, 2, 2
+         "compute_sha3_384", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha3_384_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -305,19 +334,20 @@ def:priv _hmac_compute_sha3_384_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha3_384_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha3_384_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha3_384_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_sha3_512_signature = CallSignature(
-         "compute_sha3_512", ["key", "msg"], 2, 2, 2
+         "compute_sha3_512", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_sha3_512_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -330,19 +360,20 @@ def:priv _hmac_compute_sha3_512_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_sha3_512_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_sha3_512_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_sha3_512_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_blake2s_32_signature = CallSignature(
-         "compute_blake2s_32", ["key", "msg"], 2, 2, 2
+         "compute_blake2s_32", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_blake2s_32_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -355,19 +386,20 @@ def:priv _hmac_compute_blake2s_32_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_blake2s_32_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_blake2s_32_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_blake2s_32_bound,
         receiver
     );
 }
 
 glob:priv _hmac_compute_blake2b_32_signature = CallSignature(
-         "compute_blake2b_32", ["key", "msg"], 2, 2, 2
+         "compute_blake2b_32", ["key", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
      );
 
 def:priv _hmac_compute_blake2b_32_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -380,18 +412,22 @@ def:priv _hmac_compute_blake2b_32_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_compute_blake2b_32_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         _hmac_compute_blake2b_32_signature,
         args,
-        kwargs,
+        nargs,
+        NULL,
         _hmac_compute_blake2b_32_bound,
         receiver
     );
 }
 
-glob:priv _hmac_HMAC_copy_signature = CallSignature("copy", [], 0, 0, 0);
+glob:priv _hmac_HMAC_copy_signature = CallSignature(
+         "copy", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
+     );
+
 def:priv _hmac_HMAC_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     cls = defining_class(receiver, HMAC_token);
@@ -401,14 +437,20 @@ def:priv _hmac_HMAC_copy_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_HMAC_copy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _hmac_HMAC_copy_signature, args, kwargs, _hmac_HMAC_copy_bound, receiver
+    return invoke_vector(
+        _hmac_HMAC_copy_signature, args, nargs, kwnames, _hmac_HMAC_copy_bound, receiver
     );
 }
 
-glob:priv _hmac_HMAC_update_signature = CallSignature("update", ["msg"], 1, 1, 0);
+glob:priv _hmac_HMAC_update_signature = CallSignature(
+         "update", ["msg"], 1, 1, 0, parser=PARSE_KEYWORDS
+     );
+
 def:priv _hmac_HMAC_update_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -417,43 +459,41 @@ def:priv _hmac_HMAC_update_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _hmac_HMAC_update_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _hmac_HMAC_update_signature, args, kwargs, _hmac_HMAC_update_bound, receiver
+    return invoke_vector(
+        _hmac_HMAC_update_signature,
+        args,
+        nargs,
+        kwnames,
+        _hmac_HMAC_update_bound,
+        receiver
     );
 }
 
-glob:priv _hmac_HMAC_digest_signature = CallSignature("digest", [], 0, 0, 0);
 def:priv _hmac_HMAC_digest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _hmac_HMAC_digest_impl(receiver);
 }
 
 def:priv _hmac_HMAC_digest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _hmac_HMAC_digest_signature, args, kwargs, _hmac_HMAC_digest_bound, receiver
-    );
+    return invoke_given(NULL, _hmac_HMAC_digest_bound, receiver);
 }
 
-glob:priv _hmac_HMAC_hexdigest_signature = CallSignature("hexdigest", [], 0, 0, 0);
 def:priv _hmac_HMAC_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _hmac_HMAC_hexdigest_impl(receiver);
 }
 
 def:priv _hmac_HMAC_hexdigest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _hmac_HMAC_hexdigest_signature,
-        args,
-        kwargs,
-        _hmac_HMAC_hexdigest_bound,
-        receiver
-    );
+    return invoke_given(NULL, _hmac_HMAC_hexdigest_bound, receiver);
 }
 
 def:priv _hmac_HMAC_name_get(receiver: ptr[PyObject], context: u64) -> ptr[PyObject] {
@@ -475,114 +515,114 @@ def:priv _hmac_HMAC_digest_size_get(
 glob HMAC_methods: list[MethodDefinition] = [
          MethodDefinition(
              "copy",
-             MethodCallbacks(keywords=_hmac_HMAC_copy_call),
+             MethodCallbacks(fast_keywords=_hmac_HMAC_copy_call),
              "copy($self, /)\n--\n\nReturn a copy (\"clone\") of the HMAC object.",
-             3
+             130
          ),
          MethodDefinition(
              "update",
-             MethodCallbacks(keywords=_hmac_HMAC_update_call),
+             MethodCallbacks(fast_keywords=_hmac_HMAC_update_call),
              "update($self, /, msg)\n--\n\nUpdate the HMAC object with the given message.",
-             3
+             130
          ),
          MethodDefinition(
              "digest",
-             MethodCallbacks(keywords=_hmac_HMAC_digest_call),
+             MethodCallbacks(positional=_hmac_HMAC_digest_call),
              "digest($self, /)\n--\n\nReturn the digest of the bytes passed to the update() method so far.\n\nThis method may raise a MemoryError.",
-             3
+             4
          ),
          MethodDefinition(
              "hexdigest",
-             MethodCallbacks(keywords=_hmac_HMAC_hexdigest_call),
+             MethodCallbacks(positional=_hmac_HMAC_hexdigest_call),
              "hexdigest($self, /)\n--\n\nReturn hexadecimal digest of the bytes passed to the update() method so far.\n\nThis may be used to exchange the value safely in email or other\nnon-binary environments.\n\nThis method may raise a MemoryError.",
-             3
+             4
          ),
 
      ],
      module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "new",
-             MethodCallbacks(keywords=_hmac_new_call),
+             MethodCallbacks(fast_keywords=_hmac_new_call),
              "new($module, /, key, msg=None, digestmod=None)\n--\n\nReturn a new HMAC object.",
-             3
+             130
          ),
          MethodDefinition(
              "compute_digest",
-             MethodCallbacks(keywords=_hmac_compute_digest_call),
+             MethodCallbacks(fast_keywords=_hmac_compute_digest_call),
              "compute_digest($module, /, key, msg, digest)\n--\n\n",
-             3
+             130
          ),
          MethodDefinition(
              "compute_md5",
-             MethodCallbacks(keywords=_hmac_compute_md5_call),
+             MethodCallbacks(fast=_hmac_compute_md5_call),
              "compute_md5($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha1",
-             MethodCallbacks(keywords=_hmac_compute_sha1_call),
+             MethodCallbacks(fast=_hmac_compute_sha1_call),
              "compute_sha1($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha224",
-             MethodCallbacks(keywords=_hmac_compute_sha2_224_call),
+             MethodCallbacks(fast=_hmac_compute_sha2_224_call),
              "compute_sha224($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha256",
-             MethodCallbacks(keywords=_hmac_compute_sha2_256_call),
+             MethodCallbacks(fast=_hmac_compute_sha2_256_call),
              "compute_sha256($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha384",
-             MethodCallbacks(keywords=_hmac_compute_sha2_384_call),
+             MethodCallbacks(fast=_hmac_compute_sha2_384_call),
              "compute_sha384($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha512",
-             MethodCallbacks(keywords=_hmac_compute_sha2_512_call),
+             MethodCallbacks(fast=_hmac_compute_sha2_512_call),
              "compute_sha512($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha3_224",
-             MethodCallbacks(keywords=_hmac_compute_sha3_224_call),
+             MethodCallbacks(fast=_hmac_compute_sha3_224_call),
              "compute_sha3_224($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha3_256",
-             MethodCallbacks(keywords=_hmac_compute_sha3_256_call),
+             MethodCallbacks(fast=_hmac_compute_sha3_256_call),
              "compute_sha3_256($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha3_384",
-             MethodCallbacks(keywords=_hmac_compute_sha3_384_call),
+             MethodCallbacks(fast=_hmac_compute_sha3_384_call),
              "compute_sha3_384($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_sha3_512",
-             MethodCallbacks(keywords=_hmac_compute_sha3_512_call),
+             MethodCallbacks(fast=_hmac_compute_sha3_512_call),
              "compute_sha3_512($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_blake2s_32",
-             MethodCallbacks(keywords=_hmac_compute_blake2s_32_call),
+             MethodCallbacks(fast=_hmac_compute_blake2s_32_call),
              "compute_blake2s_32($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
          MethodDefinition(
              "compute_blake2b_32",
-             MethodCallbacks(keywords=_hmac_compute_blake2b_32_call),
+             MethodCallbacks(fast=_hmac_compute_blake2b_32_call),
              "compute_blake2b_32($module, key, msg, /)\n--\n\n",
-             3
+             128
          ),
 
      ],

@@ -217,7 +217,7 @@ def type_free(op: ptr[PyObject]) {
 
 def get_year(op: ptr[PyObject]) -> int {
     record = ptr[PyDateTime_Date](op).view(1);
-    return (int(record[0].data_0) << 8) | int(record[0].data_1);
+    return (int(record[0].data) << 8) | int(record[0].data_1);
 }
 
 def get_month(op: ptr[PyObject]) -> int {
@@ -252,7 +252,7 @@ def date_get_fold(op: ptr[PyObject]) -> int {
 }
 
 def time_get_hour(op: ptr[PyObject]) -> int {
-    return int(ptr[PyDateTime_Time](op).view(1)[0].data_0);
+    return int(ptr[PyDateTime_Time](op).view(1)[0].data);
 }
 
 def time_get_minute(op: ptr[PyObject]) -> int {
@@ -311,7 +311,7 @@ def td_microseconds(op: ptr[PyObject]) -> int {
 def set_date_fields(op: ptr[PyObject], year: int, month: int, day: int) {
     record = ptr[PyDateTime_Date](op).view(1);
     record[0].hashcode = -1;
-    record[0].data_0 = u8((year & 0xff00) >> 8);
+    record[0].data = u8((year & 0xff00) >> 8);
     record[0].data_1 = u8(year & 0x00ff);
     record[0].data_2 = u8(month);
     record[0].data_3 = u8(day);
@@ -333,7 +333,7 @@ def set_time_fields(
     op: ptr[PyObject], hour: int, minute: int, second: int, microsecond: int
 ) {
     record = ptr[PyDateTime_Time](op).view(1);
-    record[0].data_0 = u8(hour);
+    record[0].data = u8(hour);
     record[0].data_1 = u8(minute);
     record[0].data_2 = u8(second);
     record[0].data_3 = u8((microsecond & 0xff0000) >> 16);

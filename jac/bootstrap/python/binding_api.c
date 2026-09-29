@@ -10,7 +10,9 @@
 #include <stddef.h>
 
 
-_Static_assert(METH_VARARGS == 1 && METH_KEYWORDS == 2 && METH_NOARGS == 4 && METH_O == 8,
+_Static_assert(METH_VARARGS == 1 && METH_KEYWORDS == 2 && METH_NOARGS == 4 && METH_O == 8
+               && METH_CLASS == 16 && METH_STATIC == 32 && METH_COEXIST == 64
+               && METH_FASTCALL == 128,
                "native binding calling conventions must match Python.h");
 
 typedef struct {
@@ -81,13 +83,18 @@ void *jacpy_binding_module(const char *name, const char *doc, int64_t count,
 
 int64_t jacpy_binding_method(void *handle, int64_t index, const char *name,
         PyObject *(*keywords)(PyObject *, PyObject *, PyObject *),
-        PyObject *(*positional)(PyObject *, PyObject *), int64_t flags, const char *doc) {
+        PyObject *(*positional)(PyObject *, PyObject *),
+        PyObject *(*fast)(PyObject *, PyObject *const *, Py_ssize_t),
+        PyObject *(*fast_keywords)(PyObject *, PyObject *const *, Py_ssize_t, PyObject *),
+        int64_t flags, const char *doc) {
     JacMethodTable *table = (handle);
     PyMethodDef *method = &table->entries[index];
     char *owned_name = strdup(name), *owned_doc = strdup(doc);
     if (!owned_name || !owned_doc) { free(owned_name); free(owned_doc); return -1; }
-    PyCFunction callback = flags & METH_KEYWORDS
-        ? (PyCFunction)(void (*)(void))keywords : (PyCFunction)(void (*)(void))positional;
+    void (*chosen)(void) = flags & METH_FASTCALL
+        ? (flags & METH_KEYWORDS ? (void (*)(void))fast_keywords : (void (*)(void))fast)
+        : (flags & METH_KEYWORDS ? (void (*)(void))keywords : (void (*)(void))positional);
+    PyCFunction callback = (PyCFunction)chosen;
     *method = (PyMethodDef){owned_name, callback, (int)flags, owned_doc};
     return 0;
 }
@@ -182,6 +189,7 @@ typedef struct {
     void (*release_buffer)(PyObject *, Py_buffer *);
     PyObject *(*get_attribute)(PyObject *, PyObject *);
     int32_t (*set_attribute)(PyObject *, PyObject *, PyObject *);
+    PyObject *(*string)(PyObject *);
 } JacTypeHooks;
 
 typedef struct {
@@ -193,10 +201,13 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[35];
+    PyType_Slot slots[36];
     vectorcallfunc vectorcall;
     int instance_dict;
-    PyMemberDef members[3];
+    /* The C fields published as member descriptors, then
+     * __vectorcalloffset__ and __dictoffset__ when present, then a sentinel. */
+    int64_t field_count;
+    PyMemberDef *members;
     PyGetSetDef *properties;
     PyMethodDef methods[];
 } JacTypeSpec;
@@ -205,6 +216,13 @@ void jacpy_binding_type_discard(void *handle) {
     JacTypeSpec *spec = (handle);
     if (!spec) return;
     discard_methods(&spec->table);
+    if (spec->members) {
+        for (int64_t index = 0; index < spec->field_count; index++) {
+            free((void *)spec->members[index].name);
+            free((void *)spec->members[index].doc);
+        }
+        free(spec->members);
+    }
     if (spec->properties) {
         for (PyGetSetDef *property = spec->properties; property->name; property++) {
             free((void *)property->name);
@@ -215,27 +233,36 @@ void jacpy_binding_type_discard(void *handle) {
     free(spec);
 }
 
+/* An instance's own data is the JacInstancePayload, followed by
+ * `record_size` bytes of C fields when the type publishes member
+ * descriptors (field_count of them, declared by jacpy_binding_member). */
 void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
                            uint64_t flags, JacTypeHooks hooks, int64_t property_count,
-                           int64_t instance_dict, int64_t unhashable) {
+                           int64_t instance_dict, int64_t unhashable,
+                           int64_t field_count, int64_t record_size) {
     JacTypeSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
     spec->properties = calloc(property_count + 1, sizeof(PyGetSetDef));
-    if (!spec->table.name || !spec->table.doc || !spec->properties) {
+    spec->field_count = field_count;
+    spec->members = calloc(field_count + 3, sizeof(PyMemberDef));
+    if (!spec->table.name || !spec->table.doc || !spec->properties || !spec->members) {
         jacpy_binding_type_discard((spec));
         return 0;
     }
     spec->definition = (PyType_Spec){spec->table.name, -(int)sizeof(void *), 0, (unsigned int)flags, spec->slots};
-    int member = 0;
+    if (record_size) {
+        spec->definition.basicsize = -(int)(sizeof(JacInstancePayload) + record_size);
+    }
+    int member = (int)field_count;
     if (hooks.vectorcall) {
-        spec->definition.basicsize = -(int)sizeof(JacInstancePayload);
+        spec->definition.basicsize = -(int)(sizeof(JacInstancePayload) + record_size);
         spec->vectorcall = hooks.vectorcall;
         spec->members[member++] = (PyMemberDef){"__vectorcalloffset__", Py_T_PYSSIZET,
             offsetof(JacInstancePayload, vectorcall), Py_READONLY | Py_RELATIVE_OFFSET};
     }
     if (instance_dict) {
-        spec->definition.basicsize = -(int)sizeof(JacInstancePayload);
+        spec->definition.basicsize = -(int)(sizeof(JacInstancePayload) + record_size);
         spec->instance_dict = 1;
         spec->members[member++] = (PyMemberDef){"__dictoffset__", Py_T_PYSSIZET,
             offsetof(JacInstancePayload, dictionary), Py_READONLY | Py_RELATIVE_OFFSET};
@@ -270,6 +297,7 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(release_buffer, Py_bf_releasebuffer);
     SLOT(get_attribute, Py_tp_getattro);
     SLOT(set_attribute, Py_tp_setattro);
+    SLOT(string, Py_tp_str);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
@@ -294,6 +322,19 @@ int64_t jacpy_binding_property(void *handle, int64_t index, const char *name,
     spec->properties[index] = (PyGetSetDef){owned_name, (getter)get, (setter)set,
                                             *owned_doc ? owned_doc : NULL, (void *)(uintptr_t)context};
     if (!*owned_doc) free(owned_doc);
+    return 0;
+}
+
+/* A PyMemberDef over the instance's C fields: `offset` is relative to the
+ * field record, `type` a Py_T_* code; a NULL doc is none, as in C. */
+int64_t jacpy_binding_member(void *handle, int64_t index, const char *name, int64_t type,
+        int64_t offset, int64_t readonly, const char *doc, int64_t has_doc) {
+    JacTypeSpec *spec = (handle);
+    char *owned_name = strdup(name), *owned_doc = has_doc ? strdup(doc) : NULL;
+    if (!owned_name || (has_doc && !owned_doc)) { free(owned_name); free(owned_doc); return -1; }
+    spec->members[index] = (PyMemberDef){owned_name, (int)type,
+        (Py_ssize_t)(sizeof(JacInstancePayload) + offset),
+        (readonly ? Py_READONLY : 0) | Py_RELATIVE_OFFSET, owned_doc};
     return 0;
 }
 
@@ -383,6 +424,11 @@ void jacpy_binding_native_clear(PyObject *object, void *definition) {
 int64_t jacpy_binding_native_present(PyObject *object, void *definition) {
     void **slot = native_payload(object, definition);
     return slot && *slot;
+}
+/* The C field record jacpy_binding_member's descriptors read and write. */
+void *jacpy_binding_record(PyObject *object, void *definition) {
+    void **slot = native_payload(object, definition);
+    return slot ? (char *)slot + sizeof(JacInstancePayload) : NULL;
 }
 
 

@@ -58,6 +58,13 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/descrobject.h",
          "Include/datetime.h"
      ],
+     # Headers the generated asserts and the constant probe include beyond
+     # Python.h (datetime.h is not part of it).
+     INCLUDES: list[str] = [
+         "internal/pycore_long.h",
+         "internal/pycore_time.h",
+         "datetime.h"
+     ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
      # opaque.
@@ -114,6 +121,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("METH_O", "METH_O", "i32"),
          ("METH_CLASS", "METH_CLASS", "i32"),
          ("METH_STATIC", "METH_STATIC", "i32"),
+         ("METH_FASTCALL", "METH_FASTCALL", "i32"),
          ("Py_T_INT", "Py_T_INT", "i32"),
          ("Py_READONLY", "Py_READONLY", "i32"),
          ("Py_tp_dealloc", "Py_tp_dealloc", "i32"),
@@ -208,7 +216,9 @@ obj FunctionType {
 }
 
 """One generated field: Jac name and type, the C member it mirrors, its
-offset and size, and for integers whether the C type is signed."""
+offset and size, and for integers whether the C type is signed. `member` is
+the C designator the asserts use: an element of a fixed array
+(`data[3]`) when that differs from the Jac name."""
 obj Field {
     has name: str,
         jac: str,
@@ -216,7 +226,11 @@ obj Field {
         size: int,
         signed: (bool | None) = None,
         array: bool = False,
-        c_name: str = "";
+        member: str = "";
+
+    def designator -> str {
+        return self.member or self.name;
+    }
 }
 
 """One generated struct with its computed layout."""
@@ -334,10 +348,11 @@ def closing(text: str, start: int) -> int {
     sys.exit("gen_layouts: unbalanced braces in the headers");
 }
 
-# A function-pointer type from its C return type and parameter list.
-def function_type(returns: str, raw_params: str) -> FunctionType {
+# The parameter C types of a function declarator's parameter list, with any
+# parameter names dropped.
+def parameter_types(raw: str) -> list[str] {
     params: list[str] = [];
-    raw = " ".join(raw_params.split());
+    raw = " ".join(raw.split());
     if raw and raw != "void" {
         for piece in raw.split(",") {
             piece = piece.strip();
@@ -349,7 +364,23 @@ def function_type(returns: str, raw_params: str) -> FunctionType {
             params.append(" ".join(piece.split()));
         }
     }
-    return FunctionType(returns=" ".join(returns.split()), params=params);
+    return params;
+}
+
+# `[NAME]` with NAME an integer macro (datetime.h's
+# `data[_PyDateTime_DATETIME_DATASIZE]`) as the literal it defines.
+def array_bounds(text: str, defines: dict[str, str]) -> str {
+    pieces: list[str] = [];
+    last = 0;
+    for hit in re.finditer(r"\[\s*([A-Za-z_]\w*)\s*\]", text) {
+        body = defines.get(hit.group(1), "").strip();
+        if re.fullmatch(r"\d+", body) {
+            pieces.append(text[last:hit.start()] + f"[{body}]");
+            last = hit.end();
+        }
+    }
+    pieces.append(text[last:]);
+    return "".join(pieces);
 }
 
 def read_headers(found: Headers) -> None {
@@ -364,30 +395,24 @@ def read_headers(found: Headers) -> None {
     }
     defines: dict[str, str] = {};
     text = preprocess([texts[h] for h in HEADERS], defines);
-    # Expand the object-like macros struct bodies use (PyObject_HEAD, and
-    # datetime.h's _PyTZINFO_HEAD, which itself names PyObject_HEAD) until
-    # none is left, and the numeric ones that bound an array member
-    # (`data[_PyDateTime_DATE_DATASIZE]`).
+    # Expand the object-like macros struct bodies use (PyObject_HEAD), and the
+    # ones those expand to (datetime.h's _PyTZINFO_HEAD names PyObject_HEAD).
     heads = {
         name: body
         for (name, body) in defines.items()
         if body.strip().endswith(";")
     };
-    expanded = True;
-    while expanded {
-        expanded = False;
+    for _ in range(8) {
+        expanded = text;
         for (name, body) in heads.items() {
-            if re.search(rf"\b{name}\b", text) {
-                text = re.sub(rf"\b{name}\b", body, text);
-                expanded = True;
-            }
+            expanded = re.sub(rf"\b{name}\b", body, expanded);
         }
-    }
-    for (name, body) in defines.items() {
-        if re.fullmatch(r"\d+", body.strip()) {
-            text = re.sub(rf"\[\s*{name}\s*\]", f"[{body.strip()}]", text);
+        if expanded == text {
+            break;
         }
+        text = expanded;
     }
+    text = array_bounds(text, defines);
     for hit in re.finditer(r"\b(typedef\s+)?struct\s*(\w*)\s*\{", text) {
         start = hit.end() - 1;
         end = closing(text, start);
@@ -405,7 +430,9 @@ def read_headers(found: Headers) -> None {
     for hit in re.finditer(
         r"\btypedef\s+([\w\s\*]+?)\s*\(\s*\*\s*(\w+)\s*\)\s*\(([^;]*?)\)\s*;", text
     ) {
-        found.functions[hit.group(2)] = function_type(hit.group(1), hit.group(3));
+        found.functions[hit.group(2)] = FunctionType(
+            returns=" ".join(hit.group(1).split()), params=parameter_types(hit.group(3))
+        );
     }
     for hit in re.finditer(r"\btypedef\s+([\w\s]+?)\s+(\w+)\s*;", text) {
         found.aliases[hit.group(2)] = " ".join(hit.group(1).split());
@@ -502,15 +529,31 @@ def size_align(jac: str) -> tuple[int, int] {
     return (layout.size, layout.align);
 }
 
-# The member declarations of a struct body: (C type, member name, array
-# length, 0 for a scalar member). An anonymous union contributes its first
-# member, which the size asserts prove is its widest; an array member
-# `T name[1]` contributes one T (see layouts.jac) and `T name[N]` N of them.
-# A member of an inline enum type (`PyStatus._type`) is the enum's integer
-# type, unsigned int for enumerators that are all non-negative, which the kind
-# and signedness asserts prove. A function-pointer member declared in place
-# (`PyObject *(*Date_FromDate)(int, int, int, PyTypeObject *)`) is typed as a
-# typedef named after it would be.
+# The array declarator of an element count ("" for a scalar member).
+def bounds(count: int) -> str {
+    return "[" + str(count) + "]" if count else "";
+}
+
+# The name a function-pointer member's signature is recorded under in
+# `headers.functions`, as if the header had a typedef for it.
+def member_function(returns: str, raw: str) -> str {
+    function = FunctionType(
+        returns=" ".join(returns.split()), params=parameter_types(raw)
+    );
+    signature = function.returns + "_" + "_".join(function.params);
+    name = "__member_fn_" + re.sub(r"\W+", "_", signature.replace("*", "P"));
+    headers.functions[name] = function;
+    return name;
+}
+
+# The member declarations of a struct body: (C type, member name, element
+# count), the count 0 for a member that is not an array. An anonymous union
+# contributes its first member, which the size asserts prove is its widest; an
+# array member `T name[N]` is N elements of T (see layouts.jac). A member of
+# an inline enum type (`PyStatus._type`) is the enum's integer type, unsigned
+# int for enumerators that are all non-negative, which the kind and signedness
+# asserts prove. A function-pointer member (`PyObject *(*f)(int)`) is typed as
+# its signature.
 def members(body: str) -> list[tuple[str, str, int]] {
     body = body.replace("__extension__", " ");
     while True {
@@ -535,11 +578,9 @@ def members(body: str) -> list[tuple[str, str, int]] {
             sys.exit("gen_layouts: only anonymous nested unions are supported");
         }
         inner = members(body[hit.end():end - 1]);
-        replacement = f"{inner[0][0]} {inner[0][1]}{f'[{inner[0][2]}]'
-            if inner[0][2]
-            else ''};"
+        replacement = f"{inner[0][0]} {inner[0][1]}{bounds(inner[0][2])};"
             if hit.group(1) == "union"
-            else " ".join(f"{t} {n}{f'[{a}]' if a else ''};" for (t, n, a) in inner);
+            else " ".join(f"{t} {n}{bounds(a)};" for (t, n, a) in inner);
         body = body[:hit.start()] + replacement + body[end + len(tail.group(0)):];
     }
     found: list[tuple[str, str, int]] = [];
@@ -550,11 +591,13 @@ def members(body: str) -> list[tuple[str, str, int]] {
         }
         pointer = re.match(r"^(.*?)\(\s*\*\s*(\w+)\s*\)\s*\((.*)\)$", statement);
         if pointer is not None {
-            alias = f"{pointer.group(2)}_function";
-            headers.functions[alias] = function_type(
-                pointer.group(1), pointer.group(3)
+            found.append(
+                (
+                    member_function(pointer.group(1), pointer.group(3)),
+                    pointer.group(2),
+                    0
+                )
             );
-            found.append((alias, pointer.group(2), 0));
             continue;
         }
         declared = re.match(
@@ -567,16 +610,16 @@ def members(body: str) -> list[tuple[str, str, int]] {
         for name in declared.group(2).split(",") {
             name = name.strip();
             array = re.match(r"^(\**\w+)\s*\[\s*(\d+)\s*\]$", name);
-            length = 0;
+            count = 0;
             if array is not None {
-                length = int(array.group(2));
+                count = int(array.group(2));
                 name = array.group(1);
             }
             stars = re.match(r"^(\**)(\w+)$", name);
             if stars is None {
                 sys.exit(f"gen_layouts: cannot read member name {name!r}");
             }
-            found.append((base + stars.group(1), stars.group(2), length));
+            found.append((base + stars.group(1), stars.group(2), count));
         }
     }
     return found;
@@ -602,7 +645,7 @@ def require(name: str) -> None {
     layout = Layout(name=name, ctype=ctype, fields=[], size=0, align=1);
     emitted[name] = layout;
     offset = 0;
-    for (member_type, member, length) in members(body) {
+    for (member_type, member, count) in members(body) {
         jac = jac_type(member_type);
         (size, align) = size_align(jac);
         offset = (offset + align - 1) // align * align;
@@ -614,21 +657,19 @@ def require(name: str) -> None {
         signed = scalar[1]
             if scalar is not None and jac in SIZES and not jac.startswith("f")
             else None;
-        # A fixed array `T name[N]` is N fields name_0 .. name_{N-1}, one per
-        # element; the trailing `T name[1]` stays one field named after it.
-        elements = [(member, member, length == 1)]
-            if length <= 1
-            else [(f"{member}_{i}", f"{member}[{i}]", False) for i in range(length)];
-        for (field_name, c_name, array) in elements {
+        # `T name[1]` is one T field; a fixed array `T name[N]` is N fields,
+        # `name` for element 0 and `name_<i>` for element i, so the members
+        # after it keep their offsets.
+        for index in range(max(count, 1)) {
             layout.fields.append(
                 Field(
-                    name=field_name,
+                    name=member if index == 0 else f"{member}_{index}",
                     jac=jac,
                     offset=offset,
                     size=size,
                     signed=signed,
-                    array=array,
-                    c_name=c_name
+                    array=count == 1,
+                    member=f"{member}[{index}]" if count > 1 else ""
                 )
             );
             offset += size;
@@ -673,8 +714,9 @@ def render_jac(values: dict[str, int]) -> str {
         "the same offset, size and alignment: element 0 is that field, and the",
         "object's further elements follow it in memory, reached by pointer",
         "arithmetic from the field's offset exactly as C indexes past the declared",
-        "bound. A fixed array `T name[N]` (`PyDateTime_Date.data`) is N fields",
-        "`name_0` .. `name_{N-1}`. Pointers to records no port reads yet are opaque.",
+        "bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T",
+        "fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.",
+        "Pointers to records no port reads yet are opaque.",
         '"""',
         f"import from jaclang.runtime.python.cpython_api {{ {', '.join(from_capi)} }}",
         "",
@@ -714,10 +756,7 @@ def render_check(values: dict[str, int]) -> str {
         "#define Py_BUILD_CORE 1",
         "#endif",
         "#include \"Python.h\"",
-        "#include \"internal/pycore_long.h\"",
-        "#include \"internal/pycore_time.h\"",
-        "#define _PY_DATETIME_IMPL 1",
-        "#include \"datetime.h\"",
+        "\n".join(f"#include \"{header}\"" for header in INCLUDES),
         "#include <stddef.h>",
         "",
         "#define FIELD(type, field, offset, size) \\",
@@ -741,13 +780,19 @@ def render_check(values: dict[str, int]) -> str {
         ctype = c_type_name(layout);
         lines.append(f"/* {name} */");
         for field in layout.fields {
-            member = field.c_name or field.name;
-            element = f"{member}[0]" if field.array else member;
-            lines.append(f"FIELD({ctype}, {member}, {field.offset}, {field.size});");
-            lines.append(f"KIND({ctype}, {element}, {type_class(field.jac)});");
+            lines.append(
+                f"FIELD({ctype}, {field.designator()}, {field.offset}, {field.size});"
+            );
+            lines.append(
+                f"KIND({ctype}, {field.designator()}{'[0]' if field.array else ''}, {type_class(
+                    field.jac
+                )});"
+            );
             if field.signed is not None {
                 lines.append(
-                    f"SIGNED({ctype}, {element}, {1 if field.signed else 0});"
+                    f"SIGNED({ctype}, {field.designator()}{'[0]'
+                        if field.array
+                        else ''}, {1 if field.signed else 0});"
                 );
             }
         }
@@ -785,10 +830,7 @@ def extract(headers_dir: Path, compiler: list[str]) -> dict[str, int] {
     lines = [
         "#define Py_BUILD_CORE 1",
         "#include \"Python.h\"",
-        "#include \"internal/pycore_long.h\"",
-        "#include \"internal/pycore_time.h\"",
-        "#define _PY_DATETIME_IMPL 1",
-        "#include \"datetime.h\"",
+        "\n".join(f"#include \"{header}\"" for header in INCLUDES),
         "#include <stddef.h>"
     ];
     for (name, expression, _) in CONSTANTS {

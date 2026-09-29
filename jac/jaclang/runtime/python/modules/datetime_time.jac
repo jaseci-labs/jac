@@ -213,7 +213,7 @@ def time_from_pickle(
             record[0].tzinfo = Py_NewRef(tzinfo);
         }
         if (int(source.view(1)[0]) & (1 << 7)) != 0 {
-            record[0].data_0 = record[0].data_0 - u8(128);
+            record[0].data = record[0].data - u8(128);
             record[0].fold = u8(1);
         } else {
             record[0].fold = u8(0);

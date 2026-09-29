@@ -8,7 +8,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     Py_None,
     Py_TYPE,
-    PyBool_FromLong,
     PyExc_SystemError,
     PyLong_FromLongLong,
     PyObject,

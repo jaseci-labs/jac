@@ -288,7 +288,7 @@ def render(
     ];
     missing = [
         name
-        for name in PORTABLE.get(module, [])
+        for name in dict.fromkeys(PORTABLE.get(module, []) + EXTRA.get(module, []))
         if name not in values
     ];
     lines = [

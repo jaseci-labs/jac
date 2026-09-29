@@ -102,14 +102,14 @@ import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_allocate,
     jacpy_binding_matches,
-    jacpy_binding_owner
+    jacpy_binding_owner,
+    jacpy_binding_record
 }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_present,
     jacpy_binding_native_set
 }
-import from jaclang.runtime.python.bindings.members { MemberField }
 import from jaclang.runtime.python.modules.time_records { timespec, timeval }
 import from jaclang.runtime.python.modules.select_platform {
     EPOLL_DATA_OFFSET,
@@ -1068,8 +1068,8 @@ def select_epoll___exit___impl(
 
 # ------------------------------------------------------------------ kevent
 
-# kqueue_event_Object: its struct kevent lives in memory the state owns, so
-# the attributes read and write it with structmember's conversions.
+# kqueue_event_Object: its struct kevent is the instance's field record,
+# which the type publishes as member descriptors (KEVENT_MEMBERS).
 obj KeventState(NativeState) {
     has record: ptr[kevent_record] = ptr[kevent_record]();
 
@@ -1078,9 +1078,6 @@ obj KeventState(NativeState) {
     }
 
     def clear {}
-    def drop {
-        PyMem_Free(ptr(self.record));
-    }
 }
 
 def kevent_of(instance: ptr[PyObject]) -> (KeventState | None) {
@@ -1100,12 +1097,9 @@ def new_kevent(type: ptr[PyObject], event: kevent_record | None) -> ptr[PyObject
     if not instance {
         return NULL;
     }
-    memory = PyMem_Calloc(1, u64(KEVENT_SIZE));
-    if not memory {
-        jacpy_release(instance);
-        return PyErr_NoMemory();
-    }
-    state = KeventState(record=ptr[kevent_record](memory));
+    state = KeventState(
+        record=ptr[kevent_record](jacpy_binding_record(instance, kevent_token.handle))
+    );
     if event is not None {
         state.record.view(1)[0] = event;
     }
@@ -1258,29 +1252,6 @@ def kqueue_event_richcompare(
         result >= 0
     ][int(op)];
     return Py_NewRef(borrowed_true() if outcome else borrowed_false());
-}
-
-# The kevent attribute `context` indexes KEVENT_MEMBERS.
-def:priv kevent_field(context: u64) -> MemberField {
-    return KEVENT_MEMBERS[int(context)];
-}
-
-def kevent_member_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = kevent_of(instance);
-    if state is None {
-        return NULL;
-    }
-    return kevent_field(context).read(ptr(state.record));
-}
-
-def kevent_member_set(
-    instance: ptr[PyObject], value: ptr[PyObject], context: u64
-) -> i32 {
-    state = kevent_of(instance);
-    if state is None {
-        return i32(-1);
-    }
-    return kevent_field(context).write(ptr(state.record), value);
 }
 
 # ------------------------------------------------------------------ kqueue

@@ -13,7 +13,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke,
+    invoke_given
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -55,7 +57,8 @@ glob:priv py_blake2b_new_signature = CallSignature(
          ],
          0,
          1,
-         0
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv py_blake2b_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -159,27 +162,16 @@ def:pub py_blake2b_new_new(
     return invoke(py_blake2b_new_signature, args, kwargs, py_blake2b_new_bound, type);
 }
 
-glob:priv _blake2_blake2b_copy_signature = CallSignature("copy", [], 0, 0, 0);
 def:priv _blake2_blake2b_copy_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _blake2_blake2b_copy_impl(receiver);
 }
 
 def:priv _blake2_blake2b_copy_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _blake2_blake2b_copy_signature,
-        args,
-        kwargs,
-        _blake2_blake2b_copy_bound,
-        receiver
-    );
+    return invoke_given(NULL, _blake2_blake2b_copy_bound, receiver);
 }
-
-glob:priv _blake2_blake2b_update_signature = CallSignature(
-         "update", ["data"], 1, 1, 1
-     );
 
 def:priv _blake2_blake2b_update_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -189,38 +181,21 @@ def:priv _blake2_blake2b_update_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv _blake2_blake2b_update_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _blake2_blake2b_update_signature,
-        args,
-        kwargs,
-        _blake2_blake2b_update_bound,
-        receiver
-    );
+    return invoke_given(value, _blake2_blake2b_update_bound, receiver);
 }
 
-glob:priv _blake2_blake2b_digest_signature = CallSignature("digest", [], 0, 0, 0);
 def:priv _blake2_blake2b_digest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return _blake2_blake2b_digest_impl(receiver);
 }
 
 def:priv _blake2_blake2b_digest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _blake2_blake2b_digest_signature,
-        args,
-        kwargs,
-        _blake2_blake2b_digest_bound,
-        receiver
-    );
+    return invoke_given(NULL, _blake2_blake2b_digest_bound, receiver);
 }
-
-glob:priv _blake2_blake2b_hexdigest_signature = CallSignature(
-         "hexdigest", [], 0, 0, 0
-     );
 
 def:priv _blake2_blake2b_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -228,15 +203,9 @@ def:priv _blake2_blake2b_hexdigest_bound(args: BoundArguments) -> ptr[PyObject] 
 }
 
 def:priv _blake2_blake2b_hexdigest_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _blake2_blake2b_hexdigest_signature,
-        args,
-        kwargs,
-        _blake2_blake2b_hexdigest_bound,
-        receiver
-    );
+    return invoke_given(NULL, _blake2_blake2b_hexdigest_bound, receiver);
 }
 
 glob:priv py_blake2s_new_signature = CallSignature(
@@ -259,7 +228,8 @@ glob:priv py_blake2s_new_signature = CallSignature(
          ],
          0,
          1,
-         0
+         0,
+         parser=PARSE_KEYWORDS
      );
 
 def:priv py_blake2s_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -368,27 +338,27 @@ glob blake2b_doc: str = "blake2b(data=b'', *, digest_size=_blake2.blake2b.MAX_DI
      blake2b_methods: list[MethodDefinition] = [
          MethodDefinition(
              "copy",
-             MethodCallbacks(keywords=_blake2_blake2b_copy_call),
+             MethodCallbacks(positional=_blake2_blake2b_copy_call),
              "copy($self, /)\n--\n\nReturn a copy of the hash object.",
-             3
+             4
          ),
          MethodDefinition(
              "update",
-             MethodCallbacks(keywords=_blake2_blake2b_update_call),
+             MethodCallbacks(positional=_blake2_blake2b_update_call),
              "update($self, data, /)\n--\n\nUpdate this hash object's state with the provided bytes-like object.",
-             3
+             8
          ),
          MethodDefinition(
              "digest",
-             MethodCallbacks(keywords=_blake2_blake2b_digest_call),
+             MethodCallbacks(positional=_blake2_blake2b_digest_call),
              "digest($self, /)\n--\n\nReturn the digest value as a bytes object.",
-             3
+             4
          ),
          MethodDefinition(
              "hexdigest",
-             MethodCallbacks(keywords=_blake2_blake2b_hexdigest_call),
+             MethodCallbacks(positional=_blake2_blake2b_hexdigest_call),
              "hexdigest($self, /)\n--\n\nReturn the digest value as a string of hexadecimal digits.",
-             3
+             4
          ),
 
      ];

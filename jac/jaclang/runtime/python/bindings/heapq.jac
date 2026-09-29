@@ -11,7 +11,8 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     invoke,
     invoke_one,
-    invalid
+    invalid,
+    invoke_vector
 }
 import from jaclang.runtime.python.capi { type_name }
 import from jaclang.runtime.python.modules.heapq {
@@ -35,8 +36,10 @@ def:priv heappush_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_heap_push(heap, args.values[1], 0);
 }
 
-def:priv heappush_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(heappush_signature, args, NULL, heappush_bound);
+def:priv heappush_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(heappush_signature, args, nargs, NULL, heappush_bound);
 }
 
 glob:priv heappush_max_signature = CallSignature(
@@ -53,9 +56,9 @@ def:priv heappush_max_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv heappush_max_call(
-    module: ptr[PyObject], args: ptr[PyObject]
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(heappush_max_signature, args, NULL, heappush_max_bound);
+    return invoke_vector(heappush_max_signature, args, nargs, NULL, heappush_max_bound);
 }
 
 glob:priv heapreplace_signature = CallSignature(
@@ -71,8 +74,10 @@ def:priv heapreplace_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_heap_replace(heap, args.values[1], 0);
 }
 
-def:priv heapreplace_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(heapreplace_signature, args, NULL, heapreplace_bound);
+def:priv heapreplace_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(heapreplace_signature, args, nargs, NULL, heapreplace_bound);
 }
 
 glob:priv heapreplace_max_signature = CallSignature(
@@ -89,9 +94,11 @@ def:priv heapreplace_max_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv heapreplace_max_call(
-    module: ptr[PyObject], args: ptr[PyObject]
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(heapreplace_max_signature, args, NULL, heapreplace_max_bound);
+    return invoke_vector(
+        heapreplace_max_signature, args, nargs, NULL, heapreplace_max_bound
+    );
 }
 
 glob:priv heappushpop_signature = CallSignature(
@@ -107,8 +114,10 @@ def:priv heappushpop_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_heap_pushpop(heap, args.values[1], 0);
 }
 
-def:priv heappushpop_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(heappushpop_signature, args, NULL, heappushpop_bound);
+def:priv heappushpop_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(heappushpop_signature, args, nargs, NULL, heappushpop_bound);
 }
 
 glob:priv heappushpop_max_signature = CallSignature(
@@ -125,9 +134,11 @@ def:priv heappushpop_max_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv heappushpop_max_call(
-    module: ptr[PyObject], args: ptr[PyObject]
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(heappushpop_max_signature, args, NULL, heappushpop_max_bound);
+    return invoke_vector(
+        heappushpop_max_signature, args, nargs, NULL, heappushpop_max_bound
+    );
 }
 
 def:priv heappop_bound(heap: ptr[PyObject]) -> ptr[PyObject] {
@@ -184,39 +195,39 @@ glob:priv definition = ModuleDefinition(
          [
              MethodDefinition(
                  "heappush",
-                 MethodCallbacks(positional=heappush_call),
+                 MethodCallbacks(fast=heappush_call),
                  "heappush($module, heap, item, /)\n--\n\nMaintain a heap in place.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "heappush_max",
-                 MethodCallbacks(positional=heappush_max_call),
+                 MethodCallbacks(fast=heappush_max_call),
                  "heappush_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "heapreplace",
-                 MethodCallbacks(positional=heapreplace_call),
+                 MethodCallbacks(fast=heapreplace_call),
                  "heapreplace($module, heap, item, /)\n--\n\nMaintain a heap in place.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "heapreplace_max",
-                 MethodCallbacks(positional=heapreplace_max_call),
+                 MethodCallbacks(fast=heapreplace_max_call),
                  "heapreplace_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "heappushpop",
-                 MethodCallbacks(positional=heappushpop_call),
+                 MethodCallbacks(fast=heappushpop_call),
                  "heappushpop($module, heap, item, /)\n--\n\nMaintain a heap in place.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "heappushpop_max",
-                 MethodCallbacks(positional=heappushpop_max_call),
+                 MethodCallbacks(fast=heappushpop_max_call),
                  "heappushpop_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "heappop",

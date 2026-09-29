@@ -43,7 +43,8 @@ import from jaclang.runtime.python.bindings.payload {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    invoke,
+    invoke_vector
 }
 import from jaclang.runtime.python.modules.random {
     mt19937,
@@ -131,8 +132,10 @@ def:priv seed_bound(args: BoundArguments) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def:priv seed_call(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(seed_signature, args, NULL, seed_bound, instance);
+def:priv seed_call(
+    instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return invoke_vector(seed_signature, args, nargs, NULL, seed_bound, instance);
 }
 
 def:priv random_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
@@ -189,9 +192,9 @@ glob:priv random_type = TypeDefinition(
          [
              MethodDefinition(
                  "seed",
-                 MethodCallbacks(positional=seed_call),
+                 MethodCallbacks(fast=seed_call),
                  "seed($self, n=None, /)\n--\n\nInitialize generator state.",
-                 flags=1
+                 flags=128
              ),
              MethodDefinition(
                  "random",

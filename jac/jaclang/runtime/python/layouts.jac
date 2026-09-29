@@ -14,8 +14,9 @@ supported (little-endian) target. A trailing C array `T name[1]`
 the same offset, size and alignment: element 0 is that field, and the
 object's further elements follow it in memory, reached by pointer
 arithmetic from the field's offset exactly as C indexes past the declared
-bound. A fixed array `T name[N]` (`PyDateTime_Date.data`) is N fields
-`name_0` .. `name_{N-1}`. Pointers to records no port reads yet are opaque.
+bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T
+fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.
+Pointers to records no port reads yet are opaque.
 """
 import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
 
@@ -175,7 +176,7 @@ import from c {
         has ob_base: _object,
             hashcode: i64,
             hastzinfo: i8,
-            data_0: u8,
+            data: u8,
             data_1: u8,
             data_2: u8,
             data_3: u8,
@@ -185,7 +186,7 @@ import from c {
         has ob_base: _object,
             hashcode: i64,
             hastzinfo: i8,
-            data_0: u8,
+            data: u8,
             data_1: u8,
             data_2: u8,
             data_3: u8,
@@ -197,7 +198,7 @@ import from c {
         has ob_base: _object,
             hashcode: i64,
             hastzinfo: i8,
-            data_0: u8,
+            data: u8,
             data_1: u8,
             data_2: u8,
             data_3: u8;
@@ -205,7 +206,7 @@ import from c {
         has ob_base: _object,
             hashcode: i64,
             hastzinfo: i8,
-            data_0: u8,
+            data: u8,
             data_1: u8,
             data_2: u8,
             data_3: u8,
@@ -219,7 +220,7 @@ import from c {
         has ob_base: _object,
             hashcode: i64,
             hastzinfo: i8,
-            data_0: u8,
+            data: u8,
             data_1: u8,
             data_2: u8,
             data_3: u8,
@@ -311,6 +312,7 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      METH_O: Final[i32] = 8,
      METH_CLASS: Final[i32] = 16,
      METH_STATIC: Final[i32] = 32,
+     METH_FASTCALL: Final[i32] = 128,
      Py_T_INT: Final[i32] = 1,
      Py_READONLY: Final[i32] = 1,
      Py_tp_dealloc: Final[i32] = 52,

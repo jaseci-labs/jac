@@ -18,7 +18,10 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -35,7 +38,10 @@ import from jaclang.runtime.python.modules.datetime {
     iso_calendar_date_new_impl
 }
 
-glob:priv datetime_datetime_now_signature = CallSignature("now", ["tz"], 0, 1, 0);
+glob:priv datetime_datetime_now_signature = CallSignature(
+         "now", ["tz"], 0, 1, 0, parser=PARSE_KEYWORDS
+     );
+
 def:priv datetime_datetime_now_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     tz: ptr[PyObject] = borrowed_none();
@@ -47,20 +53,20 @@ def:priv datetime_datetime_now_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv datetime_datetime_now_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    return invoke_vector(
         datetime_datetime_now_signature,
         args,
-        kwargs,
+        nargs,
+        kwnames,
         datetime_datetime_now_bound,
         receiver
     );
 }
-
-glob:priv datetime_date_fromtimestamp_signature = CallSignature(
-         "fromtimestamp", ["timestamp"], 1, 1, 1
-     );
 
 def:priv datetime_date_fromtimestamp_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
@@ -70,19 +76,13 @@ def:priv datetime_date_fromtimestamp_bound(args: BoundArguments) -> ptr[PyObject
 }
 
 def:priv datetime_date_fromtimestamp_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        datetime_date_fromtimestamp_signature,
-        args,
-        kwargs,
-        datetime_date_fromtimestamp_bound,
-        receiver
-    );
+    return invoke_given(value, datetime_date_fromtimestamp_bound, receiver);
 }
 
 glob:priv iso_calendar_date_new_signature = CallSignature(
-         "IsoCalendarDate", ["year", "week", "weekday"], 3, 3, 0
+         "IsoCalendarDate", ["year", "week", "weekday"], 3, 3, 0, parser=PARSE_KEYWORDS
      );
 
 def:priv iso_calendar_date_new_bound(args: BoundArguments) -> ptr[PyObject] {
@@ -108,18 +108,18 @@ glob IsoCalendarDate_doc: str = "",
      date_methods: list[MethodDefinition] = [
          MethodDefinition(
              "fromtimestamp",
-             MethodCallbacks(keywords=datetime_date_fromtimestamp_call),
+             MethodCallbacks(positional=datetime_date_fromtimestamp_call),
              "fromtimestamp($type, timestamp, /)\n--\n\nCreate a date from a POSIX timestamp.\n\nThe timestamp is a number, e.g. created via time.time(), that is\ninterpreted as local time.",
-             19
+             24
          ),
 
      ],
      datetime_methods: list[MethodDefinition] = [
          MethodDefinition(
              "now",
-             MethodCallbacks(keywords=datetime_datetime_now_call),
+             MethodCallbacks(fast_keywords=datetime_datetime_now_call),
              "now($type, /, tz=None)\n--\n\nReturns new datetime object representing current time local to tz.\n\n  tz\n    Timezone object.\n\nIf no tz is specified, uses local timezone.",
-             19
+             146
          ),
 
      ];

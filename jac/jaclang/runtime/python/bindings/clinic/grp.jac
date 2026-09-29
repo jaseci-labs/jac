@@ -13,7 +13,9 @@ import from jaclang.runtime.python.bindings.type {
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke_given,
+    invoke_vector
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters {
@@ -26,7 +28,10 @@ import from jaclang.runtime.python.modules.grp {
     grp_getgrnam_impl
 }
 
-glob:priv grp_getgrgid_signature = CallSignature("getgrgid", ["id"], 1, 1, 0);
+glob:priv grp_getgrgid_signature = CallSignature(
+         "getgrgid", ["id"], 1, 1, 0, parser=PARSE_KEYWORDS
+     );
+
 def:priv grp_getgrgid_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -35,12 +40,20 @@ def:priv grp_getgrgid_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv grp_getgrgid_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(grp_getgrgid_signature, args, kwargs, grp_getgrgid_bound, receiver);
+    return invoke_vector(
+        grp_getgrgid_signature, args, nargs, kwnames, grp_getgrgid_bound, receiver
+    );
 }
 
-glob:priv grp_getgrnam_signature = CallSignature("getgrnam", ["name"], 1, 1, 0);
+glob:priv grp_getgrnam_signature = CallSignature(
+         "getgrnam", ["name"], 1, 1, 0, parser=PARSE_KEYWORDS
+     );
+
 def:priv grp_getgrnam_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     value = args.values[0];
@@ -49,41 +62,45 @@ def:priv grp_getgrnam_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 def:priv grp_getgrnam_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(grp_getgrnam_signature, args, kwargs, grp_getgrnam_bound, receiver);
+    return invoke_vector(
+        grp_getgrnam_signature, args, nargs, kwnames, grp_getgrnam_bound, receiver
+    );
 }
 
-glob:priv grp_getgrall_signature = CallSignature("getgrall", [], 0, 0, 0);
 def:priv grp_getgrall_bound(args: BoundArguments) -> ptr[PyObject] {
     receiver = args.context;
     return grp_getgrall_impl(receiver);
 }
 
 def:priv grp_getgrall_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(grp_getgrall_signature, args, kwargs, grp_getgrall_bound, receiver);
+    return invoke_given(NULL, grp_getgrall_bound, receiver);
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getgrgid",
-             MethodCallbacks(keywords=grp_getgrgid_call),
+             MethodCallbacks(fast_keywords=grp_getgrgid_call),
              "getgrgid($module, /, id)\n--\n\nReturn the group database entry for the given numeric group ID.\n\nIf id is not valid, raise KeyError.",
-             3
+             130
          ),
          MethodDefinition(
              "getgrnam",
-             MethodCallbacks(keywords=grp_getgrnam_call),
+             MethodCallbacks(fast_keywords=grp_getgrnam_call),
              "getgrnam($module, /, name)\n--\n\nReturn the group database entry for the given group name.\n\nIf name is not valid, raise KeyError.",
-             3
+             130
          ),
          MethodDefinition(
              "getgrall",
-             MethodCallbacks(keywords=grp_getgrall_call),
+             MethodCallbacks(positional=grp_getgrall_call),
              "getgrall($module, /)\n--\n\nReturn a list of all available group entries, in arbitrary order.\n\nAn entry whose name starts with '+' or '-' represents an instruction\nto use YP/NIS and may not be accessible via getgrnam or getgrgid.",
-             3
+             4
          ),
 
      ];
