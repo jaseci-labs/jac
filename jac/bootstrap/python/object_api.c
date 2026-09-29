@@ -545,6 +545,68 @@ int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {
     return _PyDict_DelItemIf(dictionary, key, dead_weakref, NULL);
 }
 
+/* _asyncio's running loop and task are _PyThreadStateImpl fields, and its
+ * tasks are linked into lists headed there and in PyInterpreterState;
+ * visiting other threads needs the runtime's thread-state iteration with the
+ * world stopped. The Jac port links a task through the llist_node at
+ * `node_offset` of its TaskObj. */
+#include "internal/pycore_llist.h"
+#include "internal/pycore_tstate.h"
+#include "internal/pycore_list.h"
+#include "internal/pycore_ceval.h"
+PyObject **jacpy_asyncio_running_loop(void) { return &((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_running_loop; }
+PyObject **jacpy_asyncio_running_task(void) { return &((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_running_task; }
+void *jacpy_asyncio_tasks_head(void) { return &((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_tasks_head; }
+/* current_task(loop) for a loop another thread runs: a new reference to its
+ * running task, or to None. */
+PyObject *jacpy_asyncio_thread_task(PyObject *loop) {
+    PyObject *ret = Py_None;
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    _PyEval_StopTheWorld(interp);
+    _Py_FOR_EACH_TSTATE_BEGIN(interp, p) {
+        _PyThreadStateImpl *ts = (_PyThreadStateImpl *)p;
+        if (ts->asyncio_running_loop == loop) {
+            if (ts->asyncio_running_task != NULL) ret = ts->asyncio_running_task;
+            break;
+        }
+    }
+    _Py_FOR_EACH_TSTATE_END(interp);
+    Py_INCREF(ret);
+    _PyEval_StartTheWorld(interp);
+    return ret;
+}
+static int64_t jacpy_asyncio_add_list(struct llist_node *head, PyObject *tasks, int64_t node_offset) {
+    struct llist_node *node;
+    llist_for_each_safe(node, head) {
+        PyObject *task = (PyObject *)((char *)node - node_offset);
+        /* The lists hold borrowed references: skip a task being deallocated. */
+        if (_Py_TryIncref(task) && _PyList_AppendTakeRef((PyListObject *)tasks, task) < 0) return -1;
+    }
+    return 0;
+}
+/* all_tasks(): append the registered tasks to the list `tasks`, those of the
+ * current thread or, with `all_threads`, of the interpreter and every thread
+ * with the world stopped. */
+int64_t jacpy_asyncio_add_tasks(PyObject *tasks, int64_t node_offset, int64_t all_threads) {
+    if (!all_threads) {
+        return jacpy_asyncio_add_list(&((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_tasks_head, tasks, node_offset);
+    }
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    _PyEval_StopTheWorld(interp);
+    int64_t ret = jacpy_asyncio_add_list(&interp->asyncio_tasks_head, tasks, node_offset);
+    if (ret == 0) {
+        _Py_FOR_EACH_TSTATE_BEGIN(interp, p) {
+            if (jacpy_asyncio_add_list(&((_PyThreadStateImpl *)p)->asyncio_tasks_head, tasks, node_offset) < 0) {
+                ret = -1;
+                break;
+            }
+        }
+        _Py_FOR_EACH_TSTATE_END(interp);
+    }
+    _PyEval_StartTheWorld(interp);
+    return ret;
+}
+
 /* errno is a thread-local macro; read and write it through functions. */
 int64_t jacpy_errno(void) { return errno; }
 void jacpy_set_errno(int64_t value) { errno = (int)value; }
