@@ -222,12 +222,12 @@ Objects/bytesobject.c
 Objects/call.c
 # Objects/capsule.c  # removed: 366 source lines
 # Objects/cellobject.c  # removed: 212 source lines
-Objects/classobject.c
+# Objects/classobject.c  # removed: 518 source lines
 Objects/clinic/bytearrayobject.c.h
 Objects/clinic/bytesobject.c.h
-Objects/clinic/classobject.c.h
+# Objects/clinic/classobject.c.h  # removed: 85 source lines
 Objects/clinic/codeobject.c.h
-Objects/clinic/complexobject.c.h
+# Objects/clinic/complexobject.c.h  # removed: 188 source lines
 Objects/clinic/descrobject.c.h
 Objects/clinic/dictobject.c.h
 # Objects/clinic/enumobject.c.h  # removed: 113 source lines
@@ -235,31 +235,31 @@ Objects/clinic/exceptions.c.h
 Objects/clinic/floatobject.c.h
 Objects/clinic/frameobject.c.h
 Objects/clinic/funcobject.c.h
-Objects/clinic/interpolationobject.c.h
+# Objects/clinic/interpolationobject.c.h  # removed: 94 source lines
 Objects/clinic/listobject.c.h
 Objects/clinic/longobject.c.h
 Objects/clinic/memoryobject.c.h
 Objects/clinic/moduleobject.c.h
 Objects/clinic/odictobject.c.h
 Objects/clinic/setobject.c.h
-Objects/clinic/structseq.c.h
+# Objects/clinic/structseq.c.h  # removed: 68 source lines
 Objects/clinic/tupleobject.c.h
 Objects/clinic/typeobject.c.h
 Objects/clinic/typevarobject.c.h
 Objects/clinic/unicodeobject.c.h
 Objects/codeobject.c
-Objects/complexobject.c
+# Objects/complexobject.c  # removed: 1,422 source lines
 Objects/descrobject.c
 Objects/dictobject.c
 # Objects/enumobject.c  # removed: 585 source lines
 Objects/exceptions.c
-Objects/fileobject.c
+# Objects/fileobject.c  # removed: 548 source lines
 Objects/floatobject.c
 Objects/frameobject.c
 Objects/funcobject.c
-Objects/genericaliasobject.c
+# Objects/genericaliasobject.c  # removed: 1,056 source lines
 Objects/genobject.c
-Objects/interpolationobject.c
+# Objects/interpolationobject.c  # removed: 231 source lines
 # Objects/iterobject.c  # removed: 541 source lines
 Objects/listobject.c
 Objects/longobject.c
@@ -293,13 +293,13 @@ Objects/moduleobject.c
 Objects/object.c
 Objects/obmalloc.c
 Objects/odictobject.c
-Objects/picklebufobject.c
+# Objects/picklebufobject.c  # removed: 224 source lines
 # Objects/rangeobject.c  # removed: 1,317 source lines
 Objects/setobject.c
 # Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
-Objects/structseq.c
-Objects/templateobject.c
+# Objects/structseq.c  # removed: 795 source lines
+# Objects/templateobject.c  # removed: 416 source lines
 Objects/tupleobject.c
 Objects/typeobject.c
 Objects/typeslots.inc
@@ -307,7 +307,7 @@ Objects/typevarobject.c
 Objects/unicodectype.c
 Objects/unicodeobject.c
 Objects/unicodetype_db.h
-Objects/unionobject.c
+# Objects/unionobject.c  # removed: 600 source lines
 Objects/weakrefobject.c
 
 # Builtin and extension modules

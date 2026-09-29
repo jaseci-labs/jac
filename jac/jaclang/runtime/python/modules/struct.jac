@@ -29,9 +29,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_set_owned,
     NULL,
     Py_NewRef,
-    PyComplex_FromDoubles,
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble,
     PyDict_Clear,
     PyDict_SetItem,
     PyErr_Clear,
@@ -53,6 +50,11 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_TYPE,
     jacpy_is_unicode
+}
+import from jaclang.runtime.python.object_model.complex {
+    PyComplex_FromDoubles,
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.binary_scalars {

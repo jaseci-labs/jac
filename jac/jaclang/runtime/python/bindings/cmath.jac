@@ -1,10 +1,7 @@
 """The cmath module: its clinic-generated functions and constants."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyComplex_FromDoubles,
-    PyFloat_FromDouble,
-    PyObject
-}
+import from jaclang.runtime.python.cpython_api { PyFloat_FromDouble, PyObject }
+import from jaclang.runtime.python.object_model.complex { PyComplex_FromDoubles }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

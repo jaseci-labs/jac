@@ -1,6 +1,7 @@
 """The _queue module: SimpleQueue over native FIFO state, and Empty."""
 
-import from jaclang.runtime.python.cpython_api { NULL, Py_GenericAlias, PyObject }
+import from jaclang.runtime.python.cpython_api { NULL, PyObject }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,

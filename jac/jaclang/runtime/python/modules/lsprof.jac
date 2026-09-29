@@ -51,8 +51,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_GetAttrString,
     PyObject_Repr,
     PyObject_Str,
-    PyStructSequence_New,
-    PyStructSequence_SetItem,
     PyThreadState_Get,
     _PyTime_FromLong,
     _PyTime_FromSeconds,
@@ -63,6 +61,10 @@ import from jaclang.runtime.python.cpython_api {
     _PyUnicode_EqualToASCIIString,
     PyUnicode_FromFormat,
     PyUnicode_FromString
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_New,
+    PyStructSequence_SetItem
 }
 import from jaclang.runtime.python.capi {
     boundary_failure,

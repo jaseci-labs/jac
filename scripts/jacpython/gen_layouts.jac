@@ -58,6 +58,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/object.h",
          "Include/cpython/longintrepr.h",
          "Include/cpython/tupleobject.h",
+         "Include/cpython/listobject.h",
          "Include/cpython/initconfig.h",
          "Include/pycapsule.h",
          "Include/descrobject.h",
@@ -65,7 +66,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/sliceobject.h",
          "Include/internal/pycore_range.h",
          "Include/internal/pycore_freelist_state.h",
-         "Include/datetime.h"
+         "Include/datetime.h",
+         "Include/pybuffer.h",
+         "Include/cpython/floatobject.h",
+         "Include/cpython/complexobject.h",
+         "Include/cpython/classobject.h",
+         "Include/structseq.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -74,7 +80,13 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Objects/capsule.c",
          "Objects/iterobject.c",
          "Objects/enumobject.c",
-         "Objects/rangeobject.c"
+         "Objects/rangeobject.c",
+         "Objects/picklebufobject.c",
+         "Objects/interpolationobject.c",
+         "Objects/templateobject.c",
+         "Objects/unionobject.c",
+         "Objects/genericaliasobject.c",
+         "Objects/fileobject.c"
      ],
      # Headers the constant probe and layouts_check.c include after Python.h
      # (datetime.h is not part of it).
@@ -84,7 +96,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "datetime.h",
          "internal/pycore_abstract.h",
          "internal/pycore_freelist_state.h",
-         "internal/pycore_range.h"
+         "internal/pycore_range.h",
+         "internal/pycore_typeobject.h",
+         "internal/pycore_interp_structs.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -97,6 +111,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyLongValue", "_PyLongValue"),
          ("PyLongObject", "struct _longobject"),
          ("PyTupleObject", "PyTupleObject"),
+         ("PyListObject", "PyListObject"),
          ("PyStatus", "PyStatus"),
          ("PyAsyncMethods", "PyAsyncMethods"),
          ("PySequenceMethods", "PySequenceMethods"),
@@ -123,7 +138,26 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyDateTime_Date", "PyDateTime_Date"),
          ("_PyDateTime_BaseDateTime", "_PyDateTime_BaseDateTime"),
          ("PyDateTime_DateTime", "PyDateTime_DateTime"),
-         ("PyDateTime_CAPI", "PyDateTime_CAPI")
+         ("PyDateTime_CAPI", "PyDateTime_CAPI"),
+         ("Py_buffer", "Py_buffer"),
+         ("PyBufferProcs", "PyBufferProcs"),
+         ("Py_complex", "Py_complex"),
+         ("PyFloatObject", "PyFloatObject"),
+         ("PyComplexObject", "PyComplexObject"),
+         ("PyMethodObject", "PyMethodObject"),
+         ("PyInstanceMethodObject", "PyInstanceMethodObject"),
+         ("PyType_Slot", "PyType_Slot"),
+         ("PyType_Spec", "PyType_Spec"),
+         ("PyStructSequence_Field", "PyStructSequence_Field"),
+         ("PyStructSequence_Desc", "PyStructSequence_Desc"),
+         ("PyPickleBufferObject", "PyPickleBufferObject"),
+         ("interpolationobject", "interpolationobject"),
+         ("templateiterobject", "templateiterobject"),
+         ("templateobject", "templateobject"),
+         ("unionobject", "unionobject"),
+         ("gaobject", "gaobject"),
+         ("gaiterobject", "gaiterobject"),
+         ("PyStdPrinter_Object", "PyStdPrinter_Object")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -134,8 +168,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_STATIC_IMMORTAL_INITIAL_REFCNT",
              "i64"
          ),
+         ("_Py_IMMORTAL_INITIAL_REFCNT", "_Py_IMMORTAL_INITIAL_REFCNT", "i64"),
          ("Py_TPFLAGS_DEFAULT", "Py_TPFLAGS_DEFAULT", "u64"),
          ("Py_TPFLAGS_TUPLE_SUBCLASS", "Py_TPFLAGS_TUPLE_SUBCLASS", "u64"),
+         ("Py_TPFLAGS_LIST_SUBCLASS", "Py_TPFLAGS_LIST_SUBCLASS", "u64"),
          ("Py_TPFLAGS_HAVE_GC", "Py_TPFLAGS_HAVE_GC", "u64"),
          ("Py_TPFLAGS_BASETYPE", "Py_TPFLAGS_BASETYPE", "u64"),
          ("Py_TPFLAGS_SEQUENCE", "Py_TPFLAGS_SEQUENCE", "u64"),
@@ -206,6 +242,106 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "offsetof(struct _Py_freelists, range_iters)",
              "i64"
          ),
+         (
+             "_Py_freelists_PYMETHODOBJECTS",
+             "offsetof(struct _Py_freelists, pymethodobjects)",
+             "i64"
+         ),
+         ("Py_pymethodobjects_MAXFREELIST", "Py_pymethodobjects_MAXFREELIST", "i64"),
+         # Type flags, member types and call and buffer constants of the
+         # second object wave.
+         ("Py_TPFLAGS_HAVE_VECTORCALL", "Py_TPFLAGS_HAVE_VECTORCALL", "u64"),
+         ("Py_TPFLAGS_HEAPTYPE", "Py_TPFLAGS_HEAPTYPE", "u64"),
+         ("Py_TPFLAGS_READY", "Py_TPFLAGS_READY", "u64"),
+         (
+             "Py_TPFLAGS_DISALLOW_INSTANTIATION",
+             "Py_TPFLAGS_DISALLOW_INSTANTIATION",
+             "u64"
+         ),
+         ("_Py_TPFLAGS_STATIC_BUILTIN", "_Py_TPFLAGS_STATIC_BUILTIN", "u64"),
+         ("_Py_TYPE_VERSION_COMPLEX", "_Py_TYPE_VERSION_COMPLEX", "u32"),
+         ("Py_T_DOUBLE", "Py_T_DOUBLE", "i32"),
+         ("Py_T_BOOL", "Py_T_BOOL", "i32"),
+         ("Py_tp_members", "Py_tp_members", "i32"),
+         ("PyBUF_FULL_RO", "PyBUF_FULL_RO", "i32"),
+         ("Py_DTSF_SIGN", "Py_DTSF_SIGN", "i32"),
+         ("Py_PRINT_RAW", "Py_PRINT_RAW", "i32"),
+         ("PyHASH_IMAG", "_PyHASH_IMAG", "u64"),
+         ("FVC_STR", "FVC_STR", "i32"),
+         ("FVC_REPR", "FVC_REPR", "i32"),
+         ("FVC_ASCII", "FVC_ASCII", "i32"),
+         ("PY_VECTORCALL_ARGUMENTS_OFFSET", "PY_VECTORCALL_ARGUMENTS_OFFSET", "u64"),
+         ("_Py_MEMORYVIEW_C", "_Py_MEMORYVIEW_C", "i32"),
+         ("_Py_MEMORYVIEW_FORTRAN", "_Py_MEMORYVIEW_FORTRAN", "i32"),
+         ("PyMemoryViewObject_VIEW", "offsetof(PyMemoryViewObject, view)", "i64"),
+         ("PyMemoryViewObject_FLAGS", "offsetof(PyMemoryViewObject, flags)", "i64"),
+         ("PyComplexObject_SIZE", "sizeof(PyComplexObject)", "i64"),
+         ("PyComplexObject_REAL", "offsetof(PyComplexObject, cval.real)", "i64"),
+         ("PyComplexObject_IMAG", "offsetof(PyComplexObject, cval.imag)", "i64"),
+         ("PyMethodObject_SIZE", "sizeof(PyMethodObject)", "i64"),
+         ("PyMethodObject_FUNC", "offsetof(PyMethodObject, im_func)", "i64"),
+         ("PyMethodObject_SELF", "offsetof(PyMethodObject, im_self)", "i64"),
+         (
+             "PyMethodObject_WEAKREFLIST",
+             "offsetof(PyMethodObject, im_weakreflist)",
+             "i64"
+         ),
+         ("PyMethodObject_VECTORCALL", "offsetof(PyMethodObject, vectorcall)", "i64"),
+         ("PyInstanceMethodObject_SIZE", "sizeof(PyInstanceMethodObject)", "i64"),
+         (
+             "PyInstanceMethodObject_FUNC",
+             "offsetof(PyInstanceMethodObject, func)",
+             "i64"
+         ),
+         ("PyStructSequence_SIZE", "sizeof(PyStructSequence)", "i64"),
+         ("PyPickleBufferObject_SIZE", "sizeof(PyPickleBufferObject)", "i64"),
+         ("PyPickleBufferObject_VIEW", "offsetof(PyPickleBufferObject, view)", "i64"),
+         ("Py_buffer_LEN", "offsetof(Py_buffer, len)", "i64"),
+         ("Py_buffer_ITEMSIZE", "offsetof(Py_buffer, itemsize)", "i64"),
+         ("PY_MEMBER_DEF_SIZE", "sizeof(PyMemberDef)", "i64"),
+         ("PY_TYPE_SLOT_SIZE", "sizeof(PyType_Slot)", "i64"),
+         ("PY_TYPE_SPEC_SIZE", "sizeof(PyType_Spec)", "i64"),
+         (
+             "PyPickleBufferObject_WEAKREFLIST",
+             "offsetof(PyPickleBufferObject, weakreflist)",
+             "i64"
+         ),
+         ("interpolationobject_SIZE", "sizeof(interpolationobject)", "i64"),
+         ("interpolationobject_VALUE", "offsetof(interpolationobject, value)", "i64"),
+         (
+             "interpolationobject_EXPRESSION",
+             "offsetof(interpolationobject, expression)",
+             "i64"
+         ),
+         (
+             "interpolationobject_CONVERSION",
+             "offsetof(interpolationobject, conversion)",
+             "i64"
+         ),
+         (
+             "interpolationobject_FORMAT_SPEC",
+             "offsetof(interpolationobject, format_spec)",
+             "i64"
+         ),
+         ("templateiterobject_SIZE", "sizeof(templateiterobject)", "i64"),
+         ("templateobject_SIZE", "sizeof(templateobject)", "i64"),
+         ("templateobject_STRINGS", "offsetof(templateobject, strings)", "i64"),
+         (
+             "templateobject_INTERPOLATIONS",
+             "offsetof(templateobject, interpolations)",
+             "i64"
+         ),
+         ("unionobject_SIZE", "sizeof(unionobject)", "i64"),
+         ("unionobject_ARGS", "offsetof(unionobject, args)", "i64"),
+         ("unionobject_WEAKREFLIST", "offsetof(unionobject, weakreflist)", "i64"),
+         ("gaobject_SIZE", "sizeof(gaobject)", "i64"),
+         ("gaobject_ORIGIN", "offsetof(gaobject, origin)", "i64"),
+         ("gaobject_ARGS", "offsetof(gaobject, args)", "i64"),
+         ("gaobject_STARRED", "offsetof(gaobject, starred)", "i64"),
+         ("gaobject_WEAKREFLIST", "offsetof(gaobject, weakreflist)", "i64"),
+         ("gaobject_VECTORCALL", "offsetof(gaobject, vectorcall)", "i64"),
+         ("gaiterobject_SIZE", "sizeof(gaiterobject)", "i64"),
+         ("PyStdPrinter_Object_SIZE", "sizeof(PyStdPrinter_Object)", "i64"),
          ("Py_slices_MAXFREELIST", "Py_slices_MAXFREELIST", "i64"),
          ("Py_ranges_MAXFREELIST", "Py_ranges_MAXFREELIST", "i64"),
          ("Py_range_iters_MAXFREELIST", "Py_range_iters_MAXFREELIST", "i64"),
@@ -309,9 +445,22 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "intptr_t": ("i64", True),
          "double": ("f64", True),
          "float": ("f32", True),
+         # C's bool: one unsigned byte, which the asserts hold to kind 4.
+         "bool": ("u8", False),
+         "_Bool": ("u8", False),
          # An enum with a negative enumerator is an int.
          "PySendResult": ("i32", True)
      },
+     # Jac keywords a C member name may collide with.
+     JAC_KEYWORDS: set[str] = set(
+         (
+             "obj node edge walker has can def glob impl sem test entry exit spawn "
+             + "visit disengage report ignore by to with in is not and or if else elif "
+             + "for while return yield break continue try except finally raise assert "
+             + "del import from as lambda async await class enum include skip match "
+             + "case switch default flow wait priv pub protect static override abs kw let"
+         ).split()
+     ),
      SIZES: dict[str, int] = {
          "i8": 1,
          "u8": 1,
@@ -342,7 +491,8 @@ obj Field {
         size: int,
         signed: (bool | None) = None,
         array: bool = False,
-        member: str = "";
+        member: str = "",
+        boolean: bool = False;
 
     def designator -> str {
         return self.member or self.name;
@@ -799,15 +949,23 @@ def require(name: str) -> None {
         # `name` for element 0 and `name_<i>` for element i, so the members
         # after it keep their offsets.
         for index in range(max(count, 1)) {
+            # A C member named after a Jac keyword (`obj`) takes a trailing
+            # underscore in Jac, as cpython_api.jac's records do; the asserts
+            # keep the C name.
+            jac_member = f"{member}_" if member in JAC_KEYWORDS else member;
             layout.fields.append(
                 Field(
-                    name=member if index == 0 else f"{member}_{index}",
+                    name=jac_member if index == 0 else f"{jac_member}_{index}",
                     jac=jac,
                     offset=offset,
                     size=size,
                     signed=signed,
                     array=count == 1,
-                    member=f"{member}[{index}]" if count > 1 else ""
+                    member=f"{member}[{index}]"
+                        if count > 1
+                        else (member if jac_member != member else ""),
+                    boolean=scalar is not None
+                        and " ".join(member_type.split()) in ("bool", "_Bool")
                 )
             );
             offset += size;
@@ -826,12 +984,47 @@ def capi_records -> set[str] {
     return set(re.findall(r"\bobj (\w+)\s*[;{]", CAPI.read_text()));
 }
 
+# A layout cpython_api.jac already declares as a C-layout record (Py_buffer,
+# Py_complex) is imported from it, so an object layout embedding it uses the
+# same type the C API functions take. Its fields must match the header's
+# layout position by position (the record may rename a field C names after a
+# Jac keyword); the asserts check the header's side.
+def check_capi_record(layout: Layout) -> None {
+    body = re.search(
+        r"\bobj " + layout.name + r"\s*\{\s*has\s+(.*?);\s*\}", CAPI.read_text(), re.S
+    );
+    if body is None {
+        sys.exit(
+            f"gen_layouts: {layout.name} is not a C-layout record of cpython_api.jac"
+        );
+    }
+    declared = [
+        re.sub(r"\s*=.*$", "", piece.split(":", 1)[1]).strip()
+        for piece in re.split(r",\s*(?=\w+\s*:)", body.group(1))
+    ];
+    expected = [f.jac for f in layout.fields];
+    if [" ".join(t.split()) for t in declared] != expected {
+        sys.exit(
+            f"gen_layouts: cpython_api.jac's {layout.name} fields {declared} differ from the header's {expected}"
+        );
+    }
+}
+
 def c_type_name(layout: Layout) -> str {
     return layout.ctype;
 }
 
 def render_jac(values: dict[str, int]) -> str {
-    from_capi = sorted({"PyObject"} | (set(opaque) & capi_records()));
+    records = capi_records();
+    shared = [
+        name
+        for name in order
+        if name in records
+    ];
+    for name in shared {
+        check_capi_record(emitted[name]);
+    }
+    from_capi = sorted({"PyObject"} | (set(opaque) & records) | set(shared));
     local = sorted(set(opaque) - set(from_capi));
     lines = [
         '"""CPython object layouts for native Jac object-model ports.',
@@ -862,13 +1055,21 @@ def render_jac(values: dict[str, int]) -> str {
     ];
     lines += [f"    obj {name};" for name in local];
     for name in order {
+        if name in shared {
+            continue;
+        }
         layout = emitted[name];
         fields = ", ".join(f"{f.name}: {f.jac}" for f in layout.fields);
         lines.append(f"    obj {name} {{ has {fields}; }}");
     }
     lines += ["}", ""];
     for (name, _, jac) in CONSTANTS {
-        lines.append(f"glob {name}: Final[{jac}] = {values[name]};");
+        # The probe reads every value as a signed long long.
+        value = values[name];
+        if jac.startswith("u") and value < 0 {
+            value += 1 << 64;
+        }
+        lines.append(f"glob {name}: Final[{jac}] = {value};");
     }
     return "\n".join(lines) + "\n";
 }
@@ -941,9 +1142,9 @@ def render_check(values: dict[str, int]) -> str {
                 f"FIELD({ctype}, {field.designator()}, {field.offset}, {field.size});"
             );
             lines.append(
-                f"KIND({ctype}, {field.designator()}{'[0]' if field.array else ''}, {type_class(
-                    field.jac
-                )});"
+                f"KIND({ctype}, {field.designator()}{'[0]' if field.array else ''}, {4
+                    if field.boolean
+                    else type_class(field.jac)});"
             );
             if field.signed is not None {
                 lines.append(

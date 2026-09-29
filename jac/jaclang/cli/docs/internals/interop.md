@@ -403,6 +403,17 @@ rule both backends lower.
   the call when the Jac slot differs, e.g. `bool`). The borrow's lifetime is
   the call, so the ownership checker needs no new rule, and a clib call
   never consumes its arguments.
+- **`&mut x` for a `ptr[T]` parameter.** Passed positionally to a `ptr[T]`
+  parameter of a C-ABI function (a clib declaration, or a function a C
+  block defines in this module or another), `&mut x` (or `&x`) lends x's
+  address for the call, as C's `&x` does, when x is a local or field of
+  exactly `T` (a C scalar other than `bool`, a C pointer or a foreign
+  struct): `PySlice_Unpack(item, &mut start, &mut stop, &mut step)`. The
+  native backend passes the variable's slot or the struct's storage; the
+  Python backend passes a C cell's address and reads it back, or the
+  foreign struct's own storage. Anywhere else the argument is an ordinary
+  mismatch (`E1053`). `c_lent_arg_elem` in `compiler/c_interop.jac` is the
+  rule the checker and both backends share.
 - **`ptr[T]`** lowers to an `i64` in Jac values (locals, fields, container
   elements, foreign struct fields), so no reference-count or cycle-collector
   path ever sees it; the marshaller converts at the call boundary.

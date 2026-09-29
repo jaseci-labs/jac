@@ -45,12 +45,12 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_AsSsize_t,
     PyNumber_Index,
     PyObject,
-    PyObject_AsFileDescriptor,
     PyObject_IsTrue,
     PyType_GetSlot,
     PyArg_Parse,
     PyUnicode_AsUTF8AndSize
 }
+import from jaclang.runtime.python.object_model.file { PyObject_AsFileDescriptor }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.type {
     TypeSlot,

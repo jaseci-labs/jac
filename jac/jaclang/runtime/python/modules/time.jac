@@ -48,9 +48,6 @@ import from jaclang.runtime.python.cpython_api {
     PyModule_AddObjectRef,
     PyObject,
     PyObject_Call,
-    PyStructSequence_GetItem,
-    PyStructSequence_New,
-    PyStructSequence_SetItem,
     PySys_AuditTuple,
     _PyTime_Add,
     _PyTime_AsLong,
@@ -86,6 +83,11 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicodeWriter_Finish,
     PyUnicodeWriter_WriteStr,
     PyUnicodeWriter_WriteSubstring
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_GetItem,
+    PyStructSequence_New,
+    PyStructSequence_SetItem
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi {

@@ -58,7 +58,8 @@ glob OPAQUE: list[str] = [
          "PyBytesWriter",
          "PyMutex",
          "_Py_freelists",
-         "PyLongWriter"
+         "PyLongWriter",
+         "_PyUnicodeWriter"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -210,6 +211,7 @@ glob OPAQUE: list[str] = [
      POINTER_TYPEDEFS: dict[str, str] = {
          "PyCapsule_Destructor": "ptr",
          "PyThread_type_lock": "ptr",
+         "vectorcallfunc": "ptr",
          "Py_tracefunc": "ptr"
      },
      # A `const char *` parameter is a NUL-terminated C string (Jac `str`) unless
@@ -234,6 +236,8 @@ glob OPAQUE: list[str] = [
      # data), not a Jac value; they take `ptr`.
      ADDRESS_PARAMETERS: dict[str, set[int]] = {
          "PyArg_ParseTupleAndKeywords": {3},
+         "PyOS_string_to_double": {0, 1},
+         "_Py_string_to_number_with_underscores": {0, 5},
          "_Py_strhex": {0},
          "_PyBytes_Find": {0, 2},
          "_PyBytes_ReverseFind": {0, 2},
@@ -264,6 +268,7 @@ glob OPAQUE: list[str] = [
      NULLABLE_PARAMETERS: dict[str, set[int]] = {
          "PyBytes_DecodeEscape": {2, 4},
          "PyCapsule_New": {1},
+         "PyOS_double_to_string": {4},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
          "PyErr_WarnExplicit": {4},
@@ -348,7 +353,7 @@ glob OPAQUE: list[str] = [
          "signed"
      ),
      API_FUNC: str = r"PyAPI_FUNC\(((?:[^()]|\([^()]*\))*)\)\s*([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)",
-     INTERNAL_EXTERN: str = r"^[ \t]*extern[ \t]+((?:const[ \t]+)?[A-Za-z_]\w*(?:[ \t]+\w+)*[ \t\*]*?)[ \t]*\**?\b([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)\s*;",
+     INTERNAL_EXTERN: str = r"^[ \t]*extern[ \t]+((?:const[ \t]+)?[A-Za-z_]\w*(?:[ \t]+\w+)*[ \t\*]*?[ \t]*\**?)\b([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)\s*;",
      API_DATA: str = r"PyAPI_DATA\(([^()]*)\)\s*([A-Za-z_]\w*)\s*;",
      # A function the headers export with PyAPI_DATA (pycore_long.h's
      # `PyAPI_DATA(double) _PyLong_Frexp(PyLongObject *a, int64_t *e);`).
@@ -370,7 +375,26 @@ def parameters(raw: str) -> list[tuple[str, str]] {
     if not raw or raw == "void" {
         return params;
     }
-    for piece in raw.split(",") {
+    # Split at the top-level commas: a function-pointer parameter's own
+    # parameter list stays one piece.
+    pieces: list[str] = [];
+    depth = 0;
+    current = "";
+    for character in raw {
+        if character == "," and depth == 0 {
+            pieces.append(current);
+            current = "";
+            continue;
+        }
+        if character == "(" {
+            depth += 1;
+        } elif character == ")" {
+            depth -= 1;
+        }
+        current += character;
+    }
+    pieces.append(current);
+    for piece in pieces {
         piece = piece.strip();
         split = re.match(r"^(.*?[\s\*])([A-Za-z_]\w*)$", piece);
         if split is not None
@@ -446,9 +470,12 @@ def data_declarations(texts: dict[str, str]) -> dict[str, str] {
 # A data symbol's Jac type: an object pointer is read in place; a C object
 # (a static type or singleton) is the opaque PyObject, used by address.
 def data_type(ctype: str) -> str | None {
-    base = ctype.replace("const ", "").strip();
+    base = ctype.replace("const ", "").replace(" const", "").strip();
     if base in ("PyObject *", "PyTypeObject *") {
         return "ptr[PyObject]";
+    }
+    if normal(base) == "char *" {
+        return "ptr[u8]";
     }
     if base in OBJECT_LAYOUTS or base == "PyObject" {
         return "PyObject";
@@ -457,6 +484,10 @@ def data_type(ctype: str) -> str | None {
 }
 
 def jac_type(function: str, ctype: str, index: int | None) -> str | None {
+    # A raw address, whatever the C type (a buffer position, a callback).
+    if index is not None and index in ADDRESS_PARAMETERS.get(function, set()) {
+        return "ptr";
+    }
     # A vector of object arguments (`PyObject *const *args` of the vectorcall
     # API) is read, not written.
     if index is not None
@@ -464,6 +495,9 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         return "ptr[ptr[PyObject]]";
     }
     base = ctype.replace("const ", "").replace(" const", "").strip();
+    if normal(base) in ("void * *", "void **") and index is None {
+        return "ptr[ptr]";
+    }
     if index is not None and index in TYPED_OUT_PARAMETERS.get(function, {}) {
         return TYPED_OUT_PARAMETERS[function][index];
     }
@@ -489,9 +523,6 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         return POINTER_TYPEDEFS[base];
     }
     if index is not None and base.endswith("*") {
-        if index in ADDRESS_PARAMETERS.get(function, set()) {
-            return "ptr";
-        }
         if index in OBJECT_OUT_PARAMETERS.get(function, set()) {
             return "&mut ptr[PyObject]";
         }

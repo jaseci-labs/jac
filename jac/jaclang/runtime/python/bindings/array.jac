@@ -17,7 +17,6 @@ import from jaclang.runtime.python.cpython_api {
     PySys_AuditTuple,
     PyType_GetSlot,
     PyUnicode_FromOrdinal,
-    Py_GenericAlias,
     Py_NewRef,
     Py_None,
     Py_NotImplemented,
@@ -33,6 +32,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_slice_adjust,
     jacpy_slice_unpack
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

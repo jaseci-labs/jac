@@ -21,7 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_GetSlice,
     PyTuple_New,
     PyTuple_Size,
-    Py_GenericAlias,
     Py_NewRef,
     Py_None,
     Py_NotImplemented,
@@ -32,6 +31,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_item,
     jacpy_type_check
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

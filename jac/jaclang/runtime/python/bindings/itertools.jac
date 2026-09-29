@@ -1,7 +1,8 @@
 """The itertools module: its types, built from itertoolsmodule.c's docs and
 method tables, over the construction modules/itertools.jac keeps."""
 
-import from jaclang.runtime.python.cpython_api { PyObject, Py_GenericAlias }
+import from jaclang.runtime.python.cpython_api { PyObject }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,

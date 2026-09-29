@@ -71,8 +71,13 @@ its static type objects and singletons as C data under their C names
 files are `boolobject.c`, `cellobject.c`, `namespaceobject.c`, `capsule.c`,
 `iterobject.c`, `enumobject.c`, `sliceobject.c` and `rangeobject.c`
 (`bool.jac`, `cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
-`enumerate.jac`, `slice.jac`, `range.jac`); `header.jac` holds the object
-header's inline operations they share.
+`enumerate.jac`, `slice.jac`, `range.jac`), then `complexobject.c`,
+`classobject.c`, `structseq.c`, `genericaliasobject.c`, `unionobject.c`,
+`picklebufobject.c`, `interpolationobject.c`, `templateobject.c` and
+`fileobject.c` (`complex.jac`, `method.jac`, `structseq.jac`,
+`genericalias.jac`, `union.jac`, `picklebuffer.jac`, `interpolation.jac`,
+`template.jac`, `file.jac`); `header.jac` holds the object header's inline
+operations they share, reference counting included.
 
 `modules/` contains the native standard-library algorithms. `bindings/` implements
 every module adapter in native Jac, including the `PyInit_*` entry points,
