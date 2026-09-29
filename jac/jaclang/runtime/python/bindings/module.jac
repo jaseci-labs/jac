@@ -62,6 +62,10 @@ import from c {
     obj VisitProc {
         has call: Callable[[ptr[PyObject], ptr], i32] = 0;
     }
+    # The visitproc a traversal is calling, in C storage so a visit allocates
+    # nothing. Each call reads it before the visitor runs, so a traversal the
+    # visitor starts cannot change the callee of the one in progress.
+    glob:priv visit_slot: VisitProc = VisitProc();
 }
 
 """Py_VISIT: pass one reference to a tp_traverse visitor (a C visitproc),
@@ -70,9 +74,9 @@ def visit_reference(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     if value == 0 {
         return i32(0);
     }
-    proc = VisitProc();
-    proc.call = int(visitor);
-    return proc.call(value, context);
+    slot = addressof(visit_slot);
+    slot.view(1)[0].call = int(visitor);
+    return slot.view(1)[0].call(value, context);
 }
 
 def traverse_state(module: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {

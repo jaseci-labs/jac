@@ -10,7 +10,10 @@ Python/getargs.c and Tools/clinic so upstream tests see the same text.
 import from jaclang.runtime.python.cpython_api {
     jacpy_is_float,
     jacpy_is_unicode,
+    jacpy_unicode_size,
+    PyUnicode_ReadChar,
     jacpy_release,
+    jacpy_unicode_size,
     jacpy_unsigned_converter,
     NULL,
     Py_GetConstantBorrowed,
@@ -42,7 +45,9 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyObject_AsFileDescriptor,
     PyObject_IsTrue,
-    PyUnicode_AsUTF8AndSize
+    PyArg_Parse,
+    PyUnicode_AsUTF8AndSize,
+    PyUnicode_ReadChar
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.type {
@@ -69,8 +74,30 @@ def bad_argument(
     shown = type_name(value, True)
         if qualified
         else ("None" if value == Py_None else type_name(value));
-    object_error(PyExc_TypeError, f"{fname}() {label} must be {expected}, not {shown}");
+    # getargs' seterror() omits the "name() " of a format without one.
+    caller = f"{fname}() " if fname else "";
+    object_error(PyExc_TypeError, f"{caller}{label} must be {expected}, not {shown}");
     raise boundary_failure();
+}
+
+# One unicode character as its code point: clinic's int(accept={str})
+# (`clinic`, whose length error reads "name(): ...") or getargs' "C" unit.
+def convert_unicode_char(
+    value: ptr[PyObject], fname: str, label: str, clinic: bool = True
+) -> u32 {
+    if jacpy_is_unicode(value) == 0 {
+        bad_argument(fname, label, "a unicode character", value);
+    }
+    size = jacpy_unicode_size(value);
+    if size != 1 {
+        caller = f"{fname}():" if clinic else f"{fname}()";
+        object_error(
+            PyExc_TypeError,
+            f"{caller} {label} must be a unicode character, not a string of length {size}"
+        );
+        raise boundary_failure();
+    }
+    return u32(PyUnicode_ReadChar(value, 0));
 }
 
 def failed -> bool {
@@ -279,12 +306,35 @@ def convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObjec
 
 def convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
     convert_unicode(value, fname, label);
+    # The UTF-8 encoding clinic reads: a lone surrogate is a UnicodeEncodeError.
+    size: i64 = 0;
+    if PyUnicode_AsUTF8AndSize(value, &mut size).is_null() {
+        raise boundary_failure();
+    }
     text = text_value(value);
     if "\x00" in text {
         object_error(PyExc_ValueError, "embedded null character");
         raise boundary_failure();
     }
     return text;
+}
+
+# A C string and its size, as the "s#" unit passes them to an _impl function.
+obj SizedText {
+    has data: ptr[u8] = ptr[u8](),
+        size: i64 = 0;
+}
+
+# str(accept={str, robuffer}, zeroes=True), the "s#" unit of a METH_O
+# function: a str's UTF-8 or a read-only buffer's bytes, with embedded NULs.
+# Clinic parses it with PyArg_Parse(arg, "s#:<name>"), so getargs.c does here.
+def convert_sized_str(value: ptr[PyObject], fname: str, label: str) -> SizedText {
+    data = ptr[u8]();
+    size: i64 = 0;
+    if PyArg_Parse(value, f"s#:{fname}", &mut data, &mut size) == 0 {
+        raise boundary_failure();
+    }
+    return SizedText(data=data, size=size);
 }
 
 # str(accept={str, NoneType}): None is passed through as the absent value.

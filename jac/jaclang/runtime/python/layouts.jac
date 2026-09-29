@@ -21,7 +21,7 @@ Pointers to records no port reads yet are opaque.
 import from jaclang.runtime.python.cpython_api { PyMemberDef, PyMethodDef, PyObject }
 
 import from c {
-    obj PyAsyncMethods;  obj PyBufferProcs;  obj PyMappingMethods;  obj PySequenceMethods;  obj _object {
+    obj PyBufferProcs;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -154,12 +154,98 @@ import from c {
             func: ptr[u8],
             err_msg: ptr[u8],
             exitcode: i32;
+    }  obj PyAsyncMethods {
+        has am_await: Callable[[ptr[PyObject]], ptr[PyObject]],
+            am_aiter: Callable[[ptr[PyObject]], ptr[PyObject]],
+            am_anext: Callable[[ptr[PyObject]], ptr[PyObject]],
+            am_send: Callable[[ptr[PyObject], ptr[PyObject], ptr[ptr[PyObject]]], i32];
+    }  obj PySequenceMethods {
+        has sq_length: Callable[[ptr[PyObject]], i64],
+            sq_concat: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            sq_repeat: Callable[[ptr[PyObject], i64], ptr[PyObject]],
+            sq_item: Callable[[ptr[PyObject], i64], ptr[PyObject]],
+            was_sq_slice: ptr,
+            sq_ass_item: Callable[[ptr[PyObject], i64, ptr[PyObject]], i32],
+            was_sq_ass_slice: ptr,
+            sq_contains: Callable[[ptr[PyObject], ptr[PyObject]], i32],
+            sq_inplace_concat: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            sq_inplace_repeat: Callable[[ptr[PyObject], i64], ptr[PyObject]];
+    }  obj PyMappingMethods {
+        has mp_length: Callable[[ptr[PyObject]], i64],
+            mp_subscript: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            mp_ass_subscript:
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32];
     }  obj PyGetSetDef {
         has name: ptr[u8],
             get: Callable[[ptr[PyObject], ptr], ptr[PyObject]],
             set: Callable[[ptr[PyObject], ptr[PyObject], ptr], i32],
             doc: ptr[u8],
             closure: ptr;
+    }  obj PyCellObject {
+        has ob_base: _object,
+            ob_ref: ptr[PyObject];
+    }  obj PySliceObject {
+        has ob_base: _object,
+            start: ptr[PyObject],
+            stop: ptr[PyObject],
+            step: ptr[PyObject];
+    }  obj _PyRangeIterObject {
+        has ob_base: _object,
+            start: i64,
+            step: i64,
+            len: i64;
+    }  obj _Py_freelist {
+        has freelist: ptr,
+            size: i64;
+    }  obj _PyNamespaceObject {
+        has ob_base: _object,
+            ns_dict: ptr[PyObject];
+    }  obj PyCapsule {
+        has ob_base: _object,
+            pointer: ptr,
+            name: ptr[u8],
+            context: ptr,
+            destructor: Callable[[ptr[PyObject]], None],
+            traverse_func:
+                Callable[
+                    [ptr[PyObject], Callable[[ptr[PyObject], ptr], i32], ptr],
+                    i32
+                ],
+            clear_func: Callable[[ptr[PyObject]], i32];
+    }  obj seqiterobject {
+        has ob_base: _object,
+            it_index: i64,
+            it_seq: ptr[PyObject];
+    }  obj calliterobject {
+        has ob_base: _object,
+            it_callable: ptr[PyObject],
+            it_sentinel: ptr[PyObject];
+    }  obj anextawaitableobject {
+        has ob_base: _object,
+            wrapped: ptr[PyObject],
+            default_value: ptr[PyObject];
+    }  obj enumobject {
+        has ob_base: _object,
+            en_index: i64,
+            en_sit: ptr[PyObject],
+            en_result: ptr[PyObject],
+            en_longindex: ptr[PyObject],
+            one: ptr[PyObject];
+    }  obj reversedobject {
+        has ob_base: _object,
+            index: i64,
+            seq: ptr[PyObject];
+    }  obj rangeobject {
+        has ob_base: _object,
+            start: ptr[PyObject],
+            stop: ptr[PyObject],
+            step: ptr[PyObject],
+            length: ptr[PyObject];
+    }  obj longrangeiterobject {
+        has ob_base: _object,
+            start: ptr[PyObject],
+            step: ptr[PyObject],
+            len: ptr[PyObject];
     }  obj PyDateTime_Delta {
         has ob_base: _object,
             hashcode: i64,
@@ -294,6 +380,9 @@ import from c {
 glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      Py_TPFLAGS_DEFAULT: Final[u64] = 0,
      Py_TPFLAGS_TUPLE_SUBCLASS: Final[u64] = 67108864,
+     Py_TPFLAGS_HAVE_GC: Final[u64] = 16384,
+     Py_TPFLAGS_BASETYPE: Final[u64] = 1024,
+     Py_TPFLAGS_SEQUENCE: Final[u64] = 32,
      _PyLong_FALSE_TAG: Final[u64] = 1,
      _PyLong_TRUE_TAG: Final[u64] = 8,
      PyLong_DIGITS_OFFSET: Final[i64] = 24,
@@ -303,8 +392,6 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      PY_BUFFER_SIZE: Final[u64] = 80,
      PY_OBJECT_SIZE: Final[i64] = 16,
      PY_TUPLE_OBJECT_SIZE: Final[i64] = 40,
-     Py_TPFLAGS_BASETYPE: Final[u64] = 1024,
-     Py_TPFLAGS_HAVE_GC: Final[u64] = 16384,
      Py_TPFLAGS_IMMUTABLETYPE: Final[u64] = 256,
      Py_TPFLAGS_DISALLOW_INSTANTIATION: Final[u64] = 128,
      METH_VARARGS: Final[i32] = 1,
@@ -312,10 +399,47 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      METH_NOARGS: Final[i32] = 4,
      METH_O: Final[i32] = 8,
      METH_CLASS: Final[i32] = 16,
+     Py_T_OBJECT_EX: Final[i32] = 16,
+     _Py_T_OBJECT: Final[i32] = 6,
+     Py_READONLY: Final[i32] = 1,
+     Py_LT: Final[i32] = 0,
+     Py_LE: Final[i32] = 1,
+     Py_EQ: Final[i32] = 2,
+     Py_NE: Final[i32] = 3,
+     Py_GT: Final[i32] = 4,
+     Py_GE: Final[i32] = 5,
+     PY_ITERSEARCH_COUNT: Final[i32] = 1,
+     PY_ITERSEARCH_INDEX: Final[i32] = 2,
+     PY_ITERSEARCH_CONTAINS: Final[i32] = 3,
+     PyTupleObject_ITEMS: Final[i64] = 32,
+     PyCellObject_SIZE: Final[i64] = 24,
+     PySliceObject_SIZE: Final[i64] = 40,
+     PySliceObject_START: Final[i64] = 16,
+     PySliceObject_STOP: Final[i64] = 24,
+     PySliceObject_STEP: Final[i64] = 32,
+     _PyRangeIterObject_SIZE: Final[i64] = 40,
+     _PyNamespaceObject_SIZE: Final[i64] = 24,
+     _PyNamespaceObject_NS_DICT: Final[i64] = 16,
+     PyCapsule_SIZE: Final[i64] = 64,
+     seqiterobject_SIZE: Final[i64] = 32,
+     calliterobject_SIZE: Final[i64] = 32,
+     anextawaitableobject_SIZE: Final[i64] = 32,
+     enumobject_SIZE: Final[i64] = 56,
+     reversedobject_SIZE: Final[i64] = 32,
+     rangeobject_SIZE: Final[i64] = 48,
+     rangeobject_START: Final[i64] = 16,
+     rangeobject_STOP: Final[i64] = 24,
+     rangeobject_STEP: Final[i64] = 32,
+     longrangeiterobject_SIZE: Final[i64] = 40,
+     _Py_freelists_SLICES: Final[i64] = 432,
+     _Py_freelists_RANGES: Final[i64] = 448,
+     _Py_freelists_RANGE_ITERS: Final[i64] = 464,
+     Py_slices_MAXFREELIST: Final[i64] = 1,
+     Py_ranges_MAXFREELIST: Final[i64] = 6,
+     Py_range_iters_MAXFREELIST: Final[i64] = 6,
      METH_STATIC: Final[i32] = 32,
      METH_FASTCALL: Final[i32] = 128,
      Py_T_INT: Final[i32] = 1,
-     Py_READONLY: Final[i32] = 1,
      Py_tp_dealloc: Final[i32] = 52,
      Py_tp_doc: Final[i32] = 56,
      Py_tp_getset: Final[i32] = 73,

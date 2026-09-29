@@ -18,7 +18,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_TYPE,
     PyBytes_AsString,
-    PyCapsule_Import,
     PyDict_GetItemRef,
     PyDict_New,
     PyDict_SetDefaultRef,
@@ -66,6 +65,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_release,
     jacpy_type_check
 }
+import from jaclang.runtime.python.object_model.capsule { PyCapsule_Import }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.layouts { PyDateTime_CAPI, PyDateTime_DateTime }
 import from jaclang.runtime.python.bindings.state { NativeState }
@@ -1832,7 +1832,7 @@ def:priv new_weak_cache -> ptr[PyObject] {
 
 # PyDateTime_IMPORT: the datetime C API capsule, NULL with the exception set.
 def datetime_import -> ptr[PyDateTime_CAPI] {
-    return ptr[PyDateTime_CAPI](PyCapsule_Import("datetime.datetime_CAPI", 0));
+    return ptr[PyDateTime_CAPI](PyCapsule_Import(ptr[u8]("datetime.datetime_CAPI"), 0));
 }
 
 # The rest of zoneinfomodule_exec() once the ZoneInfo type exists: the

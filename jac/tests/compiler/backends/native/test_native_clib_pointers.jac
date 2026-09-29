@@ -457,6 +457,74 @@ with entry {
     assert "final 17 4 3.0 1099511627778" in out.splitlines() , out;
 }
 
+test "a bytes literal lays out a C integer array's little-endian elements" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    glob bytes_u8: list[u8] = b"\\x01\\xff" b"A",
+         bytes_u16: list[u16] = b"\\x34\\x12\\xff\\xff",
+         bytes_i32: list[i32] = b"\\xfe\\xff\\xff\\xff\\x00\\x00\\x00\\x01";
+}
+with entry {
+    small = addressof(bytes_u8).view(3);
+    wide = addressof(bytes_u16).view(2);
+    signed = addressof(bytes_i32).view(2);
+    print("bytes", small[0], small[1], small[2], wide[0], wide[1], signed[0], signed[1]);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code));
+    }
+    assert "bytes 1 255 65 4660 65535 -2 16777216" in out.splitlines() , out;
+}
+
+test "a bytes literal initializes only a sized integer array of whole elements" {
+    code = DECLS
+        + '''
+import from "CLIB_POINTERS_LIBRARY" {
+    glob odd_u16: list[u16] = b"\\x01\\x02\\x03",
+         reals: list[f64] = b"\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00";
+}
+''';
+    assert checker_codes(code) == ["E1155", "E1155"];
+}
+
+test "a Jac function C calls runs outside the caller's open region" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr[CpVec3];
+    }
+    def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;
+    glob kept_recipe: CpRecipe = CpRecipe(count=i32(1), scale=remember);
+}
+obj Kept {
+    has value: i32;
+
+    def drop {}
+}
+def remember(v: i32) -> i32 {
+    item = Kept(value=v);
+    doubled = item.value * i32(2);
+    print("callback on heap", region_of(item) is None);
+    return doubled;
+}
+with entry {
+    r: own Region = Region();
+    in r {
+        opened = Kept(value=i32(1));
+        print("open", region_of(opened) is None);
+        print("run", cp_recipe_run(addressof(kept_recipe), i32(20)));
+    }
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code));
+    }
+    lines = out.splitlines();
+    assert "open False" in lines , out;
+    assert "callback on heap True" in lines , out;
+    assert "run 41" in lines , out;
+}
+
 test "only Final globs are C constants" {
     code = DECLS
         + '''
@@ -603,7 +671,7 @@ with entry {
 }
 ''';
 
-test "a C data pointer field takes a named function's address on every backend" {
+test "a C data pointer field takes a named function's address" {
     cc = shutil.which("cc") or shutil.which("gcc");
     if not cc {
         testskip("no C compiler available for the reference library");
@@ -621,10 +689,20 @@ test "a C data pointer field takes a named function's address on every backend" 
         assert built.returncode == 0 , built.stderr;
         program = Path(directory) / "fa.jac";
         program.write_text(FUNCTION_ADDRESS_PROGRAM.replace("FA_LIBRARY", library));
-        lines = assert_native_identity(str(program)).splitlines();
-    }
-    for expected in ["inc 42", "scale 15", "twice 42", "end True", "cast True"] {
-        assert expected in lines , f"missing {expected!r} in {lines}";
+        for memory in ("nogc", "rc", "managed") {
+            binary = str(Path(directory) / f"fa.{memory}");
+            native_build(str(program), binary, memory=memory);
+            lines = native_run(binary).splitlines();
+            for expected in [
+                "inc 42",
+                "scale 15",
+                "twice 42",
+                "end True",
+                "cast True"
+            ] {
+                assert expected in lines , f"{memory}: missing {expected!r} in {lines}";
+            }
+        }
     }
 }
 
@@ -684,4 +762,105 @@ with entry {
     }
     assert "scan 2 42 7" in out.splitlines() , out;
     assert "pointer 64" in out.splitlines() , out;
+}
+
+test "ptr(f) is the address C calls a named function at" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpErased { has name: ptr[u8], fn: ptr; }
+    def cp_erased_call(e: ptr[CpErased], a: i64, b: i64) -> i64;
+    def cp_address_call(fn: ptr, a: i64) -> i64;
+    glob user_erased: list[CpErased] = [
+             CpErased(name=ptr[u8]("sum"), fn=ptr(add)),
+             CpErased(name=ptr[u8]("product"), fn=ptr(c_product))
+         ];
+    def c_product(a: i64, b: i64) -> i64 {
+        return a * b;
+    }
+}
+def add(a: i64, b: i64) -> i64 {
+    return a + b;
+}
+def negate(a: i64) -> i64 {
+    return -a;
+}
+with entry {
+    table = addressof(user_erased);
+    print(
+        "erased",
+        cp_erased_call(table, i64(3), i64(4)),
+        cp_erased_call(table + 1, i64(3), i64(4)),
+        cp_address_call(ptr(negate), i64(9))
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code, "erased.jac"));
+    }
+    assert "erased 7 12 -9" in out.splitlines() , out;
+}
+
+test "callback fields and ptr(f) take functions another module defines" {
+    decls = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpErased { has name: ptr[u8], fn: ptr; }
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr;
+    }
+    def cp_erased_call(e: ptr[CpErased], a: i64, b: i64) -> i64;
+    def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;
+}
+def triple(v: i32) -> i32 {
+    return v * i32(3);
+}
+def difference(a: i64, b: i64) -> i64 {
+    return a - b;
+}
+''';
+    user = '''import from cdecls {
+    CpErased, CpRecipe, cp_erased_call, cp_recipe_run, difference, triple
+}
+import from "CLIB_POINTERS_LIBRARY" {
+    glob user_entry: CpErased = CpErased(name=ptr[u8]("difference"), fn=ptr(difference)),
+         user_recipe: CpRecipe = CpRecipe(count=i32(1), scale=triple);
+}
+with entry {
+    print(
+        "imported",
+        cp_erased_call(addressof(user_entry), i64(10), i64(4)),
+        cp_recipe_run(addressof(user_recipe), i32(5))
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, decls, "cdecls.jac");
+        out = assert_native_identity(stage_source(directory, user, "user.jac"));
+    }
+    assert "imported 6 16" in out.splitlines() , out;
+}
+
+test "int() of a callback field is the address C holds there" {
+    code = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpRecipe {
+        has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr;
+    }
+    def cp_call_i32(fn: ptr, v: i32) -> i32;
+    glob user_recipe: CpRecipe = CpRecipe(count=i32(1), scale=triple),
+         user_empty: CpRecipe = CpRecipe(count=i32(2));
+}
+def triple(v: i32) -> i32 {
+    return v * i32(3);
+}
+with entry {
+    recipe = addressof(user_recipe);
+    held = int(recipe.view(1)[0].scale);
+    print(
+        "held",
+        cp_call_i32(ptr(held), i32(5)),
+        int(addressof(user_empty).view(1)[0].scale) == 0
+    );
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(stage_source(directory, code, "held.jac"));
+    }
+    assert "held 15 True" in out.splitlines() , out;
 }

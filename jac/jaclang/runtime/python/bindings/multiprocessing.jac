@@ -60,7 +60,7 @@ glob:priv semlock_type = TypeDefinition(
              dealloc=semlock_dealloc,
              traverse=semlock_traverse
          ),
-         members=semlock_members(),
+         members=semlock_members,
          record_size=SEMLOCK_FIELDS_SIZE
      );
 

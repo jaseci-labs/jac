@@ -2,7 +2,9 @@ import ctypes;
 import json;
 import os;
 import sys;
+import from ctypes.util { find_library }
 import from jaclang.runtime.scalars { numeric_shapes }
+import from jaclang.runtime.region { escape_regions, restore_regions }
 
 def _scalar_ctypes -> dict[str, any] {
     out: dict[str, any] = {};
@@ -22,6 +24,8 @@ def _scalar_ctypes -> dict[str, any] {
 glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),
      _LIBS: dict[str, any] = {},
      _C_STRINGS: dict[str, any] = {},
+     _C_FUNCTIONS: list[any] = [],
+     _C_FUNCTION_TYPES: dict[any, any] = {},
      _VIEW_RANGE: str = "PtrView index out of range";
 
 class JacCOpaque {}
@@ -73,14 +77,8 @@ class JacPtr {
         _jac_views: dict[int, type] = {};
     }
 
-    # `spec_json` and `scope` come with `ptr(function)`: the function's C
-    # signature, from which its C-callable address is made.
-    def init(
-        self: JacPtr, address: any = None, spec_json: any = None, scope: any = None
-    ) {
-        if spec_json is not None and callable(address) {
-            self._addr = _function_address(address, json.loads(spec_json), scope);
-        } elif address is None {
+    def init(self: JacPtr, address: any = None) {
+        if address is None {
             self._addr = 0;
         } elif isinstance(address, JacPtr) {
             self._addr = address._addr;
@@ -515,10 +513,31 @@ def _field_ctype(spec: list[any], scope: any) -> any {
     raise TypeError(f"'{spec!r}' is not a C struct field type");
 }
 
+def _c_function_address(fn: any) -> int {
+    return ctypes.cast(fn, ctypes.c_void_p).value or 0;
+}
+
 def _fn_ctype(spec: list[any], scope: any) -> any {
     params = [_arg_ctype(p, scope) for p in spec[1]];
     ret = _ret_ctype(spec[2], scope);
-    return ctypes.CFUNCTYPE(ret, *params);
+    base = ctypes.CFUNCTYPE(ret, *params);
+    addressable = _C_FUNCTION_TYPES.get(base);
+    if addressable is None {
+        # int() of a C function pointer is the address it holds, as it is for
+        # a callback field read natively.
+        addressable = `type(
+            base.__name__,
+            (base, ),
+            {
+                "_flags_": base._flags_,
+                "_restype_": base._restype_,
+                "_argtypes_": base._argtypes_,
+                "__int__": _c_function_address
+            }
+        );
+        _C_FUNCTION_TYPES[base] = addressable;
+    }
+    return addressable;
 }
 
 def _arg_ctype(spec: list[any], scope: any) -> any {
@@ -584,22 +603,6 @@ def _callback_property(name: str, raw: str, spec: list[any], scope: any) -> prop
     return property(fetch, put);
 }
 
-# C callbacks made for `ptr(function)`, kept alive with the process as a
-# native function's code is.
-glob _FUNCTION_CALLBACKS: dict[int, any] = {};
-
-# The C-callable address of `fn` with the C signature `spec` (["fn", params,
-# ret]): a ctypes callback over the same trampoline a callback field uses,
-# made once per function.
-def _function_address(fn: any, spec: list[any], scope: any) -> int {
-    found = _FUNCTION_CALLBACKS.get(id(fn));
-    if found is None {
-        found = (fn, _fn_ctype(spec, scope)(_callback_trampoline(spec, fn, scope)));
-        _FUNCTION_CALLBACKS[id(fn)] = found;
-    }
-    return ctypes.cast(found[1], ctypes.c_void_p).value or 0;
-}
-
 def _callback_trampoline(spec: list[any], fn: any, scope: any) -> any {
     params: list[any] = spec[1];
     ret: list[any] = spec[2];
@@ -608,7 +611,12 @@ def _callback_trampoline(spec: list[any], fn: any, scope: any) -> any {
             _callback_arg(params[i], raw[i], scope) if i < len(params) else raw[i]
             for i in range(len(raw))
         ];
-        result = fn(*args);
+        saved = escape_regions();
+        try {
+            result = fn(*args);
+        } finally {
+            restore_regions(saved);
+        }
         if ret[0] == "ptr" {
             return result._addr if isinstance(result, JacPtr) else None;
         }
@@ -656,7 +664,12 @@ def _lib_candidates(desc: dict[str, any], module_file: str) -> list[str] {
     if desc.get("level", 0) > 0 or len(names) > 1 {
         return [os.path.join(module_dir, rel)];
     }
-    return [fname, os.path.join(module_dir, fname)];
+    out = [fname, os.path.join(module_dir, fname)];
+    soname = find_library(base);
+    if soname and soname not in out {
+        out.append(soname);
+    }
+    return out;
 }
 
 def _load_library(desc: dict[str, any], module_file: str) -> any {
@@ -840,6 +853,15 @@ class CGlobal {
         if kind == "array" {
             self._keep = value;
             elem = _field_ctype(self._spec[1], self._scope);
+            if isinstance(value, bytes) {
+                # A bytes literal holds the array's little-endian elements.
+                width = ctypes.sizeof(elem);
+                signed = elem(-1).value < 0;
+                value = [
+                    int.from_bytes(value[i:i + width], "little", signed=signed)
+                    for i in range(0, len(value), width)
+                ];
+            }
             items = [
                 item._addr if isinstance(item, JacPtr) else item for item in value
             ];
@@ -900,6 +922,16 @@ def jac_addressof(symbol: any) -> JacPtr {
         );
     }
     return symbol.address();
+}
+
+# `ptr(f)`: the address of a C callback that runs the named function `f`,
+# whose C signature `spec_json` gives. C may keep the address, so the callback
+# is kept alive for the life of the process.
+def c_function_ptr(fn: any, spec_json: str, scope: any) -> JacPtr {
+    spec = json.loads(spec_json);
+    callback = _fn_ctype(spec, scope)(_callback_trampoline(spec, fn, scope));
+    _C_FUNCTIONS.append(callback);
+    return JacPtr(ctypes.cast(callback, ctypes.c_void_p).value or 0);
 }
 
 def clib_bind(scope: any, desc_json: str) -> dict[str, any] {

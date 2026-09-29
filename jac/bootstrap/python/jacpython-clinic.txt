@@ -35,4 +35,6 @@ _codecs
 _locale
 _lzma
 _zoneinfo
+unicodedata
 _datetime
+_sqlite3

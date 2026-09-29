@@ -60,6 +60,7 @@ import from jaclang.runtime.python.bindings.zlib { PyInit_zlib }
 import from jaclang.runtime.python.bindings.bz2 { PyInit__bz2 }
 import from jaclang.runtime.python.bindings.lzma { PyInit__lzma }
 import from jaclang.runtime.python.bindings.zstd { PyInit__zstd }
+import from jaclang.runtime.python.bindings.sqlite3 { PyInit__sqlite3 }
 import from jaclang.runtime.python.bindings.errno { PyInit_errno }
 import from jaclang.runtime.python.bindings.syslog { PyInit_syslog }
 import from jaclang.runtime.python.bindings.resource { PyInit_resource }
@@ -83,10 +84,18 @@ import from jaclang.runtime.python.bindings.posixshmem { PyInit__posixshmem }
 # Object-model ports define interpreter types and objects under their C names
 # (Objects/boolobject.c: PyBool_Type, _Py_FalseStruct, _Py_TrueStruct).
 import from jaclang.runtime.python.object_model.bool { PyBool_Type }
+import from jaclang.runtime.python.object_model.capsule { PyCapsule_Type }
+import from jaclang.runtime.python.object_model.cell { PyCell_Type }
+import from jaclang.runtime.python.object_model.enumerate { PyEnum_Type }
+import from jaclang.runtime.python.object_model.iterator { PySeqIter_Type }
+import from jaclang.runtime.python.object_model.namespace { _PyNamespace_Type }
+import from jaclang.runtime.python.object_model.range { PyRange_Type }
+import from jaclang.runtime.python.object_model.slice { PySlice_Type }
 import from jaclang.runtime.python.bindings.abc { PyInit__abc }
 import from jaclang.runtime.python.bindings.codecs { PyInit__codecs }
 import from jaclang.runtime.python.bindings.locale { PyInit__locale }
 import from jaclang.runtime.python.bindings.zoneinfo { PyInit__zoneinfo }
+import from jaclang.runtime.python.bindings.unicodedata { PyInit_unicodedata }
 import from jaclang.runtime.python.bindings.datetime { PyInit__datetime }
 import from jaclang.runtime.python.bindings.decimal { PyInit__decimal }
 import from jaclang.runtime.python.tokenize {

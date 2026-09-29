@@ -231,6 +231,37 @@ impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
     issue.record(self.llvm_module);
 }
 
+# The globals the module initializer computes, and the globals of other units
+# it loads (declarations: this unit does not define them).
+impl NaIRGenPass._glob_init_symbols -> tuple[list[str], list[str]] {
+    computed: list[str] = [];
+    for init_tuple in self._global_init_nodes {
+        global_var = self.global_vars.get(init_tuple[0]);
+        if global_var is not None and global_var.name not in computed {
+            computed.append(global_var.name);
+        }
+    }
+    reads: list[str] = [];
+    init_fn = self.func_symtab.get("__jac_glob_init");
+    if isinstance(init_fn, ir.Function) {
+        for block in init_fn.blocks {
+            for instr in block.instructions {
+                if not isinstance(instr, ir.Instruction) {
+                    continue;
+                }
+                for operand in instr.operands {
+                    if isinstance(operand, ir.GlobalVariable)
+                        and operand.initializer is None
+                        and operand.name not in reads {
+                        reads.append(operand.name);
+                    }
+                }
+            }
+        }
+    }
+    return (computed, reads);
+}
+
 impl NaIRGenPass._export_native_iface -> None {
     import os as _ni_os;
     import from jaclang.compiler.driver.native_iface {
@@ -325,6 +356,9 @@ impl NaIRGenPass._export_native_iface -> None {
     ];
     iface.clib_symbol_lib = dict(self.module.gen._clib_symbol_lib or {});
     iface.deps = list(self._native_dep_paths);
+    init_symbols = self._glob_init_symbols();
+    iface.runtime_globals = init_symbols[0];
+    iface.init_reads = init_symbols[1];
     try {
         import from jaclang.compiler.driver.na_coverage { na_coverage_capture }
         iface.coverage = na_coverage_capture(mod_path) if mod_path else {};

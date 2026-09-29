@@ -207,17 +207,32 @@ impl NaIRGenPass._codegen_clib_call(
         );
     }
     _struct_temps: list[ir.Value] = [];
+    _heap_temps: list[ir.Value] = [];
     for (i, pp) in enumerate(param_plans) {
         _tv = args[i] if i < len(args) else None;
-        if _tv is not None
-            and pp["kind"] != "scalar"
-            and isinstance(_tv.type, ir.PointerType)
-            and self._is_owned(_tv) {
+        if _tv is None or not self._is_owned(_tv) {
+            continue;
+        }
+        if pp["kind"] != "scalar" and isinstance(_tv.type, ir.PointerType) {
             _struct_temps.append(_tv);
+        } elif pp["kind"] == "scalar"
+            and (
+                self._is_bytes_value(_tv)
+                or (self._str_desc_ty is not None and _tv.type == self._str_desc_ty)
+                or (pp.get("is_str") and isinstance(_tv.type, ir.PointerType))
+            ) {
+            _heap_temps.append(_tv);
         }
     }
     for _st in _struct_temps {
         self._c_release_temp(_st);
+    }
+    for _ht in _heap_temps {
+        if self._nogc_headerless() {
+            self._c_release_temp(_ht);
+        } else {
+            self._release_owned_args([_ht], op="c_temp");
+        }
     }
     rkind = ret_plan["kind"];
     if rkind == "sret" {
@@ -344,8 +359,19 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
     plan = self.clib_fn_abi.get(name);
     state = self._enter_function(cfunc);
     try {
+        _scalar_only = plan is None
+            or (
+                not plan["sret"]
+                and plan["ret"].get("kind") != "struct_reg"
+                and all(pp["kind"] == "scalar" for pp in plan["params"])
+                and all(pp["argpos"] == i for (i, pp) in enumerate(plan["params"]))
+            );
+        if _scalar_only and self._thunk_tail_call(cfunc, jac_fn) {
+            return;
+        }
         b = self.builder;
         i32 = ir.IntType(32);
+        saved = self._region_c_entry_escape();
         jac_args: list[ir.Value] = [];
         boxes: list[ir.Value] = [];
         params = plan["params"] if plan is not None else [];
@@ -404,6 +430,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
                     b.bitcast(cfunc.args[0], c_struct.as_pointer(), name="cdef.sret")
                 );
                 self._c_release_temp(result);
+                self._region_c_entry_restore(saved);
                 b.ret_void();
             } else {
                 coerce = ret_plan["coerce"];
@@ -420,14 +447,70 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
                 }
                 value = b.load(b.bitcast(src, shape.as_pointer()), name="cdef.ret.reg");
                 self._c_release_temp(result);
+                self._region_c_entry_restore(saved);
                 b.ret(value);
             }
         } elif isinstance(ret_type, ir.VoidType) {
+            self._region_c_entry_restore(saved);
             b.ret_void();
         } else {
-            b.ret(self._clib_reinterpret(result, ret_type, name="cdef.ret"));
+            value = self._clib_reinterpret(result, ret_type, name="cdef.ret");
+            self._region_c_entry_restore(saved);
+            b.ret(value);
         }
     } finally {
         self._leave_function(state);
     }
+}
+
+impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
+    """Emit an exported C symbol's thunk as one `musttail` jump into its body.
+
+    A C function defined in Jac is a thunk around the internal Jac body. When
+    each C parameter reaches the body unchanged or as the same 64-bit word (a
+    C pointer the body reads as `ptr[T]`, an i64), the thunk only adds a
+    frame; a C function pointer dispatch (`return tail
+    table.view(1)[0].step(...)`) jumps into the thunk, so an ordinary call here
+    grows the stack by a frame per step on an unoptimized build and breaks the
+    tail-call guarantee. The call goes through the body's address typed with
+    the thunk's own prototype, which `musttail` requires, and passes the same
+    registers the body reads.
+    """;
+    cty = cfunc.function_type;
+    jty = jac_fn.function_type;
+    triple = str(self.llvm_module.triple or "");
+    if cty.var_arg
+        or jty.var_arg
+        or cty.return_type != jty.return_type
+        or len(cty.args) != len(jty.args)
+        or (cfunc.calling_convention or "") != (jac_fn.calling_convention or "")
+        or "wasm" in triple
+        or "i386" in triple
+        or "i686" in triple
+        or triple.startswith("arm-")
+        or triple.startswith("armv7") {
+        return False;
+    }
+    i64 = ir.IntType(64);
+    for (c_arg, j_arg) in zip(cty.args, jty.args) {
+        if c_arg == j_arg {
+            continue;
+        }
+        if isinstance(c_arg, ir.PointerType) and j_arg == i64 {
+            continue;
+        }
+        return False;
+    }
+    b = self.builder;
+    target = jac_fn
+        if cty == jty
+        else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
+    call = b.call(target, list(cfunc.args), name="cdef.call");
+    call.tail = "musttail";
+    if isinstance(cty.return_type, ir.VoidType) {
+        b.ret_void();
+    } else {
+        b.ret(call);
+    }
+    return True;
 }

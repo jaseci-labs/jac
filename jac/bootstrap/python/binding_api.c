@@ -190,6 +190,7 @@ typedef struct {
     PyObject *(*get_attribute)(PyObject *, PyObject *);
     int32_t (*set_attribute)(PyObject *, PyObject *, PyObject *);
     PyObject *(*string)(PyObject *);
+    void (*finalize)(PyObject *);
 } JacTypeHooks;
 
 typedef struct {
@@ -201,7 +202,7 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[36];
+    PyType_Slot slots[37];
     vectorcallfunc vectorcall;
     int instance_dict;
     /* The C fields published as member descriptors, then
@@ -298,6 +299,7 @@ void *jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(get_attribute, Py_tp_getattro);
     SLOT(set_attribute, Py_tp_setattro);
     SLOT(string, Py_tp_str);
+    SLOT(finalize, Py_tp_finalize);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT

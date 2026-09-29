@@ -212,6 +212,8 @@ int64_t jacpy_timeout_ns(PyObject *value) {
 /* Unicode builders and exact container operations used by native serializers. */
 PyUnicodeWriter *jacpy_writer_new(void) { return PyUnicodeWriter_Create(0); }
 int64_t jacpy_unicode_size(PyObject *text) { return PyUnicode_GET_LENGTH(text); }
+int64_t jacpy_unicode_kind(PyObject *text) { return PyUnicode_KIND(text); }
+void *jacpy_unicode_data(PyObject *text) { return PyUnicode_DATA(text); }
 PyObject *jacpy_unicode_decode_bytes(PyObject *value, const char *encoding) { return PyUnicode_FromEncodedObject(value, encoding, "strict"); }
 PyObject *jacpy_dict_default(PyObject *dictionary, PyObject *key, PyObject *value) {
     PyObject *result;
@@ -505,6 +507,12 @@ JACPY_TYPING_SLOT(paramspeckwargs_type, 5)
 PyObject **jacpy_typing_types(void) {
     return (PyObject **)&_PyInterpreterState_GET()->cached_objects.generic_type;
 }
+
+/* The interpreter's freelists are an interpreter-state field (a thread-state
+ * field in free-threaded builds); ports reach a list by its offset in
+ * struct _Py_freelists, which layouts.jac asserts. */
+#include "internal/pycore_freelist.h"
+struct _Py_freelists *jacpy_freelists(void) { return _Py_freelists_GET(); }
 
 /* Weak references hang off an object-layout list that only C can walk. */
 #include "internal/pycore_weakref.h"

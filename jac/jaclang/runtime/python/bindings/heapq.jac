@@ -11,10 +11,9 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     invoke,
     invoke_one,
-    invalid,
     invoke_vector
 }
-import from jaclang.runtime.python.capi { type_name }
+import from jaclang.runtime.python.bindings.converters { bad_argument }
 import from jaclang.runtime.python.modules.heapq {
     jacpy_heap_push,
     jacpy_heap_pop,
@@ -30,8 +29,7 @@ glob:priv heappush_signature = CallSignature(
 def:priv heappush_bound(args: BoundArguments) -> ptr[PyObject] {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heappush() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heappush", "argument 1", "list", heap);
     }
     return jacpy_heap_push(heap, args.values[1], 0);
 }
@@ -49,8 +47,7 @@ glob:priv heappush_max_signature = CallSignature(
 def:priv heappush_max_bound(args: BoundArguments) -> ptr[PyObject] {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heappush_max() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heappush_max", "argument 1", "list", heap);
     }
     return jacpy_heap_push(heap, args.values[1], 1);
 }
@@ -68,8 +65,7 @@ glob:priv heapreplace_signature = CallSignature(
 def:priv heapreplace_bound(args: BoundArguments) -> ptr[PyObject] {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heapreplace() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heapreplace", "argument 1", "list", heap);
     }
     return jacpy_heap_replace(heap, args.values[1], 0);
 }
@@ -87,8 +83,7 @@ glob:priv heapreplace_max_signature = CallSignature(
 def:priv heapreplace_max_bound(args: BoundArguments) -> ptr[PyObject] {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heapreplace_max() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heapreplace_max", "argument 1", "list", heap);
     }
     return jacpy_heap_replace(heap, args.values[1], 1);
 }
@@ -108,8 +103,7 @@ glob:priv heappushpop_signature = CallSignature(
 def:priv heappushpop_bound(args: BoundArguments) -> ptr[PyObject] {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heappushpop() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heappushpop", "argument 1", "list", heap);
     }
     return jacpy_heap_pushpop(heap, args.values[1], 0);
 }
@@ -127,8 +121,7 @@ glob:priv heappushpop_max_signature = CallSignature(
 def:priv heappushpop_max_bound(args: BoundArguments) -> ptr[PyObject] {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heappushpop_max() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heappushpop_max", "argument 1", "list", heap);
     }
     return jacpy_heap_pushpop(heap, args.values[1], 1);
 }
@@ -143,8 +136,7 @@ def:priv heappushpop_max_call(
 
 def:priv heappop_bound(heap: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heappop() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heappop", "argument", "list", heap);
     }
     return jacpy_heap_pop(heap, 0);
 }
@@ -155,8 +147,7 @@ def:priv heappop_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 
 def:priv heappop_max_bound(heap: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heappop_max() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heappop_max", "argument", "list", heap);
     }
     return jacpy_heap_pop(heap, 1);
 }
@@ -167,8 +158,7 @@ def:priv heappop_max_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyO
 
 def:priv heapify_bound(heap: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heapify() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heapify", "argument", "list", heap);
     }
     return jacpy_heapify(heap, 0);
 }
@@ -179,8 +169,7 @@ def:priv heapify_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 
 def:priv heapify_max_bound(heap: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_list(heap) == 0 {
-        invalid(f"heapify_max() argument must be list, not {type_name(heap)}");
-        return NULL;
+        bad_argument("heapify_max", "argument", "list", heap);
     }
     return jacpy_heapify(heap, 1);
 }

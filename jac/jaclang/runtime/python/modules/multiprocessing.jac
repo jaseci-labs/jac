@@ -101,24 +101,25 @@ import from c {
 
 glob SEMLOCK_FIELDS_SIZE: int = 24;
 
-# semlock_members[]; a function, as the type definition that reads it is
-# another module's global.
-def semlock_members -> list[MemberField] {
-    return [
-        MemberField(
-            name="handle", kind=MemberType.ULONG.value, offset=0, readonly=True, doc=""
-        ),
-        MemberField(
-            name="kind", kind=MemberType.INT.value, offset=8, readonly=True, doc=""
-        ),
-        MemberField(
-            name="maxvalue", kind=MemberType.INT.value, offset=12, readonly=True, doc=""
-        ),
-        MemberField(
-            name="name", kind=MemberType.STRING.value, offset=16, readonly=True, doc=""
-        )
-    ];
-}
+# semlock_members[]: the SemLockObject fields published as read-only members.
+glob semlock_members: list[MemberField] = [
+         MemberField(
+             name="handle", kind=MemberType.ULONG.value, offset=0, readonly=True, doc=""
+         ),
+         MemberField(
+             name="kind", kind=MemberType.INT.value, offset=8, readonly=True, doc=""
+         ),
+         MemberField(
+             name="maxvalue",
+             kind=MemberType.INT.value,
+             offset=12,
+             readonly=True,
+             doc=""
+         ),
+         MemberField(
+             name="name", kind=MemberType.STRING.value, offset=16, readonly=True, doc=""
+         )
+     ];
 
 # These match the values in Lib/multiprocessing/synchronize.py.
 glob:priv RECURSIVE_MUTEX: int = 0,

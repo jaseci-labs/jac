@@ -188,10 +188,14 @@ obj LinkPlan {
         return -1;
     }
 
+    def init_units -> list[LinkUnit] {
+        return initialization_order(self.units, self.roots);
+    }
+
     def init_symbols -> list[str] {
         return [
             u.iface.init_symbol
-            for u in self.units
+            for u in self.init_units()
             if u.iface.init_symbol
         ];
     }
@@ -281,7 +285,11 @@ obj LinkPlan {
             }
         }
         hook_supplied = any(REGION_DIED_HOOK in u.iface.exports for u in self.units);
-        for u in self.units {
+        root_index = -1;
+        for u in self.init_units() {
+            if u.is_root and root_index < 0 {
+                root_index = len(units);
+            }
             exports = u.iface.exports;
             probe = exports.get("__jac_rt_probe");
             units.append(
@@ -299,7 +307,7 @@ obj LinkPlan {
         is_elf = platform == "elf";
         return GlueSpec(
             units=units,
-            root_index=self.root_index(),
+            root_index=root_index,
             shared=(kind == ArtifactKind.SHARED),
             platform=platform if kind != ArtifactKind.JIT else "jit",
             static_musl=static_musl,
@@ -311,6 +319,111 @@ obj LinkPlan {
             needs_region_hook=not hook_supplied
         );
     }
+}
+
+"""The order the units' module initializers run in.
+
+Imports first, as Python runs them: a depth-first walk from the roots runs a
+unit's initializer after those of the units it imports, in import order, and
+a unit already on the walk (an import cycle) counts as started. A unit whose
+initializer reads globals another unit's initializer computes then runs after
+that unit wherever the walk placed the two, so a cycle is ordered by what its
+initializers read. When two initializers read each other's globals no order
+works, and the plan fails naming the reads instead of linking a program that
+reads an uninitialized global.
+"""
+def initialization_order(units: list[LinkUnit], roots: list[str]) -> list[LinkUnit] {
+    by_path: dict[str, LinkUnit] = {u.path: u for u in units};
+    imports: dict[str, list[str]] = {
+        u.path: [os.path.realpath(d) for d in u.iface.deps] for u in units
+    };
+    walked: list[LinkUnit] = [];
+    started: set[str] = set();
+    starts = [os.path.realpath(r) for r in roots] + [u.path for u in units];
+    for start in starts {
+        if start in started or start not in by_path {
+            continue;
+        }
+        started.add(start);
+        stack: list[tuple[str, int]] = [(start, 0)];
+        while stack {
+            (path, next_dep) = stack[-1];
+            deps = imports[path];
+            if next_dep < len(deps) {
+                stack[-1] = (path, next_dep + 1);
+                dep = deps[next_dep];
+                if dep in by_path and dep not in started {
+                    started.add(dep);
+                    stack.append((dep, 0));
+                }
+                continue;
+            }
+            stack.pop();
+            walked.append(by_path[path]);
+        }
+    }
+    producer: dict[str, str] = {};
+    for u in walked {
+        for symbol in u.iface.runtime_globals {
+            producer.setdefault(symbol, u.path);
+        }
+    }
+    reads: dict[str, list[tuple[str, str]]] = {};
+    for u in walked {
+        reads[u.path] = [
+            (producer[symbol], symbol)
+            for symbol in u.iface.init_reads
+            if symbol in producer and producer[symbol] != u.path
+        ];
+    }
+    ordered: list[LinkUnit] = [];
+    placed: set[str] = set();
+    pending = list(walked);
+    while pending {
+        ready = -1;
+        for (i, u) in enumerate(pending) {
+            if all(source in placed for (source, _) in reads[u.path]) {
+                ready = i;
+                break;
+            }
+        }
+        if ready < 0 {
+            raise LinkPlanError(_init_cycle_message(pending[0].path, reads, placed));
+        }
+        u = pending.pop(ready);
+        ordered.append(u);
+        placed.add(u.path);
+    }
+    return ordered;
+}
+
+def _init_cycle_message(
+    start: str, reads: dict[str, list[tuple[str, str]]], placed: set[str]
+) -> str {
+    chain: list[str] = [];
+    seen: list[str] = [];
+    path = start;
+    while path not in seen {
+        seen.append(path);
+        (source, symbol) = [
+            r
+            for r in reads[path]
+            if r[0] not in placed
+        ][0];
+        chain.append(
+            f"{os.path.basename(path)} reads {symbol.rsplit('.', 1)[-1]} of "
+            f"{os.path.basename(source)}"
+        );
+        path = source;
+    }
+    cycle = chain[seen.index(path):];
+    return (
+        "module initializers read each other's globals, so none of them can "
+        "run first: "
+        + "; ".join(cycle)
+        + ". Compute one of these globals in a function, or move it to a module "
+        "outside the import cycle."
+    );
 }
 
 def _platform_of(triple: str) -> str {
@@ -556,6 +669,7 @@ def _build_link_plan(
 
     check_prefix_collisions(ordered);
     check_pub_collisions(ordered);
+    initialization_order(ordered, real_roots);
     import from jaclang.compiler.driver.na_coverage { na_coverage_replay }
     for unit in ordered {
         na_coverage_replay(unit.path, unit.iface.coverage or {"outcome": "native"});

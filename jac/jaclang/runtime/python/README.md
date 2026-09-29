@@ -28,7 +28,11 @@ CPython license is retained.
 The native object is built with Jac's `rc` memory profile and the same LLVM
 module pipeline as every other native artifact. Each compile request runs inside
 one region, so the tokens, trees, symbol tables and code units it builds are
-reclaimed together once its CPython result exists.
+reclaimed together once its CPython result exists. A request can re-enter
+native modules through CPython (the tokenizer imports `unicodedata` to decode
+`\N{...}`); every binding callback is a Jac function C calls, which runs with
+no current region, so module state and objects built there never land in the
+request's region.
 
 The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
 backend to emit the replacement object, rejects interpreted demotions, and
@@ -63,7 +67,12 @@ their initializers use; `bootstrap/python/layouts_check.c` asserts every offset,
 size and constant against the configured headers of each build. A port defines
 its static type objects and singletons as C data under their C names
 (`object_model/bool.jac` defines `PyBool_Type`, `_Py_FalseStruct` and
-`_Py_TrueStruct`), so the interpreter's C code uses them unchanged.
+`_Py_TrueStruct`), so the interpreter's C code uses them unchanged. The ported
+files are `boolobject.c`, `cellobject.c`, `namespaceobject.c`, `capsule.c`,
+`iterobject.c`, `enumobject.c`, `sliceobject.c` and `rangeobject.c`
+(`bool.jac`, `cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
+`enumerate.jac`, `slice.jac`, `range.jac`); `header.jac` holds the object
+header's inline operations they share.
 
 `modules/` contains the native standard-library algorithms. `bindings/` implements
 every module adapter in native Jac, including the `PyInit_*` entry points,

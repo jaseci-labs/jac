@@ -454,6 +454,7 @@ At native strict sites, using a `T | None` value where the unwrapped `T` is requ
 | Init constructor | `def init(x: int) { self.x = x; }` |
 | Postinit hook | `def postinit() { self.setup(); }` |
 | Recursion | `def fib(n: int) -> int { return fib(n-1) + fib(n-2); }` |
+| Guaranteed tail calls | `return tail step(n - 1, acc);` lowers to `musttail` (constant stack; `E5113` when it cannot) |
 
 ### Operators
 

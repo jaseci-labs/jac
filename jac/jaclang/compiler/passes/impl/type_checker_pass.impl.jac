@@ -756,10 +756,12 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                     for d in target.sym.defn
                 )
             );
+            import from jaclang.compiler.c_interop { c_bytes_array_definition }
             if (
                 here.aug_op is None
                 and not is_evolving_reassign
                 and not is_module_fallback_rebind
+                and not c_bytes_array_definition(here, left_type)
             ) {
                 verdict = self.evaluator.assign_expr(
                     here.value,
@@ -2484,6 +2486,8 @@ impl TypeCheckPass._c_const_problem(
 ) -> (str | None) {
     import from jaclang.compiler.c_interop {
         c_array_elem,
+        c_bytes_elem_shape,
+        c_bytes_literal,
         c_scalar_constant,
         c_string_literal,
         foreign_struct_of_type,
@@ -2499,10 +2503,23 @@ impl TypeCheckPass._c_const_problem(
     }
     elem = c_array_elem(ctype);
     if elem is not None {
-        if not isinstance(expr, ListVal) {
-            return "initializes a C array with something other than a list literal";
-        }
         elem_type = self.evaluator._convert_to_instance(elem);
+        data = c_bytes_literal(expr);
+        if data is not None {
+            shape = c_bytes_elem_shape(elem_type);
+            if shape is None {
+                return f"initializes a C array of {elem_type} with a bytes literal, which lays out only sized integers";
+            }
+            if len(data) % shape[0] != 0 {
+                return f"initializes a C array of {elem_type} with {len(
+                    data
+                )} bytes, not a multiple of its {shape[0]}-byte width";
+            }
+            return None;
+        }
+        if not isinstance(expr, ListVal) {
+            return "initializes a C array with something other than a list literal or a bytes literal";
+        }
         for item in expr.values {
             if isinstance(item, Expr)
                 and (problem := self._c_const_problem(item, elem_type)) is not None {

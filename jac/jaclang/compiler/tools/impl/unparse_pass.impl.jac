@@ -702,6 +702,9 @@ impl UnparsePass.exit_return_stmt with uni.ReturnStmt exit {
         return;
     }
     parts: list[str] = ["return"];
+    if here.is_tail {
+        parts.append("tail");
+    }
     if here.expr {
         parts.append(here.expr.gen.jac);
     }

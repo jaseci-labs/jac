@@ -45,7 +45,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_CallMethod,
     PyTuple_GetItem,
     PyTuple_Size,
-    PyType_IsSubtype,
     PyUnicode_FromFormat,
     PyUnicode_GetLength,
     PyUnicode_InternFromString,
@@ -66,7 +65,10 @@ import from jaclang.runtime.python.layouts {
     _PyDateTime_BaseTZInfo,
     _object
 }
-import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.object_model.header {
+    object_type,
+    object_type_check
+}
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
 import from jaclang.runtime.python.modules.datetime_calendar {
@@ -166,35 +168,28 @@ def type_name_of(op: ptr[PyObject]) -> ptr[u8] {
     return object_type(op).view(1)[0].tp_name;
 }
 
-"""PyObject_TypeCheck."""
-def type_check(op: ptr[PyObject], type: ptr[PyTypeObject]) -> bool {
-    actual = object_type(op);
-    return actual == type
-        or PyType_IsSubtype(ptr[PyObject](actual), ptr[PyObject](type)) != 0;
-}
-
 def date_check(op: ptr[PyObject]) -> bool {
-    return type_check(op, date_type());
+    return object_type_check(op, date_type());
 }
 
 def datetime_check(op: ptr[PyObject]) -> bool {
-    return type_check(op, datetime_type());
+    return object_type_check(op, datetime_type());
 }
 
 def time_check(op: ptr[PyObject]) -> bool {
-    return type_check(op, time_type());
+    return object_type_check(op, time_type());
 }
 
 def delta_check(op: ptr[PyObject]) -> bool {
-    return type_check(op, delta_type());
+    return object_type_check(op, delta_type());
 }
 
 def tzinfo_check(op: ptr[PyObject]) -> bool {
-    return type_check(op, tzinfo_type());
+    return object_type_check(op, tzinfo_type());
 }
 
 def timezone_check(op: ptr[PyObject]) -> bool {
-    return type_check(op, timezone_type());
+    return object_type_check(op, timezone_type());
 }
 
 """A new reference to NotImplemented."""
