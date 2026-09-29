@@ -205,7 +205,10 @@ native scope (`compiler/native_scope.jac`) names the compiler modules the
 kernel links; each is a native unit whose interface (`SEC_NIFACE`) and
 object (`SEC_NOBJ`, materialized on demand) live in its module JIR, and `libjac_compiler` is the
 link plan's artifact over them (`compiler/backends/native/link_plan.jac`),
-resolved at parse time by `kernel_resolve.jac`.
+resolved by `kernel_resolve.jac`. The kernel analyzes (`jc_analyze`) and
+compiles (`jc_compile`) whole modules from a snapshot of the inputs the host
+sends, and returns diagnostics and compile products as records; see
+`compiler/README.md` for the boundary.
 
 ---
 

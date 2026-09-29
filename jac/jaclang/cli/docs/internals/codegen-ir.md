@@ -30,6 +30,15 @@ from cold. The sealed-lane paragraphs below (sections 2, 9 and 11) are the
 record of what was measured before the removal and the precedent the next
 crossing builds on; the tests and waiver tables they name no longer exist.
 
+Status note (#9615): the code generators are kernel units. The kernel's
+`jc_compile` entry runs a module through the same session pipeline the host
+uses and returns its compile products (`compiler/driver/unit_products.jac`)
+as one record, and this IR is one of them: the bytes cross base64-encoded,
+the host assembles them with `codegen_shim.compile_ir` and writes the
+module JIR from the record. That is the production crossing section 1
+describes, IR bytes out and nothing tree-shaped in between; the
+parse-and-materialize crossing (`jc_materialize`) was deleted with it.
+
 Note on location: the task brief suggested `docs/community/internals/`; the
 corpus's actual home for internal design docs is `docs/internals/` (beside
 `compiler_architecture.md`, `interop.md`, `ownership-checker-spec.md`), so
