@@ -163,6 +163,7 @@ All three block code generation for the module that reports them.
 | `E0094` | Expected a wire ('provider --> consumer') or an edge rule here |
 | `E0095` | '*' must be the only item in a payload |
 | `E0096` | A rule payload lists names without aliases |
+| `E0097` | `return tail` needs a function call |
 
 ### Parser Warnings
 
@@ -686,6 +687,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 | Code | Message |
 |------|---------|
+| `E5113` | `return tail` cannot be a guaranteed tail call: {reason} |
 
 ### Client Code Generation
 

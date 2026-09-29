@@ -3400,7 +3400,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
 
     self._release_owned_args(_release, op="call_arg");
-    self._emit_err_check(self._callee_ability_of(nd) or self._linked_callee_decl(func));
+    self._emit_err_check(
+        self._callee_ability_of(nd) or self._linked_callee_decl(func), site=nd
+    );
 
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
@@ -4806,7 +4808,7 @@ impl NaIRGenPass._emit_class_routed_call(
     _sr = self.builder.call(_sfunc, _sargs, name=f"scall.{method_name}");
     self._release_owned_args(_release, op="call_arg");
     self._emit_err_check(
-        self._callee_ability_of(nd) or self._linked_callee_decl(_sfunc)
+        self._callee_ability_of(nd) or self._linked_callee_decl(_sfunc), site=nd
     );
     if isinstance(_sfunc.return_value.type, ir.VoidType) {
         return None;

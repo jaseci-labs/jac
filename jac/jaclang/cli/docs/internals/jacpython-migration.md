@@ -175,7 +175,7 @@ while threads park on it, and calls `PyMutex_Lock`/`PyMutex_Unlock` (`_zstd`).
 
 ## Language gaps
 
-The ports so far needed these. Gaps 1 to 6 are closed in the language; use
+The ports so far needed these. All seven are closed in the language; use
 the Jac form, not a C helper:
 
 1. **Pointer arithmetic and pointer/integer conversion.** Arithmetic follows
@@ -224,9 +224,13 @@ the Jac form, not a C helper:
    other modules call it as any C function. CPython's API functions a port
    defines (`PyBool_FromLong`) are written this way.
 
-Still open:
-
-1. **Tail calls.** The evaluator's tail-call dispatch needs `musttail` calls.
+7. **Tail calls.** `return tail f(args);` is a guaranteed tail call: the
+   native backend lowers it to `musttail`, so the evaluator's tail-call
+   dispatch (`Py_MUSTTAIL return (INSTRUCTION_TABLE[op])(TAIL_CALL_ARGS);`)
+   is `return tail table.view(1)[0].handler(frame, stack, tstate, next,
+   oparg);` from one C function defined in Jac to the next, in constant
+   stack at every optimization level. The handlers share one signature;
+   a call that cannot reuse the frame is `E5113` naming why.
 
 ## Object model (`Objects/`, 143k lines)
 
@@ -342,8 +346,8 @@ general C translator. Requirements beyond the object model:
 - tagged stack references (`_PyStackRef` stores tag bits in the pointer):
   pointer/integer conversion and bit operations (gap 1);
 - the tail-call dispatch the release build requires
-  (`Py_TAIL_CALL_INTERP`, checked by `smoke.py`): `musttail` calls in the
-  native backend;
+  (`Py_TAIL_CALL_INTERP`, checked by `smoke.py`): `return tail` calls
+  (gap 7);
 - frames, the thread state and the interpreter state are C structs the rest
   of the runtime reads (C-layout structs with in-place writes, gap 2);
 - the performance gate in `scripts/python_evaluator_bench.py`.

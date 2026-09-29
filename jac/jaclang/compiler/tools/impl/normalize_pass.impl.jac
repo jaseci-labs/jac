@@ -910,6 +910,9 @@ impl NormalizePass.enter_return_stmt with uni.ReturnStmt entry {
         return;
     }
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.KW_RETURN), ];
+    if here.is_tail {
+        new_kid.append(here.gen_token(Tok.KW_TAIL, "tail"));
+    }
     if here.expr {
         new_kid.append(here.expr);
     }
