@@ -72,3 +72,4 @@ _posixshmem     test.test_multiprocessing_spawn.test_misc   linux:-lrt
 _abc            test.test_abc,test.test_isinstance
 _codecs         test.test_codecs,test.test_codeccallbacks
 _locale         test.test_locale,test.test__locale
+_datetime       test.test_datetime

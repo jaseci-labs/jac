@@ -77,6 +77,17 @@ Functions the C module parses with `PyArg_ParseTuple` or
 `ArgumentFormat` in `bindings/arguments.jac` with the same format units, so
 their conversions and messages are `getargs.c`'s.
 
+A module whose types are static in C because a C API exposes them keeps
+them static. `_datetime` defines `PyDateTime_DateType` and the other types,
+the immortal `utc_timezone` and the `PyDateTime_CAPI` capsule record as C
+data under their C names, with the layouts of `Include/datetime.h` from
+`layouts.jac`, so `_zoneinfo` and other C extensions read the objects
+through the header's macros. `_PyDateTime_InitTypes()`, which
+`pylifecycle.c` calls, fills each type's `tp_methods` with
+`method_table()` from its `MethodDefinition` list (clinic glue included)
+before readying it; its IsoCalendarDate heap type is a `PyType_Spec` of C
+data whose slots are `ptr(function)`.
+
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
 `PyUnstable_AtExit`, `_PyAtExit_Call` and `_PyAtExit_Fini` in an

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 78 C files / 132,243 lines; 56 headers / 23,827 lines.
-#   Total: 134 files / 156,070 source lines.
+#   Excluded: 79 C files / 140,030 lines; 57 headers / 24,354 lines.
+#   Total: 136 files / 164,384 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -331,7 +331,7 @@ Modules/_ctypes/clinic/cfield.c.h
 Modules/_ctypes/ctypes.h
 Modules/_ctypes/malloc_closure.c
 Modules/_ctypes/stgdict.c
-Modules/_datetimemodule.c
+# Modules/_datetimemodule.c  # removed: 7,787 source lines
 Modules/_decimal/_decimal.c
 Modules/_decimal/docstrings.h
 Modules/_elementtree.c
@@ -510,7 +510,7 @@ Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_codecsmodule.c.h  # removed: 2,807 source lines
 # Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
 # Modules/clinic/_csv.c.h  # removed: 210 source lines
-Modules/clinic/_datetimemodule.c.h
+# Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
 Modules/clinic/_elementtree.c.h
 # Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
 Modules/clinic/_hashopenssl.c.h
