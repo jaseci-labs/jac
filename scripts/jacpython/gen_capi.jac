@@ -634,7 +634,10 @@ def used_names(known: set[str]) -> set[str] {
     defined: set[str] = set();
     for tree in SOURCES {
         for path in tree.rglob("*.jac") {
-            if path == OUTPUT {
+            # A generator's formatting scratch directory (.gen_*) holds a
+            # copy of the output while another run formats it.
+            if path == OUTPUT
+                or any(part.startswith(".") for part in path.relative_to(tree).parts) {
                 continue;
             }
             # Comments, docstrings and string literals mention C names
