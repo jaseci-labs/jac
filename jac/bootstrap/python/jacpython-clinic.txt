@@ -34,3 +34,4 @@ _abc
 _codecs
 _locale
 _bisect
+_heapq
