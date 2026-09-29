@@ -35,3 +35,4 @@ _codecs
 _locale
 _lzma
 _zoneinfo
+unicodedata

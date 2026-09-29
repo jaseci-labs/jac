@@ -57,6 +57,15 @@ library's archive as its linker flag: `_md5` lists
 makesetup rule depends on the archive; `build.sh` makes every such target
 before linking the interpreter. The Jac module declares the library's
 functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
+Data tables CPython generates into headers become C data definitions a
+generator writes from the pinned headers, not a data-only C object:
+`scripts/jacpython/gen_unicodedata.jac` reads `Modules/unicodedata_db.h` and
+`Modules/unicodename_db.h` (Tools/unicode/makeunicodedata.py output) and
+writes `modules/unicodedata_db.jac` and `modules/unicodename_db.jac`, and its
+`--check` fails when they are stale. The tables are the bytes the C arrays
+hold, laid out at link time, so the binary's size and start-up are
+unchanged; the two functions `unicodedata_db.h` carries become data (a
+shift and a list of case pairs).
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant
@@ -192,7 +201,11 @@ the Jac form, not a C helper:
    from C constants (literals, `ptr[u8]("text")`, `addressof(symbol)`, named
    functions for callback fields, nested struct constructors). A
    `list[T]` symbol is a C array, such as a `PyMethodDef` table, and
-   `addressof(table)` is its first element.
+   `addressof(table)` is its first element. An array of sized integers may
+   instead be initialized with a bytes literal of its little-endian
+   elements (`glob t: list[u16] = b"\x34\x12";`), one token per line of a
+   large generated table rather than one expression per element; the
+   unicodedata port lays out its 700 KB of Unicode database tables this way.
 
 5. **Varargs.** A call to a variadic C function passes each extra argument
    with C's default promotions, and a borrowed one (`&mut x`) as the

@@ -185,6 +185,7 @@ glob OPAQUE: list[str] = [
      # Pointer typedefs passed through opaquely; a function pointer typedef
      # here can be passed NULL but not a Jac callback.
      POINTER_TYPEDEFS: dict[str, str] = {
+         "PyCapsule_Destructor": "ptr",
          "PyThread_type_lock": "ptr",
          "Py_tracefunc": "ptr"
      },

@@ -818,6 +818,15 @@ class CGlobal {
         if kind == "array" {
             self._keep = value;
             elem = _field_ctype(self._spec[1], self._scope);
+            if isinstance(value, bytes) {
+                # A bytes literal holds the array's little-endian elements.
+                width = ctypes.sizeof(elem);
+                signed = elem(-1).value < 0;
+                value = [
+                    int.from_bytes(value[i:i + width], "little", signed=signed)
+                    for i in range(0, len(value), width)
+                ];
+            }
             items = [
                 item._addr if isinstance(item, JacPtr) else item for item in value
             ];

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 84 C files / 139,281 lines; 65 headers / 25,988 lines.
-#   Total: 149 files / 165,269 source lines.
+#   Excluded: 85 C files / 141,102 lines; 68 headers / 54,400 lines.
+#   Total: 153 files / 195,502 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -561,7 +561,7 @@ Modules/clinic/socketmodule.c.h
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
 Modules/clinic/termios.c.h
 # Modules/clinic/timemodule.c.h  # removed: 74 source lines
-Modules/clinic/unicodedata.c.h
+# Modules/clinic/unicodedata.c.h  # removed: 552 source lines
 # Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
 # Modules/cmathmodule.c  # removed: 1,315 source lines
 Modules/config.c.in
@@ -603,9 +603,9 @@ Modules/socketmodule.h
 # Modules/syslogmodule.c  # removed: 469 source lines
 Modules/termios.c
 # Modules/timemodule.c  # removed: 2,398 source lines
-Modules/unicodedata.c
-Modules/unicodedata_db.h
-Modules/unicodename_db.h
+# Modules/unicodedata.c  # removed: 1,821 source lines
+# Modules/unicodedata_db.h  # removed: 8,358 source lines
+# Modules/unicodename_db.h  # removed: 19,502 source lines
 # Modules/winreparse.h  # pruned: 59 source lines
 # Modules/xxmodule.c  # pruned: 413 source lines
 # Modules/zlibmodule.c  # removed: 2,181 source lines
