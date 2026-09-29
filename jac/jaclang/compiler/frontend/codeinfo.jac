@@ -255,9 +255,10 @@ def native_arch_scope(mod_path: str) -> str {
     if memo is not None {
         return memo;
     }
+    import from jaclang.compiler.native_scope { binds_bare_arch_names }
     source = os.path.realpath(mod_path);
     out = "";
-    if not is_target_package_path(source) {
+    if not binds_bare_arch_names(source) {
         stem = os.path.basename(source);
         dot = stem.find(".");
         if dot > 0 {
