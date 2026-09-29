@@ -10,10 +10,12 @@ harness.
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import type from jaclang.compiler.frontend.unitree { Module }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
+
 
 # --- Slice semantics: negative bounds, clamping, steps ---
 test "str slices: negative bounds, clamping, and steps match CPython" {
@@ -74,4 +76,38 @@ test "base except handler still sees a readable message for struct raises" {
     fn = get_func(eng, "base_handler_message", ctypes.c_int64);
     result = fn();
     assert result == 1 , f"Expected 1 (str(e) is the type name), got {result}";
+}
+
+# --- malloc NULL must abort cleanly instead of dereferencing (issue #6815) ---
+# The optimized module dump may inline the private allocators, so these
+# assertions are module-level rather than per-function.
+"""Assert malloc OOM guards are present: null-check, abort call, message."""
+def assert_malloc_oom_guard(ir: Module) {
+    text = str(ir.gen.llvm_ir);
+    assert "raw.null" in text , "malloc result must be null-checked";
+    assert ("call void @abort(" in text or 'call void @"abort"(' in text) , "OOM path must call abort";
+    assert "jac native: out of memory" in text , (
+        "OOM message global missing from module IR"
+    );
+}
+
+"""Headerless nogc options: `--gc none` with nogc enforced."""
+def _headerless_opts -> any {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    return CompileOptions(
+        force_codespace='native',
+        force_target_program=True,
+        na_gc_mode="none",
+        nogc_enforce_all=True
+    );
+}
+
+test "__rc_alloc null-checks malloc and aborts on OOM" {
+    (_, ir) = compile_native("rc_glob_return.jac");
+    assert_malloc_oom_guard(ir);
+}
+
+test "__jac_halloc null-checks malloc and aborts on OOM" {
+    ir = compile_native_ir("nogc/enforce_clean.jac", options=_headerless_opts());
+    assert_malloc_oom_guard(ir);
 }
