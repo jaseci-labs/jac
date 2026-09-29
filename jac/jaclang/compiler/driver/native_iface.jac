@@ -428,7 +428,12 @@ obj NativeIface {
         layout: (NativeModuleLayout | None) = None,
         deps: list[str] = [],
         coverage: dict[str, any] = {},
-        headerless: bool = False;
+        headerless: bool = False,
+        # Link symbols of the globals this unit's initializer computes at run
+        # time, and of other units' globals that initializer reads; the link
+        # plan orders initializers by them.
+        runtime_globals: list[str] = [],
+        init_reads: list[str] = [];
 
     def digest_fields -> dict[str, any] {
         return {
@@ -468,6 +473,8 @@ obj NativeIface {
     def _with_references(fields: dict[str, any]) -> dict[str, any] {
         fields["deps"] = [native_unit_ref(x) for x in self.deps];
         fields["coverage"] = dict(self.coverage);
+        fields["runtime_globals"] = list(self.runtime_globals);
+        fields["init_reads"] = list(self.init_reads);
         return fields;
     }
 
@@ -520,7 +527,9 @@ obj NativeIface {
             ),
             deps=[str(x) for x in d.get("deps", [])],
             coverage=dict(d.get("coverage") or {}),
-            headerless=bool(d.get("headerless", False))
+            headerless=bool(d.get("headerless", False)),
+            runtime_globals=[str(x) for x in d.get("runtime_globals", [])],
+            init_reads=[str(x) for x in d.get("init_reads", [])]
         );
     }
 
