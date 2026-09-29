@@ -337,19 +337,32 @@
 -		Python/symtable.o \
 @@ -523,1 +477,0 @@
 -		Objects/boolobject.o \
-@@ -528,2 +481,0 @@
+@@ -528,3 +481,0 @@
 -		Objects/capsule.o \
 -		Objects/cellobject.o \
-@@ -534,1 +485,0 @@
+-		Objects/classobject.o \
+@@ -532,1 +482,0 @@
+-		Objects/complexobject.o \
+@@ -534,1 +483,0 @@
 -		Objects/enumobject.o \
-@@ -543,1 +493,0 @@
+@@ -536,1 +484,0 @@
+-		Objects/genericaliasobject.o \
+@@ -538,1 +485,0 @@
+-		Objects/fileobject.o \
+@@ -542,2 +488,0 @@
+-		Objects/interpolationobject.o \
 -		Objects/iterobject.o \
-@@ -551,1 +500,0 @@
+@@ -551,1 +495,0 @@
 -		Objects/namespaceobject.o \
-@@ -555,1 +503,0 @@
+@@ -554,2 +497,0 @@
+-		Objects/picklebufobject.o \
 -		Objects/rangeobject.o \
-@@ -557,1 +504,0 @@
+@@ -557,3 +498,0 @@
 -		Objects/sliceobject.o \
+-		Objects/structseq.o \
+-		Objects/templateobject.o \
+@@ -565,1 +503,0 @@
+-		Objects/unionobject.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer

@@ -17,6 +17,7 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_Items,
     PyDict_Next,
     PyDict_Size,
+    PyErr_NoMemory,
     PyErr_Occurred,
     PyErr_WarnEx,
     PyExc_DeprecationWarning,
@@ -32,8 +33,13 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_AsSsize_t,
     PyLong_AsUnsignedLongLongMask,
     PyLong_AsUnsignedLongMask,
+    PyMem_Free,
+    PyMem_Malloc,
     PyNumber_Index,
     PyObject,
+    jacpy_tuple_items,
+    PyUnicode_InternFromString,
+    PyUnicode_Equal,
     PyObject_IsTrue,
     PyTuple_GetItem,
     PyTuple_New,
@@ -212,6 +218,7 @@ obj CallSignature {
         positional_only: int = 0,
         keyword_required: int = 0,
         parser: int = PARSE_AUTO,
+        interned: list[ptr[PyObject]] = [],
         positional_warning: str = "",
         positional_warn_range: tuple[int, int] = (0, 0),
         keyword_warning: str = "",
@@ -347,6 +354,95 @@ obj CallSignature {
         return True;
     }
 
+    # The parameter names as interned str, made on first use: a keyword is
+    # found by identity first and by value second, as find_keyword() does.
+    def keys -> list[ptr[PyObject]] {
+        if len(self.interned) != len(self.names) {
+            made: list[ptr[PyObject]] = [];
+            for name in self.names {
+                made.append(PyUnicode_InternFromString(name));
+            }
+            self.interned = made;
+        }
+        return self.interned;
+    }
+
+    # The index of the parameter that keyword `key` names at or after
+    # `start`, or -1.
+    def keyword_slot(key: ptr[PyObject], start: int) -> int {
+        known = self.keys();
+        for i in range(start, len(known)) {
+            if known[i] == key {
+                return i;
+            }
+        }
+        for i in range(start, len(known)) {
+            if known[i] != NULL and PyUnicode_Equal(known[i], key) == 1 {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    # unpack_stack()'s and unpack_mapping()'s bind: positional values, then
+    # `nkw` keyword names and their values; NULL for anything the parser
+    # must report.
+    def unpack_array(
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[ptr[PyObject]],
+        kwvalues: ptr[ptr[PyObject]],
+        nkw: i64
+    ) -> ptr[ptr[PyObject]] {
+        none = ptr[ptr[PyObject]](0);
+        total = len(self.names);
+        posonly = self.positional_only;
+        maxpos = self.positional_count;
+        minpos = self.required_count;
+        count = int(nargs);
+        if count > maxpos or count < min(posonly, minpos) or count + int(nkw) > total {
+            return none;
+        }
+        array = ptr[ptr[PyObject]](PyMem_Malloc(u64(max(total, 1) * 8)));
+        if array == 0 {
+            return none;
+        }
+        slots = array.view(total);
+        for i in range(total) {
+            slots[i] = NULL;
+        }
+        if count > 0 {
+            given = args.view(count);
+            for i in range(count) {
+                slots[i] = given[i];
+            }
+        }
+        if nkw > 0 {
+            keys = kwnames.view(int(nkw));
+            values = kwvalues.view(int(nkw));
+            start = max(count, posonly);
+            for j in range(int(nkw)) {
+                key = keys[j];
+                slot = self.keyword_slot(key, start)
+                    if jacpy_is_unicode(key) != 0
+                    else -1;
+                if slot < 0 or slots[slot] != NULL {
+                    PyMem_Free(array);
+                    return none;
+                }
+                slots[slot] = values[j];
+            }
+        }
+        required = maxpos + self.keyword_required if self.keyword_required else minpos;
+        for i in range(total) {
+            if slots[i] == NULL and (i < minpos or (maxpos <= i and i < required)) {
+                PyMem_Free(array);
+                return none;
+            }
+        }
+        return array;
+    }
+
     # _PyArg_UnpackKeywords() without var-positional parameters.
     def unpack_keywords(
         result: BoundArguments,
@@ -362,13 +458,13 @@ obj CallSignature {
         maxargs = len(self.names);
         reqlimit = maxpos + minkw if minkw else minpos;
         minposonly = min(posonly, minpos);
-        caller = self.caller();
         if nkwargs == 0 and minkw == 0 and minpos <= nargs and nargs <= maxpos {
             for i in range(nargs) {
                 result.values[i] = Py_NewRef(positional[i]);
             }
             return True;
         }
+        caller = self.caller();
         if nargs + nkwargs > maxargs {
             return invalid(
                 f"{caller} takes at most {maxargs} {'keyword '
@@ -614,14 +710,24 @@ def call_bound(
 }
 
 # A METH_VARARGS or METH_VARARGS|METH_KEYWORDS call (and tp_new / tp_init).
+# `checked` False is clinic's failed self_type_check for tp_new/tp_init: a
+# subclass that replaced the other slot, where _PyArg_NoKeywords() and
+# _PyArg_NoPositional() are skipped.
 def invoke(
     signature: CallSignature,
     args: ptr[PyObject],
     kwargs: ptr[PyObject],
     implementation: Callable[[BoundArguments], ptr[PyObject]],
     context: ptr[PyObject] = 0,
-    forward_keywords: bool = False
+    forward_keywords: bool = False,
+    checked: bool = True
 ) -> ptr[PyObject] {
+    if not checked {
+        if signature.parser == PARSE_NOTHING {
+            return call_bound(BoundArguments([], context), implementation);
+        }
+        kwargs = NULL;
+    }
     bound = BoundArguments([NULL for _ in signature.names], context);
     if forward_keywords and kwargs != 0 {
         bound.keywords = Py_NewRef(kwargs);
@@ -654,6 +760,133 @@ def invoke_vector(
         return NULL;
     }
     return call_bound(bound, implementation);
+}
+
+# The generated glue's slow path. Its bound function takes the receiver and a
+# borrowed array of parameter values (NULL for an omitted one) with its length;
+# the glue passes the vectorcall stack or a tuple's items directly when
+# clinic's own fast path applies (no keywords, an accepted positional count),
+# and these bind everything else through the signature's parser, with its
+# messages, into an array as long as the parameter list.
+def call_values(
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject] {
+    count = len(bound.values);
+    if count == 0 {
+        return implementation(bound.context, ptr[ptr[PyObject]](0), i64(0));
+    }
+    array = ptr[ptr[PyObject]](PyMem_Malloc(u64(count * 8)));
+    if array == 0 {
+        return PyErr_NoMemory();
+    }
+    slots = array.view(count);
+    for i in range(count) {
+        slots[i] = bound.values[i];
+    }
+    result = implementation(bound.context, array, i64(count));
+    PyMem_Free(array);
+    return result;
+}
+
+# _PyArg_UnpackKeywords()'s successful binds, without its messages: a new
+# array of len(signature.names) borrowed values (NULL for an omitted one),
+# freed by the caller with PyMem_Free. NULL when the call needs the parser's
+# checks (a bad count, a missing, unexpected or repeated argument, a non-str
+# keyword); invoke_stack() then reports it as CPython does.
+def unpack_stack(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[ptr[PyObject]] {
+    nkw = PyTuple_Size(kwnames) if kwnames else i64(0);
+    return signature.unpack_array(
+        args, nargs, kwnames_items(kwnames), args + nargs, nkw
+    );
+}
+
+# The same over a call's tuple and keyword dict.
+def unpack_mapping(
+    signature: CallSignature, args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[ptr[PyObject]] {
+    nargs = PyTuple_Size(args);
+    count = jacpy_dict_size(kwargs) if kwargs else i64(0);
+    none = ptr[ptr[PyObject]](0);
+    if count == 0 {
+        return signature.unpack_array(jacpy_tuple_items(args), nargs, none, none, 0);
+    }
+    pairs = ptr[ptr[PyObject]](PyMem_Malloc(u64(count * 16)));
+    if pairs == 0 {
+        return none;
+    }
+    slots = pairs.view(int(count * 2));
+    position: i64 = 0;
+    key: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
+    index = 0;
+    while index < int(count)
+        and PyDict_Next(kwargs, &mut position, &mut key, &mut value) != 0 {
+        slots[index] = key;
+        slots[int(count) + index] = value;
+        index += 1;
+    }
+    result = signature.unpack_array(
+        jacpy_tuple_items(args), nargs, pairs, pairs + count, count
+    );
+    PyMem_Free(pairs);
+    return result;
+}
+
+def kwnames_items(kwnames: ptr[PyObject]) -> ptr[ptr[PyObject]] {
+    return jacpy_tuple_items(kwnames) if kwnames else ptr[ptr[PyObject]](0);
+}
+
+# A METH_FASTCALL or METH_FASTCALL|METH_KEYWORDS call off its fast path.
+def invoke_stack(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject] {
+    bound = BoundArguments([NULL for _ in signature.names], context);
+    try {
+        if not signature.bind_vector(bound, args, nargs, kwnames) {
+            return NULL;
+        }
+    } except boundary_failure {
+        return NULL;
+    }
+    return call_values(bound, implementation);
+}
+
+# A METH_VARARGS|METH_KEYWORDS call, tp_new or tp_init off its fast path;
+# `checked` as for invoke().
+def invoke_tuple(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject] {
+    if not checked {
+        if signature.parser == PARSE_NOTHING {
+            return implementation(context, ptr[ptr[PyObject]](0), i64(0));
+        }
+        kwargs = NULL;
+    }
+    bound = BoundArguments([NULL for _ in signature.names], context);
+    try {
+        if not signature.bind(bound, args, kwargs) {
+            return NULL;
+        }
+    } except boundary_failure {
+        return NULL;
+    }
+    return call_values(bound, implementation);
 }
 
 # A METH_NOARGS or METH_O call: CPython's call checked the arity, so the
@@ -715,6 +948,58 @@ obj ArgumentValue {
         unsigned: u64 = 0,
         flag: bool = False,
         text: str = "";
+}
+
+# A format's units analysed once: the conversion units without '|' and '$',
+# the index of the first optional one and of the first keyword-only one
+# (the unit count when absent), and whether it has a '|'.
+obj FormatPlan {
+    has kinds: list[str],
+        minimum: int,
+        maximum: int,
+        optional: bool;
+}
+
+glob FORMAT_PLANS: dict[str, FormatPlan] = {},
+     # The value of every omitted argument; callers only read it.
+     ABSENT = ArgumentValue();
+
+def format_plan(units: str) -> FormatPlan {
+    if units in FORMAT_PLANS {
+        return FORMAT_PLANS[units];
+    }
+    # "O!" is one unit.
+    format: list[str] = [];
+    for character in units {
+        if character == "!" and format and format[-1] == "O" {
+            format[-1] = "O!";
+        } else {
+            format.append(character);
+        }
+    }
+    kinds = [
+        unit
+        for unit in format
+        if unit != "|" and unit != "$"
+    ];
+    optional = [
+        unit
+        for unit in format
+        if unit != "$"
+    ];
+    positional = [
+        unit
+        for unit in format
+        if unit != "|"
+    ];
+    plan = FormatPlan(
+        kinds=kinds,
+        minimum=optional.index("|") if "|" in optional else len(kinds),
+        maximum=positional.index("$") if "$" in positional else len(kinds),
+        optional="|" in format
+    );
+    FORMAT_PLANS[units] = plan;
+    return plan;
 }
 
 # PyArg_ParseTuple() and PyArg_ParseTupleAndKeywords() over formats of
@@ -944,21 +1229,16 @@ obj ArgumentFormat {
 
     # PyArg_ParseTuple(args, units).
     def parse(args: ptr[PyObject], units: str) -> list[ArgumentValue] {
-        format = self.units_of(units);
-        kinds = [
-            u
-            for u in format
-            if u != "|"
-        ];
-        minimum = format.index("|") if "|" in format else len(format);
+        plan = format_plan(units);
+        kinds = plan.kinds;
         expected = self.expected_types(kinds);
-        items = self.unpack(args, minimum, len(kinds));
+        items = self.unpack(args, plan.minimum, len(kinds));
         values: list[ArgumentValue] = [];
         for i in range(len(kinds)) {
             values.append(
                 self.convert(kinds[i], items[i], i + 1, expected[i])
                     if i < len(items)
-                    else ArgumentValue()
+                    else ABSENT
             );
         }
         return values;
@@ -969,26 +1249,12 @@ obj ArgumentFormat {
     def parse_keywords(
         args: ptr[PyObject], kwargs: ptr[PyObject], units: str, keywords: list[str]
     ) -> list[ArgumentValue] {
-        format = self.units_of(units);
-        kinds = [
-            u
-            for u in format
-            if u != "|" and u != "$"
-        ];
+        plan = format_plan(units);
+        kinds = plan.kinds;
         expected = self.expected_types(kinds);
         count = len(keywords);
-        optional = [
-            u
-            for u in format
-            if u != "$"
-        ];
-        minimum = optional.index("|") if "|" in optional else count;
-        positional = [
-            u
-            for u in format
-            if u != "|"
-        ];
-        maximum = positional.index("$") if "$" in positional else count;
+        minimum = plan.minimum;
+        maximum = plan.maximum;
         nargs = int(PyTuple_Size(args));
         nkwargs = int(PyDict_Size(kwargs)) if kwargs else 0;
         shown = self.name or "function";
@@ -1003,7 +1269,7 @@ obj ArgumentFormat {
             );
             raise boundary_failure();
         }
-        values = [ArgumentValue() for _ in range(count)];
+        values = [ABSENT for _ in range(count)];
         remaining = nkwargs;
         for i in range(count) {
             # Reaching "$" with more positional arguments than it allows.
@@ -1014,7 +1280,7 @@ obj ArgumentFormat {
                         f"{shown}{called} takes no positional arguments"
                     );
                 } else {
-                    quantity = "at most" if "|" in units else "exactly";
+                    quantity = "at most" if plan.optional else "exactly";
                     object_error(
                         PyExc_TypeError,
                         f"{shown}{called} takes {quantity} {maximum} positional argument{''

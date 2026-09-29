@@ -24,11 +24,13 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_SetItem,
     PyErr_Clear,
     PyErr_ExceptionMatches,
+    PyExc_SystemError,
     PyExc_TypeError,
     PyExc_ValueError,
     PyIter_Next,
     PyList_Append,
     PyLong_AsInt,
+    PyLong_AsLong,
     PyLong_AsLongLong,
     PyLong_FromLongLong,
     PyNumber_Check,
@@ -57,6 +59,11 @@ import from jaclang.runtime.python.capi {
     object_tuple
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_module_native_get,
+    jacpy_binding_module_native_present,
+    jacpy_binding_state_get
+}
 
 obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;
@@ -783,4 +790,61 @@ def:pub jacpy_csv_registry(
     } except boundary_failure {
         return NULL;
     }
+}
+
+# The Argument Clinic _impl functions. The module keeps its dialect registry
+# in state slot 1 and csv.Error in slot 0; CsvConfig is its native state.
+def:priv registry_call(
+    module: ptr[PyObject], key: ptr[PyObject], operation: i64
+) -> ptr[PyObject] {
+    return jacpy_csv_registry(
+        jacpy_binding_state_get(module, 1),
+        key,
+        NULL,
+        jacpy_binding_state_get(module, 0),
+        operation
+    );
+}
+
+def _csv_list_dialects_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+    return registry_call(module, NULL, 0);
+}
+
+def _csv_get_dialect_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
+    return registry_call(module, name, 1);
+}
+
+def _csv_unregister_dialect_impl(
+    module: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject] {
+    return registry_call(module, name, 3);
+}
+
+def _csv_field_size_limit_impl(
+    module: ptr[PyObject], new_limit: ptr[PyObject]
+) -> ptr[PyObject] {
+    config: CsvConfig | None = None;
+    if jacpy_binding_module_native_present(module) != 0 {
+        state = jacpy_binding_module_native_get(module);
+        if isinstance(state, CsvConfig) {
+            config = state;
+        }
+    }
+    if config is None {
+        object_error(PyExc_SystemError, "native CSV configuration is unavailable");
+        return NULL;
+    }
+    old = config.limit;
+    if new_limit != 0 {
+        if jacpy_is_exact_long(new_limit) == 0 {
+            object_error(PyExc_TypeError, "limit must be an integer");
+            return NULL;
+        }
+        value = PyLong_AsLong(new_limit);
+        if value == -1 and jacpy_error_pending() != 0 {
+            return NULL;
+        }
+        config.limit = value;
+    }
+    return PyLong_FromLongLong(old);
 }

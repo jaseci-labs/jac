@@ -12,21 +12,26 @@ Compiled only on Windows, so absent here:
     _codecs.oem_encode
     _codecs.code_page_encode
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject, jacpy_is_bytes }
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyMem_Free,
+    PyObject,
+    jacpy_is_bytes
+}
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -83,64 +88,66 @@ import from jaclang.runtime.python.modules.codecs {
     _codecs_utf_8_encode_impl
 }
 
-def:priv _codecs_register_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    search_function: ptr[PyObject] = value;
-    return _codecs_register_impl(receiver, search_function);
-}
-
 def:priv _codecs_register_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _codecs_register_bound, receiver);
-}
-
-def:priv _codecs_unregister_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    search_function: ptr[PyObject] = value;
-    return _codecs_unregister_impl(receiver, search_function);
+    try {
+        search_function: ptr[PyObject] = value;
+        return _codecs_register_impl(receiver, search_function);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _codecs_unregister_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _codecs_unregister_bound, receiver);
-}
-
-def:priv _codecs_lookup_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    encoding: str = convert_str(value, "lookup", "argument");
-    return _codecs_lookup_impl(receiver, encoding);
+    try {
+        search_function: ptr[PyObject] = value;
+        return _codecs_unregister_impl(receiver, search_function);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _codecs_lookup_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _codecs_lookup_bound, receiver);
+    try {
+        encoding: str = convert_str(value, "lookup", "argument");
+        return _codecs_lookup_impl(receiver, encoding);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _codecs_encode_signature = CallSignature(
          "encode", ["obj", "encoding", "errors"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _codecs_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    obj_: ptr[PyObject] = value;
-    encoding: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        encoding = convert_cstr(value, "encode", argument_label("encoding", 2), False);
+def:priv _codecs_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        obj_: ptr[PyObject] = value;
+        encoding: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            encoding = convert_cstr(
+                value, "encode", argument_label("encoding", 2), False
+            );
+        }
+        errors: ptr[u8] = ptr[u8]();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            errors = convert_cstr(value, "encode", argument_label("errors", 3), False);
+        }
+        return _codecs_encode_impl(receiver, obj_, encoding, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        errors = convert_cstr(value, "encode", argument_label("errors", 3), False);
-    }
-    return _codecs_encode_impl(receiver, obj_, encoding, errors);
 }
 
 def:priv _codecs_encode_call(
@@ -149,7 +156,16 @@ def:priv _codecs_encode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        return _codecs_encode_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_codecs_encode_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _codecs_encode_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _codecs_encode_signature, args, nargs, kwnames, _codecs_encode_bound, receiver
     );
 }
@@ -158,21 +174,29 @@ glob:priv _codecs_decode_signature = CallSignature(
          "decode", ["obj", "encoding", "errors"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _codecs_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    obj_: ptr[PyObject] = value;
-    encoding: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        encoding = convert_cstr(value, "decode", argument_label("encoding", 2), False);
+def:priv _codecs_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        obj_: ptr[PyObject] = value;
+        encoding: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            encoding = convert_cstr(
+                value, "decode", argument_label("encoding", 2), False
+            );
+        }
+        errors: ptr[u8] = ptr[u8]();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            errors = convert_cstr(value, "decode", argument_label("errors", 3), False);
+        }
+        return _codecs_decode_impl(receiver, obj_, encoding, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        errors = convert_cstr(value, "decode", argument_label("errors", 3), False);
-    }
-    return _codecs_decode_impl(receiver, obj_, encoding, errors);
 }
 
 def:priv _codecs_decode_call(
@@ -181,1191 +205,1185 @@ def:priv _codecs_decode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        return _codecs_decode_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_codecs_decode_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _codecs_decode_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _codecs_decode_signature, args, nargs, kwnames, _codecs_decode_bound, receiver
     );
 }
 
-glob:priv _codecs_escape_decode_signature = CallSignature(
-         "escape_decode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_escape_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_text_buffer(
-        value, "escape_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "escape_decode", argument_label("", 2), True);
+def:priv _codecs_escape_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_text_buffer(
+            value, "escape_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "escape_decode", argument_label("", 2), True
+                );
+            }
+            return _codecs_escape_decode_impl(receiver, data, errors);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_escape_decode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_escape_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_escape_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_escape_decode_bound,
-        receiver
-    );
+    if not check_positional("escape_decode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_escape_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_escape_encode_signature = CallSignature(
-         "escape_encode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_escape_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_bytes(value) == 0 {
-        bad_argument("escape_encode", argument_label("", 1), "bytes", value);
+def:priv _codecs_escape_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_bytes(value) == 0 {
+            bad_argument("escape_encode", argument_label("", 1), "bytes", value);
+        }
+        data: ptr[PyObject] = value;
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "escape_encode", argument_label("", 2), True);
+        }
+        return _codecs_escape_encode_impl(receiver, data, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    data: ptr[PyObject] = value;
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "escape_encode", argument_label("", 2), True);
-    }
-    return _codecs_escape_encode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_escape_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_escape_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_escape_encode_bound,
-        receiver
-    );
+    if not check_positional("escape_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_escape_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_7_decode_signature = CallSignature(
-         "utf_7_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_7_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(value, "utf_7_decode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_7_decode", argument_label("", 2), True);
+def:priv _codecs_utf_7_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_7_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_7_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_7_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_7_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_7_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_7_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_7_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_7_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_7_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_8_decode_signature = CallSignature(
-         "utf_8_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_8_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(value, "utf_8_decode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_8_decode", argument_label("", 2), True);
+def:priv _codecs_utf_8_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_8_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_8_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_8_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_8_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_8_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_8_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_8_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_8_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_8_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_decode_signature = CallSignature(
-         "utf_16_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_16_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_decode", argument_label("", 2), True);
+def:priv _codecs_utf_16_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_16_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_16_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_16_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_16_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_16_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_le_decode_signature = CallSignature(
-         "utf_16_le_decode",
-         ["data", "errors", "final"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_16_le_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_le_decode", argument_label("", 2), True);
+def:priv _codecs_utf_16_le_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_16_le_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_16_le_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_16_le_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_le_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_16_le_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_le_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_le_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_le_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_16_le_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_be_decode_signature = CallSignature(
-         "utf_16_be_decode",
-         ["data", "errors", "final"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_16_be_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_be_decode", argument_label("", 2), True);
+def:priv _codecs_utf_16_be_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_16_be_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_16_be_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_16_be_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_be_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_16_be_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_be_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_be_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_be_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_16_be_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_ex_decode_signature = CallSignature(
-         "utf_16_ex_decode",
-         ["data", "errors", "byteorder", "final"],
-         1,
-         4,
-         4,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_16_ex_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_ex_decode", argument_label("", 2), True);
+def:priv _codecs_utf_16_ex_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_16_ex_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_16_ex_decode", argument_label("", 2), True
+                );
+            }
+            byteorder: i32 = 0;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                byteorder = convert_int(value);
+            }
+            final: bool = False;
+            if count > 3 and clinic_args[3] != NULL {
+                value = clinic_args[3];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_16_ex_decode_impl(
+                receiver, data, errors, byteorder, final
+            );
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    byteorder: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        byteorder = convert_int(value);
-    }
-    final: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_16_ex_decode_impl(receiver, data, errors, byteorder, final);
 }
 
 def:priv _codecs_utf_16_ex_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_ex_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_ex_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_ex_decode", int(nargs), 1, 4) {
+        return NULL;
+    }
+    return _codecs_utf_16_ex_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_decode_signature = CallSignature(
-         "utf_32_decode", ["data", "errors", "final"], 1, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_32_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_decode", argument_label("", 2), True);
+def:priv _codecs_utf_32_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_32_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_32_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_32_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_32_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_32_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_le_decode_signature = CallSignature(
-         "utf_32_le_decode",
-         ["data", "errors", "final"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_le_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_32_le_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_le_decode", argument_label("", 2), True);
+def:priv _codecs_utf_32_le_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_32_le_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_32_le_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_32_le_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_le_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_32_le_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_le_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_le_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_le_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_32_le_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_be_decode_signature = CallSignature(
-         "utf_32_be_decode",
-         ["data", "errors", "final"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_be_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_32_be_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_be_decode", argument_label("", 2), True);
+def:priv _codecs_utf_32_be_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_32_be_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_32_be_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = False;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_32_be_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_be_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_utf_32_be_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_be_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_be_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_be_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_32_be_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_ex_decode_signature = CallSignature(
-         "utf_32_ex_decode",
-         ["data", "errors", "byteorder", "final"],
-         1,
-         4,
-         4,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_ex_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "utf_32_ex_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_ex_decode", argument_label("", 2), True);
+def:priv _codecs_utf_32_ex_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "utf_32_ex_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "utf_32_ex_decode", argument_label("", 2), True
+                );
+            }
+            byteorder: i32 = 0;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                byteorder = convert_int(value);
+            }
+            final: bool = False;
+            if count > 3 and clinic_args[3] != NULL {
+                value = clinic_args[3];
+                final = convert_bool(value);
+            }
+            return _codecs_utf_32_ex_decode_impl(
+                receiver, data, errors, byteorder, final
+            );
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    byteorder: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        byteorder = convert_int(value);
-    }
-    final: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        final = convert_bool(value);
-    }
-    return _codecs_utf_32_ex_decode_impl(receiver, data, errors, byteorder, final);
 }
 
 def:priv _codecs_utf_32_ex_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_ex_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_ex_decode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_ex_decode", int(nargs), 1, 4) {
+        return NULL;
+    }
+    return _codecs_utf_32_ex_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_unicode_escape_decode_signature = CallSignature(
-         "unicode_escape_decode",
-         ["data", "errors", "final"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_unicode_escape_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_text_buffer(
-        value, "unicode_escape_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(
-            value, "unicode_escape_decode", argument_label("", 2), True
+def:priv _codecs_unicode_escape_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_text_buffer(
+            value, "unicode_escape_decode", argument_label("", 1)
         );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "unicode_escape_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = True;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_unicode_escape_decode_impl(receiver, data, errors, final);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_unicode_escape_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_unicode_escape_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_unicode_escape_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_unicode_escape_decode_bound,
-        receiver
-    );
+    if not check_positional("unicode_escape_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_unicode_escape_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_raw_unicode_escape_decode_signature = CallSignature(
-         "raw_unicode_escape_decode",
-         ["data", "errors", "final"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
 def:priv _codecs_raw_unicode_escape_decode_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_text_buffer(
-        value, "raw_unicode_escape_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(
-            value, "raw_unicode_escape_decode", argument_label("", 2), True
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_text_buffer(
+            value, "raw_unicode_escape_decode", argument_label("", 1)
         );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "raw_unicode_escape_decode", argument_label("", 2), True
+                );
+            }
+            final: bool = True;
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                final = convert_bool(value);
+            }
+            return _codecs_raw_unicode_escape_decode_impl(
+                receiver, data, errors, final
+            );
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    final: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        final = convert_bool(value);
-    }
-    return _codecs_raw_unicode_escape_decode_impl(receiver, data, errors, final);
 }
 
 def:priv _codecs_raw_unicode_escape_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_raw_unicode_escape_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_raw_unicode_escape_decode_bound,
-        receiver
-    );
+    if not check_positional("raw_unicode_escape_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_raw_unicode_escape_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_latin_1_decode_signature = CallSignature(
-         "latin_1_decode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_latin_1_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "latin_1_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "latin_1_decode", argument_label("", 2), True);
+def:priv _codecs_latin_1_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "latin_1_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "latin_1_decode", argument_label("", 2), True
+                );
+            }
+            return _codecs_latin_1_decode_impl(receiver, data, errors);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_latin_1_decode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_latin_1_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_latin_1_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_latin_1_decode_bound,
-        receiver
-    );
+    if not check_positional("latin_1_decode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_latin_1_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_ascii_decode_signature = CallSignature(
-         "ascii_decode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_ascii_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(value, "ascii_decode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "ascii_decode", argument_label("", 2), True);
+def:priv _codecs_ascii_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "ascii_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "ascii_decode", argument_label("", 2), True
+                );
+            }
+            return _codecs_ascii_decode_impl(receiver, data, errors);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_ascii_decode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_ascii_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_ascii_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_ascii_decode_bound,
-        receiver
-    );
+    if not check_positional("ascii_decode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_ascii_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_charmap_decode_signature = CallSignature(
-         "charmap_decode",
-         ["data", "errors", "mapping"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_charmap_decode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "charmap_decode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "charmap_decode", argument_label("", 2), True);
+def:priv _codecs_charmap_decode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "charmap_decode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "charmap_decode", argument_label("", 2), True
+                );
+            }
+            mapping: ptr[PyObject] = borrowed_none();
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                mapping = value;
+            }
+            return _codecs_charmap_decode_impl(receiver, data, errors, mapping);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    mapping: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        mapping = value;
-    }
-    return _codecs_charmap_decode_impl(receiver, data, errors, mapping);
 }
 
 def:priv _codecs_charmap_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_charmap_decode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_charmap_decode_bound,
-        receiver
-    );
+    if not check_positional("charmap_decode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_charmap_decode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_readbuffer_encode_signature = CallSignature(
-         "readbuffer_encode", ["data", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_readbuffer_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_text_buffer(
-        value, "readbuffer_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "readbuffer_encode", argument_label("", 2), True);
+def:priv _codecs_readbuffer_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_text_buffer(
+            value, "readbuffer_encode", argument_label("", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "readbuffer_encode", argument_label("", 2), True
+                );
+            }
+            return _codecs_readbuffer_encode_impl(receiver, data, errors);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_readbuffer_encode_impl(receiver, data, errors);
 }
 
 def:priv _codecs_readbuffer_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_readbuffer_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_readbuffer_encode_bound,
-        receiver
-    );
+    if not check_positional("readbuffer_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_readbuffer_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_7_encode_signature = CallSignature(
-         "utf_7_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_7_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(value, "utf_7_encode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_7_encode", argument_label("", 2), True);
+def:priv _codecs_utf_7_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_7_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "utf_7_encode", argument_label("", 2), True);
+        }
+        return _codecs_utf_7_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_utf_7_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_utf_7_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_7_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_7_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_7_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_utf_7_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_8_encode_signature = CallSignature(
-         "utf_8_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_8_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(value, "utf_8_encode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_8_encode", argument_label("", 2), True);
+def:priv _codecs_utf_8_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_8_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "utf_8_encode", argument_label("", 2), True);
+        }
+        return _codecs_utf_8_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_utf_8_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_utf_8_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_8_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_8_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_8_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_utf_8_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_encode_signature = CallSignature(
-         "utf_16_encode",
-         ["str", "errors", "byteorder"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "utf_16_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_encode", argument_label("", 2), True);
+def:priv _codecs_utf_16_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_16_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "utf_16_encode", argument_label("", 2), True);
+        }
+        byteorder: i32 = 0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            byteorder = convert_int(value);
+        }
+        return _codecs_utf_16_encode_impl(receiver, str_, errors, byteorder);
+    } except boundary_failure {
+        return NULL;
     }
-    byteorder: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        byteorder = convert_int(value);
-    }
-    return _codecs_utf_16_encode_impl(receiver, str_, errors, byteorder);
 }
 
 def:priv _codecs_utf_16_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_encode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_16_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_le_encode_signature = CallSignature(
-         "utf_16_le_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_le_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "utf_16_le_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_le_encode", argument_label("", 2), True);
+def:priv _codecs_utf_16_le_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_16_le_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(
+                value, "utf_16_le_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_utf_16_le_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_utf_16_le_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_utf_16_le_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_le_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_le_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_le_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_utf_16_le_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_16_be_encode_signature = CallSignature(
-         "utf_16_be_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_16_be_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "utf_16_be_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_16_be_encode", argument_label("", 2), True);
+def:priv _codecs_utf_16_be_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_16_be_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(
+                value, "utf_16_be_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_utf_16_be_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_utf_16_be_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_utf_16_be_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_16_be_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_16_be_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_16_be_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_utf_16_be_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_encode_signature = CallSignature(
-         "utf_32_encode",
-         ["str", "errors", "byteorder"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "utf_32_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_encode", argument_label("", 2), True);
+def:priv _codecs_utf_32_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_32_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "utf_32_encode", argument_label("", 2), True);
+        }
+        byteorder: i32 = 0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            byteorder = convert_int(value);
+        }
+        return _codecs_utf_32_encode_impl(receiver, str_, errors, byteorder);
+    } except boundary_failure {
+        return NULL;
     }
-    byteorder: i32 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        byteorder = convert_int(value);
-    }
-    return _codecs_utf_32_encode_impl(receiver, str_, errors, byteorder);
 }
 
 def:priv _codecs_utf_32_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_encode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_utf_32_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_le_encode_signature = CallSignature(
-         "utf_32_le_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_le_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "utf_32_le_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_le_encode", argument_label("", 2), True);
+def:priv _codecs_utf_32_le_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_32_le_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(
+                value, "utf_32_le_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_utf_32_le_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_utf_32_le_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_utf_32_le_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_le_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_le_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_le_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_utf_32_le_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_utf_32_be_encode_signature = CallSignature(
-         "utf_32_be_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_utf_32_be_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "utf_32_be_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "utf_32_be_encode", argument_label("", 2), True);
+def:priv _codecs_utf_32_be_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "utf_32_be_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(
+                value, "utf_32_be_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_utf_32_be_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_utf_32_be_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_utf_32_be_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_utf_32_be_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_utf_32_be_encode_bound,
-        receiver
-    );
+    if not check_positional("utf_32_be_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_utf_32_be_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_unicode_escape_encode_signature = CallSignature(
-         "unicode_escape_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_unicode_escape_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "unicode_escape_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(
-            value, "unicode_escape_encode", argument_label("", 2), True
+def:priv _codecs_unicode_escape_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "unicode_escape_encode", argument_label("", 1)
         );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(
+                value, "unicode_escape_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_unicode_escape_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_unicode_escape_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_unicode_escape_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_unicode_escape_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_unicode_escape_encode_bound,
-        receiver
-    );
+    if not check_positional("unicode_escape_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_unicode_escape_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_raw_unicode_escape_encode_signature = CallSignature(
-         "raw_unicode_escape_encode",
-         ["str", "errors"],
-         1,
-         2,
-         2,
-         parser=PARSE_POSITIONAL
-     );
-
 def:priv _codecs_raw_unicode_escape_encode_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "raw_unicode_escape_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(
-            value, "raw_unicode_escape_encode", argument_label("", 2), True
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "raw_unicode_escape_encode", argument_label("", 1)
         );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(
+                value, "raw_unicode_escape_encode", argument_label("", 2), True
+            );
+        }
+        return _codecs_raw_unicode_escape_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_raw_unicode_escape_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_raw_unicode_escape_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_raw_unicode_escape_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_raw_unicode_escape_encode_bound,
-        receiver
-    );
+    if not check_positional("raw_unicode_escape_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_raw_unicode_escape_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_latin_1_encode_signature = CallSignature(
-         "latin_1_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_latin_1_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "latin_1_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "latin_1_encode", argument_label("", 2), True);
+def:priv _codecs_latin_1_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "latin_1_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "latin_1_encode", argument_label("", 2), True);
+        }
+        return _codecs_latin_1_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_latin_1_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_latin_1_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_latin_1_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_latin_1_encode_bound,
-        receiver
-    );
+    if not check_positional("latin_1_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_latin_1_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_ascii_encode_signature = CallSignature(
-         "ascii_encode", ["str", "errors"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_ascii_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(value, "ascii_encode", argument_label("", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "ascii_encode", argument_label("", 2), True);
+def:priv _codecs_ascii_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "ascii_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "ascii_encode", argument_label("", 2), True);
+        }
+        return _codecs_ascii_encode_impl(receiver, str_, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _codecs_ascii_encode_impl(receiver, str_, errors);
 }
 
 def:priv _codecs_ascii_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_ascii_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_ascii_encode_bound,
-        receiver
-    );
+    if not check_positional("ascii_encode", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _codecs_ascii_encode_bound(receiver, args, nargs);
 }
 
-glob:priv _codecs_charmap_encode_signature = CallSignature(
-         "charmap_encode",
-         ["str", "errors", "mapping"],
-         1,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_charmap_encode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    str_: ptr[PyObject] = convert_unicode(
-        value, "charmap_encode", argument_label("", 1)
-    );
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "charmap_encode", argument_label("", 2), True);
+def:priv _codecs_charmap_encode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        str_: ptr[PyObject] = convert_unicode(
+            value, "charmap_encode", argument_label("", 1)
+        );
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "charmap_encode", argument_label("", 2), True);
+        }
+        mapping: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            mapping = value;
+        }
+        return _codecs_charmap_encode_impl(receiver, str_, errors, mapping);
+    } except boundary_failure {
+        return NULL;
     }
-    mapping: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        mapping = value;
-    }
-    return _codecs_charmap_encode_impl(receiver, str_, errors, mapping);
 }
 
 def:priv _codecs_charmap_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_charmap_encode_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_charmap_encode_bound,
-        receiver
-    );
-}
-
-def:priv _codecs_charmap_build_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    map: ptr[PyObject] = convert_unicode(value, "charmap_build", "argument");
-    return _codecs_charmap_build_impl(receiver, map);
+    if not check_positional("charmap_encode", int(nargs), 1, 3) {
+        return NULL;
+    }
+    return _codecs_charmap_encode_bound(receiver, args, nargs);
 }
 
 def:priv _codecs_charmap_build_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _codecs_charmap_build_bound, receiver);
+    try {
+        map: ptr[PyObject] = convert_unicode(value, "charmap_build", "argument");
+        return _codecs_charmap_build_impl(receiver, map);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _codecs_register_error_signature = CallSignature(
-         "register_error", ["errors", "handler"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _codecs_register_error_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    errors: str = convert_str(value, "register_error", argument_label("", 1));
-    value = args.values[1];
-    handler: ptr[PyObject] = value;
-    return _codecs_register_error_impl(receiver, errors, handler);
+def:priv _codecs_register_error_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        errors: str = convert_str(value, "register_error", argument_label("", 1));
+        value = clinic_args[1];
+        handler: ptr[PyObject] = value;
+        return _codecs_register_error_impl(receiver, errors, handler);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _codecs_register_error_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _codecs_register_error_signature,
-        args,
-        nargs,
-        NULL,
-        _codecs_register_error_bound,
-        receiver
-    );
-}
-
-def:priv _codecs__unregister_error_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    errors: str = convert_str(value, "_unregister_error", "argument");
-    return return_bool(_codecs__unregister_error_impl(receiver, errors));
+    if not check_positional("register_error", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _codecs_register_error_bound(receiver, args, nargs);
 }
 
 def:priv _codecs__unregister_error_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _codecs__unregister_error_bound, receiver);
-}
-
-def:priv _codecs_lookup_error_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: str = convert_str(value, "lookup_error", "argument");
-    return _codecs_lookup_error_impl(receiver, name);
+    try {
+        errors: str = convert_str(value, "_unregister_error", "argument");
+        return return_bool(_codecs__unregister_error_impl(receiver, errors));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _codecs_lookup_error_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _codecs_lookup_error_bound, receiver);
+    try {
+        name: str = convert_str(value, "lookup_error", "argument");
+        return _codecs_lookup_error_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob module_methods: list[MethodDefinition] = [

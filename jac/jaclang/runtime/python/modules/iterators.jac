@@ -336,6 +336,22 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
     if kind == pipeline_kind.ZIP_LONGEST.value {
         return pipeline_zip(state);
     }
+    # repeat cannot fail: it stays out of the exception region, which keeps
+    # a function from being optimized.
+    if kind == pipeline_kind.REPEAT.value {
+        if state.stop == 0 {
+            return NULL;
+        }
+        if state.stop > 0 {
+            state.stop -= 1;
+        }
+        return Py_NewRef(state.value);
+    }
+    return pipeline_advance(state, kind);
+}
+
+# The kinds whose step can fail, inside the exception region.
+def:priv pipeline_advance(state: pipeline_state, kind: i64) -> ptr[PyObject] {
     item: ptr[PyObject] = NULL;
     good: ptr[PyObject] = NULL;
     result: ptr[PyObject] = NULL;
@@ -350,15 +366,6 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
             answer = item;
             item = NULL;
             return answer;
-        }
-        if kind == pipeline_kind.REPEAT.value {
-            if state.stop == 0 {
-                return NULL;
-            }
-            if state.stop > 0 {
-                state.stop -= 1;
-            }
-            return Py_NewRef(state.value);
         }
         if kind == pipeline_kind.ACCUMULATE.value and state.initial != 0 {
             prior = state.value;

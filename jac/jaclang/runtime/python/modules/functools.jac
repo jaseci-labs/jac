@@ -33,6 +33,7 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_SetItem,
     PyDict_Update,
     PyErr_ExceptionMatches,
+    PyExc_SystemError,
     PyExc_TypeError,
     PyIter_Next,
     PyLong_AsLongLong,
@@ -53,6 +54,19 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_Size
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
+}
+import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
+}
 import from jaclang.runtime.python.capi {
     object_error,
     required,
@@ -731,4 +745,88 @@ def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
     } finally {
         jacpy_release(args);
     }
+}
+
+# The native state of a functools._lru_cache_wrapper instance.
+obj LruState(NativeState) {
+    has native: lru_state;
+
+    def clear {
+        jacpy_lru_destroy(self.native);
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        for i in range(7) {
+            status = visit_reference(
+                jacpy_lru_field(self.native, i64(i)), visitor, context
+            );
+            if status != 0 {
+                return status;
+            }
+        }
+        return i32(0);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+# The Argument Clinic _impl functions. The binding points the tokens at the
+# KeyWrapper and _lru_cache_wrapper types it creates; KeyWrapper is also the
+# module's state slot 1.
+glob KeyWrapper_token = ClassToken(),
+     _lru_cache_wrapper_token = ClassToken();
+
+def _functools_reduce_impl(
+    module: ptr[PyObject],
+    function: ptr[PyObject],
+    iterable: ptr[PyObject],
+    initial: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_reduce(function, iterable, initial);
+}
+
+# cmp_to_key(): a KeyWrapper over `mycmp` with no wrapped object yet.
+def _functools_cmp_to_key_impl(
+    module: ptr[PyObject], mycmp: ptr[PyObject]
+) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(jacpy_binding_state_get(module, 1));
+    if instance == 0 {
+        return NULL;
+    }
+    state = ReferenceState(references=[Py_NewRef(mycmp), NULL]);
+    if jacpy_binding_native_set(instance, KeyWrapper_token.handle, state) < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+def:priv lru_of(instance: ptr[PyObject]) -> (LruState | None) {
+    if jacpy_binding_native_present(instance, _lru_cache_wrapper_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, _lru_cache_wrapper_token.handle);
+        if isinstance(state, LruState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native cache state is unavailable");
+    return None;
+}
+
+def _functools__lru_cache_wrapper_cache_info_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = lru_of(instance);
+    return jacpy_lru_info(state.native) if state is not None else NULL;
+}
+
+def _functools__lru_cache_wrapper_cache_clear_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = lru_of(instance);
+    if state is None or jacpy_lru_clear(state.native) != 0 {
+        return NULL;
+    }
+    return Py_NewRef(Py_None);
 }

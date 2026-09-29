@@ -628,6 +628,10 @@ impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) ->
         }
         self._emit_err_propagate(loc="reraise");
     } else {
+        held_slot = self._unbound_caught_slots.get(id(values));
+        if held_slot is not None and isinstance(held_slot.type, ir.PointerType) {
+            self.builder.store(ir.Constant(held_slot.type.pointee, None), held_slot);
+        }
         self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
         self.builder.unreachable();
     }
@@ -1176,8 +1180,27 @@ impl NaIRGenPass._codegen_try_unwind(
                 self.local_vars[var_name] = alloca;
             }
 
+            unbound_slot: (ir.Value | None) = None;
+            if except_node.name is None
+                and not _in_gen
+                and not self._nogc_headerless() {
+                caught_obj = self.builder.load(
+                    self.builder.gep(
+                        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)]
+                    ),
+                    name="exc.unbound.obj"
+                );
+                unbound_slot = self._exc_binding_slot(UNBOUND_CAUGHT, caught_obj.type);
+                unbound_old = self.builder.load(unbound_slot, name="exc.unbound.old");
+                self.builder.store(caught_obj, unbound_slot);
+                self._emit_rc_release_typed(unbound_old, op="overwrite");
+                self.local_vars[UNBOUND_CAUGHT] = unbound_slot;
+            }
             caught_values = self._exception_values(exc_state);
             self._caught_error_stack.append((func, caught_values));
+            if unbound_slot is not None {
+                self._unbound_caught_slots[id(caught_values)] = unbound_slot;
+            }
             if except_node.name is not None {
                 self._exc_bindings.append(
                     (func, var_name, alloca, bound_val, caught_values)
@@ -1190,19 +1213,12 @@ impl NaIRGenPass._codegen_try_unwind(
             self._finally_stack.pop();
             if except_node.name is not None {
                 self._exc_bindings.pop();
-            } elif not self.builder.block.is_terminated
-                and not _in_gen
-                and not self._nogc_headerless() {
-                self._emit_rc_release_typed(
-                    self.builder.load(
-                        self.builder.gep(
-                            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)]
-                        ),
-                        name="exc.unbound.obj"
-                    ),
-                    op="scope_exit"
-                );
+            } elif unbound_slot is not None and not self.builder.block.is_terminated {
+                held = self.builder.load(unbound_slot, name="exc.unbound.held");
+                self.builder.store(ir.Constant(held.type, None), unbound_slot);
+                self._emit_rc_release_typed(held, op="scope_exit");
             }
+            self._unbound_caught_slots.pop(id(caught_values), None);
             self._caught_error_stack.pop();
             if not self.builder.block.is_terminated {
                 self.builder.branch(finally_bb);

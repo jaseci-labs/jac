@@ -10,8 +10,8 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters { bad_argument }
 import from jaclang.runtime.python.modules.pwd {
     pwd_getpwall_impl,
@@ -19,47 +19,44 @@ import from jaclang.runtime.python.modules.pwd {
     pwd_getpwuid_impl
 }
 
-def:priv pwd_getpwuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    uidobj: ptr[PyObject] = value;
-    return pwd_getpwuid_impl(receiver, uidobj);
-}
-
 def:priv pwd_getpwuid_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, pwd_getpwuid_bound, receiver);
-}
-
-def:priv pwd_getpwnam_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_unicode(value) == 0 {
-        bad_argument("getpwnam", "argument", "str", value, True);
+    try {
+        uidobj: ptr[PyObject] = value;
+        return pwd_getpwuid_impl(receiver, uidobj);
+    } except boundary_failure {
+        return NULL;
     }
-    name: ptr[PyObject] = value;
-    return pwd_getpwnam_impl(receiver, name);
 }
 
 def:priv pwd_getpwnam_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, pwd_getpwnam_bound, receiver);
-}
-
-def:priv pwd_getpwall_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return pwd_getpwall_impl(receiver);
+    try {
+        if jacpy_is_unicode(value) == 0 {
+            bad_argument("getpwnam", "argument", "str", value, True);
+        }
+        name: ptr[PyObject] = value;
+        return pwd_getpwnam_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv pwd_getpwall_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, pwd_getpwall_bound, receiver);
+    try {
+        return pwd_getpwall_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob struct_passwd__doc__: str = "pwd.struct_passwd: Results from getpw*() routines.\n\nThis object may be accessed either as a tuple of\n  (pw_name,pw_passwd,pw_uid,pw_gid,pw_gecos,pw_dir,pw_shell)\nor via the object attributes as named in the above tuple.",
+     pwd__doc__: str = "This module provides access to the Unix password database.\nIt is available on all Unix versions.\n\nPassword database entries are reported as 7-tuples containing the following\nitems from the password database (see `<pwd.h>'), in order:\npw_name, pw_passwd, pw_uid, pw_gid, pw_gecos, pw_dir, pw_shell.\nThe uid and gid items are integers, all others are strings. An\nexception is raised if the entry asked for cannot be found.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "getpwuid",
              MethodCallbacks(positional=pwd_getpwuid_call),

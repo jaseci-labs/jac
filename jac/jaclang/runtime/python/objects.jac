@@ -14,10 +14,9 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Fast,
     PySequence_GetItem,
     PySequence_Tuple,
-    PyUnicode_Format,
-    _Py_c_pow,
-    _Py_c_quot
+    PyUnicode_Format
 }
+import from jaclang.runtime.python.object_model.complex { _Py_c_pow, _Py_c_quot }
 import from jaclang.runtime.python.opcode_meta {
     NB_ADD,
     NB_AND,

@@ -13,14 +13,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_cstr,
@@ -43,239 +38,225 @@ import from jaclang.runtime.python.modules.locale {
     _locale_textdomain_impl
 }
 
-glob:priv _locale_setlocale_signature = CallSignature(
-         "setlocale", ["category", "locale"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _locale_setlocale_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    category: i32 = convert_int(value);
-    locale: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        locale = convert_cstr(value, "setlocale", argument_label("", 2), True);
+def:priv _locale_setlocale_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        category: i32 = convert_int(value);
+        locale: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            locale = convert_cstr(value, "setlocale", argument_label("", 2), True);
+        }
+        return _locale_setlocale_impl(receiver, category, locale);
+    } except boundary_failure {
+        return NULL;
     }
-    return _locale_setlocale_impl(receiver, category, locale);
 }
 
 def:priv _locale_setlocale_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _locale_setlocale_signature,
-        args,
-        nargs,
-        NULL,
-        _locale_setlocale_bound,
-        receiver
-    );
-}
-
-def:priv _locale_localeconv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _locale_localeconv_impl(receiver);
+    if not check_positional("setlocale", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _locale_setlocale_bound(receiver, args, nargs);
 }
 
 def:priv _locale_localeconv_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _locale_localeconv_bound, receiver);
+    try {
+        return _locale_localeconv_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _locale_strcoll_signature = CallSignature(
-         "strcoll", ["os1", "os2"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _locale_strcoll_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    os1: ptr[PyObject] = convert_unicode(value, "strcoll", argument_label("", 1));
-    value = args.values[1];
-    os2: ptr[PyObject] = convert_unicode(value, "strcoll", argument_label("", 2));
-    return _locale_strcoll_impl(receiver, os1, os2);
+def:priv _locale_strcoll_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        os1: ptr[PyObject] = convert_unicode(value, "strcoll", argument_label("", 1));
+        value = clinic_args[1];
+        os2: ptr[PyObject] = convert_unicode(value, "strcoll", argument_label("", 2));
+        return _locale_strcoll_impl(receiver, os1, os2);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_strcoll_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _locale_strcoll_signature, args, nargs, NULL, _locale_strcoll_bound, receiver
-    );
-}
-
-def:priv _locale_strxfrm_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    string: ptr[PyObject] = convert_unicode(value, "strxfrm", "argument");
-    return _locale_strxfrm_impl(receiver, string);
+    if not check_positional("strcoll", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _locale_strcoll_bound(receiver, args, nargs);
 }
 
 def:priv _locale_strxfrm_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _locale_strxfrm_bound, receiver);
-}
-
-def:priv _locale_nl_langinfo_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    key: i32 = convert_int(value);
-    return _locale_nl_langinfo_impl(receiver, key);
+    try {
+        string: ptr[PyObject] = convert_unicode(value, "strxfrm", "argument");
+        return _locale_strxfrm_impl(receiver, string);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_nl_langinfo_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _locale_nl_langinfo_bound, receiver);
-}
-
-def:priv _locale_gettext_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    msg: str = convert_str(value, "gettext", "argument");
-    return _locale_gettext_impl(receiver, msg);
+    try {
+        key: i32 = convert_int(value);
+        return _locale_nl_langinfo_impl(receiver, key);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_gettext_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _locale_gettext_bound, receiver);
+    try {
+        msg: str = convert_str(value, "gettext", "argument");
+        return _locale_gettext_impl(receiver, msg);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _locale_dgettext_signature = CallSignature(
-         "dgettext", ["domain", "msg"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _locale_dgettext_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    domain: ptr[u8] = convert_cstr(value, "dgettext", argument_label("", 1), True);
-    value = args.values[1];
-    msg: str = convert_str(value, "dgettext", argument_label("", 2));
-    return _locale_dgettext_impl(receiver, domain, msg);
+def:priv _locale_dgettext_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        domain: ptr[u8] = convert_cstr(value, "dgettext", argument_label("", 1), True);
+        value = clinic_args[1];
+        msg: str = convert_str(value, "dgettext", argument_label("", 2));
+        return _locale_dgettext_impl(receiver, domain, msg);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_dgettext_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _locale_dgettext_signature, args, nargs, NULL, _locale_dgettext_bound, receiver
-    );
+    if not check_positional("dgettext", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _locale_dgettext_bound(receiver, args, nargs);
 }
 
-glob:priv _locale_dcgettext_signature = CallSignature(
-         "dcgettext", ["domain", "msg", "category"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv _locale_dcgettext_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    domain: ptr[u8] = convert_cstr(value, "dcgettext", argument_label("", 1), True);
-    value = args.values[1];
-    msg: str = convert_str(value, "dcgettext", argument_label("", 2));
-    value = args.values[2];
-    category: i32 = convert_int(value);
-    return _locale_dcgettext_impl(receiver, domain, msg, category);
+def:priv _locale_dcgettext_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        domain: ptr[u8] = convert_cstr(value, "dcgettext", argument_label("", 1), True);
+        value = clinic_args[1];
+        msg: str = convert_str(value, "dcgettext", argument_label("", 2));
+        value = clinic_args[2];
+        category: i32 = convert_int(value);
+        return _locale_dcgettext_impl(receiver, domain, msg, category);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_dcgettext_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _locale_dcgettext_signature,
-        args,
-        nargs,
-        NULL,
-        _locale_dcgettext_bound,
-        receiver
-    );
-}
-
-def:priv _locale_textdomain_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    domain: ptr[u8] = convert_cstr(value, "textdomain", "argument", True);
-    return _locale_textdomain_impl(receiver, domain);
+    if not check_positional("dcgettext", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return _locale_dcgettext_bound(receiver, args, nargs);
 }
 
 def:priv _locale_textdomain_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _locale_textdomain_bound, receiver);
+    try {
+        domain: ptr[u8] = convert_cstr(value, "textdomain", "argument", True);
+        return _locale_textdomain_impl(receiver, domain);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _locale_bindtextdomain_signature = CallSignature(
-         "bindtextdomain", ["domain", "dir"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _locale_bindtextdomain_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    domain: str = convert_str(value, "bindtextdomain", argument_label("", 1));
-    value = args.values[1];
-    dir: ptr[PyObject] = value;
-    return _locale_bindtextdomain_impl(receiver, domain, dir);
+def:priv _locale_bindtextdomain_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        domain: str = convert_str(value, "bindtextdomain", argument_label("", 1));
+        value = clinic_args[1];
+        dir: ptr[PyObject] = value;
+        return _locale_bindtextdomain_impl(receiver, domain, dir);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_bindtextdomain_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _locale_bindtextdomain_signature,
-        args,
-        nargs,
-        NULL,
-        _locale_bindtextdomain_bound,
-        receiver
-    );
+    if not check_positional("bindtextdomain", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _locale_bindtextdomain_bound(receiver, args, nargs);
 }
 
-glob:priv _locale_bind_textdomain_codeset_signature = CallSignature(
-         "bind_textdomain_codeset",
-         ["domain", "codeset"],
-         2,
-         2,
-         2,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _locale_bind_textdomain_codeset_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    domain: str = convert_str(value, "bind_textdomain_codeset", argument_label("", 1));
-    value = args.values[1];
-    codeset: ptr[u8] = convert_cstr(
-        value, "bind_textdomain_codeset", argument_label("", 2), True
-    );
-    return _locale_bind_textdomain_codeset_impl(receiver, domain, codeset);
+def:priv _locale_bind_textdomain_codeset_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        domain: str = convert_str(
+            value, "bind_textdomain_codeset", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        codeset: ptr[u8] = convert_cstr(
+            value, "bind_textdomain_codeset", argument_label("", 2), True
+        );
+        return _locale_bind_textdomain_codeset_impl(receiver, domain, codeset);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _locale_bind_textdomain_codeset_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _locale_bind_textdomain_codeset_signature,
-        args,
-        nargs,
-        NULL,
-        _locale_bind_textdomain_codeset_bound,
-        receiver
-    );
-}
-
-def:priv _locale_getencoding_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _locale_getencoding_impl(receiver);
+    if not check_positional("bind_textdomain_codeset", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _locale_bind_textdomain_codeset_bound(receiver, args, nargs);
 }
 
 def:priv _locale_getencoding_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _locale_getencoding_bound, receiver);
+    try {
+        return _locale_getencoding_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob locale__doc__: str = "Support for POSIX locales.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "setlocale",
              MethodCallbacks(fast=_locale_setlocale_call),

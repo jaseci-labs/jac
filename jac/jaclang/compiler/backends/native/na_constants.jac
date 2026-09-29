@@ -77,4 +77,7 @@ glob NATIVE_CONTAINER_CODES: dict[str, str] = {"dict": "natdict", "set": "natset
 
 glob EXC_LINEAGE_BITS: int = 11,
      EXC_LINEAGE_SLOTS: int = 2048,
-     EXC_LINEAGE_MIX: int = -7046029254386353131;
+     EXC_LINEAGE_MIX: int = -7046029254386353131,
+     # The hidden local holding the exception a handler that binds no name
+     # caught; not a valid Jac name, so no user variable can clash with it.
+     UNBOUND_CAUGHT: str = "__jac caught";

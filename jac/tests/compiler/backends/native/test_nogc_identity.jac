@@ -108,6 +108,18 @@ test "rebound and freshly built string locals leave nothing behind" {
     _assert_nogc_leak_free("rebind_leaks.jac");
 }
 
+test "objects own their str and bytes fields and containers their strings" {
+    out = assert_native_identity(_fixture("str_field_leaks.jac"));
+    assert out.strip() == "1280" , out;
+    _assert_nogc_leak_free("str_field_leaks.jac");
+}
+
+test "a method handing back its receiver returns a borrow" {
+    out = assert_native_identity(_fixture("receiver_borrow.jac"));
+    assert out.strip() == "530" , out;
+    _assert_nogc_leak_free("receiver_borrow.jac");
+}
+
 test "caught exceptions are freed when their handler ends" {
     out = assert_native_identity(_fixture("caught_exception_leaks.jac"));
     assert out.strip() == "1770" , out;

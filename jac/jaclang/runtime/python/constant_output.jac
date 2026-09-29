@@ -10,13 +10,13 @@ import from jaclang.runtime.python.cpython_api {
     Py_Ellipsis,
     Py_NewRef,
     Py_None,
-    PyComplex_FromDoubles,
     PyFloat_FromDouble,
     PyLong_FromLongLong,
     PyNumber_Negative,
     PyObject,
     PyTuple_New
 }
+import from jaclang.runtime.python.object_model.complex { PyComplex_FromDoubles }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.object_model.slice { PySlice_New }
 import from jaclang.runtime.python.objects {

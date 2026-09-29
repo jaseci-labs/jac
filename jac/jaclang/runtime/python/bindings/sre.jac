@@ -27,7 +27,6 @@ import from jaclang.runtime.python.cpython_api {
     PyType_FromModuleAndSpec,
     PyType_Slot,
     PyType_Spec,
-    Py_GenericAlias,
     Py_None,
     jacpy_release
 }
@@ -59,6 +58,7 @@ import from jaclang.runtime.python.layouts {
     _Py_T_OBJECT
 }
 import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     MethodCallbacks,
     MethodDefinition,

@@ -121,8 +121,19 @@ calls (`parser=PARSE_POSITIONAL` for `_PyArg_CheckPositional`,
 `PARSE_KEYWORDS` for `_PyArg_UnpackKeywords`, `PARSE_FORMAT` and
 `PARSE_FORMAT_KEYWORDS` for `PyArg_ParseTuple` and
 `PyArg_ParseTupleAndKeywords`); `bindings/arguments.jac` implements each with
-its messages. A hand-written binding picks the same flags and parser as the C
-module's clinic output. A C type's `PyMemberDef` fields are real member
+its messages. The generated glue takes clinic's own fast paths without
+allocating: a `METH_O` or `METH_NOARGS` function converts its argument in
+place, a positional-only `METH_FASTCALL` function checks its arity with
+`check_positional` and converts the vectorcall stack, and a keyword-capable
+function or a `tp_new`/`tp_init` hands its stack or its tuple's items
+(`jacpy_tuple_items`) to the `_bound` function when no keywords are passed and
+the positional count is in range. Only the other calls go through the
+`CallSignature` (`invoke_stack`, `invoke_tuple`), which binds into an array as
+long as the parameter list. The glue calls its `_bound` function directly
+there: passing a Jac function as a `Callable` allocates a closure per call.
+`ArgumentFormat` analyses each format string once (`format_plan`). A
+hand-written binding picks the same flags and parser as the C module's clinic
+output. A C type's `PyMemberDef` fields are real member
 descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
 in the instance and `jacpy_binding_record()` gives their address
 (`select.kevent`, `_multiprocessing.SemLock`).
@@ -142,6 +153,15 @@ Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
 `PyMethodDef` tables are C data whose callbacks are `ptr(function)`, and a
 `Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
 token for `PyType_GetBaseByToken()`, as in C.
+
+A module whose object layout other C code reads keeps that layout: `_socket`'s
+`PySocketSockObject` and `PySocketModule_APIObject` are read from
+`Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES` entry, with
+the scalar typedefs its structs name), so the `_socket.CAPI` capsule `_ssl.c`
+imports is the C module's. `gen_constants.jac` can leave out names published
+only under conditions no target meets (`UNSUPPORTED` blocks such as
+`USE_BLUETOOTH`), read enumerators under their header's presence (`GUARDS`) and
+supply values the C module defines itself (`DEFAULTS`).
 
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
@@ -176,7 +196,39 @@ the C file never defines, a clone kept for its docstring and method table
 entry (`_sqlite3.connect`), contributes only `<c_basename>_doc`, and the
 binding supplies the function. `TypeHooks(finalize=...)` is `tp_finalize`; a
 dealloc calls `PyObject_CallFinalizerFromDealloc()` first, as
-`sqlite3.Connection` does.
+`sqlite3.Connection` does. `TypeHooks(boolean=...)` is `nb_bool`
+(`_elementtree.Element`). A check against one of the module's own types
+(`object(subclass_of='clinic_state()->Element_Type')`) is a module function
+that also takes the receiver, whose module state names the type. An empty
+method doc is a NULL `ml_doc`, so `__doc__` is None as in C. A C API record of
+function pointers that another port calls (`pyexpat.expat_CAPI`, which
+`_elementtree` uses for every Expat call) is a C `obj` with `Callable` fields;
+a Jac function passed through one of them gets the same C-ABI trampoline as a
+direct C call.
+
+The public surface comes from the same source as the parsing. Besides the
+clinic tables, the glue carries every other docstring of the C files as a
+`glob`: `PyDoc_STRVAR` texts under their C names (`module_doc`,
+`s_pack__doc__`, `teecopy_doc`) and the inline `PyDoc_STR` of a
+`PyMethodDef`, `PyMemberDef` or `PyGetSetDef` table as
+`<table>_<name>_doc` (`deque_methods___class_getitem___doc`,
+`defdict_members_default_factory_doc`). A binding builds the module and type
+docs, its hand-written `PyMethodDef` entries and its getset and member docs
+from these, so no docstring or text signature is written by hand. The type
+options follow the C slots: `weaklist=True` for a `__weaklistoffset__` member
+(not `Py_TPFLAGS_MANAGED_WEAKREF`), `generic_getattr`/`generic_setattr` for
+`Py_tp_getattro = PyObject_GenericGetAttr` and its setattr pair, and
+`TypeHooks.finalize` for `Py_tp_finalize`. A type without `Py_tp_new` in C
+has none in Jac either (`defaultdict`, `_lsprof.Profiler`): its state lives
+in the member record or appears on first use. A writable `Py_T_OBJECT`
+member owns its reference in the record (`_tuplegetter.__doc__`,
+`Pickler.dispatch_table`); a read-only one over native state mirrors it
+borrowed (`BZ2Decompressor.unused_data`) and the type zeroes the record before
+the state releases it. A converter C calls with the module first
+(`cache_struct_converter(module, arg, &out)`) receives the receiver, a
+converter whose `cleanup` drops its result has the glue release it, and the
+interpreter's own `_PyEval_SliceIndexNotNone` is the shared
+`convert_slice_index_not_none`.
 
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
@@ -413,9 +465,39 @@ definitions under their names; tables and types are C data. What they added:
 - `enumerate.__new__` parses with `PyArg_ParseTupleAndKeywords` over a C data
   keyword array, as the clinic glue's messages are getargs.c's.
 
-Refcounting from Jac is still a call into C (`Py_IncRef`, `jacpy_release`);
-with `_object` declared, inline immortality-aware reference operations in Jac
-are the next shared helper. `jacpython.o` enters the link as machine code,
+The second wave ported `complexobject.c`, `classobject.c`, `structseq.c`,
+`genericaliasobject.c`, `unionobject.c`, `picklebufobject.c`,
+`interpolationobject.c`, `templateobject.c` and `fileobject.c` (with the
+clinic files of the first five), as `object_model/complex.jac`, `method.jac`,
+`structseq.jac`, `genericalias.jac`, `union.jac`, `picklebuffer.jac`,
+`interpolation.jac`, `template.jac` and `file.jac`. What they added:
+
+- The `Py_complex` C API (`_Py_c_sum`, `_Py_c_quot`, `_Py_c_pow`,
+  `_Py_c_abs`, ...) takes and returns the struct by value as C does. The
+  arithmetic behind it is C definitions (`cplx_prod`, `cplx_quot`, ...) that
+  write their result pair through `ptr[f64]` parameters; callers lend `&mut`
+  locals, so an operation allocates nothing but its result object. A Jac
+  tuple return is a heap allocation natively, which the lending replaces on
+  every hot path.
+- `__new__` of complex and of structseq types takes clinic's fast path
+  (positional arguments only, within range, read from the tuple) before the
+  shared argument layer, as `_PyArg_UnpackKeywords` does.
+- `header.jac` now inlines `Py_INCREF` / `Py_DECREF` / `Py_NewRef`
+  (`object_incref`, `object_decref`, `object_new_ref`) over
+  `ob_refcnt_full`, with the release build's immortality tests and
+  `_Py_IMMORTAL_INITIAL_REFCNT` from gen_layouts; method objects use them.
+- `PyStructSequence_NewType` builds its slots and spec in `PyMem` memory, and
+  `PyStructSequence_UnnamedField` is C data. `PyFile_*` and the
+  `open_code` hook read `_PyRuntime` through `jacpy_open_code_hook` /
+  `jacpy_open_code_userdata` in `object_api.c`.
+- gen_layouts imports records from the C API declarations positionally
+  (`Py_buffer`, `Py_complex`, `PyType_Slot`, `PyType_Spec`), asserts bool
+  fields, renames Jac keywords among member names with a trailing `_`
+  (`obj_`), and writes unsigned constants unsigned.
+
+Refcounting from most ports is still a call into C (`Py_IncRef`,
+`jacpy_release`); the inline helpers above replace it where a port is hot.
+`jacpython.o` enters the link as machine code,
 so a call into C costs a call ThinLTO cannot remove; emitting it as bitcode
 for the ThinLTO link removes that boundary if Jac's LLVM and Zig's LLVM agree
 on the bitcode version.

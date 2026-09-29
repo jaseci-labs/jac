@@ -78,7 +78,13 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         _sk = self._set_spec_of(nd);
         _helpers = self.set_helpers.get(_sk) if _sk is not None else None;
         if _helpers is not None {
-            return self.builder.call(_helpers["new"], [], name="set.empty");
+            _empty_set = self.builder.call(_helpers["new"], [], name="set.empty");
+            if not self._container_is_view(nd) {
+                self._nogc_stamp_elem_drops(
+                    _empty_set, self._nogc_type_arg_mangles(nd)
+                );
+            }
+            return _empty_set;
         }
         return None;
     }

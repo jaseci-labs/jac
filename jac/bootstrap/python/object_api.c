@@ -104,6 +104,9 @@ int64_t jacpy_is_tuple(PyObject *handle) { return PyTuple_Check(handle); }
 PyObject *jacpy_tuple_item(PyObject *handle, int64_t index) {
     return Py_XNewRef(PyTuple_GetItem(handle, index));
 }
+/* A tuple's item array (PyTupleObject.ob_item): the generated argument glue
+ * binds a call's positional tuple in place. */
+PyObject **jacpy_tuple_items(PyObject *handle) { return ((PyTupleObject *)handle)->ob_item; }
 int64_t jacpy_tuple_set_owned(PyObject *handle, int64_t index, PyObject *value) {
     if (!value) return -1;
     return PyTuple_SetItem(handle, index, value);
@@ -513,6 +516,16 @@ PyObject **jacpy_typing_types(void) {
  * struct _Py_freelists, which layouts.jac asserts. */
 #include "internal/pycore_freelist.h"
 struct _Py_freelists *jacpy_freelists(void) { return _Py_freelists_GET(); }
+
+/* The open_code hook and its data are _PyRuntime fields, whose layout
+ * differs between builds. */
+#include "internal/pycore_runtime.h"
+void **jacpy_open_code_hook(void) { return (void **)&_PyRuntime.open_code_hook; }
+void **jacpy_open_code_userdata(void) { return &_PyRuntime.open_code_userdata; }
+
+/* The descriptor of stdin (0), stdout (1) or stderr (2): the stdio streams are
+ * macros or differently named globals across C libraries. */
+int32_t jacpy_stdio_fileno(int32_t stream) { return fileno(stream == 2 ? stderr : stream == 1 ? stdout : stdin); }
 
 /* Weak references hang off an object-layout list that only C can walk. */
 #include "internal/pycore_weakref.h"

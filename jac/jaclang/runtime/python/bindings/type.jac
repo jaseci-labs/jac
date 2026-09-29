@@ -20,7 +20,8 @@ enum TypeFlags {
     GC = 16384,
     MANAGED_WEAKREF = 8,
     DISALLOW_INSTANTIATION = 128,
-    SEQUENCE = 32
+    SEQUENCE = 32,
+    METHOD_DESCRIPTOR = 131072
 }
 
 enum TypeSlot { DESCR_GET = 54, INIT = 60, NEW = 65 }
@@ -75,7 +76,8 @@ import from c {
             set_attribute:
                 Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0,
             string: Callable[[ptr[PyObject]], ptr[PyObject]] = 0,
-            finalize: Callable[[ptr[PyObject]], None] = 0;
+            finalize: Callable[[ptr[PyObject]], None] = 0,
+            boolean: Callable[[ptr[PyObject]], i32] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
@@ -86,7 +88,8 @@ import from c {
         instance_dict: i64,
         unhashable: i64,
         field_count: i64,
-        record_size: i64
+        record_size: i64,
+        options: i64
     ) -> ptr;  def jacpy_binding_member(
         handle: ptr,
         index: i64,
@@ -144,7 +147,10 @@ obj TypeDefinition {
         instance_dict: bool = False,
         unhashable: bool = False,
         members: (list[MemberField] | None) = None,
-        record_size: int = 0
+        record_size: int = 0,
+        weaklist: bool = False,
+        generic_getattr: bool = False,
+        generic_setattr: bool = False
     ) {
         declarations: list[PropertyDefinition] = properties
             if properties is not None
@@ -160,7 +166,9 @@ obj TypeDefinition {
             i64(instance_dict),
             i64(unhashable),
             i64(len(fields)),
-            i64(record_size)
+            i64(record_size),
+            # JAC_TYPE_WEAKLIST, JAC_TYPE_GENERIC_GETATTR, JAC_TYPE_GENERIC_SETATTR.
+            i64(int(weaklist) | int(generic_getattr) << 1 | int(generic_setattr) << 2)
         );
         if self.handle and not install_methods(self.handle, methods) {
             jacpy_binding_type_discard(self.handle);
@@ -249,6 +257,8 @@ import from c {
 
 import from c {
     def jacpy_binding_type_matches(type: ptr[PyObject], definition: ptr) -> i64;
+    # The binding definition nearest to `type` along its tp_base chain.
+    def jacpy_binding_token(type: ptr[PyObject]) -> ptr;
 }
 
 import from c {

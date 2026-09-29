@@ -1,5 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-
 impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
     if not nd.exprs {
         if isinstance(nd.body, (list, tuple)) {
@@ -78,10 +76,8 @@ impl NaIRGenPass._codegen_with_recursive(
     enter_owned = type_name not in ("File", "BinaryFile");
     linked = self._linked_fn_decls.get(id(enter_fn));
     if self._nogc_headerless() and linked is not None {
-        signature = linked[1].signature;
-        if isinstance(signature, uni.FuncSignature) {
-            enter_owned = not type_tag_borrows(signature.return_type);
-        }
+        import from jaclang.compiler.passes.rc_facts_pass { method_returns_borrow }
+        enter_owned = not method_returns_borrow(linked[1]);
     }
     enter_result = self.builder.call(enter_fn, enter_args, name="cm.enter");
     if enter_owned {

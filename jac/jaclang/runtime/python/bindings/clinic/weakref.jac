@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -30,83 +25,80 @@ import from jaclang.runtime.python.modules.weakref {
     _weakref_proxy_impl
 }
 
-def:priv _weakref_getweakrefcount_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    object_: ptr[PyObject] = value;
-    return return_ssize(_weakref_getweakrefcount_impl(receiver, object_));
-}
-
 def:priv _weakref_getweakrefcount_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _weakref_getweakrefcount_bound, receiver);
+    try {
+        object_: ptr[PyObject] = value;
+        return return_ssize(_weakref_getweakrefcount_impl(receiver, object_));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _weakref__remove_dead_weakref_signature = CallSignature(
-         "_remove_dead_weakref", ["dct", "key"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _weakref__remove_dead_weakref_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_dict(value) == 0 {
-        bad_argument("_remove_dead_weakref", argument_label("", 1), "dict", value);
+def:priv _weakref__remove_dead_weakref_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_dict(value) == 0 {
+            bad_argument("_remove_dead_weakref", argument_label("", 1), "dict", value);
+        }
+        dct: ptr[PyObject] = value;
+        value = clinic_args[1];
+        key: ptr[PyObject] = value;
+        return _weakref__remove_dead_weakref_impl(receiver, dct, key);
+    } except boundary_failure {
+        return NULL;
     }
-    dct: ptr[PyObject] = value;
-    value = args.values[1];
-    key: ptr[PyObject] = value;
-    return _weakref__remove_dead_weakref_impl(receiver, dct, key);
 }
 
 def:priv _weakref__remove_dead_weakref_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _weakref__remove_dead_weakref_signature,
-        args,
-        nargs,
-        NULL,
-        _weakref__remove_dead_weakref_bound,
-        receiver
-    );
-}
-
-def:priv _weakref_getweakrefs_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    object_: ptr[PyObject] = value;
-    return _weakref_getweakrefs_impl(receiver, object_);
+    if not check_positional("_remove_dead_weakref", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _weakref__remove_dead_weakref_bound(receiver, args, nargs);
 }
 
 def:priv _weakref_getweakrefs_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _weakref_getweakrefs_bound, receiver);
+    try {
+        object_: ptr[PyObject] = value;
+        return _weakref_getweakrefs_impl(receiver, object_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _weakref_proxy_signature = CallSignature(
-         "proxy", ["object", "callback"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _weakref_proxy_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    object_: ptr[PyObject] = value;
-    callback: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        callback = value;
+def:priv _weakref_proxy_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        object_: ptr[PyObject] = value;
+        callback: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            callback = value;
+        }
+        return _weakref_proxy_impl(receiver, object_, callback);
+    } except boundary_failure {
+        return NULL;
     }
-    return _weakref_proxy_impl(receiver, object_, callback);
 }
 
 def:priv _weakref_proxy_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _weakref_proxy_signature, args, nargs, NULL, _weakref_proxy_bound, receiver
-    );
+    if not check_positional("proxy", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _weakref_proxy_bound(receiver, args, nargs);
 }
 
 glob module_methods: list[MethodDefinition] = [
