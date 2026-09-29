@@ -16,7 +16,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_GetConstantBorrowed,
     Py_None,
     Py_TYPE,
-    PyBool_FromLong,
     PyErr_Occurred,
     PyExc_OverflowError,
     PyExc_TypeError,

@@ -15,7 +15,6 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     Py_NewRef,
     Py_None,
-    PyBool_FromLong,
     PyErr_CheckSignals,
     PyErr_NoMemory,
     PyErr_Occurred,
@@ -36,6 +35,7 @@ import from jaclang.runtime.python.cpython_api {
     PyThread_get_thread_ident,
     PyThreadState
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi {
     boundary_failure,
     c_string_text,

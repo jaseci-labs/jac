@@ -20,7 +20,6 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     Py_NewRef,
     Py_None,
-    PyBool_FromLong,
     PyDict_Keys,
     PyDict_SetItem,
     PyErr_Clear,

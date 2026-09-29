@@ -22,7 +22,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_TYPE,
     _PyArg_CheckPositional,
-    PyBool_FromLong,
     PyDict_New,
     PyDict_SetItemString,
     PyErr_CheckSignals,
@@ -89,6 +88,7 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicodeWriter_WriteStr,
     PyUnicodeWriter_WriteSubstring
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi {
     boundary_failure,
     c_string_text,

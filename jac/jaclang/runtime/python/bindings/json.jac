@@ -7,7 +7,6 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     Py_NewRef,
     Py_None,
-    PyBool_FromLong,
     PyExc_AttributeError,
     PyExc_SystemError,
     PyExc_TypeError,

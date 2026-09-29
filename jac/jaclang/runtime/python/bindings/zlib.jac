@@ -4,7 +4,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_release,
     NULL,
     Py_NewRef,
-    PyArg_ParseTupleAndKeywords,
     PyModule_AddIntConstant,
     PyModule_AddObjectRef,
     PyObject,
