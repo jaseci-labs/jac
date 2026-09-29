@@ -8,14 +8,24 @@ byte. This script writes both sides of that contract:
     jac run scripts/jacpython/gen_layouts.jac            # rewrite both files
     jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
 
+The platform constants need `zig` (or `--zig`) to cross-compile their probe
+for each target.
+
 - jaclang/runtime/python/layouts.jac: one foreign struct per layout in LAYOUTS
   (and the structs they embed by value), function-pointer slots as
   `Callable[...]` fields, pointers to layouts as `ptr[Layout]` and pointers to
   records no port reads as opaque types; plus the header constants in
   CONSTANTS that object initializers need.
+- jaclang/runtime/python/layouts_platform.<os>.<arch>.jac: the constants in
+  PLATFORM_CONSTANTS, whose values differ between the supported platforms
+  (where a field sits in the interpreter state, past records sized by the C
+  library), each folded by `zig cc -target` for that platform. The plain
+  layouts_platform.jac names no platform, and a port reading one of these
+  constants refuses to start on a platform without a generated table.
 - bootstrap/python/layouts_check.c: `_Static_assert`s on the offset, size and
   signedness of every generated field, each struct's size and alignment, and
-  each constant's value. build.sh compiles it against the configured headers
+  each constant's value, the platform constants under an `#if` for their
+  platform. build.sh compiles it against the configured headers
   of every JacPython build, so a layout that drifts on any platform fails the
   build instead of corrupting objects.
 
@@ -50,6 +60,7 @@ import from common {
 glob OUTPUT: Path = RUNTIME / "layouts.jac",
      CHECK: Path = BOOTSTRAP / "layouts_check.c",
      CAPI: Path = RUNTIME / "cpython_api.jac",
+     PLATFORM_OUTPUT: str = "layouts_platform",
      COMMAND: str = "scripts/jacpython/gen_layouts.jac",
      # Headers the layouts are read from, in inclusion order.
      HEADERS: list[str] = [
@@ -252,12 +263,6 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          # state: its freelists and its GC state (generation 0's list head
          # and heap size), as _Py_freelists_GET and _PyObject_GC_TRACK do.
          ("PyThreadState_INTERP", "offsetof(PyThreadState, interp)", "i64"),
-         (
-             "PyInterpreterState_FREELISTS",
-             "offsetof(PyInterpreterState, object_state.freelists)",
-             "i64"
-         ),
-         ("PyInterpreterState_GC", "offsetof(PyInterpreterState, gc)", "i64"),
          (
              "_gc_runtime_state_GENERATION0",
              "offsetof(struct _gc_runtime_state, generation0)",
@@ -472,6 +477,36 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_SOCKET_API_SIZE", "sizeof(PySocketModule_APIObject)", "i64"),
          ("PY_OS_ERROR_OBJECT_SIZE", "sizeof(PyOSErrorObject)", "i64"),
          ("Py_CLEANUP_SUPPORTED", "Py_CLEANUP_SUPPORTED", "i32")
+     ],
+     # Constants whose values differ between the supported platforms, in the
+     # form of CONSTANTS.
+     PLATFORM_CONSTANTS: list[tuple[str, str, str]] = [
+         (
+             "PyInterpreterState_FREELISTS",
+             "offsetof(PyInterpreterState, object_state.freelists)",
+             "i64"
+         ),
+         ("PyInterpreterState_GC", "offsetof(PyInterpreterState, gc)", "i64")
+     ],
+     # The supported platforms: variant module suffix, zig target and the C
+     # condition that selects the platform in layouts_check.c.
+     PLATFORMS: list[tuple[str, str, str]] = [
+         (
+             "linux.x86_64",
+             "x86_64-linux-gnu",
+             "defined(__linux__) && defined(__x86_64__)"
+         ),
+         (
+             "linux.aarch64",
+             "aarch64-linux-gnu",
+             "defined(__linux__) && defined(__aarch64__)"
+         ),
+         ("darwin.x86_64", "x86_64-macos", "defined(__APPLE__) && defined(__x86_64__)"),
+         (
+             "darwin.aarch64",
+             "aarch64-macos",
+             "defined(__APPLE__) && defined(__aarch64__)"
+         )
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every
      # supported release build (linux and darwin, x86_64 and aarch64).
@@ -720,7 +755,7 @@ def array_bounds(text: str, defines: dict[str, str]) -> str {
     return "".join(pieces);
 }
 
-def read_headers(found: Headers) -> None {
+def read_headers(found: Headers) {
     texts = archive_texts(tuple(HEADERS + OBJECT_SOURCES));
     missing = [
         h
@@ -1014,13 +1049,15 @@ def require(name: str) -> None {
         jac = jac_type(member_type);
         (size, align) = size_align(jac);
         offset = (offset + align - 1) // align * align;
-        scalar = scalar_of(
-            " ".join(re.sub(r"\b(const|volatile)\b", "", member_type).split())
-        )
-            if "*" not in member_type
-            else None;
+        bare = " ".join(re.sub(r"\b(const|volatile)\b", "", member_type).split());
+        scalar = scalar_of(bare) if "*" not in member_type else None;
+        # Plain `char` is signed on x86_64 and unsigned on aarch64 Linux, so
+        # its signedness is the platform's, not the layout's.
         signed = scalar[1]
-            if scalar is not None and jac in SIZES and not jac.startswith("f")
+            if scalar is not None
+                and jac in SIZES
+                and not jac.startswith("f")
+                and bare != "char"
             else None;
         # `T name[1]` is one T field; a fixed array `T name[N]` is N fields,
         # `name` for element 0 and `name_<i>` for element i, so the members
@@ -1151,6 +1188,29 @@ def render_jac(values: dict[str, int]) -> str {
     return "\n".join(lines) + "\n";
 }
 
+# One platform's table of PLATFORM_CONSTANTS, or with `suffix` empty the
+# table of a platform with none generated: LAYOUTS_PLATFORM is "" and every
+# value 0.
+def render_platform(suffix: str, values: dict[str, int]) -> str {
+    target = f"the {suffix.replace('.', ' ')}" if suffix else "no generated";
+    lines = [
+        f'"""Platform layout constants for {target} JacPython build.',
+        "",
+        f"Generated by scripts/jacpython/gen_layouts.jac from CPython {pin()[
+            'version'
+        ]}",
+        "headers; do not edit. bootstrap/python/layouts_check.c asserts each value on",
+        "its platform.",
+        '"""',
+        "",
+        f'glob LAYOUTS_PLATFORM: str = "{suffix}";'
+    ];
+    for (name, _, jac) in PLATFORM_CONSTANTS {
+        lines.append(f"glob {name}: Final[{jac}] = {values.get(name, 0)};");
+    }
+    return "\n".join(lines) + "\n";
+}
+
 # The upstream definitions of the private structs among the layouts.
 def private_definitions -> list[str] {
     structs = [
@@ -1177,7 +1237,9 @@ def type_class(jac: str) -> int {
     return 1 if jac in SIZES else 12;
 }
 
-def render_check(values: dict[str, int]) -> str {
+def render_check(
+    values: dict[str, int], platform_values: dict[str, dict[str, int]]
+) -> str {
     lines = [
         "/* Generated by scripts/jacpython/gen_layouts.jac; do not edit.",
         " * Every layout and constant jaclang/runtime/python/layouts.jac declares,",
@@ -1243,6 +1305,20 @@ def render_check(values: dict[str, int]) -> str {
     for (name, expression, _) in CONSTANTS {
         lines.append(f"CONSTANT({expression}, {values[name]}LL);");
     }
+    lines += ["", "/* The platform constants of layouts_platform.<os>.<arch>.jac. */"];
+    keyword = "#if";
+    for (suffix, _, condition) in PLATFORMS {
+        lines.append(f"{keyword} {condition}");
+        for (name, expression, _) in PLATFORM_CONSTANTS {
+            lines.append(f"CONSTANT({expression}, {platform_values[suffix][name]}LL);");
+        }
+        keyword = "#elif";
+    }
+    lines += [
+        "#else",
+        "#error \"no generated layouts_platform table for this platform\"",
+        "#endif"
+    ];
     return "\n".join(lines) + "\n";
 }
 
@@ -1267,31 +1343,40 @@ def probe_flags(headers_dir: Path) -> list[str] {
 }
 
 # Constant values as the compiler folds them against the configured headers.
-def extract(headers_dir: Path, compiler: list[str]) -> dict[str, int] {
+def extract(
+    headers_dir: Path,
+    compiler: list[str],
+    constants: list[tuple[str, str, str]] = CONSTANTS
+) -> dict[str, int] {
     lines = ["#define Py_BUILD_CORE 1", "#include \"Python.h\""]
         + [f"#include \"{header}\"" for header in INCLUDES]
         + ["#include <stddef.h>"]
         + private_definitions();
-    for (name, expression, _) in CONSTANTS {
+    for (name, expression, _) in constants {
         lines.append(
             f"const long long __jac_layout_{name} = (long long)({expression});"
         );
     }
+    # The assembly goes to a file: zig cc ignores `-o -`.
     with tempfile.TemporaryDirectory() as scratch {
         probe = Path(scratch) / "constants.c";
+        listing_path = Path(scratch) / "constants.s";
         probe.write_text("\n".join(lines) + "\n");
         result = subprocess.run(
-            compiler + probe_flags(headers_dir) + ["-S", "-O0", "-o", "-", str(probe)],
+            compiler
+                + probe_flags(headers_dir)
+                + ["-S", "-O0", "-o", str(listing_path), str(probe)],
             capture_output=True,
             text=True
         );
-    }
-    if result.returncode != 0 {
-        sys.exit(result.stderr);
+        if result.returncode != 0 {
+            sys.exit(result.stderr);
+        }
+        listing = listing_path.read_text();
     }
     values: dict[str, int] = {};
     current: (str | None) = None;
-    for line in result.stdout.splitlines() {
+    for line in listing.splitlines() {
         line = line.strip();
         label = re.match(r"^_?__jac_layout_(\w+):", line);
         if label {
@@ -1313,7 +1398,7 @@ def extract(headers_dir: Path, compiler: list[str]) -> dict[str, int] {
     }
     missing = [
         n
-        for (n, _, _) in CONSTANTS
+        for (n, _, _) in constants
         if n not in values
     ];
     if missing {
@@ -1323,7 +1408,7 @@ def extract(headers_dir: Path, compiler: list[str]) -> dict[str, int] {
 }
 
 # Compile the generated asserts against the configured headers.
-def verify(check: str, headers_dir: Path, compiler: list[str]) -> None {
+def verify(check: str, headers_dir: Path, compiler: list[str]) {
     with tempfile.TemporaryDirectory() as scratch {
         probe = Path(scratch) / "layouts_check.c";
         probe.write_text(check);
@@ -1348,7 +1433,8 @@ with entry:__main__ {
     parser.add_argument(
         "--headers", help="directory holding a configured CPython's Python.h"
     );
-    parser.set_defaults(cc="cc");
+    parser.add_argument("--zig", help="zig, for the platform constants");
+    parser.set_defaults(cc="cc", zig="zig");
     parser.add_argument("--check", action="store_true");
     args = parser.parse_args();
     read_headers(headers);
@@ -1358,12 +1444,33 @@ with entry:__main__ {
     headers_dir = Path(args.headers) if args.headers else default_include();
     compiler = shlex.split(args.cc);
     values = extract(headers_dir, compiler);
-    check = render_check(values);
+    platform_values: dict[str, dict[str, int]] = {};
+    for (suffix, target, _) in PLATFORMS {
+        platform_values[suffix] = extract(
+            headers_dir, [args.zig, "cc", "-target", target], PLATFORM_CONSTANTS
+        );
+    }
+    check = render_check(values, platform_values);
     verify(check, headers_dir, compiler);
     current = write_or_check(
         OUTPUT, format_jac(render_jac(values), OUTPUT), args.check, COMMAND
     );
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
+    for (suffix, _, _) in PLATFORMS + [("", "", "")] {
+        table = RUNTIME
+            / (
+                f"{PLATFORM_OUTPUT}.{suffix}.jac"
+                    if suffix
+                    else f"{PLATFORM_OUTPUT}.jac"
+            );
+        current = write_or_check(
+            table,
+            format_jac(render_platform(suffix, platform_values.get(suffix, {})), table),
+            args.check,
+            COMMAND
+        )
+            and current;
+    }
     if not current {
         sys.exit(1);
     }

@@ -23,8 +23,6 @@ import from jaclang.runtime.python.cpython_api {
 import from jaclang.runtime.python.layouts {
     _Py_freelist,
     PyGC_Head_SIZE,
-    PyInterpreterState_FREELISTS,
-    PyInterpreterState_GC,
     PyThreadState_INTERP,
     _PyGC_PREV_FLAGS,
     _PyGC_PREV_MASK,
@@ -45,6 +43,10 @@ import from jaclang.runtime.python.layouts {
     Py_TPFLAGS_LIST_SUBCLASS,
     _Py_IMMORTAL_INITIAL_REFCNT,
     _object
+}
+import from jaclang.runtime.python.layouts_platform {
+    PyInterpreterState_FREELISTS,
+    PyInterpreterState_GC
 }
 
 import from c {

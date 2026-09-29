@@ -546,7 +546,6 @@ KIND(_PyDateTime_BaseTZInfo, hashcode, 1);
 SIGNED(_PyDateTime_BaseTZInfo, hashcode, 1);
 FIELD(_PyDateTime_BaseTZInfo, hastzinfo, 24, 1);
 KIND(_PyDateTime_BaseTZInfo, hastzinfo, 1);
-SIGNED(_PyDateTime_BaseTZInfo, hastzinfo, 1);
 LAYOUT(_PyDateTime_BaseTZInfo, 32, 8);
 
 /* _PyDateTime_BaseTime */
@@ -557,7 +556,6 @@ KIND(_PyDateTime_BaseTime, hashcode, 1);
 SIGNED(_PyDateTime_BaseTime, hashcode, 1);
 FIELD(_PyDateTime_BaseTime, hastzinfo, 24, 1);
 KIND(_PyDateTime_BaseTime, hastzinfo, 1);
-SIGNED(_PyDateTime_BaseTime, hastzinfo, 1);
 FIELD(_PyDateTime_BaseTime, data[0], 25, 1);
 KIND(_PyDateTime_BaseTime, data[0], 1);
 SIGNED(_PyDateTime_BaseTime, data[0], 0);
@@ -586,7 +584,6 @@ KIND(PyDateTime_Time, hashcode, 1);
 SIGNED(PyDateTime_Time, hashcode, 1);
 FIELD(PyDateTime_Time, hastzinfo, 24, 1);
 KIND(PyDateTime_Time, hastzinfo, 1);
-SIGNED(PyDateTime_Time, hastzinfo, 1);
 FIELD(PyDateTime_Time, data[0], 25, 1);
 KIND(PyDateTime_Time, data[0], 1);
 SIGNED(PyDateTime_Time, data[0], 0);
@@ -620,7 +617,6 @@ KIND(PyDateTime_Date, hashcode, 1);
 SIGNED(PyDateTime_Date, hashcode, 1);
 FIELD(PyDateTime_Date, hastzinfo, 24, 1);
 KIND(PyDateTime_Date, hastzinfo, 1);
-SIGNED(PyDateTime_Date, hastzinfo, 1);
 FIELD(PyDateTime_Date, data[0], 25, 1);
 KIND(PyDateTime_Date, data[0], 1);
 SIGNED(PyDateTime_Date, data[0], 0);
@@ -643,7 +639,6 @@ KIND(_PyDateTime_BaseDateTime, hashcode, 1);
 SIGNED(_PyDateTime_BaseDateTime, hashcode, 1);
 FIELD(_PyDateTime_BaseDateTime, hastzinfo, 24, 1);
 KIND(_PyDateTime_BaseDateTime, hastzinfo, 1);
-SIGNED(_PyDateTime_BaseDateTime, hastzinfo, 1);
 FIELD(_PyDateTime_BaseDateTime, data[0], 25, 1);
 KIND(_PyDateTime_BaseDateTime, data[0], 1);
 SIGNED(_PyDateTime_BaseDateTime, data[0], 0);
@@ -684,7 +679,6 @@ KIND(PyDateTime_DateTime, hashcode, 1);
 SIGNED(PyDateTime_DateTime, hashcode, 1);
 FIELD(PyDateTime_DateTime, hastzinfo, 24, 1);
 KIND(PyDateTime_DateTime, hastzinfo, 1);
-SIGNED(PyDateTime_DateTime, hastzinfo, 1);
 FIELD(PyDateTime_DateTime, data[0], 25, 1);
 KIND(PyDateTime_DateTime, data[0], 1);
 SIGNED(PyDateTime_DateTime, data[0], 0);
@@ -983,7 +977,6 @@ FIELD(PyOSErrorObject, cause, 56, 8);
 KIND(PyOSErrorObject, cause, 5);
 FIELD(PyOSErrorObject, suppress_context, 64, 1);
 KIND(PyOSErrorObject, suppress_context, 1);
-SIGNED(PyOSErrorObject, suppress_context, 1);
 FIELD(PyOSErrorObject, myerrno, 72, 8);
 KIND(PyOSErrorObject, myerrno, 5);
 FIELD(PyOSErrorObject, strerror, 80, 8);
@@ -1089,8 +1082,6 @@ CONSTANT(offsetof(rangeobject, stop), 24LL);
 CONSTANT(offsetof(rangeobject, step), 32LL);
 CONSTANT(sizeof(longrangeiterobject), 40LL);
 CONSTANT(offsetof(PyThreadState, interp), 16LL);
-CONSTANT(offsetof(PyInterpreterState, object_state.freelists), 11168LL);
-CONSTANT(offsetof(PyInterpreterState, gc), 7408LL);
 CONSTANT(offsetof(struct _gc_runtime_state, generation0), 256LL);
 CONSTANT(offsetof(struct _gc_runtime_state, heap_size), 216LL);
 CONSTANT(sizeof(PyGC_Head), 16LL);
@@ -1238,3 +1229,20 @@ CONSTANT(offsetof(PySocketSockObject, sock_proto), 28LL);
 CONSTANT(sizeof(PySocketModule_APIObject), 24LL);
 CONSTANT(sizeof(PyOSErrorObject), 112LL);
 CONSTANT(Py_CLEANUP_SUPPORTED, 131072LL);
+
+/* The platform constants of layouts_platform.<os>.<arch>.jac. */
+#if defined(__linux__) && defined(__x86_64__)
+CONSTANT(offsetof(PyInterpreterState, object_state.freelists), 11120LL);
+CONSTANT(offsetof(PyInterpreterState, gc), 7408LL);
+#elif defined(__linux__) && defined(__aarch64__)
+CONSTANT(offsetof(PyInterpreterState, object_state.freelists), 11136LL);
+CONSTANT(offsetof(PyInterpreterState, gc), 7408LL);
+#elif defined(__APPLE__) && defined(__x86_64__)
+CONSTANT(offsetof(PyInterpreterState, object_state.freelists), 11168LL);
+CONSTANT(offsetof(PyInterpreterState, gc), 7408LL);
+#elif defined(__APPLE__) && defined(__aarch64__)
+CONSTANT(offsetof(PyInterpreterState, object_state.freelists), 11168LL);
+CONSTANT(offsetof(PyInterpreterState, gc), 7408LL);
+#else
+#error "no generated layouts_platform table for this platform"
+#endif
