@@ -108,6 +108,34 @@ impl NaIRGenPass._emit_clib_c_trampoline(
         }
     }
     saved = self._region_c_entry_escape();
+    tty = tramp.function_type;
+    if saved is not None
+        and (tramp.calling_convention or "") == (jac_fn.calling_convention or "")
+        and self._c_tail_compatible(tty, jac_fn.function_type) {
+        # With no region open there is nothing to restore after the body, so
+        # the trampoline jumps into it: a Jac function reached through a C
+        # function pointer keeps `return tail` dispatch in constant stack.
+        b = self.builder;
+        tail_block = tramp.append_basic_block("clibcb.tail");
+        held_block = tramp.append_basic_block("clibcb.held");
+        b.cbranch(
+            b.icmp_signed("<", saved, ir.Constant(saved.type, 0), name="clibcb.free"),
+            tail_block,
+            held_block
+        );
+        b.position_at_end(tail_block);
+        target = jac_fn
+            if tty == jac_fn.function_type
+            else b.bitcast(jac_fn, tty.as_pointer(), name="clibcb.body");
+        jump = b.call(target, list(tramp.args), name="clibcb.jump");
+        jump.tail = "musttail";
+        if isinstance(tty.return_type, ir.VoidType) {
+            b.ret_void();
+        } else {
+            b.ret(jump);
+        }
+        b.position_at_end(held_block);
+    }
     result = self.builder.call(jac_fn, call_args, name="clibcb.call");
     self._region_c_entry_restore(saved);
     c_ret = c_fn_ty.pointee.return_type;
