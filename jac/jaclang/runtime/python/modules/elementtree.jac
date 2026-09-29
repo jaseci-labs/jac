@@ -21,7 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     PyBytes_Size,
     PyBytes_Type,
     PyCallable_Check,
-    PyCapsule_GetPointer,
     PyDict_Copy,
     PyDict_GetItemStringRef,
     PyDict_GetItemWithError,
@@ -82,8 +81,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_SetAttrString,
     PyObject_Vectorcall,
     PySequence_Fast,
-    PySlice_AdjustIndices,
-    PySlice_Unpack,
     PyTuple_GetItem,
     PyTuple_New,
     PyTuple_Pack,
@@ -116,6 +113,11 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_set_owned,
     jacpy_type_check,
     jacpy_type_name
+}
+import from jaclang.runtime.python.object_model.capsule { PyCapsule_GetPointer }
+import from jaclang.runtime.python.object_model.slice {
+    PySlice_AdjustIndices,
+    PySlice_Unpack
 }
 import from jaclang.runtime.python.capi { StaticText, object_error, text_value }
 import from jaclang.runtime.python.bindings.state { NativeState }
@@ -3805,7 +3807,7 @@ def import_expat_capi(state: ElementTreeState) -> bool {
         return False;
     }
     state.expat_capsule = capsule;
-    capi = ptr[PyExpat_CAPI](PyCapsule_GetPointer(capsule, "pyexpat.expat_CAPI"));
+    capi = ptr[PyExpat_CAPI](PyCapsule_GetPointer(capsule, ptr[u8]("pyexpat.expat_CAPI")));
     if not capi {
         return False;
     }

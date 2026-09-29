@@ -13,8 +13,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_None,
     Py_TYPE,
     PyByteArray_AsString,
-    PyCapsule_GetPointer,
-    PyCapsule_New,
     PyBytes_AsString,
     PyDict_GetItemRef,
     PyDict_New,
@@ -71,6 +69,10 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_tuple_set_owned
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
+import from jaclang.runtime.python.object_model.capsule {
+    PyCapsule_GetPointer,
+    PyCapsule_New
+}
 import from jaclang.runtime.python.capi {
     StaticText,
     c_string_text,
@@ -1997,7 +1999,7 @@ def pyexpat_ErrorString_impl(module: ptr[PyObject], code: i64) -> ptr[PyObject] 
 
 # pyexpat_capsule_destructor().
 def capsule_destructor(capsule: ptr[PyObject]) {
-    address = PyCapsule_GetPointer(capsule, "pyexpat.expat_CAPI");
+    address = PyCapsule_GetPointer(capsule, capsule_name.get());
     if not address {
         PyErr_FormatUnraisable("Exception ignored while destroying pyexact capsule");
         return;
@@ -2057,7 +2059,7 @@ def new_capsule -> ptr[PyObject] {
     table[0].SetAllocTrackerMaximumAmplification = XML_SetAllocTrackerMaximumAmplification;
     table[0].SetBillionLaughsAttackProtectionActivationThreshold = XML_SetBillionLaughsAttackProtectionActivationThreshold;
     table[0].SetBillionLaughsAttackProtectionMaximumAmplification = XML_SetBillionLaughsAttackProtectionMaximumAmplification;
-    capsule = PyCapsule_New(ptr(capi), name, capsule_destructor);
+    capsule = PyCapsule_New(ptr(capi), name, ptr(capsule_destructor));
     if not capsule {
         PyMem_Free(ptr(capi));
     }
