@@ -31,6 +31,12 @@ import from c {
         keywords:
             Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
         positional: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+        fast: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+        fast_keywords:
+            Callable[
+                [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
+                ptr[PyObject]
+            ],
         flags: i64,
         doc: str
     ) -> i64;  def jacpy_binding_discard(handle: ptr);  def jacpy_binding_init(
@@ -104,11 +110,21 @@ def free_state(module: ptr[PyObject]) {
     clear_state(module);
 }
 
+# A PyMethodDef's C function, one per calling convention: `keywords` for
+# METH_VARARGS|METH_KEYWORDS, `positional` for METH_VARARGS, METH_NOARGS and
+# METH_O, `fast` for METH_FASTCALL and `fast_keywords` for
+# METH_FASTCALL|METH_KEYWORDS. The flags select which one CPython calls.
 import from c {
     obj MethodCallbacks {
         has keywords:
             Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
-            positional: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0;
+            positional: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
+            fast: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0,
+            fast_keywords:
+                Callable[
+                    [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
+                    ptr[PyObject]
+                ] = 0;
     }
 }
 
@@ -156,6 +172,8 @@ def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
             method.name,
             method.callbacks.keywords,
             method.callbacks.positional,
+            method.callbacks.fast,
+            method.callbacks.fast_keywords,
             method.flags,
             method.doc
         )

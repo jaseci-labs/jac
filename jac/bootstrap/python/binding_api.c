@@ -10,7 +10,9 @@
 #include <stddef.h>
 
 
-_Static_assert(METH_VARARGS == 1 && METH_KEYWORDS == 2 && METH_NOARGS == 4 && METH_O == 8,
+_Static_assert(METH_VARARGS == 1 && METH_KEYWORDS == 2 && METH_NOARGS == 4 && METH_O == 8
+               && METH_CLASS == 16 && METH_STATIC == 32 && METH_COEXIST == 64
+               && METH_FASTCALL == 128,
                "native binding calling conventions must match Python.h");
 
 typedef struct {
@@ -81,13 +83,18 @@ void *jacpy_binding_module(const char *name, const char *doc, int64_t count,
 
 int64_t jacpy_binding_method(void *handle, int64_t index, const char *name,
         PyObject *(*keywords)(PyObject *, PyObject *, PyObject *),
-        PyObject *(*positional)(PyObject *, PyObject *), int64_t flags, const char *doc) {
+        PyObject *(*positional)(PyObject *, PyObject *),
+        PyObject *(*fast)(PyObject *, PyObject *const *, Py_ssize_t),
+        PyObject *(*fast_keywords)(PyObject *, PyObject *const *, Py_ssize_t, PyObject *),
+        int64_t flags, const char *doc) {
     JacMethodTable *table = (handle);
     PyMethodDef *method = &table->entries[index];
     char *owned_name = strdup(name), *owned_doc = strdup(doc);
     if (!owned_name || !owned_doc) { free(owned_name); free(owned_doc); return -1; }
-    PyCFunction callback = flags & METH_KEYWORDS
-        ? (PyCFunction)(void (*)(void))keywords : (PyCFunction)(void (*)(void))positional;
+    void (*chosen)(void) = flags & METH_FASTCALL
+        ? (flags & METH_KEYWORDS ? (void (*)(void))fast_keywords : (void (*)(void))fast)
+        : (flags & METH_KEYWORDS ? (void (*)(void))keywords : (void (*)(void))positional);
+    PyCFunction callback = (PyCFunction)chosen;
     *method = (PyMethodDef){owned_name, callback, (int)flags, owned_doc};
     return 0;
 }

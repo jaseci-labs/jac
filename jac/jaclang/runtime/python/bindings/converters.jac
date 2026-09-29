@@ -62,8 +62,14 @@ def argument_label(argname: str, position: int) -> str {
     return f"argument {position}" if not argname else f"argument '{argname}'";
 }
 
-def bad_argument(fname: str, label: str, expected: str, value: ptr[PyObject]) {
-    shown = "None" if value == Py_None else type_name(value);
+# _PyArg_BadArgument(), or with `qualified` the limited C API's
+# "must be ..., not %T" (the type's fully qualified name).
+def bad_argument(
+    fname: str, label: str, expected: str, value: ptr[PyObject], qualified: bool = False
+) {
+    shown = type_name(value, True)
+        if qualified
+        else ("None" if value == Py_None else type_name(value));
     object_error(PyExc_TypeError, f"{fname}() {label} must be {expected}, not {shown}");
     raise boundary_failure();
 }
