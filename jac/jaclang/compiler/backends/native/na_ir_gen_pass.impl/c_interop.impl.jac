@@ -651,11 +651,43 @@ impl NaIRGenPass._codegen_clib_args(
 }
 
 impl NaIRGenPass._c_vararg(arg: uni.Expr) -> (ir.Value | None) {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    if isinstance(arg, uni.UnaryExpr) and is_borrow_kind(arg.ownership) {
+        return self._c_vararg_address(arg);
+    }
     val = self._codegen_expr(arg);
     return self._c_vararg_value(val, arg) if val is not None else None;
 }
 
+# A borrowed C variadic argument (`&mut x`, as `PyArg_UnpackTuple(..., &mut x)`
+# or `sscanf(text, "%d", &mut n)` pass it) is the address of the variable, which
+# the callee writes in place; the variable's storage is its C scalar or pointer.
+impl NaIRGenPass._c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None) {
+    slot = self._clib_place_ptr(arg);
+    if slot is not None and isinstance(slot.type, ir.PointerType) {
+        pointee = slot.type.pointee;
+        if (isinstance(pointee, ir.IntType) and pointee.width in (8, 16, 32, 64))
+            or isinstance(pointee, (ir.FloatType, ir.DoubleType, ir.PointerType)) {
+            return self.builder.bitcast(
+                slot, ir.IntType(8).as_pointer(), name="c.va.borrow"
+            );
+        }
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C variadic argument",
+        name=str(arg.type),
+        help_text="A borrowed C variadic argument (`&mut x`) is a variable of a C scalar or pointer type; the callee receives its address."
+    );
+    return None;
+}
+
 impl NaIRGenPass._c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None) {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    if isinstance(arg, uni.UnaryExpr) and is_borrow_kind(arg.ownership) {
+        return self._c_vararg_address(arg);
+    }
     b = self.builder;
     i32 = ir.IntType(32);
     if isinstance(val.type, ir.IntType) {

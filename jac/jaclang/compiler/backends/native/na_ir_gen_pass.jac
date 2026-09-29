@@ -944,6 +944,7 @@ walker NaIRGenPass(CompilerPass) {
     def _pinned_value_slot(box: ir.Value) -> ir.Value;
     def _codegen_c_interop_call(nd: uni.FuncCall) -> tuple[bool, (ir.Value | None)];
     def _c_vararg(arg: uni.Expr) -> (ir.Value | None);
+    def _c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None);
     def _va_abi -> str;
     def _va_storage_type(abi: str) -> ir.Type;
     def _c_va_start(nd: uni.UniNode) -> (ir.Value | None);

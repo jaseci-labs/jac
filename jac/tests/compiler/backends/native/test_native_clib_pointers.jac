@@ -579,3 +579,35 @@ import from "CLIB_POINTERS_LIBRARY" {
 ''';
     assert checker_codes(code) == ["E1158", "E1158", "E1158", "E1158", "E1158"];
 }
+
+test "a borrowed C variadic argument passes the variable's address" {
+    code = '''import from c {
+    obj Opaque;
+    def sscanf(text: str, fmt: str, *args: any) -> i32;
+    def printf(fmt: str, *args: any) -> i32;
+    def fflush(stream: i64) -> i32;
+}
+
+def scan_pointer -> ptr[Opaque] {
+    q = ptr[Opaque]();
+    sscanf("0x40", "%p", &mut q);
+    return q;
+}
+
+with entry {
+    x: i32 = 5;
+    wide: i64 = 0;
+    n = sscanf("42 7", "%d %lld", &mut x, &mut wide);
+    printf("scan %d %d %lld\\n", n, x, wide);
+    printf("pointer %lld\\n", int(scan_pointer()));
+    fflush(0);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "vaborrow.jac");
+        Path(path).write_text(code);
+        out = assert_native_identity(path);
+    }
+    assert "scan 2 42 7" in out.splitlines() , out;
+    assert "pointer 64" in out.splitlines() , out;
+}

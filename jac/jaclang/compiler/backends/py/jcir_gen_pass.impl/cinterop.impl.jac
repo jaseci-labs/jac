@@ -274,6 +274,20 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
             borrowed.append((i, inner));
         }
     }
+    # A borrowed variadic argument (`&mut x`) passes the variable's address,
+    # read back after the call, as a borrowed parameter does.
+    if sig.varargs is not None {
+        for (i, arg) in enumerate(list(nd.params or [])) {
+            if i >= len(decl_params)
+                and isinstance(arg, UnaryExpr)
+                and is_borrow_kind(arg.ownership) {
+                spec = c_type_spec(arg.operand.type, None);
+                if spec[0] in ("s", "ptr") {
+                    borrowed.append((i, spec));
+                }
+            }
+        }
+    }
     if not borrowed {
         return;
     }
@@ -419,7 +433,8 @@ impl JcirGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
     }
     for i in range(fixed, len(params)) {
         arg = params[i];
-        if not isinstance(arg, Expr) {
+        if not isinstance(arg, Expr)
+            or (isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership)) {
             continue;
         }
         spec = c_type_spec(arg.type, None);
