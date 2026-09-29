@@ -3398,6 +3398,14 @@ impl NaIRGenPass._emit_isinstance_mixed(
                 if user_or is None
                 else self.builder.or_(user_or, eq, name="isinst.mix.uor");
         }
+        if user_or is not None {
+            user_or = self._isinstance_name_fallback(
+                user_or,
+                self.builder.inttoptr(payload, i8.as_pointer(), name="isinst.mix.o"),
+                names,
+                "isinst.mix"
+            );
+        }
     }
     end_load = self.builder.block;
     self.builder.branch(merge_bb);
@@ -3489,6 +3497,8 @@ impl NaIRGenPass._emit_isinstance_user(
             self._flow_narrowed_type_of(nd.params[0] if nd.params else None)
         ) {
         cmp = self._isinstance_vtable_fallback(cmp, vptr, names, "isinst");
+    } elif cmp is not None {
+        cmp = self._isinstance_name_fallback(cmp, operand, names, "isinst");
     }
 
     if self._is_owned(operand) {
