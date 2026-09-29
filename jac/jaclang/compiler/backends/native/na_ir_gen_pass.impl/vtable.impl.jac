@@ -629,6 +629,16 @@ impl NaIRGenPass._emit_runtime_class_name_fn -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None) {
+    """The runtime class name of the object `obj_val` points at.
+
+    A build whose allocations carry a header reads the name stamped there,
+    which answers for every class. The static pointee type is not evidence of
+    a vtable: a union-typed value is lowered as a pointer to its first member,
+    so a `Left | Stored` receiver typed `Left*` may hold a flat `Stored` whose
+    first field would be read as a vtable pointer. Only a headerless build,
+    which has no header to read, falls back to the vtable, and its callers
+    refuse a receiver that may be a flat class.
+    """;
     i8_ptr = ir.IntType(8).as_pointer();
     _headerless = self._nogc_headerless();
     if self._opt_payload_of(obj_val.type) is not None {
@@ -652,7 +662,9 @@ impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | N
         return None;
     }
     _pointee_arch = self._struct_ptr_pointee_name(obj_val);
-    if _pointee_arch is not None and self._arch_has_vtable(_pointee_arch) {
+    if _headerless
+        and _pointee_arch is not None
+        and self._arch_has_vtable(_pointee_arch) {
         return self._class_id_of_value(_pointee_arch, obj_val);
     }
     _fn = self._emit_runtime_class_name_fn();

@@ -3693,6 +3693,10 @@ impl NaIRGenPass._codegen_union_member(
         }
         arms.append(member);
     }
+    if self._nogc_headerless()
+        and not all(self._arch_has_vtable(member) for member in parts) {
+        return None;
+    }
     receiver = self._narrow_receiver_ptr(obj_val, parts[0]);
     if receiver is None {
         return None;
