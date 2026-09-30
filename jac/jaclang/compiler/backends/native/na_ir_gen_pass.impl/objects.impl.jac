@@ -526,13 +526,14 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
         if isinstance(var, uni.TypeParam) {
             ftype = self._resolve_jac_type(var.bound);
         } elif isinstance(var, uni.HasVar) and var.type_tag is not None {
+            _ftag = var.type_tag.tag;
             if finfo.owner in self.clib_struct_names {
                 # A foreign struct another module declares is laid out here
                 # when a field embeds it; that module's fields may carry no
                 # evaluated type, so the annotation's evaluated type stands in.
                 _ftype_of = var?.type;
                 if _ftype_of is None {
-                    _ftype_of = self._c_decl_type_of(var.type_tag.tag);
+                    _ftype_of = self._c_decl_type_of(_ftag);
                 }
                 _cf_fnty = False;
                 try {
@@ -612,7 +613,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
                     }
                 }
             }
-            _ftag = var.type_tag.tag;
             ftag_name = self._get_name(_ftag);
             if ftag_name is not None and ftag_name in self.enum_types {
                 if arch_name not in self.struct_field_enum_type {
