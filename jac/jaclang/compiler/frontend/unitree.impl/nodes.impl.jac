@@ -665,6 +665,14 @@ impl Symbol.storage.getter -> SymbolStorage {
         }
         return SymbolStorage.CAPTURED;
     }
+    if (
+        def_scope is not owner
+        and not self.imported
+        and isinstance(owner, Ability)
+        and owner.is_method
+    ) {
+        return SymbolStorage.PARAM;
+    }
     return SymbolStorage.LOCAL;
 }
 
