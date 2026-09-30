@@ -975,6 +975,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_vararg(arg: uni.Expr) -> (ir.Value | None);
     def _c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None);
     def _c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None);
+    def _final_variant_value(nd: uni.Name, value: uni.Expr) -> (uni.Expr | None);
     def _final_scalar_value(nd: uni.Name, value_type: ir.Type) -> (ir.Value | None);
     def _va_abi -> str;
     def _va_storage_type(abi: str) -> ir.Type;

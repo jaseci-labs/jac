@@ -79,3 +79,43 @@ with entry {
     ];
     assert not loads , loads;
 }
+
+test "a Final glob of a module with a platform variant folds the variant's value" {
+    import tempfile;
+    import from jaclang.compiler.frontend.codeinfo {
+        native_target_arch,
+        native_target_os
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "offsets.jac").write_text(
+            "glob STATE_OFFSET: Final[i64] = 0;\n"
+        );
+        suffix = f"{native_target_os()}.{native_target_arch()}";
+        (Path(directory) / f"offsets.{suffix}.jac").write_text(
+            "glob STATE_OFFSET: Final[i64] = 11864;\n"
+        );
+        main = Path(directory) / "reader.jac";
+        main.write_text(
+            """import from offsets { STATE_OFFSET }
+def state_of(base: i64) -> i64 {
+    return base + STATE_OFFSET;
+}
+with entry {
+    print(state_of(8));
+}
+"""
+        );
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=str(main),
+            options=CompileOptions(force_codespace='native', skip_native_engine=True)
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        text = str(mod.gen.llvm_ir);
+    }
+    start = text.index("define i64 @");
+    start = text.index("state_of", start);
+    body = text[text.rindex("define", 0, start):];
+    body = body[:body.index("\n}")];
+    assert "11864" in body , body;
+}

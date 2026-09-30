@@ -3099,11 +3099,49 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
     return self._arch_key(arch) if arch is not None else None;
 }
 
+impl NaIRGenPass._final_variant_value(
+    nd: uni.Name, value: uni.Expr
+) -> (uni.Expr | None) {
+    """The value a Final glob has on the native target: a module with a
+    platform variant (`<name>.<os>.<arch>.jac`) is lowered as that variant,
+    so its glob is folded from the variant's declaration of the same name,
+    never from the portable module's placeholder. None when the variant
+    declares no such Final glob, which leaves the read a load.""";
+    import os;
+    import from jaclang.compiler.c_interop { final_glob_value }
+    import from jaclang.compiler.frontend.codeinfo { native_variant_of }
+    mod = value.find_parent_of_type(uni.Module);
+    if mod is None or mod.loc is None or not mod.loc.mod_path {
+        return value;
+    }
+    variant = os.path.realpath(native_variant_of(mod.loc.mod_path));
+    if variant == os.path.realpath(mod.loc.mod_path) {
+        return value;
+    }
+    variant_mod = self.prog.mod.hub.get(variant);
+    if variant_mod is None {
+        return None;
+    }
+    for gv in variant_mod.get_all_sub_nodes(uni.GlobalVars) {
+        for assign in gv.assignments {
+            target = assign.target[0] if len(assign.target) == 1 else None;
+            if isinstance(target, uni.Name) and target.sym_name == nd.sym_name {
+                return final_glob_value(target);
+            }
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._final_scalar_value(
     nd: uni.Name, value_type: ir.Type
 ) -> (ir.Value | None) {
     import from jaclang.compiler.c_interop { c_scalar_constant, final_glob_value }
     value = final_glob_value(nd);
+    if value is None {
+        return None;
+    }
+    value = self._final_variant_value(nd, value);
     if value is None {
         return None;
     }
