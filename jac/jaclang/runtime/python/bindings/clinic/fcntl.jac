@@ -50,7 +50,7 @@ def:priv fcntl_fcntl_bound(
 def:priv fcntl_fcntl_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("fcntl", int(nargs), 2, 3) {
+    if (nargs < 2 or nargs > 3) and not check_positional("fcntl", int(nargs), 2, 3) {
         return NULL;
     }
     return fcntl_fcntl_bound(receiver, args, nargs);
@@ -86,7 +86,7 @@ def:priv fcntl_ioctl_bound(
 def:priv fcntl_ioctl_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ioctl", int(nargs), 2, 4) {
+    if (nargs < 2 or nargs > 4) and not check_positional("ioctl", int(nargs), 2, 4) {
         return NULL;
     }
     return fcntl_ioctl_bound(receiver, args, nargs);
@@ -110,7 +110,7 @@ def:priv fcntl_flock_bound(
 def:priv fcntl_flock_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("flock", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("flock", int(nargs), 2, 2) {
         return NULL;
     }
     return fcntl_flock_bound(receiver, args, nargs);
@@ -149,7 +149,7 @@ def:priv fcntl_lockf_bound(
 def:priv fcntl_lockf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("lockf", int(nargs), 2, 5) {
+    if (nargs < 2 or nargs > 5) and not check_positional("lockf", int(nargs), 2, 5) {
         return NULL;
     }
     return fcntl_lockf_bound(receiver, args, nargs);

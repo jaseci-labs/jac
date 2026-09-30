@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 122 C files / 193,352 lines; 104 headers / 80,984 lines.
-#   Total: 226 files / 274,336 source lines.
+#   Excluded: 123 C files / 196,808 lines; 109 headers / 84,708 lines.
+#   Total: 232 files / 281,516 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -442,12 +442,12 @@ Modules/_scproxy.c
 # Modules/_sqlite/statement.h  # removed: 42 source lines
 # Modules/_sqlite/util.c  # removed: 185 source lines
 # Modules/_sqlite/util.h  # removed: 39 source lines
-Modules/_sre/clinic/sre.c.h
-Modules/_sre/sre.c
-Modules/_sre/sre.h
-Modules/_sre/sre_constants.h
-Modules/_sre/sre_lib.h
-Modules/_sre/sre_targets.h
+# Modules/_sre/clinic/sre.c.h  # removed: 1,571 source lines
+# Modules/_sre/sre.c  # removed: 3,456 source lines
+# Modules/_sre/sre.h  # removed: 123 source lines
+# Modules/_sre/sre_constants.h  # removed: 98 source lines
+# Modules/_sre/sre_lib.h  # removed: 1,874 source lines
+# Modules/_sre/sre_targets.h  # removed: 58 source lines
 Modules/_ssl.c
 Modules/_ssl.h
 # Modules/_ssl_data_111.h  # pruned: 6,543 source lines

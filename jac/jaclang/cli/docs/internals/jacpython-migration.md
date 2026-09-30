@@ -30,7 +30,11 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
 2. Write `modules/foo.jac`: one `_impl` function per clinic function, with the C
    name and the C parameter list (`PyObject *` is `ptr[PyObject]`,
    `Py_ssize_t` is `i64`, `Py_buffer` is `BufferArgument`). The body calls the
-   CPython API by its own names.
+   CPython API by its own names. When every `_impl` reports errors as C does
+   (NULL or -1 with the exception set) and none raises `boundary_failure`,
+   mark the module `raise-free` in `jacpython-clinic.txt` (`_foo raise-free`):
+   its glue then calls the `_impl` without an exception frame whenever no
+   argument conversion can raise.
 3. Write `bindings/foo.jac`: the `ModuleDefinition`, any `TypeDefinition`s,
    the exec hook (constants, exception types, module state) and
    `def:pub PyInit__foo`. Classes whose methods take `defining_class` bind their
@@ -74,6 +78,22 @@ packing a row's offset and bounds, and each `MAPPING_*` entry a `DbcsMap`
 record the module publishes as its `__map_<charset>` capsule. The codecs
 themselves are `MultibyteCodec` records whose entry points are named Jac
 functions, which `_multibytecodec` calls through the record as C does.
+Code a C file generates by including a template header more than once is
+generated the same way: sre.c includes `sre_lib.h` once per character
+width, and `scripts/jacpython/gen_sre.jac` writes the Jac template
+`scripts/jacpython/sre_lib.jac.in` as `modules/sre_ucs1.jac`,
+`sre_ucs2.jac` and `sre_ucs4.jac` (with `sre_constants.jac` from
+`Modules/_sre/sre_constants.h`). The matcher keeps sre_lib.h's explicit
+stack of match contexts and is one function, as the C is: an opcode
+dispatch loop whose `match` lowers to a jump table, inside a loop over the
+C's other labels (a context's exit, the label a DO_JUMP resumes at, the
+head of a loop a DO_JUMP interrupts), with the template spelling the C's
+control macros and the generator expanding them. A `match`-in-a-loop
+dispatcher is not threaded through the loop header by LLVM, so the opcode
+loop is its own loop and only jumps between labels pass the step switch.
+The calls a regular expression makes most bind their positional arguments
+directly and fall back to the generated clinic glue for keywords or
+conversions, so error messages stay the C module's.
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant

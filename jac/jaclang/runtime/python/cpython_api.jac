@@ -116,8 +116,10 @@ import from c {
         arg0: &mut ptr[PyObject], arg1: ptr[PyObject]
     );  def PyBytes_DecodeEscape(
         arg0: ptr, arg1: i64, arg2: ptr[u8], arg3: i64, arg4: ptr[u8]
-    ) -> ptr[PyObject];  def PyBytes_FromStringAndSize(
+    ) -> ptr[PyObject];  def PyBytes_FromObject(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyBytes_FromStringAndSize(
         arg0: bytes, arg1: i64
+    ) -> ptr[PyObject];  def PyBytes_Join(
+        sep: ptr[PyObject], iterable: ptr[PyObject]
     ) -> ptr[PyObject];  def PyBytes_Size(arg0: ptr[PyObject]) -> i64;  def PyCFunction_NewEx(
         arg0: ptr[PyMethodDef], arg1: ptr[PyObject], arg2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyCallable_Check(arg0: ptr[PyObject]) -> i32;  def PyCodec_Decode(
@@ -136,9 +138,11 @@ import from c {
         name: str, default_value: ptr[PyObject]
     ) -> ptr[PyObject];  def PyContextVar_Set(
         var: ptr[PyObject], value: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyDict_Clear(mp: ptr[PyObject]);  def PyDict_Contains(
-        mp: ptr[PyObject], key: ptr[PyObject]
-    ) -> i32;  def PyDict_Copy(mp: ptr[PyObject]) -> ptr[PyObject];  def PyDict_DelItem(
+    ) -> ptr[PyObject];  def PyDictProxy_New(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyDict_Clear(
+        mp: ptr[PyObject]
+    );  def PyDict_Contains(mp: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PyDict_Copy(
+        mp: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyDict_DelItem(
         mp: ptr[PyObject], key: ptr[PyObject]
     ) -> i32;  def PyDict_GetItemRef(
         mp: ptr[PyObject], key: ptr[PyObject], result: &mut ptr[PyObject]
@@ -595,7 +599,7 @@ import from c {
         unicode: ptr[PyObject]
     ) -> i64;  def PyUnicode_InternFromString(u: str) -> ptr[PyObject];  def PyUnicode_Join(
         separator: ptr[PyObject], seq: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyUnicode_ReadChar(
+    ) -> ptr[PyObject];  def PyUnicode_New(size: i64, maxchar: u32) -> ptr[PyObject];  def PyUnicode_ReadChar(
         unicode: ptr[PyObject], index: i64
     ) -> u32;  def PyUnicode_Splitlines(
         s: ptr[PyObject], keepends: i32
@@ -775,13 +779,21 @@ import from c {
         unicode: ptr[PyObject], base64SetO: i32, base64WhiteSpace: i32, errors: ptr[u8]
     ) -> ptr[PyObject];  def _PyUnicode_EqualToASCIIString(
         left: ptr[PyObject], right: str
-    ) -> i32;  def _PyUnicode_IsPrintable(ch: u32) -> i32;  def _PyUnicode_IsWhitespace(
+    ) -> i32;  def _PyUnicode_IsAlpha(ch: u32) -> i32;  def _PyUnicode_IsDecimalDigit(
         ch: u32
-    ) -> i32;  def _PyUnicode_IsXidContinue(ch: u32) -> i32;  def _PyUnicode_IsXidStart(
+    ) -> i32;  def _PyUnicode_IsDigit(ch: u32) -> i32;  def _PyUnicode_IsLinebreak(
         ch: u32
-    ) -> i32;  def _PyUnicode_ToDecimalDigit(ch: u32) -> i32;  def _PyUnicode_ToDigit(
+    ) -> i32;  def _PyUnicode_IsNumeric(ch: u32) -> i32;  def _PyUnicode_IsPrintable(
         ch: u32
-    ) -> i32;  def _PyUnicode_ToNumeric(ch: u32) -> f64;  def _PyUnicode_TransformDecimalAndSpaceToASCII(
+    ) -> i32;  def _PyUnicode_IsWhitespace(ch: u32) -> i32;  def _PyUnicode_IsXidContinue(
+        ch: u32
+    ) -> i32;  def _PyUnicode_IsXidStart(ch: u32) -> i32;  def _PyUnicode_JoinArray(
+        separator: ptr[PyObject], items: ptr[ptr[PyObject]], seqlen: i64
+    ) -> ptr[PyObject];  def _PyUnicode_ToDecimalDigit(ch: u32) -> i32;  def _PyUnicode_ToDigit(
+        ch: u32
+    ) -> i32;  def _PyUnicode_ToLowercase(ch: u32) -> u32;  def _PyUnicode_ToNumeric(
+        ch: u32
+    ) -> f64;  def _PyUnicode_ToUppercase(ch: u32) -> u32;  def _PyUnicode_TransformDecimalAndSpaceToASCII(
         unicode: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyWeakref_GetWeakrefCount(obj_: ptr[PyObject]) -> i64;  def _PyWeakref_IsDead(
         weakref: ptr[PyObject]

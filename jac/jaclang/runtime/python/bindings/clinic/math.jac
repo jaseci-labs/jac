@@ -166,7 +166,7 @@ def:priv math_ldexp_bound(
 def:priv math_ldexp_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ldexp", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ldexp", int(nargs), 2, 2) {
         return NULL;
     }
     return math_ldexp_bound(receiver, args, nargs);
@@ -225,7 +225,7 @@ def:priv math_fma_bound(
 def:priv math_fma_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("fma", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("fma", int(nargs), 3, 3) {
         return NULL;
     }
     return math_fma_bound(receiver, args, nargs);
@@ -249,7 +249,7 @@ def:priv math_fmod_bound(
 def:priv math_fmod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("fmod", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("fmod", int(nargs), 2, 2) {
         return NULL;
     }
     return math_fmod_bound(receiver, args, nargs);
@@ -273,7 +273,7 @@ def:priv math_dist_bound(
 def:priv math_dist_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("dist", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("dist", int(nargs), 2, 2) {
         return NULL;
     }
     return math_dist_bound(receiver, args, nargs);
@@ -303,7 +303,7 @@ def:priv math_sumprod_bound(
 def:priv math_sumprod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("sumprod", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("sumprod", int(nargs), 2, 2) {
         return NULL;
     }
     return math_sumprod_bound(receiver, args, nargs);
@@ -327,7 +327,7 @@ def:priv math_pow_bound(
 def:priv math_pow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("pow", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("pow", int(nargs), 2, 2) {
         return NULL;
     }
     return math_pow_bound(receiver, args, nargs);
@@ -500,7 +500,7 @@ def:priv math_perm_bound(
 def:priv math_perm_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("perm", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("perm", int(nargs), 1, 2) {
         return NULL;
     }
     return math_perm_bound(receiver, args, nargs);
@@ -524,7 +524,7 @@ def:priv math_comb_bound(
 def:priv math_comb_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("comb", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("comb", int(nargs), 2, 2) {
         return NULL;
     }
     return math_comb_bound(receiver, args, nargs);

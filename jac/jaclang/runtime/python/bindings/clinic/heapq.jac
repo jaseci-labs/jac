@@ -48,7 +48,8 @@ def:priv _heapq_heappush_bound(
 def:priv _heapq_heappush_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("heappush", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("heappush", int(nargs), 2, 2) {
         return NULL;
     }
     return _heapq_heappush_bound(receiver, args, nargs);
@@ -89,7 +90,8 @@ def:priv _heapq_heapreplace_bound(
 def:priv _heapq_heapreplace_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("heapreplace", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("heapreplace", int(nargs), 2, 2) {
         return NULL;
     }
     return _heapq_heapreplace_bound(receiver, args, nargs);
@@ -116,7 +118,8 @@ def:priv _heapq_heappushpop_bound(
 def:priv _heapq_heappushpop_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("heappushpop", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("heappushpop", int(nargs), 2, 2) {
         return NULL;
     }
     return _heapq_heappushpop_bound(receiver, args, nargs);
@@ -157,7 +160,8 @@ def:priv _heapq_heappush_max_bound(
 def:priv _heapq_heappush_max_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("heappush_max", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("heappush_max", int(nargs), 2, 2) {
         return NULL;
     }
     return _heapq_heappush_max_bound(receiver, args, nargs);
@@ -198,7 +202,8 @@ def:priv _heapq_heapreplace_max_bound(
 def:priv _heapq_heapreplace_max_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("heapreplace_max", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("heapreplace_max", int(nargs), 2, 2) {
         return NULL;
     }
     return _heapq_heapreplace_max_bound(receiver, args, nargs);
@@ -239,7 +244,8 @@ def:priv _heapq_heappushpop_max_bound(
 def:priv _heapq_heappushpop_max_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("heappushpop_max", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("heappushpop_max", int(nargs), 2, 2) {
         return NULL;
     }
     return _heapq_heappushpop_max_bound(receiver, args, nargs);

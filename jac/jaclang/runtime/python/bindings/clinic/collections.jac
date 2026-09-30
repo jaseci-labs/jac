@@ -116,7 +116,8 @@ def:priv _collections__count_elements_bound(
 def:priv _collections__count_elements_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_count_elements", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_count_elements", int(nargs), 2, 2) {
         return NULL;
     }
     return _collections__count_elements_bound(receiver, args, nargs);
@@ -235,7 +236,7 @@ def:priv deque_rotate_bound(
 def:priv deque_rotate_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("rotate", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("rotate", int(nargs), 0, 1) {
         return NULL;
     }
     return deque_rotate_bound(receiver, args, nargs);
@@ -288,7 +289,7 @@ def:priv deque_index_bound(
 def:priv deque_index_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("index", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3) and not check_positional("index", int(nargs), 1, 3) {
         return NULL;
     }
     return deque_index_bound(receiver, args, nargs);
@@ -312,7 +313,7 @@ def:priv deque_insert_bound(
 def:priv deque_insert_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("insert", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("insert", int(nargs), 2, 2) {
         return NULL;
     }
     return deque_insert_bound(receiver, args, nargs);

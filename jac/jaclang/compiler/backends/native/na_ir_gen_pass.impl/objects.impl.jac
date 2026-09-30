@@ -527,19 +527,26 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
             ftype = self._resolve_jac_type(var.bound);
         } elif isinstance(var, uni.HasVar) and var.type_tag is not None {
             if finfo.owner in self.clib_struct_names {
+                # A foreign struct another module declares is laid out here
+                # when a field embeds it; that module's fields may carry no
+                # evaluated type, so the annotation's evaluated type stands in.
+                _ftype_of = var?.type;
+                if _ftype_of is None {
+                    _ftype_of = self._c_decl_type_of(var.type_tag.tag);
+                }
                 _cf_fnty = False;
                 try {
                     import from jaclang.compiler.types.types {
                         FunctionType as _ClibFnType
                     }
-                    _cf_fnty = isinstance(var?.type, _ClibFnType);
+                    _cf_fnty = isinstance(_ftype_of, _ClibFnType);
                 } except ImportError {}
-                _nested = self._foreign_struct_name_of_type(var?.type);
+                _nested = self._foreign_struct_name_of_type(_ftype_of);
                 if _nested is None and not _cf_fnty {
-                    _nested = self._adopt_foreign_struct(var?.type);
+                    _nested = self._adopt_foreign_struct(_ftype_of);
                 }
                 if _cf_fnty {
-                    ftype = self._lower_clib_function_type(arch_name, fname, var.type);
+                    ftype = self._lower_clib_function_type(arch_name, fname, _ftype_of);
                 } elif _nested is not None and _nested in self.struct_types {
                     ftype = self.struct_types[_nested];
                     if arch_name not in self.struct_field_inline {

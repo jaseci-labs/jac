@@ -57,7 +57,8 @@ def:priv _weakref__remove_dead_weakref_bound(
 def:priv _weakref__remove_dead_weakref_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_remove_dead_weakref", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_remove_dead_weakref", int(nargs), 2, 2) {
         return NULL;
     }
     return _weakref__remove_dead_weakref_bound(receiver, args, nargs);
@@ -95,7 +96,7 @@ def:priv _weakref_proxy_bound(
 def:priv _weakref_proxy_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("proxy", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("proxy", int(nargs), 1, 2) {
         return NULL;
     }
     return _weakref_proxy_bound(receiver, args, nargs);

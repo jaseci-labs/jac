@@ -10,7 +10,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyTuple_Size,
     jacpy_dict_size,
-    jacpy_release,
     jacpy_tuple_items
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
@@ -94,18 +93,14 @@ def:priv zoneinfo_ZoneInfo_from_file_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class_of_type(receiver, ZoneInfo_token);
-        try {
-            value = clinic_args[0];
-            file_obj: ptr[PyObject] = value;
-            key: ptr[PyObject] = borrowed_none();
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                key = value;
-            }
-            return zoneinfo_ZoneInfo_from_file_impl(receiver, cls, file_obj, key);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        file_obj: ptr[PyObject] = value;
+        key: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            key = value;
         }
+        return zoneinfo_ZoneInfo_from_file_impl(receiver, cls, file_obj, key);
     } except boundary_failure {
         return NULL;
     }
@@ -146,13 +141,9 @@ def:priv zoneinfo_ZoneInfo_no_cache_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class_of_type(receiver, ZoneInfo_token);
-        try {
-            value = clinic_args[0];
-            key: ptr[PyObject] = value;
-            return zoneinfo_ZoneInfo_no_cache_impl(receiver, cls, key);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        key: ptr[PyObject] = value;
+        return zoneinfo_ZoneInfo_no_cache_impl(receiver, cls, key);
     } except boundary_failure {
         return NULL;
     }
@@ -193,16 +184,12 @@ def:priv zoneinfo_ZoneInfo_clear_cache_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class_of_type(receiver, ZoneInfo_token);
-        try {
-            only_keys: ptr[PyObject] = borrowed_none();
-            if count > 0 and clinic_args[0] != NULL {
-                value = clinic_args[0];
-                only_keys = value;
-            }
-            return zoneinfo_ZoneInfo_clear_cache_impl(receiver, cls, only_keys);
-        } finally {
-            jacpy_release(cls);
+        only_keys: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            only_keys = value;
         }
+        return zoneinfo_ZoneInfo_clear_cache_impl(receiver, cls, only_keys);
     } except boundary_failure {
         return NULL;
     }
@@ -245,13 +232,9 @@ def:priv zoneinfo_ZoneInfo_utcoffset_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, ZoneInfo_token);
-        try {
-            value = clinic_args[0];
-            dt: ptr[PyObject] = value;
-            return zoneinfo_ZoneInfo_utcoffset_impl(receiver, cls, dt);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        dt: ptr[PyObject] = value;
+        return zoneinfo_ZoneInfo_utcoffset_impl(receiver, cls, dt);
     } except boundary_failure {
         return NULL;
     }
@@ -292,13 +275,9 @@ def:priv zoneinfo_ZoneInfo_dst_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, ZoneInfo_token);
-        try {
-            value = clinic_args[0];
-            dt: ptr[PyObject] = value;
-            return zoneinfo_ZoneInfo_dst_impl(receiver, cls, dt);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        dt: ptr[PyObject] = value;
+        return zoneinfo_ZoneInfo_dst_impl(receiver, cls, dt);
     } except boundary_failure {
         return NULL;
     }
@@ -339,13 +318,9 @@ def:priv zoneinfo_ZoneInfo_tzname_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, ZoneInfo_token);
-        try {
-            value = clinic_args[0];
-            dt: ptr[PyObject] = value;
-            return zoneinfo_ZoneInfo_tzname_impl(receiver, cls, dt);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        dt: ptr[PyObject] = value;
+        return zoneinfo_ZoneInfo_tzname_impl(receiver, cls, dt);
     } except boundary_failure {
         return NULL;
     }
@@ -386,24 +361,20 @@ def:priv zoneinfo_ZoneInfo__unpickle_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class_of_type(receiver, ZoneInfo_token);
-        try {
-            value = clinic_args[0];
-            key: ptr[PyObject] = value;
-            value = clinic_args[1];
-            from_cache: u8 = u8(
-                convert_unsigned_bounded(
-                    value,
-                    True,
-                    u64(255),
-                    "unsigned byte integer",
-                    "_unpickle",
-                    argument_label("", 2)
-                )
-            );
-            return zoneinfo_ZoneInfo__unpickle_impl(receiver, cls, key, from_cache);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        key: ptr[PyObject] = value;
+        value = clinic_args[1];
+        from_cache: u8 = u8(
+            convert_unsigned_bounded(
+                value,
+                True,
+                u64(255),
+                "unsigned byte integer",
+                "_unpickle",
+                argument_label("", 2)
+            )
+        );
+        return zoneinfo_ZoneInfo__unpickle_impl(receiver, cls, key, from_cache);
     } except boundary_failure {
         return NULL;
     }

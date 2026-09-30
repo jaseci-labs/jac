@@ -41,7 +41,8 @@ def:priv _suggestions__generate_suggestions_bound(
 def:priv _suggestions__generate_suggestions_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_generate_suggestions", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_generate_suggestions", int(nargs), 2, 2) {
         return NULL;
     }
     return _suggestions__generate_suggestions_bound(receiver, args, nargs);

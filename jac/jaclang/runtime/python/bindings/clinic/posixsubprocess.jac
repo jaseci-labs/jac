@@ -106,7 +106,8 @@ def:priv subprocess_fork_exec_bound(
 def:priv subprocess_fork_exec_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("fork_exec", int(nargs), 22, 22) {
+    if (nargs < 22 or nargs > 22)
+        and not check_positional("fork_exec", int(nargs), 22, 22) {
         return NULL;
     }
     return subprocess_fork_exec_bound(receiver, args, nargs);

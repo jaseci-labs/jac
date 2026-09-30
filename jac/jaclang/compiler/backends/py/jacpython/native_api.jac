@@ -120,6 +120,7 @@ import from jaclang.runtime.python.bindings.codecs_jp { PyInit__codecs_jp }
 import from jaclang.runtime.python.bindings.codecs_kr { PyInit__codecs_kr }
 import from jaclang.runtime.python.bindings.codecs_tw { PyInit__codecs_tw }
 import from jaclang.runtime.python.bindings.socket { PyInit__socket }
+import from jaclang.runtime.python.bindings.sre { PyInit__sre }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

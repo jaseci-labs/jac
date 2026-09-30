@@ -89,7 +89,7 @@ def:priv itertools_tee_bound(
 def:priv itertools_tee_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tee", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("tee", int(nargs), 1, 2) {
         return NULL;
     }
     return itertools_tee_bound(receiver, args, nargs);
@@ -198,10 +198,10 @@ def:priv itertools_teedataobject_bound(
         if jacpy_is_list(value) == 0 {
             bad_argument("teedataobject", argument_label("", 2), "list", value);
         }
-        values: ptr[PyObject] = value;
+        values_: ptr[PyObject] = value;
         value = clinic_args[2];
         next_: ptr[PyObject] = value;
-        return itertools_teedataobject_impl(receiver, iterable, values, next_);
+        return itertools_teedataobject_impl(receiver, iterable, values_, next_);
     } except boundary_failure {
         return NULL;
     }

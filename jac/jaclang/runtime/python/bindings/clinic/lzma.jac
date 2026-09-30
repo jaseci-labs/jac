@@ -85,7 +85,8 @@ def:priv _lzma__decode_filter_properties_bound(
 def:priv _lzma__decode_filter_properties_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_decode_filter_properties", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_decode_filter_properties", int(nargs), 2, 2) {
         return NULL;
     }
     return _lzma__decode_filter_properties_bound(receiver, args, nargs);

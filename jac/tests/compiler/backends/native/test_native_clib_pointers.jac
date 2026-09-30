@@ -182,6 +182,33 @@ def run -> f32 {
     assert 'declare i8* @"cp_find"(i32 %"key")' in text;
 }
 
+test "a pointer step does not wrap around the address space" {
+    code = """
+def step(p: ptr[i32], n: int) -> ptr[i32] {
+    return p + n;
+}
+
+def back(p: ptr[i32]) -> ptr[i32] {
+    return p - 1;
+}
+""";
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, code);
+        text = str(compile_native_ir("probe.jac", fixture_dir=directory).gen.llvm_ir);
+    }
+    # C's rule: a step forward from a pointer is never null, which lets LLVM
+    # drop the null check of a view walked forward from a checked start.
+    steps = [
+        line
+        for line in text.splitlines()
+        if '%"c.ptr.step" = ' in line
+    ];
+    assert len(steps) == 2 , text;
+    for line in steps {
+        assert "getelementptr nusw" in line , line;
+    }
+}
+
 test "foreign struct fields must be C plain data" {
     code = '''import from "CLIB_POINTERS_LIBRARY" {
     obj CpVec3 { has x: f32, y: f32, z: f32; }
@@ -409,6 +436,62 @@ with entry {
     }
     assert "imported 12 12" in out.splitlines() , out;
     assert "imported object True" in out.splitlines() , out;
+}
+
+test "a foreign struct embeds one another module embeds from a third" {
+    inner = '''import from c {
+    obj NsInner {
+        has x: i64, y: i64, scale: Callable[[i64], i64];
+    }
+}
+''';
+    middle = '''import from nsinner { NsInner }
+import from c {
+    obj NsMiddle {
+        has inner: NsInner, z: i64;
+    }
+}
+''';
+    outer = '''import from nsmiddle { NsMiddle }
+import from nsinner { NsInner }
+import from c {
+    obj NsOuter {
+        has middle: NsMiddle, w: i64;
+    }
+    glob ns_outer: NsOuter = NsOuter(
+        middle=NsMiddle(inner=NsInner(x=i64(1), y=i64(2), scale=triple), z=i64(3)),
+        w=i64(4)
+    );
+}
+
+def triple(v: i64) -> i64 {
+    return v * i64(3);
+}
+
+def read(p: ptr[NsMiddle]) -> i64 {
+    return p.view(1)[0].z + p.view(1)[0].inner.y;
+}
+
+with entry {
+    record = addressof(ns_outer).view(1);
+    print("nested", record[0].w, record[0].middle.z, record[0].middle.inner.x);
+    print("through", read(ptr[NsMiddle](addressof(ns_outer))));
+    print("callback", record[0].middle.inner.scale(i64(5)));
+    record[0].middle.inner.y = i64(40);
+    print("write", record[0].middle.inner.y);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        Path(directory, "nsinner.jac").write_text(inner);
+        Path(directory, "nsmiddle.jac").write_text(middle);
+        path = Path(directory, "nsouter.jac");
+        path.write_text(outer);
+        out = assert_native_identity(str(path));
+    }
+    lines = out.splitlines();
+    for expected in ["nested 4 3 1", "through 5", "callback 15", "write 40"] {
+        assert expected in lines , f"missing {expected!r} in:\n{out}";
+    }
 }
 
 test "C variadic arguments take the C default promotions on every path" {

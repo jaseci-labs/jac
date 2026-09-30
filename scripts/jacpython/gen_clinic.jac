@@ -138,6 +138,8 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
              + "static override abs kw let type any str int float bool bytes list dict "
              + "set tuple ptr object len format hash iter next callable id args kwargs "
              + "module value arg own"
+             # the names the generated glue gives its own locals
+             + " receiver stack count clinic_args cls result values unpacked"
          ).split()
      );
 
@@ -156,30 +158,35 @@ def jac_string(text: str) -> str {
 
 obj Unsupported(Exception) {}
 
-# Preprocessor symbols only Windows defines. JacPython builds for Linux and
-# macOS, so a clinic function whose #if needs one is not generated.
+# Preprocessor symbols a JacPython build never defines: Windows's (it builds
+# for Linux and macOS) and the debug build's (it is a release build). A
+# clinic function whose #if needs one is not generated.
 glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS",
          "MS_WINDOWS_DESKTOP",
          "MS_WINDOWS_APP"
-     };
+     },
+     DEBUG_SYMBOLS: set[str] = {"Py_DEBUG"};
 
 def:priv tested_symbol(hit: any) -> str {
     return hit.group(1) or hit.group(2);
 }
 
-# Whether a clinic #if condition can hold on a POSIX target: Windows symbols
-# are undefined, and the condition holds for some choice of every other
+# Whether a clinic #if condition can hold on a POSIX release build: the
+# `undefined` symbols (Windows's and Py_DEBUG) are undefined, and the
+# condition holds for some choice of every other
 # feature test (a function under !defined(HAVE_BROKEN_POLL) exists where poll
 # works), since the module binding decides what a platform actually offers.
-def posix_condition(condition: str) -> bool {
+def posix_condition(
+    condition: str, undefined: set[str] = WINDOWS_SYMBOLS | DEBUG_SYMBOLS
+) -> bool {
     if not condition {
         return True;
     }
     # A comparison (SIZEOF_WCHAR_T == 4) is not evaluated; only a Windows
     # symbol in it decides.
     if re.search(r"[<>=]", condition) {
-        return not any(name in condition for name in WINDOWS_SYMBOLS);
+        return not any(name in condition for name in undefined);
     }
     expression = re.sub(
         r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)", "\\1\\2", condition
@@ -193,7 +200,7 @@ def posix_condition(condition: str) -> bool {
     features = [
         name
         for name in symbols
-        if name not in WINDOWS_SYMBOLS
+        if name not in undefined
     ];
     if len(features) > 12 {
         return True;
@@ -612,9 +619,11 @@ obj Emitter {
         qualified: bool = False,
         skipped: list[str] = [],
         windows: list[str] = [],
+        debug: list[str] = [],
         class_docs: dict[str, str] = {},
         c_docs: dict[str, str] = {},
         slow_only: bool = False,
+        raise_free: bool = False,
         function_docs: dict[str, str] = {},
         source_text: str = "";
 
@@ -1114,15 +1123,33 @@ obj Emitter {
         # The body that converts bound values and calls the impl.
         body: list[str] = [];
         call_args = ["receiver"];
+        # A raise-free module's impls report errors as C does and never raise
+        # boundary_failure, so a call whose arguments need no conversion that
+        # can raise (an object taken as it is, an exact int read as a
+        # Py_ssize_t) runs this body without the exception frame: `direct`
+        # when every parameter allows it, for the stack indices in
+        # `direct_ints` holding exact ints.
+        direct: list[str] = [];
+        direct_ok = self.raise_free;
+        direct_ints: list[int] = [];
         if uses_class {
             finder = "defining_class_of_type"
                 if kind == "CLASS_METHOD"
                 else "defining_class";
+            # Borrowed, as METH_METHOD's defining class is.
             body.append(
                 f"cls = {self.use(finder)}(receiver, {self.token_name(cls.name)});"
             );
-            self.api.add("jacpy_release");
-            body.append(RELEASE + "jacpy_release(cls);");
+            if direct_ok {
+                direct += [
+                    f"cls = {self.use(finder + '_or_null')}(receiver, {self.token_name(
+                        cls.name
+                    )});",
+                    "if cls == NULL {",
+                    "    return NULL;",
+                    "}"
+                ];
+            }
             call_args.append("cls");
         }
         # A METH_O argument is named only "argument" in type errors.
@@ -1154,6 +1181,7 @@ obj Emitter {
                 or getattr(p.converter, "converter", "")
                     == "_Py_convert_optional_to_ssize_t";
             if optional_ssize {
+                direct_ok = False;
                 fallback = self.default_value(p, "i64") if p.is_optional() else "0";
                 body.append(f"{var}: i64 = {fallback};");
                 body.append(
@@ -1171,6 +1199,11 @@ obj Emitter {
             # C default in the same variable.
             custom = expr.startswith("convert_")
                 and expr.split("(")[0] in self.module_names;
+            if direct_ok {
+                direct_ok = self.direct_argument(
+                    p, i, var, (jtype, expr, checks), meth_o, direct, direct_ints
+                );
+            }
             if p.is_optional() and custom {
                 fallback = self.default_value(p, jtype);
                 if slot != "value" {
@@ -1209,6 +1242,7 @@ obj Emitter {
             # (_struct's cache_struct) hands the impl a new reference.
             if jtype != "BufferArgument"
                 and re.search(r"Py_X?DECREF\(", p.converter.cleanup() or "") {
+                direct_ok = False;
                 self.api.add("jacpy_release");
                 body.append(RELEASE + f"jacpy_release({var});");
             }
@@ -1224,6 +1258,7 @@ obj Emitter {
         call = f"{impl_name}({', '.join(call_args)})";
         result = f"{wrap}({call})" if wrap else call;
         body.append(f"return {result};");
+        direct.append(f"return {result};");
         sig = f"{base}_signature";
         if parser != "PARSE_GIVEN" {
             names = ", ".join(jac_string(p.name) for p in params);
@@ -1266,6 +1301,25 @@ obj Emitter {
                 self.lines.append("    clinic_args = stack.view(count);");
             }
             self.lines += self.guarded(body, "    ");
+            self.lines.append("}");
+        }
+        # Tools/clinic's deprecation warnings run in its parser; a shared
+        # return converter reports as the impl does.
+        direct_ok = direct_ok
+            and not stepwise
+            and not self.slow_only
+            and (not wrap or wrap in RETURNS.values())
+            and kind not in ("METHOD_NEW", "METHOD_INIT");
+        if direct_ok
+            and not (meth_o or flags & METHOD_FLAGS["METH_NOARGS"])
+            and flags & METHOD_FLAGS["METH_FASTCALL"] {
+            self.lines.append(
+                f"def:priv {base}_direct(receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64) -> ptr[PyObject] {{"
+            );
+            if params {
+                self.lines.append("    clinic_args = stack.view(count);");
+            }
+            self.lines += ["    " + line for line in direct];
             self.lines.append("}");
         }
         doc = f.docstring or "";
@@ -1379,7 +1433,11 @@ obj Emitter {
             # CPython's call checked the arity: convert the argument in place.
             argument = "value" if meth_o else "unused";
             self.lines.append(head + f"{argument}: ptr[PyObject]) -> ptr[PyObject] {{");
-            self.lines += self.guarded(body, "    ");
+            if direct_ok {
+                self.lines += ["    " + line for line in direct];
+            } else {
+                self.lines += self.guarded(body, "    ");
+            }
             callback = "positional";
         } elif fast and stepwise {
             kwnames = ", kwnames: ptr[PyObject]" if keywords else "";
@@ -1402,20 +1460,26 @@ obj Emitter {
                     + f"args: ptr[ptr[PyObject]], nargs: i64{kwnames}) -> ptr[PyObject] {{"
             );
             if parser == "PARSE_POSITIONAL" and not self.slow_only {
+                # The count is checked inline; only a bad one calls out to
+                # say so.
+                outside = f"nargs > {generator.max_pos}";
+                if generator.min_pos > 0 {
+                    outside = f"nargs < {generator.min_pos} or " + outside;
+                }
                 self.lines.append(
-                    f"    if not {self.invoker('check_positional')}({jac_string(
+                    f"    if ({outside}) and not {self.invoker('check_positional')}({jac_string(
                         fname
                     )}, int(nargs), {generator.min_pos}, {generator.max_pos}) {{"
                 );
                 self.lines.append("        return NULL;");
                 self.lines.append("    }");
-                self.lines.append(f"    return {base}_bound(receiver, args, nargs);");
+                self.lines += self.bind_stack(base, direct_ok, direct_ints, "    ");
             } else {
                 fast_path = self.stack_fast_path(parser, generator, keywords);
                 if fast_path {
                     self.lines.append(f"    if {fast_path} {{");
-                    self.lines.append(
-                        f"        return {base}_bound(receiver, args, nargs);"
+                    self.lines += self.bind_stack(
+                        base, direct_ok, direct_ints, "        "
                     );
                     self.lines.append("    }");
                 }
@@ -1508,6 +1572,76 @@ obj Emitter {
                 doc
             )}, {flags})"
         );
+    }
+
+    # Add parameter `index` of a raise-free module's call to its `direct`
+    # body if its conversion (`converted`) cannot raise: an object is taken as
+    # it is, a Py_ssize_t read with PyLong_AsSsize_t from an exact int (whose
+    # index is added to `ints`). False when the call needs its conversions.
+    def direct_argument(
+        p: any,
+        index: int,
+        var: str,
+        converted: tuple[str, str, list[str]],
+        meth_o: bool,
+        direct: list[str],
+        ints: list[int]
+    ) -> bool {
+        jtype = converted[0];
+        expr = converted[1];
+        slot = "value" if meth_o else f"clinic_args[{index}]";
+        present = f"count > {index}";
+        if jtype == "ptr[PyObject]" and expr == "value" and not converted[2] {
+            if meth_o or not p.is_optional() {
+                direct.append(f"{var}: ptr[PyObject] = {slot};");
+            } else {
+                direct.append(
+                    f"{var}: ptr[PyObject] = {self.default_value(p, jtype)};"
+                );
+                direct += [f"if {present} {{", f"    {var} = {slot};", "}"];
+            }
+            return True;
+        }
+        if jtype == "i64" and expr == "convert_ssize(value)" and not meth_o {
+            self.api.add("PyLong_AsSsize_t");
+            fallback = self.default_value(p, jtype) if p.is_optional() else "0";
+            direct += [
+                f"{var}: i64 = {fallback};",
+                f"if {present} {{",
+                f"    {var} = PyLong_AsSsize_t({slot});",
+                f"    if {var} == -1 and {self.use('failed')}() {{",
+                "        return NULL;",
+                "    }",
+                "}"
+            ];
+            ints.append(index);
+            return True;
+        }
+        return False;
+    }
+
+    # The vectorcall fast path's call once the stack binds as it is: the
+    # direct body when its exact-int arguments are, else the bound one.
+    def bind_stack(
+        base: str, direct_ok: bool, ints: list[int], indent: str
+    ) -> list[str] {
+        bound = f"return {base}_bound(receiver, args, nargs);";
+        if not direct_ok {
+            return [indent + bound];
+        }
+        call = f"return {base}_direct(receiver, args, nargs);";
+        if not ints {
+            return [indent + call];
+        }
+        check = " and ".join(
+            f"{self.use('exact_int_at')}(args, nargs, {i})" for i in ints
+        );
+        return [
+            f"{indent}if {check} {{",
+            f"{indent}    {call}",
+            f"{indent}}}",
+            indent + bound
+        ];
     }
 
     # `body` inside the exception region every conversion and impl may
@@ -1673,6 +1807,10 @@ obj Emitter {
             head += ["", "Compiled only on Windows, so absent here:"];
             head += [f"    {item}" for item in self.windows];
         }
+        if self.debug {
+            head += ["", "Compiled only in debug (Py_DEBUG) builds, so absent here:"];
+            head += [f"    {item}" for item in self.debug];
+        }
         head.append('"""');
         imports = [
             f"import from jaclang.runtime.python.cpython_api {{ {', '.join(
@@ -1767,13 +1905,21 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     sources = module_sources(tree, module);
     name = module.lstrip("_");
     emitter = Emitter(
-        module=module, name=name, source_text="\n".join(s.read_text() for s in sources)
+        module=module,
+        name=name,
+        raise_free="raise-free" in registry_options().get(module, []),
+        source_text="\n".join(s.read_text() for s in sources)
     );
     for pair in clinic_functions(tree, sources) {
         cls = pair[0];
         f = pair[1];
-        if windows_only(CONDITIONS.get(id(f), "")) {
-            emitter.windows.append(f.full_name);
+        condition = CONDITIONS.get(id(f), "");
+        if windows_only(condition) {
+            if posix_condition(condition, WINDOWS_SYMBOLS) {
+                emitter.debug.append(f.full_name);
+            } else {
+                emitter.windows.append(f.full_name);
+            }
             continue;
         }
         try {
@@ -1796,14 +1942,19 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
 }
 
 def registered -> list[str] {
+    return list(registry_options());
+}
+
+# The registered modules and the options that follow each name.
+def registry_options -> dict[str, list[str]] {
     if not REGISTRY.is_file() {
-        return [];
+        return {};
     }
-    return [
-        line.split()[0]
+    return {
+        line.split()[0]: line.split()[1:]
         for line in REGISTRY.read_text().splitlines()
         if line.strip() and not line.startswith("#")
-    ];
+    };
 }
 
 with entry:__main__ {

@@ -87,7 +87,7 @@ def:priv _tracemalloc_start_bound(
 def:priv _tracemalloc_start_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("start", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("start", int(nargs), 0, 1) {
         return NULL;
     }
     return _tracemalloc_start_bound(receiver, args, nargs);

@@ -104,7 +104,7 @@ def:priv unpack_bound(
 def:priv unpack_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("unpack", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("unpack", int(nargs), 2, 2) {
         return NULL;
     }
     return unpack_bound(receiver, args, nargs);
@@ -190,7 +190,8 @@ def:priv iter_unpack_bound(
 def:priv iter_unpack_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("iter_unpack", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("iter_unpack", int(nargs), 2, 2) {
         return NULL;
     }
     return iter_unpack_bound(receiver, args, nargs);
