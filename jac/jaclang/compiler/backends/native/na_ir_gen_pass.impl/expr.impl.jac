@@ -1993,8 +1993,6 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
         } elif isinstance(operand.type, ir.IntType) {
-            # A negated literal stays a constant (a C record field's `-1`
-            # default narrows into its i32 like any literal).
             if isinstance(operand, ir.Constant) and isinstance(operand.constant, int) {
                 width = operand.type.width;
                 negated = -operand.constant;

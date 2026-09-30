@@ -528,9 +528,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
         } elif isinstance(var, uni.HasVar) and var.type_tag is not None {
             _ftag = var.type_tag.tag;
             if finfo.owner in self.clib_struct_names {
-                # A foreign struct another module declares is laid out here
-                # when a field embeds it; that module's fields may carry no
-                # evaluated type, so the annotation's evaluated type stands in.
                 _ftype_of = var?.type;
                 if _ftype_of is None {
                     _ftype_of = self._c_decl_type_of(_ftag);

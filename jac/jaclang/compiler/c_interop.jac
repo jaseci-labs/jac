@@ -470,13 +470,6 @@ def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
     return clib_global_assignment(resolved_decl_of(sym)) if sym is not None else None;
 }
 
-"""The C data global the name `nd` denotes. Assigning to a module-level global
-inside a function rebinds it (Jac binds the name to the global, not a new
-local), so a name a function binds only by assigning to it, which the module
-also imports as C data from another module, is that C data: symbol
-resolution makes the assigned name a function local, since which module an
-imported name comes from, and so whether it is C data, is known only once the
-imports are resolved."""
 def clib_global_of_name(nd: (UniNode | None)) -> (Assignment | None) {
     import from jaclang.compiler.frontend.unitree {
         Ability,

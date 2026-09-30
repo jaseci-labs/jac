@@ -363,9 +363,7 @@ def struct_sequence_type(
     name: str, doc: str, fields: list[tuple[str, str]], visible: int
 ) -> ptr[PyObject] {
     table = ptr[PyStructSequence_Field](
-        PyMem_RawCalloc(
-            u64(len(fields) + 1), u64(PY_STRUCT_SEQUENCE_FIELD_SIZE)
-        )
+        PyMem_RawCalloc(u64(len(fields) + 1), u64(PY_STRUCT_SEQUENCE_FIELD_SIZE))
     );
     desc = ptr[PyStructSequence_Desc](
         PyMem_RawCalloc(1, u64(PY_STRUCT_SEQUENCE_DESC_SIZE))

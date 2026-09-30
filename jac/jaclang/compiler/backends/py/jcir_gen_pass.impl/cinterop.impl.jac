@@ -43,8 +43,6 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
             opaque.append(decl.name.value);
         } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             fields: list[list[any]] = [];
-            # A field's constant default (`i32 = -1`); the rest start zeroed,
-            # as the native record does.
             defaults: dict[str, any] = {};
             for hv in decl.get_has_vars() {
                 tag = hv.type_tag.tag if hv.type_tag else None;
@@ -475,8 +473,7 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
         clib_global_of_name,
         is_builtin_addressof_call
     }
-    # The declaration itself is the symbol, not its value; a C function a C
-    # block defines reads and writes C data like any other function.
+
     if clib_global_of_name(nd) is None
         or (
             nd.find_parent_of_type(Import) is not None

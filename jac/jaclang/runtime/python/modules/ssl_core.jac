@@ -724,15 +724,11 @@ def fill_and_set_sslerror(
     }
     if not failed {
         failed = PyObject_SetAttr(
-            err_value,
-            state_ref(module, STATE_STR_REASON),
-            reason_obj if reason_obj else Py_None
+            err_value, state_ref(module, STATE_STR_REASON), reason_obj or Py_None
         )
             != 0
             or PyObject_SetAttr(
-                err_value,
-                state_ref(module, STATE_STR_LIBRARY),
-                lib_obj if lib_obj else Py_None
+                err_value, state_ref(module, STATE_STR_LIBRARY), lib_obj or Py_None
             )
                 != 0;
     }

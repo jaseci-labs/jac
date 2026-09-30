@@ -244,14 +244,13 @@ def _archetype_native_name(arch: Archetype, name: str) -> str {
     return native_arch_name(arch.loc.mod_path if arch.loc else "", name);
 }
 
-def _declared_native_name(shared: ClassDetailsShared) -> str {
-    name = shared.class_name;
-    if name not in _NATIVE_NAMED_CLASSES {
-        return name;
+def _recorded_native_name(shared: ClassDetailsShared) -> (str | None) {
+    if shared.class_name not in _NATIVE_NAMED_CLASSES {
+        return None;
     }
     key = shared.canonical_key();
     if key is None or not key[0] {
-        return name;
+        return None;
     }
     import os;
     found = _NATIVE_NAME_BY_DECL.get(
@@ -264,7 +263,11 @@ def _declared_native_name(shared: ClassDetailsShared) -> str {
             found = _NATIVE_NAME_BY_STDLIB.get((stdlib_module, key[3]));
         }
     }
-    return found if found is not None else name;
+    return found;
+}
+
+def _declared_native_name(shared: ClassDetailsShared) -> str {
+    return _recorded_native_name(shared) or shared.class_name;
 }
 
 def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
@@ -307,7 +310,7 @@ def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
         and typ._shared is not None
         and not typ.is_instance()
         and not isinstance(typ.shared.symbol_table, Archetype) {
-        return class_type_native_name(typ);
+        return _recorded_native_name(typ.shared);
     }
     return None;
 }

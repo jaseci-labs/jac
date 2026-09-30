@@ -33,10 +33,7 @@ impl SymTabBuildPass._bind_import_path_symbols(module_path: ModulePath) -> None 
 
 impl SymTabBuildPass.enter_module with Module entry {
     self.push_scope_and_link(here);
-    # C data a C block declares or defines is a C variable of the module
-    # wherever the block sits, as C's file-scope declarations are to the C
-    # functions around them: a function above the block reads and writes it
-    # in place, as one below it does.
+
     for stmt in here.body {
         if isinstance(stmt, Import) and stmt.clib_decls {
             for decl in stmt.clib_decls {

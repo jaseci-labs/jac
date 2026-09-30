@@ -24,7 +24,10 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Contains,
     PyUnicode_EncodeFSDefault
 }
-import from jaclang.runtime.python.modules.posix_core { _PyLong_FromGid, _Py_Gid_Converter }
+import from jaclang.runtime.python.modules.posix_core {
+    _PyLong_FromGid,
+    _Py_Gid_Converter
+}
 import from jaclang.runtime.python.object_model.structseq {
     PyStructSequence_New,
     PyStructSequence_SetItem

@@ -1065,12 +1065,7 @@ def os_utime_impl(
         return NULL;
     }
     if PySys_Audit(
-        "os.utime",
-        "OOOi",
-        path.object,
-        times,
-        ns if ns else Py_None,
-        audit_dir_fd(dir_fd)
+        "os.utime", "OOOi", path.object, times, ns or Py_None, audit_dir_fd(dir_fd)
     )
         < 0 {
         return NULL;
@@ -1488,8 +1483,7 @@ def os_listxattr_impl(
     if fd_and_follow_symlinks_invalid("listxattr", path.fd, follow_symlinks) {
         return NULL;
     }
-    if PySys_Audit("os.listxattr", "(O)", path.object if path.object else Py_None)
-        < 0 {
+    if PySys_Audit("os.listxattr", "(O)", path.object or Py_None) < 0 {
         return NULL;
     }
     # name = path->narrow ? path->narrow : "."

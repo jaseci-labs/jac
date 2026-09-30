@@ -2863,9 +2863,6 @@ impl TypeCheckPass._c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None) {
     return self.evaluator._convert_to_instance(arg);
 }
 
-# Whether `name` reads a `&mut` parameter of a Jac function (not a C
-# definition) that holds a scalar: a number, a bool or a pointer, alone or
-# in a union with None.
 impl TypeCheckPass._borrowed_scalar_param(name: Name) -> bool {
     import from jaclang.compiler.c_interop { clib_import_of, is_ptr_type }
     import from jaclang.compiler.frontend.constant { OwnershipKind }
@@ -2917,8 +2914,6 @@ impl TypeCheckPass._check_borrowed_scalar_write(leaf: Expr) -> None {
     }
 }
 
-# A borrowed scalar parameter lent on (`&mut p`), or passed to a parameter
-# the callee declares `&mut`, would be written through the function's copy.
 impl TypeCheckPass._check_borrowed_scalar_forward(nd: FuncCall) -> None {
     import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
     callee = nd.callee_decl;

@@ -809,10 +809,7 @@ impl NaIRGenPass._c_ptr_step(
     }
     elem = self._c_ptr_elem_llvm(ptr_type) or ir.IntType(8);
     typed = b.inttoptr(addr, elem.as_pointer(), name="c.ptr.typed");
-    # A pointer step does not wrap around the address space (`nusw`), as C
-    # pointer arithmetic does not: a step forward is then never null, so a
-    # pointer walked forward from a checked start needs no further null
-    # check when it is viewed.
+
     step = b.gep(typed, [count], name="c.ptr.step", nusw=True);
     return b.ptrtoint(step, i64, name="c.ptr");
 }

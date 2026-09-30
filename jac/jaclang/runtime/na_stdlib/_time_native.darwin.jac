@@ -1,8 +1,3 @@
-"""macOS clock ids and sleep for the bundled time module. CLK_PY_MONOTONIC
-is the clock CPython's monotonic() and perf_counter() read here:
-mach_absolute_time(), which CLOCK_UPTIME_RAW (8) reports in nanoseconds and
-which, unlike CLOCK_MONOTONIC, stops while the system sleeps."""
-
 import from c { def nanosleep(req: int, rem: int) -> i32;  }
 import from _errno_native { EINTR, last_errno, raise_errno }
 import from _time_common { NS_PER_SEC }

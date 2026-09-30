@@ -17,9 +17,8 @@ import tempfile;
 import from pathlib { Path }
 import from tests.support { assert_native_identity, jac_command }
 
-glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures";
-
-glob EXPECTED: str = "110 48.0 False 01234|at 4 4 5 5\nfinally saw 3\n-1 calling:caught\n9590\n7 enter,count=5,exit\n[0, 10, 20, 30, 104]\n42\n";
+glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures",
+     EXPECTED: str = "110 48.0 False 01234|at 4 4 5 5\nfinally saw 3\n-1 calling:caught\n9590\n7 enter,count=5,exit\n[0, 10, 20, 30, 104]\n42\n";
 
 test "optimized setjmp functions read the locals written before the raise" {
     out = assert_native_identity(

@@ -1650,7 +1650,7 @@ def:priv task_step_impl(
             state_ref(module, STATE_INVALID_STATE_ERROR),
             "__step(): already done: %R %R",
             task,
-            exc if exc else Py_None
+            exc or Py_None
         );
         return NULL;
     }

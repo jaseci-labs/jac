@@ -544,9 +544,7 @@ def:priv posix_listdir(path: path_t) -> ptr[PyObject] {
 }
 
 def os_listdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
-    if not audit_event(
-        "os.listdir", [Py_NewRef(path.object if path.object else Py_None)]
-    ) {
+    if not audit_event("os.listdir", [Py_NewRef(path.object or Py_None)]) {
         return NULL;
     }
     return posix_listdir(path);
@@ -766,7 +764,7 @@ def os_DirEntry___fspath___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
 def:priv join_path_filename(
     path_narrow: ptr[u8], name: ptr[u8], length: i64
 ) -> ptr[u8] {
-    base = path_narrow if path_narrow else ptr[u8](".");
+    base = path_narrow or ptr[u8](".");
     base_length = i64(strlen(base));
     joined = ptr[u8](PyMem_Malloc(u64(base_length + 1 + length + 1)));
     if not joined {
@@ -970,9 +968,7 @@ def ScandirIterator_dealloc(instance: ptr[PyObject]) {
 }
 
 def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
-    if not audit_event(
-        "os.scandir", [Py_NewRef(path.object if path.object else Py_None)]
-    ) {
+    if not audit_event("os.scandir", [Py_NewRef(path.object or Py_None)]) {
         return NULL;
     }
     iterator = jacpy_binding_allocate(
@@ -1019,7 +1015,7 @@ def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
         directory = jacpy_fdopendir(fd);
         PyEval_RestoreThread(thread);
     } else {
-        name = owned.narrow if owned.narrow else ptr[u8](".");
+        name = owned.narrow or ptr[u8](".");
         thread = PyEval_SaveThread();
         directory = jacpy_opendir(name);
         PyEval_RestoreThread(thread);

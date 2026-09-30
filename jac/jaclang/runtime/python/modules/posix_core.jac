@@ -675,7 +675,7 @@ obj path_t {
 
     # The name error messages use: argument_name, or "path" for NULL.
     def label -> str {
-        return self.argument_name if self.argument_name else "path";
+        return self.argument_name or "path";
     }
 }
 
