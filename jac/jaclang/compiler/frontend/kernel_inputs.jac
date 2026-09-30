@@ -399,7 +399,10 @@ def facts_to_dict(facts: ProjectFacts) -> dict[str, any] {
         "project_root": facts.project_root,
         "check": check_to_dict(facts.check),
         "arch_closed": list(facts.arch_closed),
-        "client_framework": facts.client_framework
+        "client_framework": facts.client_framework,
+        "package_name": facts.package_name,
+        "package_exports": list(facts.package_exports),
+        "package_mounts": facts.package_mounts
     };
 }
 
@@ -408,7 +411,10 @@ def facts_from_dict(raw: dict[str, any]) -> ProjectFacts {
         project_root=str(raw.get("project_root", "")),
         check=check_from_dict(json_map(raw.get("check"))),
         arch_closed=json_str_list(raw.get("arch_closed")),
-        client_framework=str(raw.get("client_framework", "react"))
+        client_framework=str(raw.get("client_framework", "react")),
+        package_name=str(raw.get("package_name", "")),
+        package_exports=json_str_list(raw.get("package_exports")),
+        package_mounts=str(raw.get("package_mounts", ""))
     );
 }
 
@@ -472,6 +478,7 @@ def workspace_to_dict(ws: WorkspaceSpec) -> dict[str, any] {
         "default_app": ws.default_app,
         "explicit": ws.explicit,
         "digest": ws.digest,
+        "persistence_namespace": ws.persistence_namespace,
         "base_pins": dict(ws.base_pins),
         "base_npm_names": sorted(ws.base_npm_names)
     };
@@ -490,6 +497,7 @@ def workspace_from_dict(raw: dict[str, any]) -> WorkspaceSpec {
         default_app=str(raw.get("default_app", "")),
         explicit=bool(raw.get("explicit", False)),
         digest=str(raw.get("digest", "")),
+        persistence_namespace=str(raw.get("persistence_namespace", "main")),
         base_pins=json_str_map(raw.get("base_pins")),
         base_npm_names=set(json_str_list(raw.get("base_npm_names")))
     );
@@ -499,14 +507,20 @@ def verdict_to_dict(verdict: (NativeVerdict | None)) -> (dict[str, any] | None) 
     if verdict is None {
         return None;
     }
-    return {"demoted": verdict.demoted, "code": verdict.code, "detail": verdict.detail};
+    return {
+        "demoted": verdict.demoted,
+        "code": verdict.code,
+        "detail": verdict.detail,
+        "deps": [list(row) for row in verdict.deps]
+    };
 }
 
 def verdict_from_dict(raw: dict[str, any]) -> NativeVerdict {
     return NativeVerdict(
         demoted=bool(raw.get("demoted", False)),
         code=str(raw.get("code", "")),
-        detail=str(raw.get("detail", ""))
+        detail=str(raw.get("detail", "")),
+        deps=json_str_pairs(raw.get("deps"))
     );
 }
 
@@ -575,6 +589,19 @@ def json_str_list(value: object) -> list[str] {
     if isinstance(value, list) {
         for item in value {
             out.append(str(item));
+        }
+    }
+    return out;
+}
+
+def json_str_pairs(value: object) -> list[list[str]] {
+    out: list[list[str]] = [];
+    if isinstance(value, list) {
+        for item in value {
+            pair = json_str_list(item);
+            if len(pair) == 2 {
+                out.append(pair);
+            }
         }
     }
     return out;

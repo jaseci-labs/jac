@@ -15,6 +15,7 @@ import from jaclang.runtime.archetype { NodeAnchor, Root }
 # archetype_alias is an ambient Jac builtin (no import). Serializer is
 # an explicit import because we directly test its internals here.
 import from jaclang.data.serializer { Serializer }
+import from jaclang.data.type_identity { type_module }
 
 
 # --- Alias registry ---------------------------------------------------------
@@ -31,7 +32,7 @@ obj _AliasedNewName(Root) {
 
 test "register_alias maps old qualified name to new class" {
     # _AliasedNewName's decorator ran at module load; alias should exist.
-    mod = getattr(_AliasedNewName, '__module__');
+    mod = type_module(_AliasedNewName);
     nm = getattr(_AliasedNewName, '__name__');
     key = f"{mod}.{nm}";
     assert Serializer._aliases.get("oldmod.LegacyName") == key , (
@@ -46,7 +47,7 @@ test "register_alias maps old qualified name to new class" {
 
 
 test "alias to same qualified name is a no-op (does not self-alias)" {
-    mod = getattr(_AliasTarget, '__module__');
+    mod = type_module(_AliasTarget);
     nm = getattr(_AliasTarget, '__name__');
     key = f"{mod}.{nm}";
     before = dict(Serializer._aliases);
