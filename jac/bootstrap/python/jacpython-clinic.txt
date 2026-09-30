@@ -63,3 +63,6 @@ pyexpat
 _elementtree
 _socket
 _sre raise-free
+_ssl
+_hashlib        hashopenssl
+_asyncio

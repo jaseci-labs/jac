@@ -59,7 +59,8 @@ glob OPAQUE: list[str] = [
          "PyMutex",
          "_Py_freelists",
          "PyLongWriter",
-         "_PyUnicodeWriter"
+         "_PyUnicodeWriter",
+         "FILE"
      ],
      OBJECT_LAYOUTS: set[str] = {
          "PyTypeObject",
@@ -199,8 +200,9 @@ glob OPAQUE: list[str] = [
          "PyTime_t": "i64",
          "time_t": "i64",
          "_PyTime_round_t": "i32",
-         # An enum of C int values.
+         # Enums of C int values.
          "PyGILState_STATE": "i32",
+         "PySendResult": "i32",
          "wchar_t": "i32",
          "Py_UCS4": "u32",
          "Py_UCS1": "u8",
@@ -218,7 +220,9 @@ glob OPAQUE: list[str] = [
          "PyCapsule_Destructor": "ptr",
          "PyThread_type_lock": "ptr",
          "vectorcallfunc": "ptr",
-         "Py_tracefunc": "ptr"
+         "Py_tracefunc": "ptr",
+         # A tp_traverse visitor, passed on as received.
+         "visitproc": "ptr"
      },
      # A `const char *` parameter is a NUL-terminated C string (Jac `str`) unless
      # the function reads a sized payload; those take raw memory as `bytes`.
@@ -251,6 +255,8 @@ glob OPAQUE: list[str] = [
          "PyBytes_DecodeEscape": {0},
          "PyMember_GetOne": {0},
          "PyMember_SetOne": {0},
+         "PyBytes_FromString": {0},
+         "PyUnicode_DecodeFSDefault": {0},
          "PyUnicode_DecodeASCII": {0},
          "PyUnicode_DecodeCharmap": {0},
          "PyUnicodeDecodeError_Create": {0, 1},
@@ -317,6 +323,7 @@ glob OPAQUE: list[str] = [
      OUT_POINTERS: dict[str, str] = {
          "PyObject **": "&mut ptr[PyObject]",
          "void **": "&mut ptr",
+         "char **": "&mut ptr[u8]",
          "Py_ssize_t *": "&mut i64",
          "int *": "&mut i32",
          "double *": "&mut f64",

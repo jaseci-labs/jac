@@ -4,10 +4,8 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
-    jacpy_crypto_compare,
     jacpy_dict_size,
     jacpy_is_unicode,
-    jacpy_unicode_ascii,
     jacpy_list_size,
     jacpy_power,
     jacpy_release,
@@ -56,10 +54,8 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_Subtract,
     PyNumber_TrueDivide,
     PyNumber_Xor,
-    PyExc_BufferError,
     PyObject,
     PyObject_Call,
-    PyObject_CheckBuffer,
     PyObject_DelItem,
     PyObject_GetAttr,
     PyObject_GetItem,
@@ -79,10 +75,9 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicode_Join
 }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.modules.hashlib { compare_digest }
 import from jaclang.runtime.python.capi {
     object_error,
-    type_name,
     boundary_failure,
     required,
     text_object,
@@ -562,16 +557,6 @@ def:pub jacpy_operator_call(
     }
 }
 
-# Reuse the cryptographic constant-time primitive already supplied by OpenSSL.
-# Comparisons of unequal sizes still read the second operand in full.
-def:pub jacpy_operator_digest(
-    a: ptr, b: ptr, a_size: i64, b_size: i64
-) -> ptr[PyObject] {
-    left = a if a_size == b_size else b;
-    difference = jacpy_crypto_compare(left, b, b_size);
-    return PyBool_FromLong(i64((difference == 0) and (a_size == b_size)));
-}
-
 # The Argument Clinic _impl functions.
 def _operator_add_impl(
     module: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject]
@@ -885,39 +870,5 @@ def _operator_length_hint_impl(
 def _operator__compare_digest_impl(
     module: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject]
 ) -> ptr[PyObject] {
-    ascii = jacpy_is_unicode(a) != 0 and jacpy_is_unicode(b) != 0;
-    if ascii {
-        if jacpy_unicode_ascii(a) == 0 or jacpy_unicode_ascii(b) == 0 {
-            object_error(
-                PyExc_TypeError,
-                "comparing strings with non-ASCII characters is not supported"
-            );
-            return NULL;
-        }
-    } elif PyObject_CheckBuffer(a) == 0 and PyObject_CheckBuffer(b) == 0 {
-        object_error(
-            PyExc_TypeError,
-            f"unsupported operand types(s) or combination of types: '{type_name(a)[:100]}' and '{type_name(
-                b
-            )[:100]}'"
-        );
-        return NULL;
-    }
-    av = BufferArgument();
-    bv = BufferArgument();
-    if not av.acquire(a, ascii) {
-        return NULL;
-    }
-    if av.dimensions() > 1 {
-        object_error(PyExc_BufferError, "Buffer must be single dimension");
-        return NULL;
-    }
-    if not bv.acquire(b, ascii) {
-        return NULL;
-    }
-    if bv.dimensions() > 1 {
-        object_error(PyExc_BufferError, "Buffer must be single dimension");
-        return NULL;
-    }
-    return jacpy_operator_digest(av.address(), bv.address(), av.size(), bv.size());
+    return compare_digest(a, b);
 }

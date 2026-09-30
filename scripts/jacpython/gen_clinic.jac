@@ -158,13 +158,18 @@ def jac_string(text: str) -> str {
 
 obj Unsupported(Exception) {}
 
+# Converters the C API itself provides (not a module's own), which
+# bindings/converters.jac supplies to every module.
+glob API_CONVERTERS: set[str] = {"convert_PyUnicode_FSConverter"};
+
 # Preprocessor symbols a JacPython build never defines: Windows's (it builds
 # for Linux and macOS) and the debug build's (it is a release build). A
 # clinic function whose #if needs one is not generated.
 glob WINDOWS_SYMBOLS: set[str] = {
          "MS_WINDOWS",
          "MS_WINDOWS_DESKTOP",
-         "MS_WINDOWS_APP"
+         "MS_WINDOWS_APP",
+         "_MSC_VER"
      },
      DEBUG_SYMBOLS: set[str] = {"Py_DEBUG"};
 
@@ -253,16 +258,29 @@ def accepted(conv: any) -> set[str] {
     };
 }
 
+# A module's C sources: those Setup lists, each followed by the local `.c`
+# files it textually includes (_ssl.c's `#include "_ssl/cert.c"`), whose clinic
+# blocks belong to the same module.
 def module_sources(tree: Path, module: str) -> list[Path] {
     for setup in ("Modules/Setup.stdlib.in", "Modules/Setup.bootstrap.in") {
         for line in (tree / setup).read_text().splitlines() {
             parts = re.sub(r"^@[A-Z0-9_]+@", "", line.strip()).split();
             if parts and parts[0] == module {
-                return [
+                sources: list[Path] = [];
+                pending = [
                     tree / "Modules" / p
                     for p in parts[1:]
                     if p.endswith(".c")
                 ];
+                while pending {
+                    source = pending.pop(0);
+                    sources.append(source);
+                    included = re.findall(
+                        r'^#\s*include\s+"([^"]+\.c)"', source.read_text(), re.M
+                    );
+                    pending = [source.parent / name for name in included] + pending;
+                }
+                return sources;
             }
         }
     }
@@ -778,9 +796,10 @@ obj Emitter {
             }
             check = "subclass_" + re.sub(r"\W+", "_", subclass).strip("_");
             self.module_names.add(check);
-            # clinic_state() is the state of the receiver's module, so a
-            # check against one of its types takes the receiver.
-            if "clinic_state()" in subclass {
+            # clinic_state() is the state of the receiver's module, and _ssl's
+            # get_state_ctx(self)->Sock_Type is read from the receiver: a
+            # check against such a type takes the receiver.
+            if "clinic_state()" in subclass or re.search(r"\bself\b", subclass) {
                 return (
                     "ptr[PyObject]",
                     "value",
@@ -928,6 +947,10 @@ obj Emitter {
             "_",
             "convert_" + (named if isinstance(named, str) and named else kind)
         );
+        if custom in API_CONVERTERS {
+            self.use(custom);
+            return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
+        }
         self.module_names.add(custom);
         # A converter the C glue calls with the module first (_struct's
         # cache_struct_converter(module, arg, &out)) gets the receiver too.
@@ -1903,7 +1926,7 @@ obj Emitter {
 # The module's short name and its formatted clinic glue.
 def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     sources = module_sources(tree, module);
-    name = module.lstrip("_");
+    name = jac_names().get(module, module.lstrip("_"));
     emitter = Emitter(
         module=module,
         name=name,
@@ -1939,6 +1962,23 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     };
     relative = [str(s.relative_to(tree)) for s in sources];
     return (name, emitter.render(relative, version));
+}
+
+# A registry line may name the module's Jac files after its module name
+# (`_hashlib hashopenssl`) when the default, the name without its leading
+# underscore, is taken by a shared module.
+def jac_names -> dict[str, str] {
+    if not REGISTRY.is_file() {
+        return {};
+    }
+    names: dict[str, str] = {};
+    for line in REGISTRY.read_text().splitlines() {
+        parts = line.split();
+        if len(parts) > 1 and not line.startswith("#") {
+            names[parts[0]] = parts[1];
+        }
+    }
+    return names;
 }
 
 def registered -> list[str] {

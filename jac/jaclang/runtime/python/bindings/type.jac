@@ -4,11 +4,15 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     Py_buffer,
     Py_TYPE,
+    PyErr_NoMemory,
     PyMem_Free,
     PyMem_Malloc,
+    PyMem_RawCalloc,
     PyObject,
     PyType_GetSlot
 }
+import from jaclang.runtime.python.layouts { PyGetSetDef }
+import from jaclang.runtime.python.capi { c_string_copy }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, install_methods }
 import from jaclang.runtime.python.bindings.members { MemberField }
 
@@ -132,6 +136,46 @@ obj PropertyDefinition {
         callbacks: PropertyCallbacks,
         context: u64 = 0,
         doc: str = "";
+}
+
+import from c {
+    # A PyGetSetDef whose getter and setter have PropertyCallbacks' types.
+    obj PropertyRecord {
+        has name: ptr[u8] = ptr[u8](),
+            read: Callable[[ptr[PyObject], u64], ptr[PyObject]] = 0,
+            write: Callable[[ptr[PyObject], ptr[PyObject], u64], i32] = 0,
+            doc: ptr[u8] = ptr[u8](),
+            context: u64 = 0;
+    }
+}
+
+# A NULL-terminated PyGetSetDef table of `properties` for a type defined as C
+# data, the tp_getset counterpart of method_table(): it lives for the process
+# lifetime, and an empty doc is C's NULL. NULL with MemoryError when
+# allocation fails.
+def getset_table(properties: list[PropertyDefinition]) -> ptr[PyGetSetDef] {
+    count = len(properties);
+    table = ptr[PropertyRecord](PyMem_RawCalloc(u64(count + 1), 40));
+    if table.is_null() {
+        PyErr_NoMemory();
+        return ptr[PyGetSetDef]();
+    }
+    for index in range(count) {
+        property = properties[index];
+        name = c_string_copy(property.name);
+        doc = c_string_copy(property.doc) if property.doc else ptr[u8]();
+        if name.is_null() or (property.doc and doc.is_null()) {
+            PyErr_NoMemory();
+            return ptr[PyGetSetDef]();
+        }
+        record = (table + index).view(1);
+        record[0].name = name;
+        record[0].read = property.callbacks.read;
+        record[0].write = property.callbacks.write;
+        record[0].doc = doc;
+        record[0].context = property.context;
+    }
+    return ptr[PyGetSetDef](table);
 }
 
 obj TypeDefinition {

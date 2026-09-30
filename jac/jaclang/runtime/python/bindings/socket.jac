@@ -127,6 +127,7 @@ import from jaclang.runtime.python.modules.socket_object {
     sock_traverse
 }
 import from jaclang.runtime.python.modules.socket {
+    netdb_lock,
     socket_CMSG_LEN,
     socket_CMSG_SPACE,
     socket_close,
@@ -213,8 +214,6 @@ import from c {
              ),
              slots=addressof(sock_slots)
          );
-    # The netdb lock modules/socket.jac defines.
-    glob netdb_lock: ptr;
     # PySocket_CAPSULE_NAME, which the capsule keeps pointing at.
     glob:priv capsule_name: ptr[u8] = ptr[u8]("_socket.CAPI");
 }

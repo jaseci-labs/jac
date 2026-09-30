@@ -159,14 +159,43 @@ Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
 `Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
 token for `PyType_GetBaseByToken()`, as in C.
 
-A module whose object layout other C code reads keeps that layout: `_socket`'s
-`PySocketSockObject` and `PySocketModule_APIObject` are read from
-`Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES` entry, with
-the scalar typedefs its structs name), so the `_socket.CAPI` capsule `_ssl.c`
-imports is the C module's. `gen_constants.jac` can leave out names published
+A clinic module can put its generated tables on such specs. `_asyncio`'s
+Future, Task, FutureIter and TaskStepMethWrapper are C-data specs whose
+instances are the C module's `FutureObj`, `TaskObj` and friends in place
+(the same fields at the same offsets, with managed dict and weakref flags),
+so the interpreter's task lists, which link each task through its
+`task_node`, and `PyThreadState_Clear()`, which moves a dying thread's tasks
+to the interpreter, work unchanged. At module execution the binding fills the
+specs' `Py_tp_methods` and `Py_tp_getset` slots once per process with
+`method_table()` and `getset_table()` (the `tp_getset` counterpart in
+`bindings/type.jac`) over the clinic `MethodDefinition` and
+`PropertyDefinition` lists, in the C tables' order; the clinic glue finds
+its defining class through the spec tokens. The running loop and task and
+the task lists live in `_PyThreadStateImpl` and `PyInterpreterState`, which
+`object_api.c` helpers reach (stopping the world to look at other threads).
+
+A module whose object layout other code reads keeps that layout: `_socket`'s
+`PySocketSockObject` and `PySocketModule_APIObject` are read from the pinned
+archive's `Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES`
+entry, with the scalar typedefs its structs name), so the `_socket.CAPI`
+capsule the `_ssl` port imports is the C module's; the header itself left the
+build with `_ssl.c`, its last C user. `gen_constants.jac` can leave out names published
 only under conditions no target meets (`UNSUPPORTED` blocks such as
 `USE_BLUETOOTH`), read enumerators under their header's presence (`GUARDS`) and
 supply values the C module defines itself (`DEFAULTS`).
+
+A port against a vendored C library reads that library's macros from a
+generator rather than a hand-written table: `gen_openssl.jac` configures the
+pinned OpenSSL to generate its public headers and writes every OpenSSL macro
+`_ssl.c`, `_ssl/*.c` and `_hashopenssl.c` name (following the function-like
+macros they call and the names their own macros paste, and probing enumerators
+and struct offsets with the compiler) into `openssl_constants.jac`, plus the
+error tables of the `_ssl_data` header `_ssl.c` selects into `ssl_errors.jac`.
+The port calls the exported function a macro expands to (`SSL_ctrl()` for
+`SSL_set_tlsext_host_name()`). A callback OpenSSL may run with the GIL
+released reads only C memory (`_ssl`'s ALPN protocols and password record);
+one that takes the GIL (`PyGILState_Ensure()` or the password callback's
+thread-state swap) may use native state as usual.
 
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
