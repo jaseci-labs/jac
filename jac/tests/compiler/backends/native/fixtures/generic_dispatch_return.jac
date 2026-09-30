@@ -13,6 +13,8 @@ class Emitter[V, C] {
         }
         return None;
     }
+
+    def reset(self: Emitter) {}
 }
 
 class StrEmit(Emitter[str, Ctx]) {
@@ -21,6 +23,12 @@ class StrEmit(Emitter[str, Ctx]) {
     ) -> (str | None) {
         return "(" + target + " + " + args[0] + ")";
     }
+
+    override def reset(self: StrEmit) -> None;
+}
+
+impl StrEmit.reset(self: StrEmit) -> None {
+    print("reset");
 }
 
 def render(emitters: dict[str, Emitter[str, Ctx]], kind: str, left: str) -> str {
@@ -28,6 +36,7 @@ def render(emitters: dict[str, Emitter[str, Ctx]], kind: str, left: str) -> str 
     if em is None {
         return "no emitter";
     }
+    em.reset();
     result = em.dispatch("add", Ctx(tag="t"), left, ["x"]);
     if result is None {
         return "none";

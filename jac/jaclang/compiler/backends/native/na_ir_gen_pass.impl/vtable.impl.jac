@@ -108,6 +108,8 @@ impl NaIRGenPass._vtable_slot_entry(
     result = self.builder.call(func, call_args, name=f"slot.{method_name}");
     if isinstance(slot_type.return_type, ir.VoidType) {
         self.builder.ret_void();
+    } elif isinstance(func.function_type.return_type, ir.VoidType) {
+        self.builder.ret(ir.Constant(slot_type.return_type, None));
     } else {
         self.builder.ret(self._coerce_type(result, slot_type.return_type));
     }
@@ -487,7 +489,10 @@ impl NaIRGenPass._codegen_virtual_call(
         method_i8, slot_type.as_pointer(), name=f"fn.{method_name}"
     );
     _vt_res = self.builder.call(typed_fn, slot_args, name=f"vcall.{method_name}");
-    if not isinstance(fn_type.return_type, ir.VoidType)
+    if isinstance(slot_type.return_type, ir.VoidType)
+        and not isinstance(fn_type.return_type, ir.VoidType) {
+        _vt_res = ir.Constant(fn_type.return_type, None);
+    } elif not isinstance(fn_type.return_type, ir.VoidType)
         and _vt_res.type != fn_type.return_type {
         _vt_res = self._coerce_type(_vt_res, fn_type.return_type);
     }

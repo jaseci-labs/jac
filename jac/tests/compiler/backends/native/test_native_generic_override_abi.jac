@@ -15,5 +15,5 @@ test "an override called through a generic base's slot returns its value" {
         Path(__file__).resolve().parent / "fixtures" / "generic_dispatch_return.jac"
     );
     out = assert_native_identity(source, profiles=["managed"]);
-    assert out.splitlines()[0] == '("task-title " + x)' , out;
+    assert out.splitlines()[:2] == ["reset", '("task-title " + x)'] , out;
 }
