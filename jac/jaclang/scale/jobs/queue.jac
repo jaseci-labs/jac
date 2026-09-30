@@ -23,8 +23,9 @@ glob logger = logging.getLogger(__name__),
      DEFAULT_MAX_ATTEMPTS = 3,
      ERROR_MAX_CHARS = 2000,
      JOB_COLUMNS = (
-         "id, queue, target, args, key, status, run_at, attempts, max_attempts, "
-         "timeout_s, lease_owner, lease_until, last_error, created_at, updated_at"
+         "id, service, queue, target, args, key, status, run_at, attempts, "
+         "max_attempts, timeout_s, lease_owner, lease_until, last_error, "
+         "created_at, updated_at"
      ),
      __all__ = [
          'JobInfo',
@@ -33,6 +34,7 @@ glob logger = logging.getLogger(__name__),
          'cancel',
          'job_info',
          'use_store',
+         'bind_service',
          'target_name',
          'STATUS_QUEUED',
          'STATUS_RUNNING',
@@ -51,6 +53,7 @@ obj JobInfo {
     has id: str,
         queue: str,
         target: str,
+        service: str = "",
         args: dict[str, any] = {},
         key: str = "",
         status: str = STATUS_QUEUED,
@@ -67,7 +70,8 @@ obj JobInfo {
 
 
 obj JobQueueStore {
-    has store: any;
+    has store: any,
+        service: str = "";
 
     def insert(
         queue: str,
@@ -80,7 +84,7 @@ obj JobQueueStore {
     ) -> str;
 
     def claim(queue: str, owner: str, lease_s: float) -> (JobInfo | None);
-    def heartbeat(queue: str, owner: str, lease_s: float) -> int;
+    def heartbeat(ids: list[str], owner: str, lease_s: float) -> int;
     def complete(id: str, owner: str) -> bool;
     def fail(job: JobInfo, owner: str, error: str, permanent: bool = False) -> str;
     def reap -> list[str];
@@ -93,6 +97,7 @@ obj JobQueueStore {
 
 obj _QueueState {
     has explicit: (JobQueueStore | None) = None,
+        service: str = "",
         warned_disabled: bool = False;
 }
 
@@ -101,6 +106,7 @@ glob _state: _QueueState = _QueueState();
 
 
 def use_store(store: (JobQueueStore | None)) -> None;
+def bind_service(service: str) -> None;
 def target_name(target: any) -> str;
 
 def enqueue(

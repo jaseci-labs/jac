@@ -3,31 +3,44 @@ import logging;
 import from jaclang.server.identity.user_manager { SYSTEM_USER }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.jobs.queue { JobInfo, JobQueueStore }
+import from jaclang.scale.jobs.queue { JobInfo, JobQueueStore, bind_service }
 import from jaclang.scale.jobs.runner { JobRunner, JobTargetMissing, QueueSpec }
 
 glob logger: logging.Logger = logging.getLogger(__name__);
 
 
+def module_for_identity(identity: str) -> any {
+    import sys;
+    import from jaclang { JacRuntime as Jac }
+    import from jaclang.data.type_identity { module_identity }
+    if not identity.startswith('jac:') {
+        return Jac.loaded_modules.get(identity) or sys.modules.get(identity);
+    }
+    for module in list(sys.modules.values()) {
+        facts: any = module?.__jac_persistence__;
+        if isinstance(facts, tuple) and facts and module_identity(facts) == identity {
+            return module;
+        }
+    }
+    return None;
+}
+
+
 def resolve_job_target(server: JacAPIServer, name: str) -> any {
     import inspect;
-    import sys;
     import from jaclang { JacRuntime as Jac }
     import from jaclang.runtime.constructs { WalkerArchetype }
     found: any = None;
-    attr = name;
     if ':' in name {
-        (module_name, attr) = name.split(':', 1);
-        module: any = Jac.loaded_modules.get(module_name)
-            or sys.modules.get(module_name);
+        (identity, attr) = name.rsplit(':', 1);
+        module: any = module_for_identity(identity);
         found = getattr(module, attr, None) if module is not None else None;
-    }
-    if found is None {
-        found = server.find_target(attr);
-    }
-    if found is None {
-        home: any = Jac.loaded_modules.get(server.module_name);
-        found = getattr(home, attr, None) if home is not None else None;
+    } else {
+        found = server.find_target(name);
+        if found is None {
+            home: any = Jac.loaded_modules.get(server.module_name);
+            found = getattr(home, name, None) if home is not None else None;
+        }
     }
     if isinstance(found, type) and issubclass(found, WalkerArchetype) {
         return found;
@@ -72,11 +85,7 @@ def job_executor(server: JacAPIServer, run_as: str) -> Callable[[JobInfo], None]
             }
         }
 
-        if job.timeout_s > 0 {
-            asyncio.run(asyncio.wait_for(_run(), timeout=job.timeout_s));
-        } else {
-            asyncio.run(_run());
-        }
+        asyncio.run(_run());
     }
     return _execute;
 }
@@ -84,9 +93,13 @@ def job_executor(server: JacAPIServer, run_as: str) -> Callable[[JobInfo], None]
 
 obj JobQueueExtension(ServerExtension) {
     has runner: (JobRunner | None) = None,
-        run_as: str = SYSTEM_USER;
+        run_as: str = SYSTEM_USER,
+        service: str = "";
 
     def register(server: JacAPIServer) -> None {
+        import from jaclang.server.task_scheduler { schedule_namespace }
+        self.service = schedule_namespace(str(server.module_name));
+        bind_service(self.service);
         if not get_scale_config().get_jobs_config()['enabled'] {
             return;
         }
@@ -97,7 +110,7 @@ obj JobQueueExtension(ServerExtension) {
         ext = self;
         async def _stop {
             if ext.runner is not None {
-                await asyncio.to_thread(ext.runner.stop);
+                await asyncio.to_thread(ext.runner.stop, server.drain.remaining());
                 ext.runner = None;
             }
         }
@@ -121,7 +134,7 @@ obj JobQueueExtension(ServerExtension) {
         metrics: any = server.metrics;
         record: any = metrics.record_job_counts if metrics is not None else None;
         self.runner = JobRunner(
-            store=JobQueueStore(store=shared.new_session()),
+            store=JobQueueStore(store=shared.new_session(), service=self.service),
             queues=[
                 QueueSpec(
                     name=name,

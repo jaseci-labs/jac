@@ -29,6 +29,7 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
          """
     CREATE TABLE IF NOT EXISTS jac_jobs (
         id           text PRIMARY KEY,
+        service      text NOT NULL DEFAULT '',
         queue        text NOT NULL,
         target       text NOT NULL,
         args         jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -47,7 +48,7 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
     """,
          """
     CREATE INDEX IF NOT EXISTS idx_jac_jobs_due
-        ON jac_jobs (queue, status, run_at)
+        ON jac_jobs (service, queue, status, run_at)
     """,
          """
     CREATE INDEX IF NOT EXISTS idx_jac_jobs_lease

@@ -10,8 +10,9 @@ impl JobRunner.postinit -> None {
         spec.name: threading.BoundedSemaphore(max(1, spec.concurrency))
         for spec in self.queues
     };
-    self._pools = {};
     self._threads = [];
+    self._attending = {spec.name: set() for spec in self.queues};
+    self._settled = threading.Condition();
     shortest = min([spec.lease_s for spec in self.queues] or [DEFAULT_LEASE_S]);
     self._maintain_s = max(0.05, min(MAINTAIN_CAP_S, shortest / 3.0));
     self._listening = False;
@@ -31,10 +32,6 @@ impl JobRunner.start -> None {
         );
     }
     for spec in self.queues {
-        self._pools[spec.name] = ThreadPoolExecutor(
-            max_workers=max(1, spec.concurrency),
-            thread_name_prefix=f"jac-job-{spec.name}"
-        );
         t = threading.Thread(
             target=self._dispatch_loop,
             args=(spec, ),
@@ -57,22 +54,37 @@ impl JobRunner.start -> None {
 }
 
 
-impl JobRunner.stop(timeout_s: float = 10.0) -> None {
+impl JobRunner.stop(deadline_s: float = 10.0) -> None {
+    import time;
+    end = time.monotonic() + max(0.0, deadline_s);
     self._stop.set();
     for ev in self._wake.values() {
         ev.set();
     }
     for t in self._threads {
-        t.join(timeout=timeout_s);
+        t.join(timeout=max(0.0, end - time.monotonic()));
     }
     self._threads = [];
-    for pool in self._pools.values() {
-        pool.shutdown(`wait=True, cancel_futures=True);
+    with self._settled {
+        while self.attending() {
+            left = end - time.monotonic();
+            if left <= 0 {
+                break;
+            }
+            self._settled.`wait(left);
+        }
     }
-    self._pools = {};
+    left_behind = self.attending();
+    if left_behind {
+        logger.warning(
+            f"job runner {self.owner} stopped with {len(left_behind)} job(s) still "
+            "running; their leases are no longer renewed, so another runner takes "
+            "them once the leases expire"
+        );
+    }
     self._maint_stop.set();
     if self._maint_thread is not None {
-        self._maint_thread.join(timeout=timeout_s);
+        self._maint_thread.join(timeout=max(0.0, end - time.monotonic()));
         self._maint_thread = None;
     }
     if self._listening {
@@ -86,7 +98,13 @@ impl JobRunner.stop(timeout_s: float = 10.0) -> None {
 }
 
 
-impl JobRunner.wake(queue: str = "") -> None {
+impl JobRunner.wake(payload: str = "") -> None {
+    (service, sep, queue) = payload.partition(':');
+    if not sep {
+        queue = payload;
+    } elif service != self.store.service {
+        return;
+    }
     ev = self._wake.get(queue);
     if ev is not None {
         ev.set();
@@ -104,6 +122,7 @@ impl JobRunner.run_once(queue: str) -> bool {
     if job is None {
         return False;
     }
+    self._attend(job);
     self._run_claimed(job);
     return True;
 }
@@ -111,7 +130,10 @@ impl JobRunner.run_once(queue: str) -> bool {
 
 impl JobRunner.maintain -> None {
     for spec in self.queues {
-        self.store.heartbeat(spec.name, self.owner, spec.lease_s);
+        with self._settled {
+            ids = sorted(self._attending[spec.name]);
+        }
+        self.store.heartbeat(ids, self.owner, spec.lease_s);
     }
     reaped = self.store.reap();
     if reaped {
@@ -129,6 +151,13 @@ impl JobRunner.maintain -> None {
 }
 
 
+impl JobRunner.attending -> list[str] {
+    with self._settled {
+        return [job_id for ids in self._attending.values() for job_id in ids];
+    }
+}
+
+
 impl JobRunner._spec(queue: str) -> QueueSpec {
     for spec in self.queues {
         if spec.name == queue {
@@ -139,44 +168,103 @@ impl JobRunner._spec(queue: str) -> QueueSpec {
 }
 
 
+impl JobRunner._attend(job: JobInfo) -> None {
+    with self._settled {
+        self._attending.setdefault(job.queue, set()).add(job.id);
+    }
+}
+
+
+impl JobRunner._release(job: JobInfo) -> None {
+    with self._settled {
+        self._attending.get(job.queue, set()).discard(job.id);
+        self._settled.notify_all();
+    }
+}
+
+
 impl JobRunner._run_claimed(job: JobInfo) -> None {
     try {
-        self.execute(job);
-    } except JobTargetMissing as e {
-        self.store.fail(job, self.owner, str(e), permanent=True);
-        logger.error(f"job {job.id} ({job.target}) is dead: {e}");
-        return;
+        self._record(job, self._await_attempt(job));
     } except Exception as e {
-        status = self.store.fail(job, self.owner, f"{type(e).__name__}: {e}");
-        logger.warning(
-            f"job {job.id} ({job.target}) attempt {job.attempts}/{job.max_attempts} "
-            f"failed: {type(e).__name__}: {e}; now {status or 'no longer held'}"
+        logger.error(f"job {job.id} bookkeeping failed: {e}");
+    } finally {
+        self._release(job);
+    }
+}
+
+
+impl JobRunner._await_attempt(job: JobInfo) -> (Exception | None) {
+    if job.timeout_s <= 0 {
+        try {
+            self.execute(job);
+        } except Exception as e {
+            return e;
+        }
+        return None;
+    }
+    raised: list[Exception] = [];
+    finished = threading.Event();
+    def _attempt {
+        try {
+            self.execute(job);
+        } except Exception as e {
+            raised.append(e);
+        } finally {
+            finished.set();
+        }
+    }
+    threading.Thread(
+        target=_attempt, daemon=True, name=f"jac-job-{job.id[:8]}"
+    ).start();
+    if not finished.`wait(job.timeout_s) {
+        return JobTimedOut(
+            f"attempt {job.attempts} ran past timeout_s={job.timeout_s:g}; the "
+            "runner stopped waiting for it and no longer renews its lease"
         );
+    }
+    return raised[0] if raised else None;
+}
+
+
+impl JobRunner._record(job: JobInfo, error: (Exception | None)) -> None {
+    if error is None {
+        if not self.store.complete(job.id, self.owner) {
+            logger.warning(
+                f"job {job.id} ({job.target}) finished after its lease was lost; "
+                "another runner may run it again"
+            );
+        }
         return;
     }
-    if not self.store.complete(job.id, self.owner) {
-        logger.warning(
-            f"job {job.id} ({job.target}) finished after its lease was lost; "
-            "another runner may run it again"
-        );
+    if isinstance(error, JobTargetMissing) {
+        self.store.fail(job, self.owner, str(error), permanent=True);
+        logger.error(f"job {job.id} ({job.target}) is dead: {error}");
+        return;
     }
+    status = self.store.fail(job, self.owner, f"{type(error).__name__}: {error}");
+    logger.warning(
+        f"job {job.id} ({job.target}) attempt {job.attempts}/{job.max_attempts} "
+        f"failed: {type(error).__name__}: {error}; now {status or 'no longer held'}"
+    );
 }
 
 
 impl JobRunner._dispatch_loop(spec: QueueSpec) -> None {
     slots = self._slots[spec.name];
     wake = self._wake[spec.name];
-    pool = self._pools[spec.name];
     while not self._stop.is_set() {
         if not slots.acquire(timeout=self.poll_s) {
             continue;
         }
         job: (JobInfo | None) = None;
-        try {
-            wake.clear();
-            job = self.store.claim(spec.name, self.owner, spec.lease_s);
-        } except Exception as e {
-            logger.warning(f"job claim on queue '{spec.name}' failed: {e}");
+        if not self._stop.is_set() {
+            try {
+                wake.clear();
+                job = self.store.claim(spec.name, self.owner, spec.lease_s);
+            } except Exception as e {
+                logger.warning(f"job claim on queue '{spec.name}' failed: {e}");
+            }
         }
         if job is None {
             slots.release();
@@ -184,21 +272,17 @@ impl JobRunner._dispatch_loop(spec: QueueSpec) -> None {
             continue;
         }
         claimed: JobInfo = job;
-        def _run_and_release(j: JobInfo = claimed) {
+        self._attend(claimed);
+        def _serve(j: JobInfo = claimed) {
             try {
                 self._run_claimed(j);
-            } except Exception as e {
-                logger.error(f"job {j.id} bookkeeping failed: {e}");
             } finally {
                 slots.release();
             }
         }
-        try {
-            pool.submit(_run_and_release);
-        } except RuntimeError {
-            slots.release();
-            return;
-        }
+        threading.Thread(
+            target=_serve, daemon=True, name=f"jac-jobs-{spec.name}-run"
+        ).start();
     }
 }
 

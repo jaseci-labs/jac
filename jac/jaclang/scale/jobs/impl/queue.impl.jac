@@ -10,9 +10,10 @@ impl JobQueueStore.insert(
     rows = self.store.rows(
         """
         INSERT INTO jac_jobs
-            (id, queue, target, args, key, status, run_at, max_attempts, timeout_s)
+            (id, service, queue, target, args, key, status, run_at, max_attempts,
+             timeout_s)
         VALUES (
-            :id, :q, :t, CAST(:a AS jsonb), :k, :st,
+            :id, :svc, :q, :t, CAST(:a AS jsonb), :k, :st,
             COALESCE(CAST(:r AS timestamptz), now()), :m, :to
         )
         ON CONFLICT (key) DO NOTHING
@@ -20,6 +21,7 @@ impl JobQueueStore.insert(
         """,
         {
             'id': uuid.uuid4().hex,
+            'svc': self.service,
             'q': queue,
             't': target,
             'a': json.dumps(args),
@@ -39,7 +41,9 @@ impl JobQueueStore.insert(
         }
         return str(found[0][0]);
     }
-    self.store.rows("SELECT pg_notify(:c, :p)", {'c': JOBS_CHANNEL, 'p': queue});
+    self.store.rows(
+        "SELECT pg_notify(:c, :p)", {'c': JOBS_CHANNEL, 'p': f"{self.service}:{queue}"}
+    );
     return str(rows[0][0]);
 }
 
@@ -53,7 +57,8 @@ impl JobQueueStore.claim(queue: str, owner: str, lease_s: float) -> (JobInfo | N
             updated_at = now()
         WHERE id = (
             SELECT id FROM jac_jobs
-            WHERE queue = :q AND status IN (:queued, :failed) AND run_at <= now()
+            WHERE service = :svc AND queue = :q AND status IN (:queued, :failed)
+              AND run_at <= now()
             ORDER BY run_at, created_at
             FOR UPDATE SKIP LOCKED
             LIMIT 1
@@ -66,6 +71,7 @@ impl JobQueueStore.claim(queue: str, owner: str, lease_s: float) -> (JobInfo | N
             'failed': STATUS_FAILED,
             'w': owner,
             'lease': float(lease_s),
+            'svc': self.service,
             'q': queue
         }
     );
@@ -73,16 +79,25 @@ impl JobQueueStore.claim(queue: str, owner: str, lease_s: float) -> (JobInfo | N
 }
 
 
-impl JobQueueStore.heartbeat(queue: str, owner: str, lease_s: float) -> int {
+impl JobQueueStore.heartbeat(ids: list[str], owner: str, lease_s: float) -> int {
+    if not ids {
+        return 0;
+    }
     rows = self.store.rows(
         """
         UPDATE jac_jobs
         SET lease_until = now() + make_interval(secs => CAST(:lease AS double precision)),
             updated_at = now()
-        WHERE queue = :q AND lease_owner = :w AND status = :running
+        WHERE id IN (SELECT jsonb_array_elements_text(CAST(:ids AS jsonb)))
+          AND lease_owner = :w AND status = :running
         RETURNING id
         """,
-        {'lease': float(lease_s), 'q': queue, 'w': owner, 'running': STATUS_RUNNING}
+        {
+            'lease': float(lease_s),
+            'ids': json.dumps(list(ids)),
+            'w': owner,
+            'running': STATUS_RUNNING
+        }
     );
     return len(rows);
 }
@@ -177,7 +192,11 @@ impl JobQueueStore.get(id: str) -> (JobInfo | None) {
 
 impl JobQueueStore.counts -> dict[tuple[str, str], int] {
     rows = self.store.rows(
-        "SELECT queue, status, count(*) FROM jac_jobs GROUP BY queue, status", {}
+        """
+        SELECT queue, status, count(*) FROM jac_jobs
+        WHERE service = :svc GROUP BY queue, status
+        """,
+        {'svc': self.service}
     );
     return {(str(r[0]), str(r[1])): int(r[2]) for r in rows};
 }
@@ -202,13 +221,23 @@ impl use_store(store: (JobQueueStore | None)) -> None {
 }
 
 
+impl bind_service(service: str) -> None {
+    _state.service = service;
+}
+
+
 impl target_name(target: any) -> str {
+    import from jaclang.data.type_identity { TypeResolutionError, type_module }
     if isinstance(target, str) {
         name = target.strip();
     } else {
         attr = str(getattr(target, '__name__', ''));
-        module = str(getattr(target, '__module__', ''));
-        name = f"{module}:{attr}" if module and attr else attr;
+        try {
+            module = type_module(target) if attr else '';
+        } except TypeResolutionError as e {
+            raise ValueError(f"{attr} cannot be queued: {e}") from e;
+        }
+        name = f"{module}:{attr}" if module else attr;
     }
     if not name {
         raise ValueError(
@@ -283,7 +312,7 @@ impl _iso(value: any) -> str {
 
 
 impl _row_to_job(row: tuple[any, ...]) -> JobInfo {
-    raw_args = row[3];
+    raw_args = row[4];
     args: dict[str, any] = (
         dict(raw_args)
             if isinstance(raw_args, dict)
@@ -291,20 +320,21 @@ impl _row_to_job(row: tuple[any, ...]) -> JobInfo {
     );
     return JobInfo(
         id=str(row[0]),
-        queue=str(row[1]),
-        target=str(row[2]),
+        service=str(row[1] or ""),
+        queue=str(row[2]),
+        target=str(row[3]),
         args=args,
-        key=str(row[4] or ""),
-        status=str(row[5]),
-        run_at=_iso(row[6]),
-        attempts=int(row[7] or 0),
-        max_attempts=int(row[8] or DEFAULT_MAX_ATTEMPTS),
-        timeout_s=float(row[9] or 0.0),
-        lease_owner=str(row[10] or ""),
-        lease_until=_iso(row[11]),
-        last_error=str(row[12] or ""),
-        created_at=_iso(row[13]),
-        updated_at=_iso(row[14])
+        key=str(row[5] or ""),
+        status=str(row[6]),
+        run_at=_iso(row[7]),
+        attempts=int(row[8] or 0),
+        max_attempts=int(row[9] or DEFAULT_MAX_ATTEMPTS),
+        timeout_s=float(row[10] or 0.0),
+        lease_owner=str(row[11] or ""),
+        lease_until=_iso(row[12]),
+        last_error=str(row[13] or ""),
+        created_at=_iso(row[14]),
+        updated_at=_iso(row[15])
     );
 }
 
@@ -330,26 +360,18 @@ impl _configured_queues -> list[str] {
 
 
 impl _store_for_request(writable: bool = True) -> JobQueueStore {
-    import from jaclang { JacRuntime }
-    import from jaclang.data.store { PgStore, TxnIsolation }
-    import from jaclang.server.session { Session }
+    import from jaclang.server.outbox { primary_pg_store, writable_txn }
     import from jaclang.server.shared_store { shared_store, shared_store_failure }
     explicit = _state.explicit;
     if explicit is not None {
         return explicit;
     }
-    ctx = JacRuntime.peek_context();
-    mem: any = ctx.mem if ctx is not None else None;
-    primary: any = mem?.store;
-    if isinstance(primary, PgStore) {
+    primary = primary_pg_store();
+    if primary is not None {
         if writable {
-            if isinstance(mem, Session) {
-                mem.ensure_writable_txn();
-            } elif not primary.in_txn() {
-                primary.begin(TxnIsolation.SERIALIZABLE);
-            }
+            writable_txn(primary);
         }
-        return JobQueueStore(store=primary);
+        return JobQueueStore(store=primary, service=_state.service);
     }
     shared = shared_store();
     if shared is None {
@@ -357,7 +379,7 @@ impl _store_for_request(writable: bool = True) -> JobQueueStore {
             f"the job queue needs the scale database: {shared_store_failure()}"
         );
     }
-    return JobQueueStore(store=shared);
+    return JobQueueStore(store=shared, service=_state.service);
 }
 
 

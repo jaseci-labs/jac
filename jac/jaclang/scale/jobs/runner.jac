@@ -3,7 +3,6 @@ import os;
 import socket;
 import threading;
 import uuid;
-import from concurrent.futures { ThreadPoolExecutor }
 import from jaclang.scale.jobs.queue { JOBS_CHANNEL, JobInfo, JobQueueStore }
 
 glob logger = logging.getLogger(__name__),
@@ -11,10 +10,13 @@ glob logger = logging.getLogger(__name__),
      DEFAULT_POLL_S = 1.0,
      DEFAULT_RETENTION_S = 604800.0,
      MAINTAIN_CAP_S = 5.0,
-     __all__ = ['JobRunner', 'QueueSpec', 'JobTargetMissing'];
+     __all__ = ['JobRunner', 'QueueSpec', 'JobTargetMissing', 'JobTimedOut'];
 
 
 class JobTargetMissing(Exception) {}
+
+
+class JobTimedOut(Exception) {}
 
 
 obj QueueSpec {
@@ -37,19 +39,25 @@ obj JobRunner {
         _maint_thread: (threading.Thread | None) postinit,
         _wake: dict[str, threading.Event] postinit,
         _slots: dict[str, threading.BoundedSemaphore] postinit,
-        _pools: dict[str, ThreadPoolExecutor] postinit,
         _threads: list[threading.Thread] postinit,
+        _attending: dict[str, set[str]] postinit,
+        _settled: threading.Condition postinit,
         _maintain_s: float postinit,
         _listening: bool postinit;
 
     def postinit -> None;
     def start -> None;
-    def stop(timeout_s: float = 10.0) -> None;
-    def wake(queue: str = "") -> None;
+    def stop(deadline_s: float = 10.0) -> None;
+    def wake(payload: str = "") -> None;
     def run_once(queue: str) -> bool;
     def maintain -> None;
+    def attending -> list[str];
     def _spec(queue: str) -> QueueSpec;
+    def _attend(job: JobInfo) -> None;
+    def _release(job: JobInfo) -> None;
     def _run_claimed(job: JobInfo) -> None;
+    def _await_attempt(job: JobInfo) -> (Exception | None);
+    def _record(job: JobInfo, error: (Exception | None)) -> None;
     def _dispatch_loop(spec: QueueSpec) -> None;
     def _maintain_loop -> None;
 }
