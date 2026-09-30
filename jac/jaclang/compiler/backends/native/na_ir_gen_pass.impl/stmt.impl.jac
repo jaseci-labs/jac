@@ -1763,7 +1763,7 @@ impl NaIRGenPass._apply_scalar_aug_op(
 }
 
 impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
-    if (nd.type_tag and nd.type_tag.tag) or not isinstance(nd.value, uni.Null) {
+    if not isinstance(nd.value, uni.Null) {
         return None;
     }
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.Name) {
