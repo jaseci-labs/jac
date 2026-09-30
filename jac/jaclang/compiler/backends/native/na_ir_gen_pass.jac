@@ -1587,6 +1587,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
     def _emit_yield_suspend(v: ir.Value) -> None;
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
+    def _ternary_keep(value: ir.Value) -> ir.Value;
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);

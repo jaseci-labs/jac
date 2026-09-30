@@ -2291,14 +2291,16 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     if then_open {
         self.builder.position_at_end(then_end_bb);
         if owns_result and then_val is not None {
-            self._emit_take_ref(then_val, op="ternary_keep");
+            then_val = self._ternary_keep(then_val);
+            then_end_bb = self.builder.block;
         }
         self.builder.branch(merge_bb);
     }
     if else_open {
         self.builder.position_at_end(else_end_bb);
         if owns_result and else_val is not None {
-            self._emit_take_ref(else_val, op="ternary_keep");
+            else_val = self._ternary_keep(else_val);
+            else_end_bb = self.builder.block;
         }
         self.builder.branch(merge_bb);
     }
@@ -2310,6 +2312,45 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     phi.add_incoming(then_val, then_end_bb);
     phi.add_incoming(else_val, else_end_bb);
     return self._mark_owned(phi) if owns_result else phi;
+}
+
+impl NaIRGenPass._ternary_keep(value: ir.Value) -> ir.Value {
+    """One arm of a conditional expression whose other arm owns its value:
+    the result is owned, so a borrowed arm takes a reference, or, where
+    nothing is counted (headerless nogc), a copy of its text or bytes.""";
+    if self._is_owned(value) {
+        return value;
+    }
+    if not self._nogc_headerless() {
+        self._emit_take_ref(value, op="ternary_keep");
+        return value;
+    }
+    if self._is_bytes_value(value) {
+        return self._bytes_from_raw(
+            self._bytes_data_ptr(value), self._bytes_len_val(value)
+        );
+    }
+    if value.type == ir.IntType(8).as_pointer() {
+        return self._mark_owned(
+            self._call_str_dup(self.builder, value, name="ternary.copy")
+        );
+    }
+    if self._str_desc_ty is not None and value.type == self._str_desc_ty {
+        if self.str_new_fn is None {
+            self._emit_str_len_helpers();
+        }
+        copied = self.builder.call(
+            self.str_new_fn,
+            [
+                self.builder.extract_value(value, 0, name="ternary.data"),
+                self.builder.extract_value(value, 1, name="ternary.len")
+            ],
+            name="ternary.copy"
+        );
+        return self._mark_owned(self._coerce_type(copied, self._str_desc_ty));
+    }
+    self._emit_take_ref(value, op="ternary_keep");
+    return value;
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {

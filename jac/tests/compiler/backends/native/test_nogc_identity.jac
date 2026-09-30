@@ -126,6 +126,12 @@ test "static text a builtin returns reaches its owner as a copy" {
     _assert_nogc_leak_free("static_text_owners.jac");
 }
 
+test "a conditional expression copies its borrowed arm when the other arm is owned" {
+    out = assert_native_identity(_fixture("ternary_arm_owners.jac"));
+    assert out.strip() == "350" , out;
+    _assert_nogc_leak_free("ternary_arm_owners.jac");
+}
+
 test "caught exceptions are freed when their handler ends" {
     out = assert_native_identity(_fixture("caught_exception_leaks.jac"));
     assert out.strip() == "1770" , out;
