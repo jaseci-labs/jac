@@ -363,6 +363,12 @@
 -		Objects/templateobject.o \
 @@ -565,1 +503,0 @@
 -		Objects/unionobject.o \
+@@ -1937,1 +1892,1 @@
+-Modules/posixmodule.o: $(srcdir)/Modules/posixmodule.c $(srcdir)/Modules/posixmodule.h
++# posixmodule.c and posixmodule.h are native Jac (jaclang/runtime/python/modules/posix*.jac).
+@@ -1943,1 +1898,1 @@
+-Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c $(srcdir)/Modules/posixmodule.h
++Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
@@ -427,3 +433,18 @@
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
+--- a/Modules/signalmodule.c
++++ b/Modules/signalmodule.c
+@@ -19,1 +19,11 @@
+-#  include "posixmodule.h"        // _PyLong_FromUid()
++/* posixmodule.c is native Jac; these are the posixmodule.h declarations
++   this file uses. */
++#  ifdef HAVE_SYS_TYPES_H
++#    include <sys/types.h>        // uid_t
++#  endif
++extern PyObject* _PyLong_FromUid(uid_t);
++#  if (defined(PYPTHREAD_SIGMASK) || defined(HAVE_SIGWAIT) \
++       || defined(HAVE_SIGWAITINFO) || defined(HAVE_SIGTIMEDWAIT))
++#    define HAVE_SIGSET_T
++#  endif
++extern int _Py_Sigset_Converter(PyObject *, void *);

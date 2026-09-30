@@ -25,11 +25,9 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_set_errno,
     jacpy_tuple_set_owned,
     NULL,
-    _Py_Gid_Converter,
     Py_NewRef,
     _Py_RestoreSignals,
     _Py_set_inheritable_async_safe,
-    _Py_Uid_Converter,
     _Py_write_noraise,
     PyBytes_AsString,
     PyBytes_FromStringAndSize,
@@ -58,9 +56,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMem_RawMalloc,
     PyObject,
     PyObject_Call,
-    PyOS_AfterFork_Child,
-    PyOS_AfterFork_Parent,
-    PyOS_BeforeFork,
     PySequence_Fast,
     PySequence_GetItem,
     PySequence_Size,
@@ -68,6 +63,13 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_Size,
     PyUnicode_FSConverter
+}
+import from jaclang.runtime.python.modules.posix_core {
+    PyOS_AfterFork_Child,
+    PyOS_AfterFork_Parent,
+    PyOS_BeforeFork,
+    _Py_Gid_Converter,
+    _Py_Uid_Converter
 }
 import from jaclang.runtime.python.capi { audit_event, object_error, type_name }
 import from jaclang.runtime.python.bindings.converters { borrowed_none }

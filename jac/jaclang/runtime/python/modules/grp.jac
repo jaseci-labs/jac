@@ -8,7 +8,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_fs_text,
     jacpy_release,
     NULL,
-    _Py_Gid_Converter,
     PyBytes_AsString,
     PyErr_NoMemory,
     PyErr_Occurred,
@@ -18,7 +17,6 @@ import from jaclang.runtime.python.cpython_api {
     PyExc_ValueError,
     PyList_Append,
     PyList_New,
-    _PyLong_FromGid,
     PyLong_FromLong,
     PyMem_RawFree,
     PyMem_RawRealloc,
@@ -26,6 +24,7 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Contains,
     PyUnicode_EncodeFSDefault
 }
+import from jaclang.runtime.python.modules.posix_core { _PyLong_FromGid, _Py_Gid_Converter }
 import from jaclang.runtime.python.object_model.structseq {
     PyStructSequence_New,
     PyStructSequence_SetItem

@@ -9,7 +9,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_fs_text,
     jacpy_release,
     NULL,
-    _Py_Uid_Converter,
     PyBytes_AsString,
     PyErr_ExceptionMatches,
     PyErr_NoMemory,
@@ -21,7 +20,6 @@ import from jaclang.runtime.python.cpython_api {
     PyList_Append,
     PyList_New,
     PyLong_FromLong,
-    _PyLong_FromUid,
     PyMem_RawFree,
     PyMem_RawRealloc,
     PyObject,
@@ -29,6 +27,10 @@ import from jaclang.runtime.python.cpython_api {
     PyThreadState,
     PyUnicode_EncodeFSDefault,
     PyUnicode_FromString
+}
+import from jaclang.runtime.python.modules.posix_core {
+    _PyLong_FromUid,
+    _Py_Uid_Converter
 }
 import from jaclang.runtime.python.object_model.structseq {
     PyStructSequence_New,

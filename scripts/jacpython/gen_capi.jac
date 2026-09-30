@@ -2,8 +2,7 @@
 
 Native Jac modules call the CPython C API by its own names. This script reads
 every PyAPI_FUNC declaration from the checksum-pinned CPython archive's
-Include/ tree (and Modules/posixmodule.h, which exports the uid/gid
-converters) and emits a typed clib declaration for each function the JacPython
+Include/ tree and emits a typed clib declaration for each function the JacPython
 sources use, so a Jac port reads like the C it replaces:
 
     jac run scripts/jacpython/gen_capi.jac            # rewrite the file
@@ -786,9 +785,7 @@ with entry:__main__ {
     args = parser.parse_args();
     headers = {
         path: text
-        for (path, text) in archive_texts(
-            ("Include/", "Modules/posixmodule.h")
-        ).items()
+        for (path, text) in archive_texts(("Include/", )).items()
         if path.endswith(".h")
     };
     functions = declarations(headers);

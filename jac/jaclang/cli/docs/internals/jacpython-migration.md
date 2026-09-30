@@ -88,6 +88,26 @@ Constants the portable Jac code reads on every platform are listed in
 `gen_constants.jac`'s `PORTABLE` and declared as 0 where the headers lack
 them.
 
+A module whose C tests configure features (`#ifdef HAVE_EVENTFD`) is
+generated with `--pyconfig`, the configured `pyconfig.h` of that target's
+build: each constant is then probed under the preprocessor conditions that
+guard it in the C source, so an enumerator the source publishes unguarded
+(macOS's `P_PID`) is kept and a constant behind an absent feature is not;
+the table records FEATURES, the value of every `HAVE_*` macro the source
+tests, which the port reads instead of `#ifdef`; `{"NAME", MACRO}` arrays
+(posix's `sysconf_names`) become name tables; and METHODS lists the clinic
+functions the target compiles, which the binding installs. posix's tables
+were generated this way for macOS (the host build's `pyconfig.h`) and for
+Linux glibc 2.17 on x86_64 and aarch64 (a `pyconfig.h` from configure with
+`CC="zig cc -target x86_64-linux-gnu.2.17"`, as build.sh builds Linux).
+`bootstrap/python/features_check.c`, written from every table's FEATURES,
+is compiled against each build's `pyconfig.h`, so a table that no longer
+matches its build fails the build. A module listed in `ALL_PORTABLE`
+declares every name on every platform. A function a target's headers
+declare for a newer OS than the deployment target (macOS 13's `mkfifoat`)
+is looked up at run time (`posix_platform.runtime_function()`), as C's
+weak import is tested, rather than linked strongly.
+
 Functions the C module parses with `PyArg_ParseTuple` or
 `PyArg_ParseTupleAndKeywords` instead of Argument Clinic use
 `ArgumentFormat` in `bindings/arguments.jac` with the same format units, so
@@ -179,7 +199,7 @@ them by hand.
 
 `jacpython.o` links into libpython, so any non-static CPython symbol is
 reachable from Jac. `gen_capi.jac` declares `PyAPI_FUNC` functions, the
-`extern` functions of `Include/internal/` and `Modules/posixmodule.h`, and the data symbols the sources
+`extern` functions of `Include/internal/`, and the data symbols the sources
 use: `PyAPI_DATA` variables and the `extern` variables of the internal
 headers. An exception object is read in place
 (`object_error(PyExc_ValueError, ...)`,
@@ -191,7 +211,7 @@ only where Jac cannot express the operation:
 | C residue | Why | Where |
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
-| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`, `stat`, `fstatat` and `statfs`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
