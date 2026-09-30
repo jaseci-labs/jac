@@ -1762,6 +1762,28 @@ impl NaIRGenPass._apply_scalar_aug_op(
     return result;
 }
 
+impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
+    if (nd.type_tag and nd.type_tag.tag) or not isinstance(nd.value, uni.Null) {
+        return None;
+    }
+    if len(nd.target) != 1 or not isinstance(nd.target[0], uni.Name) {
+        return None;
+    }
+    declared = nd.target[0].type;
+    if declared is None {
+        return None;
+    }
+    try {
+        lowered = self._lower_type(declared);
+    } except Exception {
+        return None;
+    }
+    if lowered is None or isinstance(lowered, ir.VoidType) {
+        return None;
+    }
+    return lowered;
+}
+
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
@@ -2974,6 +2996,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         } else {
             var_type = value.type;
             _pre_box_val = value;
+            _none_decl = self._none_initialized_local_type(nd);
+            if _none_decl is not None {
+                value = self._coerce_type(value, _none_decl);
+                var_type = _none_decl;
+                _pre_box_val = value;
+            }
             if (
                 (not nd.type_tag or not nd.type_tag.tag)
                 and isinstance(value.type, ir.PointerType)
