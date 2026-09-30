@@ -3959,7 +3959,7 @@ def:priv os_sendfile_darwin_bound(
             value, "sendfile", argument_label("offset", 3)
         );
         value = clinic_args[3];
-        count: i64 = convert_Py_off_t_converter(
+        count_: i64 = convert_Py_off_t_converter(
             value, "sendfile", argument_label("count", 4)
         );
         headers: ptr[PyObject] = NULL;
@@ -3978,7 +3978,7 @@ def:priv os_sendfile_darwin_bound(
             flags = convert_int(value);
         }
         return os_sendfile_darwin_impl(
-            receiver, out_fd, in_fd, offset, count, headers, trailers, flags
+            receiver, out_fd, in_fd, offset, count_, headers, trailers, flags
         );
     } except boundary_failure {
         return NULL;
@@ -4031,8 +4031,8 @@ def:priv os_sendfile_linux_bound(
         value = clinic_args[2];
         offset: ptr[PyObject] = value;
         value = clinic_args[3];
-        count: i64 = convert_ssize(value);
-        return os_sendfile_linux_impl(receiver, out_fd, in_fd, offset, count);
+        count_: i64 = convert_ssize(value);
+        return os_sendfile_linux_impl(receiver, out_fd, in_fd, offset, count_);
     } except boundary_failure {
         return NULL;
     }
@@ -4262,7 +4262,7 @@ def:priv os_copy_file_range_bound(
         value = clinic_args[1];
         dst: i32 = convert_int(value);
         value = clinic_args[2];
-        count: i64 = convert_ssize(value);
+        count_: i64 = convert_ssize(value);
         offset_src: ptr[PyObject] = borrowed_none();
         if count > 3 and clinic_args[3] != NULL {
             value = clinic_args[3];
@@ -4274,7 +4274,7 @@ def:priv os_copy_file_range_bound(
             offset_dst = value;
         }
         return os_copy_file_range_impl(
-            receiver, src, dst, count, offset_src, offset_dst
+            receiver, src, dst, count_, offset_src, offset_dst
         );
     } except boundary_failure {
         return NULL;
@@ -4325,7 +4325,7 @@ def:priv os_splice_bound(
         value = clinic_args[1];
         dst: i32 = convert_int(value);
         value = clinic_args[2];
-        count: i64 = convert_ssize(value);
+        count_: i64 = convert_ssize(value);
         offset_src: ptr[PyObject] = borrowed_none();
         if count > 3 and clinic_args[3] != NULL {
             value = clinic_args[3];
@@ -4341,7 +4341,9 @@ def:priv os_splice_bound(
             value = clinic_args[5];
             flags = convert_unsigned_int(value);
         }
-        return os_splice_impl(receiver, src, dst, count, offset_src, offset_dst, flags);
+        return os_splice_impl(
+            receiver, src, dst, count_, offset_src, offset_dst, flags
+        );
     } except boundary_failure {
         return NULL;
     }

@@ -138,7 +138,10 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
              + "enum include skip match case switch default flow wait priv pub protect "
              + "static override abs kw let type any str int float bool bytes list dict "
              + "set tuple ptr object len format hash iter next callable id args kwargs "
-             + "module value arg own"
+             + "module value arg own "
+             # The glue's own locals (a parameter named `count` would shadow
+             # the bound argument count).
+             + "receiver stack count clinic_args values unpacked result cls"
          ).split()
      );
 
