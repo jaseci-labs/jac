@@ -382,9 +382,9 @@ obj ManifestBuilder {
             _stage_app,
             release_binary_env,
             remove_stage_root,
-            sanitized_jac_toml,
             source_filter_for
         }
+        import from jaclang.dist.sanitize { sanitized_jac_toml }
         import from jaclang.scale.runtime.context.util { jac_executable }
         client_entry = self._client_entry();
         if client_entry
@@ -749,10 +749,10 @@ obj ManifestBuilder {
         import from pathlib { Path }
         import from jaclang.scale.injector.bundle {
             nested_sanitized_tomls,
-            sanitized_jac_toml,
             source_filter_for,
             unresolved_toml_references
         }
+        import from jaclang.dist.sanitize { sanitized_jac_toml }
         base = Path(self.project_dir);
         self._check_deploy_settings_resolve();
         base_toml = sanitized_jac_toml(base);

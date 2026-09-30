@@ -399,7 +399,10 @@ def facts_to_dict(facts: ProjectFacts) -> dict[str, any] {
         "project_root": facts.project_root,
         "check": check_to_dict(facts.check),
         "arch_closed": list(facts.arch_closed),
-        "client_framework": facts.client_framework
+        "client_framework": facts.client_framework,
+        "package_name": facts.package_name,
+        "package_exports": list(facts.package_exports),
+        "package_mounts": facts.package_mounts
     };
 }
 
@@ -408,7 +411,10 @@ def facts_from_dict(raw: dict[str, any]) -> ProjectFacts {
         project_root=str(raw.get("project_root", "")),
         check=check_from_dict(json_map(raw.get("check"))),
         arch_closed=json_str_list(raw.get("arch_closed")),
-        client_framework=str(raw.get("client_framework", "react"))
+        client_framework=str(raw.get("client_framework", "react")),
+        package_name=str(raw.get("package_name", "")),
+        package_exports=json_str_list(raw.get("package_exports")),
+        package_mounts=str(raw.get("package_mounts", ""))
     );
 }
 
