@@ -2,6 +2,9 @@
 # Argument Clinic input by scripts/jacpython/gen_clinic.jac into
 # jaclang/runtime/python/bindings/clinic/<name>.jac.
 # `jac run scripts/jacpython/gen_clinic.jac --check` fails when any is stale.
+# `raise-free` after a name says the module's _impl functions report errors
+# as C does and never raise boundary_failure, so its glue calls them without
+# an exception frame when no argument conversion can raise.
 _opcode
 pwd
 grp
@@ -59,4 +62,4 @@ _multibytecodec
 pyexpat
 _elementtree
 _socket
-_sre
+_sre raise-free

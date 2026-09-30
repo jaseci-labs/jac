@@ -10,7 +10,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyTuple_Size,
     jacpy_dict_size,
-    jacpy_release,
     jacpy_tuple_items
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
@@ -188,21 +187,17 @@ def:priv _queue_SimpleQueue_get_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SimpleQueue_token);
-        try {
-            block: bool = True;
-            if count > 0 and clinic_args[0] != NULL {
-                value = clinic_args[0];
-                block = convert_bool(value);
-            }
-            timeout: ptr[PyObject] = borrowed_none();
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                timeout = value;
-            }
-            return _queue_SimpleQueue_get_impl(receiver, cls, block, timeout);
-        } finally {
-            jacpy_release(cls);
+        block: bool = True;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            block = convert_bool(value);
         }
+        timeout: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            timeout = value;
+        }
+        return _queue_SimpleQueue_get_impl(receiver, cls, block, timeout);
     } except boundary_failure {
         return NULL;
     }
@@ -242,11 +237,7 @@ def:priv _queue_SimpleQueue_get_nowait_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, SimpleQueue_token);
-        try {
-            return _queue_SimpleQueue_get_nowait_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _queue_SimpleQueue_get_nowait_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }

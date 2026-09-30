@@ -330,13 +330,9 @@ def:priv _pickle_Pickler_dump_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Pickler_token);
-        try {
-            value = clinic_args[0];
-            obj_: ptr[PyObject] = value;
-            return _pickle_Pickler_dump_impl(receiver, cls, obj_);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        obj_: ptr[PyObject] = value;
+        return _pickle_Pickler_dump_impl(receiver, cls, obj_);
     } except boundary_failure {
         return NULL;
     }
@@ -497,13 +493,9 @@ def:priv _pickle_Unpickler_persistent_load_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Unpickler_token);
-        try {
-            value = clinic_args[0];
-            pid: ptr[PyObject] = value;
-            return _pickle_Unpickler_persistent_load_impl(receiver, cls, pid);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        pid: ptr[PyObject] = value;
+        return _pickle_Unpickler_persistent_load_impl(receiver, cls, pid);
     } except boundary_failure {
         return NULL;
     }
@@ -545,11 +537,7 @@ def:priv _pickle_Unpickler_load_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, Unpickler_token);
-        try {
-            return _pickle_Unpickler_load_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _pickle_Unpickler_load_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }
@@ -584,17 +572,13 @@ def:priv _pickle_Unpickler_find_class_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Unpickler_token);
-        try {
-            value = clinic_args[0];
-            module_name: ptr[PyObject] = value;
-            value = clinic_args[1];
-            global_name: ptr[PyObject] = value;
-            return _pickle_Unpickler_find_class_impl(
-                receiver, cls, module_name, global_name
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        module_name: ptr[PyObject] = value;
+        value = clinic_args[1];
+        global_name: ptr[PyObject] = value;
+        return _pickle_Unpickler_find_class_impl(
+            receiver, cls, module_name, global_name
+        );
     } except boundary_failure {
         return NULL;
     }

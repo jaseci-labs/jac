@@ -9,12 +9,12 @@ Compiled only in debug (Py_DEBUG) builds, so absent here:
 """
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyLong_AsSsize_t,
     PyMem_Free,
     PyObject,
     jacpy_is_dict,
     jacpy_is_list,
-    jacpy_is_tuple,
-    jacpy_release
+    jacpy_is_tuple
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
@@ -38,6 +38,9 @@ import from jaclang.runtime.python.bindings.converters {
     convert_int,
     convert_ssize,
     defining_class,
+    defining_class_or_null,
+    exact_int_at,
+    failed,
     return_bool,
     return_int,
     return_ssize
@@ -78,11 +81,7 @@ import from jaclang.runtime.python.modules.sre {
 def:priv _sre_getcodesize_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return return_int(_sre_getcodesize_impl(receiver));
-    } except boundary_failure {
-        return NULL;
-    }
+    return return_int(_sre_getcodesize_impl(receiver));
 }
 
 def:priv _sre_ascii_iscased_call(
@@ -213,7 +212,8 @@ def:priv _sre_template_bound(
 def:priv _sre_template_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("template", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("template", int(nargs), 2, 2) {
         return NULL;
     }
     return _sre_template_bound(receiver, args, nargs);
@@ -229,26 +229,48 @@ def:priv _sre_SRE_Pattern_match_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            string: ptr[PyObject] = value;
-            pos: i64 = 0;
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                pos = convert_ssize(value);
-            }
-            endpos: i64 = 9223372036854775807;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                endpos = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_match_impl(receiver, cls, string, pos, endpos);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        string: ptr[PyObject] = value;
+        pos: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            pos = convert_ssize(value);
         }
+        endpos: i64 = 9223372036854775807;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            endpos = convert_ssize(value);
+        }
+        return _sre_SRE_Pattern_match_impl(receiver, cls, string, pos, endpos);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_match_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    string: ptr[PyObject] = clinic_args[0];
+    pos: i64 = 0;
+    if count > 1 {
+        pos = PyLong_AsSsize_t(clinic_args[1]);
+        if pos == -1 and failed() {
+            return NULL;
+        }
+    }
+    endpos: i64 = 9223372036854775807;
+    if count > 2 {
+        endpos = PyLong_AsSsize_t(clinic_args[2]);
+        if endpos == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_match_impl(receiver, cls, string, pos, endpos);
 }
 
 def:priv _sre_SRE_Pattern_match_call(
@@ -258,6 +280,9 @@ def:priv _sre_SRE_Pattern_match_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        if exact_int_at(args, nargs, 1) and exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_match_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_match_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_match_signature, args, nargs, kwnames);
@@ -286,26 +311,48 @@ def:priv _sre_SRE_Pattern_fullmatch_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            string: ptr[PyObject] = value;
-            pos: i64 = 0;
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                pos = convert_ssize(value);
-            }
-            endpos: i64 = 9223372036854775807;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                endpos = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_fullmatch_impl(receiver, cls, string, pos, endpos);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        string: ptr[PyObject] = value;
+        pos: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            pos = convert_ssize(value);
         }
+        endpos: i64 = 9223372036854775807;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            endpos = convert_ssize(value);
+        }
+        return _sre_SRE_Pattern_fullmatch_impl(receiver, cls, string, pos, endpos);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_fullmatch_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    string: ptr[PyObject] = clinic_args[0];
+    pos: i64 = 0;
+    if count > 1 {
+        pos = PyLong_AsSsize_t(clinic_args[1]);
+        if pos == -1 and failed() {
+            return NULL;
+        }
+    }
+    endpos: i64 = 9223372036854775807;
+    if count > 2 {
+        endpos = PyLong_AsSsize_t(clinic_args[2]);
+        if endpos == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_fullmatch_impl(receiver, cls, string, pos, endpos);
 }
 
 def:priv _sre_SRE_Pattern_fullmatch_call(
@@ -315,6 +362,9 @@ def:priv _sre_SRE_Pattern_fullmatch_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        if exact_int_at(args, nargs, 1) and exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_fullmatch_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_fullmatch_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_fullmatch_signature, args, nargs, kwnames);
@@ -343,26 +393,48 @@ def:priv _sre_SRE_Pattern_search_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            string: ptr[PyObject] = value;
-            pos: i64 = 0;
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                pos = convert_ssize(value);
-            }
-            endpos: i64 = 9223372036854775807;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                endpos = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_search_impl(receiver, cls, string, pos, endpos);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        string: ptr[PyObject] = value;
+        pos: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            pos = convert_ssize(value);
         }
+        endpos: i64 = 9223372036854775807;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            endpos = convert_ssize(value);
+        }
+        return _sre_SRE_Pattern_search_impl(receiver, cls, string, pos, endpos);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_search_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    string: ptr[PyObject] = clinic_args[0];
+    pos: i64 = 0;
+    if count > 1 {
+        pos = PyLong_AsSsize_t(clinic_args[1]);
+        if pos == -1 and failed() {
+            return NULL;
+        }
+    }
+    endpos: i64 = 9223372036854775807;
+    if count > 2 {
+        endpos = PyLong_AsSsize_t(clinic_args[2]);
+        if endpos == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_search_impl(receiver, cls, string, pos, endpos);
 }
 
 def:priv _sre_SRE_Pattern_search_call(
@@ -372,6 +444,9 @@ def:priv _sre_SRE_Pattern_search_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        if exact_int_at(args, nargs, 1) and exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_search_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_search_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_search_signature, args, nargs, kwnames);
@@ -417,6 +492,28 @@ def:priv _sre_SRE_Pattern_findall_bound(
     }
 }
 
+def:priv _sre_SRE_Pattern_findall_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    string: ptr[PyObject] = clinic_args[0];
+    pos: i64 = 0;
+    if count > 1 {
+        pos = PyLong_AsSsize_t(clinic_args[1]);
+        if pos == -1 and failed() {
+            return NULL;
+        }
+    }
+    endpos: i64 = 9223372036854775807;
+    if count > 2 {
+        endpos = PyLong_AsSsize_t(clinic_args[2]);
+        if endpos == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_findall_impl(receiver, string, pos, endpos);
+}
+
 def:priv _sre_SRE_Pattern_findall_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -424,6 +521,9 @@ def:priv _sre_SRE_Pattern_findall_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        if exact_int_at(args, nargs, 1) and exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_findall_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_findall_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_findall_signature, args, nargs, kwnames);
@@ -452,26 +552,48 @@ def:priv _sre_SRE_Pattern_finditer_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            string: ptr[PyObject] = value;
-            pos: i64 = 0;
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                pos = convert_ssize(value);
-            }
-            endpos: i64 = 9223372036854775807;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                endpos = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_finditer_impl(receiver, cls, string, pos, endpos);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        string: ptr[PyObject] = value;
+        pos: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            pos = convert_ssize(value);
         }
+        endpos: i64 = 9223372036854775807;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            endpos = convert_ssize(value);
+        }
+        return _sre_SRE_Pattern_finditer_impl(receiver, cls, string, pos, endpos);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_finditer_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    string: ptr[PyObject] = clinic_args[0];
+    pos: i64 = 0;
+    if count > 1 {
+        pos = PyLong_AsSsize_t(clinic_args[1]);
+        if pos == -1 and failed() {
+            return NULL;
+        }
+    }
+    endpos: i64 = 9223372036854775807;
+    if count > 2 {
+        endpos = PyLong_AsSsize_t(clinic_args[2]);
+        if endpos == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_finditer_impl(receiver, cls, string, pos, endpos);
 }
 
 def:priv _sre_SRE_Pattern_finditer_call(
@@ -481,6 +603,9 @@ def:priv _sre_SRE_Pattern_finditer_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        if exact_int_at(args, nargs, 1) and exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_finditer_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_finditer_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_finditer_signature, args, nargs, kwnames);
@@ -509,26 +634,48 @@ def:priv _sre_SRE_Pattern_scanner_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            string: ptr[PyObject] = value;
-            pos: i64 = 0;
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                pos = convert_ssize(value);
-            }
-            endpos: i64 = 9223372036854775807;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                endpos = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_scanner_impl(receiver, cls, string, pos, endpos);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        string: ptr[PyObject] = value;
+        pos: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            pos = convert_ssize(value);
         }
+        endpos: i64 = 9223372036854775807;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            endpos = convert_ssize(value);
+        }
+        return _sre_SRE_Pattern_scanner_impl(receiver, cls, string, pos, endpos);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_scanner_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    string: ptr[PyObject] = clinic_args[0];
+    pos: i64 = 0;
+    if count > 1 {
+        pos = PyLong_AsSsize_t(clinic_args[1]);
+        if pos == -1 and failed() {
+            return NULL;
+        }
+    }
+    endpos: i64 = 9223372036854775807;
+    if count > 2 {
+        endpos = PyLong_AsSsize_t(clinic_args[2]);
+        if endpos == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_scanner_impl(receiver, cls, string, pos, endpos);
 }
 
 def:priv _sre_SRE_Pattern_scanner_call(
@@ -538,6 +685,9 @@ def:priv _sre_SRE_Pattern_scanner_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        if exact_int_at(args, nargs, 1) and exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_scanner_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_scanner_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_scanner_signature, args, nargs, kwnames);
@@ -578,6 +728,21 @@ def:priv _sre_SRE_Pattern_split_bound(
     }
 }
 
+def:priv _sre_SRE_Pattern_split_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    string: ptr[PyObject] = clinic_args[0];
+    maxsplit: i64 = 0;
+    if count > 1 {
+        maxsplit = PyLong_AsSsize_t(clinic_args[1]);
+        if maxsplit == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_split_impl(receiver, string, maxsplit);
+}
+
 def:priv _sre_SRE_Pattern_split_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -585,6 +750,9 @@ def:priv _sre_SRE_Pattern_split_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        if exact_int_at(args, nargs, 1) {
+            return _sre_SRE_Pattern_split_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_split_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_split_signature, args, nargs, kwnames);
@@ -613,23 +781,39 @@ def:priv _sre_SRE_Pattern_sub_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            repl: ptr[PyObject] = value;
-            value = clinic_args[1];
-            string: ptr[PyObject] = value;
-            count_: i64 = 0;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                count_ = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_sub_impl(receiver, cls, repl, string, count_);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        repl: ptr[PyObject] = value;
+        value = clinic_args[1];
+        string: ptr[PyObject] = value;
+        count_: i64 = 0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            count_ = convert_ssize(value);
         }
+        return _sre_SRE_Pattern_sub_impl(receiver, cls, repl, string, count_);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_sub_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    repl: ptr[PyObject] = clinic_args[0];
+    string: ptr[PyObject] = clinic_args[1];
+    count_: i64 = 0;
+    if count > 2 {
+        count_ = PyLong_AsSsize_t(clinic_args[2]);
+        if count_ == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_sub_impl(receiver, cls, repl, string, count_);
 }
 
 def:priv _sre_SRE_Pattern_sub_call(
@@ -639,6 +823,9 @@ def:priv _sre_SRE_Pattern_sub_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        if exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_sub_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_sub_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_sub_signature, args, nargs, kwnames);
@@ -667,23 +854,39 @@ def:priv _sre_SRE_Pattern_subn_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, SRE_Pattern_token);
-        try {
-            value = clinic_args[0];
-            repl: ptr[PyObject] = value;
-            value = clinic_args[1];
-            string: ptr[PyObject] = value;
-            count_: i64 = 0;
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                count_ = convert_ssize(value);
-            }
-            return _sre_SRE_Pattern_subn_impl(receiver, cls, repl, string, count_);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        repl: ptr[PyObject] = value;
+        value = clinic_args[1];
+        string: ptr[PyObject] = value;
+        count_: i64 = 0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            count_ = convert_ssize(value);
         }
+        return _sre_SRE_Pattern_subn_impl(receiver, cls, repl, string, count_);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Pattern_subn_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    cls = defining_class_or_null(receiver, SRE_Pattern_token);
+    if cls == NULL {
+        return NULL;
+    }
+    repl: ptr[PyObject] = clinic_args[0];
+    string: ptr[PyObject] = clinic_args[1];
+    count_: i64 = 0;
+    if count > 2 {
+        count_ = PyLong_AsSsize_t(clinic_args[2]);
+        if count_ == -1 and failed() {
+            return NULL;
+        }
+    }
+    return _sre_SRE_Pattern_subn_impl(receiver, cls, repl, string, count_);
 }
 
 def:priv _sre_SRE_Pattern_subn_call(
@@ -693,6 +896,9 @@ def:priv _sre_SRE_Pattern_subn_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        if exact_int_at(args, nargs, 2) {
+            return _sre_SRE_Pattern_subn_direct(receiver, args, nargs);
+        }
         return _sre_SRE_Pattern_subn_bound(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Pattern_subn_signature, args, nargs, kwnames);
@@ -714,22 +920,14 @@ def:priv _sre_SRE_Pattern_subn_call(
 def:priv _sre_SRE_Pattern___copy___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return _sre_SRE_Pattern___copy___impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return _sre_SRE_Pattern___copy___impl(receiver);
 }
 
 def:priv _sre_SRE_Pattern___deepcopy___call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        memo: ptr[PyObject] = value;
-        return _sre_SRE_Pattern___deepcopy___impl(receiver, memo);
-    } except boundary_failure {
-        return NULL;
-    }
+    memo: ptr[PyObject] = value;
+    return _sre_SRE_Pattern___deepcopy___impl(receiver, memo);
 }
 
 glob:priv _sre_SRE_Match_expand_signature = CallSignature(
@@ -749,6 +947,14 @@ def:priv _sre_SRE_Match_expand_bound(
     }
 }
 
+def:priv _sre_SRE_Match_expand_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    template: ptr[PyObject] = clinic_args[0];
+    return _sre_SRE_Match_expand_impl(receiver, template);
+}
+
 def:priv _sre_SRE_Match_expand_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -756,7 +962,7 @@ def:priv _sre_SRE_Match_expand_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
-        return _sre_SRE_Match_expand_bound(receiver, args, nargs);
+        return _sre_SRE_Match_expand_direct(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Match_expand_signature, args, nargs, kwnames);
     if values {
@@ -794,6 +1000,17 @@ def:priv _sre_SRE_Match_groups_bound(
     }
 }
 
+def:priv _sre_SRE_Match_groups_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    default_: ptr[PyObject] = borrowed_none();
+    if count > 0 {
+        default_ = clinic_args[0];
+    }
+    return _sre_SRE_Match_groups_impl(receiver, default_);
+}
+
 def:priv _sre_SRE_Match_groups_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -801,7 +1018,7 @@ def:priv _sre_SRE_Match_groups_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
-        return _sre_SRE_Match_groups_bound(receiver, args, nargs);
+        return _sre_SRE_Match_groups_direct(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Match_groups_signature, args, nargs, kwnames);
     if values {
@@ -839,6 +1056,17 @@ def:priv _sre_SRE_Match_groupdict_bound(
     }
 }
 
+def:priv _sre_SRE_Match_groupdict_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    default_: ptr[PyObject] = borrowed_none();
+    if count > 0 {
+        default_ = clinic_args[0];
+    }
+    return _sre_SRE_Match_groupdict_impl(receiver, default_);
+}
+
 def:priv _sre_SRE_Match_groupdict_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -846,7 +1074,7 @@ def:priv _sre_SRE_Match_groupdict_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
-        return _sre_SRE_Match_groupdict_bound(receiver, args, nargs);
+        return _sre_SRE_Match_groupdict_direct(receiver, args, nargs);
     }
     values = unpack_stack(_sre_SRE_Match_groupdict_signature, args, nargs, kwnames);
     if values {
@@ -880,13 +1108,24 @@ def:priv _sre_SRE_Match_start_bound(
     }
 }
 
+def:priv _sre_SRE_Match_start_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    group: ptr[PyObject] = NULL;
+    if count > 0 {
+        group = clinic_args[0];
+    }
+    return return_ssize(_sre_SRE_Match_start_impl(receiver, group));
+}
+
 def:priv _sre_SRE_Match_start_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("start", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("start", int(nargs), 0, 1) {
         return NULL;
     }
-    return _sre_SRE_Match_start_bound(receiver, args, nargs);
+    return _sre_SRE_Match_start_direct(receiver, args, nargs);
 }
 
 def:priv _sre_SRE_Match_end_bound(
@@ -905,13 +1144,24 @@ def:priv _sre_SRE_Match_end_bound(
     }
 }
 
+def:priv _sre_SRE_Match_end_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    group: ptr[PyObject] = NULL;
+    if count > 0 {
+        group = clinic_args[0];
+    }
+    return return_ssize(_sre_SRE_Match_end_impl(receiver, group));
+}
+
 def:priv _sre_SRE_Match_end_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("end", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("end", int(nargs), 0, 1) {
         return NULL;
     }
-    return _sre_SRE_Match_end_bound(receiver, args, nargs);
+    return _sre_SRE_Match_end_direct(receiver, args, nargs);
 }
 
 def:priv _sre_SRE_Match_span_bound(
@@ -930,34 +1180,37 @@ def:priv _sre_SRE_Match_span_bound(
     }
 }
 
+def:priv _sre_SRE_Match_span_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    group: ptr[PyObject] = NULL;
+    if count > 0 {
+        group = clinic_args[0];
+    }
+    return _sre_SRE_Match_span_impl(receiver, group);
+}
+
 def:priv _sre_SRE_Match_span_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("span", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("span", int(nargs), 0, 1) {
         return NULL;
     }
-    return _sre_SRE_Match_span_bound(receiver, args, nargs);
+    return _sre_SRE_Match_span_direct(receiver, args, nargs);
 }
 
 def:priv _sre_SRE_Match___copy___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return _sre_SRE_Match___copy___impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return _sre_SRE_Match___copy___impl(receiver);
 }
 
 def:priv _sre_SRE_Match___deepcopy___call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        memo: ptr[PyObject] = value;
-        return _sre_SRE_Match___deepcopy___impl(receiver, memo);
-    } except boundary_failure {
-        return NULL;
-    }
+    memo: ptr[PyObject] = value;
+    return _sre_SRE_Match___deepcopy___impl(receiver, memo);
 }
 
 glob:priv _sre_SRE_Scanner_match_signature = CallSignature(
@@ -969,14 +1222,20 @@ def:priv _sre_SRE_Scanner_match_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, SRE_Scanner_token);
-        try {
-            return _sre_SRE_Scanner_match_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _sre_SRE_Scanner_match_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Scanner_match_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    cls = defining_class_or_null(receiver, SRE_Scanner_token);
+    if cls == NULL {
+        return NULL;
+    }
+    return _sre_SRE_Scanner_match_impl(receiver, cls);
 }
 
 def:priv _sre_SRE_Scanner_match_call(
@@ -986,7 +1245,7 @@ def:priv _sre_SRE_Scanner_match_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs == 0 {
-        return _sre_SRE_Scanner_match_bound(receiver, args, nargs);
+        return _sre_SRE_Scanner_match_direct(receiver, args, nargs);
     }
     return invoke_stack(
         _sre_SRE_Scanner_match_signature,
@@ -1007,14 +1266,20 @@ def:priv _sre_SRE_Scanner_search_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, SRE_Scanner_token);
-        try {
-            return _sre_SRE_Scanner_search_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _sre_SRE_Scanner_search_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }
+}
+
+def:priv _sre_SRE_Scanner_search_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    cls = defining_class_or_null(receiver, SRE_Scanner_token);
+    if cls == NULL {
+        return NULL;
+    }
+    return _sre_SRE_Scanner_search_impl(receiver, cls);
 }
 
 def:priv _sre_SRE_Scanner_search_call(
@@ -1024,7 +1289,7 @@ def:priv _sre_SRE_Scanner_search_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs == 0 {
-        return _sre_SRE_Scanner_search_bound(receiver, args, nargs);
+        return _sre_SRE_Scanner_search_direct(receiver, args, nargs);
     }
     return invoke_stack(
         _sre_SRE_Scanner_search_signature,

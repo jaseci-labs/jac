@@ -87,7 +87,8 @@ def:priv _abc__abc_register_bound(
 def:priv _abc__abc_register_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_abc_register", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_abc_register", int(nargs), 2, 2) {
         return NULL;
     }
     return _abc__abc_register_bound(receiver, args, nargs);
@@ -111,7 +112,8 @@ def:priv _abc__abc_instancecheck_bound(
 def:priv _abc__abc_instancecheck_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_abc_instancecheck", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_abc_instancecheck", int(nargs), 2, 2) {
         return NULL;
     }
     return _abc__abc_instancecheck_bound(receiver, args, nargs);
@@ -135,7 +137,8 @@ def:priv _abc__abc_subclasscheck_bound(
 def:priv _abc__abc_subclasscheck_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_abc_subclasscheck", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_abc_subclasscheck", int(nargs), 2, 2) {
         return NULL;
     }
     return _abc__abc_subclasscheck_bound(receiver, args, nargs);

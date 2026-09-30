@@ -29,7 +29,11 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
 2. Write `modules/foo.jac`: one `_impl` function per clinic function, with the C
    name and the C parameter list (`PyObject *` is `ptr[PyObject]`,
    `Py_ssize_t` is `i64`, `Py_buffer` is `BufferArgument`). The body calls the
-   CPython API by its own names.
+   CPython API by its own names. When every `_impl` reports errors as C does
+   (NULL or -1 with the exception set) and none raises `boundary_failure`,
+   mark the module `raise-free` in `jacpython-clinic.txt` (`_foo raise-free`):
+   its glue then calls the `_impl` without an exception frame whenever no
+   argument conversion can raise.
 3. Write `bindings/foo.jac`: the `ModuleDefinition`, any `TypeDefinition`s,
    the exec hook (constants, exception types, module state) and
    `def:pub PyInit__foo`. Classes whose methods take `defining_class` bind their

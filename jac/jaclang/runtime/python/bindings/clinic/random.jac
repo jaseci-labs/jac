@@ -71,7 +71,7 @@ def:priv _random_Random_seed_bound(
 def:priv _random_Random_seed_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("seed", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("seed", int(nargs), 0, 1) {
         return NULL;
     }
     return _random_Random_seed_bound(receiver, args, nargs);

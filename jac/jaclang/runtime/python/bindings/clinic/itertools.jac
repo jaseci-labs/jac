@@ -89,7 +89,7 @@ def:priv itertools_tee_bound(
 def:priv itertools_tee_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tee", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("tee", int(nargs), 1, 2) {
         return NULL;
     }
     return itertools_tee_bound(receiver, args, nargs);

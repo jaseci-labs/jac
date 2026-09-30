@@ -90,7 +90,8 @@ def:priv _zstd_train_dict_bound(
 def:priv _zstd_train_dict_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("train_dict", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("train_dict", int(nargs), 3, 3) {
         return NULL;
     }
     return _zstd_train_dict_bound(receiver, args, nargs);
@@ -136,7 +137,8 @@ def:priv _zstd_finalize_dict_bound(
 def:priv _zstd_finalize_dict_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("finalize_dict", int(nargs), 5, 5) {
+    if (nargs < 5 or nargs > 5)
+        and not check_positional("finalize_dict", int(nargs), 5, 5) {
         return NULL;
     }
     return _zstd_finalize_dict_bound(receiver, args, nargs);

@@ -95,7 +95,7 @@ def:priv mmap_mmap_read_bound(
 def:priv mmap_mmap_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("read", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("read", int(nargs), 0, 1) {
         return NULL;
     }
     return mmap_mmap_read_bound(receiver, args, nargs);
@@ -131,7 +131,7 @@ def:priv mmap_mmap_find_bound(
 def:priv mmap_mmap_find_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("find", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3) and not check_positional("find", int(nargs), 1, 3) {
         return NULL;
     }
     return mmap_mmap_find_bound(receiver, args, nargs);
@@ -167,7 +167,7 @@ def:priv mmap_mmap_rfind_bound(
 def:priv mmap_mmap_rfind_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("rfind", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3) and not check_positional("rfind", int(nargs), 1, 3) {
         return NULL;
     }
     return mmap_mmap_rfind_bound(receiver, args, nargs);
@@ -263,7 +263,7 @@ def:priv mmap_mmap_flush_bound(
 def:priv mmap_mmap_flush_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("flush", int(nargs), 0, 2) {
+    if (nargs > 2) and not check_positional("flush", int(nargs), 0, 2) {
         return NULL;
     }
     return mmap_mmap_flush_bound(receiver, args, nargs);
@@ -290,7 +290,7 @@ def:priv mmap_mmap_seek_bound(
 def:priv mmap_mmap_seek_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("seek", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("seek", int(nargs), 1, 2) {
         return NULL;
     }
     return mmap_mmap_seek_bound(receiver, args, nargs);
@@ -326,7 +326,7 @@ def:priv mmap_mmap_move_bound(
 def:priv mmap_mmap_move_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("move", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("move", int(nargs), 3, 3) {
         return NULL;
     }
     return mmap_mmap_move_bound(receiver, args, nargs);
@@ -362,7 +362,8 @@ def:priv mmap_mmap___exit___bound(
 def:priv mmap_mmap___exit___call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("__exit__", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("__exit__", int(nargs), 3, 3) {
         return NULL;
     }
     return mmap_mmap___exit___bound(receiver, args, nargs);
@@ -394,7 +395,7 @@ def:priv mmap_mmap_madvise_bound(
 def:priv mmap_mmap_madvise_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("madvise", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3) and not check_positional("madvise", int(nargs), 1, 3) {
         return NULL;
     }
     return mmap_mmap_madvise_bound(receiver, args, nargs);

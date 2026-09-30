@@ -148,7 +148,7 @@ def:priv blob_read_bound(
 def:priv blob_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("read", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("read", int(nargs), 0, 1) {
         return NULL;
     }
     return blob_read_bound(receiver, args, nargs);
@@ -190,7 +190,7 @@ def:priv blob_seek_bound(
 def:priv blob_seek_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("seek", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("seek", int(nargs), 1, 2) {
         return NULL;
     }
     return blob_seek_bound(receiver, args, nargs);
@@ -236,7 +236,8 @@ def:priv blob_exit_bound(
 def:priv blob_exit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("__exit__", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("__exit__", int(nargs), 3, 3) {
         return NULL;
     }
     return blob_exit_bound(receiver, args, nargs);
@@ -499,26 +500,20 @@ def:priv pysqlite_connection_create_function_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            name: str = convert_str(
-                value, "create_function", argument_label("name", 1)
-            );
-            value = clinic_args[1];
-            narg: i32 = convert_int(value);
-            value = clinic_args[2];
-            func: ptr[PyObject] = value;
-            deterministic: bool = False;
-            if count > 3 and clinic_args[3] != NULL {
-                value = clinic_args[3];
-                deterministic = convert_bool(value);
-            }
-            return pysqlite_connection_create_function_impl(
-                receiver, cls, name, narg, func, deterministic
-            );
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        name: str = convert_str(value, "create_function", argument_label("name", 1));
+        value = clinic_args[1];
+        narg: i32 = convert_int(value);
+        value = clinic_args[2];
+        func: ptr[PyObject] = value;
+        deterministic: bool = False;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            deterministic = convert_bool(value);
         }
+        return pysqlite_connection_create_function_impl(
+            receiver, cls, name, narg, func, deterministic
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -555,21 +550,15 @@ def:priv create_window_function_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            name: str = convert_str(
-                value, "create_window_function", argument_label("", 1)
-            );
-            value = clinic_args[1];
-            num_params: i32 = convert_int(value);
-            value = clinic_args[2];
-            aggregate_class: ptr[PyObject] = value;
-            return create_window_function_impl(
-                receiver, cls, name, num_params, aggregate_class
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        name: str = convert_str(value, "create_window_function", argument_label("", 1));
+        value = clinic_args[1];
+        num_params: i32 = convert_int(value);
+        value = clinic_args[2];
+        aggregate_class: ptr[PyObject] = value;
+        return create_window_function_impl(
+            receiver, cls, name, num_params, aggregate_class
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -618,21 +607,15 @@ def:priv pysqlite_connection_create_aggregate_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            name: str = convert_str(
-                value, "create_aggregate", argument_label("name", 1)
-            );
-            value = clinic_args[1];
-            n_arg: i32 = convert_int(value);
-            value = clinic_args[2];
-            aggregate_class: ptr[PyObject] = value;
-            return pysqlite_connection_create_aggregate_impl(
-                receiver, cls, name, n_arg, aggregate_class
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        name: str = convert_str(value, "create_aggregate", argument_label("name", 1));
+        value = clinic_args[1];
+        n_arg: i32 = convert_int(value);
+        value = clinic_args[2];
+        aggregate_class: ptr[PyObject] = value;
+        return pysqlite_connection_create_aggregate_impl(
+            receiver, cls, name, n_arg, aggregate_class
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -672,15 +655,11 @@ def:priv pysqlite_connection_set_authorizer_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            authorizer_callback: ptr[PyObject] = value;
-            return pysqlite_connection_set_authorizer_impl(
-                receiver, cls, authorizer_callback
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        authorizer_callback: ptr[PyObject] = value;
+        return pysqlite_connection_set_authorizer_impl(
+            receiver, cls, authorizer_callback
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -720,17 +699,13 @@ def:priv pysqlite_connection_set_progress_handler_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            progress_handler: ptr[PyObject] = value;
-            value = clinic_args[1];
-            n: i32 = convert_int(value);
-            return pysqlite_connection_set_progress_handler_impl(
-                receiver, cls, progress_handler, n
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        progress_handler: ptr[PyObject] = value;
+        value = clinic_args[1];
+        n: i32 = convert_int(value);
+        return pysqlite_connection_set_progress_handler_impl(
+            receiver, cls, progress_handler, n
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -770,15 +745,11 @@ def:priv pysqlite_connection_set_trace_callback_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            trace_callback: ptr[PyObject] = value;
-            return pysqlite_connection_set_trace_callback_impl(
-                receiver, cls, trace_callback
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        trace_callback: ptr[PyObject] = value;
+        return pysqlite_connection_set_trace_callback_impl(
+            receiver, cls, trace_callback
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -883,7 +854,7 @@ def:priv pysqlite_connection_execute_bound(
 def:priv pysqlite_connection_execute_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("execute", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("execute", int(nargs), 1, 2) {
         return NULL;
     }
     return pysqlite_connection_execute_bound(receiver, args, nargs);
@@ -909,7 +880,8 @@ def:priv pysqlite_connection_executemany_bound(
 def:priv pysqlite_connection_executemany_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("executemany", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("executemany", int(nargs), 2, 2) {
         return NULL;
     }
     return pysqlite_connection_executemany_bound(receiver, args, nargs);
@@ -1063,17 +1035,11 @@ def:priv pysqlite_connection_create_collation_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Connection_token);
-        try {
-            value = clinic_args[0];
-            name: str = convert_str(value, "create_collation", argument_label("", 1));
-            value = clinic_args[1];
-            callback: ptr[PyObject] = value;
-            return pysqlite_connection_create_collation_impl(
-                receiver, cls, name, callback
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        name: str = convert_str(value, "create_collation", argument_label("", 1));
+        value = clinic_args[1];
+        callback: ptr[PyObject] = value;
+        return pysqlite_connection_create_collation_impl(receiver, cls, name, callback);
     } except boundary_failure {
         return NULL;
     }
@@ -1224,7 +1190,8 @@ def:priv pysqlite_connection_exit_bound(
 def:priv pysqlite_connection_exit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("__exit__", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("__exit__", int(nargs), 3, 3) {
         return NULL;
     }
     return pysqlite_connection_exit_bound(receiver, args, nargs);
@@ -1248,7 +1215,8 @@ def:priv setlimit_bound(
 def:priv setlimit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setlimit", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("setlimit", int(nargs), 2, 2) {
         return NULL;
     }
     return setlimit_bound(receiver, args, nargs);
@@ -1284,7 +1252,8 @@ def:priv setconfig_bound(
 def:priv setconfig_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setconfig", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("setconfig", int(nargs), 1, 2) {
         return NULL;
     }
     return setconfig_bound(receiver, args, nargs);
@@ -1373,7 +1342,7 @@ def:priv pysqlite_cursor_execute_bound(
 def:priv pysqlite_cursor_execute_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("execute", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("execute", int(nargs), 1, 2) {
         return NULL;
     }
     return pysqlite_cursor_execute_bound(receiver, args, nargs);
@@ -1399,7 +1368,8 @@ def:priv pysqlite_cursor_executemany_bound(
 def:priv pysqlite_cursor_executemany_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("executemany", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("executemany", int(nargs), 2, 2) {
         return NULL;
     }
     return pysqlite_cursor_executemany_bound(receiver, args, nargs);
@@ -1513,7 +1483,8 @@ def:priv pysqlite_cursor_setoutputsize_bound(
 def:priv pysqlite_cursor_setoutputsize_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setoutputsize", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("setoutputsize", int(nargs), 1, 2) {
         return NULL;
     }
     return pysqlite_cursor_setoutputsize_bound(receiver, args, nargs);
@@ -1603,7 +1574,8 @@ def:priv pysqlite_register_adapter_bound(
 def:priv pysqlite_register_adapter_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("register_adapter", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("register_adapter", int(nargs), 2, 2) {
         return NULL;
     }
     return pysqlite_register_adapter_bound(receiver, args, nargs);
@@ -1629,7 +1601,8 @@ def:priv pysqlite_register_converter_bound(
 def:priv pysqlite_register_converter_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("register_converter", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("register_converter", int(nargs), 2, 2) {
         return NULL;
     }
     return pysqlite_register_converter_bound(receiver, args, nargs);
@@ -1672,7 +1645,7 @@ def:priv pysqlite_adapt_bound(
 def:priv pysqlite_adapt_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("adapt", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3) and not check_positional("adapt", int(nargs), 1, 3) {
         return NULL;
     }
     return pysqlite_adapt_bound(receiver, args, nargs);

@@ -100,7 +100,8 @@ def:priv _elementtree__set_factories_bound(
 def:priv _elementtree__set_factories_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_set_factories", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_set_factories", int(nargs), 2, 2) {
         return NULL;
     }
     return _elementtree__set_factories_bound(receiver, args, nargs);
@@ -116,16 +117,12 @@ def:priv _elementtree_Element_append_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            subclass_clinic_state_Element_Type(
-                receiver, value, "append", argument_label("", 1)
-            );
-            subelement: ptr[PyObject] = value;
-            return _elementtree_Element_append_impl(receiver, cls, subelement);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        subclass_clinic_state_Element_Type(
+            receiver, value, "append", argument_label("", 1)
+        );
+        subelement: ptr[PyObject] = value;
+        return _elementtree_Element_append_impl(receiver, cls, subelement);
     } except boundary_failure {
         return NULL;
     }
@@ -175,11 +172,7 @@ def:priv _elementtree_Element___copy___bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            return _elementtree_Element___copy___impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _elementtree_Element___copy___impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }
@@ -248,13 +241,9 @@ def:priv _elementtree_Element___setstate___bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            state: ptr[PyObject] = value;
-            return _elementtree_Element___setstate___impl(receiver, cls, state);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        state: ptr[PyObject] = value;
+        return _elementtree_Element___setstate___impl(receiver, cls, state);
     } except boundary_failure {
         return NULL;
     }
@@ -297,13 +286,9 @@ def:priv _elementtree_Element_extend_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            elements: ptr[PyObject] = value;
-            return _elementtree_Element_extend_impl(receiver, cls, elements);
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        elements: ptr[PyObject] = value;
+        return _elementtree_Element_extend_impl(receiver, cls, elements);
     } except boundary_failure {
         return NULL;
     }
@@ -344,18 +329,14 @@ def:priv _elementtree_Element_find_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            path: ptr[PyObject] = value;
-            namespaces: ptr[PyObject] = borrowed_none();
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                namespaces = value;
-            }
-            return _elementtree_Element_find_impl(receiver, cls, path, namespaces);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        path: ptr[PyObject] = value;
+        namespaces: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            namespaces = value;
         }
+        return _elementtree_Element_find_impl(receiver, cls, path, namespaces);
     } except boundary_failure {
         return NULL;
     }
@@ -396,25 +377,21 @@ def:priv _elementtree_Element_findtext_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            path: ptr[PyObject] = value;
-            default_: ptr[PyObject] = borrowed_none();
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                default_ = value;
-            }
-            namespaces: ptr[PyObject] = borrowed_none();
-            if count > 2 and clinic_args[2] != NULL {
-                value = clinic_args[2];
-                namespaces = value;
-            }
-            return _elementtree_Element_findtext_impl(
-                receiver, cls, path, default_, namespaces
-            );
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        path: ptr[PyObject] = value;
+        default_: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = value;
         }
+        namespaces: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            namespaces = value;
+        }
+        return _elementtree_Element_findtext_impl(
+            receiver, cls, path, default_, namespaces
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -457,18 +434,14 @@ def:priv _elementtree_Element_findall_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            path: ptr[PyObject] = value;
-            namespaces: ptr[PyObject] = borrowed_none();
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                namespaces = value;
-            }
-            return _elementtree_Element_findall_impl(receiver, cls, path, namespaces);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        path: ptr[PyObject] = value;
+        namespaces: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            namespaces = value;
         }
+        return _elementtree_Element_findall_impl(receiver, cls, path, namespaces);
     } except boundary_failure {
         return NULL;
     }
@@ -509,18 +482,14 @@ def:priv _elementtree_Element_iterfind_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            path: ptr[PyObject] = value;
-            namespaces: ptr[PyObject] = borrowed_none();
-            if count > 1 and clinic_args[1] != NULL {
-                value = clinic_args[1];
-                namespaces = value;
-            }
-            return _elementtree_Element_iterfind_impl(receiver, cls, path, namespaces);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        path: ptr[PyObject] = value;
+        namespaces: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            namespaces = value;
         }
+        return _elementtree_Element_iterfind_impl(receiver, cls, path, namespaces);
     } except boundary_failure {
         return NULL;
     }
@@ -610,16 +579,12 @@ def:priv _elementtree_Element_iter_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            tag: ptr[PyObject] = borrowed_none();
-            if count > 0 and clinic_args[0] != NULL {
-                value = clinic_args[0];
-                tag = value;
-            }
-            return _elementtree_Element_iter_impl(receiver, cls, tag);
-        } finally {
-            jacpy_release(cls);
+        tag: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            tag = value;
         }
+        return _elementtree_Element_iter_impl(receiver, cls, tag);
     } except boundary_failure {
         return NULL;
     }
@@ -659,11 +624,7 @@ def:priv _elementtree_Element_itertext_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            return _elementtree_Element_itertext_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _elementtree_Element_itertext_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }
@@ -709,7 +670,7 @@ def:priv _elementtree_Element_insert_bound(
 def:priv _elementtree_Element_insert_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("insert", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("insert", int(nargs), 2, 2) {
         return NULL;
     }
     return _elementtree_Element_insert_bound(receiver, args, nargs);
@@ -745,18 +706,14 @@ def:priv _elementtree_Element_makeelement_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, Element_token);
-        try {
-            value = clinic_args[0];
-            tag: ptr[PyObject] = value;
-            value = clinic_args[1];
-            if jacpy_is_dict(value) == 0 {
-                bad_argument("makeelement", argument_label("", 2), "dict", value);
-            }
-            attrib: ptr[PyObject] = value;
-            return _elementtree_Element_makeelement_impl(receiver, cls, tag, attrib);
-        } finally {
-            jacpy_release(cls);
+        value = clinic_args[0];
+        tag: ptr[PyObject] = value;
+        value = clinic_args[1];
+        if jacpy_is_dict(value) == 0 {
+            bad_argument("makeelement", argument_label("", 2), "dict", value);
         }
+        attrib: ptr[PyObject] = value;
+        return _elementtree_Element_makeelement_impl(receiver, cls, tag, attrib);
     } except boundary_failure {
         return NULL;
     }
@@ -819,7 +776,7 @@ def:priv _elementtree_Element_set_bound(
 def:priv _elementtree_Element_set_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("set", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("set", int(nargs), 2, 2) {
         return NULL;
     }
     return _elementtree_Element_set_bound(receiver, args, nargs);
@@ -980,7 +937,7 @@ def:priv _elementtree_TreeBuilder_pi_bound(
 def:priv _elementtree_TreeBuilder_pi_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("pi", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("pi", int(nargs), 1, 2) {
         return NULL;
     }
     return _elementtree_TreeBuilder_pi_bound(receiver, args, nargs);
@@ -1017,7 +974,7 @@ def:priv _elementtree_TreeBuilder_start_bound(
 def:priv _elementtree_TreeBuilder_start_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("start", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("start", int(nargs), 2, 2) {
         return NULL;
     }
     return _elementtree_TreeBuilder_start_bound(receiver, args, nargs);
@@ -1158,7 +1115,8 @@ def:priv _elementtree_XMLParser__setevents_bound(
 def:priv _elementtree_XMLParser__setevents_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_setevents", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("_setevents", int(nargs), 1, 2) {
         return NULL;
     }
     return _elementtree_XMLParser__setevents_bound(receiver, args, nargs);
