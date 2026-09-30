@@ -71,7 +71,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/floatobject.h",
          "Include/cpython/complexobject.h",
          "Include/cpython/classobject.h",
-         "Include/structseq.h"
+         "Include/structseq.h",
+         "Include/internal/pycore_interp_structs.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -86,7 +87,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Objects/templateobject.c",
          "Objects/unionobject.c",
          "Objects/genericaliasobject.c",
-         "Objects/fileobject.c"
+         "Objects/fileobject.c",
+         # The socket object and the _socket.CAPI record, which _ssl.c
+         # (still C) reads through this header.
+         "Modules/socketmodule.h"
      ],
      # Headers the constant probe and layouts_check.c include after Python.h
      # (datetime.h is not part of it).
@@ -98,7 +102,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "internal/pycore_freelist_state.h",
          "internal/pycore_range.h",
          "internal/pycore_typeobject.h",
-         "internal/pycore_interp_structs.h"
+         "internal/pycore_interp_structs.h",
+         "internal/pycore_gc.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -112,6 +117,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyLongObject", "struct _longobject"),
          ("PyTupleObject", "PyTupleObject"),
          ("PyListObject", "PyListObject"),
+         ("PyGC_Head", "PyGC_Head"),
          ("PyStatus", "PyStatus"),
          ("PyAsyncMethods", "PyAsyncMethods"),
          ("PySequenceMethods", "PySequenceMethods"),
@@ -157,7 +163,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("unionobject", "unionobject"),
          ("gaobject", "gaobject"),
          ("gaiterobject", "gaiterobject"),
-         ("PyStdPrinter_Object", "PyStdPrinter_Object")
+         ("PyStdPrinter_Object", "PyStdPrinter_Object"),
+         ("PySocketSockObject", "PySocketSockObject"),
+         ("PySocketModule_APIObject", "PySocketModule_APIObject")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -235,6 +243,30 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("longrangeiterobject_SIZE", "sizeof(longrangeiterobject)", "i64"),
          # The interpreter's freelists: where each list sits in
          # struct _Py_freelists and how many objects it keeps.
+         # The interpreter state a port reaches from the current thread
+         # state: its freelists and its GC state (generation 0's list head
+         # and heap size), as _Py_freelists_GET and _PyObject_GC_TRACK do.
+         ("PyThreadState_INTERP", "offsetof(PyThreadState, interp)", "i64"),
+         (
+             "PyInterpreterState_FREELISTS",
+             "offsetof(PyInterpreterState, object_state.freelists)",
+             "i64"
+         ),
+         ("PyInterpreterState_GC", "offsetof(PyInterpreterState, gc)", "i64"),
+         (
+             "_gc_runtime_state_GENERATION0",
+             "offsetof(struct _gc_runtime_state, generation0)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_HEAP_SIZE",
+             "offsetof(struct _gc_runtime_state, heap_size)",
+             "i64"
+         ),
+         ("PyGC_Head_SIZE", "sizeof(PyGC_Head)", "i64"),
+         ("_PyGC_PREV_MASK_FINALIZED", "_PyGC_PREV_MASK_FINALIZED", "i64"),
+         ("_PyGC_PREV_MASK", "(Py_ssize_t)_PyGC_PREV_MASK", "i64"),
+         ("_PyGC_PREV_FLAGS", "(Py_ssize_t)~_PyGC_PREV_MASK", "i64"),
          ("_Py_freelists_SLICES", "offsetof(struct _Py_freelists, slices)", "i64"),
          ("_Py_freelists_RANGES", "offsetof(struct _Py_freelists, ranges)", "i64"),
          (
@@ -365,6 +397,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("Py_tp_iter", "Py_tp_iter", "i32"),
          ("Py_tp_init", "Py_tp_init", "i32"),
          ("Py_tp_token", "Py_tp_token", "i32"),
+         ("Py_tp_finalize", "Py_tp_finalize", "i32"),
          ("Py_mp_length", "Py_mp_length", "i32"),
          ("Py_mp_subscript", "Py_mp_subscript", "i32"),
          ("Py_mp_ass_subscript", "Py_mp_ass_subscript", "i32"),
@@ -404,7 +437,19 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("Py_CONSTANT_ONE", "Py_CONSTANT_ONE", "u32"),
          ("Py_CONSTANT_EMPTY_STR", "Py_CONSTANT_EMPTY_STR", "u32"),
          ("_PyTime_ROUND_FLOOR", "_PyTime_ROUND_FLOOR", "i32"),
-         ("_PyTime_ROUND_HALF_EVEN", "_PyTime_ROUND_HALF_EVEN", "i32")
+         ("_PyTime_ROUND_HALF_EVEN", "_PyTime_ROUND_HALF_EVEN", "i32"),
+         ("_PyTime_ROUND_CEILING", "_PyTime_ROUND_CEILING", "i32"),
+         ("_PyTime_ROUND_TIMEOUT", "_PyTime_ROUND_TIMEOUT", "i32"),
+         ("PY_SOCKET_OBJECT_SIZE", "sizeof(PySocketSockObject)", "i64"),
+         (
+             "PY_SOCKET_FAMILY_OFFSET",
+             "offsetof(PySocketSockObject, sock_family)",
+             "i64"
+         ),
+         ("PY_SOCKET_TYPE_OFFSET", "offsetof(PySocketSockObject, sock_type)", "i64"),
+         ("PY_SOCKET_PROTO_OFFSET", "offsetof(PySocketSockObject, sock_proto)", "i64"),
+         ("PY_SOCKET_API_SIZE", "sizeof(PySocketModule_APIObject)", "i64"),
+         ("Py_CLEANUP_SUPPORTED", "Py_CLEANUP_SUPPORTED", "i32")
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every
      # supported release build (linux and darwin, x86_64 and aarch64).
@@ -439,6 +484,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "uint64_t": ("u64", False),
          "PY_INT64_T": ("i64", True),
          "PY_UINT64_T": ("u64", False),
+         "PyTime_t": ("i64", True),
          "size_t": ("u64", False),
          "Py_ssize_t": ("i64", True),
          "Py_hash_t": ("i64", True),
@@ -513,6 +559,7 @@ obj Layout {
 obj Headers {
     has bodies: dict[str, str] = {},
         private: dict[str, str] = {},
+        private_scalars: dict[str, str] = {},
         aliases: dict[str, str] = {},
         functions: dict[str, FunctionType] = {};
 }
@@ -667,6 +714,13 @@ def read_headers(found: Headers) -> None {
     # structs are kept verbatim for layouts_check.c.
     for source in OBJECT_SOURCES {
         body = preprocess([texts[source]], dict(defines));
+        # Scalar typedefs a private struct names (socketmodule.h's SOCKET_T).
+        for hit in re.finditer(
+            r"\btypedef\s+((?:unsigned\s+|signed\s+)?(?:int|long|short|char))\s+(\w+)\s*;",
+            body
+        ) {
+            found.private_scalars[hit.group(2)] = hit.group(0);
+        }
         for hit in re.finditer(r"\btypedef\s+struct\s*\{", body) {
             end = closing(body, hit.end() - 1);
             alias = re.match(r"\s*(\w+)\s*;", body[end:]);
@@ -1077,11 +1131,17 @@ def render_jac(values: dict[str, int]) -> str {
 
 # The upstream definitions of the private structs among the layouts.
 def private_definitions -> list[str] {
-    return [
+    structs = [
         headers.private[name]
         for name in order
         if name in headers.private
     ];
+    scalars = [
+        text
+        for (name, text) in headers.private_scalars.items()
+        if any(re.search(rf"\b{name}\b", struct) is not None for struct in structs)
+    ];
+    return scalars + structs;
 }
 
 # GCC's and Clang's __builtin_classify_type class of a field's Jac type.

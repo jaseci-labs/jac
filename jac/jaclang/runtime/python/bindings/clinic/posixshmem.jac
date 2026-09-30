@@ -14,10 +14,10 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
     PARSE_FORMAT_KEYWORDS,
-    invoke,
-    invoke_given
+    invoke
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -64,20 +64,18 @@ def:priv _posixshmem_shm_open_call(
     );
 }
 
-def:priv _posixshmem_shm_unlink_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_unicode(value) == 0 {
-        bad_argument("shm_unlink", "argument", "str", value, True);
-    }
-    path: ptr[PyObject] = value;
-    return _posixshmem_shm_unlink_impl(receiver, path);
-}
-
 def:priv _posixshmem_shm_unlink_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _posixshmem_shm_unlink_bound, receiver);
+    try {
+        if jacpy_is_unicode(value) == 0 {
+            bad_argument("shm_unlink", "argument", "str", value, True);
+        }
+        path: ptr[PyObject] = value;
+        return _posixshmem_shm_unlink_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob module_methods: list[MethodDefinition] = [

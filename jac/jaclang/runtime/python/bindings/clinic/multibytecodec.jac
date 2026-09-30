@@ -6,6 +6,7 @@ jaclang.runtime.python.modules.multibytecodec.
 """
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyMem_Free,
     PyObject,
     jacpy_is_long,
     jacpy_is_tuple,
@@ -17,15 +18,15 @@ import from jaclang.runtime.python.bindings.type {
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
     PARSE_NO_ARGUMENTS,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -57,17 +58,15 @@ import from jaclang.runtime.python.modules.multibytecodec {
     _multibytecodec___create_codec_impl
 }
 
-def:priv _multibytecodec___create_codec_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    arg_: ptr[PyObject] = value;
-    return _multibytecodec___create_codec_impl(receiver, arg_);
-}
-
 def:priv _multibytecodec___create_codec_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _multibytecodec___create_codec_bound, receiver);
+    try {
+        arg_: ptr[PyObject] = value;
+        return _multibytecodec___create_codec_impl(receiver, arg_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _multibytecodec_MultibyteCodec_encode_signature = CallSignature(
@@ -75,17 +74,21 @@ glob:priv _multibytecodec_MultibyteCodec_encode_signature = CallSignature(
      );
 
 def:priv _multibytecodec_MultibyteCodec_encode_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    input: ptr[PyObject] = value;
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "encode", argument_label("errors", 2), True);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        input: ptr[PyObject] = value;
+        errors: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            errors = convert_cstr(value, "encode", argument_label("errors", 2), True);
+        }
+        return _multibytecodec_MultibyteCodec_encode_impl(receiver, input, errors);
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteCodec_encode_impl(receiver, input, errors);
 }
 
 def:priv _multibytecodec_MultibyteCodec_encode_call(
@@ -94,7 +97,18 @@ def:priv _multibytecodec_MultibyteCodec_encode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _multibytecodec_MultibyteCodec_encode_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _multibytecodec_MultibyteCodec_encode_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _multibytecodec_MultibyteCodec_encode_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteCodec_encode_signature,
         args,
         nargs,
@@ -109,17 +123,29 @@ glob:priv _multibytecodec_MultibyteCodec_decode_signature = CallSignature(
      );
 
 def:priv _multibytecodec_MultibyteCodec_decode_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    input: BufferArgument = convert_buffer(value, "decode", argument_label("input", 1));
-    errors: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        errors = convert_cstr(value, "decode", argument_label("errors", 2), True);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        input: BufferArgument = convert_buffer(
+            value, "decode", argument_label("input", 1)
+        );
+        try {
+            errors: ptr[u8] = ptr[u8]();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                errors = convert_cstr(
+                    value, "decode", argument_label("errors", 2), True
+                );
+            }
+            return _multibytecodec_MultibyteCodec_decode_impl(receiver, input, errors);
+        } finally {
+            input.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteCodec_decode_impl(receiver, input, errors);
 }
 
 def:priv _multibytecodec_MultibyteCodec_decode_call(
@@ -128,7 +154,18 @@ def:priv _multibytecodec_MultibyteCodec_decode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _multibytecodec_MultibyteCodec_decode_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _multibytecodec_MultibyteCodec_decode_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _multibytecodec_MultibyteCodec_decode_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteCodec_decode_signature,
         args,
         nargs,
@@ -143,19 +180,23 @@ glob:priv _multibytecodec_MultibyteIncrementalEncoder_encode_signature = CallSig
      );
 
 def:priv _multibytecodec_MultibyteIncrementalEncoder_encode_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    input: ptr[PyObject] = value;
-    final: bool = False;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        final = convert_bool(value);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        input: ptr[PyObject] = value;
+        final: bool = False;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            final = convert_bool(value);
+        }
+        return _multibytecodec_MultibyteIncrementalEncoder_encode_impl(
+            receiver, input, final
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteIncrementalEncoder_encode_impl(
-        receiver, input, final
-    );
 }
 
 def:priv _multibytecodec_MultibyteIncrementalEncoder_encode_call(
@@ -164,7 +205,25 @@ def:priv _multibytecodec_MultibyteIncrementalEncoder_encode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _multibytecodec_MultibyteIncrementalEncoder_encode_bound(
+            receiver, args, nargs
+        );
+    }
+    values = unpack_stack(
+        _multibytecodec_MultibyteIncrementalEncoder_encode_signature,
+        args,
+        nargs,
+        kwnames
+    );
+    if values {
+        unpacked = _multibytecodec_MultibyteIncrementalEncoder_encode_bound(
+            receiver, values, 2
+        );
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteIncrementalEncoder_encode_signature,
         args,
         nargs,
@@ -174,54 +233,40 @@ def:priv _multibytecodec_MultibyteIncrementalEncoder_encode_call(
     );
 }
 
-def:priv _multibytecodec_MultibyteIncrementalEncoder_getstate_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multibytecodec_MultibyteIncrementalEncoder_getstate_impl(receiver);
-}
-
 def:priv _multibytecodec_MultibyteIncrementalEncoder_getstate_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _multibytecodec_MultibyteIncrementalEncoder_getstate_bound, receiver
-    );
-}
-
-def:priv _multibytecodec_MultibyteIncrementalEncoder_setstate_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_long(value) == 0 {
-        bad_argument("setstate", "argument", "int", value);
+    try {
+        return _multibytecodec_MultibyteIncrementalEncoder_getstate_impl(receiver);
+    } except boundary_failure {
+        return NULL;
     }
-    state: ptr[PyObject] = value;
-    return _multibytecodec_MultibyteIncrementalEncoder_setstate_impl(receiver, state);
 }
 
 def:priv _multibytecodec_MultibyteIncrementalEncoder_setstate_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        value, _multibytecodec_MultibyteIncrementalEncoder_setstate_bound, receiver
-    );
-}
-
-def:priv _multibytecodec_MultibyteIncrementalEncoder_reset_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multibytecodec_MultibyteIncrementalEncoder_reset_impl(receiver);
+    try {
+        if jacpy_is_long(value) == 0 {
+            bad_argument("setstate", "argument", "int", value);
+        }
+        state: ptr[PyObject] = value;
+        return _multibytecodec_MultibyteIncrementalEncoder_setstate_impl(
+            receiver, state
+        );
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multibytecodec_MultibyteIncrementalEncoder_reset_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _multibytecodec_MultibyteIncrementalEncoder_reset_bound, receiver
-    );
+    try {
+        return _multibytecodec_MultibyteIncrementalEncoder_reset_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _multibytecodec_MultibyteIncrementalDecoder_decode_signature = CallSignature(
@@ -229,19 +274,29 @@ glob:priv _multibytecodec_MultibyteIncrementalDecoder_decode_signature = CallSig
      );
 
 def:priv _multibytecodec_MultibyteIncrementalDecoder_decode_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    input: BufferArgument = convert_buffer(value, "decode", argument_label("input", 1));
-    final: bool = False;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        final = convert_bool(value);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        input: BufferArgument = convert_buffer(
+            value, "decode", argument_label("input", 1)
+        );
+        try {
+            final: bool = False;
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                final = convert_bool(value);
+            }
+            return _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
+                receiver, input, final
+            );
+        } finally {
+            input.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
-        receiver, input, final
-    );
 }
 
 def:priv _multibytecodec_MultibyteIncrementalDecoder_decode_call(
@@ -250,7 +305,25 @@ def:priv _multibytecodec_MultibyteIncrementalDecoder_decode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _multibytecodec_MultibyteIncrementalDecoder_decode_bound(
+            receiver, args, nargs
+        );
+    }
+    values = unpack_stack(
+        _multibytecodec_MultibyteIncrementalDecoder_decode_signature,
+        args,
+        nargs,
+        kwnames
+    );
+    if values {
+        unpacked = _multibytecodec_MultibyteIncrementalDecoder_decode_bound(
+            receiver, values, 2
+        );
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteIncrementalDecoder_decode_signature,
         args,
         nargs,
@@ -260,156 +333,127 @@ def:priv _multibytecodec_MultibyteIncrementalDecoder_decode_call(
     );
 }
 
-def:priv _multibytecodec_MultibyteIncrementalDecoder_getstate_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multibytecodec_MultibyteIncrementalDecoder_getstate_impl(receiver);
-}
-
 def:priv _multibytecodec_MultibyteIncrementalDecoder_getstate_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _multibytecodec_MultibyteIncrementalDecoder_getstate_bound, receiver
-    );
-}
-
-def:priv _multibytecodec_MultibyteIncrementalDecoder_setstate_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_tuple(value) == 0 {
-        bad_argument("setstate", "argument", "tuple", value);
+    try {
+        return _multibytecodec_MultibyteIncrementalDecoder_getstate_impl(receiver);
+    } except boundary_failure {
+        return NULL;
     }
-    state: ptr[PyObject] = value;
-    return _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(receiver, state);
 }
 
 def:priv _multibytecodec_MultibyteIncrementalDecoder_setstate_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        value, _multibytecodec_MultibyteIncrementalDecoder_setstate_bound, receiver
-    );
-}
-
-def:priv _multibytecodec_MultibyteIncrementalDecoder_reset_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multibytecodec_MultibyteIncrementalDecoder_reset_impl(receiver);
+    try {
+        if jacpy_is_tuple(value) == 0 {
+            bad_argument("setstate", "argument", "tuple", value);
+        }
+        state: ptr[PyObject] = value;
+        return _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(
+            receiver, state
+        );
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multibytecodec_MultibyteIncrementalDecoder_reset_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _multibytecodec_MultibyteIncrementalDecoder_reset_bound, receiver
-    );
+    try {
+        return _multibytecodec_MultibyteIncrementalDecoder_reset_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _multibytecodec_MultibyteStreamReader_read_signature = CallSignature(
-         "read", ["sizeobj"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
 def:priv _multibytecodec_MultibyteStreamReader_read_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    sizeobj: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        sizeobj = value;
+    clinic_args = stack.view(count);
+    try {
+        sizeobj: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            sizeobj = value;
+        }
+        return _multibytecodec_MultibyteStreamReader_read_impl(receiver, sizeobj);
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteStreamReader_read_impl(receiver, sizeobj);
 }
 
 def:priv _multibytecodec_MultibyteStreamReader_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _multibytecodec_MultibyteStreamReader_read_signature,
-        args,
-        nargs,
-        NULL,
-        _multibytecodec_MultibyteStreamReader_read_bound,
-        receiver
-    );
+    if not check_positional("read", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return _multibytecodec_MultibyteStreamReader_read_bound(receiver, args, nargs);
 }
 
-glob:priv _multibytecodec_MultibyteStreamReader_readline_signature = CallSignature(
-         "readline", ["sizeobj"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
 def:priv _multibytecodec_MultibyteStreamReader_readline_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    sizeobj: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        sizeobj = value;
+    clinic_args = stack.view(count);
+    try {
+        sizeobj: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            sizeobj = value;
+        }
+        return _multibytecodec_MultibyteStreamReader_readline_impl(receiver, sizeobj);
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteStreamReader_readline_impl(receiver, sizeobj);
 }
 
 def:priv _multibytecodec_MultibyteStreamReader_readline_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _multibytecodec_MultibyteStreamReader_readline_signature,
-        args,
-        nargs,
-        NULL,
-        _multibytecodec_MultibyteStreamReader_readline_bound,
-        receiver
-    );
+    if not check_positional("readline", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return _multibytecodec_MultibyteStreamReader_readline_bound(receiver, args, nargs);
 }
 
-glob:priv _multibytecodec_MultibyteStreamReader_readlines_signature = CallSignature(
-         "readlines", ["sizehintobj"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
 def:priv _multibytecodec_MultibyteStreamReader_readlines_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    sizehintobj: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        sizehintobj = value;
+    clinic_args = stack.view(count);
+    try {
+        sizehintobj: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            sizehintobj = value;
+        }
+        return _multibytecodec_MultibyteStreamReader_readlines_impl(
+            receiver, sizehintobj
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    return _multibytecodec_MultibyteStreamReader_readlines_impl(receiver, sizehintobj);
 }
 
 def:priv _multibytecodec_MultibyteStreamReader_readlines_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _multibytecodec_MultibyteStreamReader_readlines_signature,
-        args,
-        nargs,
-        NULL,
-        _multibytecodec_MultibyteStreamReader_readlines_bound,
-        receiver
-    );
-}
-
-def:priv _multibytecodec_MultibyteStreamReader_reset_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _multibytecodec_MultibyteStreamReader_reset_impl(receiver);
+    if not check_positional("readlines", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return _multibytecodec_MultibyteStreamReader_readlines_bound(receiver, args, nargs);
 }
 
 def:priv _multibytecodec_MultibyteStreamReader_reset_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        NULL, _multibytecodec_MultibyteStreamReader_reset_bound, receiver
-    );
+    try {
+        return _multibytecodec_MultibyteStreamReader_reset_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _multibytecodec_MultibyteStreamWriter_write_signature = CallSignature(
@@ -417,15 +461,23 @@ glob:priv _multibytecodec_MultibyteStreamWriter_write_signature = CallSignature(
      );
 
 def:priv _multibytecodec_MultibyteStreamWriter_write_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, MultibyteStreamWriter_token);
-    value = args.values[0];
-    strobj: ptr[PyObject] = value;
-    result = _multibytecodec_MultibyteStreamWriter_write_impl(receiver, cls, strobj);
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, MultibyteStreamWriter_token);
+        try {
+            value = clinic_args[0];
+            strobj: ptr[PyObject] = value;
+            return _multibytecodec_MultibyteStreamWriter_write_impl(
+                receiver, cls, strobj
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multibytecodec_MultibyteStreamWriter_write_call(
@@ -434,7 +486,20 @@ def:priv _multibytecodec_MultibyteStreamWriter_write_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _multibytecodec_MultibyteStreamWriter_write_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _multibytecodec_MultibyteStreamWriter_write_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _multibytecodec_MultibyteStreamWriter_write_bound(
+            receiver, values, 1
+        );
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteStreamWriter_write_signature,
         args,
         nargs,
@@ -449,17 +514,23 @@ glob:priv _multibytecodec_MultibyteStreamWriter_writelines_signature = CallSigna
      );
 
 def:priv _multibytecodec_MultibyteStreamWriter_writelines_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, MultibyteStreamWriter_token);
-    value = args.values[0];
-    lines: ptr[PyObject] = value;
-    result = _multibytecodec_MultibyteStreamWriter_writelines_impl(
-        receiver, cls, lines
-    );
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, MultibyteStreamWriter_token);
+        try {
+            value = clinic_args[0];
+            lines: ptr[PyObject] = value;
+            return _multibytecodec_MultibyteStreamWriter_writelines_impl(
+                receiver, cls, lines
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multibytecodec_MultibyteStreamWriter_writelines_call(
@@ -468,7 +539,22 @@ def:priv _multibytecodec_MultibyteStreamWriter_writelines_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _multibytecodec_MultibyteStreamWriter_writelines_bound(
+            receiver, args, nargs
+        );
+    }
+    values = unpack_stack(
+        _multibytecodec_MultibyteStreamWriter_writelines_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _multibytecodec_MultibyteStreamWriter_writelines_bound(
+            receiver, values, 1
+        );
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteStreamWriter_writelines_signature,
         args,
         nargs,
@@ -483,13 +569,18 @@ glob:priv _multibytecodec_MultibyteStreamWriter_reset_signature = CallSignature(
      );
 
 def:priv _multibytecodec_MultibyteStreamWriter_reset_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, MultibyteStreamWriter_token);
-    result = _multibytecodec_MultibyteStreamWriter_reset_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+    try {
+        cls = defining_class(receiver, MultibyteStreamWriter_token);
+        try {
+            return _multibytecodec_MultibyteStreamWriter_reset_impl(receiver, cls);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _multibytecodec_MultibyteStreamWriter_reset_call(
@@ -498,7 +589,10 @@ def:priv _multibytecodec_MultibyteStreamWriter_reset_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs == 0 {
+        return _multibytecodec_MultibyteStreamWriter_reset_bound(receiver, args, nargs);
+    }
+    return invoke_stack(
         _multibytecodec_MultibyteStreamWriter_reset_signature,
         args,
         nargs,
@@ -508,7 +602,8 @@ def:priv _multibytecodec_MultibyteStreamWriter_reset_call(
     );
 }
 
-glob MultibyteCodec_methods: list[MethodDefinition] = [
+glob codecctx_getsets_errors_doc: str = "how to treat errors",
+     MultibyteCodec_methods: list[MethodDefinition] = [
          MethodDefinition(
              "encode",
              MethodCallbacks(fast_keywords=_multibytecodec_MultibyteCodec_encode_call),

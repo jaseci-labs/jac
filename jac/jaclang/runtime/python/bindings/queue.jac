@@ -1,111 +1,33 @@
-"""SimpleQueue type and Python signatures over shared native FIFO state."""
+"""The _queue module: SimpleQueue over native FIFO state, and Empty."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_lock_new,
-    jacpy_release,
-    NULL,
-    Py_NewRef,
-    Py_None,
-    Py_TYPE,
-    PyExc_SystemError,
-    PyLong_FromLongLong,
-    PyObject,
-    PyObject_IsTrue,
-    PyType_GetSlot
-}
+import from jaclang.runtime.python.cpython_api { NULL, PyObject }
 import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
     MethodDefinition,
     ModuleHooks,
     add_state_owned,
-    jacpy_binding_exception,
-    jacpy_binding_state_get
+    jacpy_binding_exception
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
-    TypeFlags,
-    TypeSlot,
-    jacpy_binding_allocate,
-    jacpy_binding_base,
-    jacpy_binding_owner
+    TypeFlags
 }
 import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_set,
-    jacpy_binding_native_present,
     dispose_payload,
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_NO_ARGUMENTS,
-    PARSE_NOTHING,
-    invoke,
-    invoke_vector
+import from jaclang.runtime.python.bindings.clinic.queue {
+    SimpleQueue_doc,
+    SimpleQueue_methods,
+    queue_module_doc,
+    simplequeue_methods___class_getitem___doc,
+    simplequeue_new_new
 }
-import from jaclang.runtime.python.modules.queue {
-    queue_state,
-    jacpy_queue_new,
-    jacpy_queue_put,
-    jacpy_queue_get,
-    jacpy_queue_size
-}
-import from jaclang.runtime.python.capi { object_error }
-def:priv state_of(instance: ptr[PyObject]) -> (queue_state | None) {
-    if jacpy_binding_native_present(instance, queue_type.handle) != 0 {
-        state = jacpy_binding_native_get(instance, queue_type.handle);
-        if isinstance(state, queue_state) {
-            return state;
-        }
-    }
-    object_error(PyExc_SystemError, "native SimpleQueue state is unavailable");
-    return None;
-}
-
-# simplequeue_new: _PyArg_NoPositional() and _PyArg_NoKeywords().
-glob:priv init_signature = CallSignature(
-         "SimpleQueue", [], 0, 0, parser=PARSE_NOTHING
-     );
-
-def:priv create(
-    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    base = jacpy_binding_base(type, queue_type.handle);
-    if base == 0 {
-        return NULL;
-    }
-    reject_arguments = type == base
-        or PyType_GetSlot(type, i32(TypeSlot.INIT.value))
-            == PyType_GetSlot(base, i32(TypeSlot.INIT.value));
-    jacpy_release(base);
-    if reject_arguments {
-        bound = BoundArguments([]);
-        if not init_signature.bind(bound, args, kwargs) {
-            return NULL;
-        }
-    }
-    instance = jacpy_binding_allocate(type);
-    if instance == 0 {
-        return NULL;
-    }
-    lock = jacpy_lock_new();
-    if lock == 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    if jacpy_binding_native_set(instance, queue_type.handle, jacpy_queue_new(lock))
-        < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    return instance;
-}
+import from jaclang.runtime.python.modules.queue { SimpleQueue_token }
 
 def:priv deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, queue_type.handle);
@@ -121,164 +43,31 @@ def:priv traverse(
     return traverse_payload(instance, queue_type.handle, visitor, context);
 }
 
-glob:priv put_signature = CallSignature("put", ["item", "block", "timeout"], 1, 3),
-     put_nowait_signature = CallSignature("put_nowait", ["item"], 1, 1),
-     get_signature = CallSignature("get", ["block", "timeout"], 0, 2);
-
-def:priv put_bound(args: BoundArguments) -> ptr[PyObject] {
-    if len(args.values) > 1
-        and args.values[1] != 0
-        and PyObject_IsTrue(args.values[1]) < 0 {
-        return NULL;
-    }
-    state = state_of(args.context);
-    if state is None {
-        return NULL;
-    }
-    jacpy_queue_put(state, args.values[0]);
-    return Py_NewRef(Py_None);
-}
-
-def:priv put_call(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(put_signature, args, kwargs, put_bound, instance);
-}
-
-def:priv put_nowait_call(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(put_nowait_signature, args, kwargs, put_bound, instance);
-}
-
-def:priv get_item(
-    instance: ptr[PyObject], block: i64, timeout: ptr[PyObject]
-) -> ptr[PyObject] {
-    state = state_of(instance);
-    if state is None {
-        return NULL;
-    }
-    module = jacpy_binding_owner(Py_TYPE(instance), definition.handle);
-    if module == 0 {
-        return NULL;
-    }
-    return jacpy_queue_get(state, jacpy_binding_state_get(module, 1), block, timeout);
-}
-
-def:priv get_bound(args: BoundArguments) -> ptr[PyObject] {
-    block: i64 = 1;
-    if args.values[0] != 0 {
-        block = PyObject_IsTrue(args.values[0]);
-        if block < 0 {
-            return NULL;
-        }
-    }
-    if args.values[1] == 0 {
-        args.values[1] = Py_NewRef(Py_None);
-    }
-    return get_item(args.context, block, args.values[1]);
-}
-
-def:priv get_call(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(get_signature, args, kwargs, get_bound, instance);
-}
-
-# A defining-class method without parameters: "get_nowait() takes no
-# arguments" for any argument.
-glob:priv get_nowait_signature = CallSignature(
-         "get_nowait", [], 0, 0, parser=PARSE_NO_ARGUMENTS
-     );
-
-def:priv get_nowait_bound(args: BoundArguments) -> ptr[PyObject] {
-    timeout = Py_NewRef(Py_None);
-    result = get_item(args.context, 0, timeout);
-    jacpy_release(timeout);
-    return result;
-}
-
-def:priv get_nowait_call(
-    instance: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        get_nowait_signature, args, nargs, kwnames, get_nowait_bound, instance
-    );
-}
-
-def:priv empty_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_of(instance);
-    if state is None {
-        return NULL;
-    }
-    return PyBool_FromLong(i64(jacpy_queue_size(state) == 0));
-}
-
-def:priv size_call(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_of(instance);
-    if state is None {
-        return NULL;
-    }
-    return PyLong_FromLongLong(jacpy_queue_size(state));
-}
-
 glob:priv queue_type = TypeDefinition(
          "_queue.SimpleQueue",
-         "SimpleQueue()\n--\n\nSimple, unbounded, reentrant FIFO queue.",
-         [
-             MethodDefinition(
-                 "put",
-                 MethodCallbacks(keywords=put_call),
-                 "put($self, /, item, block=True, timeout=None)\n--\n\nOperate on the FIFO queue."
-             ),
-             MethodDefinition(
-                 "put_nowait",
-                 MethodCallbacks(keywords=put_nowait_call),
-                 "put_nowait($self, /, item)\n--\n\nOperate on the FIFO queue."
-             ),
-             MethodDefinition(
-                 "get",
-                 MethodCallbacks(keywords=get_call),
-                 "get($self, /, block=True, timeout=None)\n--\n\nOperate on the FIFO queue."
-             ),
-             MethodDefinition(
-                 "get_nowait",
-                 MethodCallbacks(fast_keywords=get_nowait_call),
-                 "get_nowait($self, /)\n--\n\nGet an item or raise Empty.",
-                 flags=130
-             ),
-             MethodDefinition(
-                 "empty",
-                 MethodCallbacks(positional=empty_call),
-                 "empty($self, /)\n--\n\nReturn whether the queue is empty.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "qsize",
-                 MethodCallbacks(positional=size_call),
-                 "qsize($self, /)\n--\n\nReturn the approximate queue size.",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__class_getitem__",
-                 MethodCallbacks(positional=Py_GenericAlias),
-                 "Create a generic queue alias.",
-                 flags=24
-             )
-         ],
-         u64(
-             TypeFlags.BASETYPE.value
-                 | TypeFlags.GC.value
-                 | TypeFlags.IMMUTABLE.value
-                 | TypeFlags.MANAGED_WEAKREF.value
+         SimpleQueue_doc,
+         SimpleQueue_methods
+             + [
+                 MethodDefinition(
+                     "__class_getitem__",
+                     MethodCallbacks(positional=Py_GenericAlias),
+                     simplequeue_methods___class_getitem___doc,
+                     24
+                 )
+             ],
+         u64(TypeFlags.BASETYPE.value | TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
+         TypeHooks(
+             create=simplequeue_new_new,
+             dealloc=deallocate,
+             traverse=traverse,
+             clear=clear
          ),
-         TypeHooks(create=create, dealloc=deallocate, traverse=traverse, clear=clear)
+         weaklist=True
      );
 
+# queuemodule_exec(): Empty in state slot 1, SimpleQueue in slot 0.
 def:priv execute(module: ptr[PyObject]) -> i32 {
+    SimpleQueue_token.handle = queue_type.handle;
     if not add_state_owned(
         module,
         1,
@@ -295,7 +84,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 }
 
 glob:priv definition = ModuleDefinition(
-         "_queue", "Native Jac FIFO queue.", [], ModuleHooks(execute=execute), 2
+         "_queue", queue_module_doc, [], ModuleHooks(execute=execute), 2
      );
 
 def:pub PyInit__queue -> ptr[PyObject] {

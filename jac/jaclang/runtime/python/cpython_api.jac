@@ -255,9 +255,7 @@ import from c {
         arg0: ptr[PyObject]
     ) -> u64;  def PyLong_AsUnsignedLongLong(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongLongMask(
         arg0: ptr[PyObject]
-    ) -> u64;  def PyLong_AsUnsignedLongMask(arg0: ptr[PyObject]) -> u64;  def PyLong_AsVoidPtr(
-        arg0: ptr[PyObject]
-    ) -> ptr;  def PyLong_Export(
+    ) -> u64;  def PyLong_AsUnsignedLongMask(arg0: ptr[PyObject]) -> u64;  def PyLong_Export(
         obj_: ptr[PyObject], export_long: &mut PyLongExport
     ) -> i32;  def PyLong_FreeExport(export_long: &mut PyLongExport);  def PyLong_FromDouble(
         arg0: f64
@@ -587,9 +585,9 @@ import from c {
         string: ptr, length: i64, errors: ptr[u8], consumed: &mut i64 | None
     ) -> ptr[PyObject];  def PyUnicode_EncodeFSDefault(
         unicode: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyUnicode_EqualToUTF8(
-        arg0: ptr[PyObject], arg1: str
-    ) -> i32;  def PyUnicode_FSConverter(
+    ) -> ptr[PyObject];  def PyUnicode_Equal(
+        str1: ptr[PyObject], str2: ptr[PyObject]
+    ) -> i32;  def PyUnicode_EqualToUTF8(arg0: ptr[PyObject], arg1: str) -> i32;  def PyUnicode_FSConverter(
         arg0: ptr[PyObject], arg1: &mut ptr[PyObject]
     ) -> i32;  def PyUnicode_FindChar(
         str_: ptr[PyObject], ch: u32, start: i64, end: i64, direction: i32
@@ -698,7 +696,7 @@ import from c {
         arg0: ptr[PyObject], arg1: &mut u32
     ) -> i32;  def _PyLong_UInt64_Converter(
         arg0: ptr[PyObject], arg1: &mut u64
-    ) -> i32;  def _PyLong_UnsignedInt_Converter(
+    ) -> i32;  def _PyLong_UInt8_Converter(arg0: ptr[PyObject], arg1: &mut u8) -> i32;  def _PyLong_UnsignedInt_Converter(
         arg0: ptr[PyObject], arg1: &mut u32
     ) -> i32;  def _PyLong_UnsignedShort_Converter(
         arg0: ptr[PyObject], arg1: &mut u16
@@ -844,14 +842,12 @@ import from c {
     ) -> ptr[i32];  def _Py_open_noraise(pathname: ptr, flags: i32) -> i32;  def _Py_read(
         fd: i32, buf: ptr, count: u64
     ) -> i64;  def _Py_set_blocking(fd: i32, blocking: i32) -> i32;  def _Py_set_inheritable(
-        fd: i32, inheritable: i32, atomic_flag_works: &mut i32
+        fd: i32, inheritable: i32, atomic_flag_works: &mut i32 | None
     ) -> i32;  def _Py_set_inheritable_async_safe(
         fd: i32, inheritable: i32, atomic_flag_works: ptr
     ) -> i32;  def _Py_skiproot(
         path: ptr[i32], size: i64, drvsize: &mut i64, rootsize: &mut i64
-    );  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_strhex_bytes_with_sep(
-        argbuf: str, arglen: i64, sep: ptr[PyObject], bytes_per_group: i32
-    ) -> ptr[PyObject];  def _Py_string_to_number_with_underscores(
+    );  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_string_to_number_with_underscores(
         str_: ptr, len_: i64, what: str, obj_: ptr[PyObject], arg: ptr, arg5: ptr
     ) -> ptr[PyObject];  def _Py_typing_type_repr(
         arg0: ptr[PyUnicodeWriter], arg1: ptr[PyObject]
@@ -946,9 +942,7 @@ import from c {
         address: ptr, size: i64, little: i64
     ) -> f64;  def jacpy_float_value(handle: ptr[PyObject]) -> f64;  def jacpy_fork_callbacks(
         interp: ptr[PyInterpreterState], which: i64
-    ) -> ptr[ptr[PyObject]];  def jacpy_freelists -> ptr[_Py_freelists];  def jacpy_fs_text(
-        text: ptr
-    ) -> ptr[PyObject];  def jacpy_fstat(
+    ) -> ptr[ptr[PyObject]];  def jacpy_fs_text(text: ptr) -> ptr[PyObject];  def jacpy_fstat(
         fd: i32, status: &mut _Py_stat_struct
     ) -> i32;  def jacpy_fstatat(
         dir_fd: i32, path: str, status: &mut _Py_stat_struct, flags: i32
@@ -1082,7 +1076,9 @@ import from c {
         value: ptr[PyObject], index: i64, item: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_tuple_item(
         handle: ptr[PyObject], index: i64
-    ) -> ptr[PyObject];  def jacpy_tuple_set_owned(
+    ) -> ptr[PyObject];  def jacpy_tuple_items(
+        handle: ptr[PyObject]
+    ) -> ptr[ptr[PyObject]];  def jacpy_tuple_set_owned(
         handle: ptr[PyObject], index: i64, value: ptr[PyObject]
     ) -> i64;  def jacpy_tuple_unique(value: ptr[PyObject]) -> i64;  def jacpy_type_check(
         value: ptr[PyObject], type_: ptr[PyObject]
@@ -1151,6 +1147,7 @@ import from c {
          PyExc_SyntaxWarning: ptr[PyObject],
          PyExc_SystemError: ptr[PyObject],
          PyExc_TabError: ptr[PyObject],
+         PyExc_TimeoutError: ptr[PyObject],
          PyExc_TypeError: ptr[PyObject],
          PyExc_UnicodeDecodeError: ptr[PyObject],
          PyExc_UnicodeEncodeError: ptr[PyObject],

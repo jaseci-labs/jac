@@ -2254,7 +2254,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         );
                                     }
                                     self._codegen_index_set(
-                                        target_val, idx_val, store_val, elem_type_name
+                                        target_val,
+                                        idx_val,
+                                        self._variadic_elem_coerce(
+                                            store_val, target_expr.target
+                                        ),
+                                        elem_type_name
                                     );
                                     _idx_stored = True;
                                 }
@@ -3142,8 +3147,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         } else {
             var_type = value.type;
             _pre_box_val = value;
+            _untyped = not nd.type_tag or not nd.type_tag.tag;
             if (
-                (not nd.type_tag or not nd.type_tag.tag)
+                _untyped
                 and isinstance(value.type, ir.PointerType)
                 and self._closure_struct_of(value.type) is None
                 and isinstance(nd.value, uni.Expr)
@@ -3164,7 +3170,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             _raw_str_hint: (ir.Type | None) = None;
             if self._nogc_headerless()
                 and self._str_desc_ty is not None
-                and (not nd.type_tag or not nd.type_tag.tag)
+                and _untyped
                 and value.type == ir.IntType(8).as_pointer()
                 and isinstance(nd.value, uni.Expr)
                 and nd.value.type is not None {

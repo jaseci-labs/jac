@@ -139,10 +139,16 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
                 or self._opt_payload_of(_result.type) is not None
             ) {
             import from jaclang.compiler.passes.rc_facts_pass {
+                call_borrows_receiver,
                 Ownership,
                 result_ownership
             }
-            if result_ownership(nd) == Ownership.OWNED {
+            if result_ownership(nd) == Ownership.OWNED
+                and not (
+                    self._nogc_headerless()
+                    and isinstance(nd, uni.FuncCall)
+                    and call_borrows_receiver(nd)
+                ) {
                 self._mark_owned(_result);
             }
         }
@@ -284,7 +290,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     );
     self.builder.store(v, out_typed);
     for _entry in self._gen_try_stack {
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
     }
     k = len(gc.resume_blocks) + 1;
     ip_slot = self.builder.bitcast(gc.frame_i8, i64.as_pointer(), name="yield.ip");
@@ -296,7 +302,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     self.builder.position_at_end(rbb);
     for _entry in self._gen_try_stack {
         exc_state = _entry.state;
-        self.builder.call(self._exc_push_fn, [exc_state]);
+        self._emit_exc_push(self.builder, exc_state);
         if _entry.depth is not None {
             self.builder.store(self._region_depth(), _entry.depth);
         }
@@ -640,6 +646,12 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     }
     if var_name in self.global_vars {
         global_var = self.global_vars[var_name];
+        if isinstance(global_var.type, ir.PointerType) {
+            folded = self._final_scalar_value(nd, global_var.type.pointee);
+            if folded is not None {
+                return folded;
+            }
+        }
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
     if var_name == "__file__" and self.module?.loc and self.module.loc.mod_path {
@@ -2288,14 +2300,16 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     if then_open {
         self.builder.position_at_end(then_end_bb);
         if owns_result and then_val is not None {
-            self._emit_take_ref(then_val, op="ternary_keep");
+            then_val = self._ternary_keep(then_val);
+            then_end_bb = self.builder.block;
         }
         self.builder.branch(merge_bb);
     }
     if else_open {
         self.builder.position_at_end(else_end_bb);
         if owns_result and else_val is not None {
-            self._emit_take_ref(else_val, op="ternary_keep");
+            else_val = self._ternary_keep(else_val);
+            else_end_bb = self.builder.block;
         }
         self.builder.branch(merge_bb);
     }
@@ -2307,6 +2321,45 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     phi.add_incoming(then_val, then_end_bb);
     phi.add_incoming(else_val, else_end_bb);
     return self._mark_owned(phi) if owns_result else phi;
+}
+
+impl NaIRGenPass._ternary_keep(value: ir.Value) -> ir.Value {
+    """One arm of a conditional expression whose other arm owns its value:
+    the result is owned, so a borrowed arm takes a reference, or, where
+    nothing is counted (headerless nogc), a copy of its text or bytes.""";
+    if self._is_owned(value) {
+        return value;
+    }
+    if not self._nogc_headerless() {
+        self._emit_take_ref(value, op="ternary_keep");
+        return value;
+    }
+    if self._is_bytes_value(value) {
+        return self._bytes_from_raw(
+            self._bytes_data_ptr(value), self._bytes_len_val(value)
+        );
+    }
+    if value.type == ir.IntType(8).as_pointer() {
+        return self._mark_owned(
+            self._call_str_dup(self.builder, value, name="ternary.copy")
+        );
+    }
+    if self._str_desc_ty is not None and value.type == self._str_desc_ty {
+        if self.str_new_fn is None {
+            self._emit_str_len_helpers();
+        }
+        copied = self.builder.call(
+            self.str_new_fn,
+            [
+                self.builder.extract_value(value, 0, name="ternary.data"),
+                self.builder.extract_value(value, 1, name="ternary.len")
+            ],
+            name="ternary.copy"
+        );
+        return self._mark_owned(self._coerce_type(copied, self._str_desc_ty));
+    }
+    self._emit_take_ref(value, op="ternary_keep");
+    return value;
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
@@ -3046,4 +3099,34 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
     }
     arch = owner.find_parent_of_type(uni.Archetype);
     return self._arch_key(arch) if arch is not None else None;
+}
+
+impl NaIRGenPass._final_scalar_value(
+    nd: uni.Name, value_type: ir.Type
+) -> (ir.Value | None) {
+    import from jaclang.compiler.c_interop { c_scalar_constant, final_glob_value }
+    value = final_glob_value(nd);
+    if value is None {
+        return None;
+    }
+    (ok, folded) = c_scalar_constant(value);
+    if not ok {
+        return None;
+    }
+    if isinstance(value_type, ir.IntType)
+        and value_type.width > 1
+        and isinstance(folded, int)
+        and not isinstance(folded, bool) {
+        bits = folded & ((1 << value_type.width) - 1);
+        if bits >= (1 << (value_type.width - 1)) {
+            bits -= 1 << value_type.width;
+        }
+        return ir.Constant(value_type, bits);
+    }
+    if isinstance(value_type, (ir.DoubleType, ir.FloatType))
+        and isinstance(folded, (int, float))
+        and not isinstance(folded, bool) {
+        return ir.Constant(value_type, float(folded));
+    }
+    return None;
 }

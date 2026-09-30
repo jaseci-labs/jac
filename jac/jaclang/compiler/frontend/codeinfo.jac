@@ -640,22 +640,32 @@ def native_stdlib_root -> (str | None) {
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
 }
 
-"""Is `file_path` a module of the toolchain rather than of a program?
+def bundled_pkg_roots -> list[str] {
+    roots: list[str] = [];
+    pkg = jaclang_pkg_root();
+    if pkg {
+        roots.append(pkg);
+    }
+    if kernel_target_active() {
+        target = target_pkg_root();
+        if target and target not in roots {
+            roots.append(target);
+        }
+    }
+    return roots;
+}
 
-A module belongs to the unit root it is keyed by (`native_unit_root`): the
-jaclang package for the compiler, runtime and bundled stdlib, but a project
-with its own `jac.toml` (templates, examples, test fixtures) inside the
-package is a program like any other.
-"""
 def is_toolchain_unit(file_path: str) -> bool {
     import os;
-    pkg = jaclang_pkg_root();
-    if not file_path or not pkg {
+    if not file_path {
         return False;
     }
     unit_root = native_unit_root(os.path.dirname(os.path.realpath(file_path)));
-    return unit_root is not None
-        and os.path.realpath(unit_root) == os.path.realpath(pkg);
+    if unit_root is None {
+        return False;
+    }
+    keyed = os.path.realpath(unit_root);
+    return any(keyed == os.path.realpath(pkg) for pkg in bundled_pkg_roots());
 }
 
 def bundled_native_module_names -> list[str] {
@@ -680,37 +690,42 @@ def bundled_native_module_names -> list[str] {
 
 def is_native_by_location(file_path: str) -> bool {
     import os;
-    pkg = jaclang_pkg_root();
-    if not file_path or not pkg {
+    if not file_path {
         return False;
     }
     ap = os.path.abspath(file_path);
-    return ap.startswith(os.path.join(pkg, "runtime", "na_stdlib") + os.sep);
+    for pkg in bundled_pkg_roots() {
+        if ap.startswith(os.path.join(pkg, "runtime", "na_stdlib") + os.sep) {
+            return True;
+        }
+    }
+    return False;
 }
 
 def bundled_stdlib_module_of(file_path: str) -> (str | None) {
     import os;
-    pkg = jaclang_pkg_root();
-    if not file_path or not pkg {
+    if not file_path {
         return None;
     }
     ap = os.path.abspath(file_path);
-    native_root = os.path.join(pkg, "runtime", "na_stdlib") + os.sep;
-    stub_root = os.path.join(pkg, "vendor", "typeshed", "stdlib") + os.sep;
-    if ap.startswith(native_root) and ap.endswith(".jac") {
-        rel = ap[len(native_root):-len(".jac")];
-        parts = rel.split(os.sep);
+    for pkg in bundled_pkg_roots() {
+        native_root = os.path.join(pkg, "runtime", "na_stdlib") + os.sep;
+        stub_root = os.path.join(pkg, "vendor", "typeshed", "stdlib") + os.sep;
+        if ap.startswith(native_root) and ap.endswith(".jac") {
+            rel = ap[len(native_root):-len(".jac")];
+            parts = rel.split(os.sep);
 
-        parts[-1] = parts[-1].split(".")[0];
-        return ".".join(parts);
-    }
-    if ap.startswith(stub_root) and ap.endswith(".pyi") {
-        rel = ap[len(stub_root):-len(".pyi")];
-        parts = rel.split(os.sep);
-        if parts[-1] == "__init__" {
-            parts = parts[:-1];
+            parts[-1] = parts[-1].split(".")[0];
+            return ".".join(parts);
         }
-        return ".".join(parts) if parts else None;
+        if ap.startswith(stub_root) and ap.endswith(".pyi") {
+            rel = ap[len(stub_root):-len(".pyi")];
+            parts = rel.split(os.sep);
+            if parts[-1] == "__init__" {
+                parts = parts[:-1];
+            }
+            return ".".join(parts) if parts else None;
+        }
     }
     return None;
 }
@@ -737,14 +752,15 @@ glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
 
 def is_client_by_location(file_path: str) -> bool {
     import os;
-    pkg = jaclang_pkg_root();
-    if not file_path or not pkg {
+    if not file_path {
         return False;
     }
     ap = os.path.abspath(file_path);
-    for rel in CLIENT_RUNTIME_SOURCE_PATHS {
-        if ap == os.path.join(pkg, rel.replace("/", os.sep)) {
-            return True;
+    for pkg in bundled_pkg_roots() {
+        for rel in CLIENT_RUNTIME_SOURCE_PATHS {
+            if ap == os.path.join(pkg, rel.replace("/", os.sep)) {
+                return True;
+            }
         }
     }
     return False;
@@ -752,16 +768,17 @@ def is_client_by_location(file_path: str) -> bool {
 
 def is_shared_runtime_module(file_path: str) -> bool {
     import os;
-    pkg = jaclang_pkg_root();
-    if not file_path or not pkg {
+    if not file_path {
         return False;
     }
-    package = os.path.realpath(pkg);
     path = os.path.realpath(file_path);
-    for module in SHARED_RUNTIME_MODULES {
-        rel = module.split('.', 1)[1].replace('.', os.sep) + '.jac';
-        if path == os.path.join(package, rel) {
-            return True;
+    for pkg in bundled_pkg_roots() {
+        package = os.path.realpath(pkg);
+        for module in SHARED_RUNTIME_MODULES {
+            rel = module.split('.', 1)[1].replace('.', os.sep) + '.jac';
+            if path == os.path.join(package, rel) {
+                return True;
+            }
         }
     }
     return False;

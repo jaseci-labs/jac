@@ -843,12 +843,7 @@ walker TypeEvaluator {
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
     def _is_sv_async_call(expr: FuncCall) -> bool;
-    """The arguments that lend a variable's address to a C-ABI callee: `&mut x`
-    or `&x` passed to a `ptr[T]` parameter of a C library declaration or a
-    function a C block defines, where `x` is exactly `T`. C receives `&x` for
-    the call, so the argument is not a `ptr[T]` value."""
     def _c_lent_args(args: MatchArgsToParamsResult) -> set[Expr | KWPair];
-
     def validate_arg_types(
         args: MatchArgsToParamsResult,
         checking_overload: bool = False,
@@ -889,6 +884,7 @@ walker TypeEvaluator {
 
     def _create_object_init_method(class_type: ClassType) -> FunctionType;
     def _scope_has_fields(tab: UniScopeNode | None) -> bool;
+    def _dataclass_shadows_base_init(class_type: ClassType) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
     def _create_special_builtin_type(name: str, base_class: ClassType) -> ClassType;
     def _validate_constructor_method(

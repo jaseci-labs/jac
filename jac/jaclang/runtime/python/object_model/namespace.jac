@@ -27,7 +27,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_CallNoArgs,
     PyObject_CallOneArg,
     PyObject_GC_Del,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_GenericSetAttr,
     PyObject_GetIter,
@@ -67,10 +66,11 @@ import from jaclang.runtime.python.layouts {
     _object
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
+    object_gc_untrack,
     object_is_type,
     object_type,
-    object_type_check
+    object_type_check,
+    PyType_Type
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
 
@@ -199,7 +199,7 @@ def namespace_init(op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) 
 }
 
 def namespace_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     namespace_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }

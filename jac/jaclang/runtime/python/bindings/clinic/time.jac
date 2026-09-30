@@ -10,41 +10,66 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments { BoundArguments, invoke_given }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.modules.time {
     convert_time_clockid_converter,
     time_clock_gettime_impl,
     time_clock_gettime_ns_impl
 }
 
-def:priv time_clock_gettime_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    clk_id: i32 = convert_time_clockid_converter(value, "clock_gettime", "argument");
-    return time_clock_gettime_impl(receiver, clk_id);
-}
-
 def:priv time_clock_gettime_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, time_clock_gettime_bound, receiver);
-}
-
-def:priv time_clock_gettime_ns_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    clk_id: i32 = convert_time_clockid_converter(value, "clock_gettime_ns", "argument");
-    return time_clock_gettime_ns_impl(receiver, clk_id);
+    try {
+        clk_id: i32 = convert_time_clockid_converter(
+            value, "clock_gettime", "argument"
+        );
+        return time_clock_gettime_impl(receiver, clk_id);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv time_clock_gettime_ns_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, time_clock_gettime_ns_bound, receiver);
+    try {
+        clk_id: i32 = convert_time_clockid_converter(
+            value, "clock_gettime_ns", "argument"
+        );
+        return time_clock_gettime_ns_impl(receiver, clk_id);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob time_doc: str = "time() -> floating-point number\n\nReturn the current time in seconds since the Epoch.\nFractions of a second may be present if the system clock provides them.",
+     time_ns_doc: str = "time_ns() -> int\n\nReturn the current time in nanoseconds since the Epoch.",
+     clock_settime_doc: str = "clock_settime(clk_id, time)\n\nSet the time of the specified clock clk_id.",
+     clock_settime_ns_doc: str = "clock_settime_ns(clk_id, time)\n\nSet the time of the specified clock clk_id with nanoseconds.",
+     clock_getres_doc: str = "clock_getres(clk_id) -> floating-point number\n\nReturn the resolution (precision) of the specified clock clk_id.",
+     pthread_getcpuclockid_doc: str = "pthread_getcpuclockid(thread_id) -> int\n\nReturn the clk_id of a thread's CPU time clock.",
+     sleep_doc: str = "sleep(seconds)\n\nDelay execution for a given number of seconds.  The argument may be\na floating-point number for subsecond precision.",
+     gmtime_doc: str = "gmtime([seconds]) -> (tm_year, tm_mon, tm_mday, tm_hour, tm_min,\n                       tm_sec, tm_wday, tm_yday, tm_isdst)\n\nConvert seconds since the Epoch to a time tuple expressing UTC (a.k.a.\nGMT).  When 'seconds' is not passed in, convert the current time instead.\n\nIf the platform supports the tm_gmtoff and tm_zone, they are available as\nattributes only.",
+     localtime_doc: str = "localtime([seconds]) -> (tm_year,tm_mon,tm_mday,tm_hour,tm_min,\n                          tm_sec,tm_wday,tm_yday,tm_isdst)\n\nConvert seconds since the Epoch to a time tuple expressing local time.\nWhen 'seconds' is not passed in, convert the current time instead.",
+     strftime_doc: str = "strftime(format[, tuple]) -> string\n\nConvert a time tuple to a string according to a format specification.\nSee the library reference manual for formatting codes. When the time tuple\nis not present, current time as returned by localtime() is used.\n\n",
+     strptime_doc: str = "strptime(string, format) -> struct_time\n\nParse a string to a time tuple according to a format specification.\nSee the library reference manual for formatting codes (same as\nstrftime()).\n\n",
+     asctime_doc: str = "asctime([tuple]) -> string\n\nConvert a time tuple to a string, e.g. 'Sat Jun 06 16:26:11 1998'.\nWhen the time tuple is not present, current time as returned by localtime()\nis used.",
+     ctime_doc: str = "ctime(seconds) -> string\n\nConvert a time in seconds since the Epoch to a string in local time.\nThis is equivalent to asctime(localtime(seconds)). When the time tuple is\nnot present, current time as returned by localtime() is used.",
+     mktime_doc: str = "mktime(tuple) -> floating-point number\n\nConvert a time tuple in local time to seconds since the Epoch.\nNote that mktime(gmtime(0)) will not generally return zero for most\ntime zones; instead the returned value will either be equal to that\nof the timezone or altzone attributes on the time module.",
+     tzset_doc: str = "tzset()\n\nInitialize, or reinitialize, the local timezone to the value stored in\nos.environ['TZ']. The TZ environment variable should be specified in\nstandard Unix timezone format as documented in the tzset man page\n(eg. 'US/Eastern', 'Europe/Amsterdam'). Unknown timezones will silently\nfall back to UTC. If the TZ environment variable is not set, the local\ntimezone is set to the systems best guess of wallclock time.\nChanging the TZ environment variable without calling tzset *may* change\nthe local timezone used by methods such as localtime, but this behaviour\nshould not be relied on.",
+     monotonic_doc: str = "monotonic() -> float\n\nMonotonic clock, cannot go backward.",
+     monotonic_ns_doc: str = "monotonic_ns() -> int\n\nMonotonic clock, cannot go backward, as nanoseconds.",
+     perf_counter_doc: str = "perf_counter() -> float\n\nPerformance counter for benchmarking.",
+     perf_counter_ns_doc: str = "perf_counter_ns() -> int\n\nPerformance counter for benchmarking as nanoseconds.",
+     process_time_doc: str = "process_time() -> float\n\nProcess time for profiling: sum of the kernel and user-space CPU time.",
+     process_time_ns_doc: str = "process_time() -> int\n\nProcess time for profiling as nanoseconds:\nsum of the kernel and user-space CPU time.",
+     thread_time_doc: str = "thread_time() -> float\n\nThread time for profiling: sum of the kernel and user-space CPU time.",
+     thread_time_ns_doc: str = "thread_time() -> int\n\nThread time for profiling as nanoseconds:\nsum of the kernel and user-space CPU time.",
+     get_clock_info_doc: str = "get_clock_info(name: str) -> dict\n\nGet information of the specified clock.",
+     module_doc: str = "This module provides various functions to manipulate time values.\n\nThere are two standard representations of time.  One is the number\nof seconds since the Epoch, in UTC (a.k.a. GMT).  It may be an integer\nor a floating-point number (to represent fractions of seconds).\nThe epoch is the point where the time starts, the return value of time.gmtime(0).\nIt is January 1, 1970, 00:00:00 (UTC) on all platforms.\n\nThe other representation is a tuple of 9 integers giving local time.\nThe tuple items are:\n  year (including century, e.g. 1998)\n  month (1-12)\n  day (1-31)\n  hours (0-23)\n  minutes (0-59)\n  seconds (0-59)\n  weekday (0-6, Monday is 0)\n  Julian day (day in the year, 1-366)\n  DST (Daylight Savings Time) flag (-1, 0 or 1)\nIf the DST flag is 0, the time is given in the regular time zone;\nif it is 1, the time is given in the DST time zone;\nif it is -1, mktime() should guess based on the date and time.\n",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "clock_gettime",
              MethodCallbacks(positional=time_clock_gettime_call),

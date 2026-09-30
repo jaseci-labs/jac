@@ -16,6 +16,7 @@ same thing under nogc, rc and managed native builds and on the Python
 backend. The checker tests pin the diagnostics that keep the surface sound.
 """
 
+import re;
 import shutil;
 import subprocess;
 import tempfile;
@@ -24,6 +25,7 @@ import from tests.support {
     assert_native_identity,
     compile_native_ir,
     native_build,
+    native_force_opts,
     native_run
 }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -620,6 +622,136 @@ with entry {
     assert "run 41" in lines , out;
 }
 
+glob C_DEFINITION_ENTRY: str = '''import from "CLIB_POINTERS_LIBRARY" {
+    def cp_call_i32(fn: ptr, v: i32) -> i32;
+    def c_remember(v: i32) -> i32 {
+        item = Kept(value=v);
+        doubled = item.value * i32(2);
+        print("c definition on heap", region_of(item) is None);
+        return doubled;
+    }
+}
+obj Kept {
+    has value: i32;
+
+    def drop {}
+}
+with entry {
+    print("outside", cp_call_i32(ptr(c_remember), i32(4)));
+    r: own Region = Region();
+    in r {
+        opened = Kept(value=i32(1));
+        print("open", region_of(opened) is None);
+        print("run", cp_call_i32(ptr(c_remember), i32(20)));
+        print("still open", region_of(Kept(value=i32(2))) is None);
+    }
+    print("after", cp_call_i32(ptr(c_remember), i32(1)));
+}
+''';
+
+test "a C function definition C calls runs outside the caller's open region" {
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(
+            stage_source(directory, C_DEFINITION_ENTRY, "centry.jac")
+        );
+    }
+    assert out.splitlines()
+        == [
+            "c definition on heap True",
+            "outside 8",
+            "open False",
+            "c definition on heap True",
+            "run 40",
+            "still open False",
+            "c definition on heap True",
+            "after 2"
+        ] , out;
+}
+
+test "a scalar C definition's entry jumps into its body unless a region is open" {
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, C_DEFINITION_ENTRY, "centry.jac");
+        text = str(compile_native_ir("centry.jac", fixture_dir=directory).gen.llvm_ir);
+    }
+    found = re.search(r'define [^\n]*@"?c_remember"?\(.*?\n}\n', text, re.S);
+    assert found , "no C entry for c_remember";
+    thunk = found.group(0);
+    assert "musttail" in thunk , thunk;
+    assert "__jac_region_escape" in thunk , thunk;
+    assert "__jac_region_restore" in thunk , thunk;
+    assert thunk.index("region.open") < thunk.index("musttail") , thunk;
+}
+
+glob C_BLOCK_ORDER: str = '''import from c {
+    def order_bump(n: i64) -> i64 {
+        order_count = order_count + n;
+        return order_twice(order_count);
+    }
+}
+def read_count -> i64 {
+    return order_count;
+}
+import from c {
+    glob order_count: i64 = 5;
+    def order_twice(v: i64) -> i64 {
+        return v * 2;
+    }
+}
+with entry {
+    print("order", order_bump(2), read_count());
+}
+''';
+
+test "C blocks are order-independent: a function above one writes its data" {
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "corder.jac");
+        Path(path).write_text(C_BLOCK_ORDER);
+        out = assert_native_identity(path);
+    }
+    assert "order 14 7" in out.splitlines() , out;
+}
+
+test "a C definition may not reuse another module's C symbol with a different signature" {
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "cdecl_owner.jac").write_text(
+            '''import from c {
+    def dup_value(x: i64) -> i64;
+    def same_value(x: i64) -> i64;
+}
+def helper(x: i64) -> i64 {
+    return x + 1;
+}
+'''
+        );
+        user = Path(directory) / "cdecl_user.jac";
+        user.write_text(
+            '''import from cdecl_owner { helper }
+import from c {
+    def dup_value(p: ptr[i64], q: ptr[i64]) {
+        p.view(1)[0] = helper(q.view(1)[0]);
+    }
+    def same_value(x: i64) -> i64 {
+        return helper(x);
+    }
+}
+with entry {
+    print(same_value(1));
+}
+'''
+        );
+        prog = JacProgram();
+        prog.compile(file_path=str(user), options=native_force_opts());
+        messages = [
+            alert.pretty_print()
+            for alert in list(prog.errors_had)
+            if alert.code is not None and alert.code.code == "E1158"
+        ];
+    }
+    assert len(messages) == 1 , messages;
+    assert "dup_value" in messages[0]
+        and "different signature" in messages[0] , messages;
+}
+
 test "only Final globs are C constants" {
     code = DECLS
         + '''
@@ -1068,4 +1200,43 @@ with entry {
 }
 ''';
     assert checker_codes(code) == ["E1053", "E1053"];
+}
+
+test "an imported C definition returns a struct by value through its C ABI" {
+    pairs = '''import from c {
+    obj Pair {
+        has a: f64, b: f64;
+    }
+    def make_pair(x: f64) -> Pair {
+        return Pair(a=x, b=x * 2.0);
+    }
+    def pair_sum(p: Pair) -> f64 {
+        return p.a + p.b;
+    }
+    obj Wide {
+        has a: i64, b: i64, c: i64;
+    }
+    def make_wide(seed: i64) -> Wide {
+        return Wide(a=seed, b=seed * 2, c=seed * 3);
+    }
+}
+''';
+    user = '''import from pairs { Pair, Wide, make_pair, make_wide, pair_sum }
+
+with entry {
+    p = make_pair(1.5);
+    print("pair", p.a, p.b, pair_sum(p));
+    w = make_wide(7);
+    print("wide", w.a, w.b, w.c);
+}
+''';
+    with tempfile.TemporaryDirectory() as directory {
+        Path(directory, "pairs.jac").write_text(pairs);
+        path = str(Path(directory) / "user.jac");
+        Path(path).write_text(user);
+        out = assert_native_identity(path);
+    }
+    assert "pair 1.5 3.0 4.5" in out.splitlines() , out;
+    # A struct wider than two registers comes back through sret.
+    assert "wide 7 14 21" in out.splitlines() , out;
 }

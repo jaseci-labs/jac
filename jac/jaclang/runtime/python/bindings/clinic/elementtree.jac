@@ -6,9 +6,13 @@ jaclang.runtime.python.modules.elementtree.
 """
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyMem_Free,
     PyObject,
+    PyTuple_Size,
+    jacpy_dict_size,
     jacpy_is_dict,
-    jacpy_release
+    jacpy_release,
+    jacpy_tuple_items
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
@@ -16,16 +20,17 @@ import from jaclang.runtime.python.bindings.type {
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
     PARSE_NO_ARGUMENTS,
-    PARSE_POSITIONAL,
-    invoke,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    invoke_tuple,
+    unpack_mapping,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -77,52 +82,53 @@ import from jaclang.runtime.python.modules.elementtree {
     subclass_clinic_state_Element_Type
 }
 
-glob:priv _elementtree__set_factories_signature = CallSignature(
-         "_set_factories",
-         ["comment_factory", "pi_factory"],
-         2,
-         2,
-         2,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _elementtree__set_factories_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    comment_factory: ptr[PyObject] = value;
-    value = args.values[1];
-    pi_factory: ptr[PyObject] = value;
-    return _elementtree__set_factories_impl(receiver, comment_factory, pi_factory);
+def:priv _elementtree__set_factories_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        comment_factory: ptr[PyObject] = value;
+        value = clinic_args[1];
+        pi_factory: ptr[PyObject] = value;
+        return _elementtree__set_factories_impl(receiver, comment_factory, pi_factory);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree__set_factories_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _elementtree__set_factories_signature,
-        args,
-        nargs,
-        NULL,
-        _elementtree__set_factories_bound,
-        receiver
-    );
+    if not check_positional("_set_factories", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _elementtree__set_factories_bound(receiver, args, nargs);
 }
 
 glob:priv _elementtree_Element_append_signature = CallSignature(
          "append", ["subelement"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_append_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    subclass_clinic_state_Element_Type(
-        receiver, value, "append", argument_label("", 1)
-    );
-    subelement: ptr[PyObject] = value;
-    result = _elementtree_Element_append_impl(receiver, cls, subelement);
-    jacpy_release(cls);
-    return result;
+def:priv _elementtree_Element_append_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            subclass_clinic_state_Element_Type(
+                receiver, value, "append", argument_label("", 1)
+            );
+            subelement: ptr[PyObject] = value;
+            return _elementtree_Element_append_impl(receiver, cls, subelement);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element_append_call(
@@ -131,7 +137,16 @@ def:priv _elementtree_Element_append_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _elementtree_Element_append_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_elementtree_Element_append_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _elementtree_Element_append_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_append_signature,
         args,
         nargs,
@@ -141,27 +156,33 @@ def:priv _elementtree_Element_append_call(
     );
 }
 
-def:priv _elementtree_Element_clear_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_Element_clear_impl(receiver);
-}
-
 def:priv _elementtree_Element_clear_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_Element_clear_bound, receiver);
+    try {
+        return _elementtree_Element_clear_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _elementtree_Element___copy___signature = CallSignature(
          "__copy__", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
      );
 
-def:priv _elementtree_Element___copy___bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    result = _elementtree_Element___copy___impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+def:priv _elementtree_Element___copy___bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            return _elementtree_Element___copy___impl(receiver, cls);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element___copy___call(
@@ -170,7 +191,10 @@ def:priv _elementtree_Element___copy___call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs == 0 {
+        return _elementtree_Element___copy___bound(receiver, args, nargs);
+    }
+    return invoke_stack(
         _elementtree_Element___copy___signature,
         args,
         nargs,
@@ -180,46 +204,38 @@ def:priv _elementtree_Element___copy___call(
     );
 }
 
-def:priv _elementtree_Element___deepcopy___bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_dict(value) == 0 {
-        bad_argument("__deepcopy__", "argument", "dict", value);
-    }
-    memo: ptr[PyObject] = value;
-    return _elementtree_Element___deepcopy___impl(receiver, memo);
-}
-
 def:priv _elementtree_Element___deepcopy___call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_Element___deepcopy___bound, receiver);
-}
-
-def:priv _elementtree_Element___sizeof___bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return return_size(_elementtree_Element___sizeof___impl(receiver));
+    try {
+        if jacpy_is_dict(value) == 0 {
+            bad_argument("__deepcopy__", "argument", "dict", value);
+        }
+        memo: ptr[PyObject] = value;
+        return _elementtree_Element___deepcopy___impl(receiver, memo);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element___sizeof___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_Element___sizeof___bound, receiver);
-}
-
-def:priv _elementtree_Element___getstate___bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_Element___getstate___impl(receiver);
+    try {
+        return return_size(_elementtree_Element___sizeof___impl(receiver));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element___getstate___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_Element___getstate___bound, receiver);
+    try {
+        return _elementtree_Element___getstate___impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _elementtree_Element___setstate___signature = CallSignature(
@@ -227,15 +243,21 @@ glob:priv _elementtree_Element___setstate___signature = CallSignature(
      );
 
 def:priv _elementtree_Element___setstate___bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    state: ptr[PyObject] = value;
-    result = _elementtree_Element___setstate___impl(receiver, cls, state);
-    jacpy_release(cls);
-    return result;
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            state: ptr[PyObject] = value;
+            return _elementtree_Element___setstate___impl(receiver, cls, state);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element___setstate___call(
@@ -244,7 +266,18 @@ def:priv _elementtree_Element___setstate___call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _elementtree_Element___setstate___bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _elementtree_Element___setstate___signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _elementtree_Element___setstate___bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element___setstate___signature,
         args,
         nargs,
@@ -258,14 +291,22 @@ glob:priv _elementtree_Element_extend_signature = CallSignature(
          "extend", ["elements"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_extend_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    elements: ptr[PyObject] = value;
-    result = _elementtree_Element_extend_impl(receiver, cls, elements);
-    jacpy_release(cls);
-    return result;
+def:priv _elementtree_Element_extend_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            elements: ptr[PyObject] = value;
+            return _elementtree_Element_extend_impl(receiver, cls, elements);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element_extend_call(
@@ -274,7 +315,16 @@ def:priv _elementtree_Element_extend_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _elementtree_Element_extend_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_elementtree_Element_extend_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _elementtree_Element_extend_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_extend_signature,
         args,
         nargs,
@@ -288,19 +338,27 @@ glob:priv _elementtree_Element_find_signature = CallSignature(
          "find", ["path", "namespaces"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_find_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    path: ptr[PyObject] = value;
-    namespaces: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        namespaces = value;
+def:priv _elementtree_Element_find_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            path: ptr[PyObject] = value;
+            namespaces: ptr[PyObject] = borrowed_none();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                namespaces = value;
+            }
+            return _elementtree_Element_find_impl(receiver, cls, path, namespaces);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = _elementtree_Element_find_impl(receiver, cls, path, namespaces);
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv _elementtree_Element_find_call(
@@ -309,7 +367,16 @@ def:priv _elementtree_Element_find_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _elementtree_Element_find_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_elementtree_Element_find_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _elementtree_Element_find_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_find_signature,
         args,
         nargs,
@@ -323,26 +390,34 @@ glob:priv _elementtree_Element_findtext_signature = CallSignature(
          "findtext", ["path", "default", "namespaces"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_findtext_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    path: ptr[PyObject] = value;
-    default_: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = value;
+def:priv _elementtree_Element_findtext_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            path: ptr[PyObject] = value;
+            default_: ptr[PyObject] = borrowed_none();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                default_ = value;
+            }
+            namespaces: ptr[PyObject] = borrowed_none();
+            if count > 2 and clinic_args[2] != NULL {
+                value = clinic_args[2];
+                namespaces = value;
+            }
+            return _elementtree_Element_findtext_impl(
+                receiver, cls, path, default_, namespaces
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    namespaces: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        namespaces = value;
-    }
-    result = _elementtree_Element_findtext_impl(
-        receiver, cls, path, default_, namespaces
-    );
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv _elementtree_Element_findtext_call(
@@ -351,7 +426,18 @@ def:priv _elementtree_Element_findtext_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        return _elementtree_Element_findtext_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _elementtree_Element_findtext_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _elementtree_Element_findtext_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_findtext_signature,
         args,
         nargs,
@@ -365,19 +451,27 @@ glob:priv _elementtree_Element_findall_signature = CallSignature(
          "findall", ["path", "namespaces"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_findall_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    path: ptr[PyObject] = value;
-    namespaces: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        namespaces = value;
+def:priv _elementtree_Element_findall_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            path: ptr[PyObject] = value;
+            namespaces: ptr[PyObject] = borrowed_none();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                namespaces = value;
+            }
+            return _elementtree_Element_findall_impl(receiver, cls, path, namespaces);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = _elementtree_Element_findall_impl(receiver, cls, path, namespaces);
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv _elementtree_Element_findall_call(
@@ -386,7 +480,16 @@ def:priv _elementtree_Element_findall_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _elementtree_Element_findall_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_elementtree_Element_findall_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _elementtree_Element_findall_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_findall_signature,
         args,
         nargs,
@@ -400,19 +503,27 @@ glob:priv _elementtree_Element_iterfind_signature = CallSignature(
          "iterfind", ["path", "namespaces"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_iterfind_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    path: ptr[PyObject] = value;
-    namespaces: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        namespaces = value;
+def:priv _elementtree_Element_iterfind_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            path: ptr[PyObject] = value;
+            namespaces: ptr[PyObject] = borrowed_none();
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                namespaces = value;
+            }
+            return _elementtree_Element_iterfind_impl(receiver, cls, path, namespaces);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = _elementtree_Element_iterfind_impl(receiver, cls, path, namespaces);
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv _elementtree_Element_iterfind_call(
@@ -421,7 +532,18 @@ def:priv _elementtree_Element_iterfind_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _elementtree_Element_iterfind_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _elementtree_Element_iterfind_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _elementtree_Element_iterfind_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_iterfind_signature,
         args,
         nargs,
@@ -435,16 +557,22 @@ glob:priv _elementtree_Element_get_signature = CallSignature(
          "get", ["key", "default"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_get_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    key: ptr[PyObject] = value;
-    default_: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        default_ = value;
+def:priv _elementtree_Element_get_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        key: ptr[PyObject] = value;
+        default_: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            default_ = value;
+        }
+        return _elementtree_Element_get_impl(receiver, key, default_);
+    } except boundary_failure {
+        return NULL;
     }
-    return _elementtree_Element_get_impl(receiver, key, default_);
 }
 
 def:priv _elementtree_Element_get_call(
@@ -453,7 +581,16 @@ def:priv _elementtree_Element_get_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _elementtree_Element_get_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_elementtree_Element_get_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _elementtree_Element_get_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_get_signature,
         args,
         nargs,
@@ -467,17 +604,25 @@ glob:priv _elementtree_Element_iter_signature = CallSignature(
          "iter", ["tag"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_iter_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    tag: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        tag = value;
+def:priv _elementtree_Element_iter_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            tag: ptr[PyObject] = borrowed_none();
+            if count > 0 and clinic_args[0] != NULL {
+                value = clinic_args[0];
+                tag = value;
+            }
+            return _elementtree_Element_iter_impl(receiver, cls, tag);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = _elementtree_Element_iter_impl(receiver, cls, tag);
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv _elementtree_Element_iter_call(
@@ -486,7 +631,16 @@ def:priv _elementtree_Element_iter_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _elementtree_Element_iter_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_elementtree_Element_iter_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _elementtree_Element_iter_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_iter_signature,
         args,
         nargs,
@@ -500,12 +654,19 @@ glob:priv _elementtree_Element_itertext_signature = CallSignature(
          "itertext", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
      );
 
-def:priv _elementtree_Element_itertext_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    result = _elementtree_Element_itertext_impl(receiver, cls);
-    jacpy_release(cls);
-    return result;
+def:priv _elementtree_Element_itertext_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            return _elementtree_Element_itertext_impl(receiver, cls);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element_itertext_call(
@@ -514,7 +675,10 @@ def:priv _elementtree_Element_itertext_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs == 0 {
+        return _elementtree_Element_itertext_bound(receiver, args, nargs);
+    }
+    return invoke_stack(
         _elementtree_Element_itertext_signature,
         args,
         nargs,
@@ -524,74 +688,78 @@ def:priv _elementtree_Element_itertext_call(
     );
 }
 
-glob:priv _elementtree_Element_insert_signature = CallSignature(
-         "insert", ["index", "subelement"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _elementtree_Element_insert_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    index: i64 = convert_ssize(value);
-    value = args.values[1];
-    subclass_clinic_state_Element_Type(
-        receiver, value, "insert", argument_label("", 2)
-    );
-    subelement: ptr[PyObject] = value;
-    return _elementtree_Element_insert_impl(receiver, index, subelement);
+def:priv _elementtree_Element_insert_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        index: i64 = convert_ssize(value);
+        value = clinic_args[1];
+        subclass_clinic_state_Element_Type(
+            receiver, value, "insert", argument_label("", 2)
+        );
+        subelement: ptr[PyObject] = value;
+        return _elementtree_Element_insert_impl(receiver, index, subelement);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element_insert_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _elementtree_Element_insert_signature,
-        args,
-        nargs,
-        NULL,
-        _elementtree_Element_insert_bound,
-        receiver
-    );
-}
-
-def:priv _elementtree_Element_items_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_Element_items_impl(receiver);
+    if not check_positional("insert", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _elementtree_Element_insert_bound(receiver, args, nargs);
 }
 
 def:priv _elementtree_Element_items_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_Element_items_bound, receiver);
-}
-
-def:priv _elementtree_Element_keys_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_Element_keys_impl(receiver);
+    try {
+        return _elementtree_Element_items_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element_keys_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_Element_keys_bound, receiver);
+    try {
+        return _elementtree_Element_keys_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _elementtree_Element_makeelement_signature = CallSignature(
          "makeelement", ["tag", "attrib"], 2, 2, 2, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_Element_makeelement_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, Element_token);
-    value = args.values[0];
-    tag: ptr[PyObject] = value;
-    value = args.values[1];
-    if jacpy_is_dict(value) == 0 {
-        bad_argument("makeelement", argument_label("", 2), "dict", value);
+def:priv _elementtree_Element_makeelement_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, Element_token);
+        try {
+            value = clinic_args[0];
+            tag: ptr[PyObject] = value;
+            value = clinic_args[1];
+            if jacpy_is_dict(value) == 0 {
+                bad_argument("makeelement", argument_label("", 2), "dict", value);
+            }
+            attrib: ptr[PyObject] = value;
+            return _elementtree_Element_makeelement_impl(receiver, cls, tag, attrib);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    attrib: ptr[PyObject] = value;
-    result = _elementtree_Element_makeelement_impl(receiver, cls, tag, attrib);
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv _elementtree_Element_makeelement_call(
@@ -600,7 +768,18 @@ def:priv _elementtree_Element_makeelement_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return _elementtree_Element_makeelement_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _elementtree_Element_makeelement_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _elementtree_Element_makeelement_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _elementtree_Element_makeelement_signature,
         args,
         nargs,
@@ -610,44 +789,40 @@ def:priv _elementtree_Element_makeelement_call(
     );
 }
 
-def:priv _elementtree_Element_remove_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    subclass_clinic_state_Element_Type(receiver, value, "remove", "argument");
-    subelement: ptr[PyObject] = value;
-    return _elementtree_Element_remove_impl(receiver, subelement);
-}
-
 def:priv _elementtree_Element_remove_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_Element_remove_bound, receiver);
+    try {
+        subclass_clinic_state_Element_Type(receiver, value, "remove", "argument");
+        subelement: ptr[PyObject] = value;
+        return _elementtree_Element_remove_impl(receiver, subelement);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _elementtree_Element_set_signature = CallSignature(
-         "set", ["key", "value"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _elementtree_Element_set_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    key: ptr[PyObject] = value;
-    value = args.values[1];
-    value_: ptr[PyObject] = value;
-    return _elementtree_Element_set_impl(receiver, key, value_);
+def:priv _elementtree_Element_set_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        key: ptr[PyObject] = value;
+        value = clinic_args[1];
+        value_: ptr[PyObject] = value;
+        return _elementtree_Element_set_impl(receiver, key, value_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_Element_set_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _elementtree_Element_set_signature,
-        args,
-        nargs,
-        NULL,
-        _elementtree_Element_set_bound,
-        receiver
-    );
+    if not check_positional("set", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _elementtree_Element_set_bound(receiver, args, nargs);
 }
 
 glob:priv _elementtree_TreeBuilder___init___signature = CallSignature(
@@ -666,56 +841,84 @@ glob:priv _elementtree_TreeBuilder___init___signature = CallSignature(
      );
 
 def:priv _elementtree_TreeBuilder___init___bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    element_factory: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        element_factory = value;
+    clinic_args = stack.view(count);
+    try {
+        element_factory: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            element_factory = value;
+        }
+        comment_factory: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            comment_factory = value;
+        }
+        pi_factory: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            pi_factory = value;
+        }
+        insert_comments: bool = False;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            insert_comments = convert_bool(value);
+        }
+        insert_pis: bool = False;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            insert_pis = convert_bool(value);
+        }
+        return return_int(
+            _elementtree_TreeBuilder___init___impl(
+                receiver,
+                element_factory,
+                comment_factory,
+                pi_factory,
+                insert_comments,
+                insert_pis
+            )
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    comment_factory: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        comment_factory = value;
-    }
-    pi_factory: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        pi_factory = value;
-    }
-    insert_comments: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        insert_comments = convert_bool(value);
-    }
-    insert_pis: bool = False;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        insert_pis = convert_bool(value);
-    }
-    return return_int(
-        _elementtree_TreeBuilder___init___impl(
-            receiver,
-            element_factory,
-            comment_factory,
-            pi_factory,
-            insert_comments,
-            insert_pis
-        )
-    );
 }
 
 def:pub _elementtree_TreeBuilder___init___init(
     receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
-    result = invoke(
-        _elementtree_TreeBuilder___init___signature,
-        args,
-        kwargs,
-        _elementtree_TreeBuilder___init___bound,
-        receiver
-    );
+    result: ptr[PyObject] = NULL;
+    bound = False;
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 0 and size <= 1 {
+            bound = True;
+            result = _elementtree_TreeBuilder___init___bound(
+                receiver, jacpy_tuple_items(args), size
+            );
+        }
+    }
+    if not bound {
+        values = unpack_mapping(
+            _elementtree_TreeBuilder___init___signature, args, kwargs
+        );
+        if values {
+            unpacked = _elementtree_TreeBuilder___init___bound(receiver, values, 5);
+            PyMem_Free(values);
+            bound = True;
+            result = unpacked;
+        }
+    }
+    if not bound {
+        result = invoke_tuple(
+            _elementtree_TreeBuilder___init___signature,
+            args,
+            kwargs,
+            _elementtree_TreeBuilder___init___bound,
+            receiver
+        );
+    }
     if not result {
         return i32(-1);
     }
@@ -723,145 +926,166 @@ def:pub _elementtree_TreeBuilder___init___init(
     return i32(0);
 }
 
-def:priv _elementtree_TreeBuilder_data_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: ptr[PyObject] = value;
-    return _elementtree_TreeBuilder_data_impl(receiver, data);
-}
-
 def:priv _elementtree_TreeBuilder_data_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_TreeBuilder_data_bound, receiver);
-}
-
-def:priv _elementtree_TreeBuilder_end_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    tag: ptr[PyObject] = value;
-    return _elementtree_TreeBuilder_end_impl(receiver, tag);
+    try {
+        data: ptr[PyObject] = value;
+        return _elementtree_TreeBuilder_data_impl(receiver, data);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_TreeBuilder_end_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_TreeBuilder_end_bound, receiver);
-}
-
-def:priv _elementtree_TreeBuilder_comment_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    text: ptr[PyObject] = value;
-    return _elementtree_TreeBuilder_comment_impl(receiver, text);
+    try {
+        tag: ptr[PyObject] = value;
+        return _elementtree_TreeBuilder_end_impl(receiver, tag);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_TreeBuilder_comment_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_TreeBuilder_comment_bound, receiver);
+    try {
+        text: ptr[PyObject] = value;
+        return _elementtree_TreeBuilder_comment_impl(receiver, text);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _elementtree_TreeBuilder_pi_signature = CallSignature(
-         "pi", ["target", "text"], 1, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _elementtree_TreeBuilder_pi_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    target: ptr[PyObject] = value;
-    text: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        text = value;
+def:priv _elementtree_TreeBuilder_pi_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        target: ptr[PyObject] = value;
+        text: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            text = value;
+        }
+        return _elementtree_TreeBuilder_pi_impl(receiver, target, text);
+    } except boundary_failure {
+        return NULL;
     }
-    return _elementtree_TreeBuilder_pi_impl(receiver, target, text);
 }
 
 def:priv _elementtree_TreeBuilder_pi_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _elementtree_TreeBuilder_pi_signature,
-        args,
-        nargs,
-        NULL,
-        _elementtree_TreeBuilder_pi_bound,
-        receiver
-    );
-}
-
-def:priv _elementtree_TreeBuilder_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_TreeBuilder_close_impl(receiver);
+    if not check_positional("pi", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _elementtree_TreeBuilder_pi_bound(receiver, args, nargs);
 }
 
 def:priv _elementtree_TreeBuilder_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_TreeBuilder_close_bound, receiver);
+    try {
+        return _elementtree_TreeBuilder_close_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _elementtree_TreeBuilder_start_signature = CallSignature(
-         "start", ["tag", "attrs"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _elementtree_TreeBuilder_start_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    tag: ptr[PyObject] = value;
-    value = args.values[1];
-    if jacpy_is_dict(value) == 0 {
-        bad_argument("start", argument_label("", 2), "dict", value);
+def:priv _elementtree_TreeBuilder_start_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        tag: ptr[PyObject] = value;
+        value = clinic_args[1];
+        if jacpy_is_dict(value) == 0 {
+            bad_argument("start", argument_label("", 2), "dict", value);
+        }
+        attrs: ptr[PyObject] = value;
+        return _elementtree_TreeBuilder_start_impl(receiver, tag, attrs);
+    } except boundary_failure {
+        return NULL;
     }
-    attrs: ptr[PyObject] = value;
-    return _elementtree_TreeBuilder_start_impl(receiver, tag, attrs);
 }
 
 def:priv _elementtree_TreeBuilder_start_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _elementtree_TreeBuilder_start_signature,
-        args,
-        nargs,
-        NULL,
-        _elementtree_TreeBuilder_start_bound,
-        receiver
-    );
+    if not check_positional("start", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _elementtree_TreeBuilder_start_bound(receiver, args, nargs);
 }
 
 glob:priv _elementtree_XMLParser___init___signature = CallSignature(
          "XMLParser", ["target", "encoding"], 0, 0, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _elementtree_XMLParser___init___bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    target: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        target = value;
-    }
-    encoding: ptr[u8] = ptr[u8]();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        encoding = convert_cstr(
-            value, "XMLParser", argument_label("encoding", 2), True
+def:priv _elementtree_XMLParser___init___bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        target: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            target = value;
+        }
+        encoding: ptr[u8] = ptr[u8]();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            encoding = convert_cstr(
+                value, "XMLParser", argument_label("encoding", 2), True
+            );
+        }
+        return return_int(
+            _elementtree_XMLParser___init___impl(receiver, target, encoding)
         );
+    } except boundary_failure {
+        return NULL;
     }
-    return return_int(_elementtree_XMLParser___init___impl(receiver, target, encoding));
 }
 
 def:pub _elementtree_XMLParser___init___init(
     receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
-    result = invoke(
-        _elementtree_XMLParser___init___signature,
-        args,
-        kwargs,
-        _elementtree_XMLParser___init___bound,
-        receiver
-    );
+    result: ptr[PyObject] = NULL;
+    bound = False;
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 0 and size <= 0 {
+            bound = True;
+            result = _elementtree_XMLParser___init___bound(
+                receiver, jacpy_tuple_items(args), size
+            );
+        }
+    }
+    if not bound {
+        values = unpack_mapping(
+            _elementtree_XMLParser___init___signature, args, kwargs
+        );
+        if values {
+            unpacked = _elementtree_XMLParser___init___bound(receiver, values, 2);
+            PyMem_Free(values);
+            bound = True;
+            result = unpacked;
+        }
+    }
+    if not bound {
+        result = invoke_tuple(
+            _elementtree_XMLParser___init___signature,
+            args,
+            kwargs,
+            _elementtree_XMLParser___init___bound,
+            receiver
+        );
+    }
     if not result {
         return i32(-1);
     }
@@ -869,96 +1093,83 @@ def:pub _elementtree_XMLParser___init___init(
     return i32(0);
 }
 
-def:priv _elementtree_XMLParser_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_XMLParser_close_impl(receiver);
-}
-
 def:priv _elementtree_XMLParser_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_XMLParser_close_bound, receiver);
-}
-
-def:priv _elementtree_XMLParser_flush_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _elementtree_XMLParser_flush_impl(receiver);
+    try {
+        return _elementtree_XMLParser_close_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_XMLParser_flush_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _elementtree_XMLParser_flush_bound, receiver);
-}
-
-def:priv _elementtree_XMLParser_feed_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: ptr[PyObject] = value;
-    return _elementtree_XMLParser_feed_impl(receiver, data);
+    try {
+        return _elementtree_XMLParser_flush_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_XMLParser_feed_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_XMLParser_feed_bound, receiver);
-}
-
-def:priv _elementtree_XMLParser__parse_whole_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    file: ptr[PyObject] = value;
-    return _elementtree_XMLParser__parse_whole_impl(receiver, file);
+    try {
+        data: ptr[PyObject] = value;
+        return _elementtree_XMLParser_feed_impl(receiver, data);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _elementtree_XMLParser__parse_whole_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _elementtree_XMLParser__parse_whole_bound, receiver);
+    try {
+        file: ptr[PyObject] = value;
+        return _elementtree_XMLParser__parse_whole_impl(receiver, file);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _elementtree_XMLParser__setevents_signature = CallSignature(
-         "_setevents",
-         ["events_queue", "events_to_report"],
-         1,
-         2,
-         2,
-         parser=PARSE_POSITIONAL
-     );
-
 def:priv _elementtree_XMLParser__setevents_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    events_queue: ptr[PyObject] = value;
-    events_to_report: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        events_to_report = value;
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        events_queue: ptr[PyObject] = value;
+        events_to_report: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            events_to_report = value;
+        }
+        return _elementtree_XMLParser__setevents_impl(
+            receiver, events_queue, events_to_report
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    return _elementtree_XMLParser__setevents_impl(
-        receiver, events_queue, events_to_report
-    );
 }
 
 def:priv _elementtree_XMLParser__setevents_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _elementtree_XMLParser__setevents_signature,
-        args,
-        nargs,
-        NULL,
-        _elementtree_XMLParser__setevents_bound,
-        receiver
-    );
+    if not check_positional("_setevents", int(nargs), 1, 2) {
+        return NULL;
+    }
+    return _elementtree_XMLParser__setevents_bound(receiver, args, nargs);
 }
 
 glob TreeBuilder_doc: str = "",
      XMLParser_doc: str = "",
+     element_getsetlist_tag_doc: str = "A string identifying what kind of data this element represents",
+     element_getsetlist_text_doc: str = "A string of text directly after the start tag, or None",
+     element_getsetlist_tail_doc: str = "A string of text directly after the end tag, or None",
+     element_getsetlist_attrib_doc: str = "A dictionary containing the element's attributes",
      Element_methods: list[MethodDefinition] = [
          MethodDefinition(
              "append",

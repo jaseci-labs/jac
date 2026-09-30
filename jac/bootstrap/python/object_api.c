@@ -104,6 +104,9 @@ int64_t jacpy_is_tuple(PyObject *handle) { return PyTuple_Check(handle); }
 PyObject *jacpy_tuple_item(PyObject *handle, int64_t index) {
     return Py_XNewRef(PyTuple_GetItem(handle, index));
 }
+/* A tuple's item array (PyTupleObject.ob_item): the generated argument glue
+ * binds a call's positional tuple in place. */
+PyObject **jacpy_tuple_items(PyObject *handle) { return ((PyTupleObject *)handle)->ob_item; }
 int64_t jacpy_tuple_set_owned(PyObject *handle, int64_t index, PyObject *value) {
     if (!value) return -1;
     return PyTuple_SetItem(handle, index, value);
@@ -507,12 +510,6 @@ JACPY_TYPING_SLOT(paramspeckwargs_type, 5)
 PyObject **jacpy_typing_types(void) {
     return (PyObject **)&_PyInterpreterState_GET()->cached_objects.generic_type;
 }
-
-/* The interpreter's freelists are an interpreter-state field (a thread-state
- * field in free-threaded builds); ports reach a list by its offset in
- * struct _Py_freelists, which layouts.jac asserts. */
-#include "internal/pycore_freelist.h"
-struct _Py_freelists *jacpy_freelists(void) { return _Py_freelists_GET(); }
 
 /* The open_code hook and its data are _PyRuntime fields, whose layout
  * differs between builds. */

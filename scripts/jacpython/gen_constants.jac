@@ -58,6 +58,7 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # (select's KQ_FILTER_READ is EVFILT_READ): (published, macro) groups.
      ALIAS_PATTERNS: list[str] = [
          r"\bADD_INT_CONST\(\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)",
+         r"\bADD_INT_CONST\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)",
          r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)"
      ],
      # The macro each aliased published name reads.
@@ -102,18 +103,36 @@ glob OUTPUT: Path = RUNTIME / "modules",
              ]
          ),
          "mmap": ("Modules/mmapmodule.c", ["sys/mman.h", "unistd.h", "fcntl.h"]),
+         # socketmodule.c and socketmodule.h include these; Bluetooth's
+         # headers are not part of any supported target's C library.
          "_socket": (
              "Modules/socketmodule.c",
              [
+                 "sys/types.h",
                  "sys/socket.h",
                  "netinet/in.h",
                  "netinet/tcp.h",
                  "netdb.h",
+                 "arpa/inet.h",
+                 "fcntl.h",
                  "sys/un.h",
-                 "linux/netlink.h",
-                 "linux/can.h",
                  "net/if.h",
-                 "sys/ioctl.h"
+                 "net/ethernet.h",
+                 "sys/ioctl.h",
+                 "linux/netlink.h",
+                 "linux/qrtr.h",
+                 "linux/tipc.h",
+                 "linux/can.h",
+                 "linux/can/raw.h",
+                 "linux/can/bcm.h",
+                 "linux/can/j1939.h",
+                 "linux/vm_sockets.h",
+                 "linux/netfilter_ipv4.h",
+                 "linux/if_alg.h",
+                 "netpacket/packet.h",
+                 "sys/sys_domain.h",
+                 "sys/kern_control.h",
+                 "poll.h"
              ]
          ),
          "_signal": ("Modules/signalmodule.c", ["signal.h", "sys/time.h"]),
@@ -191,7 +210,40 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "KQ_EV_ADD"
          ],
          "mmap": ["F_FULLFSYNC", "MREMAP_MAYMOVE"],
-         "_posixsubprocess": ["SYS_getdents64"]
+         "_posixsubprocess": ["SYS_getdents64"],
+         "_socket": [
+             "AF_NETLINK",
+             "AF_QIPCRTR",
+             "AF_VSOCK",
+             "AF_RDS",
+             "AF_PACKET",
+             "AF_TIPC",
+             "AF_CAN",
+             "CAN_RAW",
+             "CAN_BCM",
+             "CAN_ISOTP",
+             "CAN_J1939",
+             "AF_ALG",
+             "SOL_ALG",
+             "ALG_SET_OP",
+             "ALG_SET_IV",
+             "ALG_SET_AEAD_ASSOCLEN",
+             "PF_SYSTEM",
+             "AF_SYSTEM",
+             "SYSPROTO_CONTROL",
+             "SOCK_CLOEXEC",
+             "SOCK_NONBLOCK",
+             "SO_PROTOCOL",
+             "TIPC_ADDR_NAMESEQ",
+             "TIPC_ADDR_NAME",
+             "TIPC_ADDR_ID",
+             "TIPC_CLUSTER_SCOPE",
+             "PACKET_HOST",
+             "SIOCGIFINDEX",
+             "SIOCGIFNAME",
+             "CTLIOCGINFO",
+             "AF_SYS_CONTROL"
+         ]
      },
      # Modules whose portable Jac code may read any constant the source
      # publishes: every name is declared on every platform (0 where the
@@ -218,6 +270,19 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "SYS_getdents64"
          ],
          "_multiprocessing": ["O_CREAT", "O_EXCL", "SEM_VALUE_MAX"],
+         "_socket": [
+             "FIONBIO",
+             "POLLIN",
+             "POLLOUT",
+             "POLLERR",
+             "IF_NAMESIZE",
+             "INET_ADDRSTRLEN",
+             "INET6_ADDRSTRLEN",
+             "SIOCGIFINDEX",
+             "SIOCGIFNAME",
+             "CTLIOCGINFO",
+             "AF_SYS_CONTROL"
+         ],
          "posix": [
              "AT_FDCWD",
              "AT_SYMLINK_NOFOLLOW",
@@ -337,7 +402,76 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # Names whose value is not fixed per OS, which the binding reads from the
      # target instead: CHAR_MAX follows the ABI's char signedness (unsigned on
      # Linux aarch64, signed on x86_64 and Apple arm64).
-     EXCLUDED: dict[str, list[str]] = {"_locale": ["CHAR_MAX"]};
+     EXCLUDED: dict[str, list[str]] = {"_locale": ["CHAR_MAX"]},
+     # Macros the C module defines before its includes to expose constants.
+     DEFINES: dict[str, list[str]] = {"_socket": ["__APPLE_USE_RFC_3542 1"]},
+     # Conditions no supported target meets: the names published only
+     # inside `#ifdef` / `#if defined()` blocks on them are left out, even
+     # where a header happens to define the macro (Linux's AF_BLUETOOTH).
+     UNSUPPORTED: dict[str, list[str]] = {
+         "_socket": [
+             "MS_WINDOWS",
+             "MS_WINDOWS_DESKTOP",
+             "USE_BLUETOOTH",
+             "SIO_RCVALL",
+             "HAVE_AF_HYPERV"
+         ]
+     },
+     # Names the C module publishes under a condition other than their own
+     # macro, grouped by that condition: enumerators a header's presence
+     # guards (configure's HAVE_LINUX_CAN_BCM_H and the like).
+     GUARDS: dict[str, dict[str, list[str]]] = {
+         "_socket": {
+             # socketmodule.h #undefs these families without their headers.
+             "defined(AF_NETLINK) && __has_include(<linux/netlink.h>)": ["AF_NETLINK"],
+             "defined(AF_QIPCRTR) && __has_include(<linux/qrtr.h>)": ["AF_QIPCRTR"],
+             "defined(AF_CAN) && __has_include(<linux/can.h>)": ["AF_CAN"],
+             "defined(PF_CAN) && __has_include(<linux/can.h>)": ["PF_CAN"],
+             "defined(AF_VSOCK) && __has_include(<linux/vm_sockets.h>)": ["AF_VSOCK"],
+             "__has_include(<linux/tipc.h>)": ["TIPC_CLUSTER_SCOPE", "TIPC_NODE_SCOPE"],
+             "__has_include(<linux/can/raw.h>)": [
+                 "CAN_RAW_FILTER",
+                 "CAN_RAW_ERR_FILTER",
+                 "CAN_RAW_LOOPBACK",
+                 "CAN_RAW_RECV_OWN_MSGS",
+                 "CAN_RAW_FD_FRAMES",
+                 "CAN_RAW_JOIN_FILTERS"
+             ],
+             "__has_include(<linux/can/bcm.h>)": [
+                 "CAN_BCM_TX_SETUP",
+                 "CAN_BCM_TX_DELETE",
+                 "CAN_BCM_TX_READ",
+                 "CAN_BCM_TX_SEND",
+                 "CAN_BCM_RX_SETUP",
+                 "CAN_BCM_RX_DELETE",
+                 "CAN_BCM_RX_READ",
+                 "CAN_BCM_TX_STATUS",
+                 "CAN_BCM_TX_EXPIRED",
+                 "CAN_BCM_RX_STATUS",
+                 "CAN_BCM_RX_TIMEOUT",
+                 "CAN_BCM_RX_CHANGED"
+             ],
+             "__has_include(<linux/can/j1939.h>)": [
+                 "SO_J1939_FILTER",
+                 "SO_J1939_PROMISC",
+                 "SO_J1939_SEND_PRIO",
+                 "SO_J1939_ERRQUEUE",
+                 "SCM_J1939_DEST_ADDR",
+                 "SCM_J1939_DEST_NAME",
+                 "SCM_J1939_PRIO",
+                 "SCM_J1939_ERRQUEUE",
+                 "J1939_NLA_PAD",
+                 "J1939_NLA_BYTES_ACKED",
+                 "J1939_EE_INFO_NONE",
+                 "J1939_EE_INFO_TX_ABORT"
+             ],
+             "defined(IPPROTO_UDPLITE)": ["UDPLITE_SEND_CSCOV", "UDPLITE_RECV_CSCOV"]
+         }
+     },
+     # Values the C module defines itself when the headers do not.
+     DEFAULTS: dict[str, dict[str, str]] = {
+         "_socket": {"UDPLITE_SEND_CSCOV": "10", "UDPLITE_RECV_CSCOV": "11"}
+     };
 
 # A comment reduced to its line breaks, so line numbers survive.
 def blank_comment(hit: re.Match[str]) -> str {
@@ -394,12 +528,60 @@ def line_conditions(source: str) -> list[str] {
     return conditions;
 }
 
-def names_in(source: str) -> list[str] {
+# The #if condition each guarded name of `module` is read under.
+def guards_for(module: str) -> dict[str, str] {
+    guards: dict[str, str] = {};
+    for (condition, guarded) in GUARDS.get(module, {}).items() {
+        for name in guarded {
+            guards[name] = condition;
+        }
+    }
+    return guards;
+}
+
+# Whether the open `#if` blocks of `frames` (directive, condition, in #else)
+# exclude their contents: a block on an unsupported macro, outside its
+# #else, or the #else of an `#ifndef` on one.
+def excluded_by(frames: list[tuple[str, str, bool]], unsupported: list[str]) -> bool {
+    for (directive, condition, in_else) in frames {
+        named = any(
+            re.search(rf"\b{macro}\b", condition) is not None for macro in unsupported
+        );
+        if named and (in_else == (directive == "ifndef")) {
+            return True;
+        }
+    }
+    return False;
+}
+
+def names_in(source: str, unsupported: list[str]) -> list[str] {
     found: list[str] = [];
     # A commented-out entry (_locale's YESSTR and NOSTR) is not published.
     source = without_comments(source);
+    # A call continued after a comma is read as one line.
+    source = re.sub(r",[ \t]*\n\s*(?!#)", ", ", source);
     conditions = line_conditions(source);
+    frames: list[tuple[str, str, bool]] = [];
     for (number, line) in enumerate(source.splitlines()) {
+        directive = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", line);
+        if directive {
+            (kind, rest) = (directive.group(1), directive.group(2));
+            if kind in ("ifdef", "ifndef", "if") {
+                frames.append((kind, rest, False));
+            } elif kind == "endif" and frames {
+                frames.pop();
+            } elif frames {
+                # An #elif starts a new condition; an #else flips the last.
+                top = frames.pop();
+                frames.append(
+                    ("if", rest, False) if kind == "elif" else (top[0], top[1], True)
+                );
+            }
+            continue;
+        }
+        if unsupported and excluded_by(frames, unsupported) {
+            continue;
+        }
         for pattern in PATTERNS {
             for hit in re.finditer(pattern, line) {
                 name = hit.group(1);
@@ -492,9 +674,12 @@ def pyconfig_features(path: Path) -> dict[str, int] {
 }
 
 def includes_for(module: str) -> list[str] {
-    lines: list[str] = [];
+    lines = [f"#define {define}" for define in DEFINES.get(module, [])];
     for header in SOURCES[module][1] {
         lines += [f"#if __has_include(<{header}>)", f"#include <{header}>", "#endif"];
+    }
+    for (name, value) in DEFAULTS.get(module, {}).items() {
+        lines += [f"#ifndef {name}", f"#define {name} {value}", "#endif"];
     }
     for (name, other) in ALIASES.get(module, {}).items() {
         lines += [
@@ -749,7 +934,7 @@ with entry:__main__ {
     }
     names = [
         n
-        for n in names_in(texts[source_file])
+        for n in names_in(texts[source_file], UNSUPPORTED.get(args.module, []))
         if n not in EXCLUDED.get(args.module, [])
     ];
     PUBLISHED.update(names);
@@ -760,8 +945,9 @@ with entry:__main__ {
     ];
     prelude: list[str] = [];
     features: list[tuple[str, int]] = [];
+    guards = guards_for(args.module);
     probes = [
-        (name, MACROS.get(name, name), f"defined({MACROS.get(name, name)})")
+        (name, MACROS.get(name, name), guards.get(name, f"defined({MACROS.get(name, name)})"))
         for name in names
     ];
     source_tables = tables_in(args.module, texts[source_file]);
@@ -776,7 +962,7 @@ with entry:__main__ {
                 MACROS.get(name, name),
                 CONDITIONS[name]
                     if name in CONDITIONS
-                    else f"defined({MACROS.get(name, name)})"
+                    else guards.get(name, f"defined({MACROS.get(name, name)})")
             )
             for name in names
         ];

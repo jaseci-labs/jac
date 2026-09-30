@@ -2564,7 +2564,6 @@ impl TypeCheckPass._c_const_problem(
         return None;
     }
     if isinstance(ctype, FunctionType) {
-        # A def of this module or one it imports.
         if named_function_of(expr) is not None {
             return None;
         }

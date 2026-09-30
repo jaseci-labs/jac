@@ -2086,9 +2086,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         else self.list_helpers;
                     _ez_ph = _ez_pt.get(_ez_peer);
                     if _ez_ph is not None {
-                        return self.builder.call(
+                        _ez_peer_new = self.builder.call(
                             _ez_ph["new"], [], name=f"{func_name}.empty"
                         );
+                        self._nogc_stamp_elem_drops(
+                            _ez_peer_new, self._nogc_type_arg_mangles(nd)
+                        );
+                        return _ez_peer_new;
                     }
                 }
                 if _ez_args {
@@ -2117,9 +2121,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     _ez_h = self.list_helpers.get(_ez_spec);
                 }
                 if _ez_h is not None {
-                    return self.builder.call(
+                    _ez_new = self.builder.call(
                         _ez_h["new"], [], name=f"{func_name}.empty"
                     );
+                    self._nogc_stamp_elem_drops(
+                        _ez_new, self._nogc_type_arg_mangles(nd)
+                    );
+                    return _ez_new;
                 }
                 self._emit_unsupported_builtin_call(nd, func_name);
                 return None;
@@ -2363,14 +2371,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # A C function another module defines in Jac is reached through its
-    # interop binding, unless its C ABI moves a struct by value, which only
-    # the C-ABI call through its declaration here can.
     if func is not None
         and declaration is not None
         and func is self.clib_extern_fns.get(func_name)
         and ModuleFacts.unwrap_body(declaration)
-        and not self._clib_passes_structs(func_name) {
+        and clib_import_of(declaration) is None {
         func = None;
     }
     if _mod_qual is not None {

@@ -27,7 +27,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject,
     PyObject_CallNoArgs,
     PyObject_GC_Del,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_GetIter,
     PyObject_SelfIter,
@@ -68,10 +67,11 @@ import from jaclang.runtime.python.layouts {
     reversedobject_SIZE
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
+    object_gc_untrack,
     object_refcount,
     object_size,
     object_type,
+    PyType_Type,
     tuple_get_item,
     tuple_recycle,
     tuple_set_item
@@ -313,7 +313,7 @@ def enumerate_vectorcall(
 
 def enum_dealloc(op: ptr[PyObject]) {
     en = enum_of(op);
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(en.view(1)[0].en_sit);
     jacpy_release(en.view(1)[0].en_result);
     jacpy_release(en.view(1)[0].en_longindex);
@@ -501,7 +501,7 @@ def reversed_vectorcall(
 }
 
 def reversed_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(reversed_of(op).view(1)[0].seq);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }

@@ -32,8 +32,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_ClearWeakRefs,
     PyObject_Dir,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_GetAttr,
     PyObject_GetItem,
@@ -110,13 +108,15 @@ import from jaclang.runtime.python.layouts {
     gaobject_WEAKREFLIST
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     _Py_FalseStruct,
     _Py_TrueStruct,
     eval_builtin,
+    object_gc_track,
+    object_gc_untrack,
     object_size,
     object_type,
     object_type_check,
+    PyType_Type,
     tuple_get_item,
     tuple_set_item
 }
@@ -295,7 +295,7 @@ def py_bool(value: bool) -> ptr[PyObject] {
 
 def ga_dealloc(op: ptr[PyObject]) {
     alias = ga_of(op);
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     if alias.view(1)[0].weakreflist {
         PyObject_ClearWeakRefs(op);
     }
@@ -1065,7 +1065,7 @@ def ga_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 def ga_iter_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(gaiter_of(op).view(1)[0].obj_);
     PyObject_GC_Del(op);
 }
@@ -1098,7 +1098,7 @@ def ga_iter(op: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     gaiter_of(gi).view(1)[0].obj_ = Py_NewRef(op);
-    PyObject_GC_Track(gi);
+    object_gc_track(gi);
     return gi;
 }
 

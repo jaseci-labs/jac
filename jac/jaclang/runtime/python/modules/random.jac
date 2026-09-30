@@ -9,15 +9,19 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Clear,
     PyExc_MemoryError,
+    PyExc_SystemError,
     PyExc_TypeError,
     PyExc_ValueError,
     PyLong_AsLongLong,
     PyLong_AsUnsignedLong,
     PyLong_FromLongLong,
+    PyFloat_FromDouble,
     PyObject,
     PyTuple_New,
     PyTuple_Size,
     _PyLong_NumBits,
+    Py_NewRef,
+    Py_None,
     jacpy_buffer_byte,
     jacpy_buffer_new,
     jacpy_buffer_set,
@@ -38,6 +42,11 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_wall_time
 }
 import from jaclang.runtime.python.capi { object_error }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present
+}
 
 import from jaclang.runtime.python.bindings.state { NativeState }
 
@@ -275,4 +284,66 @@ def:pub jacpy_random_bits(state: mt19937, bits: u64) -> ptr[PyObject] {
     result = jacpy_long_from_bytes(data);
     jacpy_release(data);
     return result;
+}
+
+# The Argument Clinic _impl functions over the instance's MT19937 state,
+# found through the Random ClassToken.
+glob Random_token = ClassToken();
+
+def:priv random_state(instance: ptr[PyObject]) -> (mt19937 | None) {
+    if jacpy_binding_native_present(instance, Random_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, Random_token.handle);
+        if isinstance(state, mt19937) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native Random state is unavailable");
+    return None;
+}
+
+def:priv seeded(instance: ptr[PyObject], seed: ptr[PyObject]) -> i64 {
+    state = random_state(instance);
+    if state is None {
+        return -1;
+    }
+    return jacpy_random_seed(state, NULL if seed == Py_None else seed);
+}
+
+def _random_Random_random_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = random_state(instance);
+    return PyFloat_FromDouble(jacpy_random_float(state)) if state is not None else NULL;
+}
+
+def _random_Random_seed_impl(
+    instance: ptr[PyObject], n: ptr[PyObject]
+) -> ptr[PyObject] {
+    if seeded(instance, n) < 0 {
+        return NULL;
+    }
+    return Py_NewRef(Py_None);
+}
+
+def _random_Random_getstate_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = random_state(instance);
+    return jacpy_random_getstate(state) if state is not None else NULL;
+}
+
+def _random_Random_setstate_impl(
+    instance: ptr[PyObject], state: ptr[PyObject]
+) -> ptr[PyObject] {
+    generator = random_state(instance);
+    if generator is None or jacpy_random_setstate(generator, state) < 0 {
+        return NULL;
+    }
+    return Py_NewRef(Py_None);
+}
+
+def _random_Random_getrandbits_impl(instance: ptr[PyObject], k: u64) -> ptr[PyObject] {
+    state = random_state(instance);
+    return jacpy_random_bits(state, k) if state is not None else NULL;
+}
+
+# random_init(): seed from `seed`, or from urandom when absent or None.
+def random_init_impl(instance: ptr[PyObject], seed: ptr[PyObject]) -> i32 {
+    return i32(seeded(instance, NULL if seed == 0 else seed));
 }

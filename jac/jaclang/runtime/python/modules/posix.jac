@@ -48,8 +48,8 @@ import from jaclang.runtime.python.modules.posix_core {
     convert_idtype_t_converter,
     convert_path_converter,
     fileno,
-    return_PyLong_FromPy_off_t,
-    return__PyLong_FromDev,
+    return_Py_off_t,
+    return_dev_t,
     stdout
 }
 import from jaclang.runtime.python.modules.posix_stat {

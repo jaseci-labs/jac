@@ -110,6 +110,12 @@ jobs:
               jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module"
             done
           done 3< jac/bootstrap/python/jacpython-modules.txt
+          # The frontend suites (tokenizer, parser, AST, codegen) read their
+          # own registry: they exercise no single replaced module.
+          while read -r test flags <&3; do
+            case "$test" in ''|'#'*) continue ;; esac
+            jac run scripts/run_cpython_compiler_tests.jac --module "$test" $flags
+          done 3< jac/bootstrap/python/jacpython-compiler-tests.txt
       - name: Provision managed Ruby, CocoaPods, and native Node
         env:
           JAC_TOOLCHAIN_USE_SYSTEM: "0"

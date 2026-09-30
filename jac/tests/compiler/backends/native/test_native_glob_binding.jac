@@ -43,3 +43,39 @@ test "an imported global binds to the module its import names" {
         assert len(first) == 1 and "first_table" in first[0] , f"{order}: {first}";
     }
 }
+
+test "a Final scalar glob another module defines folds into its readers" {
+    import tempfile;
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "sizes.jac").write_text(
+            "glob HEADER_SIZE: Final[i64] = 16,\n     MASK: Final[u64] = 18446744073709551612;\n"
+        );
+        main = Path(directory) / "reader.jac";
+        main.write_text(
+            """import from sizes { HEADER_SIZE, MASK }
+def payload(address: i64) -> i64 {
+    return address - HEADER_SIZE;
+}
+def masked(bits: u64) -> u64 {
+    return bits & MASK;
+}
+with entry {
+    print(payload(48), masked(u64(7)));
+}
+"""
+        );
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=str(main),
+            options=CompileOptions(force_codespace='native', skip_native_engine=True)
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        text = str(mod.gen.llvm_ir);
+    }
+    loads = [
+        line
+        for line in text.splitlines()
+        if "load" in line and ("HEADER_SIZE" in line or "MASK" in line)
+    ];
+    assert not loads , loads;
+}

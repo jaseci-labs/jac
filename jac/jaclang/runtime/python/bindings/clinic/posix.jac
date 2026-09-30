@@ -49,25 +49,33 @@ the binding installs its own target's):
     os.sendfile: darwin
     os.sendfile: linux
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject, jacpy_release }
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyMem_Free,
+    PyObject,
+    PyTuple_Size,
+    jacpy_dict_size,
+    jacpy_release,
+    jacpy_tuple_items
+}
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
     PARSE_NO_ARGUMENTS,
-    PARSE_POSITIONAL,
-    invoke,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    invoke_tuple,
+    unpack_mapping,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
-    OwnedReference,
     argument_label,
     borrowed_none,
     convert_bool,
@@ -326,8 +334,8 @@ import from jaclang.runtime.python.modules.posix {
     os_waitstatus_to_exitcode_impl,
     os_write_impl,
     os_writev_impl,
-    return_PyLong_FromPy_off_t,
-    return__PyLong_FromDev,
+    return_Py_off_t,
+    return_dev_t,
     stdout
 }
 
@@ -335,24 +343,30 @@ glob:priv os_stat_signature = CallSignature(
          "stat", ["path", "dir_fd", "follow_symlinks"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_stat_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("stat", "path", 0, 0, 0, 1)
-    );
-    value = args.values[1];
-    dir_fd = convert_FSTATAT_DIR_FD_CONVERTER(
-        value, "stat", argument_label("dir_fd", 2)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    follow_symlinks: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        follow_symlinks = convert_bool(value);
+def:priv os_stat_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("stat", "path", 0, 0, 0, 1)
+        );
+        value = clinic_args[1] if count > 1 and clinic_args[1] != NULL else NULL;
+        dir_fd = convert_FSTATAT_DIR_FD_CONVERTER(
+            value, "stat", argument_label("dir_fd", 2)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        follow_symlinks: bool = True;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_stat_impl(receiver, path, dir_fd, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_stat_impl(receiver, path, dir_fd, follow_symlinks);
 }
 
 def:priv os_stat_call(
@@ -361,7 +375,16 @@ def:priv os_stat_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_stat_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_stat_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_stat_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_stat_signature, args, nargs, kwnames, os_stat_bound, receiver
     );
 }
@@ -370,19 +393,25 @@ glob:priv os_lstat_signature = CallSignature(
          "lstat", ["path", "dir_fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_lstat_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("lstat", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dir_fd = convert_FSTATAT_DIR_FD_CONVERTER(
-        value, "lstat", argument_label("dir_fd", 2)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_lstat_impl(receiver, path, dir_fd);
+def:priv os_lstat_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("lstat", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1] if count > 1 and clinic_args[1] != NULL else NULL;
+        dir_fd = convert_FSTATAT_DIR_FD_CONVERTER(
+            value, "lstat", argument_label("dir_fd", 2)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_lstat_impl(receiver, path, dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_lstat_call(
@@ -391,7 +420,16 @@ def:priv os_lstat_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_lstat_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_lstat_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_lstat_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_lstat_signature, args, nargs, kwnames, os_lstat_bound, receiver
     );
 }
@@ -405,33 +443,39 @@ glob:priv os_access_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_access_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("access", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    mode: i32 = convert_int(value);
-    value = args.values[2];
-    dir_fd = convert_FACCESSAT_DIR_FD_CONVERTER(
-        value, "access", argument_label("dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    effective_ids: bool = False;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        effective_ids = convert_bool(value);
+def:priv os_access_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("access", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        mode: i32 = convert_int(value);
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        dir_fd = convert_FACCESSAT_DIR_FD_CONVERTER(
+            value, "access", argument_label("dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        effective_ids: bool = False;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            effective_ids = convert_bool(value);
+        }
+        follow_symlinks: bool = True;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            follow_symlinks = convert_bool(value);
+        }
+        return return_bool(
+            os_access_impl(receiver, path, mode, dir_fd, effective_ids, follow_symlinks)
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    follow_symlinks: bool = True;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        follow_symlinks = convert_bool(value);
-    }
-    return return_bool(
-        os_access_impl(receiver, path, mode, dir_fd, effective_ids, follow_symlinks)
-    );
 }
 
 def:priv os_access_call(
@@ -440,46 +484,58 @@ def:priv os_access_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_access_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_access_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_access_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_access_signature, args, nargs, kwnames, os_access_bound, receiver
     );
-}
-
-def:priv os_ttyname_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return os_ttyname_impl(receiver, fd);
 }
 
 def:priv os_ttyname_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_ttyname_bound, receiver);
-}
-
-def:priv os_ctermid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_ctermid_impl(receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return os_ttyname_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_ctermid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_ctermid_bound, receiver);
+    try {
+        return os_ctermid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_chdir_signature = CallSignature(
          "chdir", ["path"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_chdir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("chdir", "path", 0, 0, 0, PATH_HAVE_FCHDIR)
-    );
-    return os_chdir_impl(receiver, path);
+def:priv os_chdir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("chdir", "path", 0, 0, 0, PATH_HAVE_FCHDIR)
+        );
+        return os_chdir_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_chdir_call(
@@ -488,7 +544,16 @@ def:priv os_chdir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_chdir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_chdir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_chdir_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_chdir_signature, args, nargs, kwnames, os_chdir_bound, receiver
     );
 }
@@ -497,11 +562,17 @@ glob:priv os_fchdir_signature = CallSignature(
          "fchdir", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fchdir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "fchdir", argument_label("fd", 1));
-    return os_fchdir_impl(receiver, fd);
+def:priv os_fchdir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "fchdir", argument_label("fd", 1));
+        return os_fchdir_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fchdir_call(
@@ -510,7 +581,16 @@ def:priv os_fchdir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_fchdir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fchdir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fchdir_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fchdir_signature, args, nargs, kwnames, os_fchdir_bound, receiver
     );
 }
@@ -524,26 +604,32 @@ glob:priv os_chmod_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_chmod_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("chmod", "path", 0, 0, 0, PATH_HAVE_FCHMOD)
-    );
-    value = args.values[1];
-    mode: i32 = convert_int(value);
-    value = args.values[2];
-    dir_fd = convert_FCHMODAT_DIR_FD_CONVERTER(
-        value, "chmod", argument_label("dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    follow_symlinks: bool = CHMOD_DEFAULT_FOLLOW_SYMLINKS;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        follow_symlinks = convert_bool(value);
+def:priv os_chmod_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("chmod", "path", 0, 0, 0, PATH_HAVE_FCHMOD)
+        );
+        value = clinic_args[1];
+        mode: i32 = convert_int(value);
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        dir_fd = convert_FCHMODAT_DIR_FD_CONVERTER(
+            value, "chmod", argument_label("dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        follow_symlinks: bool = CHMOD_DEFAULT_FOLLOW_SYMLINKS;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_chmod_impl(receiver, path, mode, dir_fd, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_chmod_impl(receiver, path, mode, dir_fd, follow_symlinks);
 }
 
 def:priv os_chmod_call(
@@ -552,7 +638,16 @@ def:priv os_chmod_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_chmod_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_chmod_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_chmod_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_chmod_signature, args, nargs, kwnames, os_chmod_bound, receiver
     );
 }
@@ -561,13 +656,19 @@ glob:priv os_fchmod_signature = CallSignature(
          "fchmod", ["fd", "mode"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fchmod_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    mode: i32 = convert_int(value);
-    return os_fchmod_impl(receiver, fd, mode);
+def:priv os_fchmod_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        mode: i32 = convert_int(value);
+        return os_fchmod_impl(receiver, fd, mode);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fchmod_call(
@@ -576,7 +677,16 @@ def:priv os_fchmod_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_fchmod_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fchmod_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fchmod_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fchmod_signature, args, nargs, kwnames, os_fchmod_bound, receiver
     );
 }
@@ -585,15 +695,21 @@ glob:priv os_lchmod_signature = CallSignature(
          "lchmod", ["path", "mode"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_lchmod_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("lchmod", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    mode: i32 = convert_int(value);
-    return os_lchmod_impl(receiver, path, mode);
+def:priv os_lchmod_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("lchmod", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        mode: i32 = convert_int(value);
+        return os_lchmod_impl(receiver, path, mode);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_lchmod_call(
@@ -602,7 +718,16 @@ def:priv os_lchmod_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_lchmod_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_lchmod_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_lchmod_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_lchmod_signature, args, nargs, kwnames, os_lchmod_bound, receiver
     );
 }
@@ -611,22 +736,28 @@ glob:priv os_chflags_signature = CallSignature(
          "chflags", ["path", "flags", "follow_symlinks"], 2, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_chflags_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("chflags", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    flags: u64 = convert_unsigned_long(
-        value, True, "chflags", argument_label("flags", 2)
-    );
-    follow_symlinks: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        follow_symlinks = convert_bool(value);
+def:priv os_chflags_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("chflags", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        flags: u64 = convert_unsigned_long(
+            value, True, "chflags", argument_label("flags", 2)
+        );
+        follow_symlinks: bool = True;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_chflags_impl(receiver, path, flags, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_chflags_impl(receiver, path, flags, follow_symlinks);
 }
 
 def:priv os_chflags_call(
@@ -635,7 +766,16 @@ def:priv os_chflags_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        return os_chflags_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_chflags_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_chflags_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_chflags_signature, args, nargs, kwnames, os_chflags_bound, receiver
     );
 }
@@ -644,17 +784,23 @@ glob:priv os_lchflags_signature = CallSignature(
          "lchflags", ["path", "flags"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_lchflags_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("lchflags", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    flags: u64 = convert_unsigned_long(
-        value, True, "lchflags", argument_label("flags", 2)
-    );
-    return os_lchflags_impl(receiver, path, flags);
+def:priv os_lchflags_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("lchflags", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        flags: u64 = convert_unsigned_long(
+            value, True, "lchflags", argument_label("flags", 2)
+        );
+        return os_lchflags_impl(receiver, path, flags);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_lchflags_call(
@@ -663,7 +809,16 @@ def:priv os_lchflags_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_lchflags_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_lchflags_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_lchflags_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_lchflags_signature, args, nargs, kwnames, os_lchflags_bound, receiver
     );
 }
@@ -672,13 +827,19 @@ glob:priv os_chroot_signature = CallSignature(
          "chroot", ["path"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_chroot_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("chroot", "path", 0, 0, 0, 0)
-    );
-    return os_chroot_impl(receiver, path);
+def:priv os_chroot_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("chroot", "path", 0, 0, 0, 0)
+        );
+        return os_chroot_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_chroot_call(
@@ -687,7 +848,16 @@ def:priv os_chroot_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_chroot_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_chroot_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_chroot_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_chroot_signature, args, nargs, kwnames, os_chroot_bound, receiver
     );
 }
@@ -696,11 +866,17 @@ glob:priv os_fsync_signature = CallSignature(
          "fsync", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fsync_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "fsync", argument_label("fd", 1));
-    return os_fsync_impl(receiver, fd);
+def:priv os_fsync_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "fsync", argument_label("fd", 1));
+        return os_fsync_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fsync_call(
@@ -709,29 +885,43 @@ def:priv os_fsync_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_fsync_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fsync_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fsync_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fsync_signature, args, nargs, kwnames, os_fsync_bound, receiver
     );
 }
 
-def:priv os_sync_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_sync_impl(receiver);
-}
-
 def:priv os_sync_call(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(NULL, os_sync_bound, receiver);
+    try {
+        return os_sync_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_fdatasync_signature = CallSignature(
          "fdatasync", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fdatasync_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "fdatasync", argument_label("fd", 1));
-    return os_fdatasync_impl(receiver, fd);
+def:priv os_fdatasync_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "fdatasync", argument_label("fd", 1));
+        return os_fdatasync_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fdatasync_call(
@@ -740,7 +930,16 @@ def:priv os_fdatasync_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_fdatasync_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fdatasync_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fdatasync_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fdatasync_signature, args, nargs, kwnames, os_fdatasync_bound, receiver
     );
 }
@@ -754,28 +953,34 @@ glob:priv os_chown_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_chown_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("chown", "path", 0, 0, 0, PATH_HAVE_FCHOWN)
-    );
-    value = args.values[1];
-    uid: u32 = convert__Py_Uid_Converter(value, "chown", argument_label("uid", 2));
-    value = args.values[2];
-    gid: u32 = convert__Py_Gid_Converter(value, "chown", argument_label("gid", 3));
-    value = args.values[3];
-    dir_fd = convert_FCHOWNAT_DIR_FD_CONVERTER(
-        value, "chown", argument_label("dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    follow_symlinks: bool = True;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        follow_symlinks = convert_bool(value);
+def:priv os_chown_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("chown", "path", 0, 0, 0, PATH_HAVE_FCHOWN)
+        );
+        value = clinic_args[1];
+        uid: u32 = convert__Py_Uid_Converter(value, "chown", argument_label("uid", 2));
+        value = clinic_args[2];
+        gid: u32 = convert__Py_Gid_Converter(value, "chown", argument_label("gid", 3));
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dir_fd = convert_FCHOWNAT_DIR_FD_CONVERTER(
+            value, "chown", argument_label("dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        follow_symlinks: bool = True;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_chown_impl(receiver, path, uid, gid, dir_fd, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_chown_impl(receiver, path, uid, gid, dir_fd, follow_symlinks);
 }
 
 def:priv os_chown_call(
@@ -784,7 +989,16 @@ def:priv os_chown_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_chown_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_chown_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_chown_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_chown_signature, args, nargs, kwnames, os_chown_bound, receiver
     );
 }
@@ -793,15 +1007,21 @@ glob:priv os_fchown_signature = CallSignature(
          "fchown", ["fd", "uid", "gid"], 3, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fchown_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    uid: u32 = convert__Py_Uid_Converter(value, "fchown", argument_label("uid", 2));
-    value = args.values[2];
-    gid: u32 = convert__Py_Gid_Converter(value, "fchown", argument_label("gid", 3));
-    return os_fchown_impl(receiver, fd, uid, gid);
+def:priv os_fchown_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        uid: u32 = convert__Py_Uid_Converter(value, "fchown", argument_label("uid", 2));
+        value = clinic_args[2];
+        gid: u32 = convert__Py_Gid_Converter(value, "fchown", argument_label("gid", 3));
+        return os_fchown_impl(receiver, fd, uid, gid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fchown_call(
@@ -810,7 +1030,16 @@ def:priv os_fchown_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_fchown_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fchown_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fchown_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fchown_signature, args, nargs, kwnames, os_fchown_bound, receiver
     );
 }
@@ -819,17 +1048,23 @@ glob:priv os_lchown_signature = CallSignature(
          "lchown", ["path", "uid", "gid"], 3, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_lchown_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("lchown", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    uid: u32 = convert__Py_Uid_Converter(value, "lchown", argument_label("uid", 2));
-    value = args.values[2];
-    gid: u32 = convert__Py_Gid_Converter(value, "lchown", argument_label("gid", 3));
-    return os_lchown_impl(receiver, path, uid, gid);
+def:priv os_lchown_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("lchown", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        uid: u32 = convert__Py_Uid_Converter(value, "lchown", argument_label("uid", 2));
+        value = clinic_args[2];
+        gid: u32 = convert__Py_Gid_Converter(value, "lchown", argument_label("gid", 3));
+        return os_lchown_impl(receiver, path, uid, gid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_lchown_call(
@@ -838,31 +1073,38 @@ def:priv os_lchown_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_lchown_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_lchown_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_lchown_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_lchown_signature, args, nargs, kwnames, os_lchown_bound, receiver
     );
-}
-
-def:priv os_getcwd_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getcwd_impl(receiver);
 }
 
 def:priv os_getcwd_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getcwd_bound, receiver);
-}
-
-def:priv os_getcwdb_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getcwdb_impl(receiver);
+    try {
+        return os_getcwd_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getcwdb_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getcwdb_bound, receiver);
+    try {
+        return os_getcwdb_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_link_signature = CallSignature(
@@ -874,30 +1116,42 @@ glob:priv os_link_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_link_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    src = convert_path_converter(value, PATH_T_INITIALIZE_P("link", "src", 0, 0, 0, 0));
-    value = args.values[1];
-    dst = convert_path_converter(value, PATH_T_INITIALIZE_P("link", "dst", 0, 0, 0, 0));
-    value = args.values[2];
-    src_dir_fd = convert_dir_fd_converter(
-        value, "link", argument_label("src_dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    value = args.values[3];
-    dst_dir_fd = convert_dir_fd_converter(
-        value, "link", argument_label("dst_dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    follow_symlinks: i32 = -1;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        follow_symlinks = i32(convert_bool(value));
+def:priv os_link_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        src = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("link", "src", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        dst = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("link", "dst", 0, 0, 0, 0)
+        );
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        src_dir_fd = convert_dir_fd_converter(
+            value, "link", argument_label("src_dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dst_dir_fd = convert_dir_fd_converter(
+            value, "link", argument_label("dst_dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        follow_symlinks: i32 = -1;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            follow_symlinks = i32(convert_bool(value));
+        }
+        return os_link_impl(
+            receiver, src, dst, src_dir_fd, dst_dir_fd, follow_symlinks
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    return os_link_impl(receiver, src, dst, src_dir_fd, dst_dir_fd, follow_symlinks);
 }
 
 def:priv os_link_call(
@@ -906,7 +1160,16 @@ def:priv os_link_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_link_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_link_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_link_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_link_signature, args, nargs, kwnames, os_link_bound, receiver
     );
 }
@@ -915,15 +1178,21 @@ glob:priv os_listdir_signature = CallSignature(
          "listdir", ["path"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_listdir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("listdir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR)
-    )
-        if value != NULL
-        else PATH_T_INITIALIZE_P("listdir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR);
-    return os_listdir_impl(receiver, path);
+def:priv os_listdir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0] if count > 0 and clinic_args[0] != NULL else NULL;
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("listdir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR)
+        )
+            if value != NULL
+            else PATH_T_INITIALIZE_P("listdir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR);
+        return os_listdir_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_listdir_call(
@@ -932,7 +1201,16 @@ def:priv os_listdir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return os_listdir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_listdir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_listdir_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_listdir_signature, args, nargs, kwnames, os_listdir_bound, receiver
     );
 }
@@ -941,13 +1219,19 @@ glob:priv os__path_splitroot_ex_signature = CallSignature(
          "_path_splitroot_ex", ["p"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os__path_splitroot_ex_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    p = convert_path_converter(
-        value, PATH_T_INITIALIZE("_path_splitroot_ex", "path", 0, 1, 1, 0, 0)
-    );
-    return os__path_splitroot_ex_impl(receiver, p);
+def:priv os__path_splitroot_ex_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        p = convert_path_converter(
+            value, PATH_T_INITIALIZE("_path_splitroot_ex", "path", 0, 1, 1, 0, 0)
+        );
+        return os__path_splitroot_ex_impl(receiver, p);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os__path_splitroot_ex_call(
@@ -956,7 +1240,16 @@ def:priv os__path_splitroot_ex_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os__path_splitroot_ex_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os__path_splitroot_ex_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os__path_splitroot_ex_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os__path_splitroot_ex_signature,
         args,
         nargs,
@@ -970,13 +1263,19 @@ glob:priv os__path_normpath_signature = CallSignature(
          "_path_normpath", ["path"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os__path_normpath_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE("_path_normpath", "path", 0, 1, 1, 0, 0)
-    );
-    return os__path_normpath_impl(receiver, path);
+def:priv os__path_normpath_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE("_path_normpath", "path", 0, 1, 1, 0, 0)
+        );
+        return os__path_normpath_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os__path_normpath_call(
@@ -985,7 +1284,16 @@ def:priv os__path_normpath_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os__path_normpath_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os__path_normpath_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os__path_normpath_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os__path_normpath_signature,
         args,
         nargs,
@@ -999,24 +1307,30 @@ glob:priv os_mkdir_signature = CallSignature(
          "mkdir", ["path", "mode", "dir_fd"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_mkdir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("mkdir", "path", 0, 0, 0, 0)
-    );
-    mode: i32 = 511;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        mode = convert_int(value);
+def:priv os_mkdir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("mkdir", "path", 0, 0, 0, 0)
+        );
+        mode: i32 = 511;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            mode = convert_int(value);
+        }
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        dir_fd = convert_MKDIRAT_DIR_FD_CONVERTER(
+            value, "mkdir", argument_label("dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_mkdir_impl(receiver, path, mode, dir_fd);
+    } except boundary_failure {
+        return NULL;
     }
-    value = args.values[2];
-    dir_fd = convert_MKDIRAT_DIR_FD_CONVERTER(
-        value, "mkdir", argument_label("dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_mkdir_impl(receiver, path, mode, dir_fd);
 }
 
 def:priv os_mkdir_call(
@@ -1025,33 +1339,46 @@ def:priv os_mkdir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_mkdir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_mkdir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_mkdir_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_mkdir_signature, args, nargs, kwnames, os_mkdir_bound, receiver
     );
 }
 
-def:priv os_nice_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    increment: i32 = convert_int(value);
-    return os_nice_impl(receiver, increment);
-}
-
 def:priv os_nice_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, os_nice_bound, receiver);
+    try {
+        increment: i32 = convert_int(value);
+        return os_nice_impl(receiver, increment);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_getpriority_signature = CallSignature(
          "getpriority", ["which", "who"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_getpriority_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    which: i32 = convert_int(value);
-    value = args.values[1];
-    who: i32 = convert_int(value);
-    return os_getpriority_impl(receiver, which, who);
+def:priv os_getpriority_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        which: i32 = convert_int(value);
+        value = clinic_args[1];
+        who: i32 = convert_int(value);
+        return os_getpriority_impl(receiver, which, who);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getpriority_call(
@@ -1060,7 +1387,16 @@ def:priv os_getpriority_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_getpriority_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_getpriority_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_getpriority_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_getpriority_signature, args, nargs, kwnames, os_getpriority_bound, receiver
     );
 }
@@ -1069,15 +1405,21 @@ glob:priv os_setpriority_signature = CallSignature(
          "setpriority", ["which", "who", "priority"], 3, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_setpriority_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    which: i32 = convert_int(value);
-    value = args.values[1];
-    who: i32 = convert_int(value);
-    value = args.values[2];
-    priority: i32 = convert_int(value);
-    return os_setpriority_impl(receiver, which, who, priority);
+def:priv os_setpriority_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        which: i32 = convert_int(value);
+        value = clinic_args[1];
+        who: i32 = convert_int(value);
+        value = clinic_args[2];
+        priority: i32 = convert_int(value);
+        return os_setpriority_impl(receiver, which, who, priority);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setpriority_call(
@@ -1086,7 +1428,16 @@ def:priv os_setpriority_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_setpriority_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_setpriority_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_setpriority_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_setpriority_signature, args, nargs, kwnames, os_setpriority_bound, receiver
     );
 }
@@ -1100,29 +1451,35 @@ glob:priv os_rename_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_rename_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    src = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("rename", "src", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dst = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("rename", "dst", 0, 0, 0, 0)
-    );
-    value = args.values[2];
-    src_dir_fd = convert_dir_fd_converter(
-        value, "rename", argument_label("src_dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    value = args.values[3];
-    dst_dir_fd = convert_dir_fd_converter(
-        value, "rename", argument_label("dst_dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_rename_impl(receiver, src, dst, src_dir_fd, dst_dir_fd);
+def:priv os_rename_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        src = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("rename", "src", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        dst = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("rename", "dst", 0, 0, 0, 0)
+        );
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        src_dir_fd = convert_dir_fd_converter(
+            value, "rename", argument_label("src_dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dst_dir_fd = convert_dir_fd_converter(
+            value, "rename", argument_label("dst_dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_rename_impl(receiver, src, dst, src_dir_fd, dst_dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_rename_call(
@@ -1131,7 +1488,16 @@ def:priv os_rename_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_rename_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_rename_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_rename_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_rename_signature, args, nargs, kwnames, os_rename_bound, receiver
     );
 }
@@ -1145,29 +1511,35 @@ glob:priv os_replace_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_replace_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    src = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("replace", "src", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dst = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("replace", "dst", 0, 0, 0, 0)
-    );
-    value = args.values[2];
-    src_dir_fd = convert_dir_fd_converter(
-        value, "replace", argument_label("src_dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    value = args.values[3];
-    dst_dir_fd = convert_dir_fd_converter(
-        value, "replace", argument_label("dst_dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_replace_impl(receiver, src, dst, src_dir_fd, dst_dir_fd);
+def:priv os_replace_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        src = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("replace", "src", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        dst = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("replace", "dst", 0, 0, 0, 0)
+        );
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        src_dir_fd = convert_dir_fd_converter(
+            value, "replace", argument_label("src_dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dst_dir_fd = convert_dir_fd_converter(
+            value, "replace", argument_label("dst_dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_replace_impl(receiver, src, dst, src_dir_fd, dst_dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_replace_call(
@@ -1176,7 +1548,16 @@ def:priv os_replace_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_replace_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_replace_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_replace_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_replace_signature, args, nargs, kwnames, os_replace_bound, receiver
     );
 }
@@ -1185,19 +1566,25 @@ glob:priv os_rmdir_signature = CallSignature(
          "rmdir", ["path", "dir_fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_rmdir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("rmdir", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dir_fd = convert_UNLINKAT_DIR_FD_CONVERTER(
-        value, "rmdir", argument_label("dir_fd", 2)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_rmdir_impl(receiver, path, dir_fd);
+def:priv os_rmdir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("rmdir", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1] if count > 1 and clinic_args[1] != NULL else NULL;
+        dir_fd = convert_UNLINKAT_DIR_FD_CONVERTER(
+            value, "rmdir", argument_label("dir_fd", 2)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_rmdir_impl(receiver, path, dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_rmdir_call(
@@ -1206,7 +1593,16 @@ def:priv os_rmdir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_rmdir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_rmdir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_rmdir_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_rmdir_signature, args, nargs, kwnames, os_rmdir_bound, receiver
     );
 }
@@ -1215,16 +1611,23 @@ glob:priv os_system_signature = CallSignature(
          "system", ["command"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_system_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    command_owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "system", argument_label("command", 1))
-    );
-    command = command_owner.value;
-    result = return_long(os_system_impl(receiver, command));
-    command_owner.close();
-    return result;
+def:priv os_system_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        command: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "system", argument_label("command", 1)
+        );
+        try {
+            return return_long(os_system_impl(receiver, command));
+        } finally {
+            jacpy_release(command);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_system_call(
@@ -1233,39 +1636,52 @@ def:priv os_system_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_system_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_system_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_system_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_system_signature, args, nargs, kwnames, os_system_bound, receiver
     );
 }
 
-def:priv os_umask_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    mask: i32 = convert_int(value);
-    return os_umask_impl(receiver, mask);
-}
-
 def:priv os_umask_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, os_umask_bound, receiver);
+    try {
+        mask: i32 = convert_int(value);
+        return os_umask_impl(receiver, mask);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_unlink_signature = CallSignature(
          "unlink", ["path", "dir_fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_unlink_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("unlink", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dir_fd = convert_UNLINKAT_DIR_FD_CONVERTER(
-        value, "unlink", argument_label("dir_fd", 2)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_unlink_impl(receiver, path, dir_fd);
+def:priv os_unlink_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("unlink", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1] if count > 1 and clinic_args[1] != NULL else NULL;
+        dir_fd = convert_UNLINKAT_DIR_FD_CONVERTER(
+            value, "unlink", argument_label("dir_fd", 2)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_unlink_impl(receiver, path, dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_unlink_call(
@@ -1274,7 +1690,16 @@ def:priv os_unlink_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_unlink_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_unlink_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_unlink_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_unlink_signature, args, nargs, kwnames, os_unlink_bound, receiver
     );
 }
@@ -1283,19 +1708,25 @@ glob:priv os_remove_signature = CallSignature(
          "remove", ["path", "dir_fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_remove_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("remove", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dir_fd = convert_UNLINKAT_DIR_FD_CONVERTER(
-        value, "remove", argument_label("dir_fd", 2)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_remove_impl(receiver, path, dir_fd);
+def:priv os_remove_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("remove", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1] if count > 1 and clinic_args[1] != NULL else NULL;
+        dir_fd = convert_UNLINKAT_DIR_FD_CONVERTER(
+            value, "remove", argument_label("dir_fd", 2)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_remove_impl(receiver, path, dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_remove_call(
@@ -1304,20 +1735,28 @@ def:priv os_remove_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_remove_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_remove_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_remove_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_remove_signature, args, nargs, kwnames, os_remove_bound, receiver
     );
-}
-
-def:priv os_uname_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_uname_impl(receiver);
 }
 
 def:priv os_uname_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_uname_bound, receiver);
+    try {
+        return os_uname_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_utime_signature = CallSignature(
@@ -1329,34 +1768,40 @@ glob:priv os_utime_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_utime_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("utime", "path", 0, 0, 0, PATH_UTIME_HAVE_FD)
-    );
-    times: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        times = value;
+def:priv os_utime_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("utime", "path", 0, 0, 0, PATH_UTIME_HAVE_FD)
+        );
+        times: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            times = value;
+        }
+        ns: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            ns = value;
+        }
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dir_fd = convert_FUTIMENSAT_DIR_FD_CONVERTER(
+            value, "utime", argument_label("dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        follow_symlinks: bool = True;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_utime_impl(receiver, path, times, ns, dir_fd, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    ns: ptr[PyObject] = NULL;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        ns = value;
-    }
-    value = args.values[3];
-    dir_fd = convert_FUTIMENSAT_DIR_FD_CONVERTER(
-        value, "utime", argument_label("dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    follow_symlinks: bool = True;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        follow_symlinks = convert_bool(value);
-    }
-    return os_utime_impl(receiver, path, times, ns, dir_fd, follow_symlinks);
 }
 
 def:priv os_utime_call(
@@ -1365,7 +1810,16 @@ def:priv os_utime_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_utime_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_utime_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_utime_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_utime_signature, args, nargs, kwnames, os_utime_bound, receiver
     );
 }
@@ -1374,11 +1828,17 @@ glob:priv os__exit_signature = CallSignature(
          "_exit", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os__exit_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return os__exit_impl(receiver, status);
+def:priv os__exit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return os__exit_impl(receiver, status);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os__exit_call(
@@ -1387,49 +1847,67 @@ def:priv os__exit_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os__exit_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os__exit_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os__exit_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os__exit_signature, args, nargs, kwnames, os__exit_bound, receiver
     );
 }
 
-glob:priv os_execv_signature = CallSignature(
-         "execv", ["path", "argv"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_execv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("execv", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    argv: ptr[PyObject] = value;
-    return os_execv_impl(receiver, path, argv);
+def:priv os_execv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("execv", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        argv: ptr[PyObject] = value;
+        return os_execv_impl(receiver, path, argv);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_execv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_execv_signature, args, nargs, NULL, os_execv_bound, receiver
-    );
+    if not check_positional("execv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_execv_bound(receiver, args, nargs);
 }
 
 glob:priv os_execve_signature = CallSignature(
          "execve", ["path", "argv", "env"], 3, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_execve_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("execve", "path", 0, 0, 0, PATH_HAVE_FEXECVE)
-    );
-    value = args.values[1];
-    argv: ptr[PyObject] = value;
-    value = args.values[2];
-    env: ptr[PyObject] = value;
-    return os_execve_impl(receiver, path, argv, env);
+def:priv os_execve_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("execve", "path", 0, 0, 0, PATH_HAVE_FEXECVE)
+        );
+        value = clinic_args[1];
+        argv: ptr[PyObject] = value;
+        value = clinic_args[2];
+        env: ptr[PyObject] = value;
+        return os_execve_impl(receiver, path, argv, env);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_execve_call(
@@ -1438,7 +1916,16 @@ def:priv os_execve_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_execve_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_execve_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_execve_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_execve_signature, args, nargs, kwnames, os_execve_bound, receiver
     );
 }
@@ -1463,64 +1950,70 @@ glob:priv os_posix_spawn_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_posix_spawn_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("posix_spawn", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    argv: ptr[PyObject] = value;
-    value = args.values[2];
-    env: ptr[PyObject] = value;
-    file_actions: ptr[PyObject] = NULL;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        file_actions = value;
+def:priv os_posix_spawn_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("posix_spawn", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        argv: ptr[PyObject] = value;
+        value = clinic_args[2];
+        env: ptr[PyObject] = value;
+        file_actions: ptr[PyObject] = NULL;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            file_actions = value;
+        }
+        setpgroup: ptr[PyObject] = NULL;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            setpgroup = value;
+        }
+        resetids: bool = False;
+        if count > 5 and clinic_args[5] != NULL {
+            value = clinic_args[5];
+            resetids = convert_bool(value);
+        }
+        setsid: bool = False;
+        if count > 6 and clinic_args[6] != NULL {
+            value = clinic_args[6];
+            setsid = convert_bool(value);
+        }
+        setsigmask: ptr[PyObject] = NULL;
+        if count > 7 and clinic_args[7] != NULL {
+            value = clinic_args[7];
+            setsigmask = value;
+        }
+        setsigdef: ptr[PyObject] = NULL;
+        if count > 8 and clinic_args[8] != NULL {
+            value = clinic_args[8];
+            setsigdef = value;
+        }
+        scheduler: ptr[PyObject] = NULL;
+        if count > 9 and clinic_args[9] != NULL {
+            value = clinic_args[9];
+            scheduler = value;
+        }
+        return os_posix_spawn_impl(
+            receiver,
+            path,
+            argv,
+            env,
+            file_actions,
+            setpgroup,
+            resetids,
+            setsid,
+            setsigmask,
+            setsigdef,
+            scheduler
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    setpgroup: ptr[PyObject] = NULL;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        setpgroup = value;
-    }
-    resetids: bool = False;
-    if args.values[5] != NULL {
-        value = args.values[5];
-        resetids = convert_bool(value);
-    }
-    setsid: bool = False;
-    if args.values[6] != NULL {
-        value = args.values[6];
-        setsid = convert_bool(value);
-    }
-    setsigmask: ptr[PyObject] = NULL;
-    if args.values[7] != NULL {
-        value = args.values[7];
-        setsigmask = value;
-    }
-    setsigdef: ptr[PyObject] = NULL;
-    if args.values[8] != NULL {
-        value = args.values[8];
-        setsigdef = value;
-    }
-    scheduler: ptr[PyObject] = NULL;
-    if args.values[9] != NULL {
-        value = args.values[9];
-        scheduler = value;
-    }
-    return os_posix_spawn_impl(
-        receiver,
-        path,
-        argv,
-        env,
-        file_actions,
-        setpgroup,
-        resetids,
-        setsid,
-        setsigmask,
-        setsigdef,
-        scheduler
-    );
 }
 
 def:priv os_posix_spawn_call(
@@ -1529,7 +2022,16 @@ def:priv os_posix_spawn_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_posix_spawn_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_posix_spawn_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_posix_spawn_bound(receiver, values, 10);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_posix_spawn_signature, args, nargs, kwnames, os_posix_spawn_bound, receiver
     );
 }
@@ -1554,64 +2056,70 @@ glob:priv os_posix_spawnp_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_posix_spawnp_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("posix_spawnp", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    argv: ptr[PyObject] = value;
-    value = args.values[2];
-    env: ptr[PyObject] = value;
-    file_actions: ptr[PyObject] = NULL;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        file_actions = value;
+def:priv os_posix_spawnp_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("posix_spawnp", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        argv: ptr[PyObject] = value;
+        value = clinic_args[2];
+        env: ptr[PyObject] = value;
+        file_actions: ptr[PyObject] = NULL;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            file_actions = value;
+        }
+        setpgroup: ptr[PyObject] = NULL;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            setpgroup = value;
+        }
+        resetids: bool = False;
+        if count > 5 and clinic_args[5] != NULL {
+            value = clinic_args[5];
+            resetids = convert_bool(value);
+        }
+        setsid: bool = False;
+        if count > 6 and clinic_args[6] != NULL {
+            value = clinic_args[6];
+            setsid = convert_bool(value);
+        }
+        setsigmask: ptr[PyObject] = NULL;
+        if count > 7 and clinic_args[7] != NULL {
+            value = clinic_args[7];
+            setsigmask = value;
+        }
+        setsigdef: ptr[PyObject] = NULL;
+        if count > 8 and clinic_args[8] != NULL {
+            value = clinic_args[8];
+            setsigdef = value;
+        }
+        scheduler: ptr[PyObject] = NULL;
+        if count > 9 and clinic_args[9] != NULL {
+            value = clinic_args[9];
+            scheduler = value;
+        }
+        return os_posix_spawnp_impl(
+            receiver,
+            path,
+            argv,
+            env,
+            file_actions,
+            setpgroup,
+            resetids,
+            setsid,
+            setsigmask,
+            setsigdef,
+            scheduler
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    setpgroup: ptr[PyObject] = NULL;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        setpgroup = value;
-    }
-    resetids: bool = False;
-    if args.values[5] != NULL {
-        value = args.values[5];
-        resetids = convert_bool(value);
-    }
-    setsid: bool = False;
-    if args.values[6] != NULL {
-        value = args.values[6];
-        setsid = convert_bool(value);
-    }
-    setsigmask: ptr[PyObject] = NULL;
-    if args.values[7] != NULL {
-        value = args.values[7];
-        setsigmask = value;
-    }
-    setsigdef: ptr[PyObject] = NULL;
-    if args.values[8] != NULL {
-        value = args.values[8];
-        setsigdef = value;
-    }
-    scheduler: ptr[PyObject] = NULL;
-    if args.values[9] != NULL {
-        value = args.values[9];
-        scheduler = value;
-    }
-    return os_posix_spawnp_impl(
-        receiver,
-        path,
-        argv,
-        env,
-        file_actions,
-        setpgroup,
-        resetids,
-        setsid,
-        setsigmask,
-        setsigdef,
-        scheduler
-    );
 }
 
 def:priv os_posix_spawnp_call(
@@ -1620,7 +2128,16 @@ def:priv os_posix_spawnp_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 3 {
+        return os_posix_spawnp_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_posix_spawnp_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_posix_spawnp_bound(receiver, values, 10);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_posix_spawnp_signature, args, nargs, kwnames, os_posix_spawnp_bound, receiver
     );
 }
@@ -1634,24 +2151,32 @@ glob:priv os_register_at_fork_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_register_at_fork_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    before: ptr[PyObject] = NULL;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        before = value;
+def:priv os_register_at_fork_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        before: ptr[PyObject] = NULL;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            before = value;
+        }
+        after_in_child: ptr[PyObject] = NULL;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            after_in_child = value;
+        }
+        after_in_parent: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            after_in_parent = value;
+        }
+        return os_register_at_fork_impl(
+            receiver, before, after_in_child, after_in_parent
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    after_in_child: ptr[PyObject] = NULL;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        after_in_child = value;
-    }
-    after_in_parent: ptr[PyObject] = NULL;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        after_in_parent = value;
-    }
-    return os_register_at_fork_impl(receiver, before, after_in_child, after_in_parent);
 }
 
 def:priv os_register_at_fork_call(
@@ -1660,7 +2185,16 @@ def:priv os_register_at_fork_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 0 {
+        return os_register_at_fork_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_register_at_fork_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_register_at_fork_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_register_at_fork_signature,
         args,
         nargs,
@@ -1670,35 +2204,39 @@ def:priv os_register_at_fork_call(
     );
 }
 
-def:priv os_fork1_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_fork1_impl(receiver);
-}
-
 def:priv os_fork1_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_fork1_bound, receiver);
-}
-
-def:priv os_fork_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_fork_impl(receiver);
+    try {
+        return os_fork1_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fork_call(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(NULL, os_fork_bound, receiver);
+    try {
+        return os_fork_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_sched_get_priority_max_signature = CallSignature(
          "sched_get_priority_max", ["policy"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_sched_get_priority_max_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    policy: i32 = convert_int(value);
-    return os_sched_get_priority_max_impl(receiver, policy);
+def:priv os_sched_get_priority_max_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        policy: i32 = convert_int(value);
+        return os_sched_get_priority_max_impl(receiver, policy);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sched_get_priority_max_call(
@@ -1707,7 +2245,16 @@ def:priv os_sched_get_priority_max_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_sched_get_priority_max_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_sched_get_priority_max_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_sched_get_priority_max_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_sched_get_priority_max_signature,
         args,
         nargs,
@@ -1721,11 +2268,17 @@ glob:priv os_sched_get_priority_min_signature = CallSignature(
          "sched_get_priority_min", ["policy"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_sched_get_priority_min_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    policy: i32 = convert_int(value);
-    return os_sched_get_priority_min_impl(receiver, policy);
+def:priv os_sched_get_priority_min_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        policy: i32 = convert_int(value);
+        return os_sched_get_priority_min_impl(receiver, policy);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sched_get_priority_min_call(
@@ -1734,7 +2287,16 @@ def:priv os_sched_get_priority_min_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_sched_get_priority_min_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_sched_get_priority_min_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_sched_get_priority_min_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_sched_get_priority_min_signature,
         args,
         nargs,
@@ -1744,421 +2306,386 @@ def:priv os_sched_get_priority_min_call(
     );
 }
 
-def:priv os_sched_getscheduler_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    return os_sched_getscheduler_impl(receiver, pid);
-}
-
 def:priv os_sched_getscheduler_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_sched_getscheduler_bound, receiver);
+    try {
+        pid: i32 = convert_int(value);
+        return os_sched_getscheduler_impl(receiver, pid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_sched_setscheduler_signature = CallSignature(
-         "sched_setscheduler",
-         ["pid", "policy", "param"],
-         3,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv os_sched_setscheduler_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    policy: i32 = convert_int(value);
-    value = args.values[2];
-    param: ptr[PyObject] = value;
-    return os_sched_setscheduler_impl(receiver, pid, policy, param);
+def:priv os_sched_setscheduler_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        policy: i32 = convert_int(value);
+        value = clinic_args[2];
+        param: ptr[PyObject] = value;
+        return os_sched_setscheduler_impl(receiver, pid, policy, param);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sched_setscheduler_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_sched_setscheduler_signature,
-        args,
-        nargs,
-        NULL,
-        os_sched_setscheduler_bound,
-        receiver
-    );
-}
-
-def:priv os_sched_getparam_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    return os_sched_getparam_impl(receiver, pid);
+    if not check_positional("sched_setscheduler", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_sched_setscheduler_bound(receiver, args, nargs);
 }
 
 def:priv os_sched_getparam_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_sched_getparam_bound, receiver);
+    try {
+        pid: i32 = convert_int(value);
+        return os_sched_getparam_impl(receiver, pid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_sched_setparam_signature = CallSignature(
-         "sched_setparam", ["pid", "param"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_sched_setparam_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    param: ptr[PyObject] = value;
-    return os_sched_setparam_impl(receiver, pid, param);
+def:priv os_sched_setparam_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        param: ptr[PyObject] = value;
+        return os_sched_setparam_impl(receiver, pid, param);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sched_setparam_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_sched_setparam_signature,
-        args,
-        nargs,
-        NULL,
-        os_sched_setparam_bound,
-        receiver
-    );
-}
-
-def:priv os_sched_rr_get_interval_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    return return_double(os_sched_rr_get_interval_impl(receiver, pid));
+    if not check_positional("sched_setparam", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_sched_setparam_bound(receiver, args, nargs);
 }
 
 def:priv os_sched_rr_get_interval_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_sched_rr_get_interval_bound, receiver);
-}
-
-def:priv os_sched_yield_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_sched_yield_impl(receiver);
+    try {
+        pid: i32 = convert_int(value);
+        return return_double(os_sched_rr_get_interval_impl(receiver, pid));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sched_yield_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_sched_yield_bound, receiver);
+    try {
+        return os_sched_yield_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_sched_setaffinity_signature = CallSignature(
-         "sched_setaffinity", ["pid", "mask"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_sched_setaffinity_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    mask: ptr[PyObject] = value;
-    return os_sched_setaffinity_impl(receiver, pid, mask);
+def:priv os_sched_setaffinity_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        mask: ptr[PyObject] = value;
+        return os_sched_setaffinity_impl(receiver, pid, mask);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sched_setaffinity_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_sched_setaffinity_signature,
-        args,
-        nargs,
-        NULL,
-        os_sched_setaffinity_bound,
-        receiver
-    );
-}
-
-def:priv os_sched_getaffinity_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    return os_sched_getaffinity_impl(receiver, pid);
+    if not check_positional("sched_setaffinity", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_sched_setaffinity_bound(receiver, args, nargs);
 }
 
 def:priv os_sched_getaffinity_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_sched_getaffinity_bound, receiver);
-}
-
-def:priv os_posix_openpt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    oflag: i32 = convert_int(value);
-    return return_int(os_posix_openpt_impl(receiver, oflag));
+    try {
+        pid: i32 = convert_int(value);
+        return os_sched_getaffinity_impl(receiver, pid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_posix_openpt_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_posix_openpt_bound, receiver);
-}
-
-def:priv os_grantpt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "grantpt", "argument");
-    return os_grantpt_impl(receiver, fd);
+    try {
+        oflag: i32 = convert_int(value);
+        return return_int(os_posix_openpt_impl(receiver, oflag));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_grantpt_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_grantpt_bound, receiver);
-}
-
-def:priv os_unlockpt_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "unlockpt", "argument");
-    return os_unlockpt_impl(receiver, fd);
+    try {
+        fd: i32 = convert_fildes(value, "grantpt", "argument");
+        return os_grantpt_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_unlockpt_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_unlockpt_bound, receiver);
-}
-
-def:priv os_ptsname_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "ptsname", "argument");
-    return os_ptsname_impl(receiver, fd);
+    try {
+        fd: i32 = convert_fildes(value, "unlockpt", "argument");
+        return os_unlockpt_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_ptsname_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_ptsname_bound, receiver);
-}
-
-def:priv os_openpty_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_openpty_impl(receiver);
+    try {
+        fd: i32 = convert_fildes(value, "ptsname", "argument");
+        return os_ptsname_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_openpty_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_openpty_bound, receiver);
-}
-
-def:priv os_login_tty_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "login_tty", "argument");
-    return os_login_tty_impl(receiver, fd);
+    try {
+        return os_openpty_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_login_tty_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_login_tty_bound, receiver);
-}
-
-def:priv os_forkpty_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_forkpty_impl(receiver);
+    try {
+        fd: i32 = convert_fildes(value, "login_tty", "argument");
+        return os_login_tty_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_forkpty_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_forkpty_bound, receiver);
-}
-
-def:priv os_getegid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getegid_impl(receiver);
+    try {
+        return os_forkpty_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getegid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getegid_bound, receiver);
-}
-
-def:priv os_geteuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_geteuid_impl(receiver);
+    try {
+        return os_getegid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_geteuid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_geteuid_bound, receiver);
-}
-
-def:priv os_getgid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getgid_impl(receiver);
+    try {
+        return os_geteuid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getgid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getgid_bound, receiver);
-}
-
-def:priv os_getpid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getpid_impl(receiver);
+    try {
+        return os_getgid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getpid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getpid_bound, receiver);
+    try {
+        return os_getpid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_getgrouplist_darwin_signature = CallSignature(
-         "getgrouplist", ["user", "group"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_getgrouplist_darwin_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    user: str = convert_str(value, "getgrouplist", argument_label("", 1));
-    value = args.values[1];
-    group: i32 = convert_int(value);
-    return os_getgrouplist_darwin_impl(receiver, user, group);
+def:priv os_getgrouplist_darwin_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        user: str = convert_str(value, "getgrouplist", argument_label("", 1));
+        value = clinic_args[1];
+        group: i32 = convert_int(value);
+        return os_getgrouplist_darwin_impl(receiver, user, group);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getgrouplist_darwin_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_getgrouplist_darwin_signature,
-        args,
-        nargs,
-        NULL,
-        os_getgrouplist_darwin_bound,
-        receiver
-    );
+    if not check_positional("getgrouplist", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_getgrouplist_darwin_bound(receiver, args, nargs);
 }
 
-glob:priv os_getgrouplist_linux_signature = CallSignature(
-         "getgrouplist", ["user", "group"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_getgrouplist_linux_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    user: str = convert_str(value, "getgrouplist", argument_label("", 1));
-    value = args.values[1];
-    group: u32 = convert__Py_Gid_Converter(
-        value, "getgrouplist", argument_label("", 2)
-    );
-    return os_getgrouplist_linux_impl(receiver, user, group);
+def:priv os_getgrouplist_linux_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        user: str = convert_str(value, "getgrouplist", argument_label("", 1));
+        value = clinic_args[1];
+        group: u32 = convert__Py_Gid_Converter(
+            value, "getgrouplist", argument_label("", 2)
+        );
+        return os_getgrouplist_linux_impl(receiver, user, group);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getgrouplist_linux_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_getgrouplist_linux_signature,
-        args,
-        nargs,
-        NULL,
-        os_getgrouplist_linux_bound,
-        receiver
-    );
-}
-
-def:priv os_getgroups_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getgroups_impl(receiver);
+    if not check_positional("getgrouplist", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_getgrouplist_linux_bound(receiver, args, nargs);
 }
 
 def:priv os_getgroups_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getgroups_bound, receiver);
+    try {
+        return os_getgroups_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_initgroups_darwin_signature = CallSignature(
-         "initgroups", ["username", "gid"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_initgroups_darwin_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    username_owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "initgroups", argument_label("", 1))
-    );
-    username = username_owner.value;
-    value = args.values[1];
-    gid: i32 = convert_int(value);
-    result = os_initgroups_darwin_impl(receiver, username, gid);
-    username_owner.close();
-    return result;
+def:priv os_initgroups_darwin_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        username: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "initgroups", argument_label("", 1)
+        );
+        try {
+            value = clinic_args[1];
+            gid: i32 = convert_int(value);
+            return os_initgroups_darwin_impl(receiver, username, gid);
+        } finally {
+            jacpy_release(username);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_initgroups_darwin_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_initgroups_darwin_signature,
-        args,
-        nargs,
-        NULL,
-        os_initgroups_darwin_bound,
-        receiver
-    );
+    if not check_positional("initgroups", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_initgroups_darwin_bound(receiver, args, nargs);
 }
 
-glob:priv os_initgroups_linux_signature = CallSignature(
-         "initgroups", ["username", "gid"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_initgroups_linux_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    username_owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "initgroups", argument_label("", 1))
-    );
-    username = username_owner.value;
-    value = args.values[1];
-    gid: u32 = convert__Py_Gid_Converter(value, "initgroups", argument_label("", 2));
-    result = os_initgroups_linux_impl(receiver, username, gid);
-    username_owner.close();
-    return result;
+def:priv os_initgroups_linux_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        username: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "initgroups", argument_label("", 1)
+        );
+        try {
+            value = clinic_args[1];
+            gid: u32 = convert__Py_Gid_Converter(
+                value, "initgroups", argument_label("", 2)
+            );
+            return os_initgroups_linux_impl(receiver, username, gid);
+        } finally {
+            jacpy_release(username);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_initgroups_linux_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_initgroups_linux_signature,
-        args,
-        nargs,
-        NULL,
-        os_initgroups_linux_bound,
-        receiver
-    );
+    if not check_positional("initgroups", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_initgroups_linux_bound(receiver, args, nargs);
 }
 
 glob:priv os_getpgid_signature = CallSignature(
          "getpgid", ["pid"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_getpgid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    return os_getpgid_impl(receiver, pid);
+def:priv os_getpgid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        return os_getpgid_impl(receiver, pid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getpgid_call(
@@ -2167,222 +2694,236 @@ def:priv os_getpgid_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_getpgid_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_getpgid_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_getpgid_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_getpgid_signature, args, nargs, kwnames, os_getpgid_bound, receiver
     );
-}
-
-def:priv os_getpgrp_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getpgrp_impl(receiver);
 }
 
 def:priv os_getpgrp_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getpgrp_bound, receiver);
-}
-
-def:priv os_setpgrp_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_setpgrp_impl(receiver);
+    try {
+        return os_getpgrp_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setpgrp_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_setpgrp_bound, receiver);
-}
-
-def:priv os_getppid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getppid_impl(receiver);
+    try {
+        return os_setpgrp_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getppid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getppid_bound, receiver);
-}
-
-def:priv os_getlogin_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getlogin_impl(receiver);
+    try {
+        return os_getppid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getlogin_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getlogin_bound, receiver);
-}
-
-def:priv os_getuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getuid_impl(receiver);
+    try {
+        return os_getlogin_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getuid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getuid_bound, receiver);
+    try {
+        return os_getuid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_kill_signature = CallSignature(
-         "kill", ["pid", "signal"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_kill_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    signal: i64 = convert_ssize(value);
-    return os_kill_impl(receiver, pid, signal);
+def:priv os_kill_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        signal: i64 = convert_ssize(value);
+        return os_kill_impl(receiver, pid, signal);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_kill_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(os_kill_signature, args, nargs, NULL, os_kill_bound, receiver);
+    if not check_positional("kill", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_kill_bound(receiver, args, nargs);
 }
 
-glob:priv os_killpg_signature = CallSignature(
-         "killpg", ["pgid", "signal"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_killpg_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pgid: i32 = convert_int(value);
-    value = args.values[1];
-    signal: i32 = convert_int(value);
-    return os_killpg_impl(receiver, pgid, signal);
+def:priv os_killpg_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pgid: i32 = convert_int(value);
+        value = clinic_args[1];
+        signal: i32 = convert_int(value);
+        return os_killpg_impl(receiver, pgid, signal);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_killpg_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_killpg_signature, args, nargs, NULL, os_killpg_bound, receiver
-    );
-}
-
-def:priv os_setuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    uid: u32 = convert__Py_Uid_Converter(value, "setuid", "argument");
-    return os_setuid_impl(receiver, uid);
+    if not check_positional("killpg", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_killpg_bound(receiver, args, nargs);
 }
 
 def:priv os_setuid_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_setuid_bound, receiver);
-}
-
-def:priv os_seteuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    euid: u32 = convert__Py_Uid_Converter(value, "seteuid", "argument");
-    return os_seteuid_impl(receiver, euid);
+    try {
+        uid: u32 = convert__Py_Uid_Converter(value, "setuid", "argument");
+        return os_setuid_impl(receiver, uid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_seteuid_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_seteuid_bound, receiver);
-}
-
-def:priv os_setegid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    egid: u32 = convert__Py_Gid_Converter(value, "setegid", "argument");
-    return os_setegid_impl(receiver, egid);
+    try {
+        euid: u32 = convert__Py_Uid_Converter(value, "seteuid", "argument");
+        return os_seteuid_impl(receiver, euid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setegid_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_setegid_bound, receiver);
+    try {
+        egid: u32 = convert__Py_Gid_Converter(value, "setegid", "argument");
+        return os_setegid_impl(receiver, egid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_setreuid_signature = CallSignature(
-         "setreuid", ["ruid", "euid"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_setreuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    ruid: u32 = convert__Py_Uid_Converter(value, "setreuid", argument_label("", 1));
-    value = args.values[1];
-    euid: u32 = convert__Py_Uid_Converter(value, "setreuid", argument_label("", 2));
-    return os_setreuid_impl(receiver, ruid, euid);
+def:priv os_setreuid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        ruid: u32 = convert__Py_Uid_Converter(value, "setreuid", argument_label("", 1));
+        value = clinic_args[1];
+        euid: u32 = convert__Py_Uid_Converter(value, "setreuid", argument_label("", 2));
+        return os_setreuid_impl(receiver, ruid, euid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setreuid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_setreuid_signature, args, nargs, NULL, os_setreuid_bound, receiver
-    );
+    if not check_positional("setreuid", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_setreuid_bound(receiver, args, nargs);
 }
 
-glob:priv os_setregid_signature = CallSignature(
-         "setregid", ["rgid", "egid"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_setregid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    rgid: u32 = convert__Py_Gid_Converter(value, "setregid", argument_label("", 1));
-    value = args.values[1];
-    egid: u32 = convert__Py_Gid_Converter(value, "setregid", argument_label("", 2));
-    return os_setregid_impl(receiver, rgid, egid);
+def:priv os_setregid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        rgid: u32 = convert__Py_Gid_Converter(value, "setregid", argument_label("", 1));
+        value = clinic_args[1];
+        egid: u32 = convert__Py_Gid_Converter(value, "setregid", argument_label("", 2));
+        return os_setregid_impl(receiver, rgid, egid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setregid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_setregid_signature, args, nargs, NULL, os_setregid_bound, receiver
-    );
-}
-
-def:priv os_setgid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    gid: u32 = convert__Py_Gid_Converter(value, "setgid", "argument");
-    return os_setgid_impl(receiver, gid);
+    if not check_positional("setregid", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_setregid_bound(receiver, args, nargs);
 }
 
 def:priv os_setgid_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_setgid_bound, receiver);
-}
-
-def:priv os_setgroups_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    groups: ptr[PyObject] = value;
-    return os_setgroups_impl(receiver, groups);
+    try {
+        gid: u32 = convert__Py_Gid_Converter(value, "setgid", "argument");
+        return os_setgid_impl(receiver, gid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setgroups_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_setgroups_bound, receiver);
+    try {
+        groups: ptr[PyObject] = value;
+        return os_setgroups_impl(receiver, groups);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_wait3_signature = CallSignature(
          "wait3", ["options"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_wait3_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    options: i32 = convert_int(value);
-    return os_wait3_impl(receiver, options);
+def:priv os_wait3_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        options: i32 = convert_int(value);
+        return os_wait3_impl(receiver, options);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_wait3_call(
@@ -2391,7 +2932,16 @@ def:priv os_wait3_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_wait3_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_wait3_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_wait3_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_wait3_signature, args, nargs, kwnames, os_wait3_bound, receiver
     );
 }
@@ -2400,13 +2950,19 @@ glob:priv os_wait4_signature = CallSignature(
          "wait4", ["pid", "options"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_wait4_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    options: i32 = convert_int(value);
-    return os_wait4_impl(receiver, pid, options);
+def:priv os_wait4_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        options: i32 = convert_int(value);
+        return os_wait4_impl(receiver, pid, options);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_wait4_call(
@@ -2415,78 +2971,98 @@ def:priv os_wait4_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_wait4_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_wait4_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_wait4_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_wait4_signature, args, nargs, kwnames, os_wait4_bound, receiver
     );
 }
 
-glob:priv os_waitid_signature = CallSignature(
-         "waitid", ["idtype", "id", "options"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_waitid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    idtype = convert_idtype_t_converter(value, "waitid", argument_label("", 1));
-    value = args.values[1];
-    id_ = convert_id_t(value, "waitid", argument_label("", 2));
-    value = args.values[2];
-    options: i32 = convert_int(value);
-    return os_waitid_impl(receiver, idtype, id_, options);
+def:priv os_waitid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        idtype = convert_idtype_t_converter(value, "waitid", argument_label("", 1));
+        value = clinic_args[1];
+        id_ = convert_id_t(value, "waitid", argument_label("", 2));
+        value = clinic_args[2];
+        options: i32 = convert_int(value);
+        return os_waitid_impl(receiver, idtype, id_, options);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_waitid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_waitid_signature, args, nargs, NULL, os_waitid_bound, receiver
-    );
+    if not check_positional("waitid", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_waitid_bound(receiver, args, nargs);
 }
 
-glob:priv os_waitpid_signature = CallSignature(
-         "waitpid", ["pid", "options"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_waitpid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    options: i32 = convert_int(value);
-    return os_waitpid_impl(receiver, pid, options);
+def:priv os_waitpid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        options: i32 = convert_int(value);
+        return os_waitpid_impl(receiver, pid, options);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_waitpid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_waitpid_signature, args, nargs, NULL, os_waitpid_bound, receiver
-    );
-}
-
-def:priv os_wait_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_wait_impl(receiver);
+    if not check_positional("waitpid", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_waitpid_bound(receiver, args, nargs);
 }
 
 def:priv os_wait_call(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(NULL, os_wait_bound, receiver);
+    try {
+        return os_wait_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_pidfd_open_signature = CallSignature(
          "pidfd_open", ["pid", "flags"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_pidfd_open_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    flags: u32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = convert_unsigned_int(value);
+def:priv os_pidfd_open_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        flags: u32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            flags = convert_unsigned_int(value);
+        }
+        return os_pidfd_open_impl(receiver, pid, flags);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_pidfd_open_impl(receiver, pid, flags);
 }
 
 def:priv os_pidfd_open_call(
@@ -2495,7 +3071,16 @@ def:priv os_pidfd_open_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_pidfd_open_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_pidfd_open_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_pidfd_open_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_pidfd_open_signature, args, nargs, kwnames, os_pidfd_open_bound, receiver
     );
 }
@@ -2504,16 +3089,22 @@ glob:priv os_setns_signature = CallSignature(
          "setns", ["fd", "nstype"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_setns_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "setns", argument_label("fd", 1));
-    nstype: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        nstype = convert_int(value);
+def:priv os_setns_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "setns", argument_label("fd", 1));
+        nstype: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            nstype = convert_int(value);
+        }
+        return os_setns_impl(receiver, fd, nstype);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_setns_impl(receiver, fd, nstype);
 }
 
 def:priv os_setns_call(
@@ -2522,7 +3113,16 @@ def:priv os_setns_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_setns_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_setns_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_setns_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_setns_signature, args, nargs, kwnames, os_setns_bound, receiver
     );
 }
@@ -2531,11 +3131,17 @@ glob:priv os_unshare_signature = CallSignature(
          "unshare", ["flags"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_unshare_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    flags: i32 = convert_int(value);
-    return os_unshare_impl(receiver, flags);
+def:priv os_unshare_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        flags: i32 = convert_int(value);
+        return os_unshare_impl(receiver, flags);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_unshare_call(
@@ -2544,7 +3150,16 @@ def:priv os_unshare_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_unshare_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_unshare_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_unshare_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_unshare_signature, args, nargs, kwnames, os_unshare_bound, receiver
     );
 }
@@ -2553,19 +3168,25 @@ glob:priv os_readlink_signature = CallSignature(
          "readlink", ["path", "dir_fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_readlink_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("readlink", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dir_fd = convert_READLINKAT_DIR_FD_CONVERTER(
-        value, "readlink", argument_label("dir_fd", 2)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_readlink_impl(receiver, path, dir_fd);
+def:priv os_readlink_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("readlink", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1] if count > 1 and clinic_args[1] != NULL else NULL;
+        dir_fd = convert_READLINKAT_DIR_FD_CONVERTER(
+            value, "readlink", argument_label("dir_fd", 2)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_readlink_impl(receiver, path, dir_fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_readlink_call(
@@ -2574,7 +3195,16 @@ def:priv os_readlink_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_readlink_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_readlink_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_readlink_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_readlink_signature, args, nargs, kwnames, os_readlink_bound, receiver
     );
 }
@@ -2588,28 +3218,34 @@ glob:priv os_symlink_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_symlink_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    src = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("symlink", "src", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    dst = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("symlink", "dst", 0, 0, 0, 0)
-    );
-    target_is_directory: bool = False;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        target_is_directory = convert_bool(value);
+def:priv os_symlink_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        src = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("symlink", "src", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        dst = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("symlink", "dst", 0, 0, 0, 0)
+        );
+        target_is_directory: bool = False;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            target_is_directory = convert_bool(value);
+        }
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dir_fd = convert_SYMLINKAT_DIR_FD_CONVERTER(
+            value, "symlink", argument_label("dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_symlink_impl(receiver, src, dst, target_is_directory, dir_fd);
+    } except boundary_failure {
+        return NULL;
     }
-    value = args.values[3];
-    dir_fd = convert_SYMLINKAT_DIR_FD_CONVERTER(
-        value, "symlink", argument_label("dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_symlink_impl(receiver, src, dst, target_is_directory, dir_fd);
 }
 
 def:priv os_symlink_call(
@@ -2618,36 +3254,50 @@ def:priv os_symlink_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        return os_symlink_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_symlink_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_symlink_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_symlink_signature, args, nargs, kwnames, os_symlink_bound, receiver
     );
-}
-
-def:priv os_times_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_times_impl(receiver);
 }
 
 def:priv os_times_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_times_bound, receiver);
+    try {
+        return os_times_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_timerfd_create_signature = CallSignature(
          "timerfd_create", ["clockid", "flags"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
-def:priv os_timerfd_create_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    clockid: i32 = convert_int(value);
-    flags: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = convert_int(value);
+def:priv os_timerfd_create_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        clockid: i32 = convert_int(value);
+        flags: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            flags = convert_int(value);
+        }
+        return os_timerfd_create_impl(receiver, clockid, flags);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_timerfd_create_impl(receiver, clockid, flags);
 }
 
 def:priv os_timerfd_create_call(
@@ -2656,7 +3306,16 @@ def:priv os_timerfd_create_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_timerfd_create_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_timerfd_create_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_timerfd_create_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_timerfd_create_signature,
         args,
         nargs,
@@ -2675,26 +3334,32 @@ glob:priv os_timerfd_settime_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_timerfd_settime_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "timerfd_settime", argument_label("", 1));
-    flags: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = convert_int(value);
+def:priv os_timerfd_settime_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "timerfd_settime", argument_label("", 1));
+        flags: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            flags = convert_int(value);
+        }
+        initial: f64 = 0.0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            initial = convert_double(value);
+        }
+        interval: f64 = 0.0;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            interval = convert_double(value);
+        }
+        return os_timerfd_settime_impl(receiver, fd, flags, initial, interval);
+    } except boundary_failure {
+        return NULL;
     }
-    initial: f64 = 0.0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        initial = convert_double(value);
-    }
-    interval: f64 = 0.0;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        interval = convert_double(value);
-    }
-    return os_timerfd_settime_impl(receiver, fd, flags, initial, interval);
 }
 
 def:priv os_timerfd_settime_call(
@@ -2703,7 +3368,16 @@ def:priv os_timerfd_settime_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_timerfd_settime_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_timerfd_settime_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_timerfd_settime_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_timerfd_settime_signature,
         args,
         nargs,
@@ -2722,26 +3396,32 @@ glob:priv os_timerfd_settime_ns_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_timerfd_settime_ns_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "timerfd_settime_ns", argument_label("", 1));
-    flags: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = convert_int(value);
+def:priv os_timerfd_settime_ns_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "timerfd_settime_ns", argument_label("", 1));
+        flags: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            flags = convert_int(value);
+        }
+        initial: i64 = 0;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            initial = convert_long_long(value);
+        }
+        interval: i64 = 0;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            interval = convert_long_long(value);
+        }
+        return os_timerfd_settime_ns_impl(receiver, fd, flags, initial, interval);
+    } except boundary_failure {
+        return NULL;
     }
-    initial: i64 = 0;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        initial = convert_long_long(value);
-    }
-    interval: i64 = 0;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        interval = convert_long_long(value);
-    }
-    return os_timerfd_settime_ns_impl(receiver, fd, flags, initial, interval);
 }
 
 def:priv os_timerfd_settime_ns_call(
@@ -2750,7 +3430,16 @@ def:priv os_timerfd_settime_ns_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_timerfd_settime_ns_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_timerfd_settime_ns_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_timerfd_settime_ns_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_timerfd_settime_ns_signature,
         args,
         nargs,
@@ -2760,133 +3449,138 @@ def:priv os_timerfd_settime_ns_call(
     );
 }
 
-def:priv os_timerfd_gettime_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "timerfd_gettime", "argument");
-    return os_timerfd_gettime_impl(receiver, fd);
-}
-
 def:priv os_timerfd_gettime_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_timerfd_gettime_bound, receiver);
-}
-
-def:priv os_timerfd_gettime_ns_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "timerfd_gettime_ns", "argument");
-    return os_timerfd_gettime_ns_impl(receiver, fd);
+    try {
+        fd: i32 = convert_fildes(value, "timerfd_gettime", "argument");
+        return os_timerfd_gettime_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_timerfd_gettime_ns_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_timerfd_gettime_ns_bound, receiver);
-}
-
-def:priv os_getsid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    return os_getsid_impl(receiver, pid);
+    try {
+        fd: i32 = convert_fildes(value, "timerfd_gettime_ns", "argument");
+        return os_timerfd_gettime_ns_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getsid_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_getsid_bound, receiver);
-}
-
-def:priv os_setsid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_setsid_impl(receiver);
+    try {
+        pid: i32 = convert_int(value);
+        return os_getsid_impl(receiver, pid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setsid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_setsid_bound, receiver);
+    try {
+        return os_setsid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_setpgid_signature = CallSignature(
-         "setpgid", ["pid", "pgrp"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_setpgid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pid: i32 = convert_int(value);
-    value = args.values[1];
-    pgrp: i32 = convert_int(value);
-    return os_setpgid_impl(receiver, pid, pgrp);
+def:priv os_setpgid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        pid: i32 = convert_int(value);
+        value = clinic_args[1];
+        pgrp: i32 = convert_int(value);
+        return os_setpgid_impl(receiver, pid, pgrp);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setpgid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_setpgid_signature, args, nargs, NULL, os_setpgid_bound, receiver
-    );
-}
-
-def:priv os_tcgetpgrp_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return os_tcgetpgrp_impl(receiver, fd);
+    if not check_positional("setpgid", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_setpgid_bound(receiver, args, nargs);
 }
 
 def:priv os_tcgetpgrp_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_tcgetpgrp_bound, receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return os_tcgetpgrp_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_tcsetpgrp_signature = CallSignature(
-         "tcsetpgrp", ["fd", "pgid"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_tcsetpgrp_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    pgid: i32 = convert_int(value);
-    return os_tcsetpgrp_impl(receiver, fd, pgid);
+def:priv os_tcsetpgrp_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        pgid: i32 = convert_int(value);
+        return os_tcsetpgrp_impl(receiver, fd, pgid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_tcsetpgrp_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_tcsetpgrp_signature, args, nargs, NULL, os_tcsetpgrp_bound, receiver
-    );
+    if not check_positional("tcsetpgrp", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_tcsetpgrp_bound(receiver, args, nargs);
 }
 
 glob:priv os_open_signature = CallSignature(
          "open", ["path", "flags", "mode", "dir_fd"], 2, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_open_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("open", "path", 0, 0, 0, 0)
-    );
-    value = args.values[1];
-    flags: i32 = convert_int(value);
-    mode: i32 = 511;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        mode = convert_int(value);
+def:priv os_open_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("open", "path", 0, 0, 0, 0)
+        );
+        value = clinic_args[1];
+        flags: i32 = convert_int(value);
+        mode: i32 = 511;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            mode = convert_int(value);
+        }
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dir_fd = convert_OPENAT_DIR_FD_CONVERTER(
+            value, "open", argument_label("dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return return_int(os_open_impl(receiver, path, flags, mode, dir_fd));
+    } except boundary_failure {
+        return NULL;
     }
-    value = args.values[3];
-    dir_fd = convert_OPENAT_DIR_FD_CONVERTER(value, "open", argument_label("dir_fd", 4))
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return return_int(os_open_impl(receiver, path, flags, mode, dir_fd));
 }
 
 def:priv os_open_call(
@@ -2895,7 +3589,16 @@ def:priv os_open_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        return os_open_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_open_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_open_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_open_signature, args, nargs, kwnames, os_open_bound, receiver
     );
 }
@@ -2904,11 +3607,17 @@ glob:priv os_close_signature = CallSignature(
          "close", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_close_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return os_close_impl(receiver, fd);
+def:priv os_close_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        return os_close_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_close_call(
@@ -2917,59 +3626,75 @@ def:priv os_close_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_close_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_close_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_close_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_close_signature, args, nargs, kwnames, os_close_bound, receiver
     );
 }
 
-glob:priv os_closerange_signature = CallSignature(
-         "closerange", ["fd_low", "fd_high"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_closerange_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd_low: i32 = convert_int(value);
-    value = args.values[1];
-    fd_high: i32 = convert_int(value);
-    return os_closerange_impl(receiver, fd_low, fd_high);
+def:priv os_closerange_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd_low: i32 = convert_int(value);
+        value = clinic_args[1];
+        fd_high: i32 = convert_int(value);
+        return os_closerange_impl(receiver, fd_low, fd_high);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_closerange_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_closerange_signature, args, nargs, NULL, os_closerange_bound, receiver
-    );
-}
-
-def:priv os_dup_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return return_int(os_dup_impl(receiver, fd));
+    if not check_positional("closerange", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_closerange_bound(receiver, args, nargs);
 }
 
 def:priv os_dup_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, os_dup_bound, receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return return_int(os_dup_impl(receiver, fd));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_dup2_signature = CallSignature(
          "dup2", ["fd", "fd2", "inheritable"], 2, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_dup2_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    fd2: i32 = convert_int(value);
-    inheritable: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        inheritable = convert_bool(value);
+def:priv os_dup2_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        fd2: i32 = convert_int(value);
+        inheritable: bool = True;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            inheritable = convert_bool(value);
+        }
+        return return_int(os_dup2_impl(receiver, fd, fd2, inheritable));
+    } except boundary_failure {
+        return NULL;
     }
-    return return_int(os_dup2_impl(receiver, fd, fd2, inheritable));
 }
 
 def:priv os_dup2_call(
@@ -2978,195 +3703,237 @@ def:priv os_dup2_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 3 {
+        return os_dup2_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_dup2_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_dup2_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_dup2_signature, args, nargs, kwnames, os_dup2_bound, receiver
     );
 }
 
-glob:priv os_lockf_signature = CallSignature(
-         "lockf", ["fd", "command", "length"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_lockf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    command: i32 = convert_int(value);
-    value = args.values[2];
-    length: i64 = convert_Py_off_t_converter(value, "lockf", argument_label("", 3));
-    return os_lockf_impl(receiver, fd, command, length);
+def:priv os_lockf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        command: i32 = convert_int(value);
+        value = clinic_args[2];
+        length: i64 = convert_Py_off_t_converter(value, "lockf", argument_label("", 3));
+        return os_lockf_impl(receiver, fd, command, length);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_lockf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_lockf_signature, args, nargs, NULL, os_lockf_bound, receiver
-    );
+    if not check_positional("lockf", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_lockf_bound(receiver, args, nargs);
 }
 
-glob:priv os_lseek_signature = CallSignature(
-         "lseek", ["fd", "position", "whence"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_lseek_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    position: i64 = convert_Py_off_t_converter(value, "lseek", argument_label("", 2));
-    value = args.values[2];
-    whence: i32 = convert_int(value);
-    return return_PyLong_FromPy_off_t(os_lseek_impl(receiver, fd, position, whence));
+def:priv os_lseek_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        position: i64 = convert_Py_off_t_converter(
+            value, "lseek", argument_label("", 2)
+        );
+        value = clinic_args[2];
+        whence: i32 = convert_int(value);
+        return return_Py_off_t(os_lseek_impl(receiver, fd, position, whence));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_lseek_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_lseek_signature, args, nargs, NULL, os_lseek_bound, receiver
-    );
+    if not check_positional("lseek", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_lseek_bound(receiver, args, nargs);
 }
 
-glob:priv os_read_signature = CallSignature(
-         "read", ["fd", "length"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_read_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    length: i64 = convert_ssize(value);
-    return os_read_impl(receiver, fd, length);
+def:priv os_read_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        length: i64 = convert_ssize(value);
+        return os_read_impl(receiver, fd, length);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(os_read_signature, args, nargs, NULL, os_read_bound, receiver);
+    if not check_positional("read", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_read_bound(receiver, args, nargs);
 }
 
-glob:priv os_readinto_signature = CallSignature(
-         "readinto", ["fd", "buffer"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_readinto_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    buffer: BufferArgument = convert_writable_buffer(
-        value, "readinto", argument_label("", 2)
-    );
-    return return_ssize(os_readinto_impl(receiver, fd, buffer));
+def:priv os_readinto_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        buffer: BufferArgument = convert_writable_buffer(
+            value, "readinto", argument_label("", 2)
+        );
+        try {
+            return return_ssize(os_readinto_impl(receiver, fd, buffer));
+        } finally {
+            buffer.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_readinto_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_readinto_signature, args, nargs, NULL, os_readinto_bound, receiver
-    );
+    if not check_positional("readinto", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_readinto_bound(receiver, args, nargs);
 }
 
-glob:priv os_readv_signature = CallSignature(
-         "readv", ["fd", "buffers"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_readv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    buffers: ptr[PyObject] = value;
-    return return_ssize(os_readv_impl(receiver, fd, buffers));
+def:priv os_readv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        buffers: ptr[PyObject] = value;
+        return return_ssize(os_readv_impl(receiver, fd, buffers));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_readv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_readv_signature, args, nargs, NULL, os_readv_bound, receiver
-    );
+    if not check_positional("readv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_readv_bound(receiver, args, nargs);
 }
 
-glob:priv os_pread_signature = CallSignature(
-         "pread", ["fd", "length", "offset"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_pread_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    length: i64 = convert_ssize(value);
-    value = args.values[2];
-    offset: i64 = convert_Py_off_t_converter(value, "pread", argument_label("", 3));
-    return os_pread_impl(receiver, fd, length, offset);
+def:priv os_pread_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        length: i64 = convert_ssize(value);
+        value = clinic_args[2];
+        offset: i64 = convert_Py_off_t_converter(value, "pread", argument_label("", 3));
+        return os_pread_impl(receiver, fd, length, offset);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_pread_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_pread_signature, args, nargs, NULL, os_pread_bound, receiver
-    );
+    if not check_positional("pread", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_pread_bound(receiver, args, nargs);
 }
 
-glob:priv os_preadv_signature = CallSignature(
-         "preadv",
-         ["fd", "buffers", "offset", "flags"],
-         3,
-         4,
-         4,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv os_preadv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    buffers: ptr[PyObject] = value;
-    value = args.values[2];
-    offset: i64 = convert_Py_off_t_converter(value, "preadv", argument_label("", 3));
-    flags: i32 = 0;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        flags = convert_int(value);
+def:priv os_preadv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        buffers: ptr[PyObject] = value;
+        value = clinic_args[2];
+        offset: i64 = convert_Py_off_t_converter(
+            value, "preadv", argument_label("", 3)
+        );
+        flags: i32 = 0;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            flags = convert_int(value);
+        }
+        return return_ssize(os_preadv_impl(receiver, fd, buffers, offset, flags));
+    } except boundary_failure {
+        return NULL;
     }
-    return return_ssize(os_preadv_impl(receiver, fd, buffers, offset, flags));
 }
 
 def:priv os_preadv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_preadv_signature, args, nargs, NULL, os_preadv_bound, receiver
-    );
+    if not check_positional("preadv", int(nargs), 3, 4) {
+        return NULL;
+    }
+    return os_preadv_bound(receiver, args, nargs);
 }
 
-glob:priv os_write_signature = CallSignature(
-         "write", ["fd", "data"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_write_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    data: BufferArgument = convert_buffer(value, "write", argument_label("", 2));
-    return return_ssize(os_write_impl(receiver, fd, data));
+def:priv os_write_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        data: BufferArgument = convert_buffer(value, "write", argument_label("", 2));
+        try {
+            return return_ssize(os_write_impl(receiver, fd, data));
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_write_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_write_signature, args, nargs, NULL, os_write_bound, receiver
-    );
+    if not check_positional("write", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_write_bound(receiver, args, nargs);
 }
 
 glob:priv os_sendfile_darwin_signature = CallSignature(
@@ -3178,38 +3945,44 @@ glob:priv os_sendfile_darwin_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_sendfile_darwin_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    out_fd: i32 = convert_int(value);
-    value = args.values[1];
-    in_fd: i32 = convert_int(value);
-    value = args.values[2];
-    offset: i64 = convert_Py_off_t_converter(
-        value, "sendfile", argument_label("offset", 3)
-    );
-    value = args.values[3];
-    count: i64 = convert_Py_off_t_converter(
-        value, "sendfile", argument_label("count", 4)
-    );
-    headers: ptr[PyObject] = NULL;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        headers = value;
+def:priv os_sendfile_darwin_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        out_fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        in_fd: i32 = convert_int(value);
+        value = clinic_args[2];
+        offset: i64 = convert_Py_off_t_converter(
+            value, "sendfile", argument_label("offset", 3)
+        );
+        value = clinic_args[3];
+        count: i64 = convert_Py_off_t_converter(
+            value, "sendfile", argument_label("count", 4)
+        );
+        headers: ptr[PyObject] = NULL;
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            headers = value;
+        }
+        trailers: ptr[PyObject] = NULL;
+        if count > 5 and clinic_args[5] != NULL {
+            value = clinic_args[5];
+            trailers = value;
+        }
+        flags: i32 = 0;
+        if count > 6 and clinic_args[6] != NULL {
+            value = clinic_args[6];
+            flags = convert_int(value);
+        }
+        return os_sendfile_darwin_impl(
+            receiver, out_fd, in_fd, offset, count, headers, trailers, flags
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    trailers: ptr[PyObject] = NULL;
-    if args.values[5] != NULL {
-        value = args.values[5];
-        trailers = value;
-    }
-    flags: i32 = 0;
-    if args.values[6] != NULL {
-        value = args.values[6];
-        flags = convert_int(value);
-    }
-    return os_sendfile_darwin_impl(
-        receiver, out_fd, in_fd, offset, count, headers, trailers, flags
-    );
 }
 
 def:priv os_sendfile_darwin_call(
@@ -3218,7 +3991,16 @@ def:priv os_sendfile_darwin_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 4 and nargs <= 7 {
+        return os_sendfile_darwin_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_sendfile_darwin_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_sendfile_darwin_bound(receiver, values, 7);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_sendfile_darwin_signature,
         args,
         nargs,
@@ -3237,17 +4019,23 @@ glob:priv os_sendfile_linux_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_sendfile_linux_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    out_fd: i32 = convert_int(value);
-    value = args.values[1];
-    in_fd: i32 = convert_int(value);
-    value = args.values[2];
-    offset: ptr[PyObject] = value;
-    value = args.values[3];
-    count: i64 = convert_ssize(value);
-    return os_sendfile_linux_impl(receiver, out_fd, in_fd, offset, count);
+def:priv os_sendfile_linux_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        out_fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        in_fd: i32 = convert_int(value);
+        value = clinic_args[2];
+        offset: ptr[PyObject] = value;
+        value = clinic_args[3];
+        count: i64 = convert_ssize(value);
+        return os_sendfile_linux_impl(receiver, out_fd, in_fd, offset, count);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sendfile_linux_call(
@@ -3256,7 +4044,16 @@ def:priv os_sendfile_linux_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 4 and nargs <= 4 {
+        return os_sendfile_linux_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_sendfile_linux_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_sendfile_linux_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_sendfile_linux_signature,
         args,
         nargs,
@@ -3266,38 +4063,47 @@ def:priv os_sendfile_linux_call(
     );
 }
 
-glob:priv os__fcopyfile_signature = CallSignature(
-         "_fcopyfile", ["in_fd", "out_fd", "flags"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os__fcopyfile_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    in_fd: i32 = convert_int(value);
-    value = args.values[1];
-    out_fd: i32 = convert_int(value);
-    value = args.values[2];
-    flags: i32 = convert_int(value);
-    return os__fcopyfile_impl(receiver, in_fd, out_fd, flags);
+def:priv os__fcopyfile_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        in_fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        out_fd: i32 = convert_int(value);
+        value = clinic_args[2];
+        flags: i32 = convert_int(value);
+        return os__fcopyfile_impl(receiver, in_fd, out_fd, flags);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os__fcopyfile_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os__fcopyfile_signature, args, nargs, NULL, os__fcopyfile_bound, receiver
-    );
+    if not check_positional("_fcopyfile", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os__fcopyfile_bound(receiver, args, nargs);
 }
 
 glob:priv os_fstat_signature = CallSignature(
          "fstat", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fstat_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return os_fstat_impl(receiver, fd);
+def:priv os_fstat_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        return os_fstat_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fstat_call(
@@ -3306,119 +4112,135 @@ def:priv os_fstat_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_fstat_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fstat_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fstat_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fstat_signature, args, nargs, kwnames, os_fstat_bound, receiver
     );
-}
-
-def:priv os_isatty_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return return_bool(os_isatty_impl(receiver, fd));
 }
 
 def:priv os_isatty_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_isatty_bound, receiver);
-}
-
-def:priv os_pipe_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_pipe_impl(receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return return_bool(os_isatty_impl(receiver, fd));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_pipe_call(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(NULL, os_pipe_bound, receiver);
-}
-
-def:priv os_pipe2_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    flags: i32 = convert_int(value);
-    return os_pipe2_impl(receiver, flags);
+    try {
+        return os_pipe_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_pipe2_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, os_pipe2_bound, receiver);
+    try {
+        flags: i32 = convert_int(value);
+        return os_pipe2_impl(receiver, flags);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_writev_signature = CallSignature(
-         "writev", ["fd", "buffers"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_writev_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    buffers: ptr[PyObject] = value;
-    return return_ssize(os_writev_impl(receiver, fd, buffers));
+def:priv os_writev_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        buffers: ptr[PyObject] = value;
+        return return_ssize(os_writev_impl(receiver, fd, buffers));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_writev_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_writev_signature, args, nargs, NULL, os_writev_bound, receiver
-    );
+    if not check_positional("writev", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_writev_bound(receiver, args, nargs);
 }
 
-glob:priv os_pwrite_signature = CallSignature(
-         "pwrite", ["fd", "buffer", "offset"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_pwrite_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    buffer: BufferArgument = convert_buffer(value, "pwrite", argument_label("", 2));
-    value = args.values[2];
-    offset: i64 = convert_Py_off_t_converter(value, "pwrite", argument_label("", 3));
-    return return_ssize(os_pwrite_impl(receiver, fd, buffer, offset));
+def:priv os_pwrite_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        buffer: BufferArgument = convert_buffer(value, "pwrite", argument_label("", 2));
+        try {
+            value = clinic_args[2];
+            offset: i64 = convert_Py_off_t_converter(
+                value, "pwrite", argument_label("", 3)
+            );
+            return return_ssize(os_pwrite_impl(receiver, fd, buffer, offset));
+        } finally {
+            buffer.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_pwrite_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_pwrite_signature, args, nargs, NULL, os_pwrite_bound, receiver
-    );
+    if not check_positional("pwrite", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_pwrite_bound(receiver, args, nargs);
 }
 
-glob:priv os_pwritev_signature = CallSignature(
-         "pwritev",
-         ["fd", "buffers", "offset", "flags"],
-         3,
-         4,
-         4,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv os_pwritev_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    buffers: ptr[PyObject] = value;
-    value = args.values[2];
-    offset: i64 = convert_Py_off_t_converter(value, "pwritev", argument_label("", 3));
-    flags: i32 = 0;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        flags = convert_int(value);
+def:priv os_pwritev_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        buffers: ptr[PyObject] = value;
+        value = clinic_args[2];
+        offset: i64 = convert_Py_off_t_converter(
+            value, "pwritev", argument_label("", 3)
+        );
+        flags: i32 = 0;
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            flags = convert_int(value);
+        }
+        return return_ssize(os_pwritev_impl(receiver, fd, buffers, offset, flags));
+    } except boundary_failure {
+        return NULL;
     }
-    return return_ssize(os_pwritev_impl(receiver, fd, buffers, offset, flags));
 }
 
 def:priv os_pwritev_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_pwritev_signature, args, nargs, NULL, os_pwritev_bound, receiver
-    );
+    if not check_positional("pwritev", int(nargs), 3, 4) {
+        return NULL;
+    }
+    return os_pwritev_bound(receiver, args, nargs);
 }
 
 glob:priv os_copy_file_range_signature = CallSignature(
@@ -3430,25 +4252,33 @@ glob:priv os_copy_file_range_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_copy_file_range_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    src: i32 = convert_int(value);
-    value = args.values[1];
-    dst: i32 = convert_int(value);
-    value = args.values[2];
-    count: i64 = convert_ssize(value);
-    offset_src: ptr[PyObject] = borrowed_none();
-    if args.values[3] != NULL {
-        value = args.values[3];
-        offset_src = value;
+def:priv os_copy_file_range_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        src: i32 = convert_int(value);
+        value = clinic_args[1];
+        dst: i32 = convert_int(value);
+        value = clinic_args[2];
+        count: i64 = convert_ssize(value);
+        offset_src: ptr[PyObject] = borrowed_none();
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            offset_src = value;
+        }
+        offset_dst: ptr[PyObject] = borrowed_none();
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            offset_dst = value;
+        }
+        return os_copy_file_range_impl(
+            receiver, src, dst, count, offset_src, offset_dst
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    offset_dst: ptr[PyObject] = borrowed_none();
-    if args.values[4] != NULL {
-        value = args.values[4];
-        offset_dst = value;
-    }
-    return os_copy_file_range_impl(receiver, src, dst, count, offset_src, offset_dst);
 }
 
 def:priv os_copy_file_range_call(
@@ -3457,7 +4287,16 @@ def:priv os_copy_file_range_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 5 {
+        return os_copy_file_range_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_copy_file_range_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_copy_file_range_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_copy_file_range_signature,
         args,
         nargs,
@@ -3476,30 +4315,36 @@ glob:priv os_splice_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_splice_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    src: i32 = convert_int(value);
-    value = args.values[1];
-    dst: i32 = convert_int(value);
-    value = args.values[2];
-    count: i64 = convert_ssize(value);
-    offset_src: ptr[PyObject] = borrowed_none();
-    if args.values[3] != NULL {
-        value = args.values[3];
-        offset_src = value;
+def:priv os_splice_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        src: i32 = convert_int(value);
+        value = clinic_args[1];
+        dst: i32 = convert_int(value);
+        value = clinic_args[2];
+        count: i64 = convert_ssize(value);
+        offset_src: ptr[PyObject] = borrowed_none();
+        if count > 3 and clinic_args[3] != NULL {
+            value = clinic_args[3];
+            offset_src = value;
+        }
+        offset_dst: ptr[PyObject] = borrowed_none();
+        if count > 4 and clinic_args[4] != NULL {
+            value = clinic_args[4];
+            offset_dst = value;
+        }
+        flags: u32 = 0;
+        if count > 5 and clinic_args[5] != NULL {
+            value = clinic_args[5];
+            flags = convert_unsigned_int(value);
+        }
+        return os_splice_impl(receiver, src, dst, count, offset_src, offset_dst, flags);
+    } except boundary_failure {
+        return NULL;
     }
-    offset_dst: ptr[PyObject] = borrowed_none();
-    if args.values[4] != NULL {
-        value = args.values[4];
-        offset_dst = value;
-    }
-    flags: u32 = 0;
-    if args.values[5] != NULL {
-        value = args.values[5];
-        flags = convert_unsigned_int(value);
-    }
-    return os_splice_impl(receiver, src, dst, count, offset_src, offset_dst, flags);
 }
 
 def:priv os_splice_call(
@@ -3508,7 +4353,16 @@ def:priv os_splice_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 6 {
+        return os_splice_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_splice_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_splice_bound(receiver, values, 6);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_splice_signature, args, nargs, kwnames, os_splice_bound, receiver
     );
 }
@@ -3517,24 +4371,30 @@ glob:priv os_mkfifo_signature = CallSignature(
          "mkfifo", ["path", "mode", "dir_fd"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_mkfifo_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("mkfifo", "path", 0, 0, 0, 0)
-    );
-    mode: i32 = 438;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        mode = convert_int(value);
+def:priv os_mkfifo_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("mkfifo", "path", 0, 0, 0, 0)
+        );
+        mode: i32 = 438;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            mode = convert_int(value);
+        }
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        dir_fd = convert_MKFIFOAT_DIR_FD_CONVERTER(
+            value, "mkfifo", argument_label("dir_fd", 3)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_mkfifo_impl(receiver, path, mode, dir_fd);
+    } except boundary_failure {
+        return NULL;
     }
-    value = args.values[2];
-    dir_fd = convert_MKFIFOAT_DIR_FD_CONVERTER(
-        value, "mkfifo", argument_label("dir_fd", 3)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_mkfifo_impl(receiver, path, mode, dir_fd);
 }
 
 def:priv os_mkfifo_call(
@@ -3543,7 +4403,16 @@ def:priv os_mkfifo_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_mkfifo_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_mkfifo_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_mkfifo_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_mkfifo_signature, args, nargs, kwnames, os_mkfifo_bound, receiver
     );
 }
@@ -3552,28 +4421,34 @@ glob:priv os_mknod_signature = CallSignature(
          "mknod", ["path", "mode", "device", "dir_fd"], 1, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_mknod_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("mknod", "path", 0, 0, 0, 0)
-    );
-    mode: i32 = 384;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        mode = convert_int(value);
+def:priv os_mknod_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("mknod", "path", 0, 0, 0, 0)
+        );
+        mode: i32 = 384;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            mode = convert_int(value);
+        }
+        value = clinic_args[2] if count > 2 and clinic_args[2] != NULL else NULL;
+        device = convert__Py_Dev_Converter(value, "mknod", argument_label("device", 3))
+            if value != NULL
+            else u64(0);
+        value = clinic_args[3] if count > 3 and clinic_args[3] != NULL else NULL;
+        dir_fd = convert_MKNODAT_DIR_FD_CONVERTER(
+            value, "mknod", argument_label("dir_fd", 4)
+        )
+            if value != NULL
+            else DEFAULT_DIR_FD;
+        return os_mknod_impl(receiver, path, mode, device, dir_fd);
+    } except boundary_failure {
+        return NULL;
     }
-    value = args.values[2];
-    device = convert__Py_Dev_Converter(value, "mknod", argument_label("device", 3))
-        if value != NULL
-        else u64(0);
-    value = args.values[3];
-    dir_fd = convert_MKNODAT_DIR_FD_CONVERTER(
-        value, "mknod", argument_label("dir_fd", 4)
-    )
-        if value != NULL
-        else DEFAULT_DIR_FD;
-    return os_mknod_impl(receiver, path, mode, device, dir_fd);
 }
 
 def:priv os_mknod_call(
@@ -3582,90 +4457,109 @@ def:priv os_mknod_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 3 {
+        return os_mknod_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_mknod_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_mknod_bound(receiver, values, 4);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_mknod_signature, args, nargs, kwnames, os_mknod_bound, receiver
     );
 }
 
-def:priv os_major_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    device: u64 = convert__Py_Dev_Converter(value, "major", "argument");
-    return os_major_impl(receiver, device);
-}
-
 def:priv os_major_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, os_major_bound, receiver);
-}
-
-def:priv os_minor_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    device: u64 = convert__Py_Dev_Converter(value, "minor", "argument");
-    return os_minor_impl(receiver, device);
+    try {
+        device: u64 = convert__Py_Dev_Converter(value, "major", "argument");
+        return os_major_impl(receiver, device);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_minor_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_given(value, os_minor_bound, receiver);
+    try {
+        device: u64 = convert__Py_Dev_Converter(value, "minor", "argument");
+        return os_minor_impl(receiver, device);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_makedev_signature = CallSignature(
-         "makedev", ["major", "minor"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_makedev_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    major: u64 = convert__Py_Dev_Converter(value, "makedev", argument_label("", 1));
-    value = args.values[1];
-    minor: u64 = convert__Py_Dev_Converter(value, "makedev", argument_label("", 2));
-    return return__PyLong_FromDev(os_makedev_impl(receiver, major, minor));
+def:priv os_makedev_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        major: u64 = convert__Py_Dev_Converter(value, "makedev", argument_label("", 1));
+        value = clinic_args[1];
+        minor: u64 = convert__Py_Dev_Converter(value, "makedev", argument_label("", 2));
+        return return_dev_t(os_makedev_impl(receiver, major, minor));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_makedev_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_makedev_signature, args, nargs, NULL, os_makedev_bound, receiver
-    );
+    if not check_positional("makedev", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_makedev_bound(receiver, args, nargs);
 }
 
-glob:priv os_ftruncate_signature = CallSignature(
-         "ftruncate", ["fd", "length"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_ftruncate_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    length: i64 = convert_Py_off_t_converter(value, "ftruncate", argument_label("", 2));
-    return os_ftruncate_impl(receiver, fd, length);
+def:priv os_ftruncate_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        length: i64 = convert_Py_off_t_converter(
+            value, "ftruncate", argument_label("", 2)
+        );
+        return os_ftruncate_impl(receiver, fd, length);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_ftruncate_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_ftruncate_signature, args, nargs, NULL, os_ftruncate_bound, receiver
-    );
+    if not check_positional("ftruncate", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_ftruncate_bound(receiver, args, nargs);
 }
 
 glob:priv os_truncate_signature = CallSignature(
          "truncate", ["path", "length"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_truncate_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("truncate", "path", 0, 0, 0, PATH_HAVE_FTRUNCATE)
-    );
-    value = args.values[1];
-    length: i64 = convert_Py_off_t_converter(
-        value, "truncate", argument_label("length", 2)
-    );
-    return os_truncate_impl(receiver, path, length);
+def:priv os_truncate_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("truncate", "path", 0, 0, 0, PATH_HAVE_FTRUNCATE)
+        );
+        value = clinic_args[1];
+        length: i64 = convert_Py_off_t_converter(
+            value, "truncate", argument_label("length", 2)
+        );
+        return os_truncate_impl(receiver, path, length);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_truncate_call(
@@ -3674,160 +4568,172 @@ def:priv os_truncate_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_truncate_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_truncate_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_truncate_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_truncate_signature, args, nargs, kwnames, os_truncate_bound, receiver
     );
 }
 
-glob:priv os_posix_fallocate_signature = CallSignature(
-         "posix_fallocate", ["fd", "offset", "length"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_posix_fallocate_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    offset: i64 = convert_Py_off_t_converter(
-        value, "posix_fallocate", argument_label("", 2)
-    );
-    value = args.values[2];
-    length: i64 = convert_Py_off_t_converter(
-        value, "posix_fallocate", argument_label("", 3)
-    );
-    return os_posix_fallocate_impl(receiver, fd, offset, length);
+def:priv os_posix_fallocate_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        offset: i64 = convert_Py_off_t_converter(
+            value, "posix_fallocate", argument_label("", 2)
+        );
+        value = clinic_args[2];
+        length: i64 = convert_Py_off_t_converter(
+            value, "posix_fallocate", argument_label("", 3)
+        );
+        return os_posix_fallocate_impl(receiver, fd, offset, length);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_posix_fallocate_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_posix_fallocate_signature,
-        args,
-        nargs,
-        NULL,
-        os_posix_fallocate_bound,
-        receiver
-    );
+    if not check_positional("posix_fallocate", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_posix_fallocate_bound(receiver, args, nargs);
 }
 
-glob:priv os_posix_fadvise_signature = CallSignature(
-         "posix_fadvise",
-         ["fd", "offset", "length", "advice"],
-         4,
-         4,
-         4,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv os_posix_fadvise_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    offset: i64 = convert_Py_off_t_converter(
-        value, "posix_fadvise", argument_label("", 2)
-    );
-    value = args.values[2];
-    length: i64 = convert_Py_off_t_converter(
-        value, "posix_fadvise", argument_label("", 3)
-    );
-    value = args.values[3];
-    advice: i32 = convert_int(value);
-    return os_posix_fadvise_impl(receiver, fd, offset, length, advice);
+def:priv os_posix_fadvise_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        offset: i64 = convert_Py_off_t_converter(
+            value, "posix_fadvise", argument_label("", 2)
+        );
+        value = clinic_args[2];
+        length: i64 = convert_Py_off_t_converter(
+            value, "posix_fadvise", argument_label("", 3)
+        );
+        value = clinic_args[3];
+        advice: i32 = convert_int(value);
+        return os_posix_fadvise_impl(receiver, fd, offset, length, advice);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_posix_fadvise_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_posix_fadvise_signature, args, nargs, NULL, os_posix_fadvise_bound, receiver
-    );
+    if not check_positional("posix_fadvise", int(nargs), 4, 4) {
+        return NULL;
+    }
+    return os_posix_fadvise_bound(receiver, args, nargs);
 }
 
-glob:priv os_putenv_signature = CallSignature(
-         "putenv", ["name", "value"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_putenv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name_owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "putenv", argument_label("", 1))
-    );
-    name = name_owner.value;
-    value = args.values[1];
-    value__owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "putenv", argument_label("", 2))
-    );
-    value_ = value__owner.value;
-    result = os_putenv_impl(receiver, name, value_);
-    name_owner.close();
-    value__owner.close();
-    return result;
+def:priv os_putenv_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        name: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "putenv", argument_label("", 1)
+        );
+        try {
+            value = clinic_args[1];
+            value_: ptr[PyObject] = convert_PyUnicode_FSConverter(
+                value, "putenv", argument_label("", 2)
+            );
+            try {
+                return os_putenv_impl(receiver, name, value_);
+            } finally {
+                jacpy_release(value_);
+            }
+        } finally {
+            jacpy_release(name);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_putenv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_putenv_signature, args, nargs, NULL, os_putenv_bound, receiver
-    );
-}
-
-def:priv os_unsetenv_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name_owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "unsetenv", "argument")
-    );
-    name = name_owner.value;
-    result = os_unsetenv_impl(receiver, name);
-    name_owner.close();
-    return result;
+    if not check_positional("putenv", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_putenv_bound(receiver, args, nargs);
 }
 
 def:priv os_unsetenv_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_unsetenv_bound, receiver);
-}
-
-def:priv os_strerror_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    code: i32 = convert_int(value);
-    return os_strerror_impl(receiver, code);
+    try {
+        name: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "unsetenv", "argument"
+        );
+        try {
+            return os_unsetenv_impl(receiver, name);
+        } finally {
+            jacpy_release(name);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_strerror_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_strerror_bound, receiver);
-}
-
-def:priv os_WCOREDUMP_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_bool(os_WCOREDUMP_impl(receiver, status));
+    try {
+        code: i32 = convert_int(value);
+        return os_strerror_impl(receiver, code);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WCOREDUMP_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_WCOREDUMP_bound, receiver);
+    try {
+        status: i32 = convert_int(value);
+        return return_bool(os_WCOREDUMP_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_WIFCONTINUED_signature = CallSignature(
          "WIFCONTINUED", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WIFCONTINUED_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_bool(os_WIFCONTINUED_impl(receiver, status));
+def:priv os_WIFCONTINUED_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_bool(os_WIFCONTINUED_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WIFCONTINUED_call(
@@ -3836,7 +4742,16 @@ def:priv os_WIFCONTINUED_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WIFCONTINUED_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WIFCONTINUED_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WIFCONTINUED_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WIFCONTINUED_signature, args, nargs, kwnames, os_WIFCONTINUED_bound, receiver
     );
 }
@@ -3845,11 +4760,17 @@ glob:priv os_WIFSTOPPED_signature = CallSignature(
          "WIFSTOPPED", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WIFSTOPPED_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_bool(os_WIFSTOPPED_impl(receiver, status));
+def:priv os_WIFSTOPPED_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_bool(os_WIFSTOPPED_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WIFSTOPPED_call(
@@ -3858,7 +4779,16 @@ def:priv os_WIFSTOPPED_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WIFSTOPPED_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WIFSTOPPED_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WIFSTOPPED_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WIFSTOPPED_signature, args, nargs, kwnames, os_WIFSTOPPED_bound, receiver
     );
 }
@@ -3867,11 +4797,17 @@ glob:priv os_WIFSIGNALED_signature = CallSignature(
          "WIFSIGNALED", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WIFSIGNALED_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_bool(os_WIFSIGNALED_impl(receiver, status));
+def:priv os_WIFSIGNALED_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_bool(os_WIFSIGNALED_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WIFSIGNALED_call(
@@ -3880,7 +4816,16 @@ def:priv os_WIFSIGNALED_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WIFSIGNALED_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WIFSIGNALED_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WIFSIGNALED_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WIFSIGNALED_signature, args, nargs, kwnames, os_WIFSIGNALED_bound, receiver
     );
 }
@@ -3889,11 +4834,17 @@ glob:priv os_WIFEXITED_signature = CallSignature(
          "WIFEXITED", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WIFEXITED_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_bool(os_WIFEXITED_impl(receiver, status));
+def:priv os_WIFEXITED_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_bool(os_WIFEXITED_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WIFEXITED_call(
@@ -3902,7 +4853,16 @@ def:priv os_WIFEXITED_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WIFEXITED_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WIFEXITED_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WIFEXITED_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WIFEXITED_signature, args, nargs, kwnames, os_WIFEXITED_bound, receiver
     );
 }
@@ -3911,11 +4871,17 @@ glob:priv os_WEXITSTATUS_signature = CallSignature(
          "WEXITSTATUS", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WEXITSTATUS_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_int(os_WEXITSTATUS_impl(receiver, status));
+def:priv os_WEXITSTATUS_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_int(os_WEXITSTATUS_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WEXITSTATUS_call(
@@ -3924,7 +4890,16 @@ def:priv os_WEXITSTATUS_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WEXITSTATUS_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WEXITSTATUS_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WEXITSTATUS_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WEXITSTATUS_signature, args, nargs, kwnames, os_WEXITSTATUS_bound, receiver
     );
 }
@@ -3933,11 +4908,17 @@ glob:priv os_WTERMSIG_signature = CallSignature(
          "WTERMSIG", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WTERMSIG_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_int(os_WTERMSIG_impl(receiver, status));
+def:priv os_WTERMSIG_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_int(os_WTERMSIG_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WTERMSIG_call(
@@ -3946,7 +4927,16 @@ def:priv os_WTERMSIG_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WTERMSIG_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WTERMSIG_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WTERMSIG_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WTERMSIG_signature, args, nargs, kwnames, os_WTERMSIG_bound, receiver
     );
 }
@@ -3955,11 +4945,17 @@ glob:priv os_WSTOPSIG_signature = CallSignature(
          "WSTOPSIG", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_WSTOPSIG_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: i32 = convert_int(value);
-    return return_int(os_WSTOPSIG_impl(receiver, status));
+def:priv os_WSTOPSIG_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: i32 = convert_int(value);
+        return return_int(os_WSTOPSIG_impl(receiver, status));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_WSTOPSIG_call(
@@ -3968,35 +4964,48 @@ def:priv os_WSTOPSIG_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_WSTOPSIG_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_WSTOPSIG_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_WSTOPSIG_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_WSTOPSIG_signature, args, nargs, kwnames, os_WSTOPSIG_bound, receiver
     );
-}
-
-def:priv os_fstatvfs_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return os_fstatvfs_impl(receiver, fd);
 }
 
 def:priv os_fstatvfs_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_fstatvfs_bound, receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return os_fstatvfs_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_statvfs_signature = CallSignature(
          "statvfs", ["path"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_statvfs_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("statvfs", "path", 0, 0, 0, PATH_HAVE_FSTATVFS)
-    );
-    return os_statvfs_impl(receiver, path);
+def:priv os_statvfs_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("statvfs", "path", 0, 0, 0, PATH_HAVE_FSTATVFS)
+        );
+        return os_statvfs_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_statvfs_call(
@@ -4005,49 +5014,67 @@ def:priv os_statvfs_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_statvfs_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_statvfs_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_statvfs_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_statvfs_signature, args, nargs, kwnames, os_statvfs_bound, receiver
     );
 }
 
-glob:priv os_fpathconf_signature = CallSignature(
-         "fpathconf", ["fd", "name"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_fpathconf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "fpathconf", argument_label("", 1));
-    value = args.values[1];
-    name: i32 = convert_conv_confname(
-        receiver, value, "fpathconf", argument_label("", 2), "pathconf_names"
-    );
-    return return_long(os_fpathconf_impl(receiver, fd, name));
+def:priv os_fpathconf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "fpathconf", argument_label("", 1));
+        value = clinic_args[1];
+        name: i32 = convert_conv_confname(
+            receiver, value, "fpathconf", argument_label("", 2), "pathconf_names"
+        );
+        return return_long(os_fpathconf_impl(receiver, fd, name));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fpathconf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_fpathconf_signature, args, nargs, NULL, os_fpathconf_bound, receiver
-    );
+    if not check_positional("fpathconf", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_fpathconf_bound(receiver, args, nargs);
 }
 
 glob:priv os_pathconf_signature = CallSignature(
          "pathconf", ["path", "name"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_pathconf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("pathconf", "path", 0, 0, 0, PATH_HAVE_FPATHCONF)
-    );
-    value = args.values[1];
-    name: i32 = convert_conv_confname(
-        receiver, value, "pathconf", argument_label("name", 2), "pathconf_names"
-    );
-    return return_long(os_pathconf_impl(receiver, path, name));
+def:priv os_pathconf_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("pathconf", "path", 0, 0, 0, PATH_HAVE_FPATHCONF)
+        );
+        value = clinic_args[1];
+        name: i32 = convert_conv_confname(
+            receiver, value, "pathconf", argument_label("name", 2), "pathconf_names"
+        );
+        return return_long(os_pathconf_impl(receiver, path, name));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_pathconf_call(
@@ -4056,72 +5083,81 @@ def:priv os_pathconf_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_pathconf_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_pathconf_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_pathconf_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_pathconf_signature, args, nargs, kwnames, os_pathconf_bound, receiver
     );
-}
-
-def:priv os_confstr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: i32 = convert_conv_confname(
-        receiver, value, "confstr", "argument", "confstr_names"
-    );
-    return os_confstr_impl(receiver, name);
 }
 
 def:priv os_confstr_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_confstr_bound, receiver);
-}
-
-def:priv os_sysconf_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name: i32 = convert_conv_confname(
-        receiver, value, "sysconf", "argument", "sysconf_names"
-    );
-    return return_long(os_sysconf_impl(receiver, name));
+    try {
+        name: i32 = convert_conv_confname(
+            receiver, value, "confstr", "argument", "confstr_names"
+        );
+        return os_confstr_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_sysconf_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_sysconf_bound, receiver);
-}
-
-def:priv os_abort_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_abort_impl(receiver);
+    try {
+        name: i32 = convert_conv_confname(
+            receiver, value, "sysconf", "argument", "sysconf_names"
+        );
+        return return_long(os_sysconf_impl(receiver, name));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_abort_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_abort_bound, receiver);
-}
-
-def:priv os_getloadavg_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getloadavg_impl(receiver);
+    try {
+        return os_abort_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getloadavg_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getloadavg_bound, receiver);
+    try {
+        return os_getloadavg_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_device_encoding_signature = CallSignature(
          "device_encoding", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_device_encoding_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return os_device_encoding_impl(receiver, fd);
+def:priv os_device_encoding_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        return os_device_encoding_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_device_encoding_call(
@@ -4130,7 +5166,16 @@ def:priv os_device_encoding_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_device_encoding_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_device_encoding_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_device_encoding_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_device_encoding_signature,
         args,
         nargs,
@@ -4140,72 +5185,88 @@ def:priv os_device_encoding_call(
     );
 }
 
-glob:priv os_setresuid_signature = CallSignature(
-         "setresuid", ["ruid", "euid", "suid"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_setresuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    ruid: u32 = convert__Py_Uid_Converter(value, "setresuid", argument_label("", 1));
-    value = args.values[1];
-    euid: u32 = convert__Py_Uid_Converter(value, "setresuid", argument_label("", 2));
-    value = args.values[2];
-    suid: u32 = convert__Py_Uid_Converter(value, "setresuid", argument_label("", 3));
-    return os_setresuid_impl(receiver, ruid, euid, suid);
+def:priv os_setresuid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        ruid: u32 = convert__Py_Uid_Converter(
+            value, "setresuid", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        euid: u32 = convert__Py_Uid_Converter(
+            value, "setresuid", argument_label("", 2)
+        );
+        value = clinic_args[2];
+        suid: u32 = convert__Py_Uid_Converter(
+            value, "setresuid", argument_label("", 3)
+        );
+        return os_setresuid_impl(receiver, ruid, euid, suid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setresuid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_setresuid_signature, args, nargs, NULL, os_setresuid_bound, receiver
-    );
+    if not check_positional("setresuid", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_setresuid_bound(receiver, args, nargs);
 }
 
-glob:priv os_setresgid_signature = CallSignature(
-         "setresgid", ["rgid", "egid", "sgid"], 3, 3, 3, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_setresgid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    rgid: u32 = convert__Py_Gid_Converter(value, "setresgid", argument_label("", 1));
-    value = args.values[1];
-    egid: u32 = convert__Py_Gid_Converter(value, "setresgid", argument_label("", 2));
-    value = args.values[2];
-    sgid: u32 = convert__Py_Gid_Converter(value, "setresgid", argument_label("", 3));
-    return os_setresgid_impl(receiver, rgid, egid, sgid);
+def:priv os_setresgid_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        rgid: u32 = convert__Py_Gid_Converter(
+            value, "setresgid", argument_label("", 1)
+        );
+        value = clinic_args[1];
+        egid: u32 = convert__Py_Gid_Converter(
+            value, "setresgid", argument_label("", 2)
+        );
+        value = clinic_args[2];
+        sgid: u32 = convert__Py_Gid_Converter(
+            value, "setresgid", argument_label("", 3)
+        );
+        return os_setresgid_impl(receiver, rgid, egid, sgid);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_setresgid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_setresgid_signature, args, nargs, NULL, os_setresgid_bound, receiver
-    );
-}
-
-def:priv os_getresuid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getresuid_impl(receiver);
+    if not check_positional("setresgid", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return os_setresgid_bound(receiver, args, nargs);
 }
 
 def:priv os_getresuid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getresuid_bound, receiver);
-}
-
-def:priv os_getresgid_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_getresgid_impl(receiver);
+    try {
+        return os_getresuid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_getresgid_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_getresgid_bound, receiver);
+    try {
+        return os_getresgid_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_getxattr_signature = CallSignature(
@@ -4217,22 +5278,28 @@ glob:priv os_getxattr_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_getxattr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("getxattr", "path", 0, 0, 0, 1)
-    );
-    value = args.values[1];
-    attribute = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("getxattr", "attribute", 0, 0, 0, 0)
-    );
-    follow_symlinks: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        follow_symlinks = convert_bool(value);
+def:priv os_getxattr_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("getxattr", "path", 0, 0, 0, 1)
+        );
+        value = clinic_args[1];
+        attribute = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("getxattr", "attribute", 0, 0, 0, 0)
+        );
+        follow_symlinks: bool = True;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_getxattr_impl(receiver, path, attribute, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_getxattr_impl(receiver, path, attribute, follow_symlinks);
 }
 
 def:priv os_getxattr_call(
@@ -4241,7 +5308,16 @@ def:priv os_getxattr_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_getxattr_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_getxattr_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_getxattr_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_getxattr_signature, args, nargs, kwnames, os_getxattr_bound, receiver
     );
 }
@@ -4255,31 +5331,43 @@ glob:priv os_setxattr_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_setxattr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("setxattr", "path", 0, 0, 0, 1)
-    );
-    value = args.values[1];
-    attribute = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("setxattr", "attribute", 0, 0, 0, 0)
-    );
-    value = args.values[2];
-    value_: BufferArgument = convert_buffer(
-        value, "setxattr", argument_label("value", 3)
-    );
-    flags: i32 = 0;
-    if args.values[3] != NULL {
-        value = args.values[3];
-        flags = convert_int(value);
+def:priv os_setxattr_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("setxattr", "path", 0, 0, 0, 1)
+        );
+        value = clinic_args[1];
+        attribute = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("setxattr", "attribute", 0, 0, 0, 0)
+        );
+        value = clinic_args[2];
+        value_: BufferArgument = convert_buffer(
+            value, "setxattr", argument_label("value", 3)
+        );
+        try {
+            flags: i32 = 0;
+            if count > 3 and clinic_args[3] != NULL {
+                value = clinic_args[3];
+                flags = convert_int(value);
+            }
+            follow_symlinks: bool = True;
+            if count > 4 and clinic_args[4] != NULL {
+                value = clinic_args[4];
+                follow_symlinks = convert_bool(value);
+            }
+            return os_setxattr_impl(
+                receiver, path, attribute, value_, flags, follow_symlinks
+            );
+        } finally {
+            value_.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    follow_symlinks: bool = True;
-    if args.values[4] != NULL {
-        value = args.values[4];
-        follow_symlinks = convert_bool(value);
-    }
-    return os_setxattr_impl(receiver, path, attribute, value_, flags, follow_symlinks);
 }
 
 def:priv os_setxattr_call(
@@ -4288,7 +5376,16 @@ def:priv os_setxattr_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 3 and nargs <= 4 {
+        return os_setxattr_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_setxattr_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_setxattr_bound(receiver, values, 5);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_setxattr_signature, args, nargs, kwnames, os_setxattr_bound, receiver
     );
 }
@@ -4302,22 +5399,28 @@ glob:priv os_removexattr_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv os_removexattr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("removexattr", "path", 0, 0, 0, 1)
-    );
-    value = args.values[1];
-    attribute = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("removexattr", "attribute", 0, 0, 0, 0)
-    );
-    follow_symlinks: bool = True;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        follow_symlinks = convert_bool(value);
+def:priv os_removexattr_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("removexattr", "path", 0, 0, 0, 1)
+        );
+        value = clinic_args[1];
+        attribute = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("removexattr", "attribute", 0, 0, 0, 0)
+        );
+        follow_symlinks: bool = True;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_removexattr_impl(receiver, path, attribute, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_removexattr_impl(receiver, path, attribute, follow_symlinks);
 }
 
 def:priv os_removexattr_call(
@@ -4326,7 +5429,16 @@ def:priv os_removexattr_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_removexattr_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_removexattr_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_removexattr_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_removexattr_signature, args, nargs, kwnames, os_removexattr_bound, receiver
     );
 }
@@ -4335,20 +5447,26 @@ glob:priv os_listxattr_signature = CallSignature(
          "listxattr", ["path", "follow_symlinks"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_listxattr_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("listxattr", "path", 1, 0, 0, 1)
-    )
-        if value != NULL
-        else PATH_T_INITIALIZE_P("listxattr", "path", 1, 0, 0, 1);
-    follow_symlinks: bool = True;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        follow_symlinks = convert_bool(value);
+def:priv os_listxattr_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0] if count > 0 and clinic_args[0] != NULL else NULL;
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("listxattr", "path", 1, 0, 0, 1)
+        )
+            if value != NULL
+            else PATH_T_INITIALIZE_P("listxattr", "path", 1, 0, 0, 1);
+        follow_symlinks: bool = True;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            follow_symlinks = convert_bool(value);
+        }
+        return os_listxattr_impl(receiver, path, follow_symlinks);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_listxattr_impl(receiver, path, follow_symlinks);
 }
 
 def:priv os_listxattr_call(
@@ -4357,52 +5475,66 @@ def:priv os_listxattr_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return os_listxattr_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_listxattr_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_listxattr_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_listxattr_signature, args, nargs, kwnames, os_listxattr_bound, receiver
     );
-}
-
-def:priv os_urandom_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    size: i64 = convert_ssize(value);
-    return os_urandom_impl(receiver, size);
 }
 
 def:priv os_urandom_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_urandom_bound, receiver);
+    try {
+        size: i64 = convert_ssize(value);
+        return os_urandom_impl(receiver, size);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_memfd_create_signature = CallSignature(
          "memfd_create", ["name", "flags"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_memfd_create_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    name_owner = OwnedReference(
-        convert_PyUnicode_FSConverter(value, "memfd_create", argument_label("name", 1))
-    );
-    name = name_owner.value;
-    flags: u32 = MFD_CLOEXEC;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = u32(
-            convert_unsigned_bounded(
-                value,
-                True,
-                u64(4294967295),
-                "unsigned int",
-                "memfd_create",
-                argument_label("flags", 2)
-            )
+def:priv os_memfd_create_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        name: ptr[PyObject] = convert_PyUnicode_FSConverter(
+            value, "memfd_create", argument_label("name", 1)
         );
+        try {
+            flags: u32 = MFD_CLOEXEC;
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                flags = u32(
+                    convert_unsigned_bounded(
+                        value,
+                        True,
+                        u64(4294967295),
+                        "unsigned int",
+                        "memfd_create",
+                        argument_label("flags", 2)
+                    )
+                );
+            }
+            return os_memfd_create_impl(receiver, name, flags);
+        } finally {
+            jacpy_release(name);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = os_memfd_create_impl(receiver, name, flags);
-    name_owner.close();
-    return result;
 }
 
 def:priv os_memfd_create_call(
@@ -4411,7 +5543,16 @@ def:priv os_memfd_create_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_memfd_create_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_memfd_create_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_memfd_create_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_memfd_create_signature, args, nargs, kwnames, os_memfd_create_bound, receiver
     );
 }
@@ -4420,16 +5561,22 @@ glob:priv os_eventfd_signature = CallSignature(
          "eventfd", ["initval", "flags"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_eventfd_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    initval: u32 = convert_unsigned_int(value);
-    flags: i32 = EFD_CLOEXEC;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = convert_int(value);
+def:priv os_eventfd_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        initval: u32 = convert_unsigned_int(value);
+        flags: i32 = EFD_CLOEXEC;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            flags = convert_int(value);
+        }
+        return os_eventfd_impl(receiver, initval, flags);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_eventfd_impl(receiver, initval, flags);
 }
 
 def:priv os_eventfd_call(
@@ -4438,7 +5585,16 @@ def:priv os_eventfd_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_eventfd_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_eventfd_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_eventfd_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_eventfd_signature, args, nargs, kwnames, os_eventfd_bound, receiver
     );
 }
@@ -4447,11 +5603,17 @@ glob:priv os_eventfd_read_signature = CallSignature(
          "eventfd_read", ["fd"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_eventfd_read_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "eventfd_read", argument_label("fd", 1));
-    return os_eventfd_read_impl(receiver, fd);
+def:priv os_eventfd_read_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "eventfd_read", argument_label("fd", 1));
+        return os_eventfd_read_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_eventfd_read_call(
@@ -4460,7 +5622,16 @@ def:priv os_eventfd_read_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_eventfd_read_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_eventfd_read_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_eventfd_read_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_eventfd_read_signature, args, nargs, kwnames, os_eventfd_read_bound, receiver
     );
 }
@@ -4469,15 +5640,21 @@ glob:priv os_eventfd_write_signature = CallSignature(
          "eventfd_write", ["fd", "value"], 2, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_eventfd_write_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_fildes(value, "eventfd_write", argument_label("fd", 1));
-    value = args.values[1];
-    value_: u64 = convert_unsigned_long_long(
-        value, False, "eventfd_write", argument_label("value", 2)
-    );
-    return os_eventfd_write_impl(receiver, fd, value_);
+def:priv os_eventfd_write_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_fildes(value, "eventfd_write", argument_label("fd", 1));
+        value = clinic_args[1];
+        value_: u64 = convert_unsigned_long_long(
+            value, False, "eventfd_write", argument_label("value", 2)
+        );
+        return os_eventfd_write_impl(receiver, fd, value_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_eventfd_write_call(
@@ -4486,7 +5663,16 @@ def:priv os_eventfd_write_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return os_eventfd_write_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_eventfd_write_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_eventfd_write_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_eventfd_write_signature,
         args,
         nargs,
@@ -4496,130 +5682,130 @@ def:priv os_eventfd_write_call(
     );
 }
 
-glob:priv os_get_terminal_size_signature = CallSignature(
-         "get_terminal_size", ["fd"], 0, 1, 1, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_get_terminal_size_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    fd: i32 = fileno(stdout);
-    if args.values[0] != NULL {
-        value = args.values[0];
-        fd = convert_int(value);
+def:priv os_get_terminal_size_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        fd: i32 = fileno(stdout);
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            fd = convert_int(value);
+        }
+        return os_get_terminal_size_impl(receiver, fd);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_get_terminal_size_impl(receiver, fd);
 }
 
 def:priv os_get_terminal_size_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_get_terminal_size_signature,
-        args,
-        nargs,
-        NULL,
-        os_get_terminal_size_bound,
-        receiver
-    );
-}
-
-def:priv os_cpu_count_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_cpu_count_impl(receiver);
+    if not check_positional("get_terminal_size", int(nargs), 0, 1) {
+        return NULL;
+    }
+    return os_get_terminal_size_bound(receiver, args, nargs);
 }
 
 def:priv os_cpu_count_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_cpu_count_bound, receiver);
-}
-
-def:priv os_get_inheritable_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return return_bool(os_get_inheritable_impl(receiver, fd));
+    try {
+        return os_cpu_count_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_get_inheritable_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_get_inheritable_bound, receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return return_bool(os_get_inheritable_impl(receiver, fd));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_set_inheritable_signature = CallSignature(
-         "set_inheritable", ["fd", "inheritable"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_set_inheritable_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    inheritable: i32 = convert_int(value);
-    return os_set_inheritable_impl(receiver, fd, inheritable);
+def:priv os_set_inheritable_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        inheritable: i32 = convert_int(value);
+        return os_set_inheritable_impl(receiver, fd, inheritable);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_set_inheritable_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_set_inheritable_signature,
-        args,
-        nargs,
-        NULL,
-        os_set_inheritable_bound,
-        receiver
-    );
-}
-
-def:priv os_get_blocking_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    return return_bool(os_get_blocking_impl(receiver, fd));
+    if not check_positional("set_inheritable", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_set_inheritable_bound(receiver, args, nargs);
 }
 
 def:priv os_get_blocking_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, os_get_blocking_bound, receiver);
+    try {
+        fd: i32 = convert_int(value);
+        return return_bool(os_get_blocking_impl(receiver, fd));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv os_set_blocking_signature = CallSignature(
-         "set_blocking", ["fd", "blocking"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv os_set_blocking_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    fd: i32 = convert_int(value);
-    value = args.values[1];
-    blocking: bool = convert_bool(value);
-    return os_set_blocking_impl(receiver, fd, blocking);
+def:priv os_set_blocking_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        fd: i32 = convert_int(value);
+        value = clinic_args[1];
+        blocking: bool = convert_bool(value);
+        return os_set_blocking_impl(receiver, fd, blocking);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_set_blocking_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        os_set_blocking_signature, args, nargs, NULL, os_set_blocking_bound, receiver
-    );
+    if not check_positional("set_blocking", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return os_set_blocking_bound(receiver, args, nargs);
 }
 
 glob:priv os_scandir_signature = CallSignature(
          "scandir", ["path"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_scandir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path = convert_path_converter(
-        value, PATH_T_INITIALIZE_P("scandir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR)
-    )
-        if value != NULL
-        else PATH_T_INITIALIZE_P("scandir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR);
-    return os_scandir_impl(receiver, path);
+def:priv os_scandir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0] if count > 0 and clinic_args[0] != NULL else NULL;
+        path = convert_path_converter(
+            value, PATH_T_INITIALIZE_P("scandir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR)
+        )
+            if value != NULL
+            else PATH_T_INITIALIZE_P("scandir", "path", 1, 0, 0, PATH_HAVE_FDOPENDIR);
+        return os_scandir_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_scandir_call(
@@ -4628,7 +5814,16 @@ def:priv os_scandir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return os_scandir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_scandir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_scandir_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_scandir_signature, args, nargs, kwnames, os_scandir_bound, receiver
     );
 }
@@ -4637,11 +5832,17 @@ glob:priv os_fspath_signature = CallSignature(
          "fspath", ["path"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_fspath_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    path: ptr[PyObject] = value;
-    return os_fspath_impl(receiver, path);
+def:priv os_fspath_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        path: ptr[PyObject] = value;
+        return os_fspath_impl(receiver, path);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_fspath_call(
@@ -4650,7 +5851,16 @@ def:priv os_fspath_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_fspath_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_fspath_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_fspath_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_fspath_signature, args, nargs, kwnames, os_fspath_bound, receiver
     );
 }
@@ -4659,16 +5869,22 @@ glob:priv os_getrandom_signature = CallSignature(
          "getrandom", ["size", "flags"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_getrandom_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    size: i64 = convert_ssize(value);
-    flags: i32 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        flags = convert_int(value);
+def:priv os_getrandom_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        size: i64 = convert_ssize(value);
+        flags: i32 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            flags = convert_int(value);
+        }
+        return os_getrandom_impl(receiver, size, flags);
+    } except boundary_failure {
+        return NULL;
     }
-    return os_getrandom_impl(receiver, size, flags);
 }
 
 def:priv os_getrandom_call(
@@ -4677,7 +5893,16 @@ def:priv os_getrandom_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return os_getrandom_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_getrandom_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_getrandom_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_getrandom_signature, args, nargs, kwnames, os_getrandom_bound, receiver
     );
 }
@@ -4686,11 +5911,17 @@ glob:priv os_waitstatus_to_exitcode_signature = CallSignature(
          "waitstatus_to_exitcode", ["status"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_waitstatus_to_exitcode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    status: ptr[PyObject] = value;
-    return os_waitstatus_to_exitcode_impl(receiver, status);
+def:priv os_waitstatus_to_exitcode_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        status: ptr[PyObject] = value;
+        return os_waitstatus_to_exitcode_impl(receiver, status);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_waitstatus_to_exitcode_call(
@@ -4699,7 +5930,16 @@ def:priv os_waitstatus_to_exitcode_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return os_waitstatus_to_exitcode_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_waitstatus_to_exitcode_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_waitstatus_to_exitcode_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_waitstatus_to_exitcode_signature,
         args,
         nargs,
@@ -4709,66 +5949,90 @@ def:priv os_waitstatus_to_exitcode_call(
     );
 }
 
-def:priv os__inputhook_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os__inputhook_impl(receiver);
-}
-
 def:priv os__inputhook_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os__inputhook_bound, receiver);
-}
-
-def:priv os__is_inputhook_installed_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os__is_inputhook_installed_impl(receiver);
+    try {
+        return os__inputhook_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os__is_inputhook_installed_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os__is_inputhook_installed_bound, receiver);
-}
-
-def:priv os__create_environ_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os__create_environ_impl(receiver);
+    try {
+        return os__is_inputhook_installed_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os__create_environ_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os__create_environ_bound, receiver);
+    try {
+        return os__create_environ_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_sched_param_signature = CallSignature(
          "sched_param", ["sched_priority"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_sched_param_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    sched_priority: ptr[PyObject] = value;
-    return os_sched_param_impl(receiver, sched_priority);
+def:priv os_sched_param_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        sched_priority: ptr[PyObject] = value;
+        return os_sched_param_impl(receiver, sched_priority);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:pub os_sched_param_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(os_sched_param_signature, args, kwargs, os_sched_param_bound, type);
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 1 and size <= 1 {
+            return os_sched_param_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    values = unpack_mapping(os_sched_param_signature, args, kwargs);
+    if values {
+        unpacked = os_sched_param_bound(type, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_tuple(
+        os_sched_param_signature, args, kwargs, os_sched_param_bound, type
+    );
 }
 
 glob:priv os_DirEntry_is_symlink_signature = CallSignature(
          "is_symlink", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
      );
 
-def:priv os_DirEntry_is_symlink_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, DirEntry_token);
-    result = return_bool(os_DirEntry_is_symlink_impl(receiver, cls));
-    jacpy_release(cls);
-    return result;
+def:priv os_DirEntry_is_symlink_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        cls = defining_class(receiver, DirEntry_token);
+        try {
+            return return_bool(os_DirEntry_is_symlink_impl(receiver, cls));
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_DirEntry_is_symlink_call(
@@ -4777,7 +6041,10 @@ def:priv os_DirEntry_is_symlink_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs == 0 {
+        return os_DirEntry_is_symlink_bound(receiver, args, nargs);
+    }
+    return invoke_stack(
         os_DirEntry_is_symlink_signature,
         args,
         nargs,
@@ -4787,32 +6054,39 @@ def:priv os_DirEntry_is_symlink_call(
     );
 }
 
-def:priv os_DirEntry_is_junction_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return return_bool(os_DirEntry_is_junction_impl(receiver));
-}
-
 def:priv os_DirEntry_is_junction_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_DirEntry_is_junction_bound, receiver);
+    try {
+        return return_bool(os_DirEntry_is_junction_impl(receiver));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv os_DirEntry_stat_signature = CallSignature(
          "stat", ["follow_symlinks"], 0, 0, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_DirEntry_stat_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, DirEntry_token);
-    follow_symlinks: bool = True;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        follow_symlinks = convert_bool(value);
+def:priv os_DirEntry_stat_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, DirEntry_token);
+        try {
+            follow_symlinks: bool = True;
+            if count > 0 and clinic_args[0] != NULL {
+                value = clinic_args[0];
+                follow_symlinks = convert_bool(value);
+            }
+            return os_DirEntry_stat_impl(receiver, cls, follow_symlinks);
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = os_DirEntry_stat_impl(receiver, cls, follow_symlinks);
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv os_DirEntry_stat_call(
@@ -4821,7 +6095,16 @@ def:priv os_DirEntry_stat_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 0 {
+        return os_DirEntry_stat_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_DirEntry_stat_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_DirEntry_stat_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_DirEntry_stat_signature,
         args,
         nargs,
@@ -4835,17 +6118,25 @@ glob:priv os_DirEntry_is_dir_signature = CallSignature(
          "is_dir", ["follow_symlinks"], 0, 0, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_DirEntry_is_dir_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, DirEntry_token);
-    follow_symlinks: bool = True;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        follow_symlinks = convert_bool(value);
+def:priv os_DirEntry_is_dir_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, DirEntry_token);
+        try {
+            follow_symlinks: bool = True;
+            if count > 0 and clinic_args[0] != NULL {
+                value = clinic_args[0];
+                follow_symlinks = convert_bool(value);
+            }
+            return return_bool(os_DirEntry_is_dir_impl(receiver, cls, follow_symlinks));
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = return_bool(os_DirEntry_is_dir_impl(receiver, cls, follow_symlinks));
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv os_DirEntry_is_dir_call(
@@ -4854,7 +6145,16 @@ def:priv os_DirEntry_is_dir_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 0 {
+        return os_DirEntry_is_dir_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_DirEntry_is_dir_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_DirEntry_is_dir_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_DirEntry_is_dir_signature,
         args,
         nargs,
@@ -4868,17 +6168,27 @@ glob:priv os_DirEntry_is_file_signature = CallSignature(
          "is_file", ["follow_symlinks"], 0, 0, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv os_DirEntry_is_file_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    cls = defining_class(receiver, DirEntry_token);
-    follow_symlinks: bool = True;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        follow_symlinks = convert_bool(value);
+def:priv os_DirEntry_is_file_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        cls = defining_class(receiver, DirEntry_token);
+        try {
+            follow_symlinks: bool = True;
+            if count > 0 and clinic_args[0] != NULL {
+                value = clinic_args[0];
+                follow_symlinks = convert_bool(value);
+            }
+            return return_bool(
+                os_DirEntry_is_file_impl(receiver, cls, follow_symlinks)
+            );
+        } finally {
+            jacpy_release(cls);
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    result = return_bool(os_DirEntry_is_file_impl(receiver, cls, follow_symlinks));
-    jacpy_release(cls);
-    return result;
 }
 
 def:priv os_DirEntry_is_file_call(
@@ -4887,7 +6197,16 @@ def:priv os_DirEntry_is_file_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 0 {
+        return os_DirEntry_is_file_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(os_DirEntry_is_file_signature, args, nargs, kwnames);
+    if values {
+        unpacked = os_DirEntry_is_file_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         os_DirEntry_is_file_signature,
         args,
         nargs,
@@ -4897,29 +6216,37 @@ def:priv os_DirEntry_is_file_call(
     );
 }
 
-def:priv os_DirEntry_inode_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_DirEntry_inode_impl(receiver);
-}
-
 def:priv os_DirEntry_inode_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_DirEntry_inode_bound, receiver);
-}
-
-def:priv os_DirEntry___fspath___bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return os_DirEntry___fspath___impl(receiver);
+    try {
+        return os_DirEntry_inode_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv os_DirEntry___fspath___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, os_DirEntry___fspath___bound, receiver);
+    try {
+        return os_DirEntry___fspath___impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob sched_param_doc: str = "sched_param(sched_priority)\n--\n\nCurrently has only one field: sched_priority\n\n  sched_priority\n    A scheduling parameter.",
+     posix__doc__: str = "This module provides access to operating system functionality that is\nstandardized by the C Standard and the POSIX standard (a thinly\ndisguised Unix interface).  Refer to the library manual and\ncorresponding Unix manual entries for more information on calls.",
+     stat_result__doc__: str = "stat_result: Result from stat, fstat, or lstat.\n\nThis object may be accessed either as a tuple of\n  (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime)\nor via the attributes st_mode, st_ino, st_dev, st_nlink, and so on.\n\nPosix/windows: If your platform supports st_blksize, st_blocks, st_rdev,\nor st_flags, they are available as attributes only.\n\nSee os.stat for more information.",
+     statvfs_result__doc__: str = "statvfs_result: Result from statvfs or fstatvfs.\n\nThis object may be accessed either as a tuple of\n  (bsize, frsize, blocks, bfree, bavail, files, ffree, favail, flag, namemax),\nor via the attributes f_bsize, f_frsize, f_blocks, f_bfree, and so on.\n\nSee os.statvfs for more information.",
+     waitid_result__doc__: str = "waitid_result: Result from waitid.\n\nThis object may be accessed either as a tuple of\n  (si_pid, si_uid, si_signo, si_status, si_code),\nor via the attributes si_pid, si_uid, and so on.\n\nSee os.waitid for more information.",
+     uname_result__doc__: str = "uname_result: Result from os.uname().\n\nThis object may be accessed either as a tuple of\n  (sysname, nodename, release, version, machine),\nor via the attributes sysname, nodename, release, version, and machine.\n\nSee os.uname for more information.",
+     times_result__doc__: str = "times_result: Result from os.times().\n\nThis object may be accessed either as a tuple of\n  (user, system, children_user, children_system, elapsed),\nor via the attributes user, system, children_user, children_system,\nand elapsed.\n\nSee os.times for more information.",
+     TerminalSize_docstring: str = "A tuple of (columns, lines) for holding terminal window size",
+     DirEntry_members_name_doc: str = "the entry's base filename, relative to scandir() \"path\" argument",
+     DirEntry_members_path_doc: str = "the entry's full path name; equivalent to\nos.path.join(scandir_path, entry.name)",
+     DirEntry_methods___class_getitem___doc: str = "DirEntry is generic over the type of the path (str or bytes)",
      DirEntry_methods: list[MethodDefinition] = [
          MethodDefinition(
              "is_symlink",

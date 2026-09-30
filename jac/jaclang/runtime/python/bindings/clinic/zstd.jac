@@ -6,10 +6,14 @@ jaclang.runtime.python.modules.zstd.
 """
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyMem_Free,
     PyObject,
+    PyTuple_Size,
+    jacpy_dict_size,
     jacpy_is_bytes,
     jacpy_is_tuple,
-    jacpy_is_type
+    jacpy_is_type,
+    jacpy_tuple_items
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
@@ -17,15 +21,16 @@ import from jaclang.runtime.python.bindings.type {
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
     PARSE_KEYWORDS,
-    PARSE_POSITIONAL,
-    invoke,
-    invoke_given,
-    invoke_vector
+    check_positional,
+    invoke_stack,
+    invoke_tuple,
+    unpack_mapping,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     bad_argument,
@@ -59,97 +64,82 @@ import from jaclang.runtime.python.modules.zstd {
     convert_zstd_contentsize_converter
 }
 
-glob:priv _zstd_train_dict_signature = CallSignature(
-         "train_dict",
-         ["samples_bytes", "samples_sizes", "dict_size"],
-         3,
-         3,
-         3,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _zstd_train_dict_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_bytes(value) == 0 {
-        bad_argument("train_dict", argument_label("", 1), "bytes", value);
+def:priv _zstd_train_dict_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_bytes(value) == 0 {
+            bad_argument("train_dict", argument_label("", 1), "bytes", value);
+        }
+        samples_bytes: ptr[PyObject] = value;
+        value = clinic_args[1];
+        if jacpy_is_tuple(value) == 0 {
+            bad_argument("train_dict", argument_label("", 2), "tuple", value);
+        }
+        samples_sizes: ptr[PyObject] = value;
+        value = clinic_args[2];
+        dict_size: i64 = convert_ssize(value);
+        return _zstd_train_dict_impl(receiver, samples_bytes, samples_sizes, dict_size);
+    } except boundary_failure {
+        return NULL;
     }
-    samples_bytes: ptr[PyObject] = value;
-    value = args.values[1];
-    if jacpy_is_tuple(value) == 0 {
-        bad_argument("train_dict", argument_label("", 2), "tuple", value);
-    }
-    samples_sizes: ptr[PyObject] = value;
-    value = args.values[2];
-    dict_size: i64 = convert_ssize(value);
-    return _zstd_train_dict_impl(receiver, samples_bytes, samples_sizes, dict_size);
 }
 
 def:priv _zstd_train_dict_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _zstd_train_dict_signature, args, nargs, NULL, _zstd_train_dict_bound, receiver
-    );
+    if not check_positional("train_dict", int(nargs), 3, 3) {
+        return NULL;
+    }
+    return _zstd_train_dict_bound(receiver, args, nargs);
 }
 
-glob:priv _zstd_finalize_dict_signature = CallSignature(
-         "finalize_dict",
-         [
-             "custom_dict_bytes",
-             "samples_bytes",
-             "samples_sizes",
-             "dict_size",
-             "compression_level"
-         ],
-         5,
-         5,
-         5,
-         parser=PARSE_POSITIONAL
-     );
-
-def:priv _zstd_finalize_dict_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_bytes(value) == 0 {
-        bad_argument("finalize_dict", argument_label("", 1), "bytes", value);
+def:priv _zstd_finalize_dict_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_bytes(value) == 0 {
+            bad_argument("finalize_dict", argument_label("", 1), "bytes", value);
+        }
+        custom_dict_bytes: ptr[PyObject] = value;
+        value = clinic_args[1];
+        if jacpy_is_bytes(value) == 0 {
+            bad_argument("finalize_dict", argument_label("", 2), "bytes", value);
+        }
+        samples_bytes: ptr[PyObject] = value;
+        value = clinic_args[2];
+        if jacpy_is_tuple(value) == 0 {
+            bad_argument("finalize_dict", argument_label("", 3), "tuple", value);
+        }
+        samples_sizes: ptr[PyObject] = value;
+        value = clinic_args[3];
+        dict_size: i64 = convert_ssize(value);
+        value = clinic_args[4];
+        compression_level: i32 = convert_int(value);
+        return _zstd_finalize_dict_impl(
+            receiver,
+            custom_dict_bytes,
+            samples_bytes,
+            samples_sizes,
+            dict_size,
+            compression_level
+        );
+    } except boundary_failure {
+        return NULL;
     }
-    custom_dict_bytes: ptr[PyObject] = value;
-    value = args.values[1];
-    if jacpy_is_bytes(value) == 0 {
-        bad_argument("finalize_dict", argument_label("", 2), "bytes", value);
-    }
-    samples_bytes: ptr[PyObject] = value;
-    value = args.values[2];
-    if jacpy_is_tuple(value) == 0 {
-        bad_argument("finalize_dict", argument_label("", 3), "tuple", value);
-    }
-    samples_sizes: ptr[PyObject] = value;
-    value = args.values[3];
-    dict_size: i64 = convert_ssize(value);
-    value = args.values[4];
-    compression_level: i32 = convert_int(value);
-    return _zstd_finalize_dict_impl(
-        receiver,
-        custom_dict_bytes,
-        samples_bytes,
-        samples_sizes,
-        dict_size,
-        compression_level
-    );
 }
 
 def:priv _zstd_finalize_dict_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _zstd_finalize_dict_signature,
-        args,
-        nargs,
-        NULL,
-        _zstd_finalize_dict_bound,
-        receiver
-    );
+    if not check_positional("finalize_dict", int(nargs), 5, 5) {
+        return NULL;
+    }
+    return _zstd_finalize_dict_bound(receiver, args, nargs);
 }
 
 glob:priv _zstd_get_param_bounds_signature = CallSignature(
@@ -161,13 +151,19 @@ glob:priv _zstd_get_param_bounds_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_get_param_bounds_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    parameter: i32 = convert_int(value);
-    value = args.values[1];
-    is_compress: bool = convert_bool(value);
-    return _zstd_get_param_bounds_impl(receiver, parameter, is_compress);
+def:priv _zstd_get_param_bounds_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        parameter: i32 = convert_int(value);
+        value = clinic_args[1];
+        is_compress: bool = convert_bool(value);
+        return _zstd_get_param_bounds_impl(receiver, parameter, is_compress);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _zstd_get_param_bounds_call(
@@ -176,7 +172,16 @@ def:priv _zstd_get_param_bounds_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return _zstd_get_param_bounds_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_zstd_get_param_bounds_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _zstd_get_param_bounds_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_get_param_bounds_signature,
         args,
         nargs,
@@ -190,13 +195,23 @@ glob:priv _zstd_get_frame_size_signature = CallSignature(
          "get_frame_size", ["frame_buffer"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_get_frame_size_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    frame_buffer: BufferArgument = convert_buffer(
-        value, "get_frame_size", argument_label("frame_buffer", 1)
-    );
-    return _zstd_get_frame_size_impl(receiver, frame_buffer);
+def:priv _zstd_get_frame_size_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        frame_buffer: BufferArgument = convert_buffer(
+            value, "get_frame_size", argument_label("frame_buffer", 1)
+        );
+        try {
+            return _zstd_get_frame_size_impl(receiver, frame_buffer);
+        } finally {
+            frame_buffer.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _zstd_get_frame_size_call(
@@ -205,7 +220,16 @@ def:priv _zstd_get_frame_size_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _zstd_get_frame_size_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_zstd_get_frame_size_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _zstd_get_frame_size_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_get_frame_size_signature,
         args,
         nargs,
@@ -219,13 +243,23 @@ glob:priv _zstd_get_frame_info_signature = CallSignature(
          "get_frame_info", ["frame_buffer"], 1, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_get_frame_info_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    frame_buffer: BufferArgument = convert_buffer(
-        value, "get_frame_info", argument_label("frame_buffer", 1)
-    );
-    return _zstd_get_frame_info_impl(receiver, frame_buffer);
+def:priv _zstd_get_frame_info_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        frame_buffer: BufferArgument = convert_buffer(
+            value, "get_frame_info", argument_label("frame_buffer", 1)
+        );
+        try {
+            return _zstd_get_frame_info_impl(receiver, frame_buffer);
+        } finally {
+            frame_buffer.close();
+        }
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _zstd_get_frame_info_call(
@@ -234,7 +268,16 @@ def:priv _zstd_get_frame_info_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _zstd_get_frame_info_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_zstd_get_frame_info_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _zstd_get_frame_info_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_get_frame_info_signature,
         args,
         nargs,
@@ -253,23 +296,37 @@ glob:priv _zstd_set_parameter_types_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_set_parameter_types_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    if jacpy_is_type(value) == 0 {
-        bad_argument(
-            "set_parameter_types", argument_label("c_parameter_type", 1), "type", value
+def:priv _zstd_set_parameter_types_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        if jacpy_is_type(value) == 0 {
+            bad_argument(
+                "set_parameter_types",
+                argument_label("c_parameter_type", 1),
+                "type",
+                value
+            );
+        }
+        c_parameter_type: ptr[PyObject] = value;
+        value = clinic_args[1];
+        if jacpy_is_type(value) == 0 {
+            bad_argument(
+                "set_parameter_types",
+                argument_label("d_parameter_type", 2),
+                "type",
+                value
+            );
+        }
+        d_parameter_type: ptr[PyObject] = value;
+        return _zstd_set_parameter_types_impl(
+            receiver, c_parameter_type, d_parameter_type
         );
+    } except boundary_failure {
+        return NULL;
     }
-    c_parameter_type: ptr[PyObject] = value;
-    value = args.values[1];
-    if jacpy_is_type(value) == 0 {
-        bad_argument(
-            "set_parameter_types", argument_label("d_parameter_type", 2), "type", value
-        );
-    }
-    d_parameter_type: ptr[PyObject] = value;
-    return _zstd_set_parameter_types_impl(receiver, c_parameter_type, d_parameter_type);
 }
 
 def:priv _zstd_set_parameter_types_call(
@@ -278,7 +335,16 @@ def:priv _zstd_set_parameter_types_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 2 and nargs <= 2 {
+        return _zstd_set_parameter_types_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_zstd_set_parameter_types_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _zstd_set_parameter_types_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_set_parameter_types_signature,
         args,
         nargs,
@@ -292,24 +358,46 @@ glob:priv _zstd_ZstdDict_new_signature = CallSignature(
          "ZstdDict", ["dict_content", "is_raw"], 1, 1, 1, parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_ZstdDict_new_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    dict_content: BufferArgument = convert_buffer(
-        value, "ZstdDict", argument_label("", 1)
-    );
-    is_raw: bool = False;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        is_raw = convert_bool(value);
+def:priv _zstd_ZstdDict_new_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        dict_content: BufferArgument = convert_buffer(
+            value, "ZstdDict", argument_label("", 1)
+        );
+        try {
+            is_raw: bool = False;
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                is_raw = convert_bool(value);
+            }
+            return _zstd_ZstdDict_new_impl(receiver, dict_content, is_raw);
+        } finally {
+            dict_content.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _zstd_ZstdDict_new_impl(receiver, dict_content, is_raw);
 }
 
 def:pub _zstd_ZstdDict_new_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 1 and size <= 1 {
+            return _zstd_ZstdDict_new_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    values = unpack_mapping(_zstd_ZstdDict_new_signature, args, kwargs);
+    if values {
+        unpacked = _zstd_ZstdDict_new_bound(type, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_tuple(
         _zstd_ZstdDict_new_signature, args, kwargs, _zstd_ZstdDict_new_bound, type
     );
 }
@@ -347,30 +435,48 @@ glob:priv _zstd_ZstdCompressor_new_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_ZstdCompressor_new_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    level: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        level = value;
+def:priv _zstd_ZstdCompressor_new_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        level: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            level = value;
+        }
+        options: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            options = value;
+        }
+        zstd_dict: ptr[PyObject] = borrowed_none();
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            zstd_dict = value;
+        }
+        return _zstd_ZstdCompressor_new_impl(receiver, level, options, zstd_dict);
+    } except boundary_failure {
+        return NULL;
     }
-    options: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        options = value;
-    }
-    zstd_dict: ptr[PyObject] = borrowed_none();
-    if args.values[2] != NULL {
-        value = args.values[2];
-        zstd_dict = value;
-    }
-    return _zstd_ZstdCompressor_new_impl(receiver, level, options, zstd_dict);
 }
 
 def:pub _zstd_ZstdCompressor_new_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 0 and size <= 3 {
+            return _zstd_ZstdCompressor_new_bound(type, jacpy_tuple_items(args), size);
+        }
+    }
+    values = unpack_mapping(_zstd_ZstdCompressor_new_signature, args, kwargs);
+    if values {
+        unpacked = _zstd_ZstdCompressor_new_bound(type, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_tuple(
         _zstd_ZstdCompressor_new_signature,
         args,
         kwargs,
@@ -383,16 +489,28 @@ glob:priv _zstd_ZstdCompressor_compress_signature = CallSignature(
          "compress", ["data", "mode"], 1, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_ZstdCompressor_compress_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(value, "compress", argument_label("data", 1));
-    mode: i32 = ZSTD_e_continue;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        mode = convert_int(value);
+def:priv _zstd_ZstdCompressor_compress_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "compress", argument_label("data", 1)
+        );
+        try {
+            mode: i32 = ZSTD_e_continue;
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                mode = convert_int(value);
+            }
+            return _zstd_ZstdCompressor_compress_impl(receiver, data, mode);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _zstd_ZstdCompressor_compress_impl(receiver, data, mode);
 }
 
 def:priv _zstd_ZstdCompressor_compress_call(
@@ -401,7 +519,18 @@ def:priv _zstd_ZstdCompressor_compress_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _zstd_ZstdCompressor_compress_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _zstd_ZstdCompressor_compress_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _zstd_ZstdCompressor_compress_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_ZstdCompressor_compress_signature,
         args,
         nargs,
@@ -415,14 +544,20 @@ glob:priv _zstd_ZstdCompressor_flush_signature = CallSignature(
          "flush", ["mode"], 0, 1, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_ZstdCompressor_flush_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    mode: i32 = ZSTD_e_end;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        mode = convert_int(value);
+def:priv _zstd_ZstdCompressor_flush_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        mode: i32 = ZSTD_e_end;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            mode = convert_int(value);
+        }
+        return _zstd_ZstdCompressor_flush_impl(receiver, mode);
+    } except boundary_failure {
+        return NULL;
     }
-    return _zstd_ZstdCompressor_flush_impl(receiver, mode);
 }
 
 def:priv _zstd_ZstdCompressor_flush_call(
@@ -431,7 +566,16 @@ def:priv _zstd_ZstdCompressor_flush_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _zstd_ZstdCompressor_flush_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(_zstd_ZstdCompressor_flush_signature, args, nargs, kwnames);
+    if values {
+        unpacked = _zstd_ZstdCompressor_flush_bound(receiver, values, 1);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_ZstdCompressor_flush_signature,
         args,
         nargs,
@@ -441,48 +585,62 @@ def:priv _zstd_ZstdCompressor_flush_call(
     );
 }
 
-def:priv _zstd_ZstdCompressor_set_pledged_input_size_bound(
-    args: BoundArguments
-) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    size: u64 = convert_zstd_contentsize_converter(
-        value, "set_pledged_input_size", "argument"
-    );
-    return _zstd_ZstdCompressor_set_pledged_input_size_impl(receiver, size);
-}
-
 def:priv _zstd_ZstdCompressor_set_pledged_input_size_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(
-        value, _zstd_ZstdCompressor_set_pledged_input_size_bound, receiver
-    );
+    try {
+        size: u64 = convert_zstd_contentsize_converter(
+            value, "set_pledged_input_size", "argument"
+        );
+        return _zstd_ZstdCompressor_set_pledged_input_size_impl(receiver, size);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob:priv _zstd_ZstdDecompressor_new_signature = CallSignature(
          "ZstdDecompressor", ["zstd_dict", "options"], 0, 2, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv _zstd_ZstdDecompressor_new_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    zstd_dict: ptr[PyObject] = borrowed_none();
-    if args.values[0] != NULL {
-        value = args.values[0];
-        zstd_dict = value;
+def:priv _zstd_ZstdDecompressor_new_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        zstd_dict: ptr[PyObject] = borrowed_none();
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            zstd_dict = value;
+        }
+        options: ptr[PyObject] = borrowed_none();
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            options = value;
+        }
+        return _zstd_ZstdDecompressor_new_impl(receiver, zstd_dict, options);
+    } except boundary_failure {
+        return NULL;
     }
-    options: ptr[PyObject] = borrowed_none();
-    if args.values[1] != NULL {
-        value = args.values[1];
-        options = value;
-    }
-    return _zstd_ZstdDecompressor_new_impl(receiver, zstd_dict, options);
 }
 
 def:pub _zstd_ZstdDecompressor_new_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
+    if kwargs == NULL or jacpy_dict_size(kwargs) == 0 {
+        size = PyTuple_Size(args);
+        if size >= 0 and size <= 2 {
+            return _zstd_ZstdDecompressor_new_bound(
+                type, jacpy_tuple_items(args), size
+            );
+        }
+    }
+    values = unpack_mapping(_zstd_ZstdDecompressor_new_signature, args, kwargs);
+    if values {
+        unpacked = _zstd_ZstdDecompressor_new_bound(type, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_tuple(
         _zstd_ZstdDecompressor_new_signature,
         args,
         kwargs,
@@ -502,19 +660,27 @@ glob:priv _zstd_ZstdDecompressor_decompress_signature = CallSignature(
      );
 
 def:priv _zstd_ZstdDecompressor_decompress_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    data: BufferArgument = convert_buffer(
-        value, "decompress", argument_label("data", 1)
-    );
-    max_length: i64 = -1;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        max_length = convert_ssize(value);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        data: BufferArgument = convert_buffer(
+            value, "decompress", argument_label("data", 1)
+        );
+        try {
+            max_length: i64 = -1;
+            if count > 1 and clinic_args[1] != NULL {
+                value = clinic_args[1];
+                max_length = convert_ssize(value);
+            }
+            return _zstd_ZstdDecompressor_decompress_impl(receiver, data, max_length);
+        } finally {
+            data.close();
+        }
+    } except boundary_failure {
+        return NULL;
     }
-    return _zstd_ZstdDecompressor_decompress_impl(receiver, data, max_length);
 }
 
 def:priv _zstd_ZstdDecompressor_decompress_call(
@@ -523,7 +689,18 @@ def:priv _zstd_ZstdDecompressor_decompress_call(
     nargs: i64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_vector(
+    if kwnames == NULL and nargs >= 1 and nargs <= 2 {
+        return _zstd_ZstdDecompressor_decompress_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(
+        _zstd_ZstdDecompressor_decompress_signature, args, nargs, kwnames
+    );
+    if values {
+        unpacked = _zstd_ZstdDecompressor_decompress_bound(receiver, values, 2);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
         _zstd_ZstdDecompressor_decompress_signature,
         args,
         nargs,
@@ -536,6 +713,10 @@ def:priv _zstd_ZstdDecompressor_decompress_call(
 glob ZstdCompressor_doc: str = "ZstdCompressor(level=None, options=None, zstd_dict=None)\n--\n\nCreate a compressor object for compressing data incrementally.\n\n  level\n    The compression level to use. Defaults to COMPRESSION_LEVEL_DEFAULT.\n  options\n    A dict object that contains advanced compression parameters.\n  zstd_dict\n    A ZstdDict object, a pre-trained Zstandard dictionary.\n\nThread-safe at method level.  For one-shot compression, use the\ncompress() function instead.",
      ZstdDecompressor_doc: str = "ZstdDecompressor(zstd_dict=None, options=None)\n--\n\nCreate a decompressor object for decompressing data incrementally.\n\n  zstd_dict\n    A ZstdDict object, a pre-trained Zstandard dictionary.\n  options\n    A dict object that contains advanced decompression parameters.\n\nThread-safe at method level.  For one-shot decompression, use the\ndecompress() function instead.",
      ZstdDict_doc: str = "ZstdDict(dict_content, /, *, is_raw=False)\n--\n\nRepresents a Zstandard dictionary.\n\n  dict_content\n    The content of a Zstandard dictionary as a bytes-like object.\n  is_raw\n    If true, perform no checks on *dict_content*, useful for some\n    advanced cases. Otherwise, check that the content represents\n    a Zstandard dictionary created by the zstd library or CLI.\n\nThe dictionary can be used for compression or decompression, and can be\nshared by multiple ZstdCompressor or ZstdDecompressor objects.",
+     ZstdDict_dictid_doc: str = "The Zstandard dictionary, an int between 0 and 2**32.\n\nA non-zero value represents an ordinary Zstandard dictionary,\nconforming to the standardised format.\n\nA value of zero indicates a 'raw content' dictionary,\nwithout any restrictions on format or content.",
+     ZstdCompressor_last_mode_doc: str = "The last mode used to this compressor object, its value can be .CONTINUE,\n.FLUSH_BLOCK, .FLUSH_FRAME. Initialized to .FLUSH_FRAME.\n\nIt can be used to get the current state of a compressor, such as, data\nflushed, or a frame ended.",
+     ZstdDecompressor_eof_doc: str = "True means the end of the first frame has been reached. If decompress data\nafter that, an EOFError exception will be raised.",
+     ZstdDecompressor_needs_input_doc: str = "If the max_length output limit in .decompress() method has been reached,\nand the decompressor has (or may has) unconsumed input data, it will be set\nto False. In this case, passing b'' to the .decompress() method may output\nfurther data.",
      ZstdCompressor_methods: list[MethodDefinition] = [
          MethodDefinition(
              "compress",

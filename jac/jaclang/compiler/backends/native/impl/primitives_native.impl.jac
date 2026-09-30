@@ -2728,7 +2728,9 @@ impl NativeListEmitter.emit_append(
         return None;
     }
 
-    _boxed_val = p._box_value_tuple(p._wrap_fn_as_closure_value(args[0]));
+    _boxed_val = p._variadic_elem_coerce(
+        p._box_value_tuple(p._wrap_fn_as_closure_value(args[0])), ctx.receiver_node
+    );
     if p._reject_ptr_into_raw_slot(
         None, _boxed_val, helpers["elem_type"], "list append"
     ) {
@@ -2838,12 +2840,13 @@ impl NativeListEmitter.emit_insert(
     i64 = ir.IntType(64);
     insert_idx = args[0];
     _ins_wrapped = p._wrap_fn_as_closure_value(args[1]);
+    insert_arg = p._variadic_elem_coerce(_ins_wrapped, ctx.receiver_node);
     if p._reject_ptr_into_raw_slot(
-        None, _ins_wrapped, helpers["elem_type"], "list insert"
+        None, insert_arg, helpers["elem_type"], "list insert"
     ) {
         return ir.Constant(i64, 0);
     }
-    insert_val = p._coerce_type(_ins_wrapped, helpers["elem_type"]);
+    insert_val = p._coerce_type(insert_arg, helpers["elem_type"]);
     _aos_struct = p._aos_elem_struct(ctx.type_key);
     if _aos_struct is not None {
         return self._emit_aos_insert(
@@ -5767,7 +5770,11 @@ impl NativeBuiltinEmitter.emit_str(
     }
 
     if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
-        return p._bool_text(b, arg_val, "str.bool");
+        _str_flag = p._bool_text(b, arg_val, "str.bool");
+        if p._nogc_headerless() {
+            return p._mark_owned(p._call_str_dup(b, _str_flag, name="str.bool.own"));
+        }
+        return _str_flag;
     }
 
     if isinstance(arg_val.type, ir.PointerType) {

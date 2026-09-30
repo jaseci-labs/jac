@@ -30,7 +30,11 @@ import from jaclang.compiler.frontend.unitree {
 }
 
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.types.types { ClassType, TypeBase }
+import type from jaclang.compiler.types.types {
+    ClassDetailsShared,
+    ClassType,
+    TypeBase
+}
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
@@ -200,9 +204,37 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
     return top;
 }
 
+glob _NATIVE_NAME_BY_DECL: dict[tuple[str, int, int, str], str] = {},
+     _NATIVE_NAMED_CLASSES: set[str] = set(),
+     _NATIVE_NAME_BY_STDLIB: dict[tuple[str, str], str] = {};
+
 def archetype_native_name(arch: Archetype) -> str {
-    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     name = arch.name.value if arch.name else "unknown";
+    native = _archetype_native_name(arch, name);
+    if arch.loc is not None and arch.loc.mod_path {
+        import os;
+        key = (
+            os.path.realpath(arch.loc.mod_path),
+            arch.loc.first_line,
+            arch.loc.col_start,
+            name
+        );
+        if key not in _NATIVE_NAME_BY_DECL {
+            _NATIVE_NAME_BY_DECL[key] = native;
+            _NATIVE_NAMED_CLASSES.add(name);
+            import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+            stdlib_module = bundled_stdlib_module_of(arch.loc.mod_path);
+            if stdlib_module is not None
+                and (stdlib_module, name) not in _NATIVE_NAME_BY_STDLIB {
+                _NATIVE_NAME_BY_STDLIB[(stdlib_module, name)] = native;
+            }
+        }
+    }
+    return native;
+}
+
+def _archetype_native_name(arch: Archetype, name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     if arch.name is not None and is_enum_class_type(arch.name.type) {
         return name;
     }
@@ -210,6 +242,29 @@ def archetype_native_name(arch: Archetype) -> str {
         return name;
     }
     return native_arch_name(arch.loc.mod_path if arch.loc else "", name);
+}
+
+def _declared_native_name(shared: ClassDetailsShared) -> str {
+    name = shared.class_name;
+    if name not in _NATIVE_NAMED_CLASSES {
+        return name;
+    }
+    key = shared.canonical_key();
+    if key is None or not key[0] {
+        return name;
+    }
+    import os;
+    found = _NATIVE_NAME_BY_DECL.get(
+        (os.path.realpath(key[0]), key[1], key[2], key[3])
+    );
+    if found is None {
+        import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+        stdlib_module = bundled_stdlib_module_of(key[0]);
+        if stdlib_module is not None {
+            found = _NATIVE_NAME_BY_STDLIB.get((stdlib_module, key[3]));
+        }
+    }
+    return found if found is not None else name;
 }
 
 def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
@@ -242,8 +297,19 @@ def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
 }
 
 def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
+    import from jaclang.compiler.types.types { ClassType }
     arch = referenced_archetype(expr);
-    return archetype_native_name(arch) if arch is not None else None;
+    if arch is not None {
+        return archetype_native_name(arch);
+    }
+    typ = expr.type if isinstance(expr, Expr) else None;
+    if isinstance(typ, ClassType)
+        and typ._shared is not None
+        and not typ.is_instance()
+        and not isinstance(typ.shared.symbol_table, Archetype) {
+        return class_type_native_name(typ);
+    }
+    return None;
 }
 
 def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
@@ -253,8 +319,11 @@ def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     }
     shared = typ.shared;
     scope = shared.symbol_table;
-    if not isinstance(scope, Archetype) or shared.is_enum_class {
+    if shared.is_enum_class {
         return shared.class_name;
+    }
+    if not isinstance(scope, Archetype) {
+        return _declared_native_name(shared);
     }
     memo = shared._native_name;
     if memo is not None and memo[0] is scope {

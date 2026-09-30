@@ -10,14 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    PARSE_POSITIONAL,
-    invoke_given,
-    invoke_vector
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters { argument_label }
 import from jaclang.runtime.python.modules.abc {
     _abc__abc_init_impl,
@@ -30,148 +25,135 @@ import from jaclang.runtime.python.modules.abc {
     _abc_get_cache_token_impl
 }
 
-def:priv _abc__reset_registry_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    return _abc__reset_registry_impl(receiver, self_);
-}
-
 def:priv _abc__reset_registry_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _abc__reset_registry_bound, receiver);
-}
-
-def:priv _abc__reset_caches_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    return _abc__reset_caches_impl(receiver, self_);
+    try {
+        self_: ptr[PyObject] = value;
+        return _abc__reset_registry_impl(receiver, self_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _abc__reset_caches_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _abc__reset_caches_bound, receiver);
-}
-
-def:priv _abc__get_dump_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    return _abc__get_dump_impl(receiver, self_);
+    try {
+        self_: ptr[PyObject] = value;
+        return _abc__reset_caches_impl(receiver, self_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _abc__get_dump_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _abc__get_dump_bound, receiver);
-}
-
-def:priv _abc__abc_init_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    return _abc__abc_init_impl(receiver, self_);
+    try {
+        self_: ptr[PyObject] = value;
+        return _abc__get_dump_impl(receiver, self_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _abc__abc_init_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(value, _abc__abc_init_bound, receiver);
+    try {
+        self_: ptr[PyObject] = value;
+        return _abc__abc_init_impl(receiver, self_);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob:priv _abc__abc_register_signature = CallSignature(
-         "_abc_register", ["self", "subclass"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _abc__abc_register_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    value = args.values[1];
-    subclass: ptr[PyObject] = value;
-    return _abc__abc_register_impl(receiver, self_, subclass);
+def:priv _abc__abc_register_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        self_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        subclass: ptr[PyObject] = value;
+        return _abc__abc_register_impl(receiver, self_, subclass);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _abc__abc_register_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _abc__abc_register_signature,
-        args,
-        nargs,
-        NULL,
-        _abc__abc_register_bound,
-        receiver
-    );
+    if not check_positional("_abc_register", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _abc__abc_register_bound(receiver, args, nargs);
 }
 
-glob:priv _abc__abc_instancecheck_signature = CallSignature(
-         "_abc_instancecheck", ["self", "instance"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _abc__abc_instancecheck_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    value = args.values[1];
-    instance: ptr[PyObject] = value;
-    return _abc__abc_instancecheck_impl(receiver, self_, instance);
+def:priv _abc__abc_instancecheck_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        self_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        instance: ptr[PyObject] = value;
+        return _abc__abc_instancecheck_impl(receiver, self_, instance);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _abc__abc_instancecheck_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _abc__abc_instancecheck_signature,
-        args,
-        nargs,
-        NULL,
-        _abc__abc_instancecheck_bound,
-        receiver
-    );
+    if not check_positional("_abc_instancecheck", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _abc__abc_instancecheck_bound(receiver, args, nargs);
 }
 
-glob:priv _abc__abc_subclasscheck_signature = CallSignature(
-         "_abc_subclasscheck", ["self", "subclass"], 2, 2, 2, parser=PARSE_POSITIONAL
-     );
-
-def:priv _abc__abc_subclasscheck_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    self_: ptr[PyObject] = value;
-    value = args.values[1];
-    subclass: ptr[PyObject] = value;
-    return _abc__abc_subclasscheck_impl(receiver, self_, subclass);
+def:priv _abc__abc_subclasscheck_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        self_: ptr[PyObject] = value;
+        value = clinic_args[1];
+        subclass: ptr[PyObject] = value;
+        return _abc__abc_subclasscheck_impl(receiver, self_, subclass);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _abc__abc_subclasscheck_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke_vector(
-        _abc__abc_subclasscheck_signature,
-        args,
-        nargs,
-        NULL,
-        _abc__abc_subclasscheck_bound,
-        receiver
-    );
-}
-
-def:priv _abc_get_cache_token_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return _abc_get_cache_token_impl(receiver);
+    if not check_positional("_abc_subclasscheck", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _abc__abc_subclasscheck_bound(receiver, args, nargs);
 }
 
 def:priv _abc_get_cache_token_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke_given(NULL, _abc_get_cache_token_bound, receiver);
+    try {
+        return _abc_get_cache_token_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob _abc__doc__: str = "Module contains faster C implementation of abc.ABCMeta",
+     abc_data_doc: str = "Internal state held by ABC machinery.",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "_reset_registry",
              MethodCallbacks(positional=_abc__reset_registry_call),

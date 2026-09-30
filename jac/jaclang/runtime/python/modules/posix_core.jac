@@ -367,7 +367,8 @@ def _PyLong_FromDev(device: u64) -> ptr[PyObject] {
     return PyLong_FromUnsignedLongLong(device);
 }
 
-def return__PyLong_FromDev(device: u64) -> ptr[PyObject] {
+# The dev_t return converter (conversion_fn _PyLong_FromDev).
+def return_dev_t(device: u64) -> ptr[PyObject] {
     if dev_value(device) == -1 and PyErr_Occurred() {
         return NULL;
     }
@@ -942,7 +943,8 @@ def PyLong_FromPy_off_t(offset: i64) -> ptr[PyObject] {
     return PyLong_FromLong(offset);
 }
 
-def return_PyLong_FromPy_off_t(offset: i64) -> ptr[PyObject] {
+# The Py_off_t return converter (conversion_fn PyLong_FromPy_off_t).
+def return_Py_off_t(offset: i64) -> ptr[PyObject] {
     if offset == -1 and PyErr_Occurred() {
         return NULL;
     }

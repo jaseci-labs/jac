@@ -9,13 +9,14 @@ cannot be ported yet: the object model (`Objects/`) and the evaluator
 
 ## Porting a module
 
-Four generated files and two lists do the bookkeeping. A port touches only
+Four generated files and three lists do the bookkeeping. A port touches only
 the module's own Jac files and one line in each list.
 
 | Piece | Produced by | Holds |
 |---|---|---|
 | `jac/bootstrap/python/jacpython-modules.txt` | hand | module name, upstream test modules, extra linker flags |
 | `jac/bootstrap/python/jacpython-clinic.txt` | hand | modules whose argument parsing is generated |
+| `jac/bootstrap/python/jacpython-compiler-tests.txt` | hand | upstream suites for the Python frontend (tokenizer, parser, AST, codegen) that CI runs |
 | `runtime/python/cpython_api.jac` | `scripts/jacpython/gen_capi.jac` | typed clib declarations of every CPython function the Jac code calls |
 | `runtime/python/bindings/clinic/<name>.jac` | `scripts/jacpython/gen_clinic.jac` | signatures, converters, return conversion, method/getset tables |
 | `runtime/python/modules/<name>_constants.<os>.jac` | `scripts/jacpython/gen_constants.jac` | system constants as the target's C headers define them |
@@ -125,8 +126,19 @@ calls (`parser=PARSE_POSITIONAL` for `_PyArg_CheckPositional`,
 `PARSE_KEYWORDS` for `_PyArg_UnpackKeywords`, `PARSE_FORMAT` and
 `PARSE_FORMAT_KEYWORDS` for `PyArg_ParseTuple` and
 `PyArg_ParseTupleAndKeywords`); `bindings/arguments.jac` implements each with
-its messages. A hand-written binding picks the same flags and parser as the C
-module's clinic output. A C type's `PyMemberDef` fields are real member
+its messages. The generated glue takes clinic's own fast paths without
+allocating: a `METH_O` or `METH_NOARGS` function converts its argument in
+place, a positional-only `METH_FASTCALL` function checks its arity with
+`check_positional` and converts the vectorcall stack, and a keyword-capable
+function or a `tp_new`/`tp_init` hands its stack or its tuple's items
+(`jacpy_tuple_items`) to the `_bound` function when no keywords are passed and
+the positional count is in range. Only the other calls go through the
+`CallSignature` (`invoke_stack`, `invoke_tuple`), which binds into an array as
+long as the parameter list. The glue calls its `_bound` function directly
+there: passing a Jac function as a `Callable` allocates a closure per call.
+`ArgumentFormat` analyses each format string once (`format_plan`). A
+hand-written binding picks the same flags and parser as the C module's clinic
+output. A C type's `PyMemberDef` fields are real member
 descriptors: `TypeDefinition(members=..., record_size=...)` keeps the fields
 in the instance and `jacpy_binding_record()` gives their address
 (`select.kevent`, `_multiprocessing.SemLock`).
@@ -146,6 +158,15 @@ Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
 `PyMethodDef` tables are C data whose callbacks are `ptr(function)`, and a
 `Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
 token for `PyType_GetBaseByToken()`, as in C.
+
+A module whose object layout other C code reads keeps that layout: `_socket`'s
+`PySocketSockObject` and `PySocketModule_APIObject` are read from
+`Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES` entry, with
+the scalar typedefs its structs name), so the `_socket.CAPI` capsule `_ssl.c`
+imports is the C module's. `gen_constants.jac` can leave out names published
+only under conditions no target meets (`UNSUPPORTED` blocks such as
+`USE_BLUETOOTH`), read enumerators under their header's presence (`GUARDS`) and
+supply values the C module defines itself (`DEFAULTS`).
 
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),
@@ -190,6 +211,30 @@ function pointers that another port calls (`pyexpat.expat_CAPI`, which
 a Jac function passed through one of them gets the same C-ABI trampoline as a
 direct C call.
 
+The public surface comes from the same source as the parsing. Besides the
+clinic tables, the glue carries every other docstring of the C files as a
+`glob`: `PyDoc_STRVAR` texts under their C names (`module_doc`,
+`s_pack__doc__`, `teecopy_doc`) and the inline `PyDoc_STR` of a
+`PyMethodDef`, `PyMemberDef` or `PyGetSetDef` table as
+`<table>_<name>_doc` (`deque_methods___class_getitem___doc`,
+`defdict_members_default_factory_doc`). A binding builds the module and type
+docs, its hand-written `PyMethodDef` entries and its getset and member docs
+from these, so no docstring or text signature is written by hand. The type
+options follow the C slots: `weaklist=True` for a `__weaklistoffset__` member
+(not `Py_TPFLAGS_MANAGED_WEAKREF`), `generic_getattr`/`generic_setattr` for
+`Py_tp_getattro = PyObject_GenericGetAttr` and its setattr pair, and
+`TypeHooks.finalize` for `Py_tp_finalize`. A type without `Py_tp_new` in C
+has none in Jac either (`defaultdict`, `_lsprof.Profiler`): its state lives
+in the member record or appears on first use. A writable `Py_T_OBJECT`
+member owns its reference in the record (`_tuplegetter.__doc__`,
+`Pickler.dispatch_table`); a read-only one over native state mirrors it
+borrowed (`BZ2Decompressor.unused_data`) and the type zeroes the record before
+the state releases it. A converter C calls with the module first
+(`cache_struct_converter(module, arg, &out)`) receives the receiver, a
+converter whose `cleanup` drops its result has the glue release it, and the
+interpreter's own `_PyEval_SliceIndexNotNone` is the shared
+`convert_slice_index_not_none`.
+
 Clinic coverage of the retained modules: 1,050 of 1,074 signatures generate.
 The rest have C-expression defaults (`GET_YEAR(self)`, `POLLIN | POLLPRI`) or
 optional groups; the generated file lists them and the module binding parses
@@ -211,7 +256,7 @@ only where Jac cannot express the operation:
 | C residue | Why | Where |
 |---|---|---|
 | macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
-| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`, `stat`, `fstatat` and `statfs`) | helpers (`jacpy_typing_types` returns the interpreter's typing types) |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`, `stat`, `fstatat` and `statfs`) | helpers (`jacpy_typing_types` returns the interpreter's typing types); object ports read the fields gen_layouts generates and asserts instead (`interp->gc`, `interp->object_state.freelists`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
@@ -291,7 +336,15 @@ the Jac form, not a C helper:
    block defines a C function under that exact symbol with the C calling
    convention, including structs by value in either direction; C code and
    other modules call it as any C function. CPython's API functions a port
-   defines (`PyBool_FromLong`) are written this way.
+   defines (`PyBool_FromLong`) are written this way. Its entry (and a
+   callback trampoline's) never runs the Jac body inside the caller's open
+   region: an inline test of the thread's current region picks between one
+   `musttail` jump into the body (no region open, the common case) and a
+   call bracketed by `__jac_region_escape` / `__jac_region_restore`. A C
+   symbol has one signature program-wide, so a definition whose name
+   another linked module declares differently is `E1158`. C blocks are
+   order-independent: a function above a block reads and writes the C data
+   it declares.
 
 7. **Tail calls.** `return tail f(args);` is a guaranteed tail call: the
    native backend lowers it to `musttail`, so the evaluator's tail-call
@@ -411,11 +464,20 @@ definitions under their names; tables and types are C data. What they added:
   `tp_iternext == NULL`); an address is stored with `field = int(p)`.
 - `tp_traverse` implementations take the visitor as a `ptr` and visit with
   `bindings/module.jac`'s `visit_reference` (Py_VISIT).
-- The slice and range freelists are `struct _Py_freelists` fields of the
-  interpreter state; `jacpy_freelists()` in `object_api.c` returns that
-  struct, and `header.jac`'s `freelist_pop` / `freelist_push` implement
-  `_Py_FREELIST_POP` / `_Py_FREELIST_FREE` over the `_Py_freelists_*` offsets
-  gen_layouts asserts.
+- The slice, range and method freelists are `struct _Py_freelists` fields
+  of the interpreter state. `header.jac` reaches the interpreter from
+  `PyThreadState_GetUnchecked()` through `PyThreadState.interp`, and its
+  `freelist_pop` / `freelist_push` implement `_Py_FREELIST_POP` /
+  `_Py_FREELIST_FREE` over the `_Py_freelists_*` offsets. Its
+  `object_gc_track` / `object_gc_untrack` are `_PyObject_GC_TRACK` /
+  `_PyObject_GC_UNTRACK` over the `PyGC_Head` layout and the interpreter's
+  GC state (generation 0's list head and heap size). The interpreter and
+  thread-state offsets come from gen_layouts like the object layouts
+  (`PyThreadState_INTERP`, `PyInterpreterState_FREELISTS`,
+  `PyInterpreterState_GC`, `_gc_runtime_state_GENERATION0` / `_HEAP_SIZE`),
+  so `layouts_check.c` asserts them on every build; the `_in` variants take
+  an interpreter the caller already read, so a method object's creation and
+  free each read the thread state once.
 - `header.jac` also holds `Py_REFCNT`, the tuple item macros,
   `_PyTuple_Recycle`, `PyObject_TypeCheck`, `Py_RETURN_RICHCOMPARE` and
   `_PyEval_GetBuiltin(&_Py_ID(name))` (by interning, as bool_repr does).

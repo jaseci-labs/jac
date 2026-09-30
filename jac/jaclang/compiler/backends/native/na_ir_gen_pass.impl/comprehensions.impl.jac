@@ -366,6 +366,7 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 _boxed_val_compr = value_val;
                 value_val = self._coerce_type(value_val, expected_val_type);
                 self.builder.call(helpers["set"], [acc, key_val, value_val]);
+                self._nogc_release_dict_key(key_val);
 
                 if isinstance(_boxed_key.type, ir.PointerType)
                     and self._is_owned(_boxed_key) {
