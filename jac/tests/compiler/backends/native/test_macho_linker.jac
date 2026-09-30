@@ -481,3 +481,84 @@ test "stored imported function pointers follow ASLR in executables and dylibs" {
         }
     }
 }
+
+
+"""Symbols of a 64-bit Mach-O image as (name, n_type) plus the LC_DYSYMTAB
+local, external-defined and undefined ranges."""
+def symbol_table(img: bytes) -> tuple[list[tuple[str, int]], tuple[int, ...]] {
+    ncmds = struct.unpack_from("<I", img, 16)[0];
+    off = 32;
+    names: list[tuple[str, int]] = [];
+    ranges: tuple[int, ...] = ();
+    for _i in range(ncmds) {
+        (cmd, cmdsize) = struct.unpack_from("<II", img, off);
+        if cmd == 0x2 {
+            (symoff, nsyms, stroff, _strsize) = struct.unpack_from(
+                "<IIII", img, off + 8
+            );
+            for k in range(nsyms) {
+                (strx, ntype, _sect, _desc, _val) = struct.unpack_from(
+                    "<IBBhQ", img, symoff + k * 16
+                );
+                end = img.index(b"\x00", stroff + strx);
+                names.append((img[stroff + strx:end].decode(), ntype));
+            }
+        } elif cmd == 0xB {
+            ranges = struct.unpack_from("<IIIIII", img, off + 8);
+        }
+        off += cmdsize;
+    }
+    return (names, ranges);
+}
+
+test "a dylib names its private functions in the local symbol table" {
+    triple = MACHO_TRIPLE;
+    ir_txt = (
+        f'target triple = "{triple}"\n'
+        + 'define internal i64 @jac_private_helper(i64 %x) noinline {\n'
+        + 'entry:\n'
+        + '  %y = mul i64 %x, 3\n'
+        + '  ret i64 %y\n'
+        + '}\n'
+        + 'define i64 @jac_public(i64 %x) {\n'
+        + 'entry:\n'
+        + '  %r = call i64 @jac_private_helper(i64 %x)\n'
+        + '  ret i64 %r\n'
+        + '}\n'
+    );
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    mod = llvm.parse_assembly(ir_txt);
+    tm = llvm.Target.from_triple(triple).create_target_machine(
+        opt=0, reloc="pic", codemodel="small"
+    );
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "libpriv.dylib");
+    assert MachOLinker.link(
+        objects=[tm.emit_object(mod)],
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        symbol_lib_map={},
+        shared=True,
+        export_symbols=["jac_public"],
+        init_funcs=[],
+        soname="libpriv.dylib"
+    );
+    with open(out, "rb") as f {
+        img = f.read();
+    }
+    (names, ranges) = symbol_table(img);
+    (ilocal, nlocal, iextdef, nextdef, _iundef, _nundef) = ranges;
+    locals_ = [name for (name, ntype) in names[ilocal:ilocal + nlocal]];
+    assert "_jac_private_helper" in locals_ , names;
+    assert all((ntype & 0x01) == 0 for (_, ntype) in names[ilocal:ilocal + nlocal]);
+    assert iextdef == ilocal + nlocal;
+    assert "_jac_public" in [name for (name, _) in names[iextdef:iextdef + nextdef]];
+    import platform;
+    if sys.platform == "darwin" and platform.machine() == "arm64" {
+        lib = ctypes.CDLL(out);
+        lib.jac_public.restype = ctypes.c_int64;
+        lib.jac_public.argtypes = [ctypes.c_int64];
+        assert lib.jac_public(7) == 21;
+    }
+}

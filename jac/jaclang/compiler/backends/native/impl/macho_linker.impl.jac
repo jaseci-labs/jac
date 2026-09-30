@@ -102,6 +102,32 @@ glob CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0,
      CS_PAGE_SIZE_LOG2 = 12;
 
 
+def _local_code_syms(
+    symbols: list[MachOSymbol],
+    placements: dict[int, tuple[str, int]],
+    exported: set[str]
+) -> list[tuple[str, int]] {
+    out: list[tuple[str, int]] = [];
+    seen: set[str] = set();
+    for (idx, sym) in enumerate(symbols) {
+        if (sym.n_type & N_EXT) != 0 or (sym.n_type & N_TYPE_MASK) != N_SECT {
+            continue;
+        }
+        name = sym.name;
+        if not name or not name.startswith("_") or name in exported or name in seen {
+            continue;
+        }
+        place = placements.get(idx);
+        if place is None or place[0] != "code" {
+            continue;
+        }
+        seen.add(name);
+        out.append((name, place[1]));
+    }
+    return out;
+}
+
+
 def _resolve_macho_name(
     local_sym_map: dict[str, tuple[str, int]], nm: str
 ) -> (str | None) {
@@ -1234,7 +1260,13 @@ impl MachOLinker.build_executable -> bytes {
         }
     }
 
+    local_syms = _local_code_syms(
+        self.symbols, sym_idx_map, {name for (name, _, _) in defined_syms}
+    );
     strtab_names: list[str] = [];
+    for (name, _) in local_syms {
+        strtab_names.append(name);
+    }
     for (name, _, _) in defined_syms {
         strtab_names.append(name);
     }
@@ -1244,6 +1276,7 @@ impl MachOLinker.build_executable -> bytes {
     (strtab_data, strtab_offsets) = _build_strtab(strtab_names, b" \x00");
 
     symtab_entries = bytearray();
+    n_local = len(local_syms);
     n_defined = len(defined_syms);
     n_undef = len(all_extern_syms);
 
@@ -1260,6 +1293,18 @@ impl MachOLinker.build_executable -> bytes {
     }
     out_sec_num_data = next_sec if len(data_data) > 0 else 0;
 
+    for (name, off) in local_syms {
+        symtab_entries.extend(
+            struct.pack(
+                "<IBBhQ",
+                strtab_offsets.get(name, 0),
+                N_SECT,
+                out_sec_num_text,
+                0,
+                text_sec_vaddr + off
+            )
+        );
+    }
     for (name, seg, off) in defined_syms {
         n_strx = strtab_offsets.get(name, 0);
         if seg == "code" {
@@ -1288,7 +1333,7 @@ impl MachOLinker.build_executable -> bytes {
     indirect_syms = bytearray();
 
     for i in range(num_extern_got) {
-        indirect_syms.extend(struct.pack("<I", n_defined + i));
+        indirect_syms.extend(struct.pack("<I", n_local + n_defined + i));
     }
 
     for i in range(len(internal_got_idx)) {
@@ -1296,7 +1341,7 @@ impl MachOLinker.build_executable -> bytes {
     }
 
     for i in range(num_stubs) {
-        indirect_syms.extend(struct.pack("<I", n_defined + i));
+        indirect_syms.extend(struct.pack("<I", n_local + n_defined + i));
     }
 
     cur_linkedit = linkedit_foff;
@@ -1704,16 +1749,16 @@ impl MachOLinker.build_executable -> bytes {
         LC_SYMTAB,
         24,
         symtab_off,
-        n_defined + n_undef,
+        n_local + n_defined + n_undef,
         strtab_off,
         len(strtab_data)
     );
     lc_off += 24;
 
     struct.pack_into("<II", output, lc_off, LC_DYSYMTAB, 80);
-    struct.pack_into("<II", output, lc_off + 8, 0, 0);
-    struct.pack_into("<II", output, lc_off + 16, 0, n_defined);
-    struct.pack_into("<II", output, lc_off + 24, n_defined, n_undef);
+    struct.pack_into("<II", output, lc_off + 8, 0, n_local);
+    struct.pack_into("<II", output, lc_off + 16, n_local, n_defined);
+    struct.pack_into("<II", output, lc_off + 24, n_local + n_defined, n_undef);
     struct.pack_into("<II", output, lc_off + 32, 0, 0);
     struct.pack_into("<II", output, lc_off + 40, 0, 0);
     struct.pack_into("<II", output, lc_off + 48, 0, 0);
@@ -2204,7 +2249,13 @@ impl MachOLinker.build_shared_object -> bytes {
             }
         }
     }
+    local_syms = _local_code_syms(
+        self.symbols, sym_idx_map, {name for (name, _, _) in defined_syms}
+    );
     strtab_names: list[str] = [];
+    for (name, _) in local_syms {
+        strtab_names.append(name);
+    }
     for (name, _, _) in defined_syms {
         strtab_names.append(name);
     }
@@ -2213,6 +2264,7 @@ impl MachOLinker.build_shared_object -> bytes {
     }
     (strtab_data, strtab_offsets) = _build_strtab(strtab_names, b" \x00");
     symtab_entries = bytearray();
+    n_local = len(local_syms);
     n_defined = len(defined_syms);
     n_undef = len(all_extern_syms);
     out_sec_num_text = 1;
@@ -2227,6 +2279,18 @@ impl MachOLinker.build_shared_object -> bytes {
         next_sec += 1;
     }
     out_sec_num_data = next_sec if len(data_data) > 0 else 0;
+    for (name, off) in local_syms {
+        symtab_entries.extend(
+            struct.pack(
+                "<IBBhQ",
+                strtab_offsets.get(name, 0),
+                N_SECT,
+                out_sec_num_text,
+                0,
+                text_sec_vaddr + off
+            )
+        );
+    }
     for (name, seg, off) in defined_syms {
         n_strx = strtab_offsets.get(name, 0);
         if seg == "code" {
@@ -2253,13 +2317,13 @@ impl MachOLinker.build_shared_object -> bytes {
     INDIRECT_SYMBOL_LOCAL = 0x80000000;
     indirect_syms = bytearray();
     for i in range(num_extern_got) {
-        indirect_syms.extend(struct.pack("<I", n_defined + i));
+        indirect_syms.extend(struct.pack("<I", n_local + n_defined + i));
     }
     for i in range(len(internal_got_idx)) {
         indirect_syms.extend(struct.pack("<I", INDIRECT_SYMBOL_LOCAL));
     }
     for i in range(num_stubs) {
-        indirect_syms.extend(struct.pack("<I", n_defined + i));
+        indirect_syms.extend(struct.pack("<I", n_local + n_defined + i));
     }
 
     export_pairs: list[tuple[str, int]] = [];
@@ -2636,16 +2700,16 @@ impl MachOLinker.build_shared_object -> bytes {
         LC_SYMTAB,
         24,
         symtab_off,
-        n_defined + n_undef,
+        n_local + n_defined + n_undef,
         strtab_off,
         len(strtab_data)
     );
     lc_off += 24;
 
     struct.pack_into("<II", output, lc_off, LC_DYSYMTAB, 80);
-    struct.pack_into("<II", output, lc_off + 8, 0, 0);
-    struct.pack_into("<II", output, lc_off + 16, 0, n_defined);
-    struct.pack_into("<II", output, lc_off + 24, n_defined, n_undef);
+    struct.pack_into("<II", output, lc_off + 8, 0, n_local);
+    struct.pack_into("<II", output, lc_off + 16, n_local, n_defined);
+    struct.pack_into("<II", output, lc_off + 24, n_local + n_defined, n_undef);
     struct.pack_into("<II", output, lc_off + 32, 0, 0);
     struct.pack_into("<II", output, lc_off + 40, 0, 0);
     struct.pack_into("<II", output, lc_off + 48, 0, 0);
