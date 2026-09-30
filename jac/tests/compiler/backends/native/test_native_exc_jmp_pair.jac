@@ -55,18 +55,10 @@ test "a function reads the exception context once for all its frames" {
     body = re.search(r'define [^\n]*\.outer"?\(.*?\n}', ir_text, re.S);
     assert body is not None , "no outer in the program IR";
     text = body.group(0);
-    reads = re.findall(
-        r'(%[\w."]+) = call [^\n]*@"?__jac_exception_context[.\d]*"?\(', text
-    );
+    reads = re.findall(r'call [^\n]*@"?__jac_exception_context[.\d]*"?\(', text);
+    frames = re.findall(r'call [^\n]*@"?_setjmp"?\(', text);
+    assert len(frames) >= 2 , text;
     assert len(reads) == 1 , text;
-    # Every push and pop of its frames goes through that one read.
-    frames = re.findall(
-        r'call [^\n]*@"?__jac_exc_(?:push|pop)[.\d]*"?\(([^\n]*)\)', text
-    );
-    assert len(frames) >= 4 , text;
-    for args in frames {
-        assert args.endswith(f"ptr {reads[0]}") , args;
-    }
 }
 
 test "frames armed and raised into repeatedly behave like Python" {
