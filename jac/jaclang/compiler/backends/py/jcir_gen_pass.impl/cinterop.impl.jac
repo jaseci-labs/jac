@@ -1,5 +1,6 @@
 import json;
 import from jaclang.compiler.frontend.constant { is_borrow_kind }
+import from jaclang.compiler.frontend.const_fold { fold_const }
 
 impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     import from jaclang.compiler.c_interop {
@@ -42,11 +43,20 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
             opaque.append(decl.name.value);
         } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             fields: list[list[any]] = [];
+            # A field's constant default (`i32 = -1`); the rest start zeroed,
+            # as the native record does.
+            defaults: dict[str, any] = {};
             for hv in decl.get_has_vars() {
                 tag = hv.type_tag.tag if hv.type_tag else None;
                 fields.append([hv.name.sym_name, c_type_spec(hv.type, tag)]);
+                (folded, value) = fold_const(hv.value);
+                if folded and isinstance(value, (int, float, bool)) and value {
+                    defaults[hv.name.sym_name] = value;
+                }
             }
-            structs.append({"name": decl.name.value, "fields": fields});
+            structs.append(
+                {"name": decl.name.value, "fields": fields, "defaults": defaults}
+            );
         } elif isinstance(decl, Ability)
             and isinstance(decl.signature, FuncSignature)
             and not decl.body {

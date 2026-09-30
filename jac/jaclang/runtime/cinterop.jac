@@ -43,6 +43,9 @@ class JacCStruct(ctypes.Structure) {
     def init(self: JacCStruct, *args: any, **kwargs: any) {
         ctypes.Structure.__init__(self);
         cls: any = type(self);
+        for (key, value) in getattr(cls, "_jac_defaults_", {}).items() {
+            setattr(self, key, value);
+        }
         names = [f[0] for f in cls._jac_fields_];
         if len(args) > len(names) {
             raise TypeError(
@@ -974,7 +977,12 @@ def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     for entry_desc in desc.get("structs", []) {
         name = entry_desc["name"];
         local[name] = `type(
-            name, (JacCStruct, ), {"_jac_fields_": entry_desc["fields"]}
+            name,
+            (JacCStruct, ),
+            {
+                "_jac_fields_": entry_desc["fields"],
+                "_jac_defaults_": entry_desc.get("defaults", {})
+            }
         );
         pending[name] = entry_desc["fields"];
     }
