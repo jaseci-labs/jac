@@ -4,6 +4,12 @@ and the execution slot in Modules/_asynciomodule.c's order."""
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyDict_Next,
+    PyObject_IsTrue,
+    PyTuple_GetItem,
+    PyTuple_Size,
+    Py_None,
+    jacpy_dict_size,
     PyImport_ImportModule,
     PyMethodDef,
     PyModule_AddType,
@@ -103,6 +109,7 @@ import from jaclang.runtime.python.modules.asyncio_core {
     TASK_OBJECT_SIZE,
     TASK_STEP_WRAPPER_SIZE,
     asyncio_module_token,
+    ids,
     intern_identifiers,
     release,
     running_loop_slot,
@@ -111,6 +118,17 @@ import from jaclang.runtime.python.modules.asyncio_core {
 import from jaclang.runtime.python.modules.asyncio {
     Future_token,
     Task_token,
+    _asyncio_Future___init___impl,
+    _asyncio_Future_add_done_callback_impl,
+    _asyncio_Future_cancelled_impl,
+    _asyncio_Future_done_impl,
+    _asyncio_Future_exception_impl,
+    _asyncio_Future_get_loop_impl,
+    _asyncio_Future_result_impl,
+    _asyncio_Future_set_result_impl,
+    _asyncio_Task___init___impl,
+    _asyncio_future_add_to_awaited_by_impl,
+    _asyncio_future_discard_from_awaited_by_impl,
     future_clear,
     future_dealloc,
     future_finalize,
@@ -213,7 +231,7 @@ import from c {
              PyType_Slot(slot=Py_tp_traverse, pfunc=ptr(future_traverse)),
              PyType_Slot(slot=Py_tp_clear, pfunc=ptr(future_clear)),
              PyType_Slot(slot=Py_tp_iter, pfunc=ptr(future_new_iter)),
-             PyType_Slot(slot=Py_tp_init, pfunc=ptr(_asyncio_Future___init___init)),
+             PyType_Slot(slot=Py_tp_init, pfunc=ptr(fast_future_init)),
              PyType_Slot(slot=Py_tp_new, pfunc=ptr(PyType_GenericNew)),
              PyType_Slot(slot=Py_tp_finalize, pfunc=ptr(future_finalize)),
              PyType_Slot(slot=Py_am_await, pfunc=ptr(future_new_iter)),
@@ -243,7 +261,7 @@ import from c {
              PyType_Slot(slot=Py_tp_traverse, pfunc=ptr(task_traverse)),
              PyType_Slot(slot=Py_tp_clear, pfunc=ptr(task_clear)),
              PyType_Slot(slot=Py_tp_iter, pfunc=ptr(future_new_iter)),
-             PyType_Slot(slot=Py_tp_init, pfunc=ptr(_asyncio_Task___init___init)),
+             PyType_Slot(slot=Py_tp_init, pfunc=ptr(fast_task_init)),
              PyType_Slot(slot=Py_tp_new, pfunc=ptr(PyType_GenericNew)),
              PyType_Slot(slot=Py_tp_finalize, pfunc=ptr(task_finalize)),
              PyType_Slot(slot=Py_am_await, pfunc=ptr(future_new_iter)),
@@ -270,6 +288,262 @@ import from c {
 glob:priv SLOT_DOC: int = 1,
      SLOT_METHODS: int = 2,
      SLOT_GETSET: int = 3;
+
+# ---------------------------------------------------------------------------
+# Fast paths. The hot methods bind their common argument shapes here and hand
+# any other call to the clinic glue, which parses it and raises its errors;
+# their _impls return NULL with the error set rather than raising, so no
+# exception region is needed, and a method whose clinic signature takes the
+# defining class gets NULL, for which the _impl uses the receiver's module.
+
+import from c {
+    obj KeywordsCall {
+        has call:
+            Callable[
+                [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
+                ptr[PyObject]
+            ] = 0;
+    }  obj FastCall {
+        has call: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0;
+    }
+    # The clinic glue of the methods with fast paths.
+    glob:priv exception_glue: KeywordsCall = KeywordsCall(),
+         set_result_glue: KeywordsCall = KeywordsCall(),
+         add_done_callback_glue: KeywordsCall = KeywordsCall(),
+         get_loop_glue: KeywordsCall = KeywordsCall(),
+         add_awaited_glue: FastCall = FastCall(),
+         discard_awaited_glue: FastCall = FastCall();
+}
+
+def:priv keywords_glue(
+    glue: ptr[KeywordsCall],
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return glue.view(1)[0].call(receiver, args, nargs, kwnames);
+}
+
+def:priv positional_glue(
+    glue: ptr[FastCall], receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return glue.view(1)[0].call(receiver, args, nargs);
+}
+
+def:priv fast_done(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+    return _asyncio_Future_done_impl(receiver);
+}
+
+def:priv fast_cancelled(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
+    return _asyncio_Future_cancelled_impl(receiver);
+}
+
+def:priv fast_result(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+    return _asyncio_Future_result_impl(receiver);
+}
+
+def:priv fast_exception(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if nargs == 0 and not kwnames {
+        return _asyncio_Future_exception_impl(receiver, NULL);
+    }
+    return keywords_glue(addressof(exception_glue), receiver, args, nargs, kwnames);
+}
+
+def:priv fast_get_loop(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if nargs == 0 and not kwnames {
+        return _asyncio_Future_get_loop_impl(receiver, NULL);
+    }
+    return keywords_glue(addressof(get_loop_glue), receiver, args, nargs, kwnames);
+}
+
+def:priv fast_set_result(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if nargs == 1 and not kwnames {
+        return _asyncio_Future_set_result_impl(receiver, NULL, args.view(1)[0]);
+    }
+    return keywords_glue(addressof(set_result_glue), receiver, args, nargs, kwnames);
+}
+
+def:priv fast_add_done_callback(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if nargs == 1 and not kwnames {
+        return _asyncio_Future_add_done_callback_impl(
+            receiver, NULL, args.view(1)[0], NULL
+        );
+    }
+    # add_done_callback(fn, context=ctx), as call_soon() makes it.
+    if nargs == 1
+        and kwnames
+        and PyTuple_Size(kwnames) == 1
+        and PyTuple_GetItem(kwnames, 0) == ids.kw_context {
+        values = args.view(2);
+        return _asyncio_Future_add_done_callback_impl(
+            receiver, NULL, values[0], values[1]
+        );
+    }
+    return keywords_glue(
+        addressof(add_done_callback_glue), receiver, args, nargs, kwnames
+    );
+}
+
+def:priv fast_add_to_awaited_by(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    if nargs == 2 {
+        values = args.view(2);
+        return _asyncio_future_add_to_awaited_by_impl(module, values[0], values[1]);
+    }
+    return positional_glue(addressof(add_awaited_glue), module, args, nargs);
+}
+
+def:priv fast_discard_from_awaited_by(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    if nargs == 2 {
+        values = args.view(2);
+        return _asyncio_future_discard_from_awaited_by_impl(
+            module, values[0], values[1]
+        );
+    }
+    return positional_glue(addressof(discard_awaited_glue), module, args, nargs);
+}
+
+"""Future.__init__(*, loop=None) for no arguments or `loop` alone."""
+def:priv fast_future_init(
+    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32 {
+    if PyTuple_Size(args) == 0 {
+        count = jacpy_dict_size(kwargs) if kwargs else i64(0);
+        if count == 0 {
+            return _asyncio_Future___init___impl(receiver, Py_None);
+        }
+        if count == 1 {
+            position: i64 = 0;
+            key: ptr[PyObject] = NULL;
+            value: ptr[PyObject] = NULL;
+            PyDict_Next(kwargs, &mut position, &mut key, &mut value);
+            if key == ids.kw_loop {
+                return _asyncio_Future___init___impl(receiver, value);
+            }
+        }
+    }
+    return _asyncio_Future___init___init(receiver, args, kwargs);
+}
+
+"""Task.__init__(coro, *, loop=None, name=None, context=None,
+eager_start=False) for keywords given by their interned names."""
+def:priv fast_task_init(
+    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32 {
+    if PyTuple_Size(args) != 1 {
+        return _asyncio_Task___init___init(receiver, args, kwargs);
+    }
+    loop = Py_None;
+    name = Py_None;
+    context = Py_None;
+    eager: ptr[PyObject] = NULL;
+    if kwargs {
+        position: i64 = 0;
+        key: ptr[PyObject] = NULL;
+        value: ptr[PyObject] = NULL;
+        while PyDict_Next(kwargs, &mut position, &mut key, &mut value) != 0 {
+            if key == ids.kw_loop {
+                loop = value;
+            } elif key == ids.kw_name {
+                name = value;
+            } elif key == ids.kw_context {
+                context = value;
+            } elif key == ids.kw_eager_start {
+                eager = value;
+            } else {
+                return _asyncio_Task___init___init(receiver, args, kwargs);
+            }
+        }
+    }
+    eager_start = False;
+    if eager {
+        truth = int(PyObject_IsTrue(eager));
+        if truth < 0 {
+            return i32(-1);
+        }
+        eager_start = truth != 0;
+    }
+    return _asyncio_Task___init___impl(
+        receiver, PyTuple_GetItem(args, 0), loop, name, context, eager_start
+    );
+}
+
+"""Future's clinic entries in `table` with the fast paths in place, the glue
+of each kept for the calls it hands on."""
+def:priv with_fast_paths(table: list[MethodDefinition]) -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in table {
+        callbacks = method.callbacks;
+        if method.name == "done" {
+            callbacks = MethodCallbacks(positional=fast_done);
+        } elif method.name == "cancelled" {
+            callbacks = MethodCallbacks(positional=fast_cancelled);
+        } elif method.name == "result" {
+            callbacks = MethodCallbacks(positional=fast_result);
+        } elif method.name == "exception" {
+            addressof(exception_glue).view(1)[0].call = method.callbacks.fast_keywords;
+            callbacks = MethodCallbacks(fast_keywords=fast_exception);
+        } elif method.name == "get_loop" {
+            addressof(get_loop_glue).view(1)[0].call = method.callbacks.fast_keywords;
+            callbacks = MethodCallbacks(fast_keywords=fast_get_loop);
+        } elif method.name == "set_result" {
+            addressof(set_result_glue).view(1)[0].call = method.callbacks.fast_keywords;
+            callbacks = MethodCallbacks(fast_keywords=fast_set_result);
+        } elif method.name == "add_done_callback" {
+            addressof(add_done_callback_glue).view(1)[0].call = method.callbacks.fast_keywords;
+            callbacks = MethodCallbacks(fast_keywords=fast_add_done_callback);
+        }
+        methods.append(
+            MethodDefinition(method.name, callbacks, method.doc, method.flags)
+        );
+    }
+    return methods;
+}
+
+"""The module's clinic functions with the awaited-by fast paths in place."""
+def:priv module_functions -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in module_methods {
+        callbacks = method.callbacks;
+        if method.name == "future_add_to_awaited_by" {
+            addressof(add_awaited_glue).view(1)[0].call = method.callbacks.fast;
+            callbacks = MethodCallbacks(fast=fast_add_to_awaited_by);
+        } elif method.name == "future_discard_from_awaited_by" {
+            addressof(discard_awaited_glue).view(1)[0].call = method.callbacks.fast;
+            callbacks = MethodCallbacks(fast=fast_discard_from_awaited_by);
+        }
+        methods.append(
+            MethodDefinition(method.name, callbacks, method.doc, method.flags)
+        );
+    }
+    return methods;
+}
 
 """The entries of `table` named in `names`, in that order."""
 def:priv select_methods(
@@ -342,7 +616,7 @@ def:priv install_tables -> bool {
         return True;
     }
     future_methods = select_methods(
-        Future_methods,
+        with_fast_paths(Future_methods),
         [
             "result",
             "exception",
@@ -376,7 +650,7 @@ def:priv install_tables -> bool {
         ]
     );
     task_methods = select_methods(
-        Future_methods,
+        with_fast_paths(Future_methods),
         [
             "result",
             "exception",
@@ -566,7 +840,7 @@ def:priv module_free(module: ptr[PyObject]) {
 glob:priv definition = ModuleDefinition(
          "_asyncio",
          "Accelerator module for asyncio",
-         module_methods,
+         module_functions(),
          ModuleHooks(
              execute=execute,
              traverse=traverse_state,

@@ -218,7 +218,11 @@ obj Identifiers {
         pending: ptr[PyObject] = NULL,
         cancelled: ptr[PyObject] = NULL,
         finished: ptr[PyObject] = NULL,
-        result: ptr[PyObject] = NULL;
+        result: ptr[PyObject] = NULL,
+        kw_loop: ptr[PyObject] = NULL,
+        kw_name: ptr[PyObject] = NULL,
+        kw_context: ptr[PyObject] = NULL,
+        kw_eager_start: ptr[PyObject] = NULL;
 }
 
 glob ids = Identifiers();
@@ -251,7 +255,11 @@ def intern_identifiers -> bool {
         "PENDING",
         "CANCELLED",
         "FINISHED",
-        "result"
+        "result",
+        "loop",
+        "name",
+        "context",
+        "eager_start"
     ];
     values: list[ptr[PyObject]] = [];
     for name in names {
@@ -287,6 +295,10 @@ def intern_identifiers -> bool {
     ids.cancelled = values[20];
     ids.finished = values[21];
     ids.result = values[22];
+    ids.kw_loop = values[23];
+    ids.kw_name = values[24];
+    ids.kw_context = values[25];
+    ids.kw_eager_start = values[26];
     ids.ready = True;
     return True;
 }
@@ -874,22 +886,20 @@ def future_set_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) {
     jacpy_release(exc);
 }
 
-"""future_get_result(): (0, result) or (1, exception) with a new reference,
-(-1, NULL) with the error set."""
-def future_get_result(
-    module: ptr[PyObject], op: ptr[PyObject]
-) -> tuple[int, ptr[PyObject]] {
+"""future_get_result(): a new reference to the result, or to the exception
+when the future's fut_exception is set; NULL with the error set."""
+def future_get_result(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
     record = fut_of(op).view(1);
     state = int(record[0].fut_state);
     if state == STATE_CANCELLED {
         future_set_cancelled_error(module, op);
-        return (-1, NULL);
+        return NULL;
     }
     if state != STATE_FINISHED {
         PyErr_SetString(
             state_ref(module, STATE_INVALID_STATE_ERROR), "Result is not set."
         );
-        return (-1, NULL);
+        return NULL;
     }
     set_bit(op, BIT_LOG_TB, False);
     if record[0].fut_exception {
@@ -898,15 +908,15 @@ def future_get_result(
             tb = Py_None;
         }
         if PyException_SetTraceback(record[0].fut_exception, tb) < 0 {
-            return (-1, NULL);
+            return NULL;
         }
         result = Py_NewRef(record[0].fut_exception);
         exception_tb = record[0].fut_exception_tb;
         record[0].fut_exception_tb = NULL;
         release(exception_tb);
-        return (1, result);
+        return result;
     }
-    return (0, Py_NewRef(record[0].fut_result));
+    return Py_NewRef(record[0].fut_result);
 }
 
 """future_add_done_callback(): schedule `arg` now for a done future, else

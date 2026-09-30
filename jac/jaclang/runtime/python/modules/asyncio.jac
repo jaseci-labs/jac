@@ -182,6 +182,12 @@ def:priv truth(flag: bool) -> ptr[PyObject] {
     return Py_NewRef(py_true() if flag else py_false());
 }
 
+"""The module of a method's defining class; with no class (the binding's
+fast paths), the module of the receiver's type, which is the same one."""
+def:priv defining_module(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyObject] {
+    return module_of_type(cls) if cls else module_of(receiver);
+}
+
 """ENSURE_FUTURE_ALIVE: False with RuntimeError for an uninitialized future."""
 def:priv alive(op: ptr[PyObject]) -> bool {
     return future_ensure_alive(op) == 0;
@@ -234,11 +240,8 @@ def _asyncio_Future_result_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not future_is_alive(receiver) {
         return not_initialized(module);
     }
-    (res, result) = future_get_result(module, receiver);
-    if res == -1 {
-        return NULL;
-    }
-    if res == 0 {
+    result = future_get_result(module, receiver);
+    if not result or not fut_of(receiver).view(1)[0].fut_exception {
         return result;
     }
     PyErr_SetObject(Py_TYPE(result), result);
@@ -250,17 +253,17 @@ def _asyncio_Future_exception_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not future_is_alive(receiver) {
-        return not_initialized(module_of_type(cls));
+        return not_initialized(defining_module(receiver, cls));
     }
     record = fut_of(receiver).view(1);
     state = int(record[0].fut_state);
     if state == STATE_CANCELLED {
-        future_set_cancelled_error(module_of_type(cls), receiver);
+        future_set_cancelled_error(defining_module(receiver, cls), receiver);
         return NULL;
     }
     if state != STATE_FINISHED {
         PyErr_SetString(
-            state_ref(module_of_type(cls), STATE_INVALID_STATE_ERROR),
+            state_ref(defining_module(receiver, cls), STATE_INVALID_STATE_ERROR),
             "Exception is not set."
         );
         return NULL;
@@ -278,7 +281,7 @@ def _asyncio_Future_set_result_impl(
     if not alive(receiver) {
         return NULL;
     }
-    return future_set_result(module_of_type(cls), receiver, result);
+    return future_set_result(defining_module(receiver, cls), receiver, result);
 }
 
 def _asyncio_Future_set_exception_impl(
@@ -287,7 +290,7 @@ def _asyncio_Future_set_exception_impl(
     if not alive(receiver) {
         return NULL;
     }
-    return future_set_exception(module_of_type(cls), receiver, exception);
+    return future_set_exception(defining_module(receiver, cls), receiver, exception);
 }
 
 def _asyncio_Future_add_done_callback_impl(
@@ -296,7 +299,7 @@ def _asyncio_Future_add_done_callback_impl(
     fn: ptr[PyObject],
     context: ptr[PyObject]
 ) -> ptr[PyObject] {
-    module = module_of_type(cls);
+    module = defining_module(receiver, cls);
     if not context {
         context = PyContext_CopyCurrent();
         if not context {
@@ -411,7 +414,7 @@ def _asyncio_Future_cancel_impl(
     if not alive(receiver) {
         return NULL;
     }
-    return future_cancel(module_of_type(cls), receiver, msg);
+    return future_cancel(defining_module(receiver, cls), receiver, msg);
 }
 
 def _asyncio_Future_cancelled_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
@@ -740,6 +743,19 @@ def futureiter_dealloc(op: ptr[PyObject]) {
     }
 }
 
+"""Future.result() of a future that is not pending, reading a finished
+future's result in place (what _asyncio_Future_result_impl() then does)."""
+def:priv done_result(fut: ptr[PyObject]) -> ptr[PyObject] {
+    record = fut_of(fut).view(1);
+    if record[0].fut_loop
+        and int(record[0].fut_state) == STATE_FINISHED
+        and not record[0].fut_exception {
+        set_bit(fut, BIT_LOG_TB, False);
+        return Py_NewRef(record[0].fut_result);
+    }
+    return _asyncio_Future_result_impl(fut);
+}
+
 """FutureIter_am_send(): the future itself while pending (once), else its
 result as the return value."""
 def futureiter_am_send(
@@ -757,7 +773,7 @@ def futureiter_am_send(
         PyErr_SetString(PyExc_RuntimeError, "await wasn't used with future");
         return PYGEN_ERROR;
     }
-    res = _asyncio_Future_result_impl(fut);
+    res = done_result(fut);
     if res {
         out[0] = res;
         return PYGEN_RETURN;
@@ -776,7 +792,7 @@ def futureiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
         PyErr_SetString(PyExc_RuntimeError, "await wasn't used with future");
         return NULL;
     }
-    res = _asyncio_Future_result_impl(fut);
+    res = done_result(fut);
     if res {
         _PyGen_SetStopIterationValue(res);
         jacpy_release(res);
@@ -985,12 +1001,12 @@ def task_wakeup(op: ptr[PyObject], o: ptr[PyObject]) -> ptr[PyObject] {
         }
     }
     if future_check_exact(module, o) or task_check_exact(module, o) {
-        (res, fut_result) = future_get_result(module, o);
-        if res == 0 {
-            jacpy_release(fut_result);
-            return task_step(module, op, NULL);
-        }
-        if res == 1 {
+        fut_result = future_get_result(module, o);
+        if fut_result {
+            if not fut_of(o).view(1)[0].fut_exception {
+                jacpy_release(fut_result);
+                return task_step(module, op, NULL);
+            }
             result = task_step(module, op, fut_result);
             jacpy_release(fut_result);
             return result;
@@ -1138,24 +1154,18 @@ def _asyncio_Task___init___impl(
 def task_clear(op: ptr[PyObject]) -> i32 {
     future_clear(op);
     record = task_of(op).view(1);
-    for index in [0, 1, 2, 3] {
-        # coro, context, name, fut_waiter
-        value = NULL;
-        if index == 0 {
-            value = record[0].task_coro;
-            record[0].task_coro = NULL;
-        } elif index == 1 {
-            value = record[0].task_context;
-            record[0].task_context = NULL;
-        } elif index == 2 {
-            value = record[0].task_name;
-            record[0].task_name = NULL;
-        } else {
-            value = record[0].task_fut_waiter;
-            record[0].task_fut_waiter = NULL;
-        }
-        release(value);
-    }
+    coro = record[0].task_coro;
+    record[0].task_coro = NULL;
+    release(coro);
+    context = record[0].task_context;
+    record[0].task_context = NULL;
+    release(context);
+    name = record[0].task_name;
+    record[0].task_name = NULL;
+    release(name);
+    waiter = record[0].task_fut_waiter;
+    record[0].task_fut_waiter = NULL;
+    release(waiter);
     return i32(0);
 }
 
@@ -1163,16 +1173,17 @@ def task_clear(op: ptr[PyObject]) -> i32 {
 def task_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     record = task_of(op).view(1);
     status = visit_reference(Py_TYPE(op), visitor, context);
-    for value in [
-        record[0].task_context,
-        record[0].task_coro,
-        record[0].task_name,
-        record[0].task_fut_waiter
-    ] {
-        if status != 0 {
-            return status;
-        }
-        status = visit_reference(value, visitor, context);
+    if status == 0 {
+        status = visit_reference(record[0].task_context, visitor, context);
+    }
+    if status == 0 {
+        status = visit_reference(record[0].task_coro, visitor, context);
+    }
+    if status == 0 {
+        status = visit_reference(record[0].task_name, visitor, context);
+    }
+    if status == 0 {
+        status = visit_reference(record[0].task_fut_waiter, visitor, context);
     }
     for index in range(11) {
         if status != 0 {
@@ -1414,18 +1425,6 @@ def task_dealloc(op: ptr[PyObject]) {
     PyObject_ClearWeakRefs(op);
     task_clear(op);
     free_object(type, op);
-}
-
-"""gen_status_from_result()."""
-def:priv gen_status_from_result(result: ptr[PyObject]) -> tuple[int, ptr[PyObject]] {
-    if result {
-        return (int(PYGEN_NEXT), result);
-    }
-    value = NULL;
-    if _PyGen_FetchStopIterationValue(&mut value) == 0 {
-        return (int(PYGEN_RETURN), value);
-    }
-    return (int(PYGEN_ERROR), NULL);
 }
 
 """The awaiting part of task_step_handle_result_impl() for a future on the
@@ -1688,9 +1687,13 @@ def:priv task_step_impl(
     if not exc {
         gen_status = int(PyIter_Send(coro, Py_None, &mut result));
     } else {
-        (gen_status, result) = gen_status_from_result(
-            PyObject_CallMethodObjArgs(coro, ids.throw, exc, NULL)
-        );
+        # gen_status_from_result()
+        result = PyObject_CallMethodObjArgs(coro, ids.throw, exc, NULL);
+        if result {
+            gen_status = int(PYGEN_NEXT);
+        } elif _PyGen_FetchStopIterationValue(&mut result) == 0 {
+            gen_status = int(PYGEN_RETURN);
+        }
         if clear_exc {
             # We created `exc` during this call.
             jacpy_release(exc);

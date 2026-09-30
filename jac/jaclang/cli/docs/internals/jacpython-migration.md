@@ -139,6 +139,21 @@ Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
 `Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
 token for `PyType_GetBaseByToken()`, as in C.
 
+A clinic module can put its generated tables on such specs. `_asyncio`'s
+Future, Task, FutureIter and TaskStepMethWrapper are C-data specs whose
+instances are the C module's `FutureObj`, `TaskObj` and friends in place
+(the same fields at the same offsets, with managed dict and weakref flags),
+so the interpreter's task lists, which link each task through its
+`task_node`, and `PyThreadState_Clear()`, which moves a dying thread's tasks
+to the interpreter, work unchanged. At module execution the binding fills the
+specs' `Py_tp_methods` and `Py_tp_getset` slots once per process with
+`method_table()` and `getset_table()` (the `tp_getset` counterpart in
+`bindings/type.jac`) over the clinic `MethodDefinition` and
+`PropertyDefinition` lists, in the C tables' order; the clinic glue finds
+its defining class through the spec tokens. The running loop and task and
+the task lists live in `_PyThreadStateImpl` and `PyInterpreterState`, which
+`object_api.c` helpers reach (stopping the world to look at other threads).
+
 A module whose object layout other code reads keeps that layout: `_socket`'s
 `PySocketSockObject` and `PySocketModule_APIObject` are read from the pinned
 archive's `Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES`
