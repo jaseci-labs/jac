@@ -614,6 +614,13 @@ obj Emitter {
             return ("i32", self.use("convert_int") + "(value)", []);
         }
         if kind == "bool" {
+            # An int default other than 0 or 1 (posix.link's -1, "not
+            # given") keeps C's int variable.
+            c_int_default = str(getattr(conv, "c_default", "") or "").strip();
+            if re.fullmatch(r"-?\d+", c_int_default)
+                and c_int_default not in ("0", "1") {
+                return ("i32", "i32(" + self.use("convert_bool") + "(value))", []);
+            }
             if "int" in accept_names {
                 return ("bool", self.use("convert_bool_int") + "(value)", []);
             }
@@ -1033,6 +1040,12 @@ obj Emitter {
                 and expr.split("(")[0] in self.module_names;
             if p.is_optional() and custom {
                 fallback = self.default_value(p, jtype);
+                # The untyped variable takes a literal default in the
+                # converter's own type (posix.mknod's dev_t device=0).
+                if re.fullmatch(r"-?\d+(\.\d+)?", fallback)
+                    and re.fullmatch(r"[iu](8|16|32|64)|f(32|64)", jtype) {
+                    fallback = f"{jtype}({fallback})";
+                }
                 body.append(f"value = {slot};");
                 body.append(f"{var} = {expr} if value != NULL else {fallback};");
             } elif p.is_optional() {
