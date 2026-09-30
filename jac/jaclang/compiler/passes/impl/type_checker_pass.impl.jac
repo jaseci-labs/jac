@@ -226,6 +226,7 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
 
     here.callee_decl = ability_of_symbol(resolve_expr_symbol(here.target));
     self._check_c_variadic_args(here);
+    self._check_borrowed_scalar_forward(here);
 
     if (
         here.callee_decl is not None
@@ -439,6 +440,7 @@ impl TypeCheckPass._judge_immutable_write(
     target: (Expr | None), rebind_scope: (UniNode | None) = None
 ) -> None {
     for leaf in self._write_leaves(target) {
+        self._check_borrowed_scalar_write(leaf);
         if isinstance(leaf, AtomTrailer)
             and leaf.is_attr
             and isinstance(leaf.right, Name) {
@@ -2859,4 +2861,112 @@ impl TypeCheckPass._c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None) {
         return None;
     }
     return self.evaluator._convert_to_instance(arg);
+}
+
+# Whether `name` reads a `&mut` parameter of a Jac function (not a C
+# definition) that holds a scalar: a number, a bool or a pointer, alone or
+# in a union with None.
+impl TypeCheckPass._borrowed_scalar_param(name: Name) -> bool {
+    import from jaclang.compiler.c_interop { clib_import_of, is_ptr_type }
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    sym = name.sym;
+    if sym is None or sym.decl is None {
+        return False;
+    }
+    param = sym.decl.name_of;
+    if not isinstance(param, ParamVar)
+        or param.type_tag is None
+        or param.type_tag.ownership != OwnershipKind.MUT_BORROW {
+        return False;
+    }
+    ability = param.find_parent_of_type(Ability);
+    if ability is None or clib_import_of(ability) is not None {
+        return False;
+    }
+    declared = self.evaluator._convert_to_instance(
+        self.evaluator.get_type_of_symbol(sym)
+    );
+    members = declared.types if isinstance(declared, UnionType) else [declared];
+    for member in members {
+        if not isinstance(member, ClassType) {
+            continue;
+        }
+        if is_ptr_type(member)
+            or (
+                member.is_builtin()
+                and JAC_TYPE_REGISTRY.is_numeric(member.shared.class_name)
+            ) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeCheckPass._check_borrowed_scalar_write(leaf: Expr) -> None {
+    if isinstance(leaf, Name)
+        and leaf.sym is not None
+        and leaf.sym.decl is not leaf
+        and self._borrowed_scalar_param(leaf) {
+        self.ctx.emit(
+            E1159,
+            node_override=leaf,
+            name=leaf.value,
+            what="assigning it cannot reach the caller"
+        );
+    }
+}
+
+# A borrowed scalar parameter lent on (`&mut p`), or passed to a parameter
+# the callee declares `&mut`, would be written through the function's copy.
+impl TypeCheckPass._check_borrowed_scalar_forward(nd: FuncCall) -> None {
+    import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
+    callee = nd.callee_decl;
+    sig = callee.signature if callee is not None else None;
+    params: list[ParamVar] = sig.get_parameters()
+        if isinstance(sig, FuncSignature)
+        else [];
+    positional = 0;
+    for arg in nd.params or [] {
+        value = arg.value if isinstance(arg, KWPair) else arg;
+        target: (ParamVar | None) = None;
+        if isinstance(arg, KWPair) {
+            key = arg.key.value if isinstance(arg.key, Name) else "";
+            for p in params {
+                if p.name and p.name.value == key {
+                    target = p;
+                }
+            }
+        } else {
+            if positional < len(params) {
+                candidate = params[positional];
+                if not candidate.is_vararg and not candidate.is_kwargs {
+                    target = candidate;
+                }
+            }
+            positional += 1;
+        }
+        if isinstance(value, UnaryExpr)
+            and value.ownership == OwnershipKind.MUT_BORROW
+            and isinstance(value.operand, Name)
+            and self._borrowed_scalar_param(value.operand) {
+            self.ctx.emit(
+                E1159,
+                node_override=value,
+                name=value.operand.value,
+                what="lending it on writes only the function's copy"
+            );
+        } elif isinstance(value, Name)
+            and target is not None
+            and target.type_tag is not None
+            and target.type_tag.ownership == OwnershipKind.MUT_BORROW
+            and self._borrowed_scalar_param(value) {
+            self.ctx.emit(
+                E1159,
+                node_override=value,
+                name=value.value,
+                what="passing it where the callee writes through it writes only the function's copy"
+            );
+        }
+    }
 }

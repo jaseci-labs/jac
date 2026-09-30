@@ -1240,3 +1240,46 @@ with entry {
     # A struct wider than two registers comes back through sret.
     assert "wide 7 14 21" in out.splitlines() , out;
 }
+
+test "a Jac function's borrowed scalar parameter cannot be written through" {
+    code = '''import from c {
+    obj pair_record {
+        has a: i32 = 0, b: i32 = 0;
+    }
+    def time(out: &mut i64) -> i64;
+    def pipe(fds: &mut pair_record) -> i32;
+}
+
+def set_scalar(out: &mut f64) {
+    out = 2.5;
+}
+
+def bump(out: &mut i64) {
+    out += 1;
+}
+
+def forward_time(out: &mut i64) -> i64 {
+    return time(out);
+}
+
+def lend_time(out: &mut i64) -> i64 {
+    return time(&mut out);
+}
+
+def record_ok(fds: &mut pair_record) -> i32 {
+    fds.a = 1;
+    return pipe(fds);
+}
+
+def local_ok -> i64 {
+    t = i64(0);
+    time(&mut t);
+    return t;
+}
+
+def read_ok(out: &mut i64) -> i64 {
+    return out + 1;
+}
+''';
+    assert checker_codes(code) == ["E1159", "E1159", "E1159", "E1159"];
+}

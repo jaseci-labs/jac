@@ -854,6 +854,8 @@ with entry {
 
 The scalar travels through an addressable slot of its C type and is written back after the call, so `&mut flag` with `flag: bool` passes a C `bool*`. On the native backend a struct is passed as a pointer to its payload; the LLVM `noalias` / `readonly` facts on borrowed Jac parameters are unaffected.
 
+That write-back is the C boundary's. A Jac function's own `&mut` scalar parameter is a value: assigning it, lending it on as `&mut p`, or passing it to a parameter the callee declares `&mut` would change only the function's copy, so the checker rejects each (`E1159`). Return the new value (a tuple for several), or take a `ptr[T]` to storage the caller owns.
+
 ### C pointers: `ptr[T]`
 
 `ptr[T]` is a **non-owning C address** of a `T` (a sized scalar, a foreign struct, an opaque C type, or another `ptr`); a bare `ptr` is `void*`. It is a builtin generic type name like `list[T]`, not a keyword, and it is plain data: it can be a local, a field of a Jac object, a container element, a foreign struct field, a clib parameter or a clib return, and it copies like an `int`. That is how a Jac object holds a C handle.

@@ -158,6 +158,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1156,
     E1157,
     E1158,
+    E1159,
     E1036,
     W1036,
     W1037,
@@ -218,6 +219,9 @@ walker TypeCheckPass(TreePass) {
     def _check_c_interop_import(imp: Import) -> None;
     def _foreign_struct_contains(t: (TypeBase | None), target: Archetype) -> bool;
     def _check_c_interop_call(nd: FuncCall) -> None;
+    def _borrowed_scalar_param(name: Name) -> bool;
+    def _check_borrowed_scalar_write(leaf: Expr) -> None;
+    def _check_borrowed_scalar_forward(nd: FuncCall) -> None;
     def _c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None);
     can exit_gen_compr with GenCompr exit;
     def _check_intrinsic_collision(nd: Ability) -> None;

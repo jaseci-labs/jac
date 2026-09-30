@@ -1217,6 +1217,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " parameters as scalars or pointers only.",
          blocks_codegen=True
      ),
+     E1159 = _err(
+         "E1159",
+         Category.TYPE,
+         "'{name}' is a borrowed scalar parameter; {what}",
+         help="A `&mut` parameter of a Jac function that holds a scalar (a number,"
+         " a bool or a pointer) is a value: assigning it, or lending it on to a"
+         " function that writes through it, changes only the function's copy and"
+         " never reaches the caller. Return the new value (a tuple for several),"
+         " or take a `ptr[T]` to storage the caller owns. `&mut local` lends a"
+         " scalar's storage only to a C function, where the write lands.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
