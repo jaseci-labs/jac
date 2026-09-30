@@ -527,14 +527,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         }
         fixed_params.append(p);
     }
-    param_types: list[ir.Type] = [];
-    for p in fixed_params {
-        if p.type_tag and p.type_tag.tag {
-            param_types.append(self._resolve_clib_type(p.type_tag.tag));
-        } else {
-            param_types.append(ir.IntType(64));
-        }
-    }
+    param_types: list[ir.Type] = [self._clib_param_type(p) for p in fixed_params];
 
     ret_type = self._resolve_clib_type(sig.return_type);
 
@@ -550,6 +543,13 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     self.func_symtab[name] = func;
     self.clib_extern_fns[name] = func;
     self.has_native_code = True;
+}
+
+impl NaIRGenPass._clib_param_type(p: uni.ParamVar) -> ir.Type {
+    if p.type_tag and p.type_tag.tag {
+        return self._resolve_clib_type(p.type_tag.tag);
+    }
+    return ir.IntType(64);
 }
 
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {

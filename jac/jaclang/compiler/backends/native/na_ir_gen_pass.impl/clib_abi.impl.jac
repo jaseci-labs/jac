@@ -332,10 +332,8 @@ impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
         }
         if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
             params.append("ptr");
-        } elif p.type_tag is not None and p.type_tag.tag is not None {
-            params.append(str(self._resolve_clib_type(p.type_tag.tag)));
         } else {
-            params.append("i64");
+            params.append(str(self._clib_param_type(p)));
         }
     }
     if sig.varargs is not None {

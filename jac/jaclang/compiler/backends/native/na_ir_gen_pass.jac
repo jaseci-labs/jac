@@ -1633,6 +1633,7 @@ walker NaIRGenPass(CompilerPass) {
         func: ir.Function, params: list[uni.ParamVar], base: int
     ) -> None;
 
+    def _clib_param_type(p: uni.ParamVar) -> ir.Type;
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
     def _predeclare_nested_siblings(nd: uni.Ability) -> None;
