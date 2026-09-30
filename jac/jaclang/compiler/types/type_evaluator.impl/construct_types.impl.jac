@@ -391,7 +391,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         }
         func_type = FunctionType(
             func_name=node_.name_spec.sym_name,
-            return_type=self.get_none_type(),
+            return_type=self._convert_to_instance(self.get_none_type()),
             parameters=[],
             function_flags=flags,
             type_params=func_type_params,
@@ -400,7 +400,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
     }
-    return_type: TypeBase = self.get_none_type();
+    return_type: TypeBase = self._convert_to_instance(self.get_none_type());
     if isinstance(node_.signature.return_type, Expr) {
         return_type = self._convert_to_instance(
             self.get_type_of_expression(node_.signature.return_type)

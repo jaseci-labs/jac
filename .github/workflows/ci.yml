@@ -132,6 +132,11 @@ jobs:
       # link: the seal honors this only for pull_request events, and the kit's
       # manifest records the mode for the runtime to check.
       JAC_PR_KIT_KERNEL_LINK: ${{ github.event_name == 'pull_request' && 'objects' || '' }}
+      # A pull request reuses a JacPython whose lowered sources are unchanged.
+      # Every step that runs build_python needs it, not only the jac binary
+      # build: the vendor step's zig build depends on the runtime too, and
+      # without it rebuilt JacPython from scratch after the kit was built.
+      JAC_JACPYTHON_REUSE: ${{ github.event_name == 'pull_request' && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
 

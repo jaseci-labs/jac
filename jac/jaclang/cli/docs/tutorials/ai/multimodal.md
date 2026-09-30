@@ -15,10 +15,10 @@ This enables powerful use cases: extracting structured data from photos (receipt
 
 ## Installation
 
-Images are supported in the default byLLM distribution:
+Images are supported by byLLM out of the box; in a project with a `[byllm]` section, `jac install` pulls the model client:
 
 ```bash
-jac install byllm
+jac install
 ```
 
 For video support, install with the `video` extra:

@@ -131,7 +131,7 @@ test "fix placement migrates a template-shaped [project] into [apps] before addi
         root_path = Path(tmpdir);
         (root_path / "jac.toml").write_text(
             '[project]\nname = "shop"\nversion = "0.1.0"\nkind = "web-app"\n'
-            'entry-point = "main"\n\n[dependencies]\nrequests = ">=2"\n'
+            'entry-point = "main"\n\n[dependencies.pypi]\nrequests = ">=2"\n'
         );
         (root_path / "main.jac").write_text(
             "sv import from analytics { Track }\n\n"
@@ -144,7 +144,7 @@ test "fix placement migrates a template-shaped [project] into [apps] before addi
         assert "kind = \"web-app\"" not in text.split("[apps.")[0] , (
             "[project] kind must move onto the app table: " + text
         );
-        assert "[dependencies]\nrequests = \">=2\"" in text , text;
+        assert "[dependencies.pypi]\nrequests = \">=2\"" in text , text;
         cfg = JacConfig.load(root_path / "jac.toml");
         assert cfg.is_workspace;
         assert cfg.default_app == "shop" , cfg.default_app;
