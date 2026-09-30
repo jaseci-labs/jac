@@ -218,7 +218,8 @@ def time_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] 
     return _PyTime_AsLong(t);
 }
 
-def:priv py_clock(t: &mut i64, info: ClockInfo | None) -> bool {
+# py_clock(): whether clock() works, and its reading.
+def:priv py_clock(info: ClockInfo | None) -> tuple[bool, i64] {
     if info is not None {
         info.implementation = "clock()";
         info.resolution = _PyTimeFraction_Resolution(&clock_base);
@@ -231,10 +232,9 @@ def:priv py_clock(t: &mut i64, info: ClockInfo | None) -> bool {
             PyExc_RuntimeError,
             "the processor time used is not available or its value cannot be represented"
         );
-        return False;
+        return (False, 0);
     }
-    t = _PyTimeFraction_Mul(ticks, &clock_base);
-    return True;
+    return (True, _PyTimeFraction_Mul(ticks, &clock_base));
 }
 
 # time_clockid_converter(): any int that fits a C int.
@@ -582,19 +582,18 @@ def:priv checktm(buf: &mut tm) {
 # time_strftime1(): wcsftime() into a buffer grown until the result fits or
 # the buffer is 256 times the format, when an empty result is the answer.
 def:priv strftime_chunk(
-    output: &mut ptr, size: &mut int, format: ptr[i32], length: int, value: &tm
-) -> ptr[PyObject] {
+    output: ptr, size: int, format: ptr[i32], length: int, value: &tm
+) -> tuple[ptr[PyObject], ptr, int] {
     while True {
         if size > SSIZE_MAX // WCHAR_SIZE {
             PyErr_NoMemory();
-            return NULL;
+            return (NULL, output, size);
         }
         grown = PyMem_Realloc(output, u64(size * WCHAR_SIZE));
         if not grown {
             PyMem_Free(output);
-            output = ptr();
             PyErr_NoMemory();
-            return NULL;
+            return (NULL, ptr(), size);
         }
         output = grown;
         written = wcsftime(ptr[i32](output), u64(size), format, value);
@@ -602,7 +601,7 @@ def:priv strftime_chunk(
             size += size;
             continue;
         }
-        return PyUnicode_FromWideChar(ptr[i32](output), i64(written));
+        return (PyUnicode_FromWideChar(ptr[i32](output), i64(written)), output, size);
     }
 }
 
@@ -669,8 +668,8 @@ def time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         }
         if length > 0 {
             characters[length] = i32(0);
-            unicode = strftime_chunk(
-                &mut output, &mut size, ptr[i32](format), length, &buf
+            (unicode, output, size) = strftime_chunk(
+                output, size, ptr[i32](format), length, &buf
             );
             if not unicode {
                 failed = True;
@@ -843,10 +842,10 @@ def time_perf_counter_ns(
 }
 
 # process_time_times(): times() user and system ticks; False when times() fails.
-def:priv process_time_times(t: &mut i64, info: ClockInfo | None) -> bool {
+def:priv process_time_times(info: ClockInfo | None) -> tuple[bool, i64] {
     process = tms();
     if times(&mut process) == -1 {
-        return False;
+        return (False, 0);
     }
     if info is not None {
         info.implementation = "times()";
@@ -854,16 +853,18 @@ def:priv process_time_times(t: &mut i64, info: ClockInfo | None) -> bool {
         info.monotonic = True;
         info.adjustable = False;
     }
-    t = _PyTimeFraction_Mul(i64(process.tms_utime), &times_base)
-        + _PyTimeFraction_Mul(i64(process.tms_stime), &times_base);
-    return True;
+    return (
+        True,
+        _PyTimeFraction_Mul(i64(process.tms_utime), &times_base)
+            + _PyTimeFraction_Mul(i64(process.tms_stime), &times_base)
+    );
 }
 
 # A CPU-time clock read with clock_gettime(); with `info`, its resolution
 # comes from clock_getres().
 def:priv cpu_clock(
-    clk_id: i32, function: str, ts: timespec, t: &mut i64, info: ClockInfo | None
-) -> bool {
+    clk_id: i32, function: str, ts: timespec, info: ClockInfo | None
+) -> tuple[bool, i64] {
     if info is not None {
         info.implementation = function;
         info.monotonic = True;
@@ -871,23 +872,24 @@ def:priv cpu_clock(
         res = timespec();
         if clock_getres(clk_id, &mut res) != 0 {
             os_error();
-            return False;
+            return (False, 0);
         }
         info.resolution = timespec_seconds(res);
     }
-    return _PyTime_FromTimespec(&mut t, &ts) >= 0;
+    t: i64 = 0;
+    ok = _PyTime_FromTimespec(&mut t, &ts) >= 0;
+    return (ok, t);
 }
 
 # py_process_time(): the first of clock_gettime(CLOCK_PROCESS_CPUTIME_ID),
 # getrusage(RUSAGE_SELF), times() and clock() that works.
-def:priv py_process_time(t: &mut i64, info: ClockInfo | None) -> bool {
+def:priv py_process_time(info: ClockInfo | None) -> tuple[bool, i64] {
     ts = timespec();
     if clock_gettime(i32(CLOCK_PROCESS_CPUTIME_ID), &mut ts) == 0 {
         return cpu_clock(
             i32(CLOCK_PROCESS_CPUTIME_ID),
             "clock_gettime(CLOCK_PROCESS_CPUTIME_ID)",
             ts,
-            &mut t,
             info
         );
     }
@@ -905,23 +907,23 @@ def:priv py_process_time(t: &mut i64, info: ClockInfo | None) -> bool {
         utime: i64 = 0;
         stime: i64 = 0;
         if _PyTime_FromTimeval(&mut utime, &mut user) < 0 {
-            return False;
+            return (False, 0);
         }
         if _PyTime_FromTimeval(&mut stime, &mut system) < 0 {
-            return False;
+            return (False, 0);
         }
-        t = utime + stime;
-        return True;
+        return (True, utime + stime);
     }
-    if process_time_times(&mut t, info) {
-        return True;
+    (ok, t) = process_time_times(info);
+    if ok {
+        return (True, t);
     }
-    return py_clock(&mut t, info);
+    return py_clock(info);
 }
 
 def time_process_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    t: i64 = 0;
-    if not py_process_time(&mut t, None) {
+    (ok, t) = py_process_time(None);
+    if not ok {
         return NULL;
     }
     return float_from_time(t);
@@ -930,40 +932,36 @@ def time_process_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
 def time_process_time_ns(
     module: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    t: i64 = 0;
-    if not py_process_time(&mut t, None) {
+    (ok, t) = py_process_time(None);
+    if not ok {
         return NULL;
     }
     return _PyTime_AsLong(t);
 }
 
 # _PyTime_GetThreadTimeWithInfo() over CLOCK_THREAD_CPUTIME_ID.
-def:priv thread_time(t: &mut i64, info: ClockInfo | None) -> bool {
+def:priv thread_time(info: ClockInfo | None) -> tuple[bool, i64] {
     ts = timespec();
     if clock_gettime(i32(CLOCK_THREAD_CPUTIME_ID), &mut ts) != 0 {
         os_error();
-        return False;
+        return (False, 0);
     }
     return cpu_clock(
-        i32(CLOCK_THREAD_CPUTIME_ID),
-        "clock_gettime(CLOCK_THREAD_CPUTIME_ID)",
-        ts,
-        &mut t,
-        info
+        i32(CLOCK_THREAD_CPUTIME_ID), "clock_gettime(CLOCK_THREAD_CPUTIME_ID)", ts, info
     );
 }
 
 def time_thread_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    t: i64 = 0;
-    if not thread_time(&mut t, None) {
+    (ok, t) = thread_time(None);
+    if not ok {
         return NULL;
     }
     return float_from_time(t);
 }
 
 def time_thread_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    t: i64 = 0;
-    if not thread_time(&mut t, None) {
+    (ok, t) = thread_time(None);
+    if not ok {
         return NULL;
     }
     return _PyTime_AsLong(t);
@@ -1018,11 +1016,13 @@ def time_get_clock_info(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
             return NULL;
         }
     } elif name == "process_time" {
-        if not py_process_time(&mut t, info) {
+        (ok, t) = py_process_time(info);
+        if not ok {
             return NULL;
         }
     } elif name == "thread_time" {
-        if not thread_time(&mut t, info) {
+        (ok, t) = thread_time(info);
+        if not ok {
             return NULL;
         }
     } else {
