@@ -50,15 +50,7 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_release,
     jacpy_unicode_size,
     jacpy_unsigned_converter,
-    PyNumber_AsSsize_t,
-    PyNumber_Index,
-    PyObject,
-    PyObject_IsTrue,
-    PyType_GetSlot,
-    PyArg_Parse,
-    PyUnicode_AsUTF8AndSize,
-    PyUnicode_FSConverter,
-    PyUnicode_ReadChar
+    PyUnicode_FSConverter
 }
 import from jaclang.runtime.python.object_model.file { PyObject_AsFileDescriptor }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
