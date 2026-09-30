@@ -60,7 +60,8 @@ def:priv termios_tcsetattr_bound(
 def:priv termios_tcsetattr_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tcsetattr", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("tcsetattr", int(nargs), 3, 3) {
         return NULL;
     }
     return termios_tcsetattr_bound(receiver, args, nargs);
@@ -84,7 +85,8 @@ def:priv termios_tcsendbreak_bound(
 def:priv termios_tcsendbreak_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tcsendbreak", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("tcsendbreak", int(nargs), 2, 2) {
         return NULL;
     }
     return termios_tcsendbreak_bound(receiver, args, nargs);
@@ -119,7 +121,7 @@ def:priv termios_tcflush_bound(
 def:priv termios_tcflush_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tcflush", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("tcflush", int(nargs), 2, 2) {
         return NULL;
     }
     return termios_tcflush_bound(receiver, args, nargs);
@@ -143,7 +145,7 @@ def:priv termios_tcflow_bound(
 def:priv termios_tcflow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tcflow", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("tcflow", int(nargs), 2, 2) {
         return NULL;
     }
     return termios_tcflow_bound(receiver, args, nargs);
@@ -178,7 +180,8 @@ def:priv termios_tcsetwinsize_bound(
 def:priv termios_tcsetwinsize_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tcsetwinsize", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("tcsetwinsize", int(nargs), 2, 2) {
         return NULL;
     }
     return termios_tcsetwinsize_bound(receiver, args, nargs);

@@ -9,7 +9,7 @@ import from jaclang.compiler.c_interop {
     c_scalar_constant,
     c_string_literal,
     c_type_arg,
-    clib_global_of_symbol,
+    clib_global_of_name,
     is_builtin_addressof_call,
     foreign_read_copies,
     foreign_struct_of_type,
@@ -809,7 +809,12 @@ impl NaIRGenPass._c_ptr_step(
     }
     elem = self._c_ptr_elem_llvm(ptr_type) or ir.IntType(8);
     typed = b.inttoptr(addr, elem.as_pointer(), name="c.ptr.typed");
-    return b.ptrtoint(b.gep(typed, [count], name="c.ptr.step"), i64, name="c.ptr");
+    # A pointer step does not wrap around the address space (`nusw`), as C
+    # pointer arithmetic does not: a step forward is then never null, so a
+    # pointer walked forward from a checked start needs no further null
+    # check when it is viewed.
+    step = b.gep(typed, [count], name="c.ptr.step", nusw=True);
+    return b.ptrtoint(step, i64, name="c.ptr");
 }
 
 impl NaIRGenPass._codegen_c_ptr_arith(
@@ -1085,7 +1090,7 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             symbol = params[0] if len(params) == 1 else None;
             found = self.clib_globals.get(symbol.sym_name)
                 if isinstance(symbol, uni.Name)
-                    and clib_global_of_symbol(symbol.sym) is not None
+                    and clib_global_of_name(symbol) is not None
                 else None;
             return found[0].ptrtoint(i64) as ir.Constant if found is not None else None;
         }
@@ -1197,7 +1202,7 @@ impl NaIRGenPass._clib_global_of(
     if c_global is None or nd.sym_name in self.local_vars {
         return None;
     }
-    if clib_global_of_symbol(nd.sym) is None {
+    if clib_global_of_name(nd) is None {
         return None;
     }
     return c_global;

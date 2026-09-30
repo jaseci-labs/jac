@@ -64,6 +64,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/descrobject.h",
          "Include/cpython/cellobject.h",
          "Include/sliceobject.h",
+         "Include/cpython/pyerrors.h",
          "Include/internal/pycore_range.h",
          "Include/internal/pycore_freelist_state.h",
          "Include/datetime.h",
@@ -88,8 +89,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Objects/unionobject.c",
          "Objects/genericaliasobject.c",
          "Objects/fileobject.c",
-         # The socket object and the _socket.CAPI record, which _ssl.c
-         # (still C) reads through this header.
+         # The socket object and the _socket.CAPI record: the _socket and
+         # _ssl ports define and read them; the header has no C user left.
          "Modules/socketmodule.h"
      ],
      # Headers the constant probe and layouts_check.c include after Python.h
@@ -164,6 +165,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("gaobject", "gaobject"),
          ("gaiterobject", "gaiterobject"),
          ("PyStdPrinter_Object", "PyStdPrinter_Object"),
+         # ssl.SSLError's tp_str reads an OSError's strerror in place.
+         ("PyOSErrorObject", "PyOSErrorObject"),
          ("PySocketSockObject", "PySocketSockObject"),
          ("PySocketModule_APIObject", "PySocketModule_APIObject")
      ],
@@ -197,6 +200,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_OBJECT_SIZE", "sizeof(PyObject)", "i64"),
          ("PY_TUPLE_OBJECT_SIZE", "sizeof(PyTupleObject)", "i64"),
          ("Py_TPFLAGS_IMMUTABLETYPE", "Py_TPFLAGS_IMMUTABLETYPE", "u64"),
+         ("Py_TPFLAGS_MANAGED_DICT", "Py_TPFLAGS_MANAGED_DICT", "u64"),
+         ("Py_TPFLAGS_MANAGED_WEAKREF", "Py_TPFLAGS_MANAGED_WEAKREF", "u64"),
          (
              "Py_TPFLAGS_DISALLOW_INSTANTIATION",
              "Py_TPFLAGS_DISALLOW_INSTANTIATION",
@@ -280,6 +285,16 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("Py_pymethodobjects_MAXFREELIST", "Py_pymethodobjects_MAXFREELIST", "i64"),
+         (
+             "_Py_freelists_FUTUREITERS",
+             "offsetof(struct _Py_freelists, futureiters)",
+             "i64"
+         ),
+         ("Py_futureiters_MAXFREELIST", "Py_futureiters_MAXFREELIST", "i64"),
+         # PySendResult, the result of an am_send slot and PyIter_Send().
+         ("PYGEN_RETURN", "PYGEN_RETURN", "i32"),
+         ("PYGEN_ERROR", "PYGEN_ERROR", "i32"),
+         ("PYGEN_NEXT", "PYGEN_NEXT", "i32"),
          # Type flags, member types and call and buffer constants of the
          # second object wave.
          ("Py_TPFLAGS_HAVE_VECTORCALL", "Py_TPFLAGS_HAVE_VECTORCALL", "u64"),
@@ -381,6 +396,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("METH_STATIC", "METH_STATIC", "i32"),
          ("METH_FASTCALL", "METH_FASTCALL", "i32"),
          ("Py_T_INT", "Py_T_INT", "i32"),
+         ("Py_T_PYSSIZET", "Py_T_PYSSIZET", "i32"),
+         ("PyBUF_SIMPLE", "PyBUF_SIMPLE", "i32"),
          ("Py_tp_dealloc", "Py_tp_dealloc", "i32"),
          ("Py_tp_doc", "Py_tp_doc", "i32"),
          ("Py_tp_getset", "Py_tp_getset", "i32"),
@@ -398,6 +415,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("Py_tp_init", "Py_tp_init", "i32"),
          ("Py_tp_token", "Py_tp_token", "i32"),
          ("Py_tp_finalize", "Py_tp_finalize", "i32"),
+         ("Py_tp_call", "Py_tp_call", "i32"),
+         ("Py_tp_iternext", "Py_tp_iternext", "i32"),
+         ("Py_am_await", "Py_am_await", "i32"),
+         ("Py_am_send", "Py_am_send", "i32"),
          ("Py_mp_length", "Py_mp_length", "i32"),
          ("Py_mp_subscript", "Py_mp_subscript", "i32"),
          ("Py_mp_ass_subscript", "Py_mp_ass_subscript", "i32"),
@@ -449,6 +470,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_SOCKET_TYPE_OFFSET", "offsetof(PySocketSockObject, sock_type)", "i64"),
          ("PY_SOCKET_PROTO_OFFSET", "offsetof(PySocketSockObject, sock_proto)", "i64"),
          ("PY_SOCKET_API_SIZE", "sizeof(PySocketModule_APIObject)", "i64"),
+         ("PY_OS_ERROR_OBJECT_SIZE", "sizeof(PyOSErrorObject)", "i64"),
          ("Py_CLEANUP_SUPPORTED", "Py_CLEANUP_SUPPORTED", "i32")
      ],
      # The configuration pyconfig.h, pyport.h and the compiler give every

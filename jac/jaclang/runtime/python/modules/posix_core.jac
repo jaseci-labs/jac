@@ -951,18 +951,6 @@ def return_Py_off_t(offset: i64) -> ptr[PyObject] {
     return PyLong_FromPy_off_t(offset);
 }
 
-# object(converter='PyUnicode_FSConverter'): the argument's bytes, a new
-# reference the glue's OwnedReference releases.
-def convert_PyUnicode_FSConverter(
-    value: ptr[PyObject], fname: str, label: str
-) -> ptr[PyObject] {
-    converted = NULL;
-    if PyUnicode_FSConverter(value, &mut converted) == 0 {
-        raise boundary_failure();
-    }
-    return converted;
-}
-
 # conv_confname(): a configuration name (a key of the module's `table_name`
 # dict) or an integer, as a C int.
 def conv_confname(

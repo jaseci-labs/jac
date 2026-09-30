@@ -78,6 +78,7 @@ import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     borrowed_none,
+    convert_PyUnicode_FSConverter,
     convert_bool,
     convert_buffer,
     convert_double,
@@ -124,7 +125,6 @@ import from jaclang.runtime.python.modules.posix {
     convert_MKFIFOAT_DIR_FD_CONVERTER,
     convert_MKNODAT_DIR_FD_CONVERTER,
     convert_OPENAT_DIR_FD_CONVERTER,
-    convert_PyUnicode_FSConverter,
     convert_Py_off_t_converter,
     convert_READLINKAT_DIR_FD_CONVERTER,
     convert_SYMLINKAT_DIR_FD_CONVERTER,
@@ -1881,7 +1881,7 @@ def:priv os_execv_bound(
 def:priv os_execv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("execv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("execv", int(nargs), 2, 2) {
         return NULL;
     }
     return os_execv_bound(receiver, args, nargs);
@@ -2337,7 +2337,8 @@ def:priv os_sched_setscheduler_bound(
 def:priv os_sched_setscheduler_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("sched_setscheduler", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("sched_setscheduler", int(nargs), 3, 3) {
         return NULL;
     }
     return os_sched_setscheduler_bound(receiver, args, nargs);
@@ -2372,7 +2373,8 @@ def:priv os_sched_setparam_bound(
 def:priv os_sched_setparam_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("sched_setparam", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("sched_setparam", int(nargs), 2, 2) {
         return NULL;
     }
     return os_sched_setparam_bound(receiver, args, nargs);
@@ -2417,7 +2419,8 @@ def:priv os_sched_setaffinity_bound(
 def:priv os_sched_setaffinity_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("sched_setaffinity", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("sched_setaffinity", int(nargs), 2, 2) {
         return NULL;
     }
     return os_sched_setaffinity_bound(receiver, args, nargs);
@@ -2567,7 +2570,8 @@ def:priv os_getgrouplist_darwin_bound(
 def:priv os_getgrouplist_darwin_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("getgrouplist", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("getgrouplist", int(nargs), 2, 2) {
         return NULL;
     }
     return os_getgrouplist_darwin_bound(receiver, args, nargs);
@@ -2593,7 +2597,8 @@ def:priv os_getgrouplist_linux_bound(
 def:priv os_getgrouplist_linux_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("getgrouplist", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("getgrouplist", int(nargs), 2, 2) {
         return NULL;
     }
     return os_getgrouplist_linux_bound(receiver, args, nargs);
@@ -2633,7 +2638,8 @@ def:priv os_initgroups_darwin_bound(
 def:priv os_initgroups_darwin_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("initgroups", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("initgroups", int(nargs), 2, 2) {
         return NULL;
     }
     return os_initgroups_darwin_bound(receiver, args, nargs);
@@ -2665,7 +2671,8 @@ def:priv os_initgroups_linux_bound(
 def:priv os_initgroups_linux_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("initgroups", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("initgroups", int(nargs), 2, 2) {
         return NULL;
     }
     return os_initgroups_linux_bound(receiver, args, nargs);
@@ -2776,7 +2783,7 @@ def:priv os_kill_bound(
 def:priv os_kill_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("kill", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("kill", int(nargs), 2, 2) {
         return NULL;
     }
     return os_kill_bound(receiver, args, nargs);
@@ -2800,7 +2807,7 @@ def:priv os_killpg_bound(
 def:priv os_killpg_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("killpg", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("killpg", int(nargs), 2, 2) {
         return NULL;
     }
     return os_killpg_bound(receiver, args, nargs);
@@ -2857,7 +2864,8 @@ def:priv os_setreuid_bound(
 def:priv os_setreuid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setreuid", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("setreuid", int(nargs), 2, 2) {
         return NULL;
     }
     return os_setreuid_bound(receiver, args, nargs);
@@ -2881,7 +2889,8 @@ def:priv os_setregid_bound(
 def:priv os_setregid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setregid", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("setregid", int(nargs), 2, 2) {
         return NULL;
     }
     return os_setregid_bound(receiver, args, nargs);
@@ -3005,7 +3014,7 @@ def:priv os_waitid_bound(
 def:priv os_waitid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("waitid", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("waitid", int(nargs), 3, 3) {
         return NULL;
     }
     return os_waitid_bound(receiver, args, nargs);
@@ -3029,7 +3038,7 @@ def:priv os_waitpid_bound(
 def:priv os_waitpid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("waitpid", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("waitpid", int(nargs), 2, 2) {
         return NULL;
     }
     return os_waitpid_bound(receiver, args, nargs);
@@ -3510,7 +3519,7 @@ def:priv os_setpgid_bound(
 def:priv os_setpgid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setpgid", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("setpgid", int(nargs), 2, 2) {
         return NULL;
     }
     return os_setpgid_bound(receiver, args, nargs);
@@ -3545,7 +3554,8 @@ def:priv os_tcsetpgrp_bound(
 def:priv os_tcsetpgrp_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("tcsetpgrp", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("tcsetpgrp", int(nargs), 2, 2) {
         return NULL;
     }
     return os_tcsetpgrp_bound(receiver, args, nargs);
@@ -3658,7 +3668,8 @@ def:priv os_closerange_bound(
 def:priv os_closerange_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("closerange", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("closerange", int(nargs), 2, 2) {
         return NULL;
     }
     return os_closerange_bound(receiver, args, nargs);
@@ -3737,7 +3748,7 @@ def:priv os_lockf_bound(
 def:priv os_lockf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("lockf", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("lockf", int(nargs), 3, 3) {
         return NULL;
     }
     return os_lockf_bound(receiver, args, nargs);
@@ -3765,7 +3776,7 @@ def:priv os_lseek_bound(
 def:priv os_lseek_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("lseek", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("lseek", int(nargs), 3, 3) {
         return NULL;
     }
     return os_lseek_bound(receiver, args, nargs);
@@ -3789,7 +3800,7 @@ def:priv os_read_bound(
 def:priv os_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("read", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("read", int(nargs), 2, 2) {
         return NULL;
     }
     return os_read_bound(receiver, args, nargs);
@@ -3819,7 +3830,8 @@ def:priv os_readinto_bound(
 def:priv os_readinto_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("readinto", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("readinto", int(nargs), 2, 2) {
         return NULL;
     }
     return os_readinto_bound(receiver, args, nargs);
@@ -3843,7 +3855,7 @@ def:priv os_readv_bound(
 def:priv os_readv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("readv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("readv", int(nargs), 2, 2) {
         return NULL;
     }
     return os_readv_bound(receiver, args, nargs);
@@ -3869,7 +3881,7 @@ def:priv os_pread_bound(
 def:priv os_pread_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("pread", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("pread", int(nargs), 3, 3) {
         return NULL;
     }
     return os_pread_bound(receiver, args, nargs);
@@ -3902,7 +3914,7 @@ def:priv os_preadv_bound(
 def:priv os_preadv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("preadv", int(nargs), 3, 4) {
+    if (nargs < 3 or nargs > 4) and not check_positional("preadv", int(nargs), 3, 4) {
         return NULL;
     }
     return os_preadv_bound(receiver, args, nargs);
@@ -3930,7 +3942,7 @@ def:priv os_write_bound(
 def:priv os_write_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("write", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("write", int(nargs), 2, 2) {
         return NULL;
     }
     return os_write_bound(receiver, args, nargs);
@@ -4083,7 +4095,8 @@ def:priv os__fcopyfile_bound(
 def:priv os__fcopyfile_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_fcopyfile", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("_fcopyfile", int(nargs), 3, 3) {
         return NULL;
     }
     return os__fcopyfile_bound(receiver, args, nargs);
@@ -4172,7 +4185,7 @@ def:priv os_writev_bound(
 def:priv os_writev_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("writev", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("writev", int(nargs), 2, 2) {
         return NULL;
     }
     return os_writev_bound(receiver, args, nargs);
@@ -4204,7 +4217,7 @@ def:priv os_pwrite_bound(
 def:priv os_pwrite_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("pwrite", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("pwrite", int(nargs), 3, 3) {
         return NULL;
     }
     return os_pwrite_bound(receiver, args, nargs);
@@ -4237,7 +4250,7 @@ def:priv os_pwritev_bound(
 def:priv os_pwritev_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("pwritev", int(nargs), 3, 4) {
+    if (nargs < 3 or nargs > 4) and not check_positional("pwritev", int(nargs), 3, 4) {
         return NULL;
     }
     return os_pwritev_bound(receiver, args, nargs);
@@ -4509,7 +4522,7 @@ def:priv os_makedev_bound(
 def:priv os_makedev_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("makedev", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("makedev", int(nargs), 2, 2) {
         return NULL;
     }
     return os_makedev_bound(receiver, args, nargs);
@@ -4535,7 +4548,8 @@ def:priv os_ftruncate_bound(
 def:priv os_ftruncate_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ftruncate", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("ftruncate", int(nargs), 2, 2) {
         return NULL;
     }
     return os_ftruncate_bound(receiver, args, nargs);
@@ -4608,7 +4622,8 @@ def:priv os_posix_fallocate_bound(
 def:priv os_posix_fallocate_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("posix_fallocate", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("posix_fallocate", int(nargs), 3, 3) {
         return NULL;
     }
     return os_posix_fallocate_bound(receiver, args, nargs);
@@ -4640,7 +4655,8 @@ def:priv os_posix_fadvise_bound(
 def:priv os_posix_fadvise_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("posix_fadvise", int(nargs), 4, 4) {
+    if (nargs < 4 or nargs > 4)
+        and not check_positional("posix_fadvise", int(nargs), 4, 4) {
         return NULL;
     }
     return os_posix_fadvise_bound(receiver, args, nargs);
@@ -4676,7 +4692,7 @@ def:priv os_putenv_bound(
 def:priv os_putenv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("putenv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("putenv", int(nargs), 2, 2) {
         return NULL;
     }
     return os_putenv_bound(receiver, args, nargs);
@@ -5050,7 +5066,8 @@ def:priv os_fpathconf_bound(
 def:priv os_fpathconf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("fpathconf", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("fpathconf", int(nargs), 2, 2) {
         return NULL;
     }
     return os_fpathconf_bound(receiver, args, nargs);
@@ -5213,7 +5230,8 @@ def:priv os_setresuid_bound(
 def:priv os_setresuid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setresuid", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("setresuid", int(nargs), 3, 3) {
         return NULL;
     }
     return os_setresuid_bound(receiver, args, nargs);
@@ -5245,7 +5263,8 @@ def:priv os_setresgid_bound(
 def:priv os_setresgid_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setresgid", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("setresgid", int(nargs), 3, 3) {
         return NULL;
     }
     return os_setresgid_bound(receiver, args, nargs);
@@ -5703,7 +5722,7 @@ def:priv os_get_terminal_size_bound(
 def:priv os_get_terminal_size_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("get_terminal_size", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("get_terminal_size", int(nargs), 0, 1) {
         return NULL;
     }
     return os_get_terminal_size_bound(receiver, args, nargs);
@@ -5748,7 +5767,8 @@ def:priv os_set_inheritable_bound(
 def:priv os_set_inheritable_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("set_inheritable", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("set_inheritable", int(nargs), 2, 2) {
         return NULL;
     }
     return os_set_inheritable_bound(receiver, args, nargs);
@@ -5783,7 +5803,8 @@ def:priv os_set_blocking_bound(
 def:priv os_set_blocking_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("set_blocking", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("set_blocking", int(nargs), 2, 2) {
         return NULL;
     }
     return os_set_blocking_bound(receiver, args, nargs);
@@ -6027,11 +6048,7 @@ def:priv os_DirEntry_is_symlink_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, DirEntry_token);
-        try {
-            return return_bool(os_DirEntry_is_symlink_impl(receiver, cls));
-        } finally {
-            jacpy_release(cls);
-        }
+        return return_bool(os_DirEntry_is_symlink_impl(receiver, cls));
     } except boundary_failure {
         return NULL;
     }
@@ -6076,16 +6093,12 @@ def:priv os_DirEntry_stat_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, DirEntry_token);
-        try {
-            follow_symlinks: bool = True;
-            if count > 0 and clinic_args[0] != NULL {
-                value = clinic_args[0];
-                follow_symlinks = convert_bool(value);
-            }
-            return os_DirEntry_stat_impl(receiver, cls, follow_symlinks);
-        } finally {
-            jacpy_release(cls);
+        follow_symlinks: bool = True;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            follow_symlinks = convert_bool(value);
         }
+        return os_DirEntry_stat_impl(receiver, cls, follow_symlinks);
     } except boundary_failure {
         return NULL;
     }
@@ -6126,16 +6139,12 @@ def:priv os_DirEntry_is_dir_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, DirEntry_token);
-        try {
-            follow_symlinks: bool = True;
-            if count > 0 and clinic_args[0] != NULL {
-                value = clinic_args[0];
-                follow_symlinks = convert_bool(value);
-            }
-            return return_bool(os_DirEntry_is_dir_impl(receiver, cls, follow_symlinks));
-        } finally {
-            jacpy_release(cls);
+        follow_symlinks: bool = True;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            follow_symlinks = convert_bool(value);
         }
+        return return_bool(os_DirEntry_is_dir_impl(receiver, cls, follow_symlinks));
     } except boundary_failure {
         return NULL;
     }
@@ -6176,18 +6185,12 @@ def:priv os_DirEntry_is_file_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, DirEntry_token);
-        try {
-            follow_symlinks: bool = True;
-            if count > 0 and clinic_args[0] != NULL {
-                value = clinic_args[0];
-                follow_symlinks = convert_bool(value);
-            }
-            return return_bool(
-                os_DirEntry_is_file_impl(receiver, cls, follow_symlinks)
-            );
-        } finally {
-            jacpy_release(cls);
+        follow_symlinks: bool = True;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            follow_symlinks = convert_bool(value);
         }
+        return return_bool(os_DirEntry_is_file_impl(receiver, cls, follow_symlinks));
     } except boundary_failure {
         return NULL;
     }

@@ -239,7 +239,7 @@ def:priv cmath_log_bound(
 def:priv cmath_log_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("log", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("log", int(nargs), 1, 2) {
         return NULL;
     }
     return cmath_log_bound(receiver, args, nargs);
@@ -285,7 +285,7 @@ def:priv cmath_rect_bound(
 def:priv cmath_rect_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("rect", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("rect", int(nargs), 2, 2) {
         return NULL;
     }
     return cmath_rect_bound(receiver, args, nargs);

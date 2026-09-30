@@ -58,7 +58,7 @@ def:priv unicodedata_UCD_decimal_bound(
 def:priv unicodedata_UCD_decimal_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("decimal", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("decimal", int(nargs), 1, 2) {
         return NULL;
     }
     return unicodedata_UCD_decimal_bound(receiver, args, nargs);
@@ -85,7 +85,7 @@ def:priv unicodedata_UCD_digit_bound(
 def:priv unicodedata_UCD_digit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("digit", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("digit", int(nargs), 1, 2) {
         return NULL;
     }
     return unicodedata_UCD_digit_bound(receiver, args, nargs);
@@ -112,7 +112,7 @@ def:priv unicodedata_UCD_numeric_bound(
 def:priv unicodedata_UCD_numeric_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("numeric", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("numeric", int(nargs), 1, 2) {
         return NULL;
     }
     return unicodedata_UCD_numeric_bound(receiver, args, nargs);
@@ -206,7 +206,8 @@ def:priv unicodedata_UCD_is_normalized_bound(
 def:priv unicodedata_UCD_is_normalized_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("is_normalized", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("is_normalized", int(nargs), 2, 2) {
         return NULL;
     }
     return unicodedata_UCD_is_normalized_bound(receiver, args, nargs);
@@ -234,7 +235,8 @@ def:priv unicodedata_UCD_normalize_bound(
 def:priv unicodedata_UCD_normalize_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("normalize", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("normalize", int(nargs), 2, 2) {
         return NULL;
     }
     return unicodedata_UCD_normalize_bound(receiver, args, nargs);
@@ -261,7 +263,7 @@ def:priv unicodedata_UCD_name_bound(
 def:priv unicodedata_UCD_name_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("name", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("name", int(nargs), 1, 2) {
         return NULL;
     }
     return unicodedata_UCD_name_bound(receiver, args, nargs);

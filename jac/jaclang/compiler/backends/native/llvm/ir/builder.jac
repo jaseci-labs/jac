@@ -704,7 +704,8 @@ class IRBuilder(object) {
         indices: any,
         inbounds: any = False,
         name: any = '',
-        source_etype: any = None
+        source_etype: any = None,
+        nusw: bool = False
     ) -> Value {
         instr = instructions.GEPInstr(
             self.block,
@@ -712,7 +713,8 @@ class IRBuilder(object) {
             indices,
             inbounds=inbounds,
             name=name,
-            source_etype=source_etype
+            source_etype=source_etype,
+            nusw=nusw
         );
         self._insert(instr);
         return instr;

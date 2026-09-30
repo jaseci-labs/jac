@@ -243,7 +243,7 @@ def:priv binascii_crc_hqx_bound(
 def:priv binascii_crc_hqx_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("crc_hqx", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("crc_hqx", int(nargs), 2, 2) {
         return NULL;
     }
     return binascii_crc_hqx_bound(receiver, args, nargs);
@@ -283,7 +283,7 @@ def:priv binascii_crc32_bound(
 def:priv binascii_crc32_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("crc32", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("crc32", int(nargs), 1, 2) {
         return NULL;
     }
     return binascii_crc32_bound(receiver, args, nargs);

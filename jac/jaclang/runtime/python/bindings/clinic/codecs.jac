@@ -248,7 +248,8 @@ def:priv _codecs_escape_decode_bound(
 def:priv _codecs_escape_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("escape_decode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("escape_decode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_escape_decode_bound(receiver, args, nargs);
@@ -278,7 +279,8 @@ def:priv _codecs_escape_encode_bound(
 def:priv _codecs_escape_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("escape_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("escape_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_escape_encode_bound(receiver, args, nargs);
@@ -318,7 +320,8 @@ def:priv _codecs_utf_7_decode_bound(
 def:priv _codecs_utf_7_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_7_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_7_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_7_decode_bound(receiver, args, nargs);
@@ -358,7 +361,8 @@ def:priv _codecs_utf_8_decode_bound(
 def:priv _codecs_utf_8_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_8_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_8_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_8_decode_bound(receiver, args, nargs);
@@ -398,7 +402,8 @@ def:priv _codecs_utf_16_decode_bound(
 def:priv _codecs_utf_16_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_16_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_16_decode_bound(receiver, args, nargs);
@@ -438,7 +443,8 @@ def:priv _codecs_utf_16_le_decode_bound(
 def:priv _codecs_utf_16_le_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_le_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_16_le_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_16_le_decode_bound(receiver, args, nargs);
@@ -478,7 +484,8 @@ def:priv _codecs_utf_16_be_decode_bound(
 def:priv _codecs_utf_16_be_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_be_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_16_be_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_16_be_decode_bound(receiver, args, nargs);
@@ -525,7 +532,8 @@ def:priv _codecs_utf_16_ex_decode_bound(
 def:priv _codecs_utf_16_ex_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_ex_decode", int(nargs), 1, 4) {
+    if (nargs < 1 or nargs > 4)
+        and not check_positional("utf_16_ex_decode", int(nargs), 1, 4) {
         return NULL;
     }
     return _codecs_utf_16_ex_decode_bound(receiver, args, nargs);
@@ -565,7 +573,8 @@ def:priv _codecs_utf_32_decode_bound(
 def:priv _codecs_utf_32_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_32_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_32_decode_bound(receiver, args, nargs);
@@ -605,7 +614,8 @@ def:priv _codecs_utf_32_le_decode_bound(
 def:priv _codecs_utf_32_le_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_le_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_32_le_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_32_le_decode_bound(receiver, args, nargs);
@@ -645,7 +655,8 @@ def:priv _codecs_utf_32_be_decode_bound(
 def:priv _codecs_utf_32_be_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_be_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_32_be_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_32_be_decode_bound(receiver, args, nargs);
@@ -692,7 +703,8 @@ def:priv _codecs_utf_32_ex_decode_bound(
 def:priv _codecs_utf_32_ex_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_ex_decode", int(nargs), 1, 4) {
+    if (nargs < 1 or nargs > 4)
+        and not check_positional("utf_32_ex_decode", int(nargs), 1, 4) {
         return NULL;
     }
     return _codecs_utf_32_ex_decode_bound(receiver, args, nargs);
@@ -732,7 +744,8 @@ def:priv _codecs_unicode_escape_decode_bound(
 def:priv _codecs_unicode_escape_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("unicode_escape_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("unicode_escape_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_unicode_escape_decode_bound(receiver, args, nargs);
@@ -774,7 +787,8 @@ def:priv _codecs_raw_unicode_escape_decode_bound(
 def:priv _codecs_raw_unicode_escape_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("raw_unicode_escape_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("raw_unicode_escape_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_raw_unicode_escape_decode_bound(receiver, args, nargs);
@@ -809,7 +823,8 @@ def:priv _codecs_latin_1_decode_bound(
 def:priv _codecs_latin_1_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("latin_1_decode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("latin_1_decode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_latin_1_decode_bound(receiver, args, nargs);
@@ -844,7 +859,8 @@ def:priv _codecs_ascii_decode_bound(
 def:priv _codecs_ascii_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ascii_decode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("ascii_decode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_ascii_decode_bound(receiver, args, nargs);
@@ -884,7 +900,8 @@ def:priv _codecs_charmap_decode_bound(
 def:priv _codecs_charmap_decode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("charmap_decode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("charmap_decode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_charmap_decode_bound(receiver, args, nargs);
@@ -919,7 +936,8 @@ def:priv _codecs_readbuffer_encode_bound(
 def:priv _codecs_readbuffer_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("readbuffer_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("readbuffer_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_readbuffer_encode_bound(receiver, args, nargs);
@@ -948,7 +966,8 @@ def:priv _codecs_utf_7_encode_bound(
 def:priv _codecs_utf_7_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_7_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("utf_7_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_utf_7_encode_bound(receiver, args, nargs);
@@ -977,7 +996,8 @@ def:priv _codecs_utf_8_encode_bound(
 def:priv _codecs_utf_8_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_8_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("utf_8_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_utf_8_encode_bound(receiver, args, nargs);
@@ -1011,7 +1031,8 @@ def:priv _codecs_utf_16_encode_bound(
 def:priv _codecs_utf_16_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_encode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_16_encode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_16_encode_bound(receiver, args, nargs);
@@ -1042,7 +1063,8 @@ def:priv _codecs_utf_16_le_encode_bound(
 def:priv _codecs_utf_16_le_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_le_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("utf_16_le_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_utf_16_le_encode_bound(receiver, args, nargs);
@@ -1073,7 +1095,8 @@ def:priv _codecs_utf_16_be_encode_bound(
 def:priv _codecs_utf_16_be_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_16_be_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("utf_16_be_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_utf_16_be_encode_bound(receiver, args, nargs);
@@ -1107,7 +1130,8 @@ def:priv _codecs_utf_32_encode_bound(
 def:priv _codecs_utf_32_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_encode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("utf_32_encode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_utf_32_encode_bound(receiver, args, nargs);
@@ -1138,7 +1162,8 @@ def:priv _codecs_utf_32_le_encode_bound(
 def:priv _codecs_utf_32_le_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_le_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("utf_32_le_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_utf_32_le_encode_bound(receiver, args, nargs);
@@ -1169,7 +1194,8 @@ def:priv _codecs_utf_32_be_encode_bound(
 def:priv _codecs_utf_32_be_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("utf_32_be_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("utf_32_be_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_utf_32_be_encode_bound(receiver, args, nargs);
@@ -1200,7 +1226,8 @@ def:priv _codecs_unicode_escape_encode_bound(
 def:priv _codecs_unicode_escape_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("unicode_escape_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("unicode_escape_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_unicode_escape_encode_bound(receiver, args, nargs);
@@ -1231,7 +1258,8 @@ def:priv _codecs_raw_unicode_escape_encode_bound(
 def:priv _codecs_raw_unicode_escape_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("raw_unicode_escape_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("raw_unicode_escape_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_raw_unicode_escape_encode_bound(receiver, args, nargs);
@@ -1260,7 +1288,8 @@ def:priv _codecs_latin_1_encode_bound(
 def:priv _codecs_latin_1_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("latin_1_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("latin_1_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_latin_1_encode_bound(receiver, args, nargs);
@@ -1289,7 +1318,8 @@ def:priv _codecs_ascii_encode_bound(
 def:priv _codecs_ascii_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ascii_encode", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("ascii_encode", int(nargs), 1, 2) {
         return NULL;
     }
     return _codecs_ascii_encode_bound(receiver, args, nargs);
@@ -1323,7 +1353,8 @@ def:priv _codecs_charmap_encode_bound(
 def:priv _codecs_charmap_encode_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("charmap_encode", int(nargs), 1, 3) {
+    if (nargs < 1 or nargs > 3)
+        and not check_positional("charmap_encode", int(nargs), 1, 3) {
         return NULL;
     }
     return _codecs_charmap_encode_bound(receiver, args, nargs);
@@ -1358,7 +1389,8 @@ def:priv _codecs_register_error_bound(
 def:priv _codecs_register_error_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("register_error", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("register_error", int(nargs), 2, 2) {
         return NULL;
     }
     return _codecs_register_error_bound(receiver, args, nargs);

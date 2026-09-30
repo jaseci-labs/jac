@@ -60,11 +60,7 @@ def:priv _lsprof_Profiler_getstats_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, Profiler_token);
-        try {
-            return _lsprof_Profiler_getstats_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _lsprof_Profiler_getstats_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }
@@ -109,7 +105,8 @@ def:priv _lsprof_Profiler__pystart_callback_bound(
 def:priv _lsprof_Profiler__pystart_callback_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_pystart_callback", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_pystart_callback", int(nargs), 2, 2) {
         return NULL;
     }
     return _lsprof_Profiler__pystart_callback_bound(receiver, args, nargs);
@@ -137,7 +134,8 @@ def:priv _lsprof_Profiler__pythrow_callback_bound(
 def:priv _lsprof_Profiler__pythrow_callback_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_pythrow_callback", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("_pythrow_callback", int(nargs), 3, 3) {
         return NULL;
     }
     return _lsprof_Profiler__pythrow_callback_bound(receiver, args, nargs);
@@ -165,7 +163,8 @@ def:priv _lsprof_Profiler__pyreturn_callback_bound(
 def:priv _lsprof_Profiler__pyreturn_callback_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_pyreturn_callback", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("_pyreturn_callback", int(nargs), 3, 3) {
         return NULL;
     }
     return _lsprof_Profiler__pyreturn_callback_bound(receiver, args, nargs);
@@ -195,7 +194,8 @@ def:priv _lsprof_Profiler__ccall_callback_bound(
 def:priv _lsprof_Profiler__ccall_callback_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_ccall_callback", int(nargs), 4, 4) {
+    if (nargs < 4 or nargs > 4)
+        and not check_positional("_ccall_callback", int(nargs), 4, 4) {
         return NULL;
     }
     return _lsprof_Profiler__ccall_callback_bound(receiver, args, nargs);
@@ -225,7 +225,8 @@ def:priv _lsprof_Profiler__creturn_callback_bound(
 def:priv _lsprof_Profiler__creturn_callback_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_creturn_callback", int(nargs), 4, 4) {
+    if (nargs < 4 or nargs > 4)
+        and not check_positional("_creturn_callback", int(nargs), 4, 4) {
         return NULL;
     }
     return _lsprof_Profiler__creturn_callback_bound(receiver, args, nargs);

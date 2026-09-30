@@ -30,10 +30,13 @@ import from jaclang.runtime.python.cpython_api {
     Py_TYPE,
     _Py_strhex,
     jacpy_bytes_from_memory,
+    jacpy_crypto_compare,
     jacpy_is_unicode,
-    jacpy_release
+    jacpy_release,
+    jacpy_unicode_ascii
 }
-import from jaclang.runtime.python.capi { object_error }
+import from jaclang.runtime.python.capi { object_error, type_name }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.bindings.converters { ClassToken, borrowed_none }
@@ -239,4 +242,63 @@ def hash_digest(
         else jacpy_bytes_from_memory(output, length);
     PyMem_Free(output);
     return result;
+}
+
+"""_tscmp(): whether two buffers are equal, in time that depends only on the
+length of the second (CRYPTO_memcmp)."""
+def:priv timing_safe_equal(a: ptr, b: ptr, a_size: i64, b_size: i64) -> bool {
+    left = a if a_size == b_size else b;
+    difference = jacpy_crypto_compare(left, b, b_size);
+    return difference == 0 and a_size == b_size;
+}
+
+"""compare_digest(a, b) of _operator (_compare_digest) and _hashlib: a == b
+without content-dependent timing, for two ASCII str or two buffers."""
+def compare_digest(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    ascii = jacpy_is_unicode(a) != 0 and jacpy_is_unicode(b) != 0;
+    if ascii {
+        if jacpy_unicode_ascii(a) == 0 or jacpy_unicode_ascii(b) == 0 {
+            object_error(
+                PyExc_TypeError,
+                "comparing strings with non-ASCII characters is not supported"
+            );
+            return NULL;
+        }
+    } elif PyObject_CheckBuffer(a) == 0 and PyObject_CheckBuffer(b) == 0 {
+        object_error(
+            PyExc_TypeError,
+            "unsupported operand types(s) or combination of types: '"
+                + type_name(a)[:100]
+                + "' and '"
+                + type_name(b)[:100]
+                + "'"
+        );
+        return NULL;
+    }
+    first = BufferArgument();
+    if not first.acquire(a, ascii) {
+        return NULL;
+    }
+    if first.dimensions() > 1 {
+        object_error(PyExc_BufferError, "Buffer must be single dimension");
+        first.close();
+        return NULL;
+    }
+    second = BufferArgument();
+    if not second.acquire(b, ascii) {
+        first.close();
+        return NULL;
+    }
+    if second.dimensions() > 1 {
+        object_error(PyExc_BufferError, "Buffer must be single dimension");
+        first.close();
+        second.close();
+        return NULL;
+    }
+    equal = timing_safe_equal(
+        first.address(), second.address(), first.size(), second.size()
+    );
+    first.close();
+    second.close();
+    return PyBool_FromLong(i64(equal));
 }

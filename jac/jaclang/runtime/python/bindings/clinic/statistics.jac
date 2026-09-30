@@ -44,7 +44,8 @@ def:priv _statistics__normal_dist_inv_cdf_bound(
 def:priv _statistics__normal_dist_inv_cdf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_normal_dist_inv_cdf", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("_normal_dist_inv_cdf", int(nargs), 3, 3) {
         return NULL;
     }
     return _statistics__normal_dist_inv_cdf_bound(receiver, args, nargs);

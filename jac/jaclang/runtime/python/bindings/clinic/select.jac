@@ -101,7 +101,7 @@ def:priv select_select_bound(
 def:priv select_select_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("select", int(nargs), 3, 4) {
+    if (nargs < 3 or nargs > 4) and not check_positional("select", int(nargs), 3, 4) {
         return NULL;
     }
     return select_select_bound(receiver, args, nargs);
@@ -148,7 +148,8 @@ def:priv select_poll_register_bound(
 def:priv select_poll_register_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("register", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("register", int(nargs), 1, 2) {
         return NULL;
     }
     return select_poll_register_bound(receiver, args, nargs);
@@ -172,7 +173,7 @@ def:priv select_poll_modify_bound(
 def:priv select_poll_modify_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("modify", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("modify", int(nargs), 2, 2) {
         return NULL;
     }
     return select_poll_modify_bound(receiver, args, nargs);
@@ -208,7 +209,7 @@ def:priv select_poll_poll_bound(
 def:priv select_poll_poll_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("poll", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("poll", int(nargs), 0, 1) {
         return NULL;
     }
     return select_poll_poll_bound(receiver, args, nargs);
@@ -235,7 +236,8 @@ def:priv select_devpoll_register_bound(
 def:priv select_devpoll_register_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("register", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("register", int(nargs), 1, 2) {
         return NULL;
     }
     return select_devpoll_register_bound(receiver, args, nargs);
@@ -262,7 +264,7 @@ def:priv select_devpoll_modify_bound(
 def:priv select_devpoll_modify_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("modify", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2) and not check_positional("modify", int(nargs), 1, 2) {
         return NULL;
     }
     return select_devpoll_modify_bound(receiver, args, nargs);
@@ -298,7 +300,7 @@ def:priv select_devpoll_poll_bound(
 def:priv select_devpoll_poll_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("poll", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("poll", int(nargs), 0, 1) {
         return NULL;
     }
     return select_devpoll_poll_bound(receiver, args, nargs);
@@ -638,7 +640,7 @@ def:priv select_epoll___exit___bound(
 def:priv select_epoll___exit___call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("__exit__", int(nargs), 0, 3) {
+    if (nargs > 3) and not check_positional("__exit__", int(nargs), 0, 3) {
         return NULL;
     }
     return select_epoll___exit___bound(receiver, args, nargs);
@@ -731,7 +733,7 @@ def:priv select_kqueue_control_bound(
 def:priv select_kqueue_control_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("control", int(nargs), 2, 3) {
+    if (nargs < 2 or nargs > 3) and not check_positional("control", int(nargs), 2, 3) {
         return NULL;
     }
     return select_kqueue_control_bound(receiver, args, nargs);

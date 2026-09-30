@@ -59,7 +59,8 @@ def:priv _locale_setlocale_bound(
 def:priv _locale_setlocale_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setlocale", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("setlocale", int(nargs), 1, 2) {
         return NULL;
     }
     return _locale_setlocale_bound(receiver, args, nargs);
@@ -93,7 +94,7 @@ def:priv _locale_strcoll_bound(
 def:priv _locale_strcoll_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("strcoll", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("strcoll", int(nargs), 2, 2) {
         return NULL;
     }
     return _locale_strcoll_bound(receiver, args, nargs);
@@ -150,7 +151,8 @@ def:priv _locale_dgettext_bound(
 def:priv _locale_dgettext_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("dgettext", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("dgettext", int(nargs), 2, 2) {
         return NULL;
     }
     return _locale_dgettext_bound(receiver, args, nargs);
@@ -176,7 +178,8 @@ def:priv _locale_dcgettext_bound(
 def:priv _locale_dcgettext_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("dcgettext", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3)
+        and not check_positional("dcgettext", int(nargs), 3, 3) {
         return NULL;
     }
     return _locale_dcgettext_bound(receiver, args, nargs);
@@ -211,7 +214,8 @@ def:priv _locale_bindtextdomain_bound(
 def:priv _locale_bindtextdomain_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("bindtextdomain", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("bindtextdomain", int(nargs), 2, 2) {
         return NULL;
     }
     return _locale_bindtextdomain_bound(receiver, args, nargs);
@@ -239,7 +243,8 @@ def:priv _locale_bind_textdomain_codeset_bound(
 def:priv _locale_bind_textdomain_codeset_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("bind_textdomain_codeset", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("bind_textdomain_codeset", int(nargs), 2, 2) {
         return NULL;
     }
     return _locale_bind_textdomain_codeset_bound(receiver, args, nargs);

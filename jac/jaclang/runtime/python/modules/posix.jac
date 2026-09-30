@@ -34,7 +34,6 @@ import from jaclang.runtime.python.modules.posix_core {
     convert_MKFIFOAT_DIR_FD_CONVERTER,
     convert_MKNODAT_DIR_FD_CONVERTER,
     convert_OPENAT_DIR_FD_CONVERTER,
-    convert_PyUnicode_FSConverter,
     convert_Py_off_t_converter,
     convert_READLINKAT_DIR_FD_CONVERTER,
     convert_SYMLINKAT_DIR_FD_CONVERTER,

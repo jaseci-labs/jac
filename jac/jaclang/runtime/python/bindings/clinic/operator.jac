@@ -105,7 +105,7 @@ def:priv _operator_add_bound(
 def:priv _operator_add_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("add", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("add", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_add_bound(receiver, args, nargs);
@@ -129,7 +129,7 @@ def:priv _operator_sub_bound(
 def:priv _operator_sub_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("sub", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("sub", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_sub_bound(receiver, args, nargs);
@@ -153,7 +153,7 @@ def:priv _operator_mul_bound(
 def:priv _operator_mul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("mul", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("mul", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_mul_bound(receiver, args, nargs);
@@ -177,7 +177,7 @@ def:priv _operator_matmul_bound(
 def:priv _operator_matmul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("matmul", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("matmul", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_matmul_bound(receiver, args, nargs);
@@ -201,7 +201,8 @@ def:priv _operator_floordiv_bound(
 def:priv _operator_floordiv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("floordiv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("floordiv", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_floordiv_bound(receiver, args, nargs);
@@ -225,7 +226,7 @@ def:priv _operator_truediv_bound(
 def:priv _operator_truediv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("truediv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("truediv", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_truediv_bound(receiver, args, nargs);
@@ -249,7 +250,7 @@ def:priv _operator_mod_bound(
 def:priv _operator_mod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("mod", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("mod", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_mod_bound(receiver, args, nargs);
@@ -328,7 +329,7 @@ def:priv _operator_lshift_bound(
 def:priv _operator_lshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("lshift", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("lshift", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_lshift_bound(receiver, args, nargs);
@@ -352,7 +353,7 @@ def:priv _operator_rshift_bound(
 def:priv _operator_rshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("rshift", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("rshift", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_rshift_bound(receiver, args, nargs);
@@ -387,7 +388,7 @@ def:priv _operator_and__bound(
 def:priv _operator_and__call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("and_", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("and_", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_and__bound(receiver, args, nargs);
@@ -411,7 +412,7 @@ def:priv _operator_xor_bound(
 def:priv _operator_xor_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("xor", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("xor", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_xor_bound(receiver, args, nargs);
@@ -435,7 +436,7 @@ def:priv _operator_or__bound(
 def:priv _operator_or__call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("or_", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("or_", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_or__bound(receiver, args, nargs);
@@ -459,7 +460,7 @@ def:priv _operator_iadd_bound(
 def:priv _operator_iadd_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("iadd", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("iadd", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_iadd_bound(receiver, args, nargs);
@@ -483,7 +484,7 @@ def:priv _operator_isub_bound(
 def:priv _operator_isub_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("isub", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("isub", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_isub_bound(receiver, args, nargs);
@@ -507,7 +508,7 @@ def:priv _operator_imul_bound(
 def:priv _operator_imul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("imul", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("imul", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_imul_bound(receiver, args, nargs);
@@ -531,7 +532,7 @@ def:priv _operator_imatmul_bound(
 def:priv _operator_imatmul_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("imatmul", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("imatmul", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_imatmul_bound(receiver, args, nargs);
@@ -555,7 +556,8 @@ def:priv _operator_ifloordiv_bound(
 def:priv _operator_ifloordiv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ifloordiv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("ifloordiv", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ifloordiv_bound(receiver, args, nargs);
@@ -579,7 +581,8 @@ def:priv _operator_itruediv_bound(
 def:priv _operator_itruediv_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("itruediv", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("itruediv", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_itruediv_bound(receiver, args, nargs);
@@ -603,7 +606,7 @@ def:priv _operator_imod_bound(
 def:priv _operator_imod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("imod", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("imod", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_imod_bound(receiver, args, nargs);
@@ -627,7 +630,7 @@ def:priv _operator_ilshift_bound(
 def:priv _operator_ilshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ilshift", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ilshift", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ilshift_bound(receiver, args, nargs);
@@ -651,7 +654,7 @@ def:priv _operator_irshift_bound(
 def:priv _operator_irshift_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("irshift", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("irshift", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_irshift_bound(receiver, args, nargs);
@@ -675,7 +678,7 @@ def:priv _operator_iand_bound(
 def:priv _operator_iand_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("iand", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("iand", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_iand_bound(receiver, args, nargs);
@@ -699,7 +702,7 @@ def:priv _operator_ixor_bound(
 def:priv _operator_ixor_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ixor", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ixor", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ixor_bound(receiver, args, nargs);
@@ -723,7 +726,7 @@ def:priv _operator_ior_bound(
 def:priv _operator_ior_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ior", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ior", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ior_bound(receiver, args, nargs);
@@ -747,7 +750,7 @@ def:priv _operator_concat_bound(
 def:priv _operator_concat_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("concat", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("concat", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_concat_bound(receiver, args, nargs);
@@ -771,7 +774,7 @@ def:priv _operator_iconcat_bound(
 def:priv _operator_iconcat_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("iconcat", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("iconcat", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_iconcat_bound(receiver, args, nargs);
@@ -795,7 +798,8 @@ def:priv _operator_contains_bound(
 def:priv _operator_contains_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("contains", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("contains", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_contains_bound(receiver, args, nargs);
@@ -819,7 +823,7 @@ def:priv _operator_indexOf_bound(
 def:priv _operator_indexOf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("indexOf", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("indexOf", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_indexOf_bound(receiver, args, nargs);
@@ -843,7 +847,7 @@ def:priv _operator_countOf_bound(
 def:priv _operator_countOf_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("countOf", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("countOf", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_countOf_bound(receiver, args, nargs);
@@ -867,7 +871,7 @@ def:priv _operator_getitem_bound(
 def:priv _operator_getitem_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("getitem", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("getitem", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_getitem_bound(receiver, args, nargs);
@@ -893,7 +897,7 @@ def:priv _operator_setitem_bound(
 def:priv _operator_setitem_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setitem", int(nargs), 3, 3) {
+    if (nargs < 3 or nargs > 3) and not check_positional("setitem", int(nargs), 3, 3) {
         return NULL;
     }
     return _operator_setitem_bound(receiver, args, nargs);
@@ -917,7 +921,7 @@ def:priv _operator_delitem_bound(
 def:priv _operator_delitem_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("delitem", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("delitem", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_delitem_bound(receiver, args, nargs);
@@ -941,7 +945,7 @@ def:priv _operator_eq_bound(
 def:priv _operator_eq_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("eq", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("eq", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_eq_bound(receiver, args, nargs);
@@ -965,7 +969,7 @@ def:priv _operator_ne_bound(
 def:priv _operator_ne_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ne", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ne", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ne_bound(receiver, args, nargs);
@@ -989,7 +993,7 @@ def:priv _operator_lt_bound(
 def:priv _operator_lt_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("lt", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("lt", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_lt_bound(receiver, args, nargs);
@@ -1013,7 +1017,7 @@ def:priv _operator_le_bound(
 def:priv _operator_le_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("le", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("le", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_le_bound(receiver, args, nargs);
@@ -1037,7 +1041,7 @@ def:priv _operator_gt_bound(
 def:priv _operator_gt_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("gt", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("gt", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_gt_bound(receiver, args, nargs);
@@ -1061,7 +1065,7 @@ def:priv _operator_ge_bound(
 def:priv _operator_ge_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ge", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ge", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ge_bound(receiver, args, nargs);
@@ -1085,7 +1089,7 @@ def:priv _operator_pow_bound(
 def:priv _operator_pow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("pow", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("pow", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_pow_bound(receiver, args, nargs);
@@ -1109,7 +1113,7 @@ def:priv _operator_ipow_bound(
 def:priv _operator_ipow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("ipow", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("ipow", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_ipow_bound(receiver, args, nargs);
@@ -1144,7 +1148,7 @@ def:priv _operator_is__bound(
 def:priv _operator_is__call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("is_", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("is_", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_is__bound(receiver, args, nargs);
@@ -1168,7 +1172,7 @@ def:priv _operator_is_not_bound(
 def:priv _operator_is_not_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("is_not", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2) and not check_positional("is_not", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator_is_not_bound(receiver, args, nargs);
@@ -1217,7 +1221,8 @@ def:priv _operator_length_hint_bound(
 def:priv _operator_length_hint_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("length_hint", int(nargs), 1, 2) {
+    if (nargs < 1 or nargs > 2)
+        and not check_positional("length_hint", int(nargs), 1, 2) {
         return NULL;
     }
     return _operator_length_hint_bound(receiver, args, nargs);
@@ -1241,7 +1246,8 @@ def:priv _operator__compare_digest_bound(
 def:priv _operator__compare_digest_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("_compare_digest", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_compare_digest", int(nargs), 2, 2) {
         return NULL;
     }
     return _operator__compare_digest_bound(receiver, args, nargs);

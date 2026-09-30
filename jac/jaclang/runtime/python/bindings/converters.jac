@@ -8,16 +8,8 @@ Python/getargs.c and Tools/clinic so upstream tests see the same text.
 """
 
 import from jaclang.runtime.python.cpython_api {
-    jacpy_is_float,
-    jacpy_is_unicode,
-    jacpy_unicode_size,
-    PyUnicode_ReadChar,
-    jacpy_release,
-    jacpy_unsigned_converter,
     NULL,
-    Py_GetConstantBorrowed,
-    Py_None,
-    Py_TYPE,
+    PyArg_Parse,
     PyErr_Clear,
     PyErr_Occurred,
     PyExc_OverflowError,
@@ -36,19 +28,29 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromSize_t,
     PyLong_FromSsize_t,
     PyLong_FromUnsignedLong,
+    PyNumber_AsSsize_t,
+    PyNumber_Index,
+    PyObject,
+    PyObject_IsTrue,
+    PyType_GetSlot,
+    PyUnicode_AsUTF8AndSize,
+    PyUnicode_ReadChar,
+    Py_GetConstantBorrowed,
+    Py_None,
+    Py_TYPE,
     _PyLong_UInt16_Converter,
     _PyLong_UInt32_Converter,
     _PyLong_UInt64_Converter,
     _PyLong_UInt8_Converter,
     _PyLong_UnsignedInt_Converter,
     _PyLong_UnsignedShort_Converter,
-    PyNumber_AsSsize_t,
-    PyNumber_Index,
-    PyObject,
-    PyObject_IsTrue,
-    PyType_GetSlot,
-    PyArg_Parse,
-    PyUnicode_AsUTF8AndSize
+    jacpy_is_exact_long,
+    jacpy_is_float,
+    jacpy_is_unicode,
+    jacpy_release,
+    jacpy_unicode_size,
+    jacpy_unsigned_converter,
+    PyUnicode_FSConverter
 }
 import from jaclang.runtime.python.object_model.file { PyObject_AsFileDescriptor }
 import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
@@ -335,6 +337,19 @@ def convert_bool_int(value: ptr[PyObject]) -> bool {
     return convert_int(value) != 0;
 }
 
+"""unicode_fs_encoded (PyUnicode_FSConverter): the bytes of a str encoded
+with the filesystem encoding, or of a bytes-like object; a new reference
+the clinic glue releases after the _impl returns."""
+def convert_PyUnicode_FSConverter(
+    value: ptr[PyObject], fname: str, label: str
+) -> ptr[PyObject] {
+    result = NULL;
+    if PyUnicode_FSConverter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
 def convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObject] {
     if jacpy_is_unicode(value) == 0 {
         bad_argument(fname, label, "str", value);
@@ -512,9 +527,22 @@ def init_checks_arguments(instance: ptr[PyObject], token: ClassToken) -> bool {
     return checked;
 }
 
-def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
+# The defining class is borrowed, as METH_METHOD's is in C: it is in the MRO
+# of the receiver's class, which the receiver keeps alive for the call. The
+# `_or_null` forms serve raise-free glue: NULL with the TypeError set.
+def defining_class_or_null(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject] {
     cls = Py_TYPE(receiver);
     found = jacpy_binding_base(cls, token.definition_of(cls));
+    if found {
+        jacpy_release(found);
+    }
+    return found;
+}
+
+def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
+    found = defining_class_or_null(receiver, token);
     if not found {
         raise boundary_failure();
     }
@@ -522,14 +550,30 @@ def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] 
 }
 
 # In a class method the receiver is the class, so the search starts there.
-def defining_class_of_type(
+def defining_class_of_type_or_null(
     receiver: ptr[PyObject], token: ClassToken
 ) -> ptr[PyObject] {
     found = jacpy_binding_base(receiver, token.definition_of(receiver));
+    if found {
+        jacpy_release(found);
+    }
+    return found;
+}
+
+def defining_class_of_type(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject] {
+    found = defining_class_of_type_or_null(receiver, token);
     if not found {
         raise boundary_failure();
     }
     return found;
+}
+
+# Whether vectorcall argument `index` is absent or an exact int, which the
+# Py_ssize_t converter reads without calling back into Python.
+def exact_int_at(args: ptr[ptr[PyObject]], nargs: i64, index: int) -> bool {
+    return nargs <= index or jacpy_is_exact_long((args + index).view(1)[0]) != 0;
 }
 
 def missing_argument(fname: str, name: str, position: int) {

@@ -30,7 +30,11 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
 2. Write `modules/foo.jac`: one `_impl` function per clinic function, with the C
    name and the C parameter list (`PyObject *` is `ptr[PyObject]`,
    `Py_ssize_t` is `i64`, `Py_buffer` is `BufferArgument`). The body calls the
-   CPython API by its own names.
+   CPython API by its own names. When every `_impl` reports errors as C does
+   (NULL or -1 with the exception set) and none raises `boundary_failure`,
+   mark the module `raise-free` in `jacpython-clinic.txt` (`_foo raise-free`):
+   its glue then calls the `_impl` without an exception frame whenever no
+   argument conversion can raise.
 3. Write `bindings/foo.jac`: the `ModuleDefinition`, any `TypeDefinition`s,
    the exec hook (constants, exception types, module state) and
    `def:pub PyInit__foo`. Classes whose methods take `defining_class` bind their
@@ -74,6 +78,22 @@ packing a row's offset and bounds, and each `MAPPING_*` entry a `DbcsMap`
 record the module publishes as its `__map_<charset>` capsule. The codecs
 themselves are `MultibyteCodec` records whose entry points are named Jac
 functions, which `_multibytecodec` calls through the record as C does.
+Code a C file generates by including a template header more than once is
+generated the same way: sre.c includes `sre_lib.h` once per character
+width, and `scripts/jacpython/gen_sre.jac` writes the Jac template
+`scripts/jacpython/sre_lib.jac.in` as `modules/sre_ucs1.jac`,
+`sre_ucs2.jac` and `sre_ucs4.jac` (with `sre_constants.jac` from
+`Modules/_sre/sre_constants.h`). The matcher keeps sre_lib.h's explicit
+stack of match contexts and is one function, as the C is: an opcode
+dispatch loop whose `match` lowers to a jump table, inside a loop over the
+C's other labels (a context's exit, the label a DO_JUMP resumes at, the
+head of a loop a DO_JUMP interrupts), with the template spelling the C's
+control macros and the generator expanding them. A `match`-in-a-loop
+dispatcher is not threaded through the loop header by LLVM, so the opcode
+loop is its own loop and only jumps between labels pass the step switch.
+The calls a regular expression makes most bind their positional arguments
+directly and fall back to the generated clinic glue for keywords or
+conversions, so error messages stay the C module's.
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
 variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant
@@ -159,14 +179,43 @@ Heap types can be C data too: `_decimal`'s `PyType_Spec`s, slot arrays and
 `Py_tp_token` slot of `ptr()` (`Py_TP_USE_SPEC`) makes each spec its type's
 token for `PyType_GetBaseByToken()`, as in C.
 
-A module whose object layout other C code reads keeps that layout: `_socket`'s
-`PySocketSockObject` and `PySocketModule_APIObject` are read from
-`Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES` entry, with
-the scalar typedefs its structs name), so the `_socket.CAPI` capsule `_ssl.c`
-imports is the C module's. `gen_constants.jac` can leave out names published
+A clinic module can put its generated tables on such specs. `_asyncio`'s
+Future, Task, FutureIter and TaskStepMethWrapper are C-data specs whose
+instances are the C module's `FutureObj`, `TaskObj` and friends in place
+(the same fields at the same offsets, with managed dict and weakref flags),
+so the interpreter's task lists, which link each task through its
+`task_node`, and `PyThreadState_Clear()`, which moves a dying thread's tasks
+to the interpreter, work unchanged. At module execution the binding fills the
+specs' `Py_tp_methods` and `Py_tp_getset` slots once per process with
+`method_table()` and `getset_table()` (the `tp_getset` counterpart in
+`bindings/type.jac`) over the clinic `MethodDefinition` and
+`PropertyDefinition` lists, in the C tables' order; the clinic glue finds
+its defining class through the spec tokens. The running loop and task and
+the task lists live in `_PyThreadStateImpl` and `PyInterpreterState`, which
+`object_api.c` helpers reach (stopping the world to look at other threads).
+
+A module whose object layout other code reads keeps that layout: `_socket`'s
+`PySocketSockObject` and `PySocketModule_APIObject` are read from the pinned
+archive's `Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES`
+entry, with the scalar typedefs its structs name), so the `_socket.CAPI`
+capsule the `_ssl` port imports is the C module's; the header itself left the
+build with `_ssl.c`, its last C user. `gen_constants.jac` can leave out names published
 only under conditions no target meets (`UNSUPPORTED` blocks such as
 `USE_BLUETOOTH`), read enumerators under their header's presence (`GUARDS`) and
 supply values the C module defines itself (`DEFAULTS`).
+
+A port against a vendored C library reads that library's macros from a
+generator rather than a hand-written table: `gen_openssl.jac` configures the
+pinned OpenSSL to generate its public headers and writes every OpenSSL macro
+`_ssl.c`, `_ssl/*.c` and `_hashopenssl.c` name (following the function-like
+macros they call and the names their own macros paste, and probing enumerators
+and struct offsets with the compiler) into `openssl_constants.jac`, plus the
+error tables of the `_ssl_data` header `_ssl.c` selects into `ssl_errors.jac`.
+The port calls the exported function a macro expands to (`SSL_ctrl()` for
+`SSL_set_tlsext_host_name()`). A callback OpenSSL may run with the GIL
+released reads only C memory (`_ssl`'s ALPN protocols and password record);
+one that takes the GIL (`PyGILState_Ensure()` or the password callback's
+thread-state swap) may use native state as usual.
 
 A Jac module can also define interpreter functions under their C names: the
 atexit port defines `_PyAtExit_Init` (which returns a `PyStatus` by value),

@@ -67,7 +67,8 @@ def:priv resource_setrlimit_bound(
 def:priv resource_setrlimit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("setrlimit", int(nargs), 2, 2) {
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("setrlimit", int(nargs), 2, 2) {
         return NULL;
     }
     return resource_setrlimit_bound(receiver, args, nargs);
@@ -96,7 +97,7 @@ def:priv resource_prlimit_bound(
 def:priv resource_prlimit_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("prlimit", int(nargs), 2, 3) {
+    if (nargs < 2 or nargs > 3) and not check_positional("prlimit", int(nargs), 2, 3) {
         return NULL;
     }
     return resource_prlimit_bound(receiver, args, nargs);

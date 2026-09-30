@@ -63,7 +63,7 @@ test "ten million tail calls run in a one-megabyte stack under every profile" {
                 preexec_fn=small_stack
             );
             assert proc.returncode == 0 , f"{memory}: exit {proc.returncode} {proc.stderr[-400:]}";
-            assert proc.stdout.splitlines() == ["15000000", "30000000"] , (
+            assert proc.stdout.splitlines() == ["15000000", "30000000", "50000000"] , (
                 f"{memory}: {proc.stdout}"
             );
         }

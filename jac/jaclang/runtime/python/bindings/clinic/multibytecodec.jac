@@ -9,8 +9,7 @@ import from jaclang.runtime.python.cpython_api {
     PyMem_Free,
     PyObject,
     jacpy_is_long,
-    jacpy_is_tuple,
-    jacpy_release
+    jacpy_is_tuple
 }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
@@ -388,7 +387,7 @@ def:priv _multibytecodec_MultibyteStreamReader_read_bound(
 def:priv _multibytecodec_MultibyteStreamReader_read_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("read", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("read", int(nargs), 0, 1) {
         return NULL;
     }
     return _multibytecodec_MultibyteStreamReader_read_bound(receiver, args, nargs);
@@ -413,7 +412,7 @@ def:priv _multibytecodec_MultibyteStreamReader_readline_bound(
 def:priv _multibytecodec_MultibyteStreamReader_readline_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("readline", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("readline", int(nargs), 0, 1) {
         return NULL;
     }
     return _multibytecodec_MultibyteStreamReader_readline_bound(receiver, args, nargs);
@@ -440,7 +439,7 @@ def:priv _multibytecodec_MultibyteStreamReader_readlines_bound(
 def:priv _multibytecodec_MultibyteStreamReader_readlines_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("readlines", int(nargs), 0, 1) {
+    if (nargs > 1) and not check_positional("readlines", int(nargs), 0, 1) {
         return NULL;
     }
     return _multibytecodec_MultibyteStreamReader_readlines_bound(receiver, args, nargs);
@@ -466,15 +465,9 @@ def:priv _multibytecodec_MultibyteStreamWriter_write_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, MultibyteStreamWriter_token);
-        try {
-            value = clinic_args[0];
-            strobj: ptr[PyObject] = value;
-            return _multibytecodec_MultibyteStreamWriter_write_impl(
-                receiver, cls, strobj
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        strobj: ptr[PyObject] = value;
+        return _multibytecodec_MultibyteStreamWriter_write_impl(receiver, cls, strobj);
     } except boundary_failure {
         return NULL;
     }
@@ -519,15 +512,11 @@ def:priv _multibytecodec_MultibyteStreamWriter_writelines_bound(
     clinic_args = stack.view(count);
     try {
         cls = defining_class(receiver, MultibyteStreamWriter_token);
-        try {
-            value = clinic_args[0];
-            lines: ptr[PyObject] = value;
-            return _multibytecodec_MultibyteStreamWriter_writelines_impl(
-                receiver, cls, lines
-            );
-        } finally {
-            jacpy_release(cls);
-        }
+        value = clinic_args[0];
+        lines: ptr[PyObject] = value;
+        return _multibytecodec_MultibyteStreamWriter_writelines_impl(
+            receiver, cls, lines
+        );
     } except boundary_failure {
         return NULL;
     }
@@ -573,11 +562,7 @@ def:priv _multibytecodec_MultibyteStreamWriter_reset_bound(
 ) -> ptr[PyObject] {
     try {
         cls = defining_class(receiver, MultibyteStreamWriter_token);
-        try {
-            return _multibytecodec_MultibyteStreamWriter_reset_impl(receiver, cls);
-        } finally {
-            jacpy_release(cls);
-        }
+        return _multibytecodec_MultibyteStreamWriter_reset_impl(receiver, cls);
     } except boundary_failure {
         return NULL;
     }

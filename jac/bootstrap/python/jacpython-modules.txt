@@ -89,4 +89,8 @@ _codecs_jp      test.test_codecencodings_jp,test.test_codecmaps_jp
 _codecs_kr      test.test_codecencodings_kr,test.test_codecmaps_kr
 _codecs_tw      test.test_codecencodings_tw,test.test_codecmaps_tw
 _socket         test.test_socket,test.test_selectors
+_sre            test.test_re
+_hashlib        test.test_hashlib,test.test_hmac        -lcrypto
+_ssl            test.test_ssl                           -lssl -lcrypto
+_asyncio        test.test_asyncio,test.test_contextlib_async
 posix           test.test_os,test.test_posix,test.test_shutil,test.test_glob,test.test_tempfile   linux:-lutil

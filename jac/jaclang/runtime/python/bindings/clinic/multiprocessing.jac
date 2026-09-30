@@ -323,7 +323,7 @@ def:priv _multiprocessing_SemLock___exit___bound(
 def:priv _multiprocessing_SemLock___exit___call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not check_positional("__exit__", int(nargs), 0, 3) {
+    if (nargs > 3) and not check_positional("__exit__", int(nargs), 0, 3) {
         return NULL;
     }
     return _multiprocessing_SemLock___exit___bound(receiver, args, nargs);

@@ -2608,11 +2608,11 @@ impl TypeCheckPass._c_const_problem(
 
 impl TypeCheckPass._check_c_global_use(nd: Name) -> None {
     import from jaclang.compiler.c_interop {
-        clib_global_of_symbol,
+        clib_global_of_name,
         foreign_struct_of_type,
         is_builtin_addressof_call
     }
-    assign = clib_global_of_symbol(nd.sym);
+    assign = clib_global_of_name(nd);
     if assign is None
         or nd.find_parent_of_type(Import) is not None
         or is_builtin_addressof_call(nd.parent) {
@@ -2773,7 +2773,7 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
         c_string_literal,
         c_type_arg,
-        clib_global_of_symbol,
+        clib_global_of_name,
         is_builtin_addressof_call,
         is_builtin_pin_call,
         is_ptr_type,
@@ -2812,7 +2812,7 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     if is_builtin_addressof_call(nd) {
         args = list(nd.params or []);
         target = args[0] if len(args) == 1 else None;
-        if not isinstance(target, Name) or clib_global_of_symbol(target.sym) is None {
+        if not isinstance(target, Name) or clib_global_of_name(target) is None {
             self.ctx.emit(
                 E1154,
                 node_override=nd,

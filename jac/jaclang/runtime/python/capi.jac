@@ -25,6 +25,7 @@ enum builtin_kind {
 }
 
 import from jaclang.runtime.python.cpython_api {
+    PyUnicode_DecodeUTF8Stateful,
     jacpy_bytes_copy_to,
     jacpy_bytes_from_memory,
     jacpy_bytes_length,
@@ -110,6 +111,26 @@ def builtin_type(kind: builtin_kind) -> ptr[PyObject] {
 # Raise `kind` (an exception type such as PyExc_ValueError) with a text message.
 def object_error(kind: ptr[PyObject], message: str) {
     jacpy_set_exception(kind, message, i64(len(message.encode("utf-8"))));
+}
+
+# `value` converted to a C int as a C cast does: its low 32 bits, read as a
+# signed number. A Jac narrowing `i32(value)` traps on an out-of-range value
+# instead; ports use this where the C code they replace truncates.
+def c_int(value: int) -> i32 {
+    bits = value & 0xFFFFFFFF;
+    if bits >= 0x80000000 {
+        bits -= 0x100000000;
+    }
+    return i32(bits);
+}
+
+# `value` converted to a C size_t as a C cast does: a negative value wraps to
+# its two's complement (-1 is SIZE_MAX), where a Jac `u64(value)` traps.
+def c_size(value: i64) -> u64 {
+    if value >= 0 {
+        return u64(value);
+    }
+    return ~u64(-(value + 1));
 }
 
 # The byte at `address + offset` of C memory.
@@ -291,6 +312,12 @@ def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
     text = jacpy_unicode_decode_bytes(payload, "utf-8");
     jacpy_release(payload);
     return text;
+}
+
+# `size` bytes at `address` as a new str decoded as strict UTF-8, as
+# PyUnicode_FromStringAndSize() does.
+def c_text(address: ptr, size: i64) -> ptr[PyObject] {
+    return PyUnicode_DecodeUTF8Stateful(address, size, ptr[u8](), None);
 }
 
 # A NUL-terminated UTF-8 copy of `text` in raw memory the caller keeps (as a

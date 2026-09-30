@@ -73,7 +73,7 @@ import from jaclang.runtime.python.cpython_api {
     _PyDeadline_Init,
     _Py_set_inheritable
 }
-import from jaclang.runtime.python.capi { object_error }
+import from jaclang.runtime.python.capi { c_int, object_error }
 import from jaclang.runtime.python.layouts {
     PY_BUFFER_SIZE,
     PySocketSockObject,
@@ -140,6 +140,7 @@ import from jaclang.runtime.python.modules.socket_core {
     SOCKLEN_T_LIMIT,
     SocketCall,
     TIMEOUT_ERROR,
+    accept4_works,
     close,
     get_sock_fd,
     init_sockobject,
@@ -150,6 +151,7 @@ import from jaclang.runtime.python.modules.socket_core {
     set_sock_timeout,
     sock_call,
     sock_call_ex,
+    sock_cloexec_works,
     sock_family,
     sock_of,
     sock_proto,
@@ -189,8 +191,6 @@ import from c {
     ) -> i64;  def sendmsg(fd: i32, msg: ptr, flags: i32) -> i64;  def shutdown(
         fd: i32, how: i32
     ) -> i32;  glob PyLong_Type: PyTypeObject;
-    # socket_core's flags of the kernel's SOCK_CLOEXEC and accept4() support.
-    glob sock_cloexec_works: i32; glob accept4_works: i32;
     # The keyword lists of the METH_VARARGS | METH_KEYWORDS methods.
     glob:priv recv_into_keywords: list[ptr[u8]] = [
              ptr[u8]("buffer"),
@@ -219,15 +219,6 @@ glob:priv
 
 # ---------------------------------------------------------------------------
 # Scratch memory.
-
-"""`value` converted to a C int as C does: its low 32 bits, signed."""
-def c_int(value: int) -> i32 {
-    bits = value & 0xFFFFFFFF;
-    if bits >= 0x80000000 {
-        bits -= 0x100000000;
-    }
-    return i32(bits);
-}
 
 """A zeroed sock_addr_t followed by its socklen_t."""
 def new_address_space -> ptr[u8] {
