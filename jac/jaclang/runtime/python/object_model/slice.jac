@@ -28,8 +28,6 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_Index,
     PyObject,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_Hash,
     PyObject_RichCompare,
@@ -73,14 +71,16 @@ import from jaclang.runtime.python.layouts {
     _object
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     _Py_FalseStruct,
     _Py_TrueStruct,
     freelist_pop,
     freelist_push,
+    object_gc_track,
+    object_gc_untrack,
     object_is_type,
     object_size,
-    object_type
+    object_type,
+    PyType_Type
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
 
@@ -254,7 +254,7 @@ def build_slice_consume2(
     slice.view(1)[0].start = start;
     slice.view(1)[0].stop = stop;
     slice.view(1)[0].step = Py_NewRef(step);
-    PyObject_GC_Track(op);
+    object_gc_track(op);
     return op;
 }
 
@@ -441,7 +441,7 @@ def slice_new(
 
 def slice_dealloc(op: ptr[PyObject]) {
     slice = slice_of(op);
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(slice.view(1)[0].step);
     jacpy_release(slice.view(1)[0].start);
     jacpy_release(slice.view(1)[0].stop);

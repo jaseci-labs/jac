@@ -314,7 +314,9 @@ def _random_Random_random_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyFloat_FromDouble(jacpy_random_float(state)) if state is not None else NULL;
 }
 
-def _random_Random_seed_impl(instance: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+def _random_Random_seed_impl(
+    instance: ptr[PyObject], n: ptr[PyObject]
+) -> ptr[PyObject] {
     if seeded(instance, n) < 0 {
         return NULL;
     }

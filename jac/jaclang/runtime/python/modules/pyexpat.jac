@@ -1732,7 +1732,7 @@ def xmlparse_dealloc(instance: ptr[PyObject]) {
 
 def xmlparse_handler_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     handler = (fields(instance).view(1)[0].handlers + int(context)).view(1)[0];
-    return Py_NewRef(handler if handler else Py_None);
+    return Py_NewRef(handler or Py_None);
 }
 
 def xmlparse_handler_setter(

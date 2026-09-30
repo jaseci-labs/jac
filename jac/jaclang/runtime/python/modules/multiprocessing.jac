@@ -99,10 +99,8 @@ import from c {
     }
 }
 
-glob SEMLOCK_FIELDS_SIZE: int = 24;
-
-# semlock_members[]: the SemLockObject fields published as read-only members.
-glob semlock_members: list[MemberField] = [
+glob SEMLOCK_FIELDS_SIZE: int = 24,
+     semlock_members: list[MemberField] = [
          MemberField(
              name="handle", kind=MemberType.ULONG.value, offset=0, readonly=True, doc=""
          ),
@@ -121,6 +119,7 @@ glob semlock_members: list[MemberField] = [
          )
      ];
 
+# semlock_members[]: the SemLockObject fields published as read-only members.
 # These match the values in Lib/multiprocessing/synchronize.py.
 glob:priv RECURSIVE_MUTEX: int = 0,
      SEMAPHORE: int = 1,

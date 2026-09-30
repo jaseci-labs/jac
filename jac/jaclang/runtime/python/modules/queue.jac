@@ -175,7 +175,9 @@ def simplequeue_new_impl(type: ptr[PyObject]) -> ptr[PyObject] {
         jacpy_release(instance);
         return NULL;
     }
-    if jacpy_binding_native_set(instance, SimpleQueue_token.handle, jacpy_queue_new(lock))
+    if jacpy_binding_native_set(
+        instance, SimpleQueue_token.handle, jacpy_queue_new(lock)
+    )
         < 0 {
         jacpy_release(instance);
         return NULL;

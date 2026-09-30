@@ -72,7 +72,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/floatobject.h",
          "Include/cpython/complexobject.h",
          "Include/cpython/classobject.h",
-         "Include/structseq.h"
+         "Include/structseq.h",
+         "Include/internal/pycore_interp_structs.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -102,7 +103,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "internal/pycore_freelist_state.h",
          "internal/pycore_range.h",
          "internal/pycore_typeobject.h",
-         "internal/pycore_interp_structs.h"
+         "internal/pycore_interp_structs.h",
+         "internal/pycore_gc.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -116,6 +118,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyLongObject", "struct _longobject"),
          ("PyTupleObject", "PyTupleObject"),
          ("PyListObject", "PyListObject"),
+         ("PyGC_Head", "PyGC_Head"),
          ("PyStatus", "PyStatus"),
          ("PyAsyncMethods", "PyAsyncMethods"),
          ("PySequenceMethods", "PySequenceMethods"),
@@ -245,6 +248,30 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("longrangeiterobject_SIZE", "sizeof(longrangeiterobject)", "i64"),
          # The interpreter's freelists: where each list sits in
          # struct _Py_freelists and how many objects it keeps.
+         # The interpreter state a port reaches from the current thread
+         # state: its freelists and its GC state (generation 0's list head
+         # and heap size), as _Py_freelists_GET and _PyObject_GC_TRACK do.
+         ("PyThreadState_INTERP", "offsetof(PyThreadState, interp)", "i64"),
+         (
+             "PyInterpreterState_FREELISTS",
+             "offsetof(PyInterpreterState, object_state.freelists)",
+             "i64"
+         ),
+         ("PyInterpreterState_GC", "offsetof(PyInterpreterState, gc)", "i64"),
+         (
+             "_gc_runtime_state_GENERATION0",
+             "offsetof(struct _gc_runtime_state, generation0)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_HEAP_SIZE",
+             "offsetof(struct _gc_runtime_state, heap_size)",
+             "i64"
+         ),
+         ("PyGC_Head_SIZE", "sizeof(PyGC_Head)", "i64"),
+         ("_PyGC_PREV_MASK_FINALIZED", "_PyGC_PREV_MASK_FINALIZED", "i64"),
+         ("_PyGC_PREV_MASK", "(Py_ssize_t)_PyGC_PREV_MASK", "i64"),
+         ("_PyGC_PREV_FLAGS", "(Py_ssize_t)~_PyGC_PREV_MASK", "i64"),
          ("_Py_freelists_SLICES", "offsetof(struct _Py_freelists, slices)", "i64"),
          ("_Py_freelists_RANGES", "offsetof(struct _Py_freelists, ranges)", "i64"),
          (

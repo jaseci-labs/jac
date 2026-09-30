@@ -511,7 +511,9 @@ def:priv writer_traverse(
 # Dialect_memberlist, Reader_memberlist and Writer_memberlist: read-only
 # PyMemberDefs over each instance's field record.
 def:priv bool_member(name: str, offset: int) -> MemberField {
-    return MemberField(name=name, kind=MemberType.BOOL.value, offset=offset, readonly=True);
+    return MemberField(
+        name=name, kind=MemberType.BOOL.value, offset=offset, readonly=True
+    );
 }
 
 def:priv dialect_members -> list[MemberField] {
@@ -543,7 +545,11 @@ def:priv writer_members -> list[MemberField] {
 
 # Dialect_getsetlist: the character and quoting options, without docs.
 glob:priv dialect_getset_names = [
-         "delimiter", "escapechar", "lineterminator", "quotechar", "quoting"
+         "delimiter",
+         "escapechar",
+         "lineterminator",
+         "quotechar",
+         "quoting"
      ],
      dialect_getset_items = [0, 2, 3, 4, 5];
 
@@ -606,7 +612,10 @@ glob:priv dialect_type = TypeDefinition(
          Writer_Type_doc,
          [
              MethodDefinition(
-                 "writerow", MethodCallbacks(positional=writer_row), csv_writerow_doc, flags=8
+                 "writerow",
+                 MethodCallbacks(positional=writer_row),
+                 csv_writerow_doc,
+                 flags=8
              ),
              MethodDefinition(
                  "writerows",

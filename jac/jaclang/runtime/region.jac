@@ -74,8 +74,6 @@ obj JacRegion {
     }
 }
 
-# A call from C into Jac runs outside any region the thread has open, as on
-# the native backend: the open's extent does not cross the foreign frame.
 def escape_regions -> list[JacRegion] {
     s = _stack();
     saved = list(s);

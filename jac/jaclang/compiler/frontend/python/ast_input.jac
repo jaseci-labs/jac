@@ -146,7 +146,7 @@ import from jaclang.compiler.frontend.python.ast_nodes {
 }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.runtime.python.native_services { take_buffer }
-import from jaclang.runtime.python.capi { boundary_failure }
+import from jaclang.runtime.python.capi { boundary_failure, repr_value }
 import from jaclang.runtime.python.constant_input { read_constant }
 def read_PyObj(handle: ptr[PyObject], depth: int) -> PyObj {
     return read_constant(handle);
@@ -433,7 +433,7 @@ def field_expr_context(
 def read_int(handle: ptr[PyObject], depth: int) -> int {
     kind = jacpy_value_kind(handle);
     if kind != 2 and kind != 3 {
-        raise ValueError("invalid integer value");
+        raise ValueError("invalid integer value: " + repr_value(handle));
     }
     result = int(PyLong_AsLongLong(handle));
     if jacpy_error_pending() != 0 {

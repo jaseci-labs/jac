@@ -826,7 +826,9 @@ def binascii_b2a_base64_impl(
     return convert(module, data, 3, i64(newline));
 }
 
-def binascii_a2b_hex_impl(module: ptr[PyObject], hexstr: BufferArgument) -> ptr[PyObject] {
+def binascii_a2b_hex_impl(
+    module: ptr[PyObject], hexstr: BufferArgument
+) -> ptr[PyObject] {
     return convert(module, hexstr, 4);
 }
 
