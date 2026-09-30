@@ -21,8 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMethodDef,
     PyObject,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyType_GenericAlloc,
     PyUnicode_AsUTF8AndSize,
     PyUnicode_FromFormat,
@@ -64,7 +62,11 @@ import from jaclang.runtime.python.layouts {
     interpolationobject_SIZE,
     interpolationobject_VALUE
 }
-import from jaclang.runtime.python.object_model.header { object_type }
+import from jaclang.runtime.python.object_model.header {
+    object_gc_track,
+    object_gc_untrack,
+    object_type
+}
 import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
@@ -249,12 +251,12 @@ def interpolation_new_impl(
     item.view(1)[0].expression = Py_NewRef(expression);
     item.view(1)[0].conversion = Py_NewRef(conversion);
     item.view(1)[0].format_spec = Py_NewRef(format_spec);
-    PyObject_GC_Track(op);
+    object_gc_track(op);
     return op;
 }
 
 def interpolation_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     object_type(op).view(1)[0].tp_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
@@ -374,7 +376,7 @@ import from c {
             jacpy_release(op);
             return NULL;
         }
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }  def _PyInterpolation_GetValueRef(op: ptr[PyObject]) -> ptr[PyObject] {
         return Py_NewRef(interpolation_of(op).view(1)[0].value);

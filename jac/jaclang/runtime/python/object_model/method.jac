@@ -23,8 +23,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_Call,
     PyObject_ClearWeakRefs,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericHash,
     PyObject_GenericSetAttr,
     PyObject_GetAttr,
@@ -75,17 +73,23 @@ import from jaclang.runtime.python.layouts {
     _object
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     _Py_FalseStruct,
     _Py_TrueStruct,
+    current_interp,
     eval_builtin,
-    freelist_pop,
-    freelist_push,
+    freelist_pop_in,
+    freelist_push_in,
+    gc_track_in,
+    gc_untrack_in,
     object_decref,
+    object_gc_is_tracked,
+    object_gc_track,
+    object_gc_untrack,
     object_is_type,
     object_new_ref,
     object_size,
     object_type,
+    PyType_Type,
     tuple_get_item
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
@@ -246,7 +250,8 @@ import from c {
             PyErr_BadInternalCall();
             return NULL;
         }
-        op = freelist_pop(_Py_freelists_PYMETHODOBJECTS);
+        interp = current_interp();
+        op = freelist_pop_in(interp, _Py_freelists_PYMETHODOBJECTS);
         if not op {
             op = _PyObject_GC_New(ptr[PyObject](addressof(PyMethod_Type)));
             if not op {
@@ -258,7 +263,7 @@ import from c {
         m.view(1)[0].im_func = object_new_ref(func);
         m.view(1)[0].im_self = object_new_ref(self_obj);
         m.view(1)[0].vectorcall = method_vectorcall;
-        PyObject_GC_Track(op);
+        gc_track_in(interp, op);
         return op;
     }
 }
@@ -341,14 +346,17 @@ def method_new(
 
 def method_dealloc(op: ptr[PyObject]) {
     m = method_of(op);
-    PyObject_GC_UnTrack(op);
+    interp = current_interp();
+    if object_gc_is_tracked(op) {
+        gc_untrack_in(interp, op);
+    }
     if m.view(1)[0].im_weakreflist {
         PyObject_ClearWeakRefs(op);
     }
     object_decref(m.view(1)[0].im_func);
     object_decref(m.view(1)[0].im_self);
-    if not freelist_push(
-        _Py_freelists_PYMETHODOBJECTS, op, Py_pymethodobjects_MAXFREELIST
+    if not freelist_push_in(
+        interp, _Py_freelists_PYMETHODOBJECTS, op, Py_pymethodobjects_MAXFREELIST
     ) {
         PyObject_GC_Del(op);
     }
@@ -453,7 +461,7 @@ import from c {
             return NULL;
         }
         instancemethod_of(op).view(1)[0].func = Py_NewRef(func);
-        PyObject_GC_Track(op);
+        object_gc_track(op);
         return op;
     }  def PyInstanceMethod_Function(im: ptr[PyObject]) -> ptr[PyObject] {
         if not instancemethod_check(im) {
@@ -477,7 +485,7 @@ def instancemethod_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObj
 }
 
 def instancemethod_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     jacpy_release(instancemethod_function(op));
     PyObject_GC_Del(op);
 }

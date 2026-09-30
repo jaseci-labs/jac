@@ -26,8 +26,6 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_CallFunctionObjArgs,
     PyObject_ClearWeakRefs,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PyObject_GenericGetAttr,
     PyObject_GetAttr,
     PyObject_GetAttrString,
@@ -78,13 +76,15 @@ import from jaclang.runtime.python.layouts {
     unionobject_WEAKREFLIST
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     _Py_FalseStruct,
     _Py_TrueStruct,
+    object_gc_track,
+    object_gc_untrack,
     object_is_type,
     object_size,
     object_type,
     object_type_check,
+    PyType_Type,
     tuple_get_item
 }
 import from jaclang.runtime.python.bindings.module { visit_reference }
@@ -188,7 +188,7 @@ def union_check(op: ptr[PyObject]) -> bool {
 
 def unionobject_dealloc(op: ptr[PyObject]) {
     alias = union_of(op);
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     if alias.view(1)[0].weakreflist {
         PyObject_ClearWeakRefs(op);
     }
@@ -287,98 +287,134 @@ def union_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObje
     return py_bool((equal != 0) == (op == Py_EQ));
 }
 
-# The union being built: its args (list), hashable args (set) and
-# unhashable args (list or NULL), and whether each arg is type-checked.
-obj UnionBuilder {
-    has args: ptr[PyObject] = NULL,
-        hashable_args: ptr[PyObject] = NULL,
-        unhashable_args: ptr[PyObject] = NULL,
-        is_checked: bool = False;
+# unionobject.c's unionbuilder, held in the caller's locals so building a
+# union allocates nothing but the union: `args` (list) and `hashable_args`
+# (set) are created up front and filled in place, and `unhashable_args` (a
+# list, NULL until an unhashable arg arrives) is lent to the adders with
+# `&mut`, which is why they are C definitions.
 
-    def finalize {
-        jacpy_release(self.args);
-        jacpy_release(self.hashable_args);
-        jacpy_release(self.unhashable_args);
-        self.args = NULL;
-        self.hashable_args = NULL;
-        self.unhashable_args = NULL;
+import from c {
+    # Create the builder's list and set into `args` / `hashable_args`; False
+    # with the error set.
+    def unionbuilder_new(
+        args: ptr[ptr[PyObject]], hashable_args: ptr[ptr[PyObject]]
+    ) -> bool {
+        created = PyList_New(0);
+        if not created {
+            return False;
+        }
+        hashable = PySet_New(NULL);
+        if not hashable {
+            jacpy_release(created);
+            return False;
+        }
+        args.view(1)[0] = created;
+        hashable_args.view(1)[0] = hashable;
+        return True;
     }
 }
 
-# A builder, or None with the error set.
-def unionbuilder_init(is_checked: bool) -> (UnionBuilder | None) {
-    args = PyList_New(0);
-    if not args {
-        return None;
-    }
-    hashable_args = PySet_New(NULL);
-    if not hashable_args {
-        jacpy_release(args);
-        return None;
-    }
-    return UnionBuilder(args=args, hashable_args=hashable_args, is_checked=is_checked);
+def unionbuilder_finalize(
+    args: ptr[PyObject], hashable_args: ptr[PyObject], unhashable_args: ptr[PyObject]
+) {
+    jacpy_release(args);
+    jacpy_release(hashable_args);
+    jacpy_release(unhashable_args);
 }
 
-def unionbuilder_add_single_unchecked(ub: UnionBuilder, arg: ptr[PyObject]) -> bool {
-    if PyObject_Hash(arg) == -1 {
-        PyErr_Clear();
-        if not ub.unhashable_args {
-            ub.unhashable_args = PyList_New(0);
-            if not ub.unhashable_args {
+import from c {
+    def unionbuilder_add_single_unchecked(
+        args: ptr[PyObject],
+        hashable_args: ptr[PyObject],
+        unhashable_args: ptr[ptr[PyObject]],
+        arg: ptr[PyObject]
+    ) -> bool {
+        if PyObject_Hash(arg) == -1 {
+            PyErr_Clear();
+            unhashable = unhashable_args.view(1)[0];
+            if not unhashable {
+                unhashable = PyList_New(0);
+                if not unhashable {
+                    return False;
+                }
+                unhashable_args.view(1)[0] = unhashable;
+            } else {
+                contains = PySequence_Contains(unhashable, arg);
+                if contains < 0 {
+                    return False;
+                }
+                if contains == 1 {
+                    return True;
+                }
+            }
+            if PyList_Append(unhashable, arg) < 0 {
                 return False;
             }
         } else {
-            contains = PySequence_Contains(ub.unhashable_args, arg);
+            contains = PySet_Contains(hashable_args, arg);
             if contains < 0 {
                 return False;
             }
             if contains == 1 {
                 return True;
             }
+            if PySet_Add(hashable_args, arg) < 0 {
+                return False;
+            }
         }
-        if PyList_Append(ub.unhashable_args, arg) < 0 {
+        return PyList_Append(args, arg) == 0;
+    }  def unionbuilder_add_single(
+        args: ptr[PyObject],
+        hashable_args: ptr[PyObject],
+        unhashable_args: ptr[ptr[PyObject]],
+        is_checked: bool,
+        arg: ptr[PyObject]
+    ) -> bool {
+        if arg == Py_None {
+            arg = ptr[PyObject](addressof(_PyNone_Type));  # immortal
+        } elif union_check(arg) {
+            return unionbuilder_add_tuple(
+                args,
+                hashable_args,
+                unhashable_args,
+                is_checked,
+                union_of(arg).view(1)[0].args
+            );
+        }
+        if not is_checked {
+            return unionbuilder_add_single_unchecked(
+                args, hashable_args, unhashable_args, arg
+            );
+        }
+        checked = type_check(arg, "Union[arg, ...]: each arg must be a type.");
+        if not checked {
             return False;
         }
-    } else {
-        contains = PySet_Contains(ub.hashable_args, arg);
-        if contains < 0 {
-            return False;
+        result = unionbuilder_add_single_unchecked(
+            args, hashable_args, unhashable_args, checked
+        );
+        jacpy_release(checked);
+        return result;
+    }  def unionbuilder_add_tuple(
+        args: ptr[PyObject],
+        hashable_args: ptr[PyObject],
+        unhashable_args: ptr[ptr[PyObject]],
+        is_checked: bool,
+        tuple: ptr[PyObject]
+    ) -> bool {
+        for i in range(object_size(tuple)) {
+            if not unionbuilder_add_single(
+                args,
+                hashable_args,
+                unhashable_args,
+                is_checked,
+                tuple_get_item(tuple, i64(i))
+            ) {
+                return False;
+            }
         }
-        if contains == 1 {
-            return True;
-        }
-        if PySet_Add(ub.hashable_args, arg) < 0 {
-            return False;
-        }
+        return True;
     }
-    return PyList_Append(ub.args, arg) == 0;
-}
-
-def unionbuilder_add_single(ub: UnionBuilder, arg: ptr[PyObject]) -> bool {
-    if arg == Py_None {
-        arg = ptr[PyObject](addressof(_PyNone_Type));  # immortal
-    } elif union_check(arg) {
-        return unionbuilder_add_tuple(ub, union_of(arg).view(1)[0].args);
-    }
-    if not ub.is_checked {
-        return unionbuilder_add_single_unchecked(ub, arg);
-    }
-    checked = type_check(arg, "Union[arg, ...]: each arg must be a type.");
-    if not checked {
-        return False;
-    }
-    result = unionbuilder_add_single_unchecked(ub, checked);
-    jacpy_release(checked);
-    return result;
-}
-
-def unionbuilder_add_tuple(ub: UnionBuilder, tuple: ptr[PyObject]) -> bool {
-    for i in range(object_size(tuple)) {
-        if not unionbuilder_add_single(ub, tuple_get_item(tuple, i64(i))) {
-            return False;
-        }
-    }
-    return True;
 }
 
 def is_unionable(op: ptr[PyObject]) -> bool {
@@ -452,15 +488,29 @@ def union_origin(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 }
 
 def union_nb_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
-    ub = unionbuilder_init(True);
-    if ub is None {
+    return union_of_pair(a, b, True);
+}
+
+# The union of `a` and `b`, as union_nb_or and _Py_union_type_or build it.
+def union_of_pair(
+    a: ptr[PyObject], b: ptr[PyObject], is_checked: bool
+) -> ptr[PyObject] {
+    args: ptr[PyObject] = NULL;
+    hashable_args: ptr[PyObject] = NULL;
+    unhashable_args: ptr[PyObject] = NULL;
+    if not unionbuilder_new(&mut args, &mut hashable_args) {
         return NULL;
     }
-    if not unionbuilder_add_single(ub, a) or not unionbuilder_add_single(ub, b) {
-        ub.finalize();
+    if not unionbuilder_add_single(
+        args, hashable_args, &mut unhashable_args, is_checked, a
+    )
+        or not unionbuilder_add_single(
+            args, hashable_args, &mut unhashable_args, is_checked, b
+        ) {
+        unionbuilder_finalize(args, hashable_args, unhashable_args);
         return NULL;
     }
-    return make_union(ub);
+    return make_union(args, hashable_args, unhashable_args);
 }
 
 def union_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
@@ -518,45 +568,49 @@ def union_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] 
     return NULL;
 }
 
-def make_union(ub: UnionBuilder) -> ptr[PyObject] {
-    n = object_size(ub.args);
+# The union of a builder's args (consuming the builder), or its only arg.
+def make_union(
+    builder_args: ptr[PyObject],
+    builder_hashable: ptr[PyObject],
+    builder_unhashable: ptr[PyObject]
+) -> ptr[PyObject] {
+    n = object_size(builder_args);
     if n == 0 {
         PyErr_SetString(PyExc_TypeError, "Cannot take a Union of no types.");
-        ub.finalize();
+        unionbuilder_finalize(builder_args, builder_hashable, builder_unhashable);
         return NULL;
     }
     if n == 1 {
-        result = Py_NewRef(PyList_GetItem(ub.args, 0));
-        ub.finalize();
+        result = Py_NewRef(PyList_GetItem(builder_args, 0));
+        unionbuilder_finalize(builder_args, builder_hashable, builder_unhashable);
         return result;
     }
-    args = PyList_AsTuple(ub.args);
-    hashable_args = PyFrozenSet_New(ub.hashable_args) if args else NULL;
+    args = PyList_AsTuple(builder_args);
+    hashable_args = PyFrozenSet_New(builder_hashable) if args else NULL;
     unhashable_args = NULL;
     failed = not hashable_args;
-    if not failed and ub.unhashable_args {
-        unhashable_args = PyList_AsTuple(ub.unhashable_args);
+    if not failed and builder_unhashable {
+        unhashable_args = PyList_AsTuple(builder_unhashable);
         failed = not unhashable_args;
     }
     op = NULL;
     if not failed {
         op = _PyObject_GC_New(ptr[PyObject](addressof(_PyUnion_Type)));
     }
+    unionbuilder_finalize(builder_args, builder_hashable, builder_unhashable);
     if not op {
         jacpy_release(args);
         jacpy_release(hashable_args);
         jacpy_release(unhashable_args);
-        ub.finalize();
         return NULL;
     }
-    ub.finalize();
     created = union_of(op);
     created.view(1)[0].parameters = NULL;
     created.view(1)[0].args = args;
     created.view(1)[0].hashable_args = hashable_args;
     created.view(1)[0].unhashable_args = unhashable_args;
     created.view(1)[0].weakreflist = NULL;
-    PyObject_GC_Track(op);
+    object_gc_track(op);
     return op;
 }
 
@@ -566,29 +620,27 @@ import from c {
             return Py_NewRef(Py_NotImplemented);
         }
         # unchecked because is_unionable() already checked them
-        ub = unionbuilder_init(False);
-        if ub is None {
-            return NULL;
-        }
-        if not unionbuilder_add_single(ub, a) or not unionbuilder_add_single(ub, b) {
-            ub.finalize();
-            return NULL;
-        }
-        return make_union(ub);
+        return union_of_pair(a, b, False);
     }  def _Py_union_args(op: ptr[PyObject]) -> ptr[PyObject] {
         return union_of(op).view(1)[0].args;
     }  def _Py_union_from_tuple(args: ptr[PyObject]) -> ptr[PyObject] {
-        ub = unionbuilder_init(True);
-        if ub is None {
+        builder_args: ptr[PyObject] = NULL;
+        hashable_args: ptr[PyObject] = NULL;
+        unhashable_args: ptr[PyObject] = NULL;
+        if not unionbuilder_new(&mut builder_args, &mut hashable_args) {
             return NULL;
         }
-        added = unionbuilder_add_tuple(ub, args)
+        added = unionbuilder_add_tuple(
+            builder_args, hashable_args, &mut unhashable_args, True, args
+        )
             if jacpy_is_exact_tuple(args) != 0
-            else unionbuilder_add_single(ub, args);
+            else unionbuilder_add_single(
+                builder_args, hashable_args, &mut unhashable_args, True, args
+            );
         if not added {
-            ub.finalize();
+            unionbuilder_finalize(builder_args, hashable_args, unhashable_args);
             return NULL;
         }
-        return make_union(ub);
+        return make_union(builder_args, hashable_args, unhashable_args);
     }
 }

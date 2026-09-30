@@ -158,8 +158,6 @@ class JacPtr {
         return not self.__eq__(other);
     }
 
-    # Ordering compares the unsigned addresses, as C orders pointers into one
-    # object.
     def __lt__(self: JacPtr, other: any) -> any {
         if not isinstance(other, JacPtr) {
             return NotImplemented;
@@ -502,9 +500,6 @@ def c_cell(spec: str, value: any, scope: any) -> CCell {
     return CCell(_resolve_elem(json.loads(spec), scope), value);
 }
 
-# `&mut x` passed to a `ptr[T]` parameter of a C-ABI function: the address of
-# x's C cell, or of a foreign struct's own storage, as the `ptr[T]` `spec`
-# names it.
 def c_lend(spec: str, target: any, scope: any) -> JacPtr {
     cls = _resolve_elem(json.loads(spec), scope);
     storage = target.c if isinstance(target, CCell) else target;
@@ -562,8 +557,6 @@ def _fn_ctype(spec: list[any], scope: any) -> any {
     base = ctypes.CFUNCTYPE(ret, *params);
     addressable = _C_FUNCTION_TYPES.get(base);
     if addressable is None {
-        # int() of a C function pointer is the address it holds, as it is for
-        # a callback field read natively.
         addressable = `type(
             base.__name__,
             (base, ),
@@ -893,7 +886,6 @@ class CGlobal {
             self._keep = value;
             elem = _field_ctype(self._spec[1], self._scope);
             if isinstance(value, bytes) {
-                # A bytes literal holds the array's little-endian elements.
                 width = ctypes.sizeof(elem);
                 signed = elem(-1).value < 0;
                 value = [
@@ -963,9 +955,6 @@ def jac_addressof(symbol: any) -> JacPtr {
     return symbol.address();
 }
 
-# `ptr(f)`: the address of a C callback that runs the named function `f`,
-# whose C signature `spec_json` gives. C may keep the address, so the callback
-# is kept alive for the life of the process.
 def c_function_ptr(fn: any, spec_json: str, scope: any) -> JacPtr {
     spec = json.loads(spec_json);
     callback = _fn_ctype(spec, scope)(_callback_trampoline(spec, fn, scope));

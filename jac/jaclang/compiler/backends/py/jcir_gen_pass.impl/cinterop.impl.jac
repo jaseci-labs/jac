@@ -237,7 +237,6 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         and not callee_type.is_instance()
         and len(cast_args) == 1
         and named_function_of(cast_args[0]) is not None {
-        # `ptr(f)`: a C callback for the named function, kept alive for good.
         call = self.outs(nd)[0] if self.outs(nd) else None;
         if isinstance(call, CgNode) and call.cls == 'Call' {
             fn_spec = self.const_of(json.dumps(c_type_spec(cast_args[0].type, None)));
@@ -269,9 +268,7 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         }
         return;
     }
-    # `&mut x` passed to a `ptr[T]` parameter of a C-ABI function lends x's
-    # address: a C cell holding x, read back after the call, or a foreign
-    # struct's own storage. Each entry is (index, cell spec, lent ptr spec).
+
     borrowed: list[tuple[int, list[any], (list[any] | None)]] = [];
     for (i, arg) in enumerate(list(nd.params or [])) {
         lent = c_lent_arg_elem(arg);
@@ -344,7 +341,6 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         }
         spec_const = self.const_of(json.dumps(spec));
         if lent_spec is not None and spec[0] == "struct" {
-            # A foreign struct is its own C storage; C writes it in place.
             call_args[i] = self.call_node(
                 self.builtin_name('_jac_c_lend'),
                 [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
@@ -469,8 +465,13 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
         clib_global_of_symbol,
         is_builtin_addressof_call
     }
+    # The declaration itself is the symbol, not its value; a C function a C
+    # block defines reads and writes C data like any other function.
     if clib_global_of_symbol(nd.sym) is None
-        or nd.find_parent_of_type(Import) is not None {
+        or (
+            nd.find_parent_of_type(Import) is not None
+            and nd.find_parent_of_type(Ability) is None
+        ) {
         return False;
     }
     return not is_builtin_addressof_call(nd.parent);

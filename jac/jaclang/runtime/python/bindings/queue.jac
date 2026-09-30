@@ -55,9 +55,7 @@ glob:priv queue_type = TypeDefinition(
                      24
                  )
              ],
-         u64(
-             TypeFlags.BASETYPE.value | TypeFlags.GC.value | TypeFlags.IMMUTABLE.value
-         ),
+         u64(TypeFlags.BASETYPE.value | TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          TypeHooks(
              create=simplequeue_new_new,
              dealloc=deallocate,

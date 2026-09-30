@@ -655,14 +655,6 @@ def bundled_pkg_roots -> list[str] {
     return roots;
 }
 
-"""Is `file_path` a module of the toolchain rather than of a program?
-
-A module belongs to the unit root it is keyed by (`native_unit_root`): a
-bundled package root (the jaclang package for the compiler, runtime and
-bundled stdlib, or the active kernel target's package), but a project with its
-own `jac.toml` (templates, examples, test fixtures) inside a package is a
-program like any other.
-"""
 def is_toolchain_unit(file_path: str) -> bool {
     import os;
     if not file_path {

@@ -319,7 +319,54 @@ impl NaIRGenPass._clib_reinterpret(
     return self._coerce_type(val, want);
 }
 
+impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    sig = decl.signature;
+    if not isinstance(sig, uni.FuncSignature) {
+        return "";
+    }
+    params: list[str] = [];
+    for p in sig.get_parameters() {
+        if p.is_vararg or p.is_kwargs {
+            continue;
+        }
+        if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
+            params.append("ptr");
+        } elif p.type_tag is not None and p.type_tag.tag is not None {
+            params.append(str(self._resolve_clib_type(p.type_tag.tag)));
+        } else {
+            params.append("i64");
+        }
+    }
+    if sig.varargs is not None {
+        params.append("...");
+    }
+    return f"({', '.join(params)}) -> {self._resolve_clib_type(sig.return_type)}";
+}
+
 impl NaIRGenPass._declare_clib_definitions -> None {
+    for (name, decl) in list(self._clib_definitions.items()) {
+        other = self._foreign_clib_abilities.get(name);
+        if other is None {
+            continue;
+        }
+        here = self._clib_abi_signature(decl);
+        there = self._clib_abi_signature(other);
+        if here == there {
+            continue;
+        }
+        owner = other.find_parent_of_type(uni.Module);
+        where = owner.loc.mod_path
+            if owner is not None and owner.loc
+            else "another module";
+        self.ctx.emit(
+            E1158,
+            node_override=decl,
+            name=name,
+            reason=f"takes the C symbol '{name}' that {where} declares as {there}, with a different signature {here}; rename one of them"
+        );
+        self._clib_definitions.pop(name, None);
+    }
     for (name, decl) in self._clib_definitions.items() {
         if c_variadic_param(decl.signature) is not None {
             self._maybe_declare_ability(decl, symbol=name);
@@ -375,11 +422,14 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
                 and all(pp["kind"] == "scalar" for pp in plan["params"])
                 and all(pp["argpos"] == i for (i, pp) in enumerate(plan["params"]))
             );
-        if _scalar_only and self._thunk_tail_call(cfunc, jac_fn) {
-            return;
-        }
         b = self.builder;
         i32 = ir.IntType(32);
+
+        if _scalar_only
+            and self._c_entry_tail_or_escape(cfunc, jac_fn)
+            and self._is_kernel_unit() {
+            return;
+        }
         saved = self._region_c_entry_escape();
         jac_args: list[ir.Value] = [];
         boxes: list[ir.Value] = [];
@@ -472,40 +522,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
     }
 }
 
-impl NaIRGenPass._c_tail_compatible(
-    cty: ir.FunctionType, jty: ir.FunctionType
-) -> bool {
-    """Whether a function of C type `cty` can `musttail` into a Jac body of type
-    `jty`, passing its own arguments on: each C parameter reaches the body
-    unchanged or as the same 64-bit word (a C pointer the body reads as
-    `ptr[T]`, an i64), the results agree, and the target keeps the frame.
-    """;
-    triple = str(self.llvm_module.triple or "");
-    if cty.var_arg
-        or jty.var_arg
-        or cty.return_type != jty.return_type
-        or len(cty.args) != len(jty.args)
-        or "wasm" in triple
-        or "i386" in triple
-        or "i686" in triple
-        or triple.startswith("arm-")
-        or triple.startswith("armv7") {
-        return False;
-    }
-    i64 = ir.IntType(64);
-    for (c_arg, j_arg) in zip(cty.args, jty.args) {
-        if c_arg == j_arg {
-            continue;
-        }
-        if isinstance(c_arg, ir.PointerType) and j_arg == i64 {
-            continue;
-        }
-        return False;
-    }
-    return True;
-}
-
-impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
+impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
     """Emit an exported C symbol's thunk as one `musttail` jump into its body.
 
     A C function defined in Jac is a thunk around the internal Jac body. When
@@ -520,10 +537,58 @@ impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bo
     """;
     cty = cfunc.function_type;
     jty = jac_fn.function_type;
-    if (cfunc.calling_convention or "") != (jac_fn.calling_convention or "")
-        or not self._c_tail_compatible(cty, jty) {
+    triple = str(self.llvm_module.triple or "");
+    if cty.var_arg
+        or jty.var_arg
+        or len(cty.args) != len(jty.args)
+        or (cfunc.calling_convention or "") != (jac_fn.calling_convention or "")
+        or "wasm" in triple
+        or "i386" in triple
+        or "i686" in triple
+        or triple.startswith("arm-")
+        or triple.startswith("armv7") {
         return False;
     }
+    i64 = ir.IntType(64);
+
+    for (c_arg, j_arg) in zip(cty.args, jty.args) {
+        if c_arg == j_arg {
+            continue;
+        }
+        if isinstance(c_arg, ir.PointerType) and j_arg == i64 {
+            continue;
+        }
+        return False;
+    }
+    c_ret = cty.return_type;
+    j_ret = jty.return_type;
+    return c_ret == j_ret or (isinstance(c_ret, ir.PointerType) and j_ret == i64);
+}
+
+impl NaIRGenPass._c_entry_tail_or_escape(
+    c_entry: ir.Function, jac_fn: ir.Function
+) -> bool {
+    if not self._thunk_tail_callable(c_entry, jac_fn) {
+        return False;
+    }
+    if self._is_kernel_unit() {
+        self._thunk_tail_call(c_entry, jac_fn);
+        return True;
+    }
+    b = self.builder;
+    opened = self._region_open_test();
+    escape_bb = c_entry.append_basic_block("centry.region.open");
+    tail_bb = c_entry.append_basic_block("centry.tail");
+    b.cbranch(opened, escape_bb, tail_bb);
+    b.position_at_end(tail_bb);
+    self._thunk_tail_call(c_entry, jac_fn);
+    b.position_at_end(escape_bb);
+    return True;
+}
+
+impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None {
+    cty = cfunc.function_type;
+    jty = jac_fn.function_type;
     b = self.builder;
     target = jac_fn
         if cty == jty
@@ -535,5 +600,4 @@ impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> bo
     } else {
         b.ret(call);
     }
-    return True;
 }

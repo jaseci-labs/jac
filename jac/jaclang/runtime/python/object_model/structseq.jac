@@ -36,8 +36,6 @@ import from jaclang.runtime.python.cpython_api {
     PyMethodDef,
     PyObject,
     PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
     PySequence_Fast,
     PyTuple_New,
     PyType_FromSpecWithBases,
@@ -98,13 +96,15 @@ import from jaclang.runtime.python.layouts {
     _object
 }
 import from jaclang.runtime.python.object_model.header {
-    PyType_Type,
     fast_items,
     object_decref,
+    object_gc_track,
+    object_gc_untrack,
     object_new_ref,
     object_size,
-    object_xdecref,
     object_type,
+    object_xdecref,
+    PyType_Type,
     tuple_get_item,
     tuple_items,
     type_has_feature
@@ -252,7 +252,7 @@ def structseq_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
 }
 
 def structseq_dealloc(op: ptr[PyObject]) {
-    PyObject_GC_UnTrack(op);
+    object_gc_untrack(op);
     tp = object_type(op);
     # gh-122527: the size comes from the object, not the type's dictionary,
     # which the garbage collector may have cleared already.
@@ -396,7 +396,7 @@ def structseq_new_impl(
             (items + i).view(1)[0] = Py_NewRef(Py_None);
         }
     }
-    PyObject_GC_Track(res);
+    object_gc_track(res);
     return res;
 }
 
@@ -550,7 +550,7 @@ def structseq_replace(
             (result_items + i).view(1)[0] = Py_NewRef((items + i).view(1)[0]);
         }
     }
-    PyObject_GC_Track(result);
+    object_gc_track(result);
     return result;
 }
 

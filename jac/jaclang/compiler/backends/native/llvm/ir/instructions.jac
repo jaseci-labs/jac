@@ -537,6 +537,7 @@ class LoadInstr(Instruction) {
         }
         super.init(parent, typ, "load", [ptr], name=name);
         self.align = None;
+        self.volatile = False;
     }
 
     def descr(self: LoadInstr, buf: any) -> object {
@@ -547,7 +548,8 @@ class LoadInstr(Instruction) {
             align = '';
         }
         buf.append(
-            "load {0}, {1} {2}{3}{4}\n".format(
+            "load {0}{1}, {2} {3}{4}{5}\n".format(
+                "volatile " if self.volatile else "",
                 self.type,
                 val.type,
                 val.get_reference(),
@@ -562,6 +564,7 @@ class StoreInstr(Instruction) {
     def init(self: StoreInstr, parent: any, val: any, ptr: any) -> object {
         super.init(parent, types.VoidType(), "store", [val, ptr]);
         self.align = None;
+        self.volatile = False;
     }
 
     def descr(self: StoreInstr, buf: any) -> object {
@@ -572,7 +575,8 @@ class StoreInstr(Instruction) {
             align = '';
         }
         buf.append(
-            "store {0} {1}, {2} {3}{4}{5}\n".format(
+            "store {0}{1} {2}, {3} {4}{5}{6}\n".format(
+                "volatile " if self.volatile else "",
                 val.type,
                 val.get_reference(),
                 ptr.type,

@@ -321,17 +321,6 @@ obj LinkPlan {
     }
 }
 
-"""The order the units' module initializers run in.
-
-Imports first, as Python runs them: a depth-first walk from the roots runs a
-unit's initializer after those of the units it imports, in import order, and
-a unit already on the walk (an import cycle) counts as started. A unit whose
-initializer reads globals another unit's initializer computes then runs after
-that unit wherever the walk placed the two, so a cycle is ordered by what its
-initializers read. When two initializers read each other's globals no order
-works, and the plan fails naming the reads instead of linking a program that
-reads an uninitialized global.
-"""
 def initialization_order(units: list[LinkUnit], roots: list[str]) -> list[LinkUnit] {
     by_path: dict[str, LinkUnit] = {u.path: u for u in units};
     imports: dict[str, list[str]] = {

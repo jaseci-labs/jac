@@ -187,6 +187,8 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
+        self._volatilize_setjmp_locals();
+        self._exc_context_cache = {};
         self.module.gen.llvm_ir = self.llvm_module;
         self.module.gen.native_deps = list(self._native_dep_paths);
 
@@ -1979,6 +1981,9 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
+                if fn_name and module is not self.module {
+                    self._foreign_clib_abilities.setdefault(fn_name, decl);
+                }
 
                 _is_empty_list = isinstance(decl.body, list) and not decl.body;
                 if decl.body is not None and not _is_empty_list {

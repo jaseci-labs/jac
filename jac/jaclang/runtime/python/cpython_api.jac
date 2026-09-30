@@ -912,9 +912,9 @@ import from c {
         value: f64, address: ptr, size: i64, little: i64
     ) -> i64;  def jacpy_float_repr(value: ptr[PyObject]) -> ptr[PyObject];  def jacpy_float_unpack(
         address: ptr, size: i64, little: i64
-    ) -> f64;  def jacpy_float_value(handle: ptr[PyObject]) -> f64;  def jacpy_freelists -> ptr[
-        _Py_freelists
-    ];  def jacpy_fs_text(text: ptr) -> ptr[PyObject];  def jacpy_hacl_simd_features -> i64;  def jacpy_hash_unsigned(
+    ) -> f64;  def jacpy_float_value(handle: ptr[PyObject]) -> f64;  def jacpy_fs_text(
+        text: ptr
+    ) -> ptr[PyObject];  def jacpy_hacl_simd_features -> i64;  def jacpy_hash_unsigned(
         handle: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_interpreter_finalizing -> i64;  def jacpy_is_bool(
         value: ptr[PyObject]
