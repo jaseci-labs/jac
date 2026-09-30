@@ -6,6 +6,19 @@ import subprocess;
 import from pathlib { Path }
 
 
+def _js_engine_override -> str | None {
+    enabled = os.environ.get('ENABLE_JS_ENGINE', '').strip().lower();
+    if enabled in {'', '0', 'false', 'no', 'off'} {
+        return None;
+    }
+    configured = os.environ.get('JS_ENGINE_BIN', '').strip();
+    if configured and os.path.isfile(configured) {
+        return configured;
+    }
+    return shutil.which('js_engine');
+}
+
+
 def build_native_product(base: Path, record: dict[str, any]) {
     source = base / record['source'];
     output = base / record['output'];
@@ -79,7 +92,7 @@ def build(base: Path) {
             build_native_product(directory, application['native']);
         }
         if application.get('client_dist') {
-            bun = shutil.which('bun');
+            bun = _js_engine_override() or shutil.which('bun');
             if bun {
                 subprocess.run([bun, 'install'], cwd=directory, check=True);
                 subprocess.run([bun, 'run', 'build'], cwd=directory, check=True);
