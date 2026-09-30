@@ -3,21 +3,14 @@
 The Pattern, Match, Scanner and Template types are heap types made from C
 data specs, as sre.c makes them, with the member, getter and slot tables of
 the C module; the Pattern and Scanner specs are their types' tokens, which
-the clinic glue's defining_class finds. Methods take their arguments the
-Argument Clinic way. The calls a regular expression makes most (Pattern.match_object,
-search, fullmatch, findall, finditer, sub, subn and split, the Match group
-accessors and the scanner steps) bind their positional arguments directly;
-a call with keywords or with arguments that need conversion goes through the
-generated glue, so its errors are the C module's. See ../LICENSE.cpython.
+the clinic glue's defining_class finds. Methods take their arguments
+through the generated clinic glue, and Match.group through a METH_VARARGS
+callback as in the C. See ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyErr_Occurred,
-    PyLong_AsSsize_t,
-    PyLong_FromSsize_t,
     PyLong_FromUnsignedLong,
-    PyLong_Type,
     PyMemberDef,
     PyMethodDef,
     PyModule_Add,
@@ -35,7 +28,6 @@ import from jaclang.runtime.python.layouts {
     METH_O,
     METH_VARARGS,
     PyGetSetDef,
-    PyTypeObject,
     Py_READONLY,
     Py_TPFLAGS_DEFAULT,
     Py_TPFLAGS_DISALLOW_INSTANTIATION,
@@ -57,7 +49,6 @@ import from jaclang.runtime.python.layouts {
     Py_tp_traverse,
     _Py_T_OBJECT
 }
-import from jaclang.runtime.python.object_model.header { object_type }
 import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
     MethodCallbacks,
@@ -87,7 +78,6 @@ import from jaclang.runtime.python.modules.sre {
     PATTERN_PATTERN,
     PATTERN_SIZE,
     PATTERN_WEAKREFLIST,
-    PY_SSIZE_T_MAX,
     SCANNER_PATTERN,
     SCANNER_SIZE,
     SRE_CODE_SIZE,
@@ -101,22 +91,6 @@ import from jaclang.runtime.python.modules.sre {
     STATE_TEMPLATE_TYPE,
     TEMPLATE_ITEM_SIZE,
     TEMPLATE_SIZE,
-    _sre_SRE_Match_end_impl,
-    _sre_SRE_Match_groupdict_impl,
-    _sre_SRE_Match_groups_impl,
-    _sre_SRE_Match_span_impl,
-    _sre_SRE_Match_start_impl,
-    _sre_SRE_Pattern_findall_impl,
-    _sre_SRE_Pattern_finditer_impl,
-    _sre_SRE_Pattern_fullmatch_impl,
-    _sre_SRE_Pattern_match_impl,
-    _sre_SRE_Pattern_scanner_impl,
-    _sre_SRE_Pattern_search_impl,
-    _sre_SRE_Pattern_split_impl,
-    _sre_SRE_Pattern_sub_impl,
-    _sre_SRE_Pattern_subn_impl,
-    _sre_SRE_Scanner_match_impl,
-    _sre_SRE_Scanner_search_impl,
     match_dealloc,
     match_getitem,
     match_group,
@@ -141,400 +115,7 @@ import from jaclang.runtime.python.modules.sre {
     template_traverse
 }
 
-# -------------------------------------------------------- the fast calls
-
-import from c {
-    # A METH_FASTCALL | METH_KEYWORDS callback, and a METH_FASTCALL one.
-    obj KeywordCall {
-        has call:
-            Callable[
-                [ptr[PyObject], ptr[ptr[PyObject]], i64, ptr[PyObject]],
-                ptr[PyObject]
-            ] = 0;
-    }  obj VectorCall {
-        has call: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0;
-    }
-    # The generated glue of the methods below, by the SLOW_* index: the
-    # path of a call the fast binding does not take.
-    glob:priv slow_keywords: list[KeywordCall] = [
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall(),
-             KeywordCall()
-         ],
-         slow_vector: list[VectorCall] = [VectorCall(), VectorCall(), VectorCall()];
-}
-
-glob:priv SLOW_MATCH: Final[int] = 0,
-     SLOW_FULLMATCH: Final[int] = 1,
-     SLOW_SEARCH: Final[int] = 2,
-     SLOW_FINDALL: Final[int] = 3,
-     SLOW_FINDITER: Final[int] = 4,
-     SLOW_SCANNER: Final[int] = 5,
-     SLOW_SPLIT: Final[int] = 6,
-     SLOW_SUB: Final[int] = 7,
-     SLOW_SUBN: Final[int] = 8,
-     SLOW_GROUPS: Final[int] = 9,
-     SLOW_GROUPDICT: Final[int] = 10,
-     SLOW_SCANNER_MATCH: Final[int] = 11,
-     SLOW_SCANNER_SEARCH: Final[int] = 12,
-     SLOW_START: Final[int] = 0,
-     SLOW_END: Final[int] = 1,
-     SLOW_SPAN: Final[int] = 2;
-
-def:priv slow_keyword_call(
-    index: int,
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    record: ptr[KeywordCall] = addressof(slow_keywords) + index;
-    return record.view(1)[0].call(receiver, args, nargs, kwnames);
-}
-
-def:priv slow_vector_call(
-    index: int, receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    record: ptr[VectorCall] = addressof(slow_vector) + index;
-    return record.view(1)[0].call(receiver, args, nargs);
-}
-
-# args[index]
-def:priv argument(args: ptr[ptr[PyObject]], index: int) -> ptr[PyObject] {
-    return (args + index).view(1)[0];
-}
-
-# An argument the Py_ssize_t converter takes without calling back into
-# Python: an exact int.
-def:priv plain_int(value: ptr[PyObject]) -> bool {
-    return object_type(value) == ptr[PyTypeObject](addressof(PyLong_Type));
-}
-
-# Whether the optional Py_ssize_t arguments from `first` bind directly.
-def:priv direct_ints(
-    args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject], first: int
-) -> bool {
-    if kwnames {
-        return False;
-    }
-    for index in range(first, int(nargs)) {
-        if not plain_int(argument(args, index)) {
-            return False;
-        }
-    }
-    return True;
-}
-
-# An optional Py_ssize_t argument (an exact int); `default` when absent.
-# -1 with the exception set on overflow, as the converter fails.
-def:priv ssize_argument(
-    args: ptr[ptr[PyObject]], nargs: i64, index: int, default_value: i64
-) -> i64 {
-    if nargs <= index {
-        return default_value;
-    }
-    return PyLong_AsSsize_t(argument(args, index));
-}
-
-def:priv failed -> bool {
-    return not PyErr_Occurred().is_null();
-}
-
-# (string, pos=0, endpos=sys.maxsize) methods of Pattern, by SLOW_* index.
-def:priv pattern_string_call(
-    kind: int,
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if nargs < 1 or nargs > 3 or not direct_ints(args, nargs, kwnames, 1) {
-        return slow_keyword_call(kind, receiver, args, nargs, kwnames);
-    }
-    pos = ssize_argument(args, nargs, 1, 0);
-    if pos == -1 and failed() {
-        return NULL;
-    }
-    endpos = ssize_argument(args, nargs, 2, PY_SSIZE_T_MAX);
-    if endpos == -1 and failed() {
-        return NULL;
-    }
-    string = argument(args, 0);
-    # A Pattern is not subclassable, so its type is the defining class.
-    cls = ptr[PyObject](object_type(receiver));
-    if kind == SLOW_MATCH {
-        return _sre_SRE_Pattern_match_impl(receiver, cls, string, pos, endpos);
-    }
-    if kind == SLOW_FULLMATCH {
-        return _sre_SRE_Pattern_fullmatch_impl(receiver, cls, string, pos, endpos);
-    }
-    if kind == SLOW_SEARCH {
-        return _sre_SRE_Pattern_search_impl(receiver, cls, string, pos, endpos);
-    }
-    if kind == SLOW_FINDALL {
-        return _sre_SRE_Pattern_findall_impl(receiver, string, pos, endpos);
-    }
-    if kind == SLOW_FINDITER {
-        return _sre_SRE_Pattern_finditer_impl(receiver, cls, string, pos, endpos);
-    }
-    return _sre_SRE_Pattern_scanner_impl(receiver, cls, string, pos, endpos);
-}
-
-def:priv pattern_match_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_string_call(SLOW_MATCH, receiver, args, nargs, kwnames);
-}
-
-def:priv pattern_fullmatch_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_string_call(SLOW_FULLMATCH, receiver, args, nargs, kwnames);
-}
-
-def:priv pattern_search_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_string_call(SLOW_SEARCH, receiver, args, nargs, kwnames);
-}
-
-def:priv pattern_findall_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_string_call(SLOW_FINDALL, receiver, args, nargs, kwnames);
-}
-
-def:priv pattern_finditer_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_string_call(SLOW_FINDITER, receiver, args, nargs, kwnames);
-}
-
-def:priv pattern_scanner_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_string_call(SLOW_SCANNER, receiver, args, nargs, kwnames);
-}
-
-# split(string, maxsplit=0)
-def:priv pattern_split_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if nargs < 1 or nargs > 2 or not direct_ints(args, nargs, kwnames, 1) {
-        return slow_keyword_call(SLOW_SPLIT, receiver, args, nargs, kwnames);
-    }
-    maxsplit = ssize_argument(args, nargs, 1, 0);
-    if maxsplit == -1 and failed() {
-        return NULL;
-    }
-    return _sre_SRE_Pattern_split_impl(receiver, argument(args, 0), maxsplit);
-}
-
-# sub(repl, string, count=0) and subn()
-def:priv pattern_sub_call(
-    subn: bool,
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if nargs < 2 or nargs > 3 or not direct_ints(args, nargs, kwnames, 2) {
-        return slow_keyword_call(
-            SLOW_SUBN if subn else SLOW_SUB, receiver, args, nargs, kwnames
-        );
-    }
-    count = ssize_argument(args, nargs, 2, 0);
-    if count == -1 and failed() {
-        return NULL;
-    }
-    cls = ptr[PyObject](object_type(receiver));
-    if subn {
-        return _sre_SRE_Pattern_subn_impl(
-            receiver, cls, argument(args, 0), argument(args, 1), count
-        );
-    }
-    return _sre_SRE_Pattern_sub_impl(
-        receiver, cls, argument(args, 0), argument(args, 1), count
-    );
-}
-
-def:priv pattern_sub_fast(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_sub_call(False, receiver, args, nargs, kwnames);
-}
-
-def:priv pattern_subn_fast(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return pattern_sub_call(True, receiver, args, nargs, kwnames);
-}
-
-# Match.groups(default=None) and groupdict(default=None)
-def:priv match_groups_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if kwnames or nargs > 1 {
-        return slow_keyword_call(SLOW_GROUPS, receiver, args, nargs, kwnames);
-    }
-    default_value = argument(args, 0) if nargs == 1 else Py_None;
-    return _sre_SRE_Match_groups_impl(receiver, default_value);
-}
-
-def:priv match_groupdict_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if kwnames or nargs > 1 {
-        return slow_keyword_call(SLOW_GROUPDICT, receiver, args, nargs, kwnames);
-    }
-    default_value = argument(args, 0) if nargs == 1 else Py_None;
-    return _sre_SRE_Match_groupdict_impl(receiver, default_value);
-}
-
-# Match.start(group=0, /), end() and span()
-def:priv match_start_call(
-    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    if nargs > 1 {
-        return slow_vector_call(SLOW_START, receiver, args, nargs);
-    }
-    value = _sre_SRE_Match_start_impl(
-        receiver, argument(args, 0) if nargs == 1 else NULL
-    );
-    if value == -1 and failed() {
-        return NULL;
-    }
-    return PyLong_FromSsize_t(value);
-}
-
-def:priv match_end_call(
-    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    if nargs > 1 {
-        return slow_vector_call(SLOW_END, receiver, args, nargs);
-    }
-    value = _sre_SRE_Match_end_impl(
-        receiver, argument(args, 0) if nargs == 1 else NULL
-    );
-    if value == -1 and failed() {
-        return NULL;
-    }
-    return PyLong_FromSsize_t(value);
-}
-
-def:priv match_span_call(
-    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
-) -> ptr[PyObject] {
-    if nargs > 1 {
-        return slow_vector_call(SLOW_SPAN, receiver, args, nargs);
-    }
-    return _sre_SRE_Match_span_impl(
-        receiver, argument(args, 0) if nargs == 1 else NULL
-    );
-}
-
-# Scanner.match() and search()
-def:priv scanner_match_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if kwnames or nargs != 0 {
-        return slow_keyword_call(SLOW_SCANNER_MATCH, receiver, args, nargs, kwnames);
-    }
-    return _sre_SRE_Scanner_match_impl(receiver, ptr[PyObject](object_type(receiver)));
-}
-
-def:priv scanner_search_call(
-    receiver: ptr[PyObject],
-    args: ptr[ptr[PyObject]],
-    nargs: i64,
-    kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    if kwnames or nargs != 0 {
-        return slow_keyword_call(SLOW_SCANNER_SEARCH, receiver, args, nargs, kwnames);
-    }
-    return _sre_SRE_Scanner_search_impl(receiver, ptr[PyObject](object_type(receiver)));
-}
-
 # --------------------------------------------------------- method tables
-
-# `definitions` with the direct callbacks of `direct` (name -> callbacks),
-# whose generated glue each goes to the slow slot `fallback[name]` names.
-def:priv bind_methods(
-    definitions: list[MethodDefinition],
-    direct: dict[str, MethodCallbacks],
-    fallback: dict[str, int]
-) -> list[MethodDefinition] {
-    bound: list[MethodDefinition] = [];
-    for definition in definitions {
-        if definition.name in direct {
-            index = fallback[definition.name];
-            if definition.callbacks.fast_keywords {
-                record: ptr[KeywordCall] = addressof(slow_keywords) + index;
-                record.view(1)[0].call = definition.callbacks.fast_keywords;
-            } else {
-                vector: ptr[VectorCall] = addressof(slow_vector) + index;
-                vector.view(1)[0].call = definition.callbacks.fast;
-            }
-            bound.append(
-                MethodDefinition(
-                    definition.name,
-                    direct[definition.name],
-                    definition.doc,
-                    definition.flags
-                )
-            );
-        } else {
-            bound.append(definition);
-        }
-    }
-    return bound;
-}
 
 def:priv class_getitem(doc: str) -> MethodDefinition {
     return MethodDefinition(
@@ -546,31 +127,7 @@ def:priv class_getitem(doc: str) -> MethodDefinition {
 }
 
 def:priv pattern_methods -> ptr[PyMethodDef] {
-    methods = bind_methods(
-        SRE_Pattern_methods,
-        {
-            "match": MethodCallbacks(fast_keywords=pattern_match_call),
-            "fullmatch": MethodCallbacks(fast_keywords=pattern_fullmatch_call),
-            "search": MethodCallbacks(fast_keywords=pattern_search_call),
-            "sub": MethodCallbacks(fast_keywords=pattern_sub_fast),
-            "subn": MethodCallbacks(fast_keywords=pattern_subn_fast),
-            "findall": MethodCallbacks(fast_keywords=pattern_findall_call),
-            "split": MethodCallbacks(fast_keywords=pattern_split_call),
-            "finditer": MethodCallbacks(fast_keywords=pattern_finditer_call),
-            "scanner": MethodCallbacks(fast_keywords=pattern_scanner_call)
-        },
-        {
-            "match": SLOW_MATCH,
-            "fullmatch": SLOW_FULLMATCH,
-            "search": SLOW_SEARCH,
-            "sub": SLOW_SUB,
-            "subn": SLOW_SUBN,
-            "findall": SLOW_FINDALL,
-            "split": SLOW_SPLIT,
-            "finditer": SLOW_FINDITER,
-            "scanner": SLOW_SCANNER
-        }
-    );
+    methods = list(SRE_Pattern_methods);
     methods.append(
         class_getitem(
             "Patterns are generic over the type of string they handle (str or bytes)"
@@ -588,25 +145,7 @@ def:priv match_methods -> ptr[PyMethodDef] {
             i64(METH_VARARGS)
         )
     ];
-    methods.extend(
-        bind_methods(
-            SRE_Match_methods,
-            {
-                "start": MethodCallbacks(fast=match_start_call),
-                "end": MethodCallbacks(fast=match_end_call),
-                "span": MethodCallbacks(fast=match_span_call),
-                "groups": MethodCallbacks(fast_keywords=match_groups_call),
-                "groupdict": MethodCallbacks(fast_keywords=match_groupdict_call)
-            },
-            {
-                "start": SLOW_START,
-                "end": SLOW_END,
-                "span": SLOW_SPAN,
-                "groups": SLOW_GROUPS,
-                "groupdict": SLOW_GROUPDICT
-            }
-        )
-    );
+    methods.extend(SRE_Match_methods);
     methods.append(
         class_getitem(
             "Matches are generic over the type of string which was matched (str or bytes)"
@@ -616,16 +155,7 @@ def:priv match_methods -> ptr[PyMethodDef] {
 }
 
 def:priv scanner_methods -> ptr[PyMethodDef] {
-    return method_table(
-        bind_methods(
-            SRE_Scanner_methods,
-            {
-                "match": MethodCallbacks(fast_keywords=scanner_match_call),
-                "search": MethodCallbacks(fast_keywords=scanner_search_call)
-            },
-            {"match": SLOW_SCANNER_MATCH, "search": SLOW_SCANNER_SEARCH}
-        )
-    );
+    return method_table(SRE_Scanner_methods);
 }
 
 # ------------------------------------------------------------- the types
