@@ -79,6 +79,40 @@ def verify(library_path: Path) {
 }
 
 
+# The staged units: `roots` and every runtime/python module they import,
+# transitively, with each module's platform variants and impl files, so the
+# copy resolves the same imports the package does.
+def staged_sources(sources: Path, roots: list[str]) -> list[str] {
+    import re;
+    staged: list[str] = [];
+    pending = list(roots);
+    while pending {
+        relative = pending.pop();
+        if relative in staged or not (sources / relative).is_file() {
+            continue;
+        }
+        staged.append(relative);
+        module = sources / relative;
+        stem = module.name[:-len(".jac")];
+        for sibling in sorted(module.parent.glob(f"{stem}.*.jac")) {
+            pending.append(str(sibling.relative_to(sources)));
+        }
+        impl_dir = module.parent / f"{stem}.impl";
+        if impl_dir.is_dir() {
+            for part in sorted(impl_dir.glob("*.jac")) {
+                pending.append(str(part.relative_to(sources)));
+            }
+        }
+        for name in re.findall(r"import from jaclang\.([\w.]+)", module.read_text()) {
+            target = name.replace(".", "/") + ".jac";
+            if target.startswith("runtime/python/") {
+                pending.append(target);
+            }
+        }
+    }
+    return staged;
+}
+
 def main -> int {
     parser = argparse.ArgumentParser(description=__doc__);
     parser.add_argument("--verify-library", `type=Path);
@@ -93,16 +127,19 @@ def main -> int {
         stage = Path(temporary);
         # Keep these compilation units out of the compiler's own self-host
         # program. Preserve the package hierarchy and never edit the checkout.
-        for relative in [
-            "runtime/python/objects.jac",
-            "runtime/python/compiler_integer.jac",
-            "runtime/python/opcode_meta.jac",
-            "runtime/python/cpython_api.jac",
-            "runtime/python/capi.jac",
-            "runtime/python/constant_keys.jac",
-            "runtime/python/constant_output.jac",
-            "compiler/frontend/python/syntax_error.jac"
-        ] {
+        for relative in staged_sources(
+            sources,
+            [
+                "runtime/python/objects.jac",
+                "runtime/python/compiler_integer.jac",
+                "runtime/python/opcode_meta.jac",
+                "runtime/python/cpython_api.jac",
+                "runtime/python/capi.jac",
+                "runtime/python/constant_keys.jac",
+                "runtime/python/constant_output.jac",
+                "compiler/frontend/python/syntax_error.jac"
+            ]
+        ) {
             destination = stage / "native_subject" / relative;
             destination.parent.mkdir(parents=True, exist_ok=True);
             destination.write_text(
