@@ -25,7 +25,7 @@ glob logger = logging.getLogger(__name__),
      JOB_COLUMNS = (
          "id, service, queue, target, args, key, status, run_at, attempts, "
          "max_attempts, timeout_s, lease_owner, lease_until, last_error, "
-         "created_at, updated_at"
+         "created_at, updated_at, as_root, enqueued_by"
      ),
      __all__ = [
          'JobInfo',
@@ -35,7 +35,9 @@ glob logger = logging.getLogger(__name__),
          'job_info',
          'use_store',
          'bind_service',
+         'bind_system_root',
          'target_name',
+         'root_hex',
          'STATUS_QUEUED',
          'STATUS_RUNNING',
          'STATUS_DONE',
@@ -65,7 +67,9 @@ obj JobInfo {
         lease_until: str = "",
         last_error: str = "",
         created_at: str = "",
-        updated_at: str = "";
+        updated_at: str = "",
+        as_root: str = "",
+        enqueued_by: str = "";
 }
 
 
@@ -80,7 +84,9 @@ obj JobQueueStore {
         key: str = "",
         run_at: (datetime | None) = None,
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-        timeout_s: float = 0.0
+        timeout_s: float = 0.0,
+        as_root: str = "",
+        enqueued_by: str = ""
     ) -> str;
 
     def claim(queue: str, owner: str, lease_s: float) -> (JobInfo | None);
@@ -98,6 +104,7 @@ obj JobQueueStore {
 obj _QueueState {
     has explicit: (JobQueueStore | None) = None,
         service: str = "",
+        system_roots: set[str] = set(),
         warned_disabled: bool = False;
 }
 
@@ -107,6 +114,7 @@ glob _state: _QueueState = _QueueState();
 
 def use_store(store: (JobQueueStore | None)) -> None;
 def bind_service(service: str) -> None;
+def bind_system_root(root_id: str) -> None;
 def target_name(target: any) -> str;
 
 def enqueue(
@@ -116,7 +124,8 @@ def enqueue(
     queue: str = DEFAULT_QUEUE,
     run_at: (datetime | str | None) = None,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-    timeout_s: float = 0.0
+    timeout_s: float = 0.0,
+    as_root: any = None
 ) -> str;
 
 def cancel(job_id: str) -> bool;
@@ -128,3 +137,7 @@ def _parse_run_at(run_at: (datetime | str | None)) -> (datetime | None);
 def _configured_queues -> list[str];
 def _store_for_request(writable: bool = True) -> JobQueueStore;
 def _warn_if_disabled -> None;
+def root_hex(value: any) -> str;
+def _is_system_root(candidate: str) -> bool;
+def _system_targets -> list[str];
+def _resolve_identity(target: str, as_root: any) -> tuple[str, str];

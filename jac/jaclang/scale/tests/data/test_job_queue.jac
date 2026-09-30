@@ -349,10 +349,11 @@ test "cancel stops only a job that has not started" {
 }
 
 
-test "a served app runs a private walker from a sibling module and times out a hung one" {
+test "a served job runs as the root that queued it, commits with it, and dies with it" {
     import shutil;
     import tempfile;
     import from pathlib { Path }
+    import from jaclang.server.shared_store { shared_store }
     import from jaclang.scale.config.config_loader {
         get_scale_config,
         reset_scale_config
@@ -368,48 +369,123 @@ test "a served app runs a private walker from a sibling module and times out a h
     try {
         client = ScaleTestClient.from_file(str(Path(tmp) / "app.jac"), base_path=tmp);
         server = client.server;
-        for ext in server.extensions {
-            ext.on_worker_start(server);
+        ext: any = None;
+        for candidate in server.extensions {
+            candidate.on_worker_start(server);
+            if isinstance(candidate, JobQueueExtension) {
+                ext = candidate;
+            }
         }
-        auth = {
-            "Authorization": f"Bearer {client.register_and_login(
-                'jobs_user', 'Passw0rd!long'
-            )}"
-        };
-        cases: list[tuple[bool, str, str, float]] = [
-            (False, "done", "", 10.0),
-            (True, "dead", "ran past timeout_s=0.5", 2.5)
-        ];
-        for (hang, status, error, budget) in cases {
-            queued = extract_data(
-                client.post(
-                    "/walker/QueueReview",
-                    json={"run_id": f"r-{hang}", "hang": hang},
-                    headers=auth
-                ).json()
+        users = server.user_manager;
+        def _login(name: str) -> tuple[dict[str, str], str] {
+            token = client.register_and_login(name, "Passw0rd!long");
+            user = users.find_user_by_identity(name);
+            user_root = str(users.get_root_id(str(user.get("user_id")))).replace(
+                "-", ""
             );
-            job_id = queued["reports"][0]["job_id"];
+            return ({"Authorization": f"Bearer {token}"}, user_root);
+        }
+        (auth_a, root_a) = _login("jobs_tenant_a");
+        (auth_b, root_b) = _login("jobs_tenant_b");
+        def _post(path: str, body: dict[str, any]) -> dict[str, any] {
+            return extract_data(client.post(path, json=body, headers=auth_a).json());
+        }
+        def _settle(job_id: str, status: str, budget: float) -> dict[str, any] {
             started = time.monotonic();
             seen: dict[str, any] = {};
             while time.monotonic() - started < budget {
-                seen = extract_data(
-                    client.post(
-                        "/walker/ReviewStatus", json={"job_id": job_id}, headers=auth
-                    ).json()
-                )["reports"][0];
+                status_reply = _post("/walker/ReviewStatus", {"job_id": job_id});
+                assert "reports" in status_reply , f"status {job_id}: {status_reply}";
+                seen = status_reply["reports"][0];
                 if seen["status"] == status {
                     break;
                 }
                 time.sleep(0.1);
             }
-            assert seen.get("status") == status , f"hang={hang}: {seen} after {budget}s";
-            assert error in seen["last_error"] , f"hang={hang}: {seen['last_error']}";
+            return seen;
         }
+        cases: list[tuple[str, dict[str, any], dict[str, any]]] = [
+            (
+                "omitted as_root runs as the caller's root",
+                {"run_id": "own"},
+                {"status": "done", "as_root": root_a, "enqueued_by": root_a}
+            ),
+            (
+                "the caller's own root is accepted",
+                {"run_id": "explicit", "as_root": root_a},
+                {"status": "done", "as_root": root_a}
+            ),
+            (
+                "another tenant's root is refused",
+                {"run_id": "foreign", "as_root": root_b},
+                {"error": "cannot queue a job for root"}
+            ),
+            (
+                "a system target runs as the system user",
+                {"run_id": "system", "housekeeping": True},
+                {"status": "done", "as_root": "", "enqueued_by": root_a}
+            ),
+            (
+                "a hung attempt is dead at timeout_s",
+                {"run_id": "hung", "hang": True},
+                {"status": "dead", "last_error": "ran past timeout_s=0.5"}
+            ),
+            (
+                "a walker that raises after enqueue leaves no job",
+                {
+                    "run_id": "rolled",
+                    "key": f"rollback:{uuid.uuid4().hex}",
+                    "fail_after": True
+                },
+                {"error": "", "no_job": True}
+            )
+        ];
+        review_target = "";
+        for (label, body, want) in cases {
+            reply = _post("/walker/QueueReview", body);
+            if "error" in want {
+                assert "error" in reply , f"{label}: accepted {reply}";
+                assert want["error"] in str(reply["error"]) , f"{label}: {reply}";
+                if want.get("no_job") {
+                    pg_shared: any = shared_store();
+                    rows = pg_shared.rows(
+                        "SELECT count(*) FROM jac_jobs WHERE key = :k",
+                        {'k': body["key"]}
+                    );
+                    assert int(rows[0][0]) == 0 , f"{label}: the job outlived its walker";
+                }
+                continue;
+            }
+            assert "reports" in reply , f"{label}: {reply}";
+            seen = _settle(
+                reply["reports"][0]["job_id"],
+                want["status"],
+                2.5 if body.get("hang") else 10.0
+            );
+            for (field, value) in want.items() {
+                if field == "last_error" {
+                    assert value in seen[field] , f"{label}: {seen}";
+                } else {
+                    assert seen.get(field) == value , f"{label}: {field} {seen}";
+                }
+            }
+            if body["run_id"] == "own" {
+                review_target = seen["target"];
+            }
+        }
+        gone = JobQueueStore(store=shared_store(), service=ext.service);
+        orphan = gone.insert(
+            "agents", review_target, {"run_id": "orphan"}, as_root=uuid.uuid4().hex
+        );
+        seen = _settle(orphan, "dead", 10.0);
+        assert seen["status"] == "dead" and seen["attempts"] == 1 , seen;
+        assert "no longer exists" in seen["last_error"] , seen;
     } finally {
         if client is not None {
-            for ext in client.server.extensions {
-                if isinstance(ext, JobQueueExtension) and ext.runner is not None {
-                    ext.runner.stop(1.0);
+            for candidate in client.server.extensions {
+                if isinstance(candidate, JobQueueExtension)
+                    and candidate.runner is not None {
+                    candidate.runner.stop(1.0);
                 }
             }
             client.close();

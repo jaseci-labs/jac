@@ -43,8 +43,16 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
         lease_until  timestamptz,
         last_error   text NOT NULL DEFAULT '',
         created_at   timestamptz NOT NULL DEFAULT now(),
-        updated_at   timestamptz NOT NULL DEFAULT now()
+        updated_at   timestamptz NOT NULL DEFAULT now(),
+        as_root      text NOT NULL DEFAULT '',
+        enqueued_by  text NOT NULL DEFAULT ''
     )
+    """,
+         """
+    ALTER TABLE jac_jobs ADD COLUMN IF NOT EXISTS as_root text NOT NULL DEFAULT ''
+    """,
+         """
+    ALTER TABLE jac_jobs ADD COLUMN IF NOT EXISTS enqueued_by text NOT NULL DEFAULT ''
     """,
          """
     CREATE INDEX IF NOT EXISTS idx_jac_jobs_due

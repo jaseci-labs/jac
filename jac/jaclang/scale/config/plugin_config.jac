@@ -1244,6 +1244,11 @@ class JacScalePluginConfig {
                             "type": "float",
                             "default": 604800.0,
                             "description": "Seconds a done or cancelled job is kept (its key stays deduplicated until then); 0 keeps them forever"
+                        },
+                        "system_targets": {
+                            "type": "list",
+                            "default": [],
+                            "description": "Walker or function names whose jobs always run as the internal system user, whoever queued them. Every other job runs as the root that queued it."
                         }
                     }
                 },

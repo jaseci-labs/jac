@@ -237,7 +237,7 @@ impl JobRunner._record(job: JobInfo, error: (Exception | None)) -> None {
         }
         return;
     }
-    if isinstance(error, JobTargetMissing) {
+    if isinstance(error, PermanentJobError) {
         self.store.fail(job, self.owner, str(error), permanent=True);
         logger.error(f"job {job.id} ({job.target}) is dead: {error}");
         return;

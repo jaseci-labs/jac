@@ -479,7 +479,10 @@ test "a [scale.jobs] setting that could never run a job is flagged" {
         ({"queues": {"agents": {"lease_s": 0.5}}}, ["lease_s", "1 or more"]),
         ({"queues": {"agents": 3}}, ["queues.agents must be a table"]),
         ({"poll_seconds": 0}, ["poll_seconds", "greater than 0"]),
-        ({"poll_seconds": -1.0}, ["poll_seconds", "greater than 0"])
+        ({"poll_seconds": -1.0}, ["poll_seconds", "greater than 0"]),
+        ({"system_targets": ["RebuildIndex"]}, []),
+        ({"system_targets": ["RebuildIndex", ""]}, ["system_targets", "list of"]),
+        ({"system_targets": [3]}, ["system_targets", "list of"])
     ];
     for (jobs, expected) in cases {
         msgs = validate_scale_config({"jobs": jobs});

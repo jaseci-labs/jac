@@ -10,10 +10,23 @@ glob logger = logging.getLogger(__name__),
      DEFAULT_POLL_S = 1.0,
      DEFAULT_RETENTION_S = 604800.0,
      MAINTAIN_CAP_S = 5.0,
-     __all__ = ['JobRunner', 'QueueSpec', 'JobTargetMissing', 'JobTimedOut'];
+     __all__ = [
+         'JobRunner',
+         'QueueSpec',
+         'PermanentJobError',
+         'JobTargetMissing',
+         'JobRootMissing',
+         'JobTimedOut'
+     ];
 
 
-class JobTargetMissing(Exception) {}
+class PermanentJobError(Exception) {}
+
+
+class JobTargetMissing(PermanentJobError) {}
+
+
+class JobRootMissing(PermanentJobError) {}
 
 
 class JobTimedOut(Exception) {}

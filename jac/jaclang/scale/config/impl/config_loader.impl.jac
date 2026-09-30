@@ -99,7 +99,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'enabled': False,
             'queues': {},
             'poll_seconds': 1.0,
-            'retention_seconds': 604800.0
+            'retention_seconds': 604800.0,
+            'system_targets': []
         },
         'telemetry': {'max_traces': 1000},
         'emailer': {
@@ -474,6 +475,11 @@ impl JacScaleConfig.get_jobs_config(self: JacScaleConfig) -> dict[str, any] {
         'enabled': bool(jobs_config.get('enabled', False)),
         'queues': queues,
         'poll_seconds': poll if poll is not None else 1.0,
+        'system_targets': [
+            str(name)
+            for name in (jobs_config.get('system_targets') or [])
+            if isinstance(name, str) and name
+        ],
         'retention_seconds': float(jobs_config.get('retention_seconds', 604800.0))
     };
 }

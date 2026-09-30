@@ -5,16 +5,18 @@ impl JobQueueStore.insert(
     key: str = "",
     run_at: (datetime | None) = None,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-    timeout_s: float = 0.0
+    timeout_s: float = 0.0,
+    as_root: str = "",
+    enqueued_by: str = ""
 ) -> str {
     rows = self.store.rows(
         """
         INSERT INTO jac_jobs
             (id, service, queue, target, args, key, status, run_at, max_attempts,
-             timeout_s)
+             timeout_s, as_root, enqueued_by)
         VALUES (
             :id, :svc, :q, :t, CAST(:a AS jsonb), :k, :st,
-            COALESCE(CAST(:r AS timestamptz), now()), :m, :to
+            COALESCE(CAST(:r AS timestamptz), now()), :m, :to, :root, :by
         )
         ON CONFLICT (key) DO NOTHING
         RETURNING id
@@ -29,7 +31,9 @@ impl JobQueueStore.insert(
             'st': STATUS_QUEUED,
             'r': run_at.isoformat() if run_at is not None else None,
             'm': int(max_attempts),
-            'to': float(timeout_s)
+            'to': float(timeout_s),
+            'root': as_root,
+            'by': enqueued_by
         }
     );
     if not rows {
@@ -226,6 +230,11 @@ impl bind_service(service: str) -> None {
 }
 
 
+impl bind_system_root(root_id: str) -> None {
+    _state.system_roots = _state.system_roots | {root_hex(root_id)};
+}
+
+
 impl target_name(target: any) -> str {
     import from jaclang.data.type_identity { TypeResolutionError, type_module }
     if isinstance(target, str) {
@@ -255,7 +264,8 @@ impl enqueue(
     queue: str = DEFAULT_QUEUE,
     run_at: (datetime | str | None) = None,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-    timeout_s: float = 0.0
+    timeout_s: float = 0.0,
+    as_root: any = None
 ) -> str {
     name = target_name(target);
     if int(max_attempts) < 1 {
@@ -277,6 +287,7 @@ impl enqueue(
             f"(declared: {', '.join(sorted(configured))})"
         );
     }
+    (run_root, caller) = _resolve_identity(name, as_root);
     _warn_if_disabled();
     return _store_for_request(writable=True).insert(
         queue,
@@ -285,7 +296,9 @@ impl enqueue(
         key=key,
         run_at=_parse_run_at(run_at),
         max_attempts=int(max_attempts),
-        timeout_s=float(timeout_s)
+        timeout_s=float(timeout_s),
+        as_root=run_root,
+        enqueued_by=caller
     );
 }
 
@@ -334,7 +347,9 @@ impl _row_to_job(row: tuple[any, ...]) -> JobInfo {
         lease_until=_iso(row[12]),
         last_error=str(row[13] or ""),
         created_at=_iso(row[14]),
-        updated_at=_iso(row[15])
+        updated_at=_iso(row[15]),
+        as_root=str(row[16] or ""),
+        enqueued_by=str(row[17] or "")
     );
 }
 
@@ -393,4 +408,50 @@ impl _warn_if_disabled -> None {
         "enqueue() wrote a job but [scale.jobs] is not enabled, so no runner in "
         "this process will run it. Set [scale.jobs] enabled = true."
     );
+}
+
+
+impl root_hex(value: any) -> str {
+    import from uuid { UUID }
+    anchor: any = value?.__jac__;
+    raw: any = anchor.id if anchor is not None else value;
+    try {
+        return UUID(str(raw)).hex;
+    } except (TypeError, ValueError) {
+        raise ValueError(f"as_root must be a root node or a root id, got {value!r}");
+    }
+}
+
+
+impl _is_system_root(candidate: str) -> bool {
+    import from jaclang.runtime.constants { Constants as Con }
+    return candidate == root_hex(Con.SUPER_ROOT_UUID)
+        or candidate in _state.system_roots;
+}
+
+
+impl _system_targets -> list[str] {
+    import from jaclang.scale.config.config_loader { get_scale_config }
+    return list(get_scale_config().get_jobs_config()['system_targets']);
+}
+
+
+impl _resolve_identity(target: str, as_root: any) -> tuple[str, str] {
+    import from jaclang { JacRuntime }
+    ctx = JacRuntime.peek_context();
+    caller = root_hex(ctx.user_root.id) if ctx is not None else "";
+    wanted = root_hex(as_root) if as_root is not None and as_root != "" else "";
+    if target.rsplit(':', 1)[-1] in _system_targets() {
+        return ("", caller);
+    }
+    if not caller or _is_system_root(caller) {
+        return (wanted, caller);
+    }
+    if wanted and wanted != caller {
+        raise PermissionError(
+            f"a request running as root {caller} cannot queue a job for root "
+            f"{wanted}; only system code may target another root"
+        );
+    }
+    return (caller, caller);
 }

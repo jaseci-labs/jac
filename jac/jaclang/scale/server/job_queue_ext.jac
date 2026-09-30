@@ -3,8 +3,19 @@ import logging;
 import from jaclang.server.identity.user_manager { SYSTEM_USER }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.jobs.queue { JobInfo, JobQueueStore, bind_service }
-import from jaclang.scale.jobs.runner { JobRunner, JobTargetMissing, QueueSpec }
+import from jaclang.scale.jobs.queue {
+    JobInfo,
+    JobQueueStore,
+    bind_service,
+    bind_system_root,
+    root_hex
+}
+import from jaclang.scale.jobs.runner {
+    JobRootMissing,
+    JobRunner,
+    JobTargetMissing,
+    QueueSpec
+}
 
 glob logger: logging.Logger = logging.getLogger(__name__);
 
@@ -61,17 +72,29 @@ def job_executor(server: JacAPIServer, run_as: str) -> Callable[[JobInfo], None]
         async def _run {
             import from jaclang.scale.memory.context { JScaleExecutionContext }
             import from jaclang { JacRuntime as Jac }
+            import from jaclang.runtime.exceptions { MissingAnchorError }
             ctx = JScaleExecutionContext();
             token = Jac.push_request_context(ctx);
             try {
                 manager = server.execution_manager;
                 result: any = None;
-                if is_walker {
-                    result = await manager.spawn_walker(target, dict(job.args), run_as);
-                } else {
-                    result = await manager.execute_function(
-                        target, dict(job.args), run_as
-                    );
+                try {
+                    if is_walker {
+                        result = await manager.spawn_walker(
+                            target, dict(job.args), run_as, root_id=job.as_root
+                        );
+                    } else {
+                        result = await manager.execute_function(
+                            target, dict(job.args), run_as, root_id=job.as_root
+                        );
+                    }
+                } except MissingAnchorError as e {
+                    if job.as_root and root_hex(e.anchor_id) == job.as_root {
+                        raise JobRootMissing(
+                            f"root {job.as_root} no longer exists"
+                        ) from e;
+                    }
+                    raise;
                 }
                 if isinstance(result, dict) and 'error' in result {
                     raise RuntimeError(str(result.get('error')));
@@ -100,12 +123,16 @@ obj JobQueueExtension(ServerExtension) {
         import from jaclang.server.task_scheduler { schedule_namespace }
         self.service = schedule_namespace(str(server.module_name));
         bind_service(self.service);
-        if not get_scale_config().get_jobs_config()['enabled'] {
-            return;
-        }
         system_user = server.user_manager.find_user_by_identity(SYSTEM_USER);
         if system_user {
             self.run_as = str(system_user.get('user_id', SYSTEM_USER));
+        }
+        system_root = server.user_manager.get_root_id(self.run_as);
+        if system_root {
+            bind_system_root(system_root);
+        }
+        if not get_scale_config().get_jobs_config()['enabled'] {
+            return;
         }
         ext = self;
         async def _stop {
@@ -115,6 +142,21 @@ obj JobQueueExtension(ServerExtension) {
             }
         }
         server.add_shutdown_hook(_stop);
+    }
+
+    def validate(server: JacAPIServer) -> list[str] {
+        problems: list[str] = [];
+        for name in get_scale_config().get_jobs_config()['system_targets'] {
+            try {
+                resolve_job_target(server, name);
+            } except JobTargetMissing {
+                problems.append(
+                    f"[scale.jobs] system_targets names '{name}', which is not a "
+                    "walker or function this app loads"
+                );
+            }
+        }
+        return problems;
     }
 
     def on_worker_start(server: JacAPIServer) {

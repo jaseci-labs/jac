@@ -125,6 +125,17 @@ impl _jobs_bound_findings(raw: dict[str, any]) -> list[str] {
             " a finite number greater than 0; the 1.0 second default is used instead"
         );
     }
+    targets = cfg.get("system_targets");
+    if targets is not None
+        and (
+            not isinstance(targets, list)
+            or not all(isinstance(t, str) and t for t in targets)
+        ) {
+        out.append(
+            f"jac.toml [scale.jobs] system_targets {targets!r} must be a list of"
+            " walker or function names"
+        );
+    }
     queues = cfg.get("queues");
     if queues is None {
         return out;

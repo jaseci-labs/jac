@@ -430,8 +430,9 @@ walker MoveToReview {
 | `run_at` | now | A `datetime` or ISO string. The job is not claimed before it. A naive value is read as UTC |
 | `max_attempts` | `3` | Attempts before the job is marked `dead` |
 | `timeout_s` | `0` | Seconds the runner waits for one attempt. Past it the attempt counts as failed and the runner stops renewing its lease. Python cannot stop a running thread, so the abandoned attempt keeps running until it returns, and its writes may still commit. `0` means no limit |
+| `as_root` | caller's root | The root the job runs as, as a root node or its id (`jid(root)`). From a user's request it may only be that user's own root; any other root raises `PermissionError`. System code (a scheduled task, another job, startup code) may name any root, which is how one task fans out a job per tenant. Omitted in system code, the job runs as the system user |
 
-`cancel(job_id)` stops a job that has not started yet and returns `True`. It returns `False` for a job that is running or already finished. `job_info(job_id)` returns a `JobInfo` with the job's `status`, `attempts`, `run_at` and `last_error`, or `None`.
+`cancel(job_id)` stops a job that has not started yet and returns `True`. It returns `False` for a job that is running or already finished. `job_info(job_id)` returns a `JobInfo` with the job's `status`, `attempts`, `run_at`, `last_error`, the root it runs as (`as_root`, empty for the system user) and the root that queued it (`enqueued_by`), or `None`.
 
 ### What happens to a job
 
@@ -450,7 +451,7 @@ walker MoveToReview {
 - A runner renews the lease of each job it is still waiting on. If the runner dies, the lease runs out and another runner picks the job up. That counts as an attempt.
 - On shutdown a runner stops claiming, waits for its running jobs until the server's drain budget runs out, then stops renewing their leases, so another runner takes whatever is still running.
 - A new job wakes the runners with `pg_notify`. Runners also poll every `poll_seconds`.
-- Jobs run as the internal `__system__` account, like static schedules.
+- A job runs as the root that queued it: inside the job, `root` is that user's root and their nodes pass ownership checks. The walker's writes and its `enqueue` commit together, so a walker that raises after `enqueue` leaves no job. If that root no longer exists when the job runs, the job is `dead` on its first attempt.
 - A job can run more than once: a runner can die after the work finished but before it recorded that. Keep job targets idempotent.
 
 ### `[scale.jobs]` reference
@@ -461,5 +462,6 @@ walker MoveToReview {
 | `queues` | `{}` | Queue name to `{ concurrency, lease_s }`. A `default` queue (concurrency `4`, lease `60`) always exists and can be overridden here. `concurrency` is the number of jobs one worker runs at once from that queue |
 | `poll_seconds` | `1.0` | How often an idle runner checks for due jobs when no notification arrives. Jobs with a future `run_at` and retries after a backoff are found this way. Must be greater than 0; a value that is not is reported at boot and the default is used |
 | `retention_seconds` | `604800` | How long `done` and `cancelled` jobs are kept, which is also how long their keys stay deduplicated. `0` keeps them forever. `dead` jobs are always kept |
+| `system_targets` | `[]` | Walker or function names whose jobs always run as the internal system user, whoever queued them, for work such as a global reindex that a user action starts. A name the app does not load is reported at boot. Every other job runs as the root that queued it |
 
 With `[scale.monitoring]` enabled, `/metrics` exports `jaclang_scale_jobs{queue, status}`, the number of jobs in each state.
