@@ -3,6 +3,7 @@ import from _time_native {
     CLK_MONOTONIC_RAW,
     CLK_PROCESS_CPUTIME,
     CLK_REALTIME,
+    CLK_PY_MONOTONIC,
     CLK_THREAD_CPUTIME,
     time_sleep_ns
 }
@@ -26,22 +27,22 @@ def:pub time_ns -> int {
 
 
 def:pub monotonic -> float {
-    return time_clock_seconds(CLOCK_MONOTONIC);
+    return time_clock_seconds(CLK_PY_MONOTONIC);
 }
 
 
 def:pub monotonic_ns -> int {
-    return time_clock_ns(CLOCK_MONOTONIC);
+    return time_clock_ns(CLK_PY_MONOTONIC);
 }
 
 
 def:pub perf_counter -> float {
-    return time_clock_seconds(CLOCK_MONOTONIC);
+    return time_clock_seconds(CLK_PY_MONOTONIC);
 }
 
 
 def:pub perf_counter_ns -> int {
-    return time_clock_ns(CLOCK_MONOTONIC);
+    return time_clock_ns(CLK_PY_MONOTONIC);
 }
 
 
