@@ -163,9 +163,9 @@ def native_unit(
     }
     import from jaclang.compiler.frontend.codeinfo {
         is_kernel_unit_path,
-        is_native_variant_path
+        is_selected_native_variant
     }
-    if is_kernel_unit_path(source_path) or is_native_variant_path(source_path) {
+    if is_kernel_unit_path(source_path) or is_selected_native_variant(source_path) {
         return True;
     }
     import from jaclang.compiler.placement.placement_pins { effective_module_pin }

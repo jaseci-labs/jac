@@ -878,6 +878,22 @@ glob NATIVE_VARIANT_OSES: frozenset[str] = frozenset(
          {"x86_64", "aarch64", "arm64", "i686", "riscv64", "wasm32"}
      );
 
+def is_selected_native_variant(path: str) -> bool {
+    import os;
+    if not is_native_variant_path(path) {
+        return False;
+    }
+    parts = os.path.basename(path)[:-len(".jac")].split(".");
+    for cut in (2, 1) {
+        portable = os.path.join(os.path.dirname(path), ".".join(parts[:-cut]) + ".jac");
+        if len(parts) > cut and os.path.exists(portable) {
+            return os.path.realpath(native_variant_of(portable))
+                == os.path.realpath(path);
+        }
+    }
+    return False;
+}
+
 def is_native_variant_path(path: str) -> bool {
     """Is `path` a platform variant of a portable module beside it?
 

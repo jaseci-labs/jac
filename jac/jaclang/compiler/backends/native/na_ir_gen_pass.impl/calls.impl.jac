@@ -187,6 +187,15 @@ impl NaIRGenPass._native_variant_decl(decl: uni.Ability) -> uni.Ability {
     }
     variant_mod = self.prog.mod.hub.get(variant);
     if variant_mod is None {
+        for imported in self._foreign_modules {
+            if imported.loc is not None
+                and os.path.realpath(imported.loc.mod_path) == variant {
+                variant_mod = imported;
+                break;
+            }
+        }
+    }
+    if variant_mod is None {
         return decl;
     }
     return NaIRGenPass._module_ability(variant_mod, decl.name_ref.sym_name) or decl;
