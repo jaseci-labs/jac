@@ -108,20 +108,20 @@ def _local_code_syms(
     exported: set[str]
 ) -> list[tuple[str, int]] {
     out: list[tuple[str, int]] = [];
-    seen: set[str] = set();
+    seen: set[tuple[str, int]] = set();
     for (idx, sym) in enumerate(symbols) {
         if (sym.n_type & N_EXT) != 0 or (sym.n_type & N_TYPE_MASK) != N_SECT {
             continue;
         }
         name = sym.name;
-        if not name or not name.startswith("_") or name in exported or name in seen {
+        if not name or not name.startswith("_") or name in exported {
             continue;
         }
         place = placements.get(idx);
-        if place is None or place[0] != "code" {
+        if place is None or place[0] != "code" or (name, place[1]) in seen {
             continue;
         }
-        seen.add(name);
+        seen.add((name, place[1]));
         out.append((name, place[1]));
     }
     return out;
