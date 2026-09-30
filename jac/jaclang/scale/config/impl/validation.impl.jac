@@ -108,22 +108,34 @@ impl jobs_lease_seconds(raw: any) -> float | None {
     return value if value is not None and value >= 1.0 else None;
 }
 
+impl jobs_poll_seconds(raw: any) -> float | None {
+    value = _as_number(raw);
+    return value if value is not None and value > 0.0 else None;
+}
+
 impl _jobs_bound_findings(raw: dict[str, any]) -> list[str] {
     cfg = raw.get("jobs");
     if not isinstance(cfg, dict) {
         return [];
     }
+    out: list[str] = [];
+    if "poll_seconds" in cfg and jobs_poll_seconds(cfg.get("poll_seconds")) is None {
+        out.append(
+            f"jac.toml [scale.jobs] poll_seconds {cfg.get('poll_seconds')!r} must be"
+            " a finite number greater than 0; the 1.0 second default is used instead"
+        );
+    }
     queues = cfg.get("queues");
     if queues is None {
-        return [];
+        return out;
     }
     if not isinstance(queues, dict) {
-        return [
+        out.append(
             f"jac.toml [scale.jobs] queues {queues!r} must be a table of queue"
             " name to {{ concurrency, lease_s }}"
-        ];
+        );
+        return out;
     }
-    out: list[str] = [];
     for (name, spec) in queues.items() {
         if not isinstance(spec, dict) {
             out.append(

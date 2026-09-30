@@ -11,6 +11,7 @@ import uuid;
 import from collections { Counter }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.store { JOBS_SCHEMA_SQL, PgStore }
+import from jaclang.data.type_identity { type_module }
 import from jaclang.server.outbox { backoff_seconds }
 import from jaclang.server.session { shared_pg_data_dir }
 import from jaclang.scale.jobs.queue {
@@ -71,10 +72,11 @@ def _runner(
     queue: str,
     execute: Callable[[JobInfo], None],
     concurrency: int = 1,
-    lease_s: float = 60.0
+    lease_s: float = 60.0,
+    service: str = ""
 ) -> JobRunner {
     return JobRunner(
-        store=JobQueueStore(store=pg.new_session()),
+        store=JobQueueStore(store=pg.new_session(), service=service),
         queues=[QueueSpec(name=queue, concurrency=concurrency, lease_s=lease_s)],
         execute=execute,
         poll_s=0.05,
@@ -101,6 +103,7 @@ test "two runners never run the same job" {
     jobs = JobQueueStore(store=pg);
     ids = [jobs.insert(queue, "Work", {"n": n}) for n in range(40)];
     runs: list[str] = [];
+    foreign: list[str] = [];
     lock = threading.Lock();
     def _record(job: JobInfo) {
         with lock {
@@ -108,7 +111,11 @@ test "two runners never run the same job" {
         }
         time.sleep(0.005);
     }
+    def _trespass(job: JobInfo) {
+        foreign.append(job.id);
+    }
     runners = [_runner(pg, queue, _record, concurrency=4) for _ in range(2)];
+    runners.append(_runner(pg, queue, _trespass, concurrency=4, service="billing"));
     for r in runners {
         r.start();
     }
@@ -130,10 +137,11 @@ test "two runners never run the same job" {
     };
     assert repeats == {} , f"jobs ran more than once: {repeats}";
     assert sorted(runs) == sorted(ids) , f"ran {len(runs)} of {len(ids)} jobs";
+    assert foreign == [] , f"another service's runner took {len(foreign)} job(s)";
 }
 
 
-test "a killed runner's job runs again once its lease expires" {
+test "a stopped or killed runner's job runs again once its lease expires" {
     pg = _pg();
     if pg is None {
         return;
@@ -162,6 +170,35 @@ test "a killed runner's job runs again once its lease expires" {
     assert runs == [job_id] , runs;
     assert info.status == STATUS_DONE , info.status;
     assert info.attempts == 2 , f"expected the retry to be attempt 2, got {info.attempts}";
+
+    slow_id = jobs.insert(queue, "Work", {});
+    release = threading.Event();
+    def _hang(job: JobInfo) {
+        release.`wait(10.0);
+    }
+    draining = _runner(pg, queue, _hang, lease_s=2.0);
+    draining.start();
+    try {
+        deadline = time.monotonic() + 10.0;
+        while not draining.attending() and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        assert draining.attending() == [slow_id] , draining.attending();
+        started = time.monotonic();
+        draining.stop(0.3);
+        waited = time.monotonic() - started;
+        assert waited < 1.5 , f"stop ignored its deadline and waited {waited:.1f}s";
+        before = pg.rows(
+            "SELECT lease_until FROM jac_jobs WHERE id = :id", {'id': slow_id}
+        );
+        time.sleep(0.8);
+        after = pg.rows(
+            "SELECT lease_until FROM jac_jobs WHERE id = :id", {'id': slow_id}
+        );
+        assert before == after , "a stopped runner kept renewing an abandoned lease";
+    } finally {
+        release.set();
+    }
 }
 
 
@@ -170,41 +207,68 @@ test "a failing job backs off between attempts and is dead after max_attempts" {
     if pg is None {
         return;
     }
-    cases: list[tuple[str, Exception, int]] = [
-        ("an error is retried", RuntimeError("provider timed out"), 3),
-        ("a missing target is not", JobTargetMissing("'Gone' is not served"), 1)
+    release = threading.Event();
+    def _hang(job: JobInfo) {
+        release.`wait(10.0);
+    }
+    cases: list[tuple[str, (Exception | None), float, int, str]] = [
+        (
+            "an error is retried",
+            RuntimeError("provider timed out"),
+            0.0,
+            3,
+            "provider timed out"
+        ),
+        (
+            "a missing target is not",
+            JobTargetMissing("'Gone' is not served"),
+            0.0,
+            1,
+            "is not served"
+        ),
+        ("a hung attempt times out", None, 0.3, 3, "ran past timeout_s=0.3")
     ];
-    for (label, error, runs_until_dead) in cases {
-        queue = _queue();
-        jobs = JobQueueStore(store=pg);
-        job_id = jobs.insert(queue, "Work", {}, max_attempts=3);
-        def _fail(job: JobInfo) {
-            raise error;
-        }
-        runner = _runner(pg, queue, _fail);
-        for attempt in range(1, runs_until_dead + 1) {
-            assert runner.run_once(queue) , f"{label}: attempt {attempt} not claimed";
-            info = _job(jobs.get(job_id));
-            if attempt == runs_until_dead {
-                assert info.status == STATUS_DEAD , f"{label}: {info.status}";
-                assert str(error) in info.last_error , f"{label}: {info.last_error}";
-                break;
+    try {
+        for (label, error, timeout_s, runs_until_dead, message) in cases {
+            queue = _queue();
+            jobs = JobQueueStore(store=pg);
+            job_id = jobs.insert(
+                queue, "Work", {}, max_attempts=3, timeout_s=timeout_s
+            );
+            def _fail(job: JobInfo) {
+                raise error;
             }
-            assert info.status == STATUS_FAILED , f"{label}: {info.status}";
-            gap = pg.rows(
-                "SELECT EXTRACT(EPOCH FROM run_at - updated_at) FROM jac_jobs WHERE id = :id",
-                {'id': job_id}
-            );
-            wanted = backoff_seconds(attempt);
-            assert abs(float(gap[0][0]) - wanted) < 0.5 , (
-                f"{label}: attempt {attempt} waits {gap[0][0]}s, expected {wanted}s"
-            );
-            assert not runner.run_once(queue) , f"{label}: retried before its backoff";
-            pg.rows(
-                "UPDATE jac_jobs SET run_at = now() WHERE id = :id", {'id': job_id}
-            );
+            runner = _runner(pg, queue, _fail if error is not None else _hang);
+            for attempt in range(1, runs_until_dead + 1) {
+                started = time.monotonic();
+                assert runner.run_once(queue) , f"{label}: attempt {attempt} not claimed";
+                waited = time.monotonic() - started;
+                assert waited < 2.0 , f"{label}: attempt {attempt} held for {waited:.1f}s";
+                assert runner.attending() == [] , f"{label}: still heartbeating {runner.attending()}";
+                info = _job(jobs.get(job_id));
+                if attempt == runs_until_dead {
+                    assert info.status == STATUS_DEAD , f"{label}: {info.status}";
+                    assert message in info.last_error , f"{label}: {info.last_error}";
+                    break;
+                }
+                assert info.status == STATUS_FAILED , f"{label}: {info.status}";
+                gap = pg.rows(
+                    "SELECT EXTRACT(EPOCH FROM run_at - updated_at) FROM jac_jobs WHERE id = :id",
+                    {'id': job_id}
+                );
+                wanted = backoff_seconds(attempt);
+                assert abs(float(gap[0][0]) - wanted) < 0.5 , (
+                    f"{label}: attempt {attempt} waits {gap[0][0]}s, expected {wanted}s"
+                );
+                assert not runner.run_once(queue) , f"{label}: retried before its backoff";
+                pg.rows(
+                    "UPDATE jac_jobs SET run_at = now() WHERE id = :id", {'id': job_id}
+                );
+            }
+            assert not runner.run_once(queue) , f"{label}: a dead job was claimed";
         }
-        assert not runner.run_once(queue) , f"{label}: a dead job was claimed";
+    } finally {
+        release.set();
     }
 }
 
@@ -225,7 +289,7 @@ test "a second enqueue with the same key is a no-op" {
         info = _job(job_info(first));
         assert info.queue == DEFAULT_QUEUE and info.args == {"run_id": 1} , info;
         by_ref = _job(job_info(enqueue(_queue, key=key + ":ref")));
-        assert by_ref.target == f"{_queue.__module__}:_queue" , by_ref.target;
+        assert by_ref.target == f"{type_module(_queue)}:_queue" , by_ref.target;
 
         rejected: list[tuple[dict[str, any], str]] = [
             ({"target": ""}, "walker, a function, or its name"),
@@ -281,5 +345,76 @@ test "cancel stops only a job that has not started" {
         assert _status_count(pg, queue, STATUS_QUEUED) == 0;
     } finally {
         use_store(None);
+    }
+}
+
+
+test "a served app runs a private walker from a sibling module and times out a hung one" {
+    import shutil;
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.scale.config.config_loader {
+        get_scale_config,
+        reset_scale_config
+    }
+    import from jaclang.scale.server.job_queue_ext { JobQueueExtension }
+    import from jaclang.scale.tests.scale_test_client { ScaleTestClient, extract_data }
+    fixture = Path(__file__).parent.parent / "fixtures" / "job_queue";
+    tmp = tempfile.mkdtemp();
+    shutil.copytree(str(fixture), tmp, dirs_exist_ok=True);
+    reset_scale_config();
+    get_scale_config(Path(tmp));
+    client: (ScaleTestClient | None) = None;
+    try {
+        client = ScaleTestClient.from_file(str(Path(tmp) / "app.jac"), base_path=tmp);
+        server = client.server;
+        for ext in server.extensions {
+            ext.on_worker_start(server);
+        }
+        auth = {
+            "Authorization": f"Bearer {client.register_and_login(
+                'jobs_user', 'Passw0rd!long'
+            )}"
+        };
+        cases: list[tuple[bool, str, str, float]] = [
+            (False, "done", "", 10.0),
+            (True, "dead", "ran past timeout_s=0.5", 2.5)
+        ];
+        for (hang, status, error, budget) in cases {
+            queued = extract_data(
+                client.post(
+                    "/walker/QueueReview",
+                    json={"run_id": f"r-{hang}", "hang": hang},
+                    headers=auth
+                ).json()
+            );
+            job_id = queued["reports"][0]["job_id"];
+            started = time.monotonic();
+            seen: dict[str, any] = {};
+            while time.monotonic() - started < budget {
+                seen = extract_data(
+                    client.post(
+                        "/walker/ReviewStatus", json={"job_id": job_id}, headers=auth
+                    ).json()
+                )["reports"][0];
+                if seen["status"] == status {
+                    break;
+                }
+                time.sleep(0.1);
+            }
+            assert seen.get("status") == status , f"hang={hang}: {seen} after {budget}s";
+            assert error in seen["last_error"] , f"hang={hang}: {seen['last_error']}";
+        }
+    } finally {
+        if client is not None {
+            for ext in client.server.extensions {
+                if isinstance(ext, JobQueueExtension) and ext.runner is not None {
+                    ext.runner.stop(1.0);
+                }
+            }
+            client.close();
+        }
+        reset_scale_config();
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }

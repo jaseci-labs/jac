@@ -423,13 +423,13 @@ walker MoveToReview {
 
 | Argument | Default | Meaning |
 |----------|---------|---------|
-| `target` | required | The walker or function to run, or its name. It must be served by the app that runs the queue |
+| `target` | required | The walker or function to run, or its name. It can be private (no `:pub`) and live in any module of the app. A walker or function passed directly is recorded by its module's persistent identity, so it resolves after a redeploy, and a job whose module is not loaded is `dead` rather than run as some other target of the same name |
 | `args` | `{}` | Walker fields or function keyword arguments. Must be JSON-serializable |
 | `key` | `""` | Idempotency key. A second `enqueue` with the same key writes nothing and returns the first job's id |
 | `queue` | `"default"` | A queue declared under `[scale.jobs] queues`. An undeclared name raises `ValueError` |
 | `run_at` | now | A `datetime` or ISO string. The job is not claimed before it. A naive value is read as UTC |
 | `max_attempts` | `3` | Attempts before the job is marked `dead` |
-| `timeout_s` | `0` | Seconds one attempt may run before it counts as failed. `0` means no limit |
+| `timeout_s` | `0` | Seconds the runner waits for one attempt. Past it the attempt counts as failed and the runner stops renewing its lease. Python cannot stop a running thread, so the abandoned attempt keeps running until it returns, and its writes may still commit. `0` means no limit |
 
 `cancel(job_id)` stops a job that has not started yet and returns `True`. It returns `False` for a job that is running or already finished. `job_info(job_id)` returns a `JobInfo` with the job's `status`, `attempts`, `run_at` and `last_error`, or `None`.
 
@@ -446,7 +446,9 @@ walker MoveToReview {
 
 - Jobs live in the `jac_jobs` table of the scale database, so they survive restarts. Locally that is the embedded Postgres server; deployed, it is `[scale.database] url` or `JAC_DB_URL`.
 - A runner claims a job with `FOR UPDATE SKIP LOCKED`, so two runners never take the same job, across workers and across pods.
-- A runner renews its lease while the job runs. If the runner dies, the lease runs out and another runner picks the job up. That counts as an attempt.
+- A job belongs to the service that queued it (`JAC_SV_NAME`, else the app's module), and only that service's runners claim it. Services that share one database never run each other's jobs.
+- A runner renews the lease of each job it is still waiting on. If the runner dies, the lease runs out and another runner picks the job up. That counts as an attempt.
+- On shutdown a runner stops claiming, waits for its running jobs until the server's drain budget runs out, then stops renewing their leases, so another runner takes whatever is still running.
 - A new job wakes the runners with `pg_notify`. Runners also poll every `poll_seconds`.
 - Jobs run as the internal `__system__` account, like static schedules.
 - A job can run more than once: a runner can die after the work finished but before it recorded that. Keep job targets idempotent.
@@ -457,7 +459,7 @@ walker MoveToReview {
 |-----|---------|---------|
 | `enabled` | `false` | Run a job runner in each server worker. `enqueue` works without it, but nothing in this app runs the jobs |
 | `queues` | `{}` | Queue name to `{ concurrency, lease_s }`. A `default` queue (concurrency `4`, lease `60`) always exists and can be overridden here. `concurrency` is the number of jobs one worker runs at once from that queue |
-| `poll_seconds` | `1.0` | How often an idle runner checks for due jobs when no notification arrives. Jobs with a future `run_at` and retries after a backoff are found this way |
+| `poll_seconds` | `1.0` | How often an idle runner checks for due jobs when no notification arrives. Jobs with a future `run_at` and retries after a backoff are found this way. Must be greater than 0; a value that is not is reported at boot and the default is used |
 | `retention_seconds` | `604800` | How long `done` and `cancelled` jobs are kept, which is also how long their keys stay deduplicated. `0` keeps them forever. `dead` jobs are always kept |
 
 With `[scale.monitoring]` enabled, `/metrics` exports `jaclang_scale_jobs{queue, status}`, the number of jobs in each state.

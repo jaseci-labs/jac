@@ -447,7 +447,11 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
 }
 
 impl JacScaleConfig.get_jobs_config(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.validation { jobs_concurrency, jobs_lease_seconds }
+    import from jaclang.scale.config.validation {
+        jobs_concurrency,
+        jobs_lease_seconds,
+        jobs_poll_seconds
+    }
     config = self.load();
     jobs_config: any = config.get('jobs', {}) or {};
     raw_queues: any = jobs_config.get('queues') or {};
@@ -465,10 +469,11 @@ impl JacScaleConfig.get_jobs_config(self: JacScaleConfig) -> dict[str, any] {
             'lease_s': lease if lease is not None else 60.0
         };
     }
+    poll: any = jobs_poll_seconds(jobs_config.get('poll_seconds', 1.0));
     return {
         'enabled': bool(jobs_config.get('enabled', False)),
         'queues': queues,
-        'poll_seconds': float(jobs_config.get('poll_seconds', 1.0)),
+        'poll_seconds': poll if poll is not None else 1.0,
         'retention_seconds': float(jobs_config.get('retention_seconds', 604800.0))
     };
 }

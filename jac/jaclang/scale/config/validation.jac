@@ -12,3 +12,4 @@ def scheduler_job_cap(raw: any) -> int | None;
 def _jobs_bound_findings(raw: dict[str, any]) -> list[str];
 def jobs_concurrency(raw: any) -> int | None;
 def jobs_lease_seconds(raw: any) -> float | None;
+def jobs_poll_seconds(raw: any) -> float | None;
