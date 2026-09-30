@@ -595,6 +595,14 @@ int32_t jacpy_fstatat(int32_t dir_fd, const char *path, struct _Py_stat_struct *
     return fstatat(dir_fd, path, status, flags);
 }
 
+/* macOS reads os.statvfs through struct statfs, whose statfs and fstatfs
+ * bind $INODE64 variants on x86_64. */
+#ifdef __APPLE__
+#include <sys/mount.h>
+int32_t jacpy_statfs(const char *path, void *buffer) { return statfs(path, (struct statfs *)buffer); }
+int32_t jacpy_fstatfs(int32_t fd, void *buffer) { return fstatfs(fd, (struct statfs *)buffer); }
+#endif
+
 /* The fork hooks: the at-fork callback lists are interpreter-state fields,
  * HEAD_LOCK is a _PyRuntime field, and a forked child resets thread-state
  * fields (native id, remote-debugger request, asyncio task list), all of
