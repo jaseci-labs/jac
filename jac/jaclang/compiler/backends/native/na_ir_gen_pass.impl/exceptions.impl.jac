@@ -1454,6 +1454,7 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if cached is not None {
         entry_blk.instructions.remove(cached);
     }
+    self._hoist_entry_allocas(entry_blk);
     anchor: any = None;
     for inst in entry_blk.instructions {
         if isinstance(inst, ir.AllocaInstr) {
@@ -1512,6 +1513,39 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         b.position_before(at);
         b.store(prev, top_slot);
     }
+}
+
+impl NaIRGenPass._hoist_entry_allocas(entry_blk: ir.Block) -> None {
+    """Move every local slot of the entry block, with the zero stores that
+    initialize it, ahead of the block's other instructions.
+
+    `_entry_alloca` prepends each slot to the entry block, and so does
+    entry code such as a closure cell's allocation, so a slot created
+    before that code sits after it. The unwind link registers every slot at
+    the end of the leading slots; each must be defined there.
+    """;
+    slots: list[ir.NamedValue] = [];
+    rest: list[ir.NamedValue] = [];
+    insts = list(entry_blk.instructions);
+    i = 0;
+    while i < len(insts) {
+        inst = insts[i];
+        if not isinstance(inst, ir.AllocaInstr) {
+            rest.append(inst);
+            i += 1;
+            continue;
+        }
+        slots.append(inst);
+        i += 1;
+        while i < len(insts)
+            and isinstance(insts[i], ir.StoreInstr)
+            and insts[i].operands[1] is inst
+            and isinstance(insts[i].operands[0], ir.Constant) {
+            slots.append(insts[i]);
+            i += 1;
+        }
+    }
+    entry_blk.instructions[:] = slots + rest;
 }
 
 impl NaIRGenPass._exception_handler_slot(

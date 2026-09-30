@@ -2652,6 +2652,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _unwind_node_type -> ir.Type;
     def _register_unwind_cleanup -> None;
+    def _hoist_entry_allocas(entry_blk: ir.Block) -> None;
     def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
     def _thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
     def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None;
