@@ -917,6 +917,46 @@ def _fix_access(paths: list[str], dry_run: bool) -> int {
     return 0;
 }
 
+def _fix_dependencies(paths: list[str], dry_run: bool) -> int {
+    import from jaclang.packages.migrate { find_manifests, migrate_manifest }
+    manifests = find_manifests(paths);
+    if not manifests {
+        console.error("No jac.toml found to migrate.");
+        return 1;
+    }
+    changed = 0;
+    for manifest in manifests {
+        result = migrate_manifest(manifest);
+        if not result.moved {
+            continue;
+        }
+        changed += 1;
+        verb = "Would move" if dry_run else "Moved";
+        console.print(
+            f"{verb} {len(result.moved)} Python dependenc(ies) to [*.pypi] in {manifest}",
+            style="bold"
+        );
+        for moved_key in result.moved {
+            console.print(f"  {moved_key}", style="muted");
+        }
+        if not result.lossless {
+            console.warning(
+                f"{manifest}: the file could not be edited in place, so it was "
+                "rewritten; comments inside the dependency tables were dropped"
+            );
+        }
+        if not dry_run {
+            manifest.write_text(result.text, encoding="utf-8");
+        }
+    }
+    if not changed {
+        console.success(
+            "Every jac.toml already keeps Python packages in [dependencies.pypi]."
+        );
+    }
+    return 0;
+}
+
 impl fix(
     target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
 ) -> int {
@@ -926,8 +966,13 @@ impl fix(
     if target == 'access' {
         return _fix_access(paths, dry_run);
     }
+    if target == 'dependencies' {
+        return _fix_dependencies(paths, dry_run);
+    }
     if target != 'placement' {
-        console.error(f"Unknown fix target '{target}'. Available: placement, access");
+        console.error(
+            f"Unknown fix target '{target}'. Available: placement, access, dependencies"
+        );
         return 1;
     }
     if isinstance(paths, str) {

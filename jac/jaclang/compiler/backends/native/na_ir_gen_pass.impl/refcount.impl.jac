@@ -570,7 +570,19 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     dtor_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     dtor_fn_i8 = b.inttoptr(dtor_val, i8_ptr, name="dtor.i8");
     dtor_fn_ptr = b.bitcast(dtor_fn_i8, dtor_fnty.as_pointer(), name="dtor.fn");
+    _depth_gv = self.rc_release_depth_gv;
+    if _depth_gv is not None {
+        b.store(
+            b.add(b.load(_depth_gv, name="rel.depth"), ir.Constant(i64, 1)), _depth_gv
+        );
+    }
     b.call(dtor_fn_ptr, [release_fn.args[0]]);
+    if _depth_gv is not None {
+        b.store(
+            b.sub(b.load(_depth_gv, name="rel.depth.after"), ir.Constant(i64, 1)),
+            _depth_gv
+        );
+    }
     post_dtor_live_rm_bb = release_fn.append_basic_block("post_dtor_live_rm");
     b.branch(post_dtor_live_rm_bb);
 

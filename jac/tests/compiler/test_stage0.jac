@@ -283,6 +283,7 @@ test "a guard trip or an unknown target format falls back to the self build, unl
         assert not built and not raised;
         assert notice.count("stage-0 kernel build unavailable") == 1 , notice;
         assert "osp_tag.jac" in notice;
+        assert " after " in notice and "s (" in notice , notice;
         (built, notice, raised) = run(True, 0);
         assert raised and not built , "strict mode refuses the self build";
         (built, notice, raised) = run(False, 3);
