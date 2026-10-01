@@ -64,7 +64,7 @@ import from jaclang.runtime.python.cpython_api {
     PyType_Type,
     PyUnicode_Type,
     PyUnicodeWriter,
-    _PyException_AddNote
+    PyObject_CallMethod
 }
 import from c {
     def jac_heap_size(address: u64) -> i64;  def jac_list_heap_size(
@@ -269,7 +269,9 @@ def serialization_note(
         }
         note = text_object("when serializing " + type_name(value, True) + tail);
         try {
-            checked(i64(_PyException_AddNote(error, note)));
+            added = PyObject_CallMethod(error, "add_note", "O", note);
+            checked(i64(0 if added else -1));
+            jacpy_release(added);
         } finally {
             jacpy_release(note);
         }

@@ -702,15 +702,13 @@ import from c {
         tstate: ptr[PyThreadState], func: ptr, arg: ptr[PyObject]
     ) -> i32;  def _PyEval_SliceIndex(arg0: ptr[PyObject], arg1: &mut i64) -> i32;  def _PyEval_StartTheWorldAll(
         runtime: ptr[_PyRuntimeState]
-    );  def _PyEval_StopTheWorldAll(runtime: ptr[_PyRuntimeState]);  def _PyException_AddNote(
-        exc: ptr[PyObject], note: ptr[PyObject]
-    ) -> i32;  def _PyGen_FetchStopIterationValue(arg0: &mut ptr[PyObject]) -> i32;  def _PyGen_SetStopIterationValue(
-        arg0: ptr[PyObject]
-    ) -> i32;  def _PyImport_AcquireLock(interp: ptr[PyInterpreterState]);  def _PyImport_ReInitLock(
+    );  def _PyEval_StopTheWorldAll(runtime: ptr[_PyRuntimeState]);  def _PyGen_FetchStopIterationValue(
+        arg0: &mut ptr[PyObject]
+    ) -> i32;  def _PyGen_SetStopIterationValue(arg0: ptr[PyObject]) -> i32;  def _PyImport_AcquireLock(
         interp: ptr[PyInterpreterState]
-    );  def _PyImport_ReleaseLock(interp: ptr[PyInterpreterState]);  def _PyImport_SetModule(
-        name: ptr[PyObject], module: ptr[PyObject]
-    ) -> i32;  def _PyInterpreterState_HasFeature(
+    );  def _PyImport_ReInitLock(interp: ptr[PyInterpreterState]);  def _PyImport_ReleaseLock(
+        interp: ptr[PyInterpreterState]
+    );  def _PyImport_SetModule(name: ptr[PyObject], module: ptr[PyObject]) -> i32;  def _PyInterpreterState_HasFeature(
         interp: ptr[PyInterpreterState], feature: u64
     ) -> i32;  def _PyInterpreterState_Main -> ptr[PyInterpreterState];  def _PyInterpreterState_ReinitRunningMain(
         arg0: ptr[PyThreadState]
