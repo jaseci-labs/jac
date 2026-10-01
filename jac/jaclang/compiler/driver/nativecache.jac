@@ -263,7 +263,13 @@ obj NativeUnitRegistry {
             return;
         }
         changes: list[str] = [];
-        _interface_changes(prior.digest_fields(), iface.digest_fields(), "", changes);
+        import json;
+        _interface_changes(
+            json.loads(json.dumps(prior.digest_fields())),
+            json.loads(json.dumps(iface.digest_fields())),
+            "",
+            changes
+        );
         sys.stderr.write(
             f"[native cache] interface of {resolved} changed: {'; '.join(changes[:8])}"
                 + (f" (+{len(changes) - 8} more)" if len(changes) > 8 else "")
@@ -930,7 +936,8 @@ def native_verdict_dep_rows(path: str) -> list[list[str]] {
 
 def _interface_changes(before: any, after: any, path: str, out: list[str]) {
     """The leaf paths at which two interface records differ, each marked added,
-    removed or changed.""";
+    removed or changed. Callers pass the records as their digest serializes
+    them, so a tuple read back as a list is not a change.""";
     if before == after {
         return;
     }
