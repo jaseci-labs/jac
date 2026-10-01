@@ -1524,9 +1524,17 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         def _release(key: str, owner: str) -> bool {
             return bool(_store.kv_release_lease(key, owner));
         }
+        def _record(key: str, value: str) {
+            _store.kv_put_record(key, value);
+        }
+        def _recall(key: str) -> (str | None) {
+            return _store.kv_get_record(key);
+        }
         self.scheduler.claim = _claim;
         self.scheduler.hold = _hold;
         self.scheduler.release = _release;
+        self.scheduler.record = _record;
+        self.scheduler.recall = _recall;
         self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
