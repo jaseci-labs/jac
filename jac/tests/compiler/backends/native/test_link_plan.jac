@@ -1124,7 +1124,7 @@ from jaclang.compiler.backends.native.kernel_resolve import kernel_options
 from jaclang.compiler.backends.native.link_plan import build_link_plan
 prog = JacProgram()
 plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], kernel_options(), native_unit=True)
-assert os.path.dirname(jaclang.__file__).startswith(sys.argv[2]), jaclang.__file__
+assert os.path.realpath(jaclang.__file__).startswith(os.path.realpath(sys.argv[2])), jaclang.__file__
 print(json.dumps({
     'digests': {os.path.basename(u.path): u.digest for u in plan.units},
     'lowered': sorted({os.path.basename(p) for p in prog.native_units().compiled_paths}),
@@ -1138,18 +1138,16 @@ already analyzed would hide a unit whose interface depends on how deeply its
 imports were read."""
 def _cascade_plan(root_dir: str) -> tuple[dict[str, str], list[str]] {
     import json;
-    source_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    import from tests.support { compiler_python_command }
+    source_root = str(Path(str(jaclang.__file__)).resolve().parent.parent);
     env = {
         k: v
         for (k, v) in os.environ.items()
         if not k.startswith("JAC_STUBCAT_") and k != "JAC_STANDALONE"
     };
     env["JAC_COMPILER_LIB"] = "off";
-    env["PYTHONPATH"] = os.pathsep.join(
-        [source_root, *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])]
-    );
     run = subprocess.run(
-        [sys.executable, "-c", CASCADE_PLAN_SCRIPT, root_dir, source_root],
+        compiler_python_command(CASCADE_PLAN_SCRIPT, root_dir, source_root),
         capture_output=True,
         text=True,
         env=env
