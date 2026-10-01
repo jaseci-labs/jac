@@ -563,6 +563,7 @@ obj NativeUnitRegistry {
         import from jaclang.compiler.backends.native.na_compile_pass {
             emit_unit_objects
         }
+        import from jaclang.compiler.driver.jir { write_module_cache }
         opts = options if options is not None else self._options();
         started = time.perf_counter();
         objects = emit_unit_objects(bitcodes, opts);
