@@ -1,6 +1,7 @@
 """Tests for the built-in scheduler engine."""
 
 import datetime;
+import json;
 import os;
 import socket;
 import threading;
@@ -1096,8 +1097,11 @@ test "each tick reports one outcome naming its task, tick and worker" {
             ("broken_fn", lambda { None; }, broken, "skipped", "claim_failed", "", "")
         ] {
             outcomes: list[RunOutcome] = [];
+            stored: dict[str, str] = {};
             sched = fresh_scheduler();
             sched.claim = claim_fn;
+            sched.record = stored.__setitem__;
+            sched.recall = stored.get;
             sched.namespace = "orders";
             sched.on_run("probe", outcomes.append);
             sched.register(name, target, ScheduleSpec(date=later), False);
@@ -1117,6 +1121,17 @@ test "each tick reports one outcome naming its task, tick and worker" {
             got = outcomes[0];
             assert (got.task, got.tick, got.worker) == (name, tick, worker) , got;
             assert (got.status, got.reason, got.error) == (status, reason, error) , got;
+            listed = sched.schedules();
+            assert [(r["name"], r["kind"], r["date"]) for r in listed]
+                == [(name, "function", later)] , listed;
+            last = listed[0]["last_run"];
+            if status == "skipped" {
+                assert last is None and not stored , (name, last, stored);
+            } else {
+                assert list(stored.keys()) == [f"sched-last:orders:{name}"] , stored;
+                assert (last["tick"], last["worker"], last["status"], last["error"])
+                    == (tick.isoformat(), worker, status, error) , last;
+            }
             if line {
                 assert any(
                     m.startswith(line) and worker in m for m in records.messages
@@ -1261,6 +1276,9 @@ test "a served worker starts no runs once draining, and stops after its run in f
         } finally {
             stop();
             released = store.kv_get(lease);
+            recorded = store.kv_get_record(
+                f"sched-last:{schedule_namespace(server.module_name)}:quick"
+            );
             server.scheduler._tasks.clear();
             client.close();
         }
@@ -1268,4 +1286,5 @@ test "a served worker starts no runs once draining, and stops after its run in f
     assert long_run.finished == long_run.started , "the run in flight was abandoned";
     assert holder == server.scheduler._hold_owner() , f"run hold held by {holder}";
     assert released is None , f"run hold left behind by {released}";
+    assert recorded is not None and json.loads(recorded)["status"] == "ok" , recorded;
 }

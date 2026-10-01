@@ -359,6 +359,12 @@ With `[scale.monitoring] enabled = true`, `/metrics` exposes the same outcomes p
 | `<namespace>_scheduled_run_duration_seconds` | `task` | Run duration histogram, with buckets from 10 ms to 1 hour |
 | `<namespace>_scheduled_ticks_skipped_total` | `task`, `reason` | Ticks a worker did not run, by the reasons above |
 
+Admins can list the static tasks a service runs with `GET /admin/schedules`. Each entry gives the task's `name`, its `kind` (`walker` or `function`), its `interval`, `cron` or `date`, its `next_run`, and its `last_run`: the `tick`, `worker`, `status`, `duration_ms`, `error` and `finished_at` of the most recent run. With a database configured, the run that finishes records itself next to its tick claim, so any worker of any replica answers with the same last run. Without one, each worker reports only the runs it made itself.
+
+```bash
+curl -s http://localhost:8000/admin/schedules -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
 ## Configuration Reference
 
 All keys live under `[scale.scheduler]` in `jac.toml`:
