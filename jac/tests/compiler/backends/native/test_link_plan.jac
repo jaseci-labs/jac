@@ -17,6 +17,7 @@ import shutil;
 import subprocess;
 import sys;
 import tempfile;
+import time;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options {
     CompileOptions,
@@ -131,11 +132,23 @@ test "a body edit rewrites one object and keeps every interface" {
 test "a no-op build lowers no units and preserves the linked artifact" {
     if _can_link_host() {
         root_dir = _diamond_copy();
+        wall_started = time.perf_counter();
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         first = link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        wall = time.perf_counter() - wall_started;
         before = os.stat(output).st_mtime_ns;
         timed = prog.analysis.phase_time;
+        native_total = sum(
+            timed.get(phase, 0.0)
+            for phase in (
+                "NATIVE_ANALYSIS",
+                "NATIVE_LOWER",
+                "NATIVE_OPTIMIZE",
+                "NATIVE_EMIT"
+            )
+        );
+        assert native_total <= wall , f"native phases {native_total:.2f}s exceed the build's {wall:.2f}s: nested spans were counted twice";
         for phase in (
             "NATIVE_ANALYSIS",
             "NATIVE_LOWER",
