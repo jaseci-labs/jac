@@ -134,9 +134,11 @@ obj NativeStamp {
     }
 }
 
-def current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
+def current_native_stamp(
+    codegen_identity: str, triple: str, producer: str = ""
+) -> NativeStamp {
     return NativeStamp(
-        compiler_digest=running_compiler_digest(),
+        compiler_digest=producer or running_compiler_digest(),
         codegen_identity=codegen_identity,
         triple=triple
     );
@@ -556,11 +558,13 @@ def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str {
 
 glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
-     _PY_EMITTER_DIGESTS: dict[str, str] = {};
+     _PY_EMITTER_DIGESTS: dict[str, str] = {},
+     _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
      PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
-     DEV_EXACT_ENV: str = "JAC_DEV_EXACT";
+     DEV_EXACT_ENV: str = "JAC_DEV_EXACT",
+     DEV_NATIVE_PRODUCER: str = "abi:";
 
 def _digest_manifest_path(pkg_dir: str) -> Path {
     tag = hashlib.sha256(str(Path(pkg_dir).resolve()).encode()).hexdigest()[:8];
@@ -692,6 +696,29 @@ def dev_carry_enabled -> bool {
     } except OSError {
         return False;
     }
+}
+
+def native_producer_digest(kernel_build: bool = False) -> str {
+    current = running_compiler_digest();
+    if not kernel_build or not dev_carry_enabled() {
+        return current;
+    }
+    known = _NATIVE_PRODUCER_DIGESTS.get(current);
+    if known is None {
+        import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
+        import from jaclang.compiler.kernel_target { target_pkg_root }
+        import from jaclang.compiler.backends.native.stage0_pin { abi_contract_digest }
+        known = DEV_NATIVE_PRODUCER
+            + str(NATIVE_ABI_VERSION)
+            + ":"
+            + abi_contract_digest(target_pkg_root());
+        _NATIVE_PRODUCER_DIGESTS[current] = known;
+    }
+    return known;
+}
+
+def _producer_kind(digest: str) -> str {
+    return DEV_NATIVE_PRODUCER if digest.startswith(DEV_NATIVE_PRODUCER) else "";
 }
 
 glob _COMPILER_GENERATION_CACHE: list[str] = [];
@@ -1780,10 +1807,12 @@ def merge_native_sections(
             }
         }
         if digests {
+            kinds = {_producer_kind(d) for d in digests};
             variants = {
                 key: value
                 for (key, value) in variants.items()
                 if key.split("\x1f")[0] in digests
+                    or _producer_kind(key.split("\x1f")[0]) not in kinds
             };
         }
         if tag in incoming {
@@ -1846,6 +1875,54 @@ def carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None) {
         return None;
     }
     return None;
+}
+
+def carried_native_sections(source_path: str, producer: str) -> dict[int, bytes] {
+    if not producer.startswith(DEV_NATIVE_PRODUCER) or not dev_carry_enabled() {
+        return {};
+    }
+    prefix = producer + "\x1f";
+    try {
+        current = get_module_cache_path(source_path);
+        candidates: list[tuple[float, str]] = [];
+        for generation in current.parent.parent.iterdir() {
+            candidate = generation / current.name;
+            if generation == current.parent or not candidate.is_file() {
+                continue;
+            }
+            candidates.append((candidate.stat().st_mtime, str(candidate)));
+        }
+        candidates.sort(reverse=True);
+        for (_mtime, candidate_path) in candidates {
+            data = Path(candidate_path).read_bytes();
+            header = parse_header(data[:HEADER_SIZE]);
+            if header is None or not header.is_compatible() {
+                continue;
+            }
+            if not jir_matches_source(data, source_path) {
+                continue;
+            }
+            found: dict[int, bytes] = {};
+            for tag in NATIVE_SECTIONS {
+                kept = {
+                    key: value
+                    for (key, value) in native_section_variants(
+                        read_section_bytes(data, tag)
+                    ).items()
+                    if key.startswith(prefix)
+                };
+                if kept {
+                    found[tag] = pack_native_variants(kept);
+                }
+            }
+            if SEC_NIFACE in found {
+                return found;
+            }
+        }
+    } except Exception {
+        return {};
+    }
+    return {};
 }
 
 def write_module_cache(
