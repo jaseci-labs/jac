@@ -1553,6 +1553,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _normalize_type_key(key: str) -> str;
+    def _annotation_type(ann: (uni.UniNode | None)) -> (TypeBase | None);
     def _elem_keys_of_annotation(
         ann: (uni.UniNode | None)
     ) -> (list[str | None] | None);

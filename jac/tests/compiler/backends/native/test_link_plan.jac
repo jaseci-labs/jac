@@ -18,6 +18,7 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import jaclang;
 import from jaclang.compiler.driver.compile_options {
     CompileOptions,
     NATIVE_LINK_MODE_BITCODE,
@@ -1059,4 +1060,110 @@ test "an importer records an imported function's element keys from its interface
     warm = _imported_ret_keys(root_dir);
     assert cold == warm , f"cold {cold} vs warm {warm}";
     assert cold == ["int"] , cold;
+}
+
+glob CASCADE_SOURCES: dict[str, str] = {
+         "tok.jac": "obj CancelToken {\n    has cancelled: bool = False;\n}\n",
+         "prog.jac": (
+             "import from .tok { CancelToken }\n"
+             "import from .graph { Graph }\n\n"
+             "obj Prog {\n    has name: str = \"p\",\n        adjacency: (Graph | None) = None;\n\n"
+             "    def parse(src: str, path: str, token: (CancelToken | None) = None) -> int;\n}\n\n"
+             "def helper(p: Prog) -> int {\n    import from .user { run }\n"
+             "    return run(1) if p.name == \"never\" else 0;\n}\n"
+         ),
+         "prog.impl.jac": (
+             "impl Prog.parse(src: str, path: str, token: (CancelToken | None) = None) -> int {\n"
+             "    if token is not None and token.cancelled {\n        return -1;\n    }\n"
+             "    return len(src) + len(path);\n}\n"
+         ),
+         "graph.jac": (
+             "import from .tok { CancelToken }\n\n"
+             "obj Adj {\n    has rows_out: list[int] = [],\n        owner: (CancelToken | None) = None;\n}\n\n"
+             "obj Graph {\n    has adj: dict[int, Adj] = {};\n\n"
+             "    def size -> int {\n        return len(self.adj);\n    }\n\n"
+             "    def parser_of -> int {\n        import from .prog { Prog }\n"
+             "        return Prog().parse(\"a\", \"b\");\n    }\n}\n"
+         ),
+         "walk.jac": (
+             "node Spot {\n    has val: int = 0;\n}\n\n"
+             "edge Link: Spot --> Spot {\n    has weight: int = 1;\n}\n\n"
+             "walker Counter {\n    has total: int = 0;\n\n"
+             "    can visit_spot with Spot entry {\n        self.total += here.val;\n        visit [-->];\n    }\n}\n\n"
+             "def:pub build_and_walk(n: int) -> int {\n    first = Spot(val=1);\n    cur = first;\n"
+             "    for i in range(n) {\n        nxt = Spot(val=i);\n        cur +>:Link(weight=i):+> nxt;\n"
+             "        cur = nxt;\n    }\n    w = Counter();\n    first spawn w;\n    return w.total;\n}\n"
+         ),
+         "user.jac": (
+             "import from .prog { Prog }\n"
+             "import from .graph { Graph, Adj }\n"
+             "import from .walk { build_and_walk }\n\n"
+             "def:pub run(n: int) -> int {\n    p = Prog();\n    g = Graph();\n"
+             "    g.adj[n] = Adj(rows_out=[n]);\n"
+             "    return p.parse(\"abc\", \"x.jac\") + g.size() + build_and_walk(n);\n}\n"
+         )
+     },
+     CASCADE_PLAN_SCRIPT: str = """
+import json, os, sys
+import jaclang
+from jaclang.compiler.driver.program import JacProgram
+from jaclang.compiler.backends.native.kernel_resolve import kernel_options
+from jaclang.compiler.backends.native.link_plan import build_link_plan
+prog = JacProgram()
+plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], kernel_options(), native_unit=True)
+assert os.path.dirname(jaclang.__file__).startswith(sys.argv[2]), jaclang.__file__
+print(json.dumps({
+    'digests': {os.path.basename(u.path): u.digest for u in plan.units},
+    'lowered': sorted({os.path.basename(p) for p in prog.native_units().compiled_paths}),
+}))
+""";
+
+"""Each unit's interface digest after planning the cascade project from
+`root_dir`, and the units that build lowered. Every build runs in its own
+process with the bytecode analysis a stage-0 build uses: a dependency the parent
+already analyzed would hide a unit whose interface depends on how deeply its
+imports were read."""
+def _cascade_plan(root_dir: str) -> tuple[dict[str, str], list[str]] {
+    import json;
+    source_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    env = {
+        k: v
+        for (k, v) in os.environ.items()
+        if not k.startswith("JAC_STUBCAT_") and k != "JAC_STANDALONE"
+    };
+    env["JAC_COMPILER_LIB"] = "off";
+    env["PYTHONPATH"] = os.pathsep.join(
+        [source_root, *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])]
+    );
+    run = subprocess.run(
+        [sys.executable, "-c", CASCADE_PLAN_SCRIPT, root_dir, source_root],
+        capture_output=True,
+        text=True,
+        env=env
+    );
+    assert run.returncode == 0 , run.stderr[-3000:];
+    result = json.loads(run.stdout.strip().splitlines()[-1]);
+    return (result["digests"], result["lowered"]);
+}
+
+test "an edit inside one unit's body lowers that unit alone" {
+    root_dir = tempfile.mkdtemp(prefix="jac-cascade-");
+    Path(root_dir, "jac.toml").write_text(
+        "[project]\nname = \"cascade\"\nversion = \"0.1.0\"\n"
+    );
+    Path(root_dir, "pkg").mkdir();
+    Path(root_dir, "pkg", "__init__.jac").write_text("");
+    for (name, text) in CASCADE_SOURCES.items() {
+        Path(root_dir, "pkg", name).write_text(text);
+    }
+    (cold, _) = _cascade_plan(root_dir);
+    impl_path = Path(root_dir, "pkg", "prog.impl.jac");
+    impl_path.write_text(impl_path.read_text() + "\n# a comment changes nothing\n");
+    (warm, lowered) = _cascade_plan(root_dir);
+    assert lowered == ["prog.jac"] , f"lowered {lowered}";
+    assert warm == cold , {
+        name: (cold.get(name), warm.get(name))
+        for name in set(cold) | set(warm)
+        if cold.get(name) != warm.get(name)
+    };
 }
