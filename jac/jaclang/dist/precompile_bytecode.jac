@@ -701,7 +701,21 @@ def _seal_boot_unit(
     }
     jac_file = Path(jac_path);
     pkg_dir = Path(pkg_root);
+    jir_path = Path(out_root) / jac_file.relative_to(pkg_dir).with_suffix(".jir");
     try {
+        import from jaclang.compiler.driver.jir { read_debug_source }
+        if jir_path.is_file() {
+            existing = jir_path.read_bytes();
+            header = parse_header(existing[:HEADER_SIZE]);
+            if header is not None
+                and (header.flags & FLAG_BOOTSTRAP)
+                and precompiled_jir_matches_source(
+                    existing, jac_path, package_root=pkg_root
+                )
+                and embed_src == (read_debug_source(existing) is not None) {
+                return "";
+            }
+        }
         impl_sources: list[tuple[str, str]] = [];
         for impl_path in jac0_impls(jac_path) {
             impl_sources.append(
@@ -721,27 +735,25 @@ def _seal_boot_unit(
             program.iface_registry().ensure(jac_path);
             extra = _unit_extra(jac_path, pkg_root, embed_src);
         }
-        jir_path = Path(out_root) / jac_file.relative_to(pkg_dir).with_suffix(".jir");
         jir_path.parent.mkdir(parents=True, exist_ok=True);
-        jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
+        import from jaclang.jac0core.cache_paths { atomic_write }
+        atomic_write(
+            str(jir_path),
+            write_precompiled_jir(
+                bc, compute_precompile_module_key(jac_path), FLAG_BOOTSTRAP, extra
+            )
+        );
         return "";
     } except Exception as e {
         return f"{type(e).__name__}: {e}";
     }
 }
 
-def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
+def bootstrap_sources(pkg_dir: Path) -> list[str] {
     if pkg_dir.name != "jaclang" {
-        return 0;
+        return [];
     }
-    import time;
     import from jaclang.bootstrap_manifest { seed_abs_entries, is_native_only }
-    import from jaclang.cli.workpool {
-        WORKER_MEM_BYTES,
-        WorkPool,
-        pool_available,
-        resolve_jobs
-    }
     (seed_dirs, seed_files) = seed_abs_entries(str(pkg_dir));
     seed_sources: list[Path] = [
         Path(p)
@@ -767,6 +779,21 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
         }
         units.append(str(jac_file));
     }
+    return units;
+}
+
+def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
+    if pkg_dir.name != "jaclang" {
+        return 0;
+    }
+    import time;
+    import from jaclang.cli.workpool {
+        WORKER_MEM_BYTES,
+        WorkPool,
+        pool_available,
+        resolve_jobs
+    }
+    units = bootstrap_sources(pkg_dir);
     started = time.monotonic();
     failures: list[str] = [];
 
@@ -1248,18 +1275,6 @@ def native_roots(pkg_name: str, units: list[str]) -> list[str] {
     return list(units);
 }
 
-def _stage0_builds_kernel -> bool {
-    import from jaclang.compiler.backends.native.stage0_pin {
-        Stage0PinError,
-        read_stage0_pin
-    }
-    try {
-        return not read_stage0_pin().is_self();
-    } except (Stage0PinError, OSError) {
-        return False;
-    }
-}
-
 def _compiler_kernel_units -> set[str] {
     import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
     import from jaclang.compiler.frontend.codeinfo { kernel_unit_paths }
@@ -1361,11 +1376,8 @@ def seal_native(
     artifact_path = pkg_path / artifact_rel;
     artifact_path.parent.mkdir(parents=True, exist_ok=True);
     if pkg_name == "jaclang" {
-        staged = seal_stage0_kernel(pkg_path, artifact_path, artifact_rel);
-        if staged is not None {
-            console.print(f"  Native build: {time.monotonic() - native_start:.1f}s");
-            return staged;
-        }
+        import from jaclang.dist.kernel_seal { seal_kernel }
+        return seal_kernel(pkg_path, artifact_path, artifact_rel);
     }
 
     plan = build_link_plan(
@@ -1425,129 +1437,6 @@ def seal_native(
             "mode": plan.mode
         }
     };
-}
-
-def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
-    import shutil;
-    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
-    work = get_jir_cache_dir() / "stage0-kernel";
-    target = work / "target" / pkg_path.name;
-    if target.exists() {
-        shutil.rmtree(target);
-    }
-    shutil.copytree(
-        pkg_path,
-        target,
-        symlinks=True,
-        ignore=shutil.ignore_patterns(
-            "__pycache__",
-            "_precompiled",
-            "_bun",
-            "*.so",
-            "*.so.*",
-            "*.dylib",
-            "*.dll",
-            ".jac"
-        )
-    );
-    out = work / "out" / artifact_name;
-    out.parent.mkdir(parents=True, exist_ok=True);
-    return (target, out);
-}
-
-def _sealed_link_current(out: Path) -> bool {
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        SEALED_LINK_MODE,
-        _sidecar_matches_sources,
-        read_sidecar
-    }
-    sidecar = read_sidecar(str(out));
-    if sidecar is None
-        or not out.is_file()
-        or sidecar.get("link_mode") != SEALED_LINK_MODE {
-        return False;
-    }
-    try {
-        return _sidecar_matches_sources(sidecar);
-    } except Exception {
-        return False;
-    }
-}
-
-def seal_stage0_kernel(
-    pkg_path: Path, artifact_path: Path, artifact_rel: str
-) -> (dict[str, any] | None) {
-    import shutil;
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        LAYOUT_SIDECAR_SUFFIX,
-        PR_KIT_EVENT,
-        SEALED_LINK_MODE,
-        STAGE0_BUILDER,
-        read_sidecar,
-        seal_link_mode
-    }
-    import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
-    import from jaclang.compiler.backends.native.stage0_build { build_kernel_by_pin }
-    import from jaclang.compiler.driver.jir { get_jir_cache_dir }
-    import from jaclang.jac0core.cache_paths { FileLock }
-    link_mode = seal_link_mode();
-    lock_path = get_jir_cache_dir() / "stage0-kernel.lock";
-    lock_path.parent.mkdir(parents=True, exist_ok=True);
-    lock = FileLock(str(lock_path), timeout=7200.0);
-    lock.acquire();
-    try {
-        (target, out) = _stage0_kernel_workdir(pkg_path, artifact_path.name);
-        if link_mode != SEALED_LINK_MODE and _sealed_link_current(out) {
-            console.print(
-                "  Kernel: the cached bitcode link matches these units; reusing it"
-            );
-            link_mode = SEALED_LINK_MODE;
-        }
-        if not build_kernel_by_pin(
-            str(out), spec=running_kernel_target(str(target)), link_mode=link_mode
-        ) {
-            return None;
-        }
-        for suffix in ("", LAYOUT_SIDECAR_SUFFIX) {
-            shutil.copyfile(str(out) + suffix, str(artifact_path) + suffix);
-        }
-    } finally {
-        lock.release();
-    }
-    sidecar = read_sidecar(str(artifact_path));
-    if sidecar is None {
-        raise RuntimeError("the stage-0 kernel build left no layout sidecar");
-    }
-    mode = str(sidecar.get("link_mode", ""));
-    if mode != link_mode {
-        raise RuntimeError(
-            f"stage 0 linked the kernel in {mode or 'an unrecorded'} mode; this "
-            f"seal asked for a {link_mode} link"
-        );
-    }
-    stage0 = sidecar.get("stage0");
-    if not isinstance(stage0, dict) {
-        raise RuntimeError("the stage-0 kernel sidecar names no stage-0 compiler");
-    }
-    record = {
-        "path": Path(artifact_rel).as_posix(),
-        "sha256": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
-        "layout_digest": str(sidecar.get("layout_digest", "")),
-        "plan_digest": str(sidecar.get("plan_digest", "")),
-        "triple": str(sidecar.get("triple", "")),
-        "mode": mode,
-        "builder": STAGE0_BUILDER,
-        "stage0": dict(stage0)
-    };
-    if mode != SEALED_LINK_MODE {
-        record["kit"] = PR_KIT_EVENT;
-    }
-    console.print(
-        f"  Native artifact: {artifact_rel} built by stage 0 "
-        f"{str(stage0.get('commit', ''))[:12]} ({mode} link, plan "
-        f"{record['plan_digest'][:12]}, layout {record['layout_digest'][:12]})"
-    );
-    return {"units": {}, "artifact": record};
 }
 
 def _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
@@ -1802,6 +1691,17 @@ def run_precompile(
     );
     _phase("start");
     console.print(f"  Found {len(jac_files)} .jac files");
+    if exclude_seed and pkg_name == "jaclang" {
+        import from jaclang.compiler.backends.native.kernel_stage0 {
+            running_kernel_target
+        }
+        import from jaclang.compiler.backends.native.stage0_build { prepare_stage0 }
+        import from jaclang.compiler.backends.native.kernel_resolve { seal_link_mode }
+        selected = prepare_stage0(running_kernel_target(package_dir));
+        builder = "stage 0" if selected is not None else "self";
+        sys.stderr.write(f"  Kernel preflight: {builder}, {seal_link_mode()} link\n");
+        sys.stderr.flush();
+    }
     native_units_set: set[str] = set();
     native_only_units: list[str] = [];
     if exclude_seed {
@@ -1823,7 +1723,7 @@ def run_precompile(
                 jac_files.append(unit);
             }
         }
-        if pkg_name == "jaclang" and _stage0_builds_kernel() {
+        if pkg_name == "jaclang" {
             kernel_only = _compiler_kernel_units();
             dropped = {
                 u
@@ -1833,7 +1733,7 @@ def run_precompile(
             native_units_set = native_units_set - dropped;
             if dropped {
                 console.print(
-                    f"  Compiler kernel: {len(dropped)} unit(s) left to the stage-0 "
+                    f"  Compiler kernel: {len(dropped)} unit(s) left to the "
                     "kernel build; lowering the units programs link"
                 );
             }
@@ -1854,6 +1754,12 @@ def run_precompile(
     expected: set[str] = {
         str(Path(p).relative_to(pkg_path).with_suffix(".jir")) for p in jac_files
     };
+    if exclude_seed {
+        expected.update(
+            str(Path(p).relative_to(pkg_path).with_suffix(".jir"))
+            for p in bootstrap_sources(pkg_path)
+        );
+    }
     for old_jir in sorted(out_dir.rglob("*.jir")) {
         if str(old_jir.relative_to(out_dir)) not in expected {
             old_jir.unlink();
@@ -1992,7 +1898,7 @@ def run_precompile(
     if use_pool and native_units_set {
         prebuild_native_units(
             sorted(native_units_set)
-                if pkg_name == "jaclang" and _stage0_builds_kernel()
+                if pkg_name == "jaclang"
                 else native_roots(pkg_name, sorted(native_units_set))
         );
     }

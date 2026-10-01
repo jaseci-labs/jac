@@ -8,6 +8,7 @@ recipe=$4
 host=${5:-}
 root=$6
 mode=$7
+cc_cache=$8
 case "$mode:$host" in
     host:|jacpython:?*) ;;
     *) echo "Invalid Python build mode/host: $mode" >&2; exit 1 ;;
@@ -59,9 +60,12 @@ exec "$JAC_PYTHON_ZIG" ranlib "$@"
 SH
 chmod +x "$work/bin/cc" "$work/bin/ar" "$work/bin/ranlib"
 export CC="$work/bin/cc" AR="$work/bin/ar" RANLIB="$work/bin/ranlib"
-# The completed SDK is cached separately. Keep transient C compilation caches
-# in this build tree so dependency objects cannot exhaust release-runner disks.
-export ZIG_LOCAL_CACHE_DIR="$work/cc-cache" ZIG_GLOBAL_CACHE_DIR="$work/cc-cache"
+# The caller namespaces the content-validated C cache by runtime recipe,
+# platform, SDK and Zig version. Jac compiler edits leave C objects reusable.
+if [ "$mode" = host ]; then
+    cc_cache=$work/cc-cache
+fi
+export ZIG_LOCAL_CACHE_DIR="$cc_cache" ZIG_GLOBAL_CACHE_DIR="$cc_cache"
 export SOURCE_DATE_EPOCH=0
 # Zig's tar extractor does not preserve mtimes. Equalize the released source
 # inputs so make uses the shipped generated files instead of invoking Autotools.
@@ -73,9 +77,16 @@ unset CXXFLAGS CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_P
 
 step() {
     label=$1; shift
+    started=$(date +%s)
     echo "build-python: $label"
     ( "$@" ) > "$work/logs/$label.log" 2>&1
-    rm -rf "$work/cc-cache"
+    echo "build-python: $label completed in $(($(date +%s) - started))s"
+    if [ "$label" = native ]; then
+        sed -n '/^JacPython:/p' "$work/logs/$label.log"
+    fi
+    if [ "$mode" = host ]; then
+        rm -rf "$cc_cache"
+    fi
     case "$label" in
         zlib|bzip2|zstd|sqlite|xz|libffi|mpdecimal|expat|openssl)
             rm -rf "$src/$label"

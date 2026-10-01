@@ -22,9 +22,9 @@ import jaclang.compiler.backends.native.stage0_build as stage0_build;
 import from jaclang.compiler.backends.native.kernel_resolve {
     KERNEL_DEV_LINK_MODE,
     KernelUnavailable,
-    PR_KIT_EVENT,
-    PR_KIT_LINK_ENV,
-    PR_KIT_LINK_MODE,
+    CI_BUILD_PROFILE,
+    BUILD_PROFILE_ENV,
+    CI_LINK_MODE,
     SEALED_LINK_MODE,
     _accept_in_tree,
     _derive_in_tree,
@@ -59,6 +59,7 @@ import from jaclang.compiler.frontend.codeinfo {
     native_unit_identity
 }
 import from jaclang.compiler.native_scope { KERNEL_ABI_CONTRACT_REL }
+import from jaclang.compiler.driver.native_iface { layout_digest }
 import from jaclang.testing.requires { require_flag }
 
 glob COMMIT: str = "a" * 40,
@@ -373,10 +374,11 @@ def _seal_with(
     tmp: str,
     env: (dict[str, (str | None)] | None) = None,
     spec_modes: (list[str] | None) = None,
-    cached_bitcode_current: bool = False
+    cached_bitcode_current: bool = False,
+    fallback_reason: str = ""
 ) -> any {
-    import jaclang.dist.precompile_bytecode as precompile_bytecode;
-    import from jaclang.dist.precompile_bytecode { seal_stage0_kernel }
+    import jaclang.dist.kernel_seal as kernel_seal;
+    import from jaclang.dist.kernel_seal { seal_kernel }
     import from jaclang.compiler.kernel_target { read_kernel_target }
     pin_path = os.path.join(tmp, "stage0.json");
     write_stage0_pin(pin, pin_path);
@@ -388,8 +390,46 @@ def _seal_with(
             spec_modes.append(spec.link_mode if spec is not None else "unreadable");
         }
         Path(dst).write_bytes(b"a stage-0 kernel");
-        _write_json(dst + ".layout.json", sidecar);
+        _write_json(
+            dst + ".layout.json",
+            {
+                ** sidecar,
+                "artifact_sha256": hashlib.sha256(b"a stage-0 kernel").hexdigest(),
+                "layout_digest": layout_digest(sidecar["classes"])
+            }
+        );
         return 0;
+    }
+    def self_build(dst: str, target: any, link_mode: str, log: any) {
+        if spec_modes is not None {
+            spec_modes.append(link_mode);
+        }
+        Path(dst).write_bytes(b"a self-built kernel");
+        _write_json(
+            dst + ".layout.json",
+            {
+                "classes": {},
+                "link_mode": link_mode,
+                "artifact_sha256": hashlib.sha256(b"a self-built kernel").hexdigest(),
+                "layout_digest": layout_digest({})
+            }
+        );
+    }
+    def cached(path: Path, mode: str, inputs: str) -> bool {
+        if not cached_bitcode_current or mode != SEALED_LINK_MODE {
+            return False;
+        }
+        path.parent.mkdir(parents=True, exist_ok=True);
+        path.write_bytes(b"a stage-0 kernel");
+        _write_json(
+            str(path) + ".layout.json",
+            {
+                ** sidecar,
+                "artifact_sha256": hashlib.sha256(b"a stage-0 kernel").hexdigest(),
+                "layout_digest": layout_digest(sidecar["classes"])
+            }
+        );
+        return True;
     }
     provision = patch.object(
         stage0_build,
@@ -402,19 +442,25 @@ def _seal_with(
         );
     with patch.object(stage0_build, "checkout_repo", return_value=("/repo", "jac/")), provision, patch.object(
         stage0_build, "native_tree_trips", return_value=[]
-    ), patch.object(stage0_build, "file_guard_trips", return_value=[]), patch.object(
-        stage0_build, "run_stage0_child", side_effect=child
-    ), patch.object(stage0_build, "restamp_stage0_sidecar", return_value={}), patch.object(
-        precompile_bytecode, "_sealed_link_current", return_value=cached_bitcode_current
-    ) {
+    ), patch.object(
+        stage0_build,
+        "file_guard_trips",
+        return_value=[fallback_reason] if fallback_reason else []
+    ), patch.object(stage0_build, "run_stage0_child", side_effect=child), patch.object(
+        stage0_build, "restamp_stage0_sidecar", return_value={}
+    ), patch.object(kernel_seal, "cached_kernel", side_effect=cached), patch.object(
+        kernel_seal, "link_kernel", side_effect=self_build
+    ), patch.object(kernel_seal, "get_jir_cache_dir", return_value=Path(tmp, "cache")), patch.object(
+        kernel_seal, "kernel_build_key", return_value="test inputs"
+    ), patch.object(kernel_seal.shutil, "copytree") {
         return _with_env(
             {
                 STAGE0_PIN_ENV: pin_path,
                 STAGE0_STRICT_ENV: "1",
-                PR_KIT_LINK_ENV: None,
+                BUILD_PROFILE_ENV: None,
                 ** (env or {})
             },
-            lambda() { seal_stage0_kernel(
+            lambda() { seal_kernel(
                 Path(jaclang_pkg_root()), lib, "compiler/libjac_compiler.so"
             ); }
         );
@@ -423,8 +469,10 @@ def _seal_with(
 
 test "the seal selects the kernel's builder by the pin: self seals as before, stage 0 records itself" {
     with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
-        assert _seal_with(Stage0Pin(), None, tmp) is None , "pin self leaves the seal to this compiler";
-        assert not os.path.exists(os.path.join(tmp, "compiler", "libjac_compiler.so"));
+        self_record = _seal_with(Stage0Pin(), None, tmp);
+        assert self_record["artifact"]["mode"] == SEALED_LINK_MODE;
+        assert "builder" not in self_record["artifact"];
+        assert os.path.exists(os.path.join(tmp, "compiler", "libjac_compiler.so"));
         pin = _commit_pin();
         sidecar = {
             "classes": {},
@@ -451,21 +499,17 @@ test "the seal selects the kernel's builder by the pin: self seals as before, st
             refused = True;
         }
         assert refused , "a kernel linked in another mode than the seal asked for is refused";
-        assert "kit" not in artifact , "a bitcode kernel is not marked a pull-request kit";
+        assert "profile" not in artifact , "a bitcode kernel is not marked a CI kit";
     }
 }
 
-glob PR_KIT_ENV: dict[str, (str | None)] = {
-         PR_KIT_LINK_ENV: PR_KIT_LINK_MODE,
-         "GITHUB_ACTIONS": "true",
-         "GITHUB_EVENT_NAME": PR_KIT_EVENT
-     };
+glob CI_ENV: dict[str, (str | None)] = {BUILD_PROFILE_ENV: CI_BUILD_PROFILE};
 
-test "only a pull-request CI build may seal an objects-linked kernel" {
+test "build profiles select kernel optimization independently of CI events" {
     def mode_for(env: dict[str, (str | None)]) -> str {
         return _with_env(
             {
-                PR_KIT_LINK_ENV: None,
+                BUILD_PROFILE_ENV: None,
                 "GITHUB_ACTIONS": None,
                 "GITHUB_EVENT_NAME": None,
                 ** env
@@ -482,16 +526,18 @@ test "only a pull-request CI build may seal an objects-linked kernel" {
         return False;
     }
     assert mode_for({}) == SEALED_LINK_MODE;
-    assert mode_for({PR_KIT_LINK_ENV: ""}) == SEALED_LINK_MODE;
-    assert mode_for({PR_KIT_LINK_ENV: SEALED_LINK_MODE}) == SEALED_LINK_MODE;
-    assert mode_for(PR_KIT_ENV) == PR_KIT_LINK_MODE;
-    assert refused({** PR_KIT_ENV, "GITHUB_EVENT_NAME": "push"}) , "main pushes seal bitcode";
-    assert refused({** PR_KIT_ENV, "GITHUB_EVENT_NAME": "workflow_dispatch"});
-    assert refused({** PR_KIT_ENV, "GITHUB_ACTIONS": None}) , "a local build cannot opt in";
-    assert refused({** PR_KIT_ENV, PR_KIT_LINK_ENV: "thin"});
+    assert mode_for({BUILD_PROFILE_ENV: None}) == SEALED_LINK_MODE;
+    assert mode_for({BUILD_PROFILE_ENV: "release"}) == SEALED_LINK_MODE;
+    assert mode_for(CI_ENV) == CI_LINK_MODE;
+    assert mode_for({** CI_ENV, "GITHUB_EVENT_NAME": "push"}) == CI_LINK_MODE;
+    assert mode_for({** CI_ENV, "GITHUB_EVENT_NAME": "workflow_dispatch"})
+        == CI_LINK_MODE;
+    assert mode_for({** CI_ENV, "GITHUB_ACTIONS": None}) == CI_LINK_MODE;
+    assert refused({BUILD_PROFILE_ENV: ""});
+    assert refused({BUILD_PROFILE_ENV: "thin"});
 }
 
-test "a pull-request kit seals the stage-0 kernel as an objects link and marks it" {
+test "a CI kit seals the stage-0 kernel as an objects link and marks it" {
     with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
         pin = _commit_pin();
         sidecar = {
@@ -499,20 +545,20 @@ test "a pull-request kit seals the stage-0 kernel as an objects link and marks i
             "plan_digest": "p" * 64,
             "layout_digest": "l" * 64,
             "triple": kernel_options().effective_triple(),
-            "link_mode": PR_KIT_LINK_MODE,
+            "link_mode": CI_LINK_MODE,
             "builder": "stage0",
             "stage0": {"commit": pin.commit, "digest": pin.compiler_digest}
         };
         modes: list[str] = [];
-        record = _seal_with(pin, sidecar, tmp, env=PR_KIT_ENV, spec_modes=modes);
-        assert modes == [PR_KIT_LINK_MODE] , "stage 0 is asked for an objects link";
+        record = _seal_with(pin, sidecar, tmp, env=CI_ENV, spec_modes=modes);
+        assert modes == [CI_LINK_MODE] , "stage 0 is asked for an objects link";
         artifact = record["artifact"];
-        assert artifact["mode"] == PR_KIT_LINK_MODE;
-        assert artifact["kit"] == PR_KIT_EVENT;
+        assert artifact["mode"] == CI_LINK_MODE;
+        assert artifact["profile"] == CI_BUILD_PROFILE;
         refused = False;
         try {
             _seal_with(
-                pin, {** sidecar, "link_mode": SEALED_LINK_MODE}, tmp, env=PR_KIT_ENV
+                pin, {** sidecar, "link_mode": SEALED_LINK_MODE}, tmp, env=CI_ENV
             );
         } except RuntimeError {
             refused = True;
@@ -523,7 +569,7 @@ test "a pull-request kit seals the stage-0 kernel as an objects link and marks i
             pin,
             {** sidecar, "link_mode": SEALED_LINK_MODE},
             tmp,
-            env={PR_KIT_LINK_ENV: None},
+            env={BUILD_PROFILE_ENV: None},
             spec_modes=modes
         );
         assert modes == [SEALED_LINK_MODE] , "without the opt-in the seal asks for bitcode";
@@ -532,43 +578,140 @@ test "a pull-request kit seals the stage-0 kernel as an objects link and marks i
             pin,
             {** sidecar, "link_mode": SEALED_LINK_MODE},
             tmp,
-            env=PR_KIT_ENV,
+            env=CI_ENV,
             spec_modes=modes,
             cached_bitcode_current=True
         );
-        assert modes == [SEALED_LINK_MODE] , "an unchanged kernel reuses its cached bitcode link";
+        assert modes == [] , "a verified cached link never enters either compiler";
         assert record["artifact"]["mode"] == SEALED_LINK_MODE;
-        assert "kit" not in record["artifact"];
+        assert "profile" not in record["artifact"];
     }
 }
 
-test "a pull-request kit reuses the cached bitcode link only when it matches the units" {
-    import from jaclang.dist.precompile_bytecode { _sealed_link_current }
+test "self and ABI-fallback kernels honor the CI link policy" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        modes: list[str] = [];
+        for pin in [Stage0Pin(), _commit_pin()] {
+            modes.clear();
+            record = _seal_with(
+                pin,
+                None,
+                tmp,
+                env={** CI_ENV, STAGE0_STRICT_ENV: ""},
+                spec_modes=modes,
+                fallback_reason="kernel ABI contract differs"
+            );
+            assert modes == [CI_LINK_MODE];
+            assert record["artifact"]["mode"] == CI_LINK_MODE;
+            assert record["artifact"]["profile"] == CI_BUILD_PROFILE;
+            assert record["units"] == {};
+        }
+    }
+}
+
+test "kernel build identity survives relocation and changes with its target or shim" {
+    import from jaclang.dist.kernel_seal { kernel_build_key }
+    import from jaclang.compiler.kernel_target { KernelTarget }
+    import jaclang.compiler.backends.native.llvm as llvm;
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-key-") as tmp {
+        shim = Path(tmp, "shim");
+        shim.write_bytes(b"toolchain one");
+        with patch.object(llvm, "_find_shim", return_value=str(shim)) {
+            target = KernelTarget(`root="/first/jaclang", root_module="jaclang.kernel");
+            first = kernel_build_key(target);
+            target = KernelTarget(
+                `root="/second/jaclang", root_module="jaclang.kernel"
+            );
+            assert kernel_build_key(target) == first;
+            target.scope_modules.append("jaclang.new_unit");
+            assert kernel_build_key(target) != first;
+            target.scope_modules.clear();
+            shim.write_bytes(b"toolchain two");
+            assert kernel_build_key(target) != first;
+        }
+    }
+}
+
+test "a deleted kernel unit cannot be supplied by the previous staging tree" {
+    import from jaclang.dist.kernel_seal { cached_kernel }
+    import from jaclang.compiler.kernel_target { KernelTarget, set_kernel_target }
+    import jaclang.compiler.backends.native.kernel_resolve as kernel_resolve;
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-delete-") as tmp {
+        pkg = Path(tmp, "jaclang");
+        pkg.mkdir();
+        source = pkg / "unit.jac";
+        source.write_text("def value -> int { return 1; }");
+        out = Path(tmp, "kernel");
+        out.write_bytes(b"kernel");
+        _write_json(
+            str(out) + ".layout.json",
+            {
+                "classes": {},
+                "link_mode": SEALED_LINK_MODE,
+                "seal_inputs": "inputs",
+                "unit_ids": ["jaclang/unit.jac"],
+                "artifact_sha256": hashlib.sha256(b"kernel").hexdigest(),
+                "layout_digest": layout_digest({})
+            }
+        );
+        previous = set_kernel_target(
+            KernelTarget(`root=str(pkg), root_module="jaclang.unit")
+        );
+        try {
+            with patch.object(
+                kernel_resolve, "_sidecar_matches_sources", return_value=True
+            ) {
+                assert cached_kernel(out, SEALED_LINK_MODE, "inputs");
+                source.unlink();
+                assert not cached_kernel(out, SEALED_LINK_MODE, "inputs");
+            }
+        } finally {
+            set_kernel_target(previous);
+        }
+    }
+}
+
+test "completed kernel reuse validates sources, mode, and artifact integrity" {
+    import from jaclang.dist.kernel_seal { cached_kernel, kernel_record }
     import jaclang.compiler.backends.native.kernel_resolve as kernel_resolve;
     with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
         out = Path(tmp, "libjac_compiler.so");
-        assert not _sealed_link_current(out) , "no cached link";
+        assert not cached_kernel(out, SEALED_LINK_MODE, "inputs");
         out.write_bytes(b"kernel");
         _write_json(
-            str(out) + ".layout.json", {"classes": {}, "link_mode": SEALED_LINK_MODE}
+            str(out) + ".layout.json",
+            {
+                "classes": {},
+                "link_mode": SEALED_LINK_MODE,
+                "seal_inputs": "inputs",
+                "artifact_sha256": hashlib.sha256(b"kernel").hexdigest(),
+                "layout_digest": layout_digest({})
+            }
         );
         with patch.object(
             kernel_resolve, "_sidecar_matches_sources", return_value=True
         ) {
-            assert _sealed_link_current(out);
+            assert cached_kernel(out, SEALED_LINK_MODE, "inputs");
+            assert not cached_kernel(out, SEALED_LINK_MODE, "changed target or shim");
+            assert not cached_kernel(out, CI_LINK_MODE, "inputs");
+            assert kernel_record(out, "compiler/kernel", SEALED_LINK_MODE)["units"]
+                == {};
+            out.write_bytes(b"tampered");
+            assert not cached_kernel(out, SEALED_LINK_MODE, "inputs");
+            out.write_bytes(b"kernel");
+            sidecar_path = Path(str(out) + ".layout.json");
+            valid = json.loads(sidecar_path.read_text());
+            for changed in [{"layout_digest": "incorrect"}, {"unit_ids": 123}] {
+                _write_json(str(sidecar_path), {** valid, ** changed});
+                assert not cached_kernel(out, SEALED_LINK_MODE, "inputs");
+            }
+            _write_json(str(sidecar_path), valid);
         }
+        out.write_bytes(b"kernel");
         with patch.object(
             kernel_resolve, "_sidecar_matches_sources", return_value=False
         ) {
-            assert not _sealed_link_current(out) , "a unit changed since the cached link";
-        }
-        _write_json(
-            str(out) + ".layout.json", {"classes": {}, "link_mode": PR_KIT_LINK_MODE}
-        );
-        with patch.object(
-            kernel_resolve, "_sidecar_matches_sources", return_value=True
-        ) {
-            assert not _sealed_link_current(out) , "only a bitcode link is reused as bitcode";
+            assert not cached_kernel(out, SEALED_LINK_MODE, "inputs");
         }
     }
 }
@@ -607,17 +750,17 @@ test "a sealed image whose kernel is not a whole-program link is refused" {
         }
         assert resolve(record) == (True, False);
         assert resolve({** record, "mode": KERNEL_DEV_LINK_MODE}) == (False, True);
-        assert resolve({** record, "kit": PR_KIT_EVENT}) == (True, False);
+        assert resolve({** record, "profile": CI_BUILD_PROFILE}) == (True, False);
         _write_json(
             str(lib) + ".layout.json", {** sidecar, "link_mode": KERNEL_DEV_LINK_MODE}
         );
         assert resolve(record) == (False, True);
         objects = {** record, "mode": KERNEL_DEV_LINK_MODE};
         assert resolve(objects) == (False, True) , "an unmarked objects link is refused";
-        assert resolve({** objects, "kit": "release"}) == (False, True);
-        assert resolve({** objects, "kit": PR_KIT_EVENT}) == (True, False) , "a pull-request kit runs its objects link";
+        assert resolve({** objects, "profile": "release"}) == (False, True);
+        assert resolve({** objects, "profile": CI_BUILD_PROFILE}) == (True, False) , "a CI kit runs its objects link";
         _write_json(str(lib) + ".layout.json", sidecar);
-        assert resolve({** objects, "kit": PR_KIT_EVENT}) == (False, True) , "manifest and sidecar must agree";
+        assert resolve({** objects, "profile": CI_BUILD_PROFILE}) == (False, True) , "manifest and sidecar must agree";
     }
 }
 

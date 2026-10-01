@@ -708,7 +708,7 @@ impl tar_zst_dir(stage: str, out: str, layer_cache: str | None) {
 
     deps_frame = deps_frame_cached(layer_cache, deps_tar);
 
-    log(f"==> packing jac layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
+    log(f"==> packing jac layer | zstd -{payload_zstd_level()}");
     jac_frame = zstd_compress(jac_tar);
 
     with open(out, "wb") as f {
@@ -717,9 +717,20 @@ impl tar_zst_dir(stage: str, out: str, layer_cache: str | None) {
     }
 }
 
+impl payload_zstd_level -> int {
+    profile = os.environ.get("JAC_BUILD_PROFILE", "release").strip().lower();
+    if profile == "ci" {
+        return CI_PAYLOAD_ZSTD_LEVEL;
+    }
+    if profile != "release" {
+        raise ValueError(f"JAC_BUILD_PROFILE={profile!r}: expected ci or release");
+    }
+    return PAYLOAD_ZSTD_LEVEL;
+}
+
 impl zstd_compress(data: bytes) -> bytes {
     opts: dict[int, int] = {
-        int(CompressionParameter.compression_level): PAYLOAD_ZSTD_LEVEL,
+        int(CompressionParameter.compression_level): payload_zstd_level(),
         int(CompressionParameter.window_log): PAYLOAD_WINDOW_LOG,
         int(CompressionParameter.checksum_flag): 0
     };
@@ -735,7 +746,7 @@ impl zstd_compress(data: bytes) -> bytes {
 impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
     key = sha256_hex(tar_bytes);
     cache_path = (
-        os.path.join(layer_cache, f"deps-{key}.tar.zst")
+        os.path.join(layer_cache, f"deps-{payload_zstd_level()}-{key}.tar.zst")
             if layer_cache is not None
             else None
     );
@@ -756,7 +767,7 @@ impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
         }
     }
 
-    log(f"==> packing deps layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
+    log(f"==> packing deps layer | zstd -{payload_zstd_level()}");
     fresh = zstd_compress(tar_bytes);
     if cache_path is not None and layer_cache is not None {
         prune_layer_cache(layer_cache, os.path.basename(cache_path));

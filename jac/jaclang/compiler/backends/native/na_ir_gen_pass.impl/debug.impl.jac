@@ -96,9 +96,8 @@ impl NaIRGenPass.finish with exit {
         }
     }
 
-    ir_str = str(self.llvm_module);
-
     if self.prog.options.debug_ir {
+        ir_str = str(self.llvm_module);
         import from jaclang.compiler.driver.jir { get_native_debug_dir }
         src_path = self.module.loc.mod_path;
         if src_path {

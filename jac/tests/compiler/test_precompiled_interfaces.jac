@@ -5,6 +5,41 @@ import shutil;
 import from jaclang.compiler.driver.jir { SEC_IFACE, SEC_DIAG, read_section_bytes }
 import from jaclang.dist.precompile_bytecode { precompile_unit, write_manifest }
 
+test "bootstrap freezing reuses valid products and rebuilds changed sources or compilers" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.jir as jir;
+    import jaclang.jac0 as jac0;
+    import from jaclang.dist.precompile_bytecode { _seal_boot_unit }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = package / "boot.jac";
+        source.write_text("def answer() -> int { return 42; }\n");
+        out = Path(directory) / "frozen";
+        assert _seal_boot_unit(str(source), str(package), str(out), False) == "";
+        artifact = out / "boot.jir";
+        original = artifact.read_bytes();
+        with patch.object(
+            jac0, "compile_jac", side_effect=AssertionError("warm bootstrap compiled")
+        ) {
+            assert _seal_boot_unit(str(source), str(package), str(out), False) == "";
+        }
+        assert artifact.read_bytes() == original;
+        source.write_text("def answer() -> int { return 43; }\n");
+        assert _seal_boot_unit(str(source), str(package), str(out), False) == "";
+        changed = artifact.read_bytes();
+        assert changed != original;
+        with patch.object(
+            jir, "running_compiler_digest", return_value="different compiler"
+        ) {
+            assert _seal_boot_unit(str(source), str(package), str(out), False) == "";
+            assert artifact.read_bytes() != changed;
+        }
+        artifact.write_bytes(b"incomplete cache write");
+        assert _seal_boot_unit(str(source), str(package), str(out), False) == "";
+        assert artifact.read_bytes() == changed;
+    }
+}
+
 def _package(base_path: Path) -> Path {
     package = base_path / "library";
     package.mkdir(parents=True);

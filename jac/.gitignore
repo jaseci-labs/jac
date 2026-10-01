@@ -120,3 +120,6 @@ jacpyembed.dll
 # Persistent kernel locks must keep their inode while waiters exist.
 libjac_*.lock
 jac_compiler.dll.lock
+
+# Content-validated C objects shared across runtime rebuilds
+.python-cc-cache/

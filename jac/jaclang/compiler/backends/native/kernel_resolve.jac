@@ -19,9 +19,9 @@ glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      STAGE0_BUILDER: str = "stage0",
      KERNEL_DEV_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
      SEALED_LINK_MODE: str = NATIVE_LINK_MODE_BITCODE,
-     PR_KIT_LINK_ENV: str = "JAC_PR_KIT_KERNEL_LINK",
-     PR_KIT_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
-     PR_KIT_EVENT: str = "pull_request";
+     BUILD_PROFILE_ENV: str = "JAC_BUILD_PROFILE",
+     CI_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
+     CI_BUILD_PROFILE: str = "ci";
 
 obj ResolvedKernel {
     has lib_path: str,
@@ -79,26 +79,16 @@ def _from_explicit(path: str) -> ResolvedKernel {
 }
 
 def seal_link_mode -> str {
-    requested = os.environ.get(PR_KIT_LINK_ENV, "").strip().lower();
-    if requested in ("", SEALED_LINK_MODE) {
+    profile = os.environ.get(BUILD_PROFILE_ENV, "release").strip().lower();
+    if profile == "release" {
         return SEALED_LINK_MODE;
     }
-    if requested != PR_KIT_LINK_MODE {
-        raise ValueError(
-            f"{PR_KIT_LINK_ENV}={requested!r}: expected {PR_KIT_LINK_MODE} or "
-            f"{SEALED_LINK_MODE}"
-        );
+    if profile == CI_BUILD_PROFILE {
+        return CI_LINK_MODE;
     }
-    event = os.environ.get("GITHUB_EVENT_NAME", "");
-    if os.environ.get("GITHUB_ACTIONS") != "true" or event != PR_KIT_EVENT {
-        raise RuntimeError(
-            f"{PR_KIT_LINK_ENV}={PR_KIT_LINK_MODE} is honored only in a "
-            f"{PR_KIT_EVENT} CI build (this is {event or 'not a CI build'}); a "
-            f"shipped kernel is a {SEALED_LINK_MODE} link"
-        );
-    }
-    return PR_KIT_LINK_MODE;
+    raise ValueError(f"{BUILD_PROFILE_ENV}={profile!r}: expected ci or release");
 }
+
 
 def sealed_link_refusal(record: dict[str, any], sidecar: dict[str, any]) -> str {
     mode = str(record.get("mode", SEALED_LINK_MODE));
@@ -109,11 +99,11 @@ def sealed_link_refusal(record: dict[str, any], sidecar: dict[str, any]) -> str 
     if mode == SEALED_LINK_MODE {
         return "";
     }
-    if mode == PR_KIT_LINK_MODE and record.get("kit") == PR_KIT_EVENT {
+    if mode == CI_LINK_MODE and record.get("profile") == CI_BUILD_PROFILE {
         return "";
     }
     return (
-        f"a {mode} link ships only in a {PR_KIT_EVENT} CI kit; a sealed image "
+        f"a {mode} kernel requires profile={CI_BUILD_PROFILE}; a release image "
         f"carries a {SEALED_LINK_MODE} link"
     );
 }

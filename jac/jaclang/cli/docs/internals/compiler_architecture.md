@@ -207,6 +207,30 @@ object (`SEC_NOBJ`, materialized on demand) live in its module JIR, and `libjac_
 link plan's artifact over them (`compiler/backends/native/link_plan.jac`),
 resolved at parse time by `kernel_resolve.jac`.
 
+Kernel sealing uses `dist/kernel_seal.jac` for both the
+pinned stage-0 compiler and the self compiler. `JAC_BUILD_PROFILE=ci` links
+cached unit objects; the default `release` profile performs whole-program
+bitcode optimization. Falling back from stage 0 preserves that policy.
+The binary cache includes the profile, and an object-linked sealed kernel
+must carry `profile: ci` in its manifest.
+The CI payload uses zstd level 9; releases retain level 19. Compressed layer
+caches include the level so one profile cannot substitute its packing policy
+for the other.
+
+A completed kernel is reused before constructing a link plan only when its
+artifact hash, unit sources, producing compiler, code-generation options,
+target specification and LLVM shim match. Kernel-only compilation belongs
+to this build, separately from the ordinary precompile pass. Bootstrap JIRs
+also carry source/compiler/dependency identities and survive a warm seal.
+Main saves the full unit cache; PRs save only their completed kernel, keyed
+by compiler and build inputs, so reruns can reuse it without duplicating
+the much larger unit cache for every branch.
+CI logs report the builder choice before precompilation and stream payload
+progress, including kernel planning and linking times.
+Object emission uses up to four workers, each with its own LLVM context and
+target machine. The owning thread validates unit inputs and publishes their
+cache records; the workers only consume bitcode and return object bytes.
+
 ---
 
 ## Stage 2: Codespace Coercion

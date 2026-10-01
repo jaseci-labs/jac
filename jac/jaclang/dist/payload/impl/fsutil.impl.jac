@@ -278,9 +278,13 @@ impl strip_best_effort(path: str, args: list[str] | None = None) {
         }
         args = mapped;
     }
+    strip_env = clone_env();
+
+    strip_env["ZERO_AR_DATE"] = "1";
     try {
         subprocess.run(
             ["strip"] + (args or []) + [path],
+            env=strip_env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL

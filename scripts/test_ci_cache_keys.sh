@@ -38,7 +38,7 @@ rm -rf jac/jaclang/vendor jac/jaclang/compiler/__pycache__ jac/jaclang/compiler/
 printf 'app edit\n' >> jac/jaclang/scale/app.jac
 commit app
 after=$(keys)
-same compiler; same python_cpython; same python_jacpython
+same compiler; same python_cpython; same python_jacpython; same python_c_objects
 changed payload; changed binary
 
 before=$after
@@ -47,13 +47,13 @@ printf fixture > jac/jaclang/compiler/tests/fixture.jac
 printf test > jac/jaclang/compiler/pass.test.jac
 commit tests
 after=$(keys)
-same compiler; same python_cpython; same python_jacpython
+same compiler; same python_cpython; same python_jacpython; same python_c_objects
 
 before=$after
 printf 'compiler edit\n' >> jac/jaclang/compiler/pass.jac
 commit compiler
 after=$(keys)
-changed compiler; changed python_jacpython; changed binary; same python_cpython
+changed compiler; changed python_jacpython; changed binary; same python_cpython; same python_c_objects
 
 before=$after
 git mv jac/jaclang/compiler/pass.jac jac/jaclang/compiler/renamed.jac
@@ -71,31 +71,31 @@ before=$after
 printf adapter >> jac/bootstrap/python/compiler_bridge.c
 commit adapter
 after=$(keys)
-same compiler; same python_cpython; changed python_jacpython; changed binary
+same compiler; same python_cpython; changed python_jacpython; changed binary; changed python_c_objects
 
 before=$after
 printf recipe >> jac/bootstrap/python/build.sh
 commit recipe
 after=$(keys)
-changed python_cpython; changed python_jacpython; same compiler
+changed python_cpython; changed python_jacpython; same compiler; changed python_c_objects
 
 before=$after
 printf dependency >> jac/build.zig.zon
 commit dependency
 after=$(keys)
-changed binary; changed python_jacpython; same python_cpython
+changed binary; changed python_jacpython; same python_cpython; changed python_c_objects
 
 before=$after
 printf shim >> jac/native/shim.cpp
 commit shim
 after=$(keys)
-changed binary; changed python_jacpython; same python_cpython
+changed binary; changed python_jacpython; same python_cpython; changed python_c_objects
 before=$after
 mkdir -p jac/examples/tiny_jacyac
 printf example > jac/examples/tiny_jacyac/web.jac
 commit tiny-example
 after=$(keys)
-changed binary; same compiler; same python_cpython; same python_jacpython
+changed binary; same compiler; same python_cpython; same python_jacpython; same python_c_objects
 
 # The stage-0 key names the committed pin's commit, "self" otherwise.
 [ "$(key "$after" stage0)" = self ] || { echo "No pin must key stage0=self" >&2; exit 1; }
