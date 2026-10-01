@@ -136,6 +136,16 @@ obj NativeUnitRegistry {
         }
     }
 
+    def _span_depth -> int {
+        return len(self._spans);
+    }
+
+    def _span_unwind(depth: int) {
+        while len(self._spans) > depth {
+            self._spans.pop();
+        }
+    }
+
     def phase_summary -> str {
         times = self.prog.analysis.phase_time;
         events = self.prog.analysis.cache_events;
@@ -683,6 +693,7 @@ obj NativeBuildSession {
             push_native_target,
             pop_native_target
         }
+        span_depth = self.registry._span_depth();
         unit_token = set_native_unit_compile(self.options.native_unit);
         target_token = push_native_target(self.options.native_target or "");
         prior_codespace = get_effective_default_codespace_override();
@@ -695,11 +706,8 @@ obj NativeBuildSession {
                 self.source_keys[resolved] = NativeUnitRegistry._source_key(resolved);
                 opts.no_cgen = True;
                 started = self.registry._span_begin();
-                try {
-                    mod = self.prog.compile(resolved, use_str=use_str, options=opts);
-                } finally {
-                    self.registry._span_end("NATIVE_ANALYSIS", started);
-                }
+                mod = self.prog.compile(resolved, use_str=use_str, options=opts);
+                self.registry._span_end("NATIVE_ANALYSIS", started);
                 self.registry._event("native_unit_analysis");
             }
             if len(self.prog.errors_had) > errors_before {
@@ -725,11 +733,8 @@ obj NativeBuildSession {
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;
             started = self.registry._span_begin();
-            try {
-                self.prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
-            } finally {
-                self.registry._span_end("NATIVE_LOWER", started);
-            }
+            self.prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
+            self.registry._span_end("NATIVE_LOWER", started);
             self.registry._event("native_unit_lower");
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_iface is None {
@@ -759,6 +764,7 @@ obj NativeBuildSession {
                     for alert in self.prog.errors_had[errors_before:]
                 );
             }
+            self.registry._span_unwind(span_depth);
             self.registry.building.discard(resolved);
             self.prog.options = prior_options;
             set_effective_default_codespace(prior_codespace);
