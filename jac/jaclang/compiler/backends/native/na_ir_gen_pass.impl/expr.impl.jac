@@ -1727,8 +1727,9 @@ impl NaIRGenPass._identity_over_optional(
     and the fallback below answers a different question entirely: the
     truthiness of the left operand, with the right operand discarded. Two
     options are identical when both are absent, or both present with the same
-    payload; an option against a plain reference is identical when the option
-    is present and the payloads match. A comparison against a literal `None`
+    payload; an option against a plain reference or value is identical when
+    the option is present and the payloads match. A reference payload matches
+    by address, a by-value payload by its bits. A comparison against a literal `None`
     never reaches here -- it is answered as a tag test further up.
     """;
     _lp = self._opt_payload_of(left.type);
@@ -1751,14 +1752,19 @@ impl NaIRGenPass._identity_over_optional(
         _r_set = self.builder.icmp_signed("!=", _r_tag, _zero_tag, name="is.r.set");
         _r_val = self.builder.extract_value(right, 1, name="is.r.pv");
     }
-    if not isinstance(_l_val.type, ir.PointerType)
-        or not isinstance(_r_val.type, ir.PointerType) {
+    _l_ref = isinstance(_l_val.type, ir.PointerType);
+    _r_ref = isinstance(_r_val.type, ir.PointerType);
+    if _l_ref != _r_ref
+        or self._opt_payload_of(_l_val.type) is not None
+        or self._opt_payload_of(_r_val.type) is not None {
         return None;
     }
-    if _l_val.type != _r_val.type {
-        _r_val = self.builder.bitcast(_r_val, _l_val.type, name="is.r.cast");
+    # By-value payloads (bool, int, float, a tuple of them) are identical by
+    # their bits, the answer `_value_identity` gives outside an option.
+    _same_pv = self._word_identity(_l_val, _r_val);
+    if _same_pv is None {
+        return None;
     }
-    _same_pv = self.builder.icmp_unsigned("==", _l_val, _r_val, name="is.pv.eq");
     _both_set = self.builder.and_(_l_set, _r_set, name="is.both.set");
     _hit = self.builder.and_(_both_set, _same_pv, name="is.opt.hit");
     _l_none = self.builder.not_(_l_set, name="is.l.none");
