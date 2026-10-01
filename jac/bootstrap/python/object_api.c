@@ -304,10 +304,16 @@ int64_t jacpy_math_errno(void) { return errno == EDOM ? 1 : errno == ERANGE ? 2 
  * the image ahead of libSystem's: its log2 misreads subnormal inputs and its
  * fma drops the sign of a result that underflows to zero. CPython's math
  * module is a shared extension there and reaches libSystem, so darwin looks
- * the functions up by name in libSystem. Elsewhere the plain call reaches the
- * C library already. Exactly rounded functions (sqrt, fabs, floor, ceil,
- * fmod) have one correct result and are called directly. */
-#ifdef __APPLE__
+ * the functions up by name in libSystem. A static Linux link can resolve the
+ * plain call to the same copies whenever compiler-rt precedes libm, so Linux
+ * looks them up in libm.so.6 the same way. Exactly rounded functions (sqrt,
+ * fabs, floor, ceil, fmod) have one correct result and are called directly. */
+#if defined(__APPLE__)
+#define JACPY_LIBM_IMAGE "/usr/lib/libSystem.B.dylib"
+#elif defined(__linux__)
+#define JACPY_LIBM_IMAGE "libm.so.6"
+#endif
+#ifdef JACPY_LIBM_IMAGE
 #include <dlfcn.h>
 #include <pthread.h>
 static struct {
@@ -327,7 +333,10 @@ static void *jacpy_libm_find(void *system, const char *name, void *fallback) {
     return found ? found : fallback;
 }
 static void jacpy_libm_resolve(void) {
-    void *system = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY | RTLD_NOLOAD);
+    void *system = dlopen(JACPY_LIBM_IMAGE, RTLD_LAZY | RTLD_NOLOAD);
+    if (!system) {
+        system = dlopen(JACPY_LIBM_IMAGE, RTLD_LAZY);
+    }
     jacpy_libm.log = (double (*)(double))jacpy_libm_find(system, "log", (void *)log);
     jacpy_libm.log2 = (double (*)(double))jacpy_libm_find(system, "log2", (void *)log2);
     jacpy_libm.log10 = (double (*)(double))jacpy_libm_find(system, "log10", (void *)log10);
