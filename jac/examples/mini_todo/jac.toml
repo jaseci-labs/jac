@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Minimal full-stack AI todo app"
 entry-point = "main"
 
-[dependencies]
+[dependencies.pypi]
 python-dateutil = ">=2.9.0"
 
 [dependencies.npm]
@@ -22,7 +22,7 @@ typescript = "^5.3.3"
 "@types/react" = "^19.2.0"
 "@types/react-dom" = "^19.2.0"
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 

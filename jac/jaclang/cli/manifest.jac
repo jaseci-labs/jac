@@ -25,6 +25,7 @@ comptime import from jaclang.cli.commands.project {
     SPEC_CLEAN,
     SPEC_CREATE,
     SPEC_INSTALL,
+    SPEC_PUBLISH,
     SPEC_REMOVE,
     SPEC_UPDATE
 }
@@ -39,14 +40,14 @@ comptime import from jaclang.cli.shadcn.cli { SPEC_RETHEME }
 comptime import from jaclang.client.cli { SPEC_SETUP }
 comptime import from jaclang.scale.plugin { SPEC_SCALE_CMD }
 
-comptime VERB_BUDGET: int = 26,
+comptime VERB_BUDGET: int = 27,
      TOMBSTONED_VERBS: dict[str, str] = {
          "add": "jac install <pkg>",
          "format": "jac fmt",
          "lint": "jac check --lint",
          "deps": "jac install --plan",
          "script": "jac x <name>",
-         "jacpack": "jac create --pack <dir>",
+         "jacpack": "jac build --as jab (a project with a [jacpack] table builds a template package)",
          "enter": "jac run --entry <name> <file>",
          "debug": "jac run --debug <file>",
          "start": "jac run --serve [--port N] <file>",
@@ -122,6 +123,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_MODEL),
          _route(SPEC_PRECOMMIT),
          _route(SPEC_PRECOMPILE),
+         _route(SPEC_PUBLISH),
          _route(SPEC_REMOVE),
          _route(SPEC_RETHEME),
          _route(SPEC_RUN),

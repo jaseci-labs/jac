@@ -132,8 +132,21 @@ test "a no-op build lowers no units and preserves the linked artifact" {
         output = os.path.join(root_dir, "program");
         first = link_artifact(plan, output, ArtifactKind.EXECUTABLE);
         before = os.stat(output).st_mtime_ns;
+        timed = prog.analysis.phase_time;
+        for phase in (
+            "NATIVE_ANALYSIS",
+            "NATIVE_LOWER",
+            "NATIVE_OPTIMIZE",
+            "NATIVE_EMIT",
+            "NATIVE_FRONTEND_PARSE"
+        ) {
+            assert timed.get(phase, 0.0) > 0.0 , f"{phase} was not timed: {timed}";
+        }
+        summary = prog.native_units().phase_summary();
+        assert "units analysed/lowered/optimized/emitted 5/5/5/" in summary , summary;
         (warm_prog, warm_plan) = _plan_for(root_dir);
         assert warm_prog.native_units().compiled_paths == [] , warm_prog.native_units().compiled_paths;
+        assert warm_prog.analysis.phase_time.get("NATIVE_LOWER", 0.0) == 0.0;
         second = link_artifact(warm_plan, output, ArtifactKind.EXECUTABLE);
         assert second.reused;
         assert second.sha256 == first.sha256;
