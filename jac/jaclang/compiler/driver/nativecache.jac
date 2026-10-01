@@ -954,7 +954,7 @@ def _interface_changes(before: any, after: any, path: str, out: list[str]) {
         }
         return;
     }
-    out.append(f"{path}: changed");
+    out.append(f"{path}: {str(before)[:60]} -> {str(after)[:60]}");
 }
 
 def verdict_deps_fresh(rows: list[list[str]], base_dir: str = "") -> bool {
