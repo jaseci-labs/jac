@@ -304,7 +304,7 @@ impl NaIRGenPass._elem_keys_of_annotation(
             e = e.left;
         }
         _ek: (str | None) = None;
-        _etb = self._annotation_type(e);
+        _etb = e?.type if isinstance(e, uni.Expr) else None;
         if _etb is not None {
             try {
                 mangled = self._mangled_of(_etb);
@@ -316,20 +316,6 @@ impl NaIRGenPass._elem_keys_of_annotation(
         keys.append(_ek);
     }
     return keys;
-}
-
-impl NaIRGenPass._annotation_type(ann: (uni.UniNode | None)) -> (TypeBase | None) {
-    if not isinstance(ann, uni.Expr) {
-        return None;
-    }
-    if ann.type is not None {
-        return ann.type;
-    }
-    try {
-        return self.prog.get_type_evaluator().get_type_of_expression(ann);
-    } except Exception {
-        return None;
-    }
 }
 
 impl NaIRGenPass._record_ret_facts(
