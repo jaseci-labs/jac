@@ -1107,6 +1107,7 @@ impl JacAPIServer.postinit -> None {
     );
     self.scheduler = Scheduler.instance();
     self.drain = DrainState(timeout=self.settings.timeouts.drain);
+    self.scheduler.drain = self.drain;
     if self.extensions is None {
         self.extensions = list(Jac.get_server_extensions());
     }
@@ -1459,7 +1460,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     import from jaclang.runtime.builtin { ScheduleTrigger }
     import from jaclang.server.task_scheduler { schedule_namespace }
     _self = self;
-    def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
+    def _make_target(name: str, is_walker: bool) -> Callable[[], any] {
         async def _run -> any {
             intro = _self.introspector;
             registry: dict[str, any] = (
@@ -1492,15 +1493,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 }
             }
         }
-        def target {
-            outcome = asyncio.run(_run());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {name} failed: {outcome.get('error')}");
-            }
+        def target -> any {
+            return asyncio.run(_run());
         }
         return target;
     }
@@ -1524,7 +1518,23 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         def _claim(key: str, tick: int) -> bool {
             return bool(_store.kv_claim_tick(key, tick));
         }
+        def _hold(key: str, ttl: int, owner: str) -> bool {
+            return bool(_store.kv_acquire_lease(key, ttl, owner));
+        }
+        def _release(key: str, owner: str) -> bool {
+            return bool(_store.kv_release_lease(key, owner));
+        }
+        def _record(key: str, value: str) {
+            _store.kv_put_record(key, value);
+        }
+        def _recall(key: str) -> (str | None) {
+            return _store.kv_get_record(key);
+        }
         self.scheduler.claim = _claim;
+        self.scheduler.hold = _hold;
+        self.scheduler.release = _release;
+        self.scheduler.record = _record;
+        self.scheduler.recall = _recall;
         self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
@@ -1603,7 +1613,7 @@ impl JacAPIServer.serve_background(
     );
     def _stop {
         stop_transport();
-        self.scheduler.stop();
+        self.scheduler.stop(timeout=self.drain.remaining());
         stop_worker();
     }
     return _stop;
@@ -1690,7 +1700,7 @@ impl JacAPIServer._worker_main(
     try {
         return serving.run(on_ready=_ready, port_retries=port_retries);
     } finally {
-        self.scheduler.stop();
+        self.scheduler.stop(timeout=self.drain.remaining());
         stop_worker();
     }
 }
