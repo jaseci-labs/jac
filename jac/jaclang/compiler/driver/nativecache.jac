@@ -1002,11 +1002,32 @@ obj NativeBuildSession {
                 if len(g) > 1 for p in g
             ];
             self._lower_round(todo, cyclic, workers, False);
-            if cyclic {
-                self._lower_round(cyclic, [], workers, True);
+            stale = list(cyclic);
+            rounds = 0;
+            while stale and rounds < 5 {
+                self._lower_round(stale, [], workers, True);
+                rounds += 1;
+                stale = self._stale_members(cyclic);
             }
         }
         return len(self.lowered) - lowered_before;
+    }
+
+    def _stale_members(paths: list[str]) -> list[str] {
+        out: list[str] = [];
+        for path in paths {
+            ent = self.registry.entries.get(path);
+            if ent is None {
+                continue;
+            }
+            for (dep, recorded) in ent.dep_digests.items() {
+                if recorded and recorded != self.registry.known_digest(dep) {
+                    out.append(path);
+                    break;
+                }
+            }
+        }
+        return out;
     }
 
     def _lower_round(paths: list[str], mask: list[str], workers: int, relower: bool) {
