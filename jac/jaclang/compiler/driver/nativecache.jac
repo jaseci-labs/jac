@@ -46,6 +46,7 @@ obj NativeUnitRegistry {
     has prog: JacProgram,
         session: (NativeBuildSession | None) = None,
         _spans: list[list[float]] = [],
+        slowest_codegen: list[tuple[float, str]] = [],
         entries: dict[str, NativeUnitEntry] = {},
         building: set[str] postinit,
         checking: set[str] postinit,
@@ -182,7 +183,19 @@ obj NativeUnitRegistry {
             f"{events.get('native_object_emit', 0)}; "
             f"interface hits {events.get('native_iface_hit', 0)}, "
             f"dependency misses {events.get('native_dep_miss', 0)}"
+            + self._slowest_summary()
         );
+    }
+
+    def _slowest_summary -> str {
+        if not self.slowest_codegen {
+            return "";
+        }
+        parts = [
+            f"{os.path.basename(path)} {seconds:.1f}s"
+            for (seconds, path) in self.slowest_codegen
+        ];
+        return "; slowest codegen " + ", ".join(parts);
     }
 
     def note_codegen(path: str, object_emitted: bool = True) {
@@ -886,6 +899,7 @@ obj NativeBuildSession {
 
     def _codegen_parallel(pending: list[tuple[str, Module]], emit_objects: bool) {
         import from jaclang.compiler.backends.native.na_compile_pass {
+            codegen_unit_seconds,
             codegen_units_parallel,
             require_native_ir,
             unit_ir_bitcode
@@ -909,6 +923,7 @@ obj NativeBuildSession {
             jobs.append((path, unit_ir_bitcode(mod)));
         }
         products = codegen_units_parallel(jobs, opts, opt_level, emit_objects);
+        self.registry.slowest_codegen = codegen_unit_seconds([p for (p, _) in jobs])[:3];
         for (path, mod) in pending {
             found = products.get(path);
             if found is None {

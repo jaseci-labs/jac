@@ -122,7 +122,8 @@ impl codegen_units_parallel(
                 (
                     path,
                     pool.submit(
-                        codegen_unit_products,
+                        _codegen_job,
+                        path,
                         unit_bitcode,
                         machines[i],
                         opt_level,
@@ -132,10 +133,36 @@ impl codegen_units_parallel(
             );
         }
         for (path, future) in pending {
-            out[path] = future.result();
+            (_, seconds, products) = future.result();
+            CODEGEN_SECONDS[path] = seconds;
+            out[path] = products;
         }
     }
     return out;
+}
+
+impl _codegen_job(
+    path: str,
+    unit_bitcode: bytes,
+    target_machine: TargetMachine,
+    opt_level: int,
+    emit_object: bool
+) -> tuple[str, float, tuple[bytes, (bytes | None)]] {
+    import time;
+    started = time.perf_counter();
+    products = codegen_unit_products(
+        unit_bitcode, target_machine, opt_level, emit_object
+    );
+    return (path, time.perf_counter() - started, products);
+}
+
+impl codegen_unit_seconds(paths: list[str]) -> list[tuple[float, str]] {
+    found = [
+        (CODEGEN_SECONDS[p], p)
+        for p in paths
+        if p in CODEGEN_SECONDS
+    ];
+    return sorted(found, reverse=True);
 }
 
 impl NativeCompilePass.postinit -> None {

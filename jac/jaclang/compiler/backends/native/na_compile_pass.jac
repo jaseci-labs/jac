@@ -9,7 +9,8 @@ import from jaclang.compiler.frontend.diagnostics { E5020, E5026 }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob NATIVE_RELOC_MODEL: str = "pic",
-     NATIVE_CODE_MODEL: str = "small";
+     NATIVE_CODE_MODEL: str = "small",
+     CODEGEN_SECONDS: dict[str, float] = {};
 
 def module_bitcode(mod: ModuleRef) -> bytes;
 def emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes;
@@ -32,6 +33,15 @@ def codegen_unit_products(
     emit_object: bool
 ) -> tuple[bytes, (bytes | None)];
 
+def _codegen_job(
+    path: str,
+    unit_bitcode: bytes,
+    target_machine: TargetMachine,
+    opt_level: int,
+    emit_object: bool
+) -> tuple[str, float, tuple[bytes, (bytes | None)]];
+
+def codegen_unit_seconds(paths: list[str]) -> list[tuple[float, str]];
 def codegen_units_parallel(
     jobs: list[tuple[str, bytes]],
     options: CompileOptions,
