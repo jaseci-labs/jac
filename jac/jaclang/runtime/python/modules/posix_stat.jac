@@ -38,7 +38,6 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromUnsignedLongLong,
     PyMem_Free,
     PyMem_Malloc,
-    PyMem_RawMalloc,
     PyNumber_Add,
     PyNumber_Multiply,
     PyObject,
@@ -401,7 +400,7 @@ def os_fstat_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
 # --- statvfs ---------------------------------------------------------------
 
 def os_fstatvfs_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
-    record = PyMem_RawMalloc(u64(STATVFS_RECORD_SIZE));
+    record = PyMem_Malloc(u64(STATVFS_RECORD_SIZE));
     if not record {
         return PyErr_NoMemory();
     }
@@ -428,7 +427,7 @@ def os_fstatvfs_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
 }
 
 def os_statvfs_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
-    record = PyMem_RawMalloc(u64(STATVFS_RECORD_SIZE));
+    record = PyMem_Malloc(u64(STATVFS_RECORD_SIZE));
     if not record {
         return PyErr_NoMemory();
     }
