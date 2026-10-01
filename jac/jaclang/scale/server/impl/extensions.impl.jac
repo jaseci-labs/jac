@@ -263,7 +263,9 @@ impl AdminExtension.register(server: JacAPIServer) -> None {
     self.server = server;
     self.user_manager = server.user_manager;
     self._metrics = server.metrics;
+    self.scheduler = server.scheduler;
     self.register_admin_surface();
+    self.register_schedules_endpoints();
 }
 
 impl scale_extensions -> list[ServerExtension] {
