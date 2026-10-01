@@ -2,7 +2,6 @@ import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.template_registry { ProjectTemplate, template_kind_for }
 import from jaclang.project.tomlio { read_toml_with_encoding }
-import json;
 import importlib;
 import base64;
 import from jaclang.cli.console { console }
@@ -18,7 +17,9 @@ def _read_file_content(file_path: Path) -> str {
 }
 
 impl load_template_from_directory(
-    template_dir: Path, post_create_hook: Callable | None = None
+    template_dir: Path,
+    post_create_hook: Callable | None = None,
+    allow_hooks: bool = True
 ) -> ProjectTemplate {
     template_dir = Path(template_dir);
     if not template_dir.is_dir() {
@@ -31,15 +32,17 @@ impl load_template_from_directory(
     }
     jac_config = read_toml_with_encoding(str(jac_toml_path));
 
-    jacpackk_section = jac_config.get("jacpack", {});
-    if not jacpackk_section {
-        raise ValueError(f"jac.toml must have [jacpack] section to be packable");
+    template_section = jac_config.get("jacpack", {});
+    if not template_section {
+        raise ValueError(
+            f"{jac_toml_path} has no [jacpack] section, so it is not a template"
+        );
     }
-    name = jacpackk_section.get("name");
+    name = template_section.get("name");
     if not name {
         raise ValueError("jac.toml [jacpack] must have name field");
     }
-    description = jacpackk_section.get("description", "");
+    description = template_section.get("description", "");
     if not description {
         raise ValueError(
             f"jac.toml [jacpack] for '{name}' must have description field"
@@ -53,7 +56,7 @@ impl load_template_from_directory(
         }
     }
 
-    options = jacpackk_section.get("options", {});
+    options = template_section.get("options", {});
     directories = options.get("directories", []);
     root_gitignore_entries = options.get("root_gitignore_entries", []);
     gitignore_path = template_dir / ".gitignore";
@@ -77,6 +80,12 @@ impl load_template_from_directory(
     }
 
     hook = post_create_hook;
+    if "post_create_hook" in options and not allow_hooks {
+        raise ValueError(
+            f"template '{name}' declares a post_create_hook; a template from a "
+            "registry or a .jab cannot run code when a project is created"
+        );
+    }
     if hook is None and "post_create_hook" in options {
         hook = resolve_post_create_hook(options["post_create_hook"]);
     }
@@ -99,6 +108,7 @@ impl load_template_from_directory(
 
                 if relative_path != "jac.toml"
                     and not relative_path.startswith(".")
+                    and not relative_path.startswith("_precompiled")
                     and "/." not in relative_path {
                     files[relative_path] = _read_file_content(file_path);
                 }
@@ -130,84 +140,6 @@ impl load_template_from_directory(
     );
 }
 
-impl bundle_template(template_dir: Path, output_path: Path) -> None {
-    template_dir = Path(template_dir);
-    output_path = Path(output_path);
-    if not template_dir.is_dir() {
-        raise ValueError(f"Template directory not found: {template_dir}");
-    }
-
-    jac_toml_path = template_dir / "jac.toml";
-    if not jac_toml_path.exists() {
-        raise ValueError(f"No jac.toml found in {template_dir}");
-    }
-    jac_config = read_toml_with_encoding(str(jac_toml_path));
-    jacpackk_section = jac_config.get("jacpack", {});
-    if not jacpackk_section {
-        raise ValueError(f"jac.toml must have [jacpack] section to be packable");
-    }
-
-    template = load_template_from_directory(template_dir, post_create_hook=None);
-
-    template_data = template.to_dict();
-
-    if "jaclang" in jacpackk_section {
-        template_data["jaclang"] = jacpackk_section["jaclang"];
-    }
-    if "plugins" in jacpackk_section {
-        template_data["plugins"] = jacpackk_section["plugins"];
-    }
-
-    options = jacpackk_section.get("options", {});
-    if "post_create_hook" in options {
-        template_data["post_create_hook"] = options["post_create_hook"];
-    }
-
-    with open(output_path, "w", encoding="utf-8") as f {
-        json.dump(template_data, f, indent=2);
-    }
-    console.print(f"Bundled template '{template.name}' to {output_path}");
-}
-
-impl load_template_from_json(
-    json_path: Path, post_create_hook: Callable | None = None
-) -> ProjectTemplate {
-    json_path = Path(json_path);
-    if not json_path.exists() {
-        raise ValueError(f"Template JSON not found: {json_path}");
-    }
-    with open(json_path, "r", encoding="utf-8") as f {
-        data = json.load(f);
-    }
-
-    if "data" in data
-        and isinstance(data.get("data"), dict)
-        and "result" in data["data"] {
-        unwrapped = data["data"]["result"];
-        if isinstance(unwrapped, dict)
-            and "name" in unwrapped
-            and "files" in unwrapped {
-            data = unwrapped;
-        }
-    }
-
-    hook = post_create_hook;
-    if hook is None and "post_create_hook" in data {
-        hook = resolve_post_create_hook(data["post_create_hook"]);
-    }
-    kind = template_kind_for(data.get("config", {}), str(data.get("kind") or ""));
-    return ProjectTemplate(
-        name=data["name"],
-        description=data["description"],
-        kind=kind,
-        is_default_for_kind=data.get("is_default_for_kind", True),
-        config=data.get("config", {}),
-        files=data.get("files", {}),
-        directories=data.get("directories", []),
-        root_gitignore_entries=data.get("root_gitignore_entries", []),
-        post_create=hook
-    );
-}
 
 impl resolve_post_create_hook(hook_path: str) -> Callable | None {
     if not hook_path {

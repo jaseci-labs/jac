@@ -19,7 +19,7 @@ lucide-react-native = "^0.469.0"
 react-native-svg = "^15.13.0"
 lucide-react-native = "^0.469.0"
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 [client]

@@ -1,7 +1,9 @@
 ---
 name: jac-packaging
-description: Build Python wheels and npm packages from Jac projects. Use for package layout, metadata, exports, and authorized publication.
+description: Build Python wheels and npm packages from Jac projects for Python and JavaScript consumers. Use for wheel/npm layout, metadata, and upload.
 ---
+
+This skill covers exporting a Jac library to **PyPI and npm** for consumers that do not use Jac. To share Jac code with other Jac projects, publish a Jac package instead (`jac publish`, see `jac-packages`).
 
 `jac build --as wheel` builds a standard PEP 427 wheel plus an sdist (`dist/<name>-<version>-py3-none-any.whl`, `dist/<name>-<version>.tar.gz`) straight from `jac.toml` - no `setup.py`, no `pyproject.toml`. Upload with `twine`. `jac build --as npm` builds an npm tarball from the same `jac.toml`. This covers three shapes: a **CLI tool** (installs a terminal command), an **importable library** (consumed under the `jac` binary, then `import`), and an **npm component library**.
 
@@ -42,7 +44,7 @@ Homepage = "https://example.com/greet"
 [entrypoints.scripts]
 greet = "greet.cli:main"
 
-[dependencies]
+[dependencies.pypi]
 rich = ">=13.0.0"
 
 [optional-dependencies.data]
@@ -51,7 +53,7 @@ pandas = ">=2.0,<3.0"
 
 - **`[project]`** -> wheel `METADATA`. The TOML key is **`requires-python`** (hyphen), not `requires_python` - the underscore form is silently ignored and never reaches `METADATA`.
 - **`classifiers` must be a TOML array** (`[...]`). A plain string is a TOML type error and produces malformed wheel metadata.
-- **`[dependencies]`** -> `Requires-Dist` in the wheel. **Do NOT list `jaclang` as a dependency** - it is not a PyPI package and cannot be installed that way. `jaclang` is provided by the host `jac` binary that runs your wheel; the `.jac` importer ships inside that binary. Consumers install your wheel into a project managed by the `jac` binary (`jac install <yourpkg>`), not a bare `pip install` in a plain Python env. `[dev-dependencies]` ship as a `dev` extra, not as runtime requirements.
+- **`[dependencies.pypi]`** -> `Requires-Dist` in the wheel (a wheel cannot carry Jac package dependencies; `jac build --as wheel` refuses a project that has them). **Do NOT list `jaclang` as a dependency** - it is not a PyPI package and cannot be installed that way. `jaclang` is provided by the host `jac` binary that runs your wheel; the `.jac` importer ships inside that binary. Consumers install your wheel into a project managed by the `jac` binary (`jac install --pypi <yourpkg>`), not a bare `pip install` in a plain Python env. `[dev-dependencies.pypi]` ship as a `dev` extra, not as runtime requirements.
 - **`[optional-dependencies.<group>]`** -> wheel extras: consumers `pip install greet[data]`; during development `jac install --extras data`.
 - **`[entrypoints.scripts]`** -> `console_scripts` in `entry_points.txt`. Format is `command = "package.module:function"`. The function is called with no arguments; read `sys.argv` for CLI args. Omit this whole section for a pure library. (Jac no longer loads any entry-point group at startup - there is no plugin system - but any other `[entrypoints.<group>]` table is written through to the wheel metadata for consumers that use `importlib.metadata`.)
 
@@ -64,9 +66,9 @@ twine upload --repository testpypi dist/*   # TestPyPI first - verify the listin
 twine upload dist/*              # then the real index
 ```
 
-There is no `jac publish` command - use `twine` (separate pip install). In CI authenticate with a token: `twine upload dist/* -u __token__ -p "$PYPI_TOKEN"`. Consumers then install it into a project managed by the `jac` binary (`jac install greet`); the CLI command `greet` is on `PATH`, or `import greet` works for a library running under the `jac` binary.
+`jac publish` publishes Jac packages to the Jac index, not wheels - upload wheels with `twine` (separate pip install). In CI authenticate with a token: `twine upload dist/* -u __token__ -p "$PYPI_TOKEN"`. Consumers then install it into a project managed by the `jac` binary (`jac install --pypi greet`); the CLI command `greet` is on `PATH`, or `import greet` works for a library running under the `jac` binary.
 
-`jac build` runs the whole-program type-check gate first and refuses to emit an artifact on failure - the gate cannot be skipped; `--check_only` runs it and emits nothing. Pre-compiled `.jir` bytecode in the package dir is collected into the wheel (the default collection patterns include `**/*.jir`), so consumers with matching bytecode skip first-import compilation; if bytecode is missing or stale the runtime transparently falls back to compiling the bundled `.jac` source, so a mismatch never breaks the package.
+`jac build` runs the whole-program type-check gate first and refuses to emit an artifact on failure - the gate cannot be skipped; `--check_only` runs it and emits nothing. The wheel carries Python transpiled from your `.jac` modules. Client-codespace modules cannot run in a Python wheel: the build fails and lists them, and `--allow-drop-client` builds without them.
 
 ## Publishing to npm
 
@@ -96,7 +98,7 @@ jac install -e /path/to/lib # install a cloned library editable
 ## Pitfalls
 
 - **No package directory = empty/unimportable wheel.** The `default` scaffold's root-level `main.jac` is for `jac run`, not for distribution. Move code into a `<name>/` package dir (single top-level files are not collected).
-- **Do NOT add `jaclang` to `[dependencies]`.** `jaclang` is not a PyPI package - it is the host runtime supplied by the `jac` binary that runs your wheel, and the `.jac` importer ships in that binary. Wheels are consumed under the `jac` binary (`jac install <yourpkg>`), not a bare `pip install` in a plain Python env.
+- **Do NOT add `jaclang` to `[dependencies.pypi]`.** `jaclang` is not a PyPI package - it is the host runtime supplied by the `jac` binary that runs your wheel, and the `.jac` importer ships in that binary. Wheels are consumed under the `jac` binary (`jac install --pypi <yourpkg>`), not a bare `pip install` in a plain Python env.
 - **`requires_python` (underscore) is dropped.** Use `requires-python`. Same hyphen-vs-underscore trap does NOT apply to `classifiers` - there the trap is string-vs-array.
 - **Entry-point path is the install-time module path**, e.g. `greet.cli:main` - it must match the package dir name, not the source folder you happened to develop in.
 - **First run of an installed Jac command prints `Jac setup complete! (N modules compiled and cached)`** while jaclang compiles its own cache. One-time and harmless (avoid by shipping `.jir` bytecode in the package).
@@ -106,6 +108,7 @@ jac install -e /path/to/lib # install a cloned library editable
 ## See also
 
 - `jac-scaffold` - `jac create`, templates, the `default` template's layout
-- `jac-config` - the full `jac.toml` section map (`[dependencies]`, extras, `[npm]`)
+- `jac-config` - the full `jac.toml` section map (`[dependencies.pypi]`, extras, `[npm]`)
+- `jac-packages` - Jac packages: `[dependencies]`, `jac.lock`, `jac publish`
 - `jac-npm-packages` - CONSUMING npm packages in client code (this skill covers publishing)
 - `jac-impl-files` - splitting `.jac` / `.impl.jac` within the package

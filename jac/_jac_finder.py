@@ -238,6 +238,12 @@ def add_project_venv_to_path() -> None:
         toml = _find_project_toml()
         if toml is None:
             return
+        # Jac packages (`jac install`) are mounted under .jac/packages as
+        # <org>/<name>; the directory is a search root ahead of the venv so a
+        # package's .py modules import as org.name.* like its .jac ones.
+        mounts = os.path.join(os.path.dirname(toml), ".jac", "packages")
+        if os.path.isdir(mounts) and mounts not in sys.path:
+            sys.path.insert(0, mounts)
         venv = os.path.join(os.path.dirname(toml), ".jac", "venv")
         if os.name == "nt":
             site_packages = os.path.join(venv, "Lib", "site-packages")
