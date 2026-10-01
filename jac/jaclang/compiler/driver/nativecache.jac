@@ -1,4 +1,5 @@
 import os;
+import time;
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { NativeVerdict }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
@@ -113,6 +114,37 @@ obj NativeUnitRegistry {
     def _event(name: str) {
         counters = self.prog.analysis.cache_events;
         counters[name] = counters.get(name, 0) + 1;
+    }
+
+    def _add_time(name: str, seconds: float) {
+        times = self.prog.analysis.phase_time;
+        times[name] = times.get(name, 0.0) + seconds;
+    }
+
+    def _timed(name: str, started: float) {
+        self._add_time(name, time.perf_counter() - started);
+    }
+
+    def phase_summary -> str {
+        times = self.prog.analysis.phase_time;
+        events = self.prog.analysis.cache_events;
+        frontend = ", ".join(
+            f"{phase.lower()} {times.get('NATIVE_FRONTEND_' + phase, 0.0):.1f}"
+            for phase in ("PARSE", "IR", "PLACEMENT", "ANALYSIS", "BOUNDARIES")
+        );
+        return (
+            f"  Kernel phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
+            f"({frontend}), lowering {times.get('NATIVE_LOWER', 0.0):.1f}s, "
+            f"optimize {times.get('NATIVE_OPTIMIZE', 0.0):.1f}s, "
+            f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s; "
+            f"units analysed/lowered/optimized/emitted "
+            f"{events.get('native_unit_analysis', 0)}/"
+            f"{events.get('native_unit_lower', 0)}/"
+            f"{events.get('native_unit_codegen', 0)}/"
+            f"{events.get('native_object_emit', 0)}; "
+            f"interface hits {events.get('native_iface_hit', 0)}, "
+            f"dependency misses {events.get('native_dep_miss', 0)}"
+        );
     }
 
     def note_codegen(path: str, object_emitted: bool = True) {
@@ -524,7 +556,9 @@ obj NativeUnitRegistry {
                 }
                 import from jaclang.compiler.driver.jir { write_module_cache }
                 opts = options if options is not None else self._options();
+                started = time.perf_counter();
                 ent.object_bytes = emit_unit_object(ent.bitcode, opts);
+                self._timed("NATIVE_EMIT", started);
                 self._event("native_object_emit");
                 write_module_cache(
                     ent.path, None, extra_sections=self.product_sections(ent.path)
@@ -646,8 +680,9 @@ obj NativeBuildSession {
             if mod is None {
                 self.source_keys[resolved] = NativeUnitRegistry._source_key(resolved);
                 opts.no_cgen = True;
-
+                started = time.perf_counter();
                 mod = self.prog.compile(resolved, use_str=use_str, options=opts);
+                self.registry._timed("NATIVE_ANALYSIS", started);
                 self.registry._event("native_unit_analysis");
             }
             if len(self.prog.errors_had) > errors_before {
@@ -672,7 +707,9 @@ obj NativeBuildSession {
             mod.gen.native_iface = None;
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;
+            started = time.perf_counter();
             self.prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
+            self.registry._timed("NATIVE_LOWER", started);
             self.registry._event("native_unit_lower");
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_iface is None {
@@ -755,7 +792,9 @@ obj NativeBuildSession {
                 }
             }
             errors_before = len(self.prog.errors_had);
+            started = time.perf_counter();
             self.prog.run_schedule(mod, [NativeCompilePass]);
+            self.registry._timed("NATIVE_OPTIMIZE", started);
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
                 raise RuntimeError(f"native product emission failed for {path}");
@@ -767,6 +806,9 @@ obj NativeBuildSession {
     }
 
     def close {
+        for (phase, seconds) in self.prog.analysis.phase_time.items() {
+            self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
+        }
         self.lowered.clear();
         self.source_keys.clear();
         self.prog._natives = None;
