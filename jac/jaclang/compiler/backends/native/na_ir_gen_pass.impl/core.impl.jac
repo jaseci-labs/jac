@@ -6,6 +6,20 @@ def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
     return ir.IntType(`entry.width);
 }
 
+def _source_param_names(func: ir.Function) -> list[str] {
+    """A function's parameter names as the source spells them. The IR keeps
+    each name unique within its function by appending `.N`, and which name
+    gets the suffix depends on what was named first -- an accident of
+    lowering order that must not reach the unit's interface, where a changed
+    name re-lowers every consumer.""";
+    names: list[str] = [];
+    for arg in func.args {
+        (stem, _, suffix) = arg.name.rpartition(".");
+        names.append(stem if stem and suffix.isdigit() else arg.name);
+    }
+    return names;
+}
+
 impl NaIRGenPass.postinit -> None {
     import os as _ni_os;
 
@@ -792,7 +806,7 @@ impl NaIRGenPass._export_native_layout -> None {
         param_types = [
             self._llvm_type_str(a, pointee_names) for a in func.function_type.args
         ];
-        param_names: list[str] = [a.name for a in func.args];
+        param_names = _source_param_names(func);
         ret_type = self._llvm_type_str(func.function_type.return_type, pointee_names);
         ret_struct: (str | None) = None;
         ret_tuple: (NativeTupleLayout | None) = None;
@@ -864,7 +878,7 @@ impl NaIRGenPass._export_native_layout -> None {
         param_types = [
             self._llvm_type_str(a, pointee_names) for a in func.function_type.args
         ];
-        param_names = [a.name for a in func.args];
+        param_names = _source_param_names(func);
         ret_type = self._llvm_type_str(func.function_type.return_type, pointee_names);
         ret_struct: (str | None) = None;
         if isinstance(func.function_type.return_type, ir.PointerType) {
