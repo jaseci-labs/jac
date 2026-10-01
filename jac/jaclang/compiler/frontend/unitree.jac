@@ -1249,6 +1249,7 @@ node FuncSignature(UniNode) {
 
     def postinit -> None;
     def get_parameters -> list[ParamVar];
+    def get_named_parameters -> list[ParamVar];
 
     has is_static: bool { getter; }
     has is_in_py_class: bool { getter; }
@@ -2953,6 +2954,8 @@ def kind_has_runtime_binding(
 def has_runtime_binding(sym: Symbol, space: CodeContext) -> bool;
 
 def is_client_destined(nd: UniNode) -> bool;
+
+def is_comptime_stmt(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 

@@ -9,8 +9,27 @@ def:pub load(fp: File) -> any {
 }
 
 
-def:pub dumps(value: any, sort_keys: bool = False) -> str {
-    return _dump_value(value, sort_keys);
+def:pub dumps(
+    value: any,
+    sort_keys: bool = False,
+    separators: (tuple[str, str] | None) = None,
+    ensure_ascii: bool = True
+) -> str {
+    style: _JsonStyle = _JsonStyle(sort_keys=sort_keys, ensure_ascii=ensure_ascii);
+    if separators is not None {
+        (item_sep, key_sep) = separators;
+        style.item_sep = item_sep;
+        style.key_sep = key_sep;
+    }
+    return _dump_value(value, style);
+}
+
+
+obj _JsonStyle {
+    has sort_keys: bool = False,
+        ensure_ascii: bool = True,
+        item_sep: str = ", ",
+        key_sep: str = ": ";
 }
 
 
@@ -240,7 +259,7 @@ def _hex4_str(n: int) -> str {
 }
 
 
-def _dump_str(s: str) -> str {
+def _dump_str(s: str, ensure_ascii: bool) -> str {
     out: str = "\"";
     n: int = len(s);
     i: int = 0;
@@ -262,6 +281,24 @@ def _dump_str(s: str) -> str {
             out += "\\f";
         } elif ch < 32 {
             out += "\\u" + _hex4_str(ch);
+        } elif ensure_ascii and ch == 127 {
+            out += "\\u007f";
+        } elif ensure_ascii and ch > 127 {
+            width: int = 2 if ch < 224 else (3 if ch < 240 else 4);
+            code: int = ch % (64 if width == 2 else (32 if width == 3 else 16));
+            k: int = 1;
+            while k < width and i + k < n {
+                code = code * 64 + ord(s[i + k]) % 64;
+                k += 1;
+            }
+            i += width - 1;
+            if code > 65535 {
+                v: int = code - 65536;
+                out += "\\u" + _hex4_str(55296 + v // 1024);
+                out += "\\u" + _hex4_str(56320 + v % 1024);
+            } else {
+                out += "\\u" + _hex4_str(code);
+            }
         } else {
             out += s[i];
         }
@@ -272,7 +309,39 @@ def _dump_str(s: str) -> str {
 }
 
 
-def _dump_value(value: any, sort_keys: bool) -> str {
+def _dump_float(f_val: float) -> str {
+    if f_val != f_val {
+        return "NaN";
+    }
+    if f_val == float("inf") {
+        return "Infinity";
+    }
+    if f_val == float("-inf") {
+        return "-Infinity";
+    }
+    return str(f_val);
+}
+
+
+def _dump_items(items: list[any], style: _JsonStyle) -> str {
+    out: str = "[";
+    n: int = len(items);
+    i: int = 0;
+    while i < n {
+        if i > 0 {
+            out += style.item_sep;
+        }
+        out += _dump_value(items[i], style);
+        i += 1;
+    }
+    return out + "]";
+}
+
+
+def _dump_value(value: any, style: _JsonStyle) -> str {
+    if value is None {
+        return "null";
+    }
     if isinstance(value, bool) {
         flag: int = value;
         if flag != 0 {
@@ -286,41 +355,32 @@ def _dump_value(value: any, sort_keys: bool) -> str {
     }
     if isinstance(value, float) {
         f_val: float = value;
-        return str(f_val);
+        return _dump_float(f_val);
     }
     if isinstance(value, str) {
         s_val: str = value;
-        return _dump_str(s_val);
+        return _dump_str(s_val, style.ensure_ascii);
     }
     if isinstance(value, list) {
         arr: list[any] = value;
-        out: str = "[";
-        n: int = len(arr);
-        i: int = 0;
-        while i < n {
-            if i > 0 {
-                out += ", ";
-            }
-            out += _dump_value(arr[i], sort_keys);
-            i += 1;
-        }
-        out += "]";
-        return out;
+        return _dump_items(arr, style);
     }
     if isinstance(value, dict) {
         d: dict[str, any] = value;
         out: str = "{";
         first: int = 1;
-        keys: list[str] = sorted(d.keys()) if sort_keys else list(d.keys());
+        keys: list[str] = sorted(d.keys()) if style.sort_keys else list(d.keys());
         for k in keys {
             if first == 0 {
-                out += ", ";
+                out += style.item_sep;
             }
             first = 0;
-            out += _dump_str(k) + ": " + _dump_value(d[k], sort_keys);
+            out += _dump_str(k, style.ensure_ascii)
+                + style.key_sep
+                + _dump_value(d[k], style);
         }
         out += "}";
         return out;
     }
-    return "null";
+    raise TypeError("Object is not JSON serializable");
 }

@@ -105,15 +105,14 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
                 } elif isinstance(base_expr, AstSymbolNode) {
                     pname = base_expr.sym_name;
                 }
-                if pname is None {
-                    continue;
+                parent = referenced_native_name(base_expr);
+                if parent is None {
+                    if pname is None or is_erased_base_name(pname, archetypes) {
+                        continue;
+                    }
+                    parent = pname;
                 }
-                _pnative = referenced_native_name(base_expr);
-                if _pnative is None and is_erased_base_name(pname, archetypes) {
-                    continue;
-                }
-                pname = _pnative or pname;
-                parents.append(pname);
+                parents.append(parent);
                 parent_mods.append(declaring_module_path(base_expr));
             }
             if parents {
@@ -918,10 +917,8 @@ impl LayoutPass._is_layout_compatible_type(
                                 return False;
                             }
                         }
-                    } else {
-                        if not self._is_layout_compatible_type(elem, arch_map) {
-                            return False;
-                        }
+                    } elif not self._is_layout_compatible_type(elem, arch_map) {
+                        return False;
                     }
                 }
             }
@@ -934,15 +931,4 @@ impl LayoutPass._is_layout_compatible_type(
 
 impl LayoutPass.run_walk with Module entry {
     self.module = self._run_impl(here);
-}
-
-impl FieldLayout.semantic_type.getter -> TypeBase | None {
-    declaration = self.decl_node;
-    if isinstance(declaration, AstTypedVarNode) {
-        return declaration.type;
-    }
-    if isinstance(declaration, TypeParam) {
-        return declaration.name.type;
-    }
-    return None;
 }

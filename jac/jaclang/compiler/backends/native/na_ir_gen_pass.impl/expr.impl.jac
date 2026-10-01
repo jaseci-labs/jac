@@ -2026,6 +2026,12 @@ impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | Non
     if isinstance(a, ir.PointerType) and isinstance(b, ir.PointerType) {
         return a;
     }
+    if all(
+        self._is_jacval_boxable(t) or self._opt_payload_of(t) is not None
+        for t in (a, b)
+    ) {
+        return self.jacval_type;
+    }
     return None;
 }
 
@@ -2043,7 +2049,6 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     result: ir.Value = first_value;
 
     for i in range(1, len(nd.values)) {
-        left_value = result;
         cond = self._to_bool(result);
         func = self.builder.function;
         rhs_bb = func.append_basic_block(name=f"bool.rhs.{i}");
@@ -2072,11 +2077,14 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
             return None;
         }
         target_t = self._bool_expr_unify_type(result.type, rhs_val.type);
-        bool_only = target_t is None;
         if target_t is None {
-            rhs_val = self._consume_bool(rhs_val);
-            result = cond;
-            target_t = ir.IntType(1);
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name=f"`{op_name}` over {result.type} and {rhs_val.type}"
+            );
+            return None;
         }
 
         rhs_owned = self._is_owned(rhs_val);
@@ -2100,9 +2108,6 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
         }
 
         self.builder.position_at_end(take_bb);
-        if bool_only {
-            self._release_owned_args([left_value], op="bool_drop");
-        }
         if result.type != target_t {
             if self._opt_ptr_payload_of(result.type) == target_t {
                 result = self.builder.extract_value(result, 1, name="bool.opt.lpv");

@@ -31,6 +31,7 @@ import from jaclang.compiler.driver.session_compile {
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+import type from jaclang.compiler.native_compiler { NativeCompiler }
 
 glob SCAN_LIMIT: int = 4000,
      PACKAGE_CHAIN_DEPTH: int = 8,
@@ -51,6 +52,7 @@ obj ClosureScan {
         scratch: (JacProgram | None) = None,
         scope: list[str] = [],
         seen: set[str] = set(),
+        package_edges: set[str] = set(),
         learned: set[str] = set(),
         queue: list[str] = [];
 
@@ -66,6 +68,17 @@ obj ClosureScan {
             }
             self.seen.add(path);
             self.scan_module(path);
+        }
+        edges_scanned: set[str] = set();
+        pending = sorted(self.package_edges);
+        while pending and len(edges_scanned) < SCAN_LIMIT {
+            package_path = pending.pop();
+            if package_path in edges_scanned {
+                continue;
+            }
+            edges_scanned.add(package_path);
+            self.scan_module(package_path);
+            pending.extend(sorted(self.package_edges - edges_scanned));
         }
     }
 
@@ -144,7 +157,10 @@ obj ClosureScan {
             self.follow(self.resolved(mod_path, None));
             self.learn_npm(spec, owner);
             if spec.startswith("@jac/") {
-                learner.jac_virtual_module_path(spec);
+                virtual_path = learner.jac_virtual_module_path(spec);
+                if virtual_path {
+                    learner.sibling_declaration(virtual_path);
+                }
             }
             if spec.startswith("jaclang.") {
                 learner.resolve_module(spec, os.path.join(os.path.dirname(owner), ""));
@@ -194,6 +210,9 @@ obj ClosureScan {
         }
         self.learn_path(path);
         if not self.in_scope(path) {
+            if is_compiler_source_path(path) and not path.endswith(".pyi") {
+                self.package_edges.add(os.path.realpath(path));
+            }
             return;
         }
         if path.endswith(".jac") or path.endswith(".py") {
@@ -313,9 +332,13 @@ def interface_dependencies(iface: PythonInterface) -> list[str] {
 }
 
 def interface_wanted(path: str) -> bool {
-    return path.endswith(".py")
-        and os.path.isfile(path)
-        and not is_compiler_source_path(path);
+    if not os.path.isfile(path) {
+        return False;
+    }
+    if is_compiler_source_path(path) {
+        return path.endswith(".py") or path.endswith(".jac");
+    }
+    return path.endswith(".py");
 }
 
 def file_stamp(path: str) -> str {
@@ -449,6 +472,16 @@ def snapshot_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
+    return snapshot_closure(host, program, path, options, source).learner.inputs;
+}
+
+def snapshot_closure(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
+) -> ClosureScan {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
     import from jaclang.compiler.types.stubcat.locate { catalog_origin }
@@ -506,7 +539,7 @@ def snapshot_inputs(
         install_host(previous);
     }
     inputs.scanned_modules = len(scan.seen);
-    return inputs;
+    return scan;
 }
 
 def kernel_analysis_inputs(
@@ -516,7 +549,8 @@ def kernel_analysis_inputs(
     options: CompileOptions,
     source: (str | None) = None
 ) -> KernelInputs {
-    inputs = snapshot_inputs(host, program, path, options, source);
+    scan = snapshot_closure(host, program, path, options, source);
+    inputs = scan.learner.inputs;
     for ws in list(inputs.workspaces.values()) {
         for name in ws.apps {
             if name not in inputs.check_settings {
@@ -529,9 +563,10 @@ def kernel_analysis_inputs(
         for (p, untyped) in inputs.untyped.items()
         if not untyped
     ];
-    inputs.python_ifaces = python_interfaces(local, options);
+    wanted = local + sorted(scan.package_edges);
+    inputs.python_ifaces = python_interfaces(wanted, options);
     served = {iface.path for iface in inputs.python_ifaces};
-    learn_facts(host, inputs, program, options, path, sorted(served - set(local)));
+    learn_facts(host, inputs, program, options, path, sorted(served - set(wanted)));
     return inputs;
 }
 
@@ -586,6 +621,14 @@ obj HostReferenceSession(SessionHooks) {
         return self.compiler.closure_options();
     }
 
+    def assemble_python(program: JacProgram, module: uni.Module) {
+        self.compiler.assemble_python(program, module);
+    }
+
+    def assemble_native(program: JacProgram, module: uni.Module, checking: bool) {
+        self.compiler.assemble_native(program, module, checking);
+    }
+
     def run_module(
         file_path: str,
         target_program: JacProgram,
@@ -623,27 +666,63 @@ def host_analysis(
     return analysis_report(program, path, tasks, status, message);
 }
 
-def kernel_analysis_json(
+def kernel_inputs_json(
     host: HostServices,
     program: JacProgram,
     path: str,
     options: CompileOptions,
     source: (str | None) = None
 ) -> str {
-    compiler: any = host.compiler_for(program);
-    compiler.ensure_stub_catalog();
-    return kernel_analysis_inputs(host, program, path, options, source).to_json();
+    host.compiler_for(program).ensure_stub_catalog();
+    inputs = kernel_analysis_inputs(host, program, path, options, source);
+    if not options.no_cgen {
+        import from jaclang.client.client_surface { injected_virtual_modules }
+        import from jaclang.compiler.backends.es.backends.registry {
+            resolve_active_backend
+        }
+        inputs.osp_core_js = host.client_osp_core_js();
+        inputs.client_stub_globals = host.client_stub_globals();
+        inputs.client_stub_globals_known = True;
+        for module_id in injected_virtual_modules(resolve_active_backend()) {
+            if module_id in inputs.virtual_modules {
+                continue;
+            }
+            virtual_path = host.jac_virtual_module_path(module_id) or "";
+            inputs.virtual_modules[module_id] = virtual_path;
+            if virtual_path and virtual_path not in inputs.siblings {
+                inputs.siblings[virtual_path] = host.sibling_declaration(virtual_path)
+                    or "";
+            }
+        }
+    }
+    return inputs.to_json();
 }
 
-def call_kernel_analyze(
-    kernel: any, inputs_json: str, path: str, source: (str | None)
+obj KernelEntry {
+    has call: str,
+        take: str;
+}
+
+glob ANALYZE_ENTRY: KernelEntry = KernelEntry(
+         call="jc_analyze", take="jc_take_analysis"
+     ),
+     COMPILE_ENTRY: KernelEntry = KernelEntry(
+         call="jc_compile", take="jc_take_compile"
+     );
+
+def call_kernel(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    inputs_json: str,
+    path: str,
+    source: (str | None)
 ) -> str {
     import from ctypes { c_int64, c_void_p }
     lib = kernel.lib;
-    analyze = lib.jc_analyze;
-    analyze.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
-    analyze.restype = c_int64;
-    take = lib.jc_take_analysis;
+    run = getattr(lib, kind.call);
+    run.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
+    run.restype = c_int64;
+    take = getattr(lib, kind.take);
     take.argtypes = [];
     take.restype = c_void_p;
     handles: list[int] = [];
@@ -656,7 +735,7 @@ def call_kernel_analyze(
             args.extend([c_void_p(handle), c_void_p(handle), c_int64(len(data))]);
         }
         args.append(c_int64(1 if source is not None else 0));
-        analyze(*args);
+        run(*args);
     } finally {
         for handle in handles {
             lib.jac_release(handle);
@@ -665,11 +744,15 @@ def call_kernel_analyze(
     return kernel._take(take()) or "";
 }
 
-def call_kernel_analyze_isolated(
-    kernel: any, inputs_json: str, path: str, source: (str | None)
+def call_kernel_isolated(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    inputs_json: str,
+    path: str,
+    source: (str | None)
 ) -> str {
     if not hasattr(os, "fork") {
-        return call_kernel_analyze(kernel, inputs_json, path, source);
+        return call_kernel(kernel, kind, inputs_json, path, source);
     }
     (read_fd, write_fd) = os.pipe();
     pid = os.fork();
@@ -677,7 +760,7 @@ def call_kernel_analyze_isolated(
         code = 0;
         try {
             os.close(read_fd);
-            payload = call_kernel_analyze(kernel, inputs_json, path, source).encode(
+            payload = call_kernel(kernel, kind, inputs_json, path, source).encode(
                 "utf-8"
             );
             sent = 0;
@@ -698,13 +781,25 @@ def call_kernel_analyze_isolated(
     (_, status) = os.waitpid(pid, 0);
     if os.WIFSIGNALED(status) {
         raise KernelAnalysisError(
-            f"the kernel analysis died with signal {os.WTERMSIG(status)}"
+            f"the kernel {kind.call} died with signal {os.WTERMSIG(status)}"
         );
     }
     if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0 or not payload {
-        raise KernelAnalysisError("the kernel analysis exited without a report");
+        raise KernelAnalysisError(f"the kernel {kind.call} exited without a report");
     }
     return payload.decode("utf-8");
+}
+
+def loaded_kernel(kind: KernelEntry) -> NativeCompiler {
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    kernel = ensure_loaded();
+    if kernel is None {
+        raise KernelAnalysisError("no native compiler kernel is available");
+    }
+    if not hasattr(kernel.lib, kind.call) {
+        raise KernelAnalysisError(f"the loaded kernel has no {kind.call}");
+    }
+    return kernel;
 }
 
 def kernel_analysis(
@@ -716,17 +811,15 @@ def kernel_analysis(
     in_process: bool = False,
     isolated: bool = False
 ) -> AnalysisReport {
-    inputs_json = kernel_analysis_json(host, program, path, options, source);
+    inputs_json = kernel_inputs_json(host, program, path, options, source);
     if in_process {
         outcome = run_kernel_analysis(inputs_json, path, source);
     } else {
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        kernel = ensure_loaded();
-        if kernel is None {
-            raise KernelAnalysisError("no native compiler kernel is available");
-        }
-        call = call_kernel_analyze_isolated if isolated else call_kernel_analyze;
-        outcome = AnalysisReport.from_json(call(kernel, inputs_json, path, source));
+        kernel = loaded_kernel(ANALYZE_ENTRY);
+        call = call_kernel_isolated if isolated else call_kernel;
+        outcome = AnalysisReport.from_json(
+            call(kernel, ANALYZE_ENTRY, inputs_json, path, source)
+        );
     }
     if outcome.status == ANALYSIS_CRASHED {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";

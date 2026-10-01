@@ -22,10 +22,11 @@ import from jaclang.compiler.frontend.kernel_analyze {
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.project.kernel_snapshot {
-    call_kernel_analyze,
+    ANALYZE_ENTRY,
+    call_kernel,
     host_analysis,
     kernel_analysis,
-    kernel_analysis_json
+    kernel_inputs_json
 }
 
 glob CONFIG: str = '[project]\nname="kernel-demo"\n[apps.web]\nkind="web-app"\nentry-point="main"\n';
@@ -97,7 +98,7 @@ def host_view(base: Path, entry_name: str) -> dict[str, any] {
 }
 
 def kernel_json(base: Path, entry_name: str) -> str {
-    return kernel_analysis_json(
+    return kernel_inputs_json(
         active_host(),
         JacProgram(),
         str(base / entry_name),
@@ -192,8 +193,12 @@ test "native jc_analyze matches the host path" {
             expected = host_view(base, entry_name);
             entry_file = str(base / entry_name);
             outcome = AnalysisReport.from_json(
-                call_kernel_analyze(
-                    kernel, kernel_json(base, entry_name), entry_file, None
+                call_kernel(
+                    kernel,
+                    ANALYZE_ENTRY,
+                    kernel_json(base, entry_name),
+                    entry_file,
+                    None
                 )
             );
             assert not outcome.misses , outcome.misses;
@@ -222,7 +227,7 @@ test "repeated native jc_analyze calls do not grow memory without bound" {
         inputs_json = kernel_json(base, 'main.jac');
         def run_once {
             outcome = AnalysisReport.from_json(
-                call_kernel_analyze(kernel, inputs_json, entry_file, None)
+                call_kernel(kernel, ANALYZE_ENTRY, inputs_json, entry_file, None)
             );
             assert outcome.status == ANALYSIS_BLOCKED , outcome.message;
         }
@@ -326,15 +331,19 @@ obj CrashingKernel {
 }
 
 test "a kernel that dies during analysis surfaces as an error, not a dead process" {
+    import from jaclang.compiler.native_compiler { NativeCompiler }
     import from jaclang.project.kernel_snapshot {
+        ANALYZE_ENTRY,
         KernelAnalysisError,
-        call_kernel_analyze_isolated
+        call_kernel_isolated
     }
     if not hasattr(os, "fork") {
         return;
     }
     try {
-        call_kernel_analyze_isolated(CrashingKernel(), "{}", "main.jac", None);
+        call_kernel_isolated(
+            CrashingKernel() as NativeCompiler, ANALYZE_ENTRY, "{}", "main.jac", None
+        );
         assert False , "the crash was not reported";
     } except KernelAnalysisError as err {
         assert "signal" in str(err) , str(err);
@@ -393,7 +402,7 @@ test "a Python base class in another module of an imported package reaches the k
             kernel = loaded_kernel();
             if kernel is not None {
                 native = AnalysisReport.from_json(
-                    call_kernel_analyze(kernel, inputs_json, entry_file, None)
+                    call_kernel(kernel, ANALYZE_ENTRY, inputs_json, entry_file, None)
                 );
                 assert observe(native, entry_file, str(Path(entry_file).parent))
                     == expected;

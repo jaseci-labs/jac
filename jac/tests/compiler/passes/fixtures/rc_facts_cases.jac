@@ -109,3 +109,21 @@ def f_loop_safe(n: int) -> int {
     }
     return total;
 }
+
+# 10. Source is a method's receiver. `self` is the caller's reference, bound by
+#     the call like a param, so moving it releases a reference the method never
+#     owned -> b10 NOT. It walks up from `self` the way `UniNode.sym_tab` does.
+obj Chain {
+    has up: (Chain | None) = None;
+
+    def top -> Chain {
+        b10: (Chain | None) = self;
+        while b10 is not None and b10.up is not None {
+            b10 = b10.up;
+        }
+        if b10 is None {
+            raise ValueError("a walk from `self` cannot end at None");
+        }
+        return b10;
+    }
+}

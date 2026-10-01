@@ -665,6 +665,14 @@ impl Symbol.storage.getter -> SymbolStorage {
         }
         return SymbolStorage.CAPTURED;
     }
+    if (
+        def_scope is not owner
+        and not self.imported
+        and isinstance(owner, Ability)
+        and owner.is_method
+    ) {
+        return SymbolStorage.PARAM;
+    }
     return SymbolStorage.LOCAL;
 }
 
@@ -2302,6 +2310,16 @@ impl FuncSignature.postinit -> None {
 }
 
 
+impl FuncSignature.get_named_parameters -> list[ParamVar] {
+    params: list[ParamVar] = [];
+    params.extend(self.posonly_params);
+    if self.params is not None {
+        params.extend(self.params);
+    }
+    params.extend(self.kwonlyargs);
+    return params;
+}
+
 impl FuncSignature.get_parameters -> list[ParamVar] {
     params: list[ParamVar] = [];
     params.extend(self.posonly_params);
@@ -3750,6 +3768,28 @@ impl kind_has_runtime_binding(
 
 impl has_runtime_binding(sym: Symbol, space: CodeContext) -> bool {
     return kind_has_runtime_binding(sym.binding_kind, resolved_decl_of(sym), space);
+}
+
+impl is_comptime_stmt(nd: UniNode) -> bool {
+    if isinstance(nd, Ability) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, Assignment) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, IfStmt) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, InForStmt) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, AssertStmt) {
+        return nd.is_comptime;
+    }
+    if isinstance(nd, Import) {
+        return nd.is_comptime;
+    }
+    return False;
 }
 
 impl is_client_destined(nd: UniNode) -> bool {

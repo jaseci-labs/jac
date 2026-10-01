@@ -95,7 +95,6 @@ test "a module with compile errors is never classified client-only" {
 
 test "sealed images persist placement and expose it without re-derivation" {
     import json;
-    import from jaclang.compiler.placement.placement_export { sealed_spaces_for }
     import from jaclang.jac0core.sealed { SealedImage, MANIFEST_FORMAT }
     d = tempfile.mkdtemp(prefix="jac-sealed-facts-");
     pre = os.path.join(d, "_precompiled");
@@ -110,9 +109,6 @@ test "sealed images persist placement and expose it without re-derivation" {
     with open(os.path.join(pre, "MANIFEST.json"), "w") as f {
         json.dump(manifest, f);
     }
-    assert sealed_spaces_for(os.path.join(d, "svc.jac")) == {"server"};
-    assert sealed_spaces_for(os.path.join(d, "ui", "page.jac")) == {"client"};
-    assert sealed_spaces_for(os.path.join(d, "unknown.jac")) is None;
     import from pathlib { Path }
     img = SealedImage(Path(pre), manifest);
     assert img.placement == {"svc.jac": ["server"], "ui/page.jac": ["client"]};
@@ -171,7 +167,6 @@ test "native_only names the modules with no bytecode meaning" {
     # The kernel roots import C symbols; the native standard library lives
     # under runtime/na_stdlib. Neither is ever bytecoded.
     assert native_only(_pkg_path("compiler", "jc_unit.jac"));
-    assert native_only(_pkg_path("compiler", "jc_materialize.jac"));
     assert native_only(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
     assert native_only(_pkg_path("runtime", "na_stdlib", "zlib.jac"));
     # A frontend module in the kernel's roster is bytecode and native at once,
@@ -187,7 +182,6 @@ test "native_only names the modules with no bytecode meaning" {
 test "native_unit follows native_only, the kernel roster and the native-unit compile" {
     # Native-only modules are native units under any compile.
     assert native_unit(_pkg_path("compiler", "jc_unit.jac"));
-    assert native_unit(_pkg_path("compiler", "jc_materialize.jac"));
     assert native_unit(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
     assert native_unit(_pkg_path("compiler", "jc_unit.jac"), native_unit_compile=False);
     # A NATIVE_SCOPE frontend module is a native unit only under a

@@ -560,51 +560,65 @@ impl JcirGenPass.exit_multi_string with MultiString exit {
         self.set_out(here, self.outs(lone));
         return;
     }
-    combined_multi: list[str | bytes | CgNode] = [];
-    for item in self._multi_string_pieces(here.strings) {
-        if (
-            combined_multi
-            and isinstance(item, str)
-            and isinstance((tail_str := combined_multi[-1]), str)
-        ) {
-            combined_multi[-1] = tail_str + item;
-        } elif (
-            combined_multi
-            and isinstance(item, bytes)
-            and isinstance((tail_bytes := combined_multi[-1]), bytes)
-        ) {
-            combined_multi[-1] = tail_bytes + item;
-        } else {
-            combined_multi.append(item);
-        }
-    }
-    for (i, v) in enumerate(combined_multi) {
-        if isinstance(v, (str, bytes)) {
-            combined_multi[i] = self.const_of(v);
-        }
-    }
     merged: list[CgNode] = [];
-    for v in combined_multi {
-        prev: (CgNode | None) = merged[-1] if merged else None;
-        folded = False;
-        if (prev is not None and isinstance(v, CgNode) and v.cls == 'Constant') {
-            next_const = v.get('value');
-            prev_const = prev.get('value') if prev.cls == 'Constant' else None;
-            if (isinstance(next_const, str) and isinstance(prev_const, str)) {
-                merged[-1] = self.const_of(prev_const + next_const);
-                folded = True;
-            }
+    text_run: list[str] = [];
+    byte_run: list[bytes] = [];
+    for item in self._multi_string_pieces(here.strings) {
+        text = self._multi_string_text(item);
+        if text is not None {
+            self._flush_byte_run(merged, byte_run);
+            text_run.append(text);
+            continue;
         }
-        if not folded {
-            merged.append(v if isinstance(v, CgNode) else self.const_of(v));
+        self._flush_text_run(merged, text_run);
+        if isinstance(item, bytes) {
+            byte_run.append(item);
+            continue;
+        }
+        self._flush_byte_run(merged, byte_run);
+        if isinstance(item, CgNode) {
+            merged.append(item);
         }
     }
+    self._flush_text_run(merged, text_run);
+    self._flush_byte_run(merged, byte_run);
     if not merged {
         self.set_out(here, [self.const_of('')]);
     } elif (len(merged) == 1 and merged[0].cls == 'Constant') {
         self.set_out(here, [merged[0]]);
     } else {
         self.set_out(here, [self.nod('JoinedStr', ['values'], [merged])]);
+    }
+}
+
+impl JcirGenPass._multi_string_text(piece: (str | bytes | CgNode)) -> (str | None) {
+    if isinstance(piece, str) {
+        return piece;
+    }
+    if isinstance(piece, CgNode) and piece.cls == 'Constant' {
+        value = piece.get('value');
+        if isinstance(value, str) {
+            return str(value);
+        }
+    }
+    return None;
+}
+
+impl JcirGenPass._flush_text_run(merged: list[CgNode], run: list[str]) -> None {
+    if run {
+        merged.append(self.const_of("".join(run)));
+        run.clear();
+    }
+}
+
+impl JcirGenPass._flush_byte_run(merged: list[CgNode], run: list[bytes]) -> None {
+    if run {
+        joined = bytearray();
+        for chunk in run {
+            joined.extend(chunk);
+        }
+        merged.append(self.const_of(bytes(joined)));
+        run.clear();
     }
 }
 
@@ -779,8 +793,9 @@ impl JcirGenPass._statement_list_comprehension(
     statements: list[CgNode] = [self.nod('Expr', ['value'], [call])];
     for index in range(len(nd.compr) - 1, -1, -1) {
         generator = self.val(nd.compr[index]);
-        conditions = generator.get('ifs');
-        for condition in reversed(conditions) {
+        conditions = generator.items('ifs');
+        for position in range(len(conditions) - 1, -1, -1) {
+            condition = conditions[position];
             statements = [
                 self.nod('If', ['test', 'body', 'orelse'], [condition, statements, []])
             ];

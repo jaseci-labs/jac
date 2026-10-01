@@ -1607,27 +1607,29 @@ def _build_types_runtime_js -> str {
     import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
     import from jaclang.compiler.backends.es.primitives_es {
         ESBuiltinEmitter,
-        ESEmitCtx
+        ESEmitCtx,
+        es_sized_cast
     }
-    emitter = ESBuiltinEmitter();
+    import from jaclang.compiler.backends.common.primitives { PrimitiveEmitter }
+    emitter: PrimitiveEmitter[(str, ESEmitCtx)] = ESBuiltinEmitter();
     ctx = ESEmitCtx(unparser=JSCodeGenerator());
     entries: list[str] = [];
     for (tok, name) in sorted(TOKEN_MAP.items()) {
         if not tok.startswith("TYP_") {
             continue;
         }
-        emit_fn = getattr(emitter, "emit_" + name, None);
-        if emit_fn is None and not JAC_TYPE_REGISTRY.is_sized(name) {
+        has_emitter = name in emitter.static_names();
+        if not has_emitter and not JAC_TYPE_REGISTRY.is_sized(name) {
             continue;
         }
 
         bodies: list[(str | None)] = [];
         for argv in ([], ["a[0]"], ["a[0]", "a[1]"]) {
             try {
-                if emit_fn is None {
-                    bodies.append(emitter.emit_sized_cast(name, argv));
+                if has_emitter {
+                    bodies.append(emitter.dispatch_static(name, ctx, argv));
                 } else {
-                    bodies.append(emit_fn(ctx, argv));
+                    bodies.append(es_sized_cast(name, argv));
                 }
             } except Exception {
                 bodies.append(None);
@@ -1938,8 +1940,8 @@ def point_jac_prelude_at(js: str, target: str = "") -> str {
 }
 
 def build_osp_core_js -> str {
-    import from jaclang.compiler.backends.es.client_kernel_cache { osp_core_js }
-    return osp_core_js();
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().client_osp_core_js();
 }
 
 def build_osp_driver_js -> str {

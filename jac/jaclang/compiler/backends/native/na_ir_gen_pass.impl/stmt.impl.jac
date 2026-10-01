@@ -1282,6 +1282,14 @@ impl NaIRGenPass._match_map_cond(
     return self.builder.load(res, name="match.map.ok");
 }
 
+impl NaIRGenPass._match_arch_name(pat: uni.MatchArch) -> (str | None) {
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    pattern_type = pat.name.type if isinstance(pat.name, uni.Expr) else None;
+    return self._arch_ref_key(pat.name)
+        or class_type_native_name(pattern_type)
+        or self._get_name(pat.name);
+}
+
 impl NaIRGenPass._match_arch_fields(
     pat: uni.MatchArch, arch_name: str
 ) -> (list[tuple[str, uni.MatchPattern]] | None) {
@@ -1312,7 +1320,7 @@ impl NaIRGenPass._match_arch_cond(
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
-    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
+    arch_name = self._match_arch_name(pat);
     if arch_name is None or arch_name not in self.struct_types {
         self.emit(
             E5092,
@@ -1690,7 +1698,7 @@ impl NaIRGenPass._bind_match_map(
 impl NaIRGenPass._bind_match_arch(
     pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
-    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
+    arch_name = self._match_arch_name(pat);
     if arch_name is None or arch_name not in self.struct_types {
         return;
     }
@@ -1752,6 +1760,28 @@ impl NaIRGenPass._apply_scalar_aug_op(
         result = self._coerce_type(result, current.type);
     }
     return result;
+}
+
+impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
+    if not isinstance(nd.value, uni.Null) {
+        return None;
+    }
+    if len(nd.target) != 1 or not isinstance(nd.target[0], uni.Name) {
+        return None;
+    }
+    declared = nd.target[0].type;
+    if declared is None {
+        return None;
+    }
+    try {
+        lowered = self._lower_type(declared);
+    } except Exception {
+        return None;
+    }
+    if lowered is None or isinstance(lowered, ir.VoidType) {
+        return None;
+    }
+    return lowered;
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
@@ -2966,6 +2996,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         } else {
             var_type = value.type;
             _pre_box_val = value;
+            _none_decl = self._none_initialized_local_type(nd);
+            if _none_decl is not None {
+                value = self._coerce_type(value, _none_decl);
+                var_type = _none_decl;
+                _pre_box_val = value;
+            }
             if (
                 (not nd.type_tag or not nd.type_tag.tag)
                 and isinstance(value.type, ir.PointerType)

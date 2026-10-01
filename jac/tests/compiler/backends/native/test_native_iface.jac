@@ -91,36 +91,6 @@ test "the record round-trips through its bytes with a stable digest" {
     assert back.classes["Point"].to_dict() == iface.classes["Point"].to_dict();
 }
 
-test "cached interfaces preserve nested container schemas for materialization" {
-    schema: dict[str, any] = {
-        "code": "dict",
-        "key_offset": 16,
-        "data_offset": 24,
-        "order_offset": 32,
-        "element": {
-            "code": "list",
-            "data_offset": 16,
-            "element": {"code": "obj", "class": "Symbol"}
-        }
-    };
-    slot = NativeFieldSlot.from_dict(
-        {"index": 0, "offset": 8, "code": "natdict", "schema": schema}
-    );
-    iface = NativeIface(
-        module="scope",
-        classes={"Scope": NativeClassLayout(name="Scope", fields={"names": slot})}
-    );
-    back = NativeIface.from_bytes(iface.to_bytes());
-    assert back is not None;
-    assert back.digest() == iface.digest();
-    layouts = merge_class_layouts([back]);
-    assert layouts["Scope"]["fields"]["names"]["schema"] == schema;
-    restored = back.classes["Scope"].fields["names"].schema;
-    assert restored is not None;
-    restored.data_offset += 8;
-    assert back.digest() != iface.digest();
-}
-
 test "a body edit keeps the digest; an export change moves it" {
     src = (Path(FIXTURES) / "base.jac").read_text();
     scratch = tempfile.mkdtemp(prefix="jac-niface-");
@@ -169,7 +139,7 @@ test "the section in the module JIR carries the stamp of its compile" {
 test "merged layouts refuse a class two units lay out differently" {
     a = NativeIface(module="a", prefix="a");
     b = NativeIface(module="b", prefix="b");
-    slot = NativeFieldSlot(index=0, offset=0, code="int");
+    slot = NativeFieldSlot(index=0, offset=0);
     a.classes["P"] = NativeClassLayout(name="P", size=8, fields={"x": slot});
     b.classes["P"] = NativeClassLayout(name="P", size=8, fields={"x": slot});
     merged = merge_class_layouts([a, b]);
@@ -283,4 +253,33 @@ test "a unit's layout keeps a function named like a dependency's foreign symbol"
     assert "sqrt" in iface.exports , sorted(iface.exports.keys());
     assert iface.layout is not None;
     assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());
+}
+
+"""Closure cells and iterator states are the backend's own helper structs,
+numbered or shaped per unit; publishing them made two units that each
+captured a differently typed variable disagree about 'JacCell.1'. A unit's
+interface lists only its Jac classes."""
+test "an interface does not publish the backend's helper structs" {
+    source = (
+        "obj Counter {\n    has n: int = 0;\n}\n\n"
+        + "def make_counter(start: int) -> Callable[[], int] {\n"
+        + "    count = start;\n"
+        + "    def step -> int {\n"
+        + "        count = count + 1;\n"
+        + "        return count;\n"
+        + "    }\n"
+        + "    return step;\n}\n\n"
+        + "def total(values: list[int]) -> int {\n"
+        + "    acc = 0;\n"
+        + "    for v in values {\n        acc += v;\n    }\n"
+        + "    return acc;\n}\n"
+    );
+    iface = _iface_of(_scratch_copy("helpers.jac", source));
+    names = sorted(iface.classes.keys());
+    assert any(name.startswith("Counter") for name in names) , names;
+    for name in names {
+        assert not name.startswith("JacCell") , names;
+        assert not name.endswith("IterState") , names;
+        assert name != "JacIter" , names;
+    }
 }

@@ -5,12 +5,12 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import type from jaclang.compiler.types.ct_value { CtEnvironment }
 import type from jaclang.compiler.frontend.unitree { Module }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 obj NativeVerdict {
     has demoted: bool = False,
@@ -212,16 +212,6 @@ obj HostServices {
         return False;
     }
 
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = ""
-    ) -> (tuple[Module, bool] | None) {
-        return None;
-    }
-
     def drop_python_lane_products(path: str, program: JacProgram) {}
     def compiler_for(program: JacProgram) -> JacCompiler {
         raise RuntimeError("no compiler host is installed");
@@ -233,6 +223,29 @@ obj HostServices {
 
     def native_units_for(program: JacProgram) -> NativeUnitRegistry {
         raise RuntimeError("no compiler host is installed");
+    }
+
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
+        return None;
+    }
+
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None) {
+        return None;
+    }
+
+    def in_compiler_tree(path: str) -> bool {
+        return False;
+    }
+
+    def schedule_import_failed(err: ImportError) {}
+    def client_osp_core_js -> str {
+        return "";
+    }
+
+    def client_stub_globals -> list[str] {
+        return [];
     }
 
     def native_session_declares(

@@ -14,6 +14,8 @@ import from crypto { def EVP_sha384 -> int;  }
 import from crypto { def EVP_sha512 -> int;  }
 import from crypto { def EVP_sha3_256 -> int;  }
 import from crypto { def EVP_sha3_512 -> int;  }
+import from crypto { def EVP_blake2s256 -> int;  }
+import from crypto { def EVP_blake2b512 -> int;  }
 
 import from crypto { def HMAC_CTX_new -> int;  }
 import from crypto { def HMAC_CTX_free(ctx: int) -> None;  }
@@ -41,6 +43,10 @@ def:pub evp_md_for(name: str) -> int {
         return EVP_sha3_256();
     } elif name == "sha3_512" {
         return EVP_sha3_512();
+    } elif name == "blake2s" {
+        return EVP_blake2s256();
+    } elif name == "blake2b" {
+        return EVP_blake2b512();
     }
     return 0;
 }
@@ -62,6 +68,10 @@ def:pub digest_size_for(name: str) -> int {
     } elif name == "sha3_256" {
         return 32;
     } elif name == "sha3_512" {
+        return 64;
+    } elif name == "blake2s" {
+        return 32;
+    } elif name == "blake2b" {
         return 64;
     }
     return 0;
@@ -85,6 +95,10 @@ def:pub block_size_for(name: str) -> int {
         return 136;
     } elif name == "sha3_512" {
         return 72;
+    } elif name == "blake2s" {
+        return 64;
+    } elif name == "blake2b" {
+        return 128;
     }
     return 0;
 }

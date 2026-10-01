@@ -43,7 +43,7 @@ import from jaclang.compiler.driver.pipeline {
     providers_of,
     schedule_tier_reason
 }
-import from jaclang.compiler.driver.pipeline_runner {
+import from jaclang.compiler.driver.module_compile {
     CODEGEN_SCHED_DEPS,
     get_py_code_gen
 }
@@ -246,8 +246,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [p.__name__ for p in get_py_code_gen()];
-        assert tail
-            == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"] , tail;
+        assert tail == ["NativeImportFactsPass", "JcirGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }
@@ -311,10 +310,6 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
 
 
 test "a compile that re-enters the module being imported says so" {
-    # The kernel's early passes carry their own expr_keys, so only the
-    # bytecode frontend reaches the module this test holds mid-import.
-    import from unittest.mock { patch }
-    import jaclang.compiler.native_compiler as native_compiler;
     ek = sys.modules["jaclang.compiler.expr_keys"];
     saved_fn = ek.collect_assigned_symbols;
     sys.modules["jac_reentrant_probe"] = initializing_stub(EXPR_KEYS);
@@ -324,13 +319,11 @@ test "a compile that re-enters the module being imported says so" {
         compiler = prog._get_compiler();
         raised = False;
         try {
-            with patch.object(native_compiler, "ensure_loaded", return_value=None) {
-                compiler.compile(
-                    file_path=EXPR_KEYS,
-                    target_program=compiler.selfhost.program,
-                    options=CompileOptions(no_cgen=True)
-                );
-            }
+            compiler.compile(
+                file_path=EXPR_KEYS,
+                target_program=compiler.selfhost.program,
+                options=CompileOptions(no_cgen=True)
+            );
         } except CompilerSourceError as loud {
             raised = True;
             assert "re-entered" in str(loud) , str(loud);

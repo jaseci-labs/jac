@@ -19,6 +19,11 @@ import from jaclang.compiler.frontend.kernel_inputs {
 }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.srcloc { Span }
+import from jaclang.compiler.driver.unit_products {
+    UnitProducts,
+    products_from_record,
+    products_record
+}
 import from jaclang.compiler.passes.context { Alert }
 
 glob ANALYSIS_OK: int = 0,
@@ -127,23 +132,27 @@ obj AnalysisReport {
         return None;
     }
 
+    def to_dict -> dict[str, any] {
+        return {
+            "status": self.status,
+            "message": self.message,
+            "entry": self.entry_path,
+            "modules": [m.to_dict() for m in self.modules],
+            "errors": [d.to_dict() for d in self.errors],
+            "warnings": [d.to_dict() for d in self.warnings],
+            "misses": list(self.misses)
+        };
+    }
+
     def to_json -> str {
-        return json.dumps(
-            {
-                "status": self.status,
-                "message": self.message,
-                "entry": self.entry_path,
-                "modules": [m.to_dict() for m in self.modules],
-                "errors": [d.to_dict() for d in self.errors],
-                "warnings": [d.to_dict() for d in self.warnings],
-                "misses": list(self.misses)
-            },
-            sort_keys=True
-        );
+        return json.dumps(self.to_dict(), sort_keys=True);
     }
 
     static def from_json(text: str) -> AnalysisReport {
-        raw = json_map(json.loads(text));
+        return AnalysisReport.from_dict(json_map(json.loads(text)));
+    }
+
+    static def from_dict(raw: dict[str, any]) -> AnalysisReport {
         return AnalysisReport(
             status=json_int(raw.get("status"), ANALYSIS_CRASHED),
             message=str(raw.get("message", "")),
@@ -290,43 +299,129 @@ def kernel_trace(message: str) {
     }
 }
 
-def run_kernel_analysis(
-    inputs_json: str, path: str, source: (str | None)
-) -> AnalysisReport {
-    kernel_trace("decode inputs");
-    try {
-        inputs = KernelInputs.from_json(inputs_json);
-    } except Exception as err {
-        return AnalysisReport(
-            status=ANALYSIS_CRASHED,
-            message=f"undecodable kernel inputs: {err}",
-            entry_path=path
+obj KernelRun {
+    has host: KernelHost,
+        program: JacProgram,
+        status: int = ANALYSIS_OK,
+        message: str = "";
+
+    def outcome(entry_path: str) -> AnalysisReport {
+        outcome = analysis_report(
+            self.program,
+            entry_path,
+            list(self.host.analyses.values()),
+            self.status,
+            self.message
         );
+        outcome.misses.extend(self.host.census.miss_keys);
+        return outcome;
     }
+}
+
+def run_kernel_session(
+    inputs: KernelInputs, path: str, source: (str | None), with_codegen: bool
+) -> KernelRun {
     if inputs.package_root {
         set_package_root(inputs.package_root);
     }
     host = KernelHost(inputs=inputs);
     host.census.trace = bool(os.environ.get("JAC_KERNEL_TRACE"));
+    run = KernelRun(host=host, program=JacProgram());
     previous = active_host();
+    host.loader = previous;
     install_host(host);
-    program = JacProgram();
-    status = ANALYSIS_OK;
-    message = "";
-    kernel_trace(f"analyze {path}");
+    kernel_trace(f"{'compile' if with_codegen else 'analyze'} {path}");
     try {
         options = inputs.request.to_options();
-        host.compile_module(program, path, source, options);
+        if with_codegen {
+            host.close_over(options);
+        }
+        host.compile_module(run.program, path, source, options);
     } except Exception as err {
-        status = ANALYSIS_CRASHED;
-        message = f"{type(err).__name__}: {err}";
+        run.status = ANALYSIS_CRASHED;
+        run.message = f"{type(err).__name__}: {err}";
+        running = run.program.analysis.running;
+        if running is not None {
+            where = running.pass_name;
+            visiting = running.current_node;
+            if visiting is not None and visiting.loc {
+                loc = visiting.loc;
+                where += f" at {loc.mod_path}:{loc.first_line}:{loc.col_start}";
+            }
+            run.message += f" (in {where})";
+        }
     } finally {
         install_host(previous);
     }
-    kernel_trace(f"report status {status}");
-    outcome = analysis_report(
-        program, path, list(host.analyses.values()), status, message
+    kernel_trace(f"report status {run.status}");
+    return run;
+}
+
+def decode_inputs(inputs_json: str) -> (KernelInputs | str) {
+    kernel_trace("decode inputs");
+    try {
+        return KernelInputs.from_json(inputs_json);
+    } except Exception as err {
+        return f"undecodable kernel inputs: {err}";
+    }
+}
+
+def run_kernel_analysis(
+    inputs_json: str, path: str, source: (str | None)
+) -> AnalysisReport {
+    inputs = decode_inputs(inputs_json);
+    if isinstance(inputs, str) {
+        return AnalysisReport(status=ANALYSIS_CRASHED, message=inputs, entry_path=path);
+    }
+    return run_kernel_session(inputs, path, source, False).outcome(path);
+}
+
+obj CompileReport {
+    has analysis: AnalysisReport,
+        units: list[UnitProducts] = [];
+
+    def unit(path: str) -> (UnitProducts | None) {
+        resolved = os.path.realpath(path);
+        for candidate in self.units {
+            if os.path.realpath(candidate.path) == resolved {
+                return candidate;
+            }
+        }
+        return None;
+    }
+
+    def to_json -> str {
+        return json.dumps(
+            {
+                "analysis": self.analysis.to_dict(),
+                "units": [products_record(u) for u in self.units]
+            },
+            sort_keys=True
+        );
+    }
+
+    static def from_json(text: str) -> CompileReport {
+        raw = json_map(json.loads(text));
+        return CompileReport(
+            analysis=AnalysisReport.from_dict(json_map(raw.get("analysis"))),
+            units=[products_from_record(u) for u in json_maps(raw.get("units"))]
+        );
+    }
+}
+
+def run_kernel_compile(
+    inputs_json: str, path: str, source: (str | None)
+) -> CompileReport {
+    inputs = decode_inputs(inputs_json);
+    if isinstance(inputs, str) {
+        return CompileReport(
+            analysis=AnalysisReport(
+                status=ANALYSIS_CRASHED, message=inputs, entry_path=path
+            )
+        );
+    }
+    run = run_kernel_session(inputs, path, source, True);
+    return CompileReport(
+        analysis=run.outcome(path), units=list(run.host.units.values())
     );
-    outcome.misses.extend(host.census.miss_keys);
-    return outcome;
 }

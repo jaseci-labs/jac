@@ -259,6 +259,52 @@ impl ProjectHost.native_session_declares(
     );
 }
 
+impl ProjectHost.client_boundary_facts(
+    program: JacProgram, path: str
+) -> (list[str] | None) {
+    try {
+        return program.iface_registry().client_boundary_facts(path);
+    } except Exception {
+        return None;
+    }
+}
+
+impl ProjectHost.kernel_compile(
+    program: JacProgram, path: str, options: CompileOptions
+) -> (CompileReport | None) {
+    import from jaclang.project.kernel_compile { host_kernel_compile }
+    return host_kernel_compile(self, program, path, options);
+}
+
+impl ProjectHost.in_compiler_tree(path: str) -> bool {
+    import from jaclang.compiler.driver.jir { is_compiler_tree_path }
+    return is_compiler_tree_path(path);
+}
+
+impl ProjectHost.schedule_import_failed(err: ImportError) {
+    import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
+    fail_loud_on_compiler_source(err);
+}
+
+impl ProjectHost.client_osp_core_js -> str {
+    import from jaclang.compiler.backends.es.client_kernel_cache { osp_core_js }
+    return osp_core_js();
+}
+
+impl ProjectHost.client_stub_globals -> list[str] {
+    if not self._stub_globals {
+        import os;
+        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+        stub_dir = os.path.join(jaclang_pkg_root(), "compiler", "types");
+        names: set[str] = set();
+        for stub in ("js_globals.pyi", "dom_types.pyi") {
+            names.update(client_stub_names(os.path.join(stub_dir, stub)));
+        }
+        self._stub_globals.extend(sorted(names));
+    }
+    return list(self._stub_globals);
+}
+
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
         import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
@@ -361,47 +407,6 @@ impl ProjectHost.wiring_file(path: str) -> (str | None) {
 impl ProjectHost.is_seed_source(rel_path: str) -> bool {
     import from jaclang.bootstrap_manifest { is_seed_source }
     return is_seed_source(rel_path);
-}
-
-impl ProjectHost.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = ""
-) -> (tuple[Module, bool] | None) {
-    import from jaclang.compiler.frontend.parser.frontend { finish_parse }
-    import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded();
-    if kernel is None {
-        return None;
-    }
-    kernel.prepare_early(early_context if program is not None else "");
-    for annex in annexes {
-        kernel.annex(annex);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, program
-    );
-    if program is not None {
-        results = kernel.take_pass_results();
-        if results {
-            program.analysis.record_early(module, results);
-        }
-    }
-    return (module, had_error);
 }
 
 impl ProjectHost.resolve_local_module(

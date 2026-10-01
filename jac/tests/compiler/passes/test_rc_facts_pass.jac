@@ -26,7 +26,7 @@ import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "fixtures");
 
-"""Map every single-target `Name = ...` assignment to its move-lowerable mark."""
+"""Map every single-target `Name = ...` target to whether any assignment to it is move-lowerable."""
 def move_marks(fixture: str) -> dict[str, bool] {
     prog = JacProgram();
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
@@ -40,7 +40,7 @@ def move_marks(fixture: str) -> dict[str, bool] {
         if len(nd.target) == 1 {
             tgt = nd.target[0];
             if isinstance(tgt, uni.Name) {
-                out[tgt.value] = nd.na_move_lowerable;
+                out[tgt.value] = out.get(tgt.value, False) or nd.na_move_lowerable;
             }
         }
     }
@@ -56,6 +56,11 @@ test "the proof marks safe local last-use moves" {
 test "the proof refuses an own-param source (own-param UAF channel)" {
     marks = move_marks("rc_facts_cases.jac");
     assert not marks["b2"] , "a param source is not LOCAL and must never be move-lowered";
+}
+
+test "the proof refuses a method receiver source (it is the caller's reference)" {
+    marks = move_marks("rc_facts_cases.jac");
+    assert not marks["b10"] , "`self` is bound by the call like a param and must never be move-lowered";
 }
 
 test "the proof refuses escaping sources (call-arg, field, closure, concurrent, borrow)" {

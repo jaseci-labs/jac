@@ -295,8 +295,7 @@ impl NaIRGenPass._export_native_iface -> None {
                 for (fname, fd) in body.get("fields", {}).items()
             },
             bases=list(body.get("bases", [])),
-            vtable=list(body.get("vtable", [])),
-            is_node=bool(body.get("is_node", False))
+            vtable=list(body.get("vtable", []))
         );
     }
     for (ename, members) in self.enum_string_values.items() {
@@ -330,9 +329,6 @@ impl NaIRGenPass._export_native_iface -> None {
     self.module.gen.native_deps = list(self._native_dep_paths);
 }
 
-impl NaIRGenPass._build_class_layouts -> dict[str, any] {
-    return dict(self._build_jc_layout().get("classes", {}));
-}
 
 impl NaIRGenPass._own_prefix -> str {
     return self._unit_prefix;

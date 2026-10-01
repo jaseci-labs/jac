@@ -37,6 +37,8 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compilation_context { package_owned }
 import from jaclang.compiler.driver.session_compile { SessionHooks, compile_in_session }
 import from jaclang.compiler.driver.module_analysis { ModuleAnalysis, analyze_module }
+import from jaclang.compiler.driver.module_compile { compile_task }
+import from jaclang.compiler.driver.unit_products { UnitProducts, unit_products }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.types.stubcat.reader { StubCatalog, open_catalog_region }
 import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
@@ -45,10 +47,10 @@ import from jaclang.compiler.types.types { ClassDetailsShared, ClassType, TypeBa
 import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
 import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 import type from jaclang.compiler.types.ct_value { CtEnvironment }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob _CATALOGS: dict[str, StubCatalog] = {};
 
@@ -178,6 +180,10 @@ obj KernelSession(SessionHooks) {
         return self.closure;
     }
 
+    def defers_native_codegen -> bool {
+        return self.host.fallback is None;
+    }
+
     def run_module(
         file_path: str,
         target_program: JacProgram,
@@ -187,8 +193,11 @@ obj KernelSession(SessionHooks) {
         host = self.host;
         if host.fallback is None {
             host.census.count("run_module");
-            task = analyze_module(target_program, file_path, options, use_str);
+            task = analyze_module(target_program, file_path, options, use_str)
+                if options.no_cgen or options.symtab_ir_only
+                else compile_task(self, target_program, file_path, options, use_str);
             host.analyses[os.path.realpath(file_path)] = task;
+            host.record_unit(task);
             return task.module;
         }
         with host.delegating("run_module") as fallback {
@@ -271,6 +280,7 @@ obj ServedInterface {
 obj KernelHost(HostServices) {
     has inputs: KernelInputs,
         fallback: (HostServices | None) = None,
+        loader: (HostServices | None) = None,
         closure: (CompileOptions | None) = None,
         census: HostCensus = HostCensus(),
         events: list[HostEvent] = [],
@@ -283,6 +293,7 @@ obj KernelHost(HostServices) {
         _served: dict[str, ServedInterface] = {},
         _catalog: (StubCatalog | None) = None,
         analyses: dict[str, ModuleAnalysis] = {},
+        units: dict[str, UnitProducts] = {},
         _session: (KernelSession | None) = None;
 
     def postinit {
@@ -377,6 +388,21 @@ obj KernelHost(HostServices) {
         self._served[resolved] = ServedInterface(catalog=catalog, module=mod);
         program.stamp_app_facts(mod);
         return mod;
+    }
+
+    def close_over(options: CompileOptions) {
+        self.closure = options;
+        if self._session is not None {
+            self._session.closure = options;
+        }
+    }
+
+    def record_unit(task: ModuleAnalysis) {
+        module = task.module;
+        if task.parse_failed or task.blocked or not module.gen.jcir {
+            return;
+        }
+        self.units[os.path.realpath(task.path)] = unit_products(module, task.program);
     }
 
     def host_turn(method: str = "") -> HostTurn {
@@ -787,24 +813,6 @@ obj KernelHost(HostServices) {
         return self.inputs.manifest.is_seed(rel_path);
     }
 
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = ""
-    ) -> (tuple[Module, bool] | None) {
-        if self.kernel_only("native_parse") {
-            return None;
-        }
-        with self.delegating("native_parse") as host {
-            answer = host.native_parse(
-                source_str, file_path, program, annexes, early_context
-            );
-        }
-        return answer;
-    }
-
     def drop_python_lane_products(path: str, program: JacProgram) {
         if self.kernel_only("drop_python_lane_products") {
             return;
@@ -831,6 +839,72 @@ obj KernelHost(HostServices) {
     def native_units_for(program: JacProgram) -> NativeUnitRegistry {
         with self.delegating("native_units_for") as host {
             answer = host.native_units_for(program);
+        }
+        return answer;
+    }
+
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
+        if self.kernel_only("client_boundary_facts") {
+            return None;
+        }
+        with self.delegating("client_boundary_facts") as host {
+            answer = host.client_boundary_facts(program, path);
+        }
+        return answer;
+    }
+
+    def in_compiler_tree(path: str) -> bool {
+        if self.kernel_only("in_compiler_tree") {
+            return False;
+        }
+        with self.delegating("in_compiler_tree") as host {
+            answer = host.in_compiler_tree(path);
+        }
+        return answer;
+    }
+
+    def schedule_import_failed(err: ImportError) {
+        if self.kernel_only("schedule_import_failed") {
+            return;
+        }
+        with self.delegating("schedule_import_failed") as host {
+            host.schedule_import_failed(err);
+        }
+    }
+
+    def client_osp_core_js -> str {
+        self.census.count("client_osp_core_js");
+        if self.inputs.osp_core_js {
+            return self.inputs.osp_core_js;
+        }
+        with self.missing("client_osp_core_js", "") as host {
+            answer = host.client_osp_core_js();
+        }
+        self.inputs.osp_core_js = answer;
+        return answer;
+    }
+
+    def client_stub_globals -> list[str] {
+        self.census.count("client_stub_globals");
+        if self.inputs.client_stub_globals_known {
+            return list(self.inputs.client_stub_globals);
+        }
+        with self.missing("client_stub_globals", "") as host {
+            answer = host.client_stub_globals();
+        }
+        self.inputs.client_stub_globals = list(answer);
+        self.inputs.client_stub_globals_known = True;
+        return answer;
+    }
+
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None) {
+        if self.kernel_only("kernel_compile") {
+            return None;
+        }
+        with self.delegating("kernel_compile") as host {
+            answer = host.kernel_compile(program, path, options);
         }
         return answer;
     }
@@ -1066,7 +1140,10 @@ obj KernelHost(HostServices) {
     }
 
     def host_side -> HostServices {
-        return self.fallback if self.fallback is not None else self;
+        if self.fallback is not None {
+            return self.fallback;
+        }
+        return self.loader if self.loader is not None else self;
     }
 
     def default_target_triple -> str {

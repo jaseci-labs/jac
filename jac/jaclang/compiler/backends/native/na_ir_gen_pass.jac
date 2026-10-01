@@ -1,5 +1,14 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
+import from jaclang.compiler.passes.context {
+    CompileContext,
+    CompilerPass,
+    PassSchedule
+}
+import from jaclang.compiler.driver.pipeline {
+    register_codegen_backend,
+    register_product_schedule
+}
+import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
@@ -8,10 +17,9 @@ import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
 import from jaclang.compiler.backends.native.primitives_native {
     NativeEmitCtx,
     NativeSetEmitter,
-    NativeDictEmitter,
-    NativeIntEmitter,
-    NativeFloatEmitter
+    NativeDictEmitter
 }
+import from jaclang.compiler.backends.common.primitives { PrimitiveEmitter }
 import from jaclang.compiler.backends.native.lowering {
     NativeLoweringIssue,
     NativeLoweringKind
@@ -100,7 +108,6 @@ import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_SIZE,
     LIVE_NODE_TAG_OFF,
     LIVE_NODE_USER_OFF,
-    NATIVE_CONTAINER_CODES,
     NATIVE_COPY_FUNCS,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
@@ -530,6 +537,7 @@ walker NaIRGenPass(CompilerPass) {
             dict[str, tuple[ir.IdentifiedStructType, ir.FunctionType]] = {},
         _closure_sig_keys: dict[str, str] = {},
         _closure_cell_structs: dict[str, str] = {},
+        _helper_structs: set[str] = set(),
         closure_thunks: dict[str, ir.Function] = {},
         _closure_uid: int = 0,
         _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
@@ -1904,7 +1912,6 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.Archetype, arch_name: str, block: uni.ModuleCode
     ) -> None;
 
-    def _build_jc_layout -> dict[str, any];
     def _register_one_class_const(
         arch_name: str,
         fname: str,
@@ -1948,12 +1955,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] | None);
-    def _jc_reference_schema(
-        ft: ir.Type,
-        layouts: dict[str, tuple[list[int], int]],
-        semantic: TypeBase | None = None
-    ) -> (dict[str, any] | None);
-
     def _codegen_union_member(
         obj_val: ir.Value, field_name: str, nd: uni.AtomTrailer, parts: list[str]
     ) -> (ir.Value | None);
@@ -2548,6 +2549,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_while(nd: uni.WhileStmt) -> None;
     def _codegen_open_stmt(nd: uni.OpenStmt) -> None;
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
+    def _none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None);
     def _codegen_assignment(nd: uni.Assignment) -> None;
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
@@ -2603,6 +2605,7 @@ walker NaIRGenPass(CompilerPass) {
         kv: uni.MatchKVPair, helpers: dict[str, any]
     ) -> (ir.Value | None);
 
+    def _match_arch_name(pat: uni.MatchArch) -> (str | None);
     def _match_arch_fields(
         pat: uni.MatchArch, arch_name: str
     ) -> (list[tuple[str, uni.MatchPattern]] | None);
@@ -2989,6 +2992,18 @@ walker NaIRGenPass(CompilerPass) {
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;
+    def _vtable_slot_type(
+        arch_name: str, method_name: str
+    ) -> (ir.FunctionType | None);
+
+    def _slot_abi_matches(
+        fn_type: ir.FunctionType, slot_type: ir.FunctionType
+    ) -> bool;
+
+    def _vtable_slot_entry(
+        arch_name: str, method_name: str, func: ir.Function
+    ) -> ir.Function;
+
     def _vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None);
     def _vtable_candidates(names: list[str]) -> list[ir.GlobalVariable];
     def _isinstance_needs_class_name(names: list[str]) -> bool;
@@ -3095,6 +3110,13 @@ walker NaIRGenPass(CompilerPass) {
     def _aos_elem_struct(type_key: str) -> (ir.Type | None);
     def _container_is_view(nd: uni.UniNode) -> bool;
     def _codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | None);
+    def _refuse_unlowered_method_call(
+        nd: uni.FuncCall,
+        method_name: (str | None),
+        receiver: (ir.Value | None),
+        mark: int
+    ) -> None;
+
     def _field_slot_ptr(
         obj_val: ir.Value, field_name: str, type_name: str
     ) -> ir.Value;
@@ -3120,4 +3142,19 @@ walker NaIRGenPass(CompilerPass) {
     def _decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] | None);
     def _lower_view_container(t: any) -> (ir.Type | None);
     def _program_has_subclasses(arch_name: str) -> bool;
+}
+
+def native_codegen_schedule -> PassSchedule {
+    return [NaIRGenPass];
+}
+
+def native_ir_product_schedule -> PassSchedule {
+    import from jaclang.compiler.driver.context_passes { NativeImportFactsPass }
+    import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
+}
+
+with entry {
+    register_codegen_backend("native", native_codegen_schedule);
+    register_product_schedule(CompilationProduct.NATIVE_IR, native_ir_product_schedule);
 }

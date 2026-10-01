@@ -797,7 +797,13 @@ obj NativeBuildSession {
             self.registry._timed("NATIVE_OPTIMIZE", started);
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
-                raise RuntimeError(f"native product emission failed for {path}");
+                reasons = "\n".join(
+                    str(err) for err in self.prog.errors_had[errors_before:]
+                );
+                raise RuntimeError(
+                    f"native product emission failed for {path}"
+                        + (f":\n{reasons}" if reasons else "")
+                );
             }
             self.registry.record_module(mod, self.prog.options);
             self.registry._stash_products(path, mod.gen);

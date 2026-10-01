@@ -92,12 +92,25 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
          'TypeCheckPass': PassContract((), (AnalysisFact.TYPE_OF, )),
          'VariantAgreementPass': PassContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
      },
-     _PRODUCT_SCHEDULES: dict[CompilationProduct, Callable[[], PassSchedule]] = {};
+     _PRODUCT_SCHEDULES: dict[CompilationProduct, Callable[[], PassSchedule]] = {},
+     _CODEGEN_BACKENDS: dict[str, Callable[[], PassSchedule]] = {};
 
 def register_product_schedule(
     product: CompilationProduct, schedule: Callable[[], PassSchedule]
 ) {
     _PRODUCT_SCHEDULES[product] = schedule;
+}
+
+def register_codegen_backend(name: str, schedule: Callable[[], PassSchedule]) {
+    _CODEGEN_BACKENDS[name] = schedule;
+}
+
+def codegen_backend_passes(name: str) -> (PassSchedule | None) {
+    registered = _CODEGEN_BACKENDS.get(name);
+    if registered is not None {
+        return registered();
+    }
+    return None;
 }
 
 def product_pipeline(product: CompilationProduct) -> PassSchedule {
@@ -322,6 +335,9 @@ glob _ir_sched_loading: ContextVar[bool] = ContextVar(
      ),
      _analysis_sched_loading: ContextVar[bool] = ContextVar(
          'jac_analysis_sched_loading', `default=False
+     ),
+     _codegen_sched_loading: ContextVar[bool] = ContextVar(
+         'jac_codegen_sched_loading', `default=False
      );
 
 glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),

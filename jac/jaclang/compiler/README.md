@@ -14,56 +14,47 @@ this file is the map of the tree and the rules that keep it organized.
 | `types/` | The type system and evaluator, compile-time values, the stub catalog, and the ambient `.pyi` surfaces | `frontend` |
 | `placement/` | The placement solver: which module runs where, pins, workspaces | `frontend`, `passes` |
 | `driver/` | `JacProgram`, `JacCompiler`, the schedules, module resolution, the caches (bytecode, interface, JIR), compile options | everything |
-| `backends/common/` | What the generators share: the AST-gen base, the primitive emitter interfaces, the kernel unit lists, the format kernel | `frontend`, `passes` |
+| `backends/common/` | What the generators share: the primitive emitter interfaces and their dispatch tables, the kernel unit lists, the format kernel | `frontend`, `passes` |
 | `backends/py/` | Jac to JCIR to CPython bytecode | `backends/common` |
 | `backends/es/` | Jac to ESTree to JavaScript, the client framework backends, view IR | `backends/common` |
 | `backends/native/` | Jac to LLVM IR, the linkers (ELF, Mach-O, PE, wasm), the wasm runtime, and the in-tree LLVM binding (`llvm/`, a translation of llvmlite, see `llvm/LICENSE.llvmlite`) | `backends/common` |
 | `tools/` | Formatter, linter, unparser, normalizer, doc IR, grammar extraction, code intelligence | `frontend`, `passes` |
 | `tests/` | Cross-backend equivalence fixtures that ship with the package | |
 
-The loose modules at this level are the native frontend kernel
-(`jc_unit`, `jc_materialize`, `native_compiler`, `native_scope`: the parser
-and its early analysis passes compiled natively and loaded as a shared library)
-and registries shared by analysis and codegen (`symbol_utils`, `expr_keys`, `type_registry`,
-`intrinsic_registry`).
+The loose modules at this level are the compiler kernel (`jc_unit`,
+`native_compiler`, `native_scope`: analysis and code generation compiled
+natively and loaded as a shared library) and registries shared by analysis and
+codegen (`symbol_utils`, `expr_keys`, `type_registry`, `intrinsic_registry`).
 
-## Native early analysis
+## The compiler kernel
 
-When the driver knows a module's codespace before parsing, `jc_unit` runs the
-existing `ASTValidationPass` and `SymTabBuildPass` after annex weaving, inside
-the parse region. The tree and symbol graph cross into the host together.
-Modules with wildcard imports defer symbol construction until the driver's
-dependency resolver has made the imported names available. Parsing without a
-compiler program, or without a known codespace, keeps the ordinary host schedule.
+`native_scope.jac` lists the compiler modules the kernel links; each is an
+ordinary native unit, and `jc_unit.jac` is the root that exports the entry
+points. The kernel answers two requests, each a call and a take:
 
-`PassResult` carries completed diagnostics and timing through the ordinary pass
-driver, which applies diagnostic policy and records each pass once. Native field
-and reference-container layouts come from the backend's ABI metadata;
-`jc_materialize` preserves object identity when copying symbol indexes and edges.
-Keep pass algorithms in `passes/`, and extend this shared boundary when another
-pass moves into the kernel.
+- `jc_analyze` / `jc_take_analysis` run the analysis pipeline over a module and
+  return its diagnostics and per-module facts (`frontend/kernel_analyze.jac`).
+- `jc_compile` / `jc_take_compile` run the same session through code
+  generation and return each unit's compile products
+  (`driver/unit_products.jac`): the JCIR bytes, the MTIR graph, the interop
+  manifest, the client artifact, the placement summary and the comptime
+  dependencies.
 
-`scripts/native_compile_bench.jac` at the repository root measures uncached AOT
-application builds with a warm compiler. Set `JAC_COMPILER_LIB` to each built
-kernel when comparing revisions.
+Nothing tree-shaped crosses. The host sends a `KernelInputs` snapshot of the
+closure the request needs (`project/kernel_snapshot.jac`: sources, interfaces,
+settings and the answers to the host questions the pipeline will ask), and the
+kernel's `KernelHost` answers `HostServices` from it. A question the snapshot
+cannot answer raises `HostOnlyError`, the request reports a miss, and the host
+compiles that module itself. Results come back as JSON records; the host
+assembles JCIR into bytecode, restores the other products through the same path
+a JIR cache hit takes, and writes the module JIR. `JAC_KERNEL_COMPILE` selects
+whether bytecode builds adopt kernel products (`off`, `on`, `inprocess`).
 
-Measured on 2026-09-06 with `examples/chess/chess.jac`, Linux x86-64 on a
-Threadripper 9980X: ten builds per kernel in two fresh-process batches, two
-excluded warmups per batch, ordered baseline/new/new/baseline. Both kernels used
-the same host compiler source; the baseline kernel predates native early passes.
-Startup was excluded; application IR caching was disabled and linking included.
-
-| Median | Parser-only kernel | Early-analysis kernel |
-| --- | ---: | ---: |
-| Full AOT build | 3.646 s | 3.537 s |
-| AST validation (pass ledger) | 34.25 ms | 11.22 ms |
-| Symbol construction (pass ledger) | 38.19 ms | 14.00 ms |
-| Both passes combined (pass ledger) | 72.45 ms | 25.04 ms |
-
-The observed total median improvement is 3.0%; the migrated passes are 2.9x
-faster together. Total build ranges overlap (3.423–4.193 s baseline,
-3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
-guaranteed speedup. Both generated executables completed an automatic game.
+Keep pass and generator algorithms in `passes/` and `backends/`. To move a
+module into the kernel, add it to `native_scope.jac` and make it lower: a walker
+ability that fails to lower fails its unit and every importer, while a function
+that fails demotes to an abort stub the kernel must never reach. A new host
+question belongs on `HostServices` with a snapshot field that answers it.
 
 ## Native hash containers
 
@@ -79,11 +70,8 @@ Dictionary lookup exposes a borrowed value slot: a null slot means the key is
 absent, while a present slot can contain zero or `None`. Native `dict.get()`
 uses this shared lookup to search once and then apply its default-value rules.
 
-`jc_materialize` decodes this private order storage when copying native
-dictionaries. Keep its decoder synchronized with changes to this allocation;
-the container field offsets still come from the backend's ABI metadata.
-The native dictionary scaling, mutation, and materialization tests cover these
-contracts.
+The container field offsets come from the backend's ABI metadata. The native
+dictionary scaling and mutation tests cover these contracts.
 
 ## Native edge type values
 

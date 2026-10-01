@@ -1,14 +1,11 @@
-import from contextvars { ContextVar }
 import from jaclang.compiler.driver.pipeline {
     _analysis_sched_loading,
+    _codegen_sched_loading,
     _ir_sched_loading
 }
 import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
 
-glob _native_env_memo: dict[str, tuple[bool, str]] = {},
-     _codegen_sched_loading: ContextVar[bool] = ContextVar(
-         'jac_codegen_sched_loading', `default=False
-     );
+glob _native_env_memo: dict[str, tuple[bool, str]] = {};
 
 def native_pipeline_available -> tuple[bool, str] {
     cached = _native_env_memo.get('verdict');

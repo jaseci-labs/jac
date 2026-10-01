@@ -1,5 +1,5 @@
 import json;
-import from jaclang.compiler.frontend.constant { is_borrow_kind }
+import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
 
 impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     import from jaclang.compiler.c_interop {
@@ -48,7 +48,11 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
                 tag = p.type_tag.tag if p.type_tag else None;
                 spec = c_type_spec(p.type, tag);
                 if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
-                    spec = ["ref", p.type_tag.ownership.name == "MUT_BORROW", spec];
+                    spec = [
+                        "ref",
+                        p.type_tag.ownership == OwnershipKind.MUT_BORROW,
+                        spec
+                    ];
                 }
                 params.append([p.name.value, spec]);
             }
@@ -98,8 +102,18 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
             jac_node=imp
         )
     ];
-    declared: list[str] = desc["opaque"] + [s["name"] for s in desc["structs"]];
-    declared += [f["name"] for f in desc["functions"]];
+    declared: list[str] = [];
+    for key in ["opaque", "structs", "functions"] {
+        entries: list[any] = desc[key];
+        for item in entries {
+            if isinstance(item, str) {
+                declared.append(item);
+            } else {
+                named: dict[str, any] = item;
+                declared.append(str(named["name"]));
+            }
+        }
+    }
     for name in declared {
         out.append(
             self.nod(
@@ -143,16 +157,19 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
 
 impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop { c_type_spec, is_builtin_pin_call }
+    outs = self.outs(nd);
+    call = outs[0] if outs else None;
     if is_builtin_pin_call(nd) {
-        args = [
-            p
-            for p in (nd.params or [])
-            if not isinstance(p, KWPair)
-        ];
-        call = self.outs(nd)[0] if self.outs(nd) else None;
-        if args and isinstance(call, CgNode) and call.cls == 'Call' {
-            spec = c_type_spec(args[0].type, None);
-            call.get('args').append(self.const_of(json.dumps(spec)));
+        pinned: (Expr | None) = None;
+        for param in (nd.params or []) {
+            if not isinstance(param, KWPair) {
+                pinned = param;
+                break;
+            }
+        }
+        if pinned is not None and isinstance(call, CgNode) and call.cls == 'Call' {
+            spec = c_type_spec(pinned.type, None);
+            call.push('args', self.const_of(json.dumps(spec)));
         }
         return;
     }
@@ -163,57 +180,82 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     if not isinstance(sig, FuncSignature) {
         return;
     }
-    decl_params = [
-        p
-        for p in sig.get_parameters()
-        if not (p.is_vararg or p.is_kwargs)
-    ];
-    borrowed: list[tuple[int, list[any]]] = [];
-    for (i, p) in enumerate(decl_params) {
-        if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
+    borrowed_at: list[int] = [];
+    borrowed_spec: list[list[any]] = [];
+    position = 0;
+    for p in sig.get_parameters() {
+        if p.is_vararg or p.is_kwargs {
             continue;
         }
-        spec = c_type_spec(p.type, p.type_tag.tag);
-        inner = spec[1] if spec[0] == "opt" else spec;
-        if inner[0] in ("s", "ptr") {
-            borrowed.append((i, inner));
+        index = position;
+        position += 1;
+        type_tag = p.type_tag;
+        if type_tag is None or not is_borrow_kind(type_tag.ownership) {
+            continue;
+        }
+        spec = c_type_spec(p.type, type_tag.tag);
+        inner: list[any] = spec;
+        if spec[0] == "opt" {
+            inner = spec[1];
+        }
+        if inner[0] == "s" or inner[0] == "ptr" {
+            borrowed_at.append(index);
+            borrowed_spec.append(inner);
         }
     }
-    if not borrowed {
+    if not borrowed_at {
         return;
     }
     params: list[Expr | KWPair] = list(nd.params or []);
-    call = self.outs(nd)[0] if self.outs(nd) else None;
     if not isinstance(call, CgNode) or call.cls != 'Call' {
         return;
     }
-    call_args = call.get('args');
-    if any([isinstance(p, KWPair) for p in params]) or len(call_args) != len(params) {
+    call_args = call.items('args');
+    for param in params {
+        if isinstance(param, KWPair) {
+            return;
+        }
+    }
+    if len(call_args) != len(params) {
         return;
     }
     pre: list[CgNode] = [];
     post: list[CgNode] = [];
     scope = self.call_node(self.name_load('globals'), [], []);
-    for (i, spec) in borrowed {
+    for slot_index in range(len(borrowed_at)) {
+        i = borrowed_at[slot_index];
         if i >= len(params) {
             continue;
         }
-        spec_const = self.const_of(json.dumps(spec));
-        parts = self._place_parts(params[i]);
-        if parts is None {
+        spec_const = self.const_of(json.dumps(borrowed_spec[slot_index]));
+        place = self._place_parts(params[i]);
+        if place is None {
             call_args[i] = self.call_node(
                 self.builtin_name('_jac_c_cell'), [spec_const, call_args[i], scope], []
             );
             continue;
         }
-        (kind, owner, key) = parts;
         cell = self._c_temp_name("cell");
-        if kind == 'name' {
-            initial = self.name_load(owner);
+        readback = self.call_node(
+            self.nod(
+                'Attribute',
+                ['value', 'attr', 'ctx'],
+                [self.name_load(cell), 'get', self.nod('Load', [], [])]
+            ),
+            [],
+            []
+        );
+        initial: CgNode;
+        if place.kind == 'name' {
+            initial = self.name_load(place.name);
+            post.append(self._c_named(place.name, readback));
         } else {
+            target = place.target;
+            key = place.key;
+            assert target is not None and key is not None , "attribute and item places carry a target and a key";
             holder = self._c_temp_name("own");
-            pre.append(self._c_named(holder, owner));
-            if kind == 'attr' {
+            pre.append(self._c_named(holder, target));
+            if place.kind == 'attr' {
                 initial = self.nod(
                     'Attribute',
                     ['value', 'attr', 'ctx'],
@@ -233,7 +275,16 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
                 );
                 key = self.name_load(slot);
             }
-            owner = self.name_load(holder);
+            helper = '_jac_replace_attr'
+                if place.kind == 'attr'
+                else '_jac_replace_item';
+            post.append(
+                self.call_node(
+                    self.builtin_name(helper),
+                    [self.name_load(holder), key, readback],
+                    []
+                )
+            );
         }
         call_args[i] = self._c_named(
             cell,
@@ -241,34 +292,12 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
                 self.builtin_name('_jac_c_cell'), [spec_const, initial, scope], []
             )
         );
-        readback = self.call_node(
-            self.nod(
-                'Attribute',
-                ['value', 'attr', 'ctx'],
-                [self.name_load(cell), 'get', self.nod('Load', [], [])]
-            ),
-            [],
-            []
-        );
-        if kind == 'name' {
-            post.append(self._c_named(owner, readback));
-        } elif kind == 'attr' {
-            post.append(
-                self.call_node(
-                    self.builtin_name('_jac_replace_attr'), [owner, key, readback], []
-                )
-            );
-        } else {
-            post.append(
-                self.call_node(
-                    self.builtin_name('_jac_replace_item'), [owner, key, readback], []
-                )
-            );
-        }
     }
-    sequence = self.nod(
-        'Tuple', ['elts', 'ctx'], [pre + [call] + post, self.nod('Load', [], [])]
-    );
+    elements: list[CgNode] = [];
+    elements.extend(pre);
+    elements.append(call);
+    elements.extend(post);
+    sequence = self.nod('Tuple', ['elts', 'ctx'], [elements, self.nod('Load', [], [])]);
     self.set_out(
         nd,
         [
