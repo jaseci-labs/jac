@@ -976,7 +976,6 @@ obj NativeBuildSession {
             levels[depth].append(list(group));
         }
         lowered_before = len(self.lowered);
-        context = multiprocessing.get_context("fork");
         for level in levels {
             pending = [
                 g
@@ -986,54 +985,74 @@ obj NativeBuildSession {
             if not pending {
                 continue;
             }
-            if len(pending) == 1 or workers <= 1 {
-                for group in pending {
-                    for path in group {
-                        self.lower(path);
-                    }
+            todo = [
+                p for g in pending
+                for p in g
+                if p not in self.lowered
+            ];
+            if len(todo) <= 1 or workers <= 1 {
+                for path in todo {
+                    self.lower(path);
                 }
                 continue;
             }
-            jobs = min(workers, len(pending));
-            batches: list[list[str]] = [[] for _ in range(jobs)];
-            ordered = sorted(pending, key=lambda (g: list[str]) { -len(g); });
-            for (i, group) in enumerate(ordered) {
-                batches[i % jobs].extend(group);
-            }
-            _PARALLEL_SESSION.clear();
-            _PARALLEL_SESSION.append(self);
-            started = self.registry._span_begin();
-            try {
-                with context.Pool(processes=jobs) as pool {
-                    results = pool.map(_lower_batch_in_child, batches);
-                }
-            } finally {
-                self.registry._span_end("NATIVE_LOWER", started);
-                _PARALLEL_SESSION.clear();
-            }
-            for batch in results {
-                for rec in batch {
-                    self._absorb_lowered(rec);
-                }
+            cyclic = [
+                p
+                for g in pending
+                if len(g) > 1 for p in g
+            ];
+            self._lower_round(todo, cyclic, workers, False);
+            if cyclic {
+                self._lower_round(cyclic, [], workers, True);
             }
         }
         return len(self.lowered) - lowered_before;
     }
 
-    def _absorb_lowered(rec: dict[str, any]) {
+    def _lower_round(paths: list[str], mask: list[str], workers: int, relower: bool) {
+        import multiprocessing;
+        jobs = max(1, min(workers, len(paths)));
+        batches: list[list[str]] = [[] for _ in range(jobs)];
+        for (i, path) in enumerate(paths) {
+            batches[i % jobs].append(path);
+        }
+        _PARALLEL_SESSION.clear();
+        _PARALLEL_SESSION.append(self);
+        started = self.registry._span_begin();
+        try {
+            context = multiprocessing.get_context("fork");
+            with context.Pool(processes=jobs) as pool {
+                results = pool.starmap(
+                    _lower_batch_in_child, [(b, mask, relower) for b in batches]
+                );
+            }
+        } finally {
+            self.registry._span_end("NATIVE_LOWER", started);
+            _PARALLEL_SESSION.clear();
+        }
+        for batch in results {
+            for rec in batch {
+                self._absorb_lowered(rec, relower);
+            }
+        }
+    }
+
+    def _absorb_lowered(rec: dict[str, any], replace: bool = False) {
         import from jaclang.compiler.backends.native.na_compile_pass {
             install_unit_ir_text
         }
         path = str(rec["path"]);
-        if path in self.lowered {
+        if path in self.lowered and not replace {
             return;
         }
         failure = rec.get("failure");
         if failure {
-            self.registry.failures[path] = str(failure);
+            if path not in self.lowered {
+                self.registry.failures[path] = str(failure);
+            }
             return;
         }
-        mod = self.analyzed.get(path);
+        mod = self.analyzed.get(path) or self.lowered.get(path);
         if mod is None {
             return;
         }
@@ -1221,18 +1240,31 @@ def native_lower_workers -> int {
     return max(1, min(8, os.cpu_count() or 1));
 }
 
-def _lower_batch_in_child(paths: list[str]) -> list[dict[str, any]] {
+def _lower_batch_in_child(
+    paths: list[str], mask: list[str], relower: bool
+) -> list[dict[str, any]] {
     session = _PARALLEL_SESSION[0];
     before = set(session.lowered.keys());
+    wanted = set(paths);
     out: list[dict[str, any]] = [];
     for path in paths {
-        if path in session.lowered {
+        if path in session.lowered and not relower {
             continue;
         }
-        session.lower(path);
+        masked = [
+            m
+            for m in mask
+            if m != path and m not in session.lowered
+        ];
+        session.registry.building.update(masked);
+        try {
+            session.lower(path);
+        } finally {
+            session.registry.building.difference_update(masked);
+        }
     }
     for (resolved, mod) in session.lowered.items() {
-        if resolved in before {
+        if resolved in before and (resolved not in wanted or not relower) {
             continue;
         }
         iface = mod.gen.native_iface;
