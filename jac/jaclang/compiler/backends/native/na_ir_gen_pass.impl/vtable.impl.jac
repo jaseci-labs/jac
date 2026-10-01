@@ -95,7 +95,9 @@ impl NaIRGenPass._vtable_slot_entry(
     }
     name = f"{func.name}.__slot";
     if name in self.llvm_module.globals {
-        return self.llvm_module.get_global(name);
+        existing = self.llvm_module.get_global(name);
+        assert isinstance(existing, ir.Function);
+        return existing;
     }
     thunk = ir.Function(self.llvm_module, slot_type, name=name);
     thunk.linkage = "internal";
@@ -488,7 +490,9 @@ impl NaIRGenPass._codegen_virtual_call(
     typed_fn = self.builder.bitcast(
         method_i8, slot_type.as_pointer(), name=f"fn.{method_name}"
     );
-    _vt_res = self.builder.call(typed_fn, slot_args, name=f"vcall.{method_name}");
+    _vt_res: ir.Value = self.builder.call(
+        typed_fn, slot_args, name=f"vcall.{method_name}"
+    );
     if isinstance(slot_type.return_type, ir.VoidType)
         and not isinstance(fn_type.return_type, ir.VoidType) {
         _vt_res = ir.Constant(fn_type.return_type, None);
