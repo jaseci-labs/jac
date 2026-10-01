@@ -281,17 +281,24 @@ impl Scheduler._run_key(task: ScheduledTask) -> str {
 }
 
 impl Scheduler._hold_owner -> str {
-    return f"{socket.gethostname()}:{os.getpid()}";
+    if not self._owner {
+        self._owner = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex}";
+    }
+    return self._owner;
+}
+
+impl Scheduler._take_hold(task: ScheduledTask) -> bool {
+    hold_fn: any = self.hold;
+    return bool(hold_fn(self._run_key(task), self.hold_ttl, self._hold_owner()));
 }
 
 impl Scheduler._hold_run(task: ScheduledTask) -> bool {
     if self.hold is None {
         return True;
     }
-    hold_fn: any = self.hold;
     key = self._run_key(task);
     try {
-        held = bool(hold_fn(key, self.hold_ttl, self._hold_owner()));
+        held = self._take_hold(task);
     } except Exception as e {
         if key not in self._failing_claims {
             self._failing_claims.add(key);
@@ -310,10 +317,19 @@ impl Scheduler._hold_run(task: ScheduledTask) -> bool {
 }
 
 impl Scheduler._keep_hold(task: ScheduledTask, beat: threading.Event) -> None {
+    lost = False;
     while not beat.`wait(self.hold_ttl / 3) {
-        if not self._hold_run(task) {
+        try {
+            held = self._take_hold(task);
+            reason = "";
+        } except Exception as e {
+            held = False;
+            reason = f" ({e})";
+        }
+        if not held and not lost {
+            lost = True;
             logger.warning(
-                f"'{task.name}' lost its run hold while still running; "
+                f"'{task.name}' lost its run hold while still running{reason}; "
                 "another replica may start it"
             );
         }
