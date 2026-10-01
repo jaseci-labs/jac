@@ -242,6 +242,16 @@
      writeOperand(I.getOperand(0), ContextCasted);
      Out << ", ";
      writeOperand(I.getOperand(1), ContextCasted);
+@@ -4493,5 +4458,7 @@
+   if (isSigned)
+     Out << sprefix << type << (isMax ? "_MAX" : "_MIN");
+-  else
+-    Out << "U" << type << (isMax ? "_MAX" : "0");
++  else if (isMax)
++    Out << "U" << type << "_MAX";
++  else
++    Out << "0";
+ }
 @@ -4597,52 +4553,39 @@
        DBG_ERRS("Unsupported Intrinsic!" << Opcode);
        errorWithMessage("unsupported instrinsic");
