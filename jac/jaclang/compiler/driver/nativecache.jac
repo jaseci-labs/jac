@@ -85,6 +85,23 @@ obj NativeUnitRegistry {
         self.failures.pop(real, None);
     }
 
+    def adopt_dep_digests(path: str, digests: dict[str, str]) -> bool {
+        real = os.path.realpath(path);
+        session = self.session;
+        if session is None or real not in session.lowered {
+            return False;
+        }
+        ent = self.entries.get(real);
+        if ent is None {
+            return False;
+        }
+        for (dep, digest) in digests.items() {
+            ent.dep_digests[os.path.realpath(dep)] = digest;
+        }
+        self._event("native_dep_adopt");
+        return True;
+    }
+
     static def _source_key(path: str) -> (str | None) {
         import from jaclang.compiler.driver.compilation_context { cache_scope }
         import from jaclang.compiler.frontend.codeinfo {
