@@ -21,6 +21,7 @@ import from jaclang.scale.admin.logs { JacAPIServerLogs }
 import from jaclang.scale.admin.network { JacAPIServerNetwork }
 import from jaclang.scale.admin.ops { JacAPIServerOps }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
+import from jaclang.scale.admin.schedules { JacAPIServerSchedules }
 import from jaclang.scale.admin.traces { JacAPIServerTraces }
 import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -574,7 +575,7 @@ obj EventsExtension(ServerExtension) {
 }
 
 
-obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
+obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerSchedules) {
     def register(server: JacAPIServer) -> None {
         if not get_scale_config().get_admin_config().get('enabled', True) {
             return;
@@ -582,6 +583,7 @@ obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry,
         self.server = server;
         self.user_manager = server.user_manager;
         self._metrics = server.metrics;
+        self.scheduler = server.scheduler;
         self.register_admin_endpoints();
         self.register_llm_telemetry_endpoints();
         self.register_workloads_endpoints();
@@ -591,6 +593,7 @@ obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry,
         self.register_deploy_health_endpoints();
         self.register_network_endpoints();
         self.register_podenv_endpoints();
+        self.register_schedules_endpoints();
     }
 }
 

@@ -180,3 +180,50 @@ test "POST /jobs schedules a DYNAMIC target, then refuses the account past its c
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "GET /admin/schedules lists the static tasks, to admins only" {
+    fixtures = Path(__file__).parent.parent / "fixtures";
+    base = tempfile.mkdtemp(prefix="jac-schedules-");
+    for f in fixtures.iterdir() {
+        if f.is_file() {
+            shutil.copy2(f, Path(base) / f.name);
+        }
+    }
+    reset_scale_config();
+    get_scale_config(project_dir=Path(base));
+    client = ScaleTestClient.from_file(str(fixtures / "test_api.jac"), base_path=base);
+    server: any = client._server;
+    try {
+        server._register_scheduled_tasks();
+        user = client.register_and_login("schedules-user", "password123");
+        refused = client.get(
+            "/admin/schedules", headers={"Authorization": f"Bearer {user}"}
+        );
+        assert refused.status_code in (401, 403) , refused.text;
+
+        admin = client.admin_login();
+        listed = client.get(
+            "/admin/schedules", headers={"Authorization": f"Bearer {admin}"}
+        );
+        assert listed.status_code == 200 , listed.text;
+        rows = {r["name"]: r for r in listed.json()["data"]["schedules"]};
+        for (name, kind, interval, cron) in [
+            ("StaticIntervalWalker", "walker", 0.3, None),
+            ("StaticCronWalker", "walker", None, "* * * * *"),
+            ("static_interval_func", "function", 0.3, None),
+            ("static_cron_func", "function", None, "* * * * *")
+        ] {
+            row = rows[name];
+            assert (row["kind"], row["interval"], row["cron"])
+                == (kind, interval, cron) , row;
+            assert row["next_run"] is not None , row;
+        }
+        assert "DynamicScheduledWalker" not in rows , sorted(rows);
+    } finally {
+        server.scheduler._tasks.clear();
+        client.close();
+        reset_scale_config();
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}

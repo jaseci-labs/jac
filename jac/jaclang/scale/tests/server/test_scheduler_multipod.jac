@@ -214,6 +214,12 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
         def release(key: str, owner: str, st: PgStore = store) -> bool {
             return bool(st.kv_release_lease(key, owner));
         }
+        def record(key: str, value: str, st: PgStore = store) {
+            st.kv_put_record(key, value);
+        }
+        def recall(key: str, st: PgStore = store) -> (str | None) {
+            return st.kv_get_record(key);
+        }
         def slow {
             with lock {
                 if state["first"] == 0.0 {
@@ -230,6 +236,8 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
         pod.claim = claim;
         pod.hold = hold;
         pod.release = release;
+        pod.record = record;
+        pod.recall = recall;
         pod.register("slow_fn", slow, ScheduleSpec(interval=0.2), False);
         pods.append(pod);
     }
@@ -249,6 +257,9 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
     assert state["first"] >= 0.9 , f"ran {state[
         'first'
     ]:.2f}s after a dead pod's 1s hold";
+    seen = [pod.last_run_of("slow_fn") for pod in pods];
+    assert seen[0] is not None and seen[0] == seen[1] , f"pods disagree on the last run: {seen}";
+    assert seen[0]["status"] == "ok" , seen;
 }
 
 

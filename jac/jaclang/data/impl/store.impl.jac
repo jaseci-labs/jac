@@ -1202,6 +1202,26 @@ impl PgStore.kv_claim_tick(key: str, tick: int) -> bool {
 }
 
 
+impl PgStore.kv_put_record(key: str, value: str) -> None {
+    self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, :v, NULL, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        """,
+        {'k': f"record:{key}", 'v': value}
+    );
+}
+
+
+impl PgStore.kv_get_record(key: str) -> (str | None) {
+    rows = self._side_run(
+        "SELECT value FROM kv_state WHERE key = :k", {'k': f"record:{key}"}
+    );
+    return str(rows[0][0]) if rows else None;
+}
+
+
 impl PgStore.quarantine(
     missing_id: UUID, referrer_id: (UUID | None), kind: str
 ) -> None {
