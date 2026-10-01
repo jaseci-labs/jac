@@ -1,4 +1,5 @@
 import os;
+import sys;
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { NativeVerdict }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
@@ -10,6 +11,7 @@ import from jaclang.compiler.driver.jir {
     SEC_NCTDEPS,
     module_ct_deps_section,
     ct_dep_text_fresh,
+    stale_ct_dep_rows,
     SEC_NBITCODE,
     SEC_NIFACE,
     SEC_NOBJ,
@@ -18,6 +20,7 @@ import from jaclang.compiler.driver.jir {
     current_native_stamp,
     get_module_cache_path,
     is_module_cache_valid,
+    module_cache_invalid_reason,
     jir_cacheable_source_path,
     module_cache_key,
     native_section_payload,
@@ -110,6 +113,15 @@ obj NativeUnitRegistry {
         }
     }
 
+    def _miss(path: str, why: str) {
+        """Say why a unit's cached products cannot be used, when asked to: a
+        rebuild that cannot be explained cannot be made incremental.""";
+        import from jaclang.compiler.driver.compile_options { env_na_debug }
+        if env_na_debug() {
+            sys.stderr.write(f"[native cache] miss {path}: {why}\n");
+        }
+    }
+
     def _event(name: str) {
         counters = self.prog.analysis.cache_events;
         counters[name] = counters.get(name, 0) + 1;
@@ -144,9 +156,11 @@ obj NativeUnitRegistry {
     def _module_jir(resolved: str) -> (tuple[bytes, str] | None) {
         try {
             cache_path = get_module_cache_path(resolved);
-            if is_module_cache_valid(resolved, cache_path) {
+            why = module_cache_invalid_reason(resolved, cache_path);
+            if not why {
                 return (cache_path.read_bytes(), "", );
             }
+            self._miss(resolved, why);
         } except Exception {}
         try {
             return self.prog._get_compiler()._precompiled_jir_data(resolved);
@@ -280,20 +294,33 @@ obj NativeUnitRegistry {
         payload = native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp);
         iface = NativeIface.from_bytes(payload);
         if iface is None {
+            self._miss(resolved, "no native products for this codegen");
             return None;
         }
         compile_deps = native_section_payload(
             read_section_bytes(data, SEC_NCTDEPS), stamp
         );
-        if compile_deps is None
-            or not ct_dep_text_fresh(compile_deps.decode("utf-8"), base_dir) {
+        if compile_deps is None {
             self._event("native_comptime_miss");
+            self._miss(resolved, "no comptime dependency record for this codegen");
+            return None;
+        }
+        if not ct_dep_text_fresh(compile_deps.decode("utf-8"), base_dir) {
+            self._event("native_comptime_miss");
+            self._miss(
+                resolved,
+                "comptime dependency changed: "
+                    + ", ".join(
+                        stale_ct_dep_rows(compile_deps.decode("utf-8"), base_dir)
+                    )
+            );
             return None;
         }
         iface.resolve_deps(resolved);
         if check_deps
             and not self._deps_match(data, stamp, base_dir, resolved, options) {
             self._event("native_dep_miss");
+            self._miss(resolved, "a dependency's native interface changed");
             return None;
         }
         ent = self._register(resolved, iface, stamp, "disk");

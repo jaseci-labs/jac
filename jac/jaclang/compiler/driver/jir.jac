@@ -1119,22 +1119,34 @@ def rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
     return "\n".join(lines).encode("utf-8");
 }
 
-def _ct_rows_fresh(rows: list[tuple[(str, str, str)]], base: str) -> bool {
+def _stale_ct_rows(
+    rows: list[tuple[(str, str, str)]], base: str, first_only: bool = False
+) -> list[str] {
+    stale: list[str] = [];
     for (path, digest, flag) in rows {
         full = _ct_row_path(path, base);
         if not digest or _row_digest(full, flag) != digest {
-            return False;
+            stale.append(f"{full} [{flag or 'file'}]");
+            if first_only {
+                break;
+            }
         }
     }
-    return True;
+    return stale;
 }
 
 def ct_deps_fresh(data: bytes, base: str = "") -> bool {
-    return _ct_rows_fresh(read_ct_deps(data), base);
+    return not _stale_ct_rows(read_ct_deps(data), base, first_only=True);
 }
 
 def ct_dep_text_fresh(text: str, base: str = "") -> bool {
-    return _ct_rows_fresh(_ct_dep_rows(text), base);
+    return not _stale_ct_rows(_ct_dep_rows(text), base, first_only=True);
+}
+
+def stale_ct_dep_rows(text: str, base: str = "") -> list[str] {
+    """Every comptime dependency row of `text` whose input changed, named for a
+    reader: which file, and what of it the row covered.""";
+    return _stale_ct_rows(_ct_dep_rows(text), base);
 }
 
 def module_ct_deps_text(mod: any) -> str {
@@ -1583,26 +1595,36 @@ def read_debug_source(data: bytes) -> (str | None) {
 }
 
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
+    return not module_cache_invalid_reason(source_path, cache_path);
+}
+
+def module_cache_invalid_reason(source_path: str, cache_path: Path) -> str {
+    """Why the cached module at `cache_path` cannot stand for `source_path`, or
+    an empty string when it can.""";
     if not cache_path.exists() {
-        return False;
+        return "no cached module";
     }
     try {
         data: bytes = cache_path.read_bytes();
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
-            return False;
+            return "incompatible cache format";
         }
         if not jir_env_matches(data, source_path) {
-            return False;
+            return "compiler or environment key changed";
         }
-        if not ct_deps_fresh(data) {
-            return False;
+        stale = _stale_ct_rows(read_ct_deps(data), "", first_only=True);
+        if stale {
+            return "comptime dependency changed: " + stale[0];
         }
         """Timestamps are not source identities: restores can preserve mtimes
         and annex deletion must invalidate the same way annex edits do.""";
-        return jir_matches_source(data, source_path);
-    } except OSError {
-        return False;
+        if not jir_matches_source(data, source_path) {
+            return "source or annexes changed";
+        }
+        return "";
+    } except OSError as err {
+        return f"unreadable cache: {err}";
     }
 }
 
