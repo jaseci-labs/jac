@@ -245,10 +245,35 @@ impl Scheduler.start -> None {
     self._thread.start();
 }
 
+impl Scheduler.on_run(name: str, listener: Callable[[RunOutcome], None]) -> None {
+    self._listeners[name] = listener;
+}
+
 impl Scheduler.start_if_pending -> None {
     if self.has_pending() {
         self.start();
     }
+}
+
+impl Scheduler._tick(task: ScheduledTask, due: datetime.datetime) -> None {
+    if self.drain is not None and self.drain.draining {
+        self._skip(task, due, "draining");
+    } elif self._still_running(task) {
+        self._skip(task, due, "still_running");
+    } elif not self._hold_run(task) {
+        failed = self._run_key(task) in self._failing_claims;
+        self._skip(task, due, "hold_failed" if failed else "running_elsewhere");
+    } elif self._may_fire(task, due) {
+        self._launch(task, due);
+    } else {
+        self._release_run(task);
+        failed = self._claim_key(task) in self._failing_claims;
+        self._skip(task, due, "claim_failed" if failed else "claimed_elsewhere");
+    }
+}
+
+impl Scheduler._claim_key(task: ScheduledTask) -> str {
+    return f"sched:{self.namespace}:{task.name}";
 }
 
 impl Scheduler._may_fire(task: ScheduledTask, due: datetime.datetime) -> bool {
@@ -256,7 +281,7 @@ impl Scheduler._may_fire(task: ScheduledTask, due: datetime.datetime) -> bool {
         return True;
     }
     claim_fn: any = self.claim;
-    key = f"sched:{self.namespace}:{task.name}";
+    key = self._claim_key(task);
     try {
         won = bool(claim_fn(key, tick_of(due)));
     } except Exception as e {
@@ -372,10 +397,10 @@ impl Scheduler._still_running(task: ScheduledTask) -> bool {
     return False;
 }
 
-impl Scheduler._launch(task: ScheduledTask) -> None {
+impl Scheduler._launch(task: ScheduledTask, due: datetime.datetime) -> None {
     thread = threading.Thread(
         target=self._run_tracked,
-        args=(task, ),
+        args=(task, due),
         daemon=True,
         name=f"jac-schedule-{task.name}"
     );
@@ -383,6 +408,7 @@ impl Scheduler._launch(task: ScheduledTask) -> None {
         refused = not self._running;
         if not refused {
             self._in_flight[id(task)] = (task.name, thread);
+            task.last_run = datetime.datetime.now(datetime.timezone.utc);
         }
     }
     if refused {
@@ -392,7 +418,7 @@ impl Scheduler._launch(task: ScheduledTask) -> None {
     thread.start();
 }
 
-impl Scheduler._run_tracked(task: ScheduledTask) -> None {
+impl Scheduler._run_tracked(task: ScheduledTask, due: datetime.datetime) -> None {
     beat = threading.Event();
     keeper: (threading.Thread | None) = None;
     if self.hold is not None {
@@ -405,7 +431,18 @@ impl Scheduler._run_tracked(task: ScheduledTask) -> None {
         keeper.start();
     }
     try {
-        self._execute(task);
+        started = time.monotonic();
+        error = self._execute(task);
+        self._report(
+            RunOutcome(
+                task=task.name,
+                tick=due,
+                worker=self._worker(),
+                status="failed" if error else "ok",
+                duration=time.monotonic() - started,
+                error=error
+            )
+        );
     } finally {
         beat.set();
         if keeper is not None {
@@ -513,17 +550,8 @@ impl Scheduler._run_loop -> None {
         heapq.heappop(heap);
         now = datetime.datetime.now(datetime.timezone.utc);
         due = task.next_run;
-        task.last_run = now;
-        draining = self.drain is not None and self.drain.draining;
-        if not draining and not self._still_running(task) {
-            if due is None or not self._hold_run(task) {
-                logger.debug(f"'{task.name}' is running elsewhere; skipping this tick");
-            } elif self._may_fire(task, due) {
-                self._launch(task);
-            } else {
-                self._release_run(task);
-                logger.debug(f"'{task.name}' fired elsewhere this tick; skipping");
-            }
+        if due is not None {
+            self._tick(task, due);
         }
         new_next = self._compute_next_run(task.spec, now);
         task.next_run = new_next;
@@ -589,7 +617,7 @@ impl Scheduler._compute_date(
     return None;
 }
 
-impl Scheduler._execute(task: ScheduledTask) -> None {
+impl Scheduler._execute(task: ScheduledTask) -> str {
     try {
         result = task.target();
         if task.is_walker {
@@ -600,6 +628,66 @@ impl Scheduler._execute(task: ScheduledTask) -> None {
             }
         }
     } except Exception as e {
-        logger.error(f"Error executing task '{task.name}': {e}");
+        return f"{type(e).__name__}: {e}";
+    }
+    if isinstance(result, dict) and result.get('error') {
+        return str(result['error']);
+    }
+    return "";
+}
+
+impl Scheduler._worker -> str {
+    return f"{socket.gethostname()}:{os.getpid()}";
+}
+
+impl Scheduler._skip(task: ScheduledTask, due: datetime.datetime, reason: str) -> None {
+    self._report(
+        RunOutcome(
+            task=task.name,
+            tick=due,
+            worker=self._worker(),
+            status="skipped",
+            reason=reason
+        )
+    );
+}
+
+impl Scheduler._report(outcome: RunOutcome) -> None {
+    tick = outcome.tick.isoformat();
+    took = f"{outcome.duration * 1000:.1f} ms";
+    fields: dict[str, any] = {
+        "task": outcome.task,
+        "tick": tick,
+        "worker": outcome.worker,
+        "status": outcome.status
+    };
+    if outcome.status == "skipped" {
+        fields["reason"] = outcome.reason;
+        logger.debug(
+            f"scheduled {outcome.task} skipped its {tick} tick: {outcome.reason}",
+            extra={"svc_extras": fields}
+        );
+    } else {
+        fields["duration_ms"] = round(outcome.duration * 1000, 1);
+        where = f"(tick {tick}, worker {outcome.worker})";
+        if outcome.status == "failed" {
+            fields["error"] = outcome.error;
+            logger.error(
+                f"scheduled {outcome.task} failed in {took} {where}: {outcome.error}",
+                extra={"svc_extras": fields}
+            );
+        } else {
+            logger.info(
+                f"scheduled {outcome.task} ok in {took} {where}",
+                extra={"svc_extras": fields}
+            );
+        }
+    }
+    for (name, listener) in list(self._listeners.items()) {
+        try {
+            listener(outcome);
+        } except Exception as e {
+            logger.warning(f"run listener '{name}' failed on {outcome.task}: {e}");
+        }
     }
 }

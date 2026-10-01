@@ -1,6 +1,8 @@
 """Tests for the built-in scheduler engine."""
 
 import datetime;
+import os;
+import socket;
 import threading;
 import time;
 import from pathlib { Path }
@@ -8,6 +10,7 @@ import from jaclang { JacRuntime as Jac }
 import logging;
 import from jaclang.server.task_scheduler {
     CronSchedule,
+    RunOutcome,
     Scheduler,
     ScheduleSpec,
     ScheduledTask,
@@ -183,7 +186,7 @@ test "compute next run and schedule decorator" {
     assert module.static_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
     assert module.str_trigger_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
 
-    # _execute catches exceptions gracefully
+    # _execute catches exceptions and returns them as the run's error
     def bad_fn {
         raise RuntimeError("boom");
     }
@@ -195,7 +198,7 @@ test "compute next run and schedule decorator" {
         next_run=datetime.datetime.now(),
         last_run=None
     );
-    sched._execute(task);
+    assert sched._execute(task) == "RuntimeError: boom";
 }
 
 test "fixture loading registration and api exclusion" {
@@ -377,8 +380,8 @@ test "a served scheduled walker runs each tick without an error record" {
             ][0];
             served_log = sys.modules[walker_cls.__module__].execution_log;
             before = served_log.count("interval-walker");
-            server.scheduler._execute(task);
-            server.scheduler._execute(task);
+            assert server.scheduler._execute(task) == "";
+            assert server.scheduler._execute(task) == "";
             assert served_log.count("interval-walker") == before + 2 , served_log;
             errors = [
                 m
@@ -534,8 +537,8 @@ test "a worker recomputes inherited fire times when it starts" {
     sched._tasks[0].next_run = stale;
     sched.start();
     try {
-        # The loop stamps last_run the moment it pops a task, so an inherited
-        # past fire time is caught whichever thread gets there first.
+        # last_run is stamped when this worker starts a run, so a run of the
+        # inherited past fire time shows here whichever thread gets there first.
         task = sched._tasks[0];
         assert task.last_run is None , task.last_run;
         assert task.next_run is not None;
@@ -735,6 +738,8 @@ test "a static task never runs alongside an earlier run of itself" {
     sched.register(
         "slow_fn", lambda { probe.slow(0.7); }, ScheduleSpec(interval=0.2), False
     );
+    outcomes: list[RunOutcome] = [];
+    sched.on_run("probe", outcomes.append);
     records = _Records();
     log = logging.getLogger("jaclang.server.task_scheduler");
     log.addHandler(records);
@@ -755,6 +760,110 @@ test "a static task never runs alongside an earlier run of itself" {
         if "still running" in m
     ];
     assert 1 <= len(overlaps) <= probe.started , records.messages;
+    statuses = [(o.status, o.reason) for o in outcomes];
+    assert statuses.count(("ok", "")) == probe.finished , statuses;
+    assert ("skipped", "still_running") in statuses , statuses;
+}
+
+
+test "each tick reports one outcome naming its task, tick and worker" {
+    (claim, last) = _shared_claims();
+    def broken(key: str, tick: int) -> bool {
+        raise ConnectionError("database is restarting");
+    }
+    def raising {
+        raise RuntimeError("boom");
+    }
+    def unregistered -> dict[str, str] {
+        return {"error": "'gone_fn' is no longer registered"};
+    }
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    claim(f"sched:orders:taken_fn", tick_of(tick));
+    later = (datetime.datetime.now() + datetime.timedelta(hours=1)).isoformat();
+    worker = f"{socket.gethostname()}:{os.getpid()}";
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    (level, disabled) = (log.level, log.disabled);
+    log.setLevel(logging.INFO);
+    log.disabled = False;
+    log.addHandler(records);
+    try {
+        for (name, target, claim_fn, status, reason, error, line) in [
+            (
+                "ok_fn",
+                lambda { None; },
+                claim,
+                "ok",
+                "",
+                "",
+                "INFO scheduled ok_fn ok in"
+            ),
+            (
+                "gone_fn",
+                unregistered,
+                claim,
+                "failed",
+                "",
+                "'gone_fn' is no longer registered",
+                "ERROR scheduled gone_fn failed in"
+            ),
+            (
+                "raising_fn",
+                raising,
+                claim,
+                "failed",
+                "",
+                "RuntimeError: boom",
+                "ERROR scheduled raising_fn failed in"
+            ),
+            (
+                "taken_fn",
+                lambda { None; },
+                claim,
+                "skipped",
+                "claimed_elsewhere",
+                "",
+                ""
+            ),
+            ("broken_fn", lambda { None; }, broken, "skipped", "claim_failed", "", "")
+        ] {
+            outcomes: list[RunOutcome] = [];
+            sched = fresh_scheduler();
+            sched.claim = claim_fn;
+            sched.namespace = "orders";
+            sched.on_run("probe", outcomes.append);
+            sched.register(name, target, ScheduleSpec(date=later), False);
+            task = sched._tasks[0];
+            records.messages.clear();
+            sched.start();
+            try {
+                sched._tick(task, tick);
+                deadline = time.monotonic() + 5.0;
+                while not outcomes and time.monotonic() < deadline {
+                    time.sleep(0.02);
+                }
+            } finally {
+                sched.stop(timeout=2.0);
+            }
+            assert len(outcomes) == 1 , (name, outcomes);
+            got = outcomes[0];
+            assert (got.task, got.tick, got.worker) == (name, tick, worker) , got;
+            assert (got.status, got.reason, got.error) == (status, reason, error) , got;
+            assert (task.last_run is None) == (status == "skipped") , (
+                name,
+                task.last_run
+            );
+            if line {
+                assert any(
+                    m.startswith(line) and worker in m for m in records.messages
+                ) , (name, records.messages);
+            }
+        }
+    } finally {
+        log.removeHandler(records);
+        log.setLevel(level);
+        log.disabled = disabled;
+    }
 }
 
 
