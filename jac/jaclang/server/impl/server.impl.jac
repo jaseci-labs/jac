@@ -1460,7 +1460,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     import from jaclang.runtime.builtin { ScheduleTrigger }
     import from jaclang.server.task_scheduler { schedule_namespace }
     _self = self;
-    def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
+    def _make_target(name: str, is_walker: bool) -> Callable[[], any] {
         async def _run -> any {
             intro = _self.introspector;
             registry: dict[str, any] = (
@@ -1493,15 +1493,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 }
             }
         }
-        def target {
-            outcome = asyncio.run(_run());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {name} failed: {outcome.get('error')}");
-            }
+        def target -> any {
+            return asyncio.run(_run());
         }
         return target;
     }

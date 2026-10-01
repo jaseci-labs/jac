@@ -340,6 +340,25 @@ Each execution updates the job record with run bookkeeping, visible via `GET /jo
 | `last_status` | `succeeded` or `failed` |
 | `last_error` | Error message from the last failed run, else `null` |
 
+### Seeing Static Task Runs
+
+Every run of a static task writes one log line naming the task, the tick it ran for, the worker that ran it (`host:pid`) and how long it took. A failed run logs at `ERROR` with its error; the traceback is logged separately, just before it:
+
+```
+INFO  scheduled heartbeat ok in 1.8 ms (tick 2026-10-01T09:00:05+00:00, worker web-7f9c:4120)
+ERROR scheduled send_digest failed in 3.2 ms (tick 2026-10-01T09:00:00+00:00, worker web-7f9c:4121): smtp unreachable
+```
+
+A worker that does not run a tick logs that at `DEBUG` with the reason: `claimed_elsewhere` (another replica took the tick), `running_elsewhere` (a run is still going on another replica), `still_running` (an earlier run is still going on this worker), `claim_failed` or `hold_failed` (the database could not be reached), or `draining` (the server is shutting down). With structured logs on, these lines also carry `task`, `tick`, `worker`, `status`, `duration_ms`, `reason` and `error` under `extras`.
+
+With `[scale.monitoring] enabled = true`, `/metrics` exposes the same outcomes per task, merged across workers:
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `<namespace>_scheduled_runs_total` | `task`, `status` | Runs started, by `ok` or `failed` |
+| `<namespace>_scheduled_run_duration_seconds` | `task` | Run duration histogram, with buckets from 10 ms to 1 hour |
+| `<namespace>_scheduled_ticks_skipped_total` | `task`, `reason` | Ticks a worker did not run, by the reasons above |
+
 ## Configuration Reference
 
 All keys live under `[scale.scheduler]` in `jac.toml`:

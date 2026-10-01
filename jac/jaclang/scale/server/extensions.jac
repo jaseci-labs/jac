@@ -12,6 +12,7 @@ import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 import from jaclang.server.serving.drain { HEALTH_PATHS }
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
+import from jaclang.server.task_scheduler { RunOutcome }
 import from jaclang.server.transport { Meta, TransportResponse }
 import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
 import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
@@ -149,6 +150,12 @@ obj MetricsExtension(ServerExtension) {
         if not collector.is_enabled() {
             return;
         }
+        def _record_run(outcome: RunOutcome) {
+            collector.record_scheduled_run(
+                outcome.task, outcome.status, outcome.reason, outcome.duration
+            );
+        }
+        server.scheduler.on_run('metrics', _record_run);
         endpoint = str(cfg.get('endpoint', '/metrics'));
         server.metrics_path = endpoint;
         scrape_password = str(cfg.get('prometheus_admin_password', ''));
