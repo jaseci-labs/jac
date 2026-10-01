@@ -178,6 +178,35 @@ def _run_anchor_main(proj_dir: str) -> str {
     return lines[-1] if lines else "";
 }
 
+test "a C-anchored module infers native under a server default" {
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    with tempfile.TemporaryDirectory() as proj {
+        _anchor_project(proj);
+        prior = get_effective_default_codespace_override();
+        set_effective_default_codespace('server');
+        try {
+            prog = JacProgram();
+            options = CompileOptions(default_codespace='server', no_cgen=True);
+            lib = prog.compile(
+                file_path=os.path.join(proj, "anchor_lib.jac"), options=options
+            );
+            user = prog.compile(
+                file_path=os.path.join(proj, "anchor_user.jac"), options=options
+            );
+        } finally {
+            set_effective_default_codespace(prior);
+        }
+        assert lib.decided_codespace == "native" , (
+            "anchor_lib's C import pins it native whatever the default, so it "
+            f"keeps its python side; decided {lib.decided_codespace!r}"
+        );
+        assert user.decided_codespace != "native" , "anchor_user has no anchor of its own";
+    }
+}
+
 test "a python caller reaches an inferred-native module's python side" {
     with tempfile.TemporaryDirectory() as tmp {
         proj = os.path.realpath(tmp);
