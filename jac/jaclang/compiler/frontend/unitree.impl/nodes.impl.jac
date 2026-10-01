@@ -515,6 +515,21 @@ impl Module.record_comptime_dependency(path: str, body: bool = False) -> None {
     }
 }
 
+impl Module.record_comptime_definition(path: str, qualname: str) -> None {
+    import os;
+    if not path or not qualname {
+        return;
+    }
+    resolved = os.path.realpath(path);
+    if self.loc and os.path.realpath(self.loc.mod_path) == resolved {
+        return;
+    }
+    row = (resolved, qualname);
+    if row not in self.ct_def_deps {
+        self.ct_def_deps.append(row);
+    }
+}
+
 impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
     if ctx != CodeContext.SERVER and self.decided_codespace == ctx.value {
         return True;
@@ -1444,6 +1459,7 @@ impl Module.postinit -> None {
     self.persistence = [];
     self.ct_file_deps = [];
     self.ct_body_deps = [];
+    self.ct_def_deps = [];
     self.rc_last_use = {};
     self.rc_scope_cleanup = {};
     _rc_move_in: set[int] = set();

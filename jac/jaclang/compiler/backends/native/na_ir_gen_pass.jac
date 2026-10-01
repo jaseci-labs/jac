@@ -1648,6 +1648,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (dict[str, TypeBase] | None);
 
     def _instantiate_generic(nd: uni.FuncCall, func_name: str) -> (ir.Function | None);
+    def _record_generic_definition(ability: uni.Ability) -> None;
     def _stamp_mono_fn(
         ability: uni.Ability, spec_name: str, memo_key: str
     ) -> (ir.Function | None);

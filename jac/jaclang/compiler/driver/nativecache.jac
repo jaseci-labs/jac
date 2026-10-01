@@ -8,7 +8,7 @@ import from jaclang.compiler.driver.jir {
     compute_content_sha256,
     NativeStamp,
     SEC_NCTDEPS,
-    ct_deps_section,
+    module_ct_deps_section,
     ct_dep_text_fresh,
     SEC_NBITCODE,
     SEC_NIFACE,
@@ -218,7 +218,7 @@ obj NativeUnitRegistry {
             gen.native_iface,
             options,
             dep_digests=self.dep_digests(list(gen.native_deps or [])),
-            compile_deps=ct_deps_section(module.ct_file_deps, module.ct_body_deps)
+            compile_deps=module_ct_deps_section(module) or b""
         );
         ent.object_bytes = gen.native_object;
         ent.bitcode = gen.native_bitcode;
