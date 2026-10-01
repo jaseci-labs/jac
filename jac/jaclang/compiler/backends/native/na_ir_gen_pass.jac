@@ -2008,6 +2008,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_constructors_first(archetypes: list[uni.Archetype]) -> None;
     def _demoted_init_of(type_name: str) -> (str | None);
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
+    def _event_from_walker(method: uni.Ability) -> bool;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
     def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
