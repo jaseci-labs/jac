@@ -45,6 +45,7 @@ import from jaclang.compiler.driver.jir {
     DepRow,
     rebase_ct_deps_section,
     running_compiler_digest,
+    require_exact_compiler_products,
     PRECOMPILE_SENTINEL
 }
 import from jaclang.jac0core.sealed {
@@ -1756,6 +1757,7 @@ def run_precompile(
     jobs_arg: str = "",
     app: str = ""
 ) {
+    require_exact_compiler_products();
     exclude_seed = seal or seal_compile;
     package_dir = find_package_dir(source_dir);
     if package_dir is None {
