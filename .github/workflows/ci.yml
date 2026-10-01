@@ -754,18 +754,24 @@ jobs:
         if: matrix.chunk == 'passes-native'
         run: |
           jac install "hypothesis>=6,<7" --global
+          # Every module runs; the step fails at the end with the full list.
+          failed=""
           while read -r module tests _ <&3; do
             case "$module" in ''|'#'*) continue ;; esac
             for test in $(printf '%s' "$tests" | tr ',' ' '); do
-              jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module"
+              jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module" || failed="$failed $test"
             done
           done 3< jac/bootstrap/python/jacpython-modules.txt
           # The frontend suites (tokenizer, parser, AST, codegen) read their
           # own registry: they exercise no single replaced module.
           while read -r test flags <&3; do
             case "$test" in ''|'#'*) continue ;; esac
-            jac run scripts/run_cpython_compiler_tests.jac --module "$test" $flags
+            jac run scripts/run_cpython_compiler_tests.jac --module "$test" $flags || failed="$failed $test"
           done 3< jac/bootstrap/python/jacpython-compiler-tests.txt
+          if [ -n "$failed" ]; then
+            echo "::error::upstream test modules failed:$failed"
+            exit 1
+          fi
 
   # Everything except the compiler tests.
   test-runtime:
