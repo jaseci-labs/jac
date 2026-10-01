@@ -407,6 +407,36 @@ else
     })()'
 fi
 
+# --------------------------------------------------------------- packages ---
+step "packages: the index page settles into a list, an empty state or an error"
+open_page "$BASE_URL/packages"
+wait_for_text "published to the jac-index" 30
+package_state=""
+for _ in $(seq 1 30); do
+    package_state="$(jac browse eval '(() => {
+      const card = document.querySelector("main a[href^=\"/packages/\"], ul a[href^=\"/packages/\"]");
+      if (card) return "list:" + card.getAttribute("href");
+      const text = document.body.innerText;
+      if (text.includes("No packages have been published yet.")) return "empty";
+      if (text.includes("The package index is unavailable")) return "error";
+      return "";
+    })()' 2>/dev/null || true)"
+    [ -n "$package_state" ] && [ "$package_state" != '""' ] && break
+    sleep 2
+done
+echo "packages index: ${package_state:-<none>}"
+case "$package_state" in
+    *list:*)
+        package_href="$(printf '%s' "$package_state" | sed -E 's/.*list:([^"]*).*/\1/')"
+        step "packages: a package page renders its header and tabs"
+        open_page "$BASE_URL$package_href"
+        wait_for_text "All packages" 30
+        wait_for_text "Versions" 30
+        ;;
+    *empty*|*error*) ;;
+    *) fail "the packages page never settled" ;;
+esac
+
 # --------------------------------------------------------------- not found ---
 step "404: unmatched routes render the catch-all page"
 open_page "$BASE_URL/definitely-not-a-page-${RUN_TAG}"
@@ -426,4 +456,4 @@ fi
 
 step "done"
 echo "journey complete: landing, wait-wuuut, public Ninja Scores, JacYac"
-echo "(signup/repository validation/post/trend/like/comment/channels/reload), legacy routes, docs, 404, console"
+echo "(signup/repository validation/post/trend/like/comment/channels/reload), legacy routes, docs, packages, 404, console"

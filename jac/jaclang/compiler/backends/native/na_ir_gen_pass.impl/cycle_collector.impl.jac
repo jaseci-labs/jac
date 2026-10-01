@@ -39,6 +39,13 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     collecting_gv.initializer = ir.Constant(i8, 0);
     self.rc_collecting_gv = collecting_gv;
 
+    release_depth_gv = ir.GlobalVariable(
+        self.llvm_module, i64, name="__rc_release_depth"
+    );
+    release_depth_gv.linkage = "weak";
+    release_depth_gv.initializer = ir.Constant(i64, 0);
+    self.rc_release_depth_gv = release_depth_gv;
+
     cycles_enabled_gv = ir.GlobalVariable(
         self.llvm_module, i8, name="__rc_cycles_enabled"
     );
@@ -157,7 +164,21 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
         ir.Constant(i8, 0),
         name="cyc.off"
     );
-    b.cbranch(b.or_(_pr_collecting, _pr_disabled, name="pr.skip"), pr_done, pr_trigger);
+    _pr_releasing = b.icmp_unsigned(
+        "!=",
+        b.load(release_depth_gv, name="rel.depth"),
+        ir.Constant(i64, 0),
+        name="releasing"
+    );
+    b.cbranch(
+        b.or_(
+            b.or_(_pr_collecting, _pr_disabled, name="pr.skip.flags"),
+            _pr_releasing,
+            name="pr.skip"
+        ),
+        pr_done,
+        pr_trigger
+    );
 
     b = ir.IRBuilder(pr_trigger);
     b.call(collect_fn, []);

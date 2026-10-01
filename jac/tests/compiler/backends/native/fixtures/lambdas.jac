@@ -39,3 +39,16 @@ def make_scaler(x: int, factor: int) -> int {
     scale = lambda (n: int) -> int { return n * factor; };
     return scale(x);
 }
+
+
+# --- Phase 3: untyped parameter, type inferred from context (#7139) ---
+
+# `x` is untyped; inferred as `str` from the Callable[[str], str] slot.
+# `x + "!"` uses `x` as a string -- a bare `x;` survives a wrong `i64` slot.
+def call_str(f: Callable[[str], str]) -> str {
+    return f("hello");
+}
+
+def untyped_param_infers_str -> str {
+    return call_str(lambda (x) { x + "!"; });
+}
