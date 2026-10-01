@@ -1759,8 +1759,7 @@ impl NaIRGenPass._identity_over_optional(
         or self._opt_payload_of(_r_val.type) is not None {
         return None;
     }
-    # By-value payloads (bool, int, float, a tuple of them) are identical by
-    # their bits, the answer `_value_identity` gives outside an option.
+
     _same_pv = self._word_identity(_l_val, _r_val);
     if _same_pv is None {
         return None;
