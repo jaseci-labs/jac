@@ -625,7 +625,7 @@ test "the namespace is the fleet service name, else the served module" {
 }
 
 
-test "a tick whose claim cannot be checked is skipped, and logged once" {
+test "a claim or run hold that cannot be checked is logged once" {
     # #9030: a failed lease check used to return True on every worker of
     # every pod, so a database blip ran the task everywhere at once.
     calls: list[int] = [];
@@ -664,6 +664,38 @@ test "a tick whose claim cannot be checked is skipped, and logged once" {
     ];
     assert len(warnings) == 1 , records.messages;
     assert len(recovered) == 1 , records.messages;
+
+    renewals: list[int] = [];
+    def lost(key: str, ttl: int, owner: str) -> bool {
+        renewals.append(ttl);
+        if len(renewals) == 1 {
+            raise ConnectionError("database is restarting");
+        }
+        return False;
+    }
+    sched.hold = lost;
+    sched.hold_ttl = 1;
+    records.messages.clear();
+    beat = threading.Event();
+    keeper = threading.Thread(target=sched._keep_hold, args=(task, beat));
+    log.addHandler(records);
+    try {
+        keeper.start();
+        deadline = time.monotonic() + 5.0;
+        while len(renewals) < 3 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+    } finally {
+        beat.set();
+        keeper.join();
+        log.removeHandler(records);
+    }
+    assert len(renewals) >= 3 , renewals;
+    once = (
+        "WARNING 'mailer' lost its run hold while still running "
+        "(database is restarting); another replica may start it"
+    );
+    assert records.messages == [once] , records.messages;
 }
 
 
@@ -813,6 +845,8 @@ test "a served worker starts no runs once draining, and stops after its run in f
         server.scheduler.register(
             "quick", lambda { quick.slow(0.0); }, ScheduleSpec(interval=0.2), False
         );
+        store: any = server.user_manager._identity_storage.store;
+        lease = f"lease:sched-run:{schedule_namespace(server.module_name)}:long_run";
         stop = server.serve_background(no_client=True);
         try {
             deadline = time.monotonic() + 5.0;
@@ -826,11 +860,15 @@ test "a served worker starts no runs once draining, and stops after its run in f
             assert quick.started == before , f"{quick.started
                 - before} run(s) started while draining";
             assert long_run.finished < long_run.started , "no run was in flight at stop";
+            holder = store.kv_get(lease);
         } finally {
             stop();
+            released = store.kv_get(lease);
             server.scheduler._tasks.clear();
             client.close();
         }
     }
     assert long_run.finished == long_run.started , "the run in flight was abandoned";
+    assert holder == server.scheduler._hold_owner() , f"run hold held by {holder}";
+    assert released is None , f"run hold left behind by {released}";
 }

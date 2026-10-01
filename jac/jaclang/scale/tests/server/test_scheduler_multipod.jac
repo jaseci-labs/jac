@@ -178,9 +178,8 @@ test "each scheduled occurrence of a job is claimed by exactly one pod" {
 
 
 test "a static task runs on one pod at a time, and a dead pod's hold expires" {
-    # #9641: a busy pod left its tick unclaimed, so another pod claimed it
-    # and both ran the task at once. The run hold (1 s here) is renewed while
-    # a 2.5 s run goes, so no pod starts the task until the run is over.
+    # The run hold (1 s here) is renewed while a 2.5 s run goes, so no pod
+    # starts the task until the run is over.
     store_a = _store();
     if store_a is None {
         return;
@@ -196,7 +195,7 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
     # A pod that died mid-run leaves its hold behind until the TTL runs out.
     assert store_a.kv_acquire_lease("sched-run:overlap:slow_fn", 1, "dead-pod");
     planted = time.monotonic();
-    for (name, store) in [("a", store_a), ("b", store_b)] {
+    for store in [store_a, store_b] {
         pod = Scheduler();
         pod.namespace = "overlap";
         pod.hold_ttl = 1;
@@ -209,15 +208,11 @@ test "a static task runs on one pod at a time, and a dead pod's hold expires" {
             }
             return got;
         }
-        def hold(
-            key: str, ttl: int, owner: str, st: PgStore = store, pod_name: str = name
-        ) -> bool {
-            return bool(st.kv_acquire_lease(key, ttl, f"{owner}:{pod_name}"));
+        def hold(key: str, ttl: int, owner: str, st: PgStore = store) -> bool {
+            return bool(st.kv_acquire_lease(key, ttl, owner));
         }
-        def release(
-            key: str, owner: str, st: PgStore = store, pod_name: str = name
-        ) -> bool {
-            return bool(st.kv_release_lease(key, f"{owner}:{pod_name}"));
+        def release(key: str, owner: str, st: PgStore = store) -> bool {
+            return bool(st.kv_release_lease(key, owner));
         }
         def slow {
             with lock {
