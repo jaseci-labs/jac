@@ -227,6 +227,10 @@ obj NativeUnitRegistry {
         if gen.native_iface is None {
             return None;
         }
+        import from jaclang.compiler.driver.compile_options { env_na_debug }
+        if env_na_debug() {
+            self._explain_iface_change(module.loc.mod_path, gen.native_iface, options);
+        }
         ent = self.record(
             module.loc.mod_path,
             gen.native_iface,
@@ -237,6 +241,50 @@ obj NativeUnitRegistry {
         ent.object_bytes = gen.native_object;
         ent.bitcode = gen.native_bitcode;
         return ent;
+    }
+
+    def _explain_iface_change(
+        path: str, iface: NativeIface, options: (CompileOptions | None)
+    ) {
+        """When a unit is lowered again, name the parts of its native interface
+        that differ from the products still on disk: every consumer of a unit
+        whose interface changed is lowered again too.""";
+        resolved = os.path.realpath(path);
+        try {
+            data = get_module_cache_path(resolved).read_bytes();
+        } except Exception {
+            return;
+        }
+        stamp = self.stamp_for(options or self._options(), resolved);
+        prior = NativeIface.from_bytes(
+            native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
+        );
+        if prior is None or prior.digest() == iface.digest() {
+            return;
+        }
+        before = prior.digest_fields();
+        after = iface.digest_fields();
+        changes: list[str] = [];
+        for field in sorted(after.keys()) {
+            old = before.get(field);
+            new = after[field];
+            if old == new {
+                continue;
+            }
+            if isinstance(old, dict) and isinstance(new, dict) {
+                keys = sorted(
+                    k
+                    for k in set(old.keys()) | set(new.keys())
+                    if old.get(k) != new.get(k)
+                );
+                changes.append(f"{field} ({', '.join(str(k) for k in keys[:5])})");
+            } else {
+                changes.append(field);
+            }
+        }
+        sys.stderr.write(
+            f"[native cache] interface of {resolved} changed: {'; '.join(changes)}\n"
+        );
     }
 
     def recorded_native_deps(
