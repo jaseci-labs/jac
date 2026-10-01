@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 root = Path(sys.argv[1]).resolve()
 output = Path(sys.argv[2]).resolve()
@@ -44,7 +45,18 @@ options = CompileOptions(
     native_required=True,
     memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
 )
+phase_started = time.perf_counter()
+
+
+def phase(name):
+    global phase_started
+    now = time.perf_counter()
+    print(f"JacPython: {name}: {now - phase_started:.2f}s", flush=True)
+    phase_started = now
+
+
 plan = build_link_plan(program, [str(entry)], options)
+phase("native unit plan")
 if program.errors_had:
     for error in program.errors_had:
         print(error.pretty_print(), file=sys.stderr)
@@ -57,6 +69,7 @@ internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )
 compiled.verify()
+phase("merge native units")
 machine = llvm.Target.from_triple(triple).create_target_machine(
     opt=2, reloc="pic", codemodel="small",
 )
@@ -68,7 +81,9 @@ builder = llvm.create_pass_builder(
 )
 builder.getModulePassManager().run(compiled, builder)
 compiled.verify()
+phase("optimize native program")
 object_bytes = machine.emit_object(compiled)
+phase("emit native object")
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
 

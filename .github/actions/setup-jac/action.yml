@@ -13,6 +13,10 @@ description: >
   be served -- which is why this is safe even though zig's own incremental cache
   stays disabled (it doesn't reliably invalidate on a jaclang/dist/payload change).
 inputs:
+  build-profile:
+    description: Kernel build policy (ci links objects; release optimizes the whole program).
+    required: false
+    default: release
   need-build-inputs:
     description: >
       Restore the source-built Python and the LLVMPY_* shim even when the
@@ -76,7 +80,7 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
           jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
+        key: jac-bin-v4-jacpython-${{ inputs.build-profile }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -104,6 +108,16 @@ runs:
         key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_jacpython }}
         restore-keys: |
           python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+
+    - name: Restore Python C objects
+      id: python-cc-cache
+      if: >-
+        (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true') &&
+        steps.python-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: jac/.python-cc-cache
+        key: python-cc-v1-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_c_objects }}
 
     # The LLVMPY_* shim is the single most expensive build artifact (statically
     # links ~0.5 GB of LLVM archives; several minutes) and depends only on
@@ -259,6 +273,7 @@ runs:
       env:
         # The shared CI kit exercises the native Python compiler.
         JACPYTHON: "1"
+        JAC_BUILD_PROFILE: ${{ inputs.build-profile }}
         # A PR reuses the JacPython runtime main last built when the sources it
         # was lowered from are unchanged (build_python.zig sourcesKey). Main
         # keeps the full key, so the runtime is at most one main build behind.
@@ -287,7 +302,7 @@ runs:
         set -o pipefail
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
-          if zig build "${TARGET_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+          if zig build "${TARGET_ARG[@]}" "${SHIM_ARG[@]}" -Dpayload-progress --summary all 2>&1 | tee "$LOG"; then
             exit 0
           fi
           if grep -qE 'Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then
@@ -312,7 +327,7 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
           jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
+        key: jac-bin-v4-jacpython-${{ inputs.build-profile }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
     # above the restore steps). Main runs seed
@@ -326,6 +341,17 @@ runs:
       with:
         path: jac/.python-build/jacpython
         key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_jacpython }}
+
+    - name: Save Python C objects (trusted refs only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.python-cache.outputs.cache-hit != 'true' &&
+        steps.python-cc-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.python-cc-cache
+        key: python-cc-v1-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_c_objects }}
 
     - name: Save LLVMPY shim cache (trusted refs only)
       if: >-

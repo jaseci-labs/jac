@@ -35,6 +35,35 @@ import from jaclang.dist.payload.assemble {
 import from jaclang.dist.payload.fsutil { host_os_arch, copy_tree, skip_jaclang }
 import from jaclang.dist.payload.pins { py_ver }
 
+test "CI compression has a separate cache identity and preserves payload bytes" {
+    import from jaclang.dist.payload.assemble { deps_frame_cached, payload_zstd_level }
+    with tempfile.TemporaryDirectory() as cache {
+        data = b"the same runtime payload\n" * 1000;
+        with patch.dict(os.environ, {"JAC_BUILD_PROFILE": "ci"}) {
+            assert payload_zstd_level() == 9;
+            ci = deps_frame_cached(cache, data);
+            ci_path = sole_cache_entry(cache);
+            assert decompress(ci) == data;
+            assert deps_frame_cached(cache, data) == ci;
+        }
+        with patch.dict(os.environ, {"JAC_BUILD_PROFILE": "release"}) {
+            assert payload_zstd_level() == 19;
+            release = deps_frame_cached(cache, data);
+            assert decompress(release) == data;
+            assert sole_cache_entry(cache) != ci_path;
+        }
+        with patch.dict(os.environ, {"JAC_BUILD_PROFILE": "unknown"}) {
+            rejected = False;
+            try {
+                payload_zstd_level();
+            } except ValueError {
+                rejected = True;
+            }
+            assert rejected;
+        }
+    }
+}
+
 def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
     p = os.path.join(stage, rel);
     os.makedirs(os.path.dirname(p), exist_ok=True);

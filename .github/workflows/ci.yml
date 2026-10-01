@@ -126,12 +126,9 @@ jobs:
     # process and peaks near 15 GB, which starves a 4-vCPU runner.
     runs-on: blacksmith-8vcpu-ubuntu-2404
     env:
-      # A pull request's kit links the stage-0 kernel from cached unit objects
-      # instead of re-optimizing it as one program, so a kernel-touching PR
-      # relinks in seconds. Main, release and nightly kits keep the bitcode
-      # link: the seal honors this only for pull_request events, and the kit's
-      # manifest records the mode for the runtime to check.
-      JAC_PR_KIT_KERNEL_LINK: ${{ github.event_name == 'pull_request' && 'objects' || '' }}
+      # CI links cached unit objects. Release/nightly builds keep whole-program
+      # optimization under a separate profile and binary cache identity.
+      JAC_BUILD_PROFILE: ci
       # A pull request reuses a JacPython whose lowered sources are unchanged.
       # Every step that runs build_python needs it, not only the jac binary
       # build: the vendor step's zig build depends on the runtime too, and
@@ -141,8 +138,9 @@ jobs:
       - uses: actions/checkout@v5
 
       # The kernel's stage-0 compiler, as jac/bootstrap/stage0.json pins it.
-      # Under "self" every stage-0 step is skipped and the seal builds the
-      # kernel with this checkout's compiler. A pinned commit builds it inside
+      # Under "self" snapshot provisioning is skipped and the seal builds the
+      # kernel with this checkout's compiler, reusing its own cached products.
+      # A pinned commit builds it inside
       # the seal from that commit's jaclang snapshot: the snapshot (immutable
       # per commit) and the units stage 0 lowered come back from the cache,
       # and the seal finds the pin, the git history and the cache through
@@ -151,7 +149,7 @@ jobs:
         id: stage0
         run: |
           set -euo pipefail
-          bash scripts/ci_cache_keys.sh | grep '^stage0=' >> "$GITHUB_OUTPUT"
+          bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
           echo "python=$(jq -r '.cpython.version' jac/bootstrap/python/sources.json | cut -d. -f1,2)" >> "$GITHUB_OUTPUT"
           echo "cache_home=$RUNNER_TEMP/jac-stage0-cache" >> "$GITHUB_OUTPUT"
 
@@ -163,37 +161,57 @@ jobs:
           path: ${{ steps.stage0.outputs.cache_home }}/stage0/${{ steps.stage0.outputs.stage0 }}
           key: stage0-src-${{ steps.stage0.outputs.stage0 }}
 
-      - name: Restore the stage-0 kernel units
+      - name: Restore compiler kernel products
         id: stage0-units
-        if: steps.stage0.outputs.stage0 != 'self'
         uses: actions/cache/restore@v4
         with:
           path: |
             ${{ steps.stage0.outputs.cache_home }}/jir/modules
-            ${{ steps.stage0.outputs.cache_home }}/jir/stage0-kernel/out
+            ${{ steps.stage0.outputs.cache_home }}/jir/kernel/out
             ${{ steps.stage0.outputs.cache_home }}/jir/stubcat
             ${{ steps.stage0.outputs.cache_home }}/jir/bootstrap
-          key: stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
+          key: stage0-units-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
           restore-keys: |
-            stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-
+            stage0-units-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-
+
+      # PRs retain only the completed kernel, not the much larger unit cache.
+      # Restore it after main's products so the PR's own artifact wins.
+      - name: Restore this PR's completed kernel
+        id: kernel-pr
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.stage0.outputs.cache_home }}/jir/kernel/out/objects
+          key: kernel-ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.compiler }}-${{ steps.stage0.outputs.layers }}-${{ hashFiles('jac/jaclang/dist/kernel_seal.jac') }}
 
       # The checkout is shallow; the seal's guards read the pinned commit's
       # trees, so fetch that one commit.
-      - name: Provision stage 0
-        if: steps.stage0.outputs.stage0 != 'self'
+      - name: Provision compiler cache and stage 0
         env:
           STAGE0_COMMIT: ${{ steps.stage0.outputs.stage0 }}
           STAGE0_CACHE: ${{ steps.stage0.outputs.cache_home }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$STAGE0_COMMIT"
-          mkdir -p "$STAGE0_CACHE/jir/modules" "$STAGE0_CACHE/jir/stage0-kernel/out" \
+          if [ "$STAGE0_COMMIT" != self ]; then
+            git fetch --no-tags --depth=1 origin "$STAGE0_COMMIT"
+          fi
+          mkdir -p "$STAGE0_CACHE/jir/modules" "$STAGE0_CACHE/jir/kernel/out" \
             "$STAGE0_CACHE/jir/stubcat" "$STAGE0_CACHE/jir/bootstrap"
           touch "$RUNNER_TEMP/stage0.before"
           {
             echo "JAC_CACHE_HOME=$STAGE0_CACHE"
             echo "JAC_STAGE0_ROOT=$GITHUB_WORKSPACE/jac"
           } >> "$GITHUB_ENV"
+
+      - name: Restore native runtime floors
+        id: floors
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            jac/.pbs-build/linux-x86_64/musl/lib
+            jac/.pbs-build/linux-aarch64/musl/lib
+            jac/.pbs-build/wasm32/libc
+          key: jac-floors-v1-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-${{ hashFiles('jac/build.zig', 'jac/bootstrap/pins.json', 'jac/jaclang/dist/payload/**', 'jac/jaclang/compiler/backends/native/wasm_rt/**', 'jac/jaclang/compiler/backends/native/compiler_rt/**') }}
 
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
@@ -202,26 +220,43 @@ jobs:
           # source-built interpreter and its native compiler object. A binary
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
+          build-profile: ci
 
-      # Only main (a push or a manual dispatch) seeds the stage-0 caches, and only
+      # Only main (a push or a manual dispatch) seeds the full stage-0 caches, and only
       # with what this run made:
-      # a binary cache hit or a fallback to the self build leaves nothing new.
+      # a binary cache hit leaves nothing new; either kernel builder can
+      # refresh the content-validated unit and completed-artifact caches.
       - name: Check the stage-0 products
         id: stage0-made
-        if: steps.stage0.outputs.stage0 != 'self'
         env:
           STAGE0_COMMIT: ${{ steps.stage0.outputs.stage0 }}
           STAGE0_CACHE: ${{ steps.stage0.outputs.cache_home }}
         run: |
           set -euo pipefail
-          src=false; units=false
+          src=false; units=false; objects=false
           [ -f "$STAGE0_CACHE/stage0/$STAGE0_COMMIT/.stage0.json" ] && src=true
-          if [ -n "$(find "$STAGE0_CACHE/jir/modules" "$STAGE0_CACHE/jir/stage0-kernel/out" \
+          if [ -n "$(find "$STAGE0_CACHE/jir/modules" "$STAGE0_CACHE/jir/kernel/out" \
             "$STAGE0_CACHE/jir/stubcat" "$STAGE0_CACHE/jir/bootstrap" -newer "$RUNNER_TEMP/stage0.before" -type f -print -quit)" ]; then
             units=true
           fi
+          if [ -d "$STAGE0_CACHE/jir/kernel/out/objects" ] &&
+            [ -n "$(find "$STAGE0_CACHE/jir/kernel/out/objects" -name '*.layout.json' \
+              -newer "$RUNNER_TEMP/stage0.before" -type f -print -quit)" ]; then
+            objects=true
+          fi
           echo "src=$src" >> "$GITHUB_OUTPUT"
           echo "units=$units" >> "$GITHUB_OUTPUT"
+          echo "objects=$objects" >> "$GITHUB_OUTPUT"
+
+      - name: Save this PR's completed kernel
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.kernel-pr.outputs.cache-hit != 'true' &&
+          steps.stage0-made.outputs.objects == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.stage0.outputs.cache_home }}/jir/kernel/out/objects
+          key: kernel-ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.compiler }}-${{ steps.stage0.outputs.layers }}-${{ hashFiles('jac/jaclang/dist/kernel_seal.jac') }}
 
       - name: Save the stage-0 snapshot (main only)
         if: >-
@@ -234,19 +269,18 @@ jobs:
           path: ${{ steps.stage0.outputs.cache_home }}/stage0/${{ steps.stage0.outputs.stage0 }}
           key: stage0-src-${{ steps.stage0.outputs.stage0 }}
 
-      - name: Save the stage-0 kernel units (main only)
+      - name: Save compiler kernel products (main only)
         if: >-
-          steps.stage0.outputs.stage0 != 'self' &&
           github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
           steps.stage0-made.outputs.units == 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ steps.stage0.outputs.cache_home }}/jir/modules
-            ${{ steps.stage0.outputs.cache_home }}/jir/stage0-kernel/out
+            ${{ steps.stage0.outputs.cache_home }}/jir/kernel/out
             ${{ steps.stage0.outputs.cache_home }}/jir/stubcat
             ${{ steps.stage0.outputs.cache_home }}/jir/bootstrap
-          key: stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
+          key: stage0-units-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -277,10 +311,19 @@ jobs:
         env:
           JACPYTHON: "1"
         run: |
-          zig build fetch-typeshed --summary all
-          zig build vendor-musl --summary all
-          zig build vendor-musl-linux-aarch64 --summary all
-          zig build vendor-wasm-libc --summary all
+          zig build fetch-typeshed vendor-musl vendor-musl-linux-aarch64 vendor-wasm-libc --summary all
+
+      - name: Save native runtime floors (main only)
+        if: >-
+          github.ref == 'refs/heads/main' &&
+          steps.floors.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            jac/.pbs-build/linux-x86_64/musl/lib
+            jac/.pbs-build/linux-aarch64/musl/lib
+            jac/.pbs-build/wasm32/libc
+          key: jac-floors-v1-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-${{ hashFiles('jac/build.zig', 'jac/bootstrap/pins.json', 'jac/jaclang/dist/payload/**', 'jac/jaclang/compiler/backends/native/wasm_rt/**', 'jac/jaclang/compiler/backends/native/compiler_rt/**') }}
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac

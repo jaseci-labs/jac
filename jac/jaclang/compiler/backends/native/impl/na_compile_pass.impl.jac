@@ -18,6 +18,35 @@ impl emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes {
     return result;
 }
 
+impl _emit_isolated_object(work: tuple[bytes, TargetMachine]) -> bytes {
+    (bitcode, machine) = work;
+    with machine, llvm.create_context() as context {
+        with llvm.parse_bitcode(bitcode, context=context) as mod {
+            result = machine.emit_object(mod);
+            assert isinstance(result, bytes);
+            return result;
+        }
+    }
+}
+
+impl emit_unit_objects(
+    bitcodes: list[bytes], options: CompileOptions, jobs: int = 0
+) -> list[bytes] {
+    import os;
+    import from concurrent.futures { ThreadPoolExecutor }
+    if jobs <= 0 {
+        jobs = min(os.process_cpu_count() or 1, 4);
+    }
+    if len(bitcodes) < 2 or jobs == 1 {
+        return [emit_unit_object(bc, options) for bc in bitcodes];
+    }
+
+    work = [(bc, create_unit_target_machine(options)) for bc in bitcodes];
+    with ThreadPoolExecutor(max_workers=min(jobs, len(work))) as pool {
+        return list(pool.map(_emit_isolated_object, work));
+    }
+}
+
 impl create_unit_target_machine(
     options: CompileOptions, jit: bool = False
 ) -> TargetMachine {

@@ -56,6 +56,11 @@ python_tree cpython | emit python_cpython
   tree jac/jaclang/vendor/typeshed/PIN jac/jaclang/vendor/typeshed/TARBALL_SHA256 \
     jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
 } | emit python_jacpython
+{
+  python_tree jacpython
+  tree jac/jaclang/vendor/typeshed/PIN jac/jaclang/vendor/typeshed/TARBALL_SHA256 \
+    jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
+} | emit python_c_objects
 tree jac/jaclang | emit payload
 tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/native jac/_jac_finder.py jac/sitecustomize.py jac/examples/jaclang_org \

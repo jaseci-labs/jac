@@ -407,17 +407,37 @@ def _child_failure(code: int) -> str {
     return f"the stage-0 child exited with status {code}";
 }
 
-def build_kernel_by_pin(
-    dst: str, spec: (KernelTarget | None) = None, link_mode: str = KERNEL_DEV_LINK_MODE
-) -> bool {
+def prepare_stage0(spec: KernelTarget) -> (tuple[Stage0Pin, str] | None) {
+    import time;
+    started = time.monotonic();
     try {
         pin = read_stage0_pin();
     } except (Stage0PinError, OSError) as e {
-        return _fall_back(f"unreadable pin: {e}");
+        _fall_back(f"unreadable pin: {e}", time.monotonic() - started);
+        return None;
     }
     if pin.is_self() {
-        return False;
+        return None;
     }
+    try {
+        (repo, prefix) = checkout_repo();
+        snapshot_pkg = provision_stage0(pin, repo, prefix);
+        trips = native_tree_trips(pin, repo, prefix)
+            + file_guard_trips(pin, snapshot_pkg, spec.`root);
+        if trips {
+            _fall_back("; ".join(trips), time.monotonic() - started);
+            return None;
+        }
+        return (pin, snapshot_pkg);
+    } except (Stage0Unavailable, OSError, tarfile.TarError) as e {
+        _fall_back(str(e), time.monotonic() - started);
+        return None;
+    }
+}
+
+def build_kernel_by_pin(
+    dst: str, spec: (KernelTarget | None) = None, link_mode: str = KERNEL_DEV_LINK_MODE
+) -> bool {
     import from jaclang.compiler.kernel_target {
         active_kernel_target,
         with_link_mode,
@@ -431,13 +451,11 @@ def build_kernel_by_pin(
     import time;
     started = time.monotonic();
     try {
-        (repo, prefix) = checkout_repo();
-        snapshot_pkg = provision_stage0(pin, repo, prefix);
-        trips = native_tree_trips(pin, repo, prefix)
-            + file_guard_trips(pin, snapshot_pkg, spec.`root);
-        if trips {
-            return _fall_back("; ".join(trips), time.monotonic() - started);
+        selected = prepare_stage0(spec);
+        if selected is None {
+            return False;
         }
+        (pin, snapshot_pkg) = selected;
         write_kernel_target(spec, spec_path);
         before = unit_sources_before(spec);
         provisioned = time.monotonic();

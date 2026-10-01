@@ -129,7 +129,9 @@ pub fn main(init: std.process.Init) !void {
     }
     const recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" });
     const script = try std.fs.path.join(a, &.{ recipe, "build.sh" });
-    var child = try std.process.spawn(io, .{ .argv = &.{ "sh", script, platform, work, args[4], recipe, if (mode == .jacpython) host_dest else "", root, @tagName(mode) } });
+    const c_key = try recipeKey(io, a, platform, root, mode);
+    const c_cache = try std.fs.path.join(a, &.{ root, ".python-cc-cache", platform, @tagName(mode), &c_key });
+    var child = try std.process.spawn(io, .{ .argv = &.{ "sh", script, platform, work, args[4], recipe, if (mode == .jacpython) host_dest else "", root, @tagName(mode), c_cache } });
     const term = try child.wait(io);
     if (term != .exited or term.exited != 0) seed.die("build-python: build failed; logs at {s}/logs", .{work});
     // Cache only the runtime and link archives, not intermediate objects or sources.
@@ -181,6 +183,16 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
         try hashCompilerTree(io, a, root, &hash);
         hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)));
     }
+    var digest: [32]u8 = undefined;
+    hash.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+// C objects retain a separate recipe identity when the producing Jac compiler
+// changes. Zig still validates the C sources, headers and flags on every use.
+fn recipeKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, mode: Mode) ![64]u8 {
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    try hashRecipe(io, a, platform, root, mode, &hash);
     var digest: [32]u8 = undefined;
     hash.final(&digest);
     return std.fmt.bytesToHex(digest, .lower);
@@ -586,14 +598,17 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     const host = try std.fs.path.join(a, &.{ root, "host" });
     const before_host = try buildKey(io, a, hostPlatform(), root, host, .host);
     const before_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
+    const before_c_objects = try recipeKey(io, a, hostPlatform(), root, .jacpython);
     try std.testing.expect(!std.mem.eql(u8, &before_host, &before_runtime));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     const changed_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
+    try std.testing.expectEqual(before_c_objects, try recipeKey(io, a, hostPlatform(), root, .jacpython));
     try std.testing.expect(!std.mem.eql(u8, &before_runtime, &changed_runtime));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
     try tmp.dir.writeFile(io, .{ .sub_path = "native/shim.cpp", .data = "changed emitter" });
+    try std.testing.expect(!std.mem.eql(u8, &before_c_objects, &(try recipeKey(io, a, hostPlatform(), root, .jacpython))));
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     try tmp.dir.deleteFile(io, "native/shim.cpp");

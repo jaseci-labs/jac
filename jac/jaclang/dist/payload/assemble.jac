@@ -1,4 +1,5 @@
 glob PAYLOAD_ZSTD_LEVEL: int = 19,
+     CI_PAYLOAD_ZSTD_LEVEL: int = 9,
      PAYLOAD_WINDOW_LOG: int = 24,
      TAR_PAX_FORMAT: int = 2,
      TAR_REGTYPE: bytes = b"0",
@@ -115,6 +116,7 @@ def collect_stage_entries(stage: str) -> list[TarEntry];
 def tar_stage(stage: str) -> tuple[bytes, bytes];
 def tar_zst_dir(stage: str, out: str, layer_cache: str | None);
 def zstd_compress(data: bytes) -> bytes;
+def payload_zstd_level -> int;
 def deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes;
 def frame_decodes_to(frame: bytes, expect: bytes) -> bool;
 def prune_layer_cache(dir_path: str, keep: str);

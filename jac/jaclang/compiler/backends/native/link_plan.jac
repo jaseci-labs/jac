@@ -1036,6 +1036,10 @@ def link_artifact(
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
+    products_started = time.perf_counter();
+    if plan.mode == NATIVE_LINK_MODE_OBJECTS {
+        registry.prepare_objects([unit.path for unit in plan.units], plan.options);
+    }
     for unit in plan.units {
         product = (
             registry.bitcode_for(unit.path, plan.options)
@@ -1047,6 +1051,7 @@ def link_artifact(
         }
         code_inputs.append(product);
     }
+    _log_phase(log, "prepare unit products", products_started);
     (heap_ir, heap_exports) = heap_glue_ir(plan);
     glue_ir += heap_ir;
     glue_exports.extend(heap_exports);

@@ -542,6 +542,41 @@ obj NativeUnitRegistry {
         return NativeIface.verified_digest(payload) or "";
     }
 
+    def prepare_objects(paths: list[str], options: CompileOptions) {
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            emit_unit_objects
+        }
+        import from jaclang.compiler.driver.jir { write_module_cache }
+        pending: list[NativeUnitEntry] = [];
+        bitcodes: list[bytes] = [];
+        for path in paths {
+            ent = self.ensure(path, options=options, check_deps=False);
+            if ent is not None and ent.object_bytes is None {
+                if ent.bitcode is None {
+                    ent = self.compile_unit(path, options);
+                }
+                if ent is not None
+                    and ent.bitcode is not None
+                    and ent.object_bytes is None {
+                    pending.append(ent);
+                    bitcodes.append(ent.bitcode);
+                }
+            }
+        }
+        started = time.perf_counter();
+        objects = emit_unit_objects(bitcodes, options);
+        if bitcodes {
+            self._timed("NATIVE_EMIT", started);
+        }
+        for (ent, object_bytes) in zip(pending, objects) {
+            ent.object_bytes = object_bytes;
+            self._event("native_object_emit");
+            write_module_cache(
+                ent.path, None, extra_sections=self.product_sections(ent.path)
+            );
+        }
+    }
+
     def object_for(
         path: str, options: (CompileOptions | None) = None
     ) -> (bytes | None) {

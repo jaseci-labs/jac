@@ -1,5 +1,5 @@
 import from jaclang.compiler.backends.native.llvm.binding { ffi }
-def create_context -> object {
+def create_context -> ContextRef {
     return ContextRef(ffi.lib.LLVMPY_ContextCreate());
 }
 
