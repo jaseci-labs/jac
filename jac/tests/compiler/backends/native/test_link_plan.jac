@@ -153,7 +153,6 @@ test "a no-op build lowers no units and preserves the linked artifact" {
             "NATIVE_ANALYSIS",
             "NATIVE_LOWER",
             "NATIVE_OPTIMIZE",
-            "NATIVE_EMIT",
             "NATIVE_FRONTEND_PARSE"
         ) {
             assert timed.get(phase, 0.0) > 0.0 , f"{phase} was not timed: {timed}";

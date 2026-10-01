@@ -353,7 +353,10 @@ def build_link_plan(
     target_token = push_native_target(opts.native_target or "");
     try {
         plan = _build_link_plan(prog, roots, opts, mode, native_unit);
-        session.finish([unit.path for unit in plan.units]);
+        session.finish(
+            [unit.path for unit in plan.units],
+            emit_objects=plan.mode == NATIVE_LINK_MODE_OBJECTS
+        );
         return plan;
     } finally {
         registry.session = None;
@@ -1050,11 +1053,16 @@ def link_artifact(
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
+    unit_objects_ready: dict[str, (bytes | None)] = (
+        {}
+            if plan.mode == NATIVE_LINK_MODE_BITCODE
+            else registry.objects_for([u.path for u in plan.units], plan.options)
+    );
     for unit in plan.units {
         product = (
             registry.bitcode_for(unit.path, plan.options)
                 if plan.mode == NATIVE_LINK_MODE_BITCODE
-                else registry.object_for(unit.path, plan.options)
+                else unit_objects_ready.get(unit.path)
         );
         if product is None {
             raise LinkPlanError(f"no {plan.mode} product for native unit {unit.path}");
