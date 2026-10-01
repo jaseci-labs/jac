@@ -14,11 +14,11 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromLongLong,
     PyNumber_Negative,
     PyObject,
-    PyTuple_New
+    PyTuple_New,
+    PyComplex_FromDoubles,
+    PyBool_FromLong,
+    PySlice_New
 }
-import from jaclang.runtime.python.object_model.complex { PyComplex_FromDoubles }
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
-import from jaclang.runtime.python.object_model.slice { PySlice_New }
 import from jaclang.runtime.python.objects {
     PyObj,
     PyNoneType,

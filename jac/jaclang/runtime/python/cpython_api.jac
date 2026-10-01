@@ -106,7 +106,9 @@ import from c {
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: str, arg3: ptr, *args: any
     ) -> i32;  def PyArg_UnpackTuple(
         arg0: ptr[PyObject], arg1: str, arg2: i64, arg3: i64, *args: any
-    ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyBuffer_IsContiguous(
+    ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyBool_FromLong(
+        arg0: i64
+    ) -> ptr[PyObject];  def PyBuffer_IsContiguous(
         view: ptr[Py_buffer], fort: i8
     ) -> i32;  def PyBuffer_Release(view: ptr[Py_buffer]);  def PyByteArray_AsString(
         arg0: ptr[PyObject]
@@ -136,7 +138,9 @@ import from c {
         exc: ptr[PyObject]
     ) -> ptr[PyObject];  def PyCodec_Unregister(
         search_function: ptr[PyObject]
-    ) -> i32;  def PyConfig_GetInt(name: str, value: &mut i32) -> i32;  def PyContextVar_Get(
+    ) -> i32;  def PyComplex_FromDoubles(real: f64, imag: f64) -> ptr[PyObject];  def PyConfig_GetInt(
+        name: str, value: &mut i32
+    ) -> i32;  def PyContextVar_Get(
         var: ptr[PyObject], default_value: ptr[PyObject], value: &mut ptr[PyObject]
     ) -> i32;  def PyContextVar_New(
         name: str, default_value: ptr[PyObject]
@@ -491,7 +495,9 @@ import from c {
         anyset: ptr[PyObject], key: ptr[PyObject]
     ) -> i32;  def PySet_Discard(set_: ptr[PyObject], key: ptr[PyObject]) -> i32;  def PySet_New(
         arg0: ptr[PyObject]
-    ) -> ptr[PyObject];  def PySet_Size(anyset: ptr[PyObject]) -> i64;  def PySys_Audit(
+    ) -> ptr[PyObject];  def PySet_Size(anyset: ptr[PyObject]) -> i64;  def PySlice_New(
+        start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
+    ) -> ptr[PyObject];  def PySys_Audit(
         event: str, argFormat: str, *args: any
     ) -> i32;  def PySys_AuditTuple(event: str, args: ptr[PyObject]) -> i32;  def PyThreadState_Get -> ptr[
         PyThreadState
@@ -874,15 +880,17 @@ import from c {
         interp: ptr[PyInterpreterState]
     ) -> i32;  def _Py_Mangle(p: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject];  def _Py_NewReference(
         op: ptr[PyObject]
-    );  def _Py_RestoreSignals;  def _Py_SetImmortal(op: ptr[PyObject]);  def _Py_closerange(
-        first: i32, last: i32
-    );  def _Py_device_encoding(arg0: i32) -> ptr[PyObject];  def _Py_dup(
-        fd: i32
-    ) -> i32;  def _Py_fstat(fd: i32, status: &mut _Py_stat_struct) -> i32;  def _Py_fstat_noraise(
+    );  def _Py_RestoreSignals;  def _Py_SetImmortal(op: ptr[PyObject]);  def _Py_c_pow(
+        arg0: Py_complex, arg1: Py_complex
+    ) -> Py_complex;  def _Py_c_quot(
+        arg0: Py_complex, arg1: Py_complex
+    ) -> Py_complex;  def _Py_closerange(first: i32, last: i32);  def _Py_device_encoding(
+        arg0: i32
+    ) -> ptr[PyObject];  def _Py_dup(fd: i32) -> i32;  def _Py_fstat(
         fd: i32, status: &mut _Py_stat_struct
-    ) -> i32;  def _Py_get_blocking(fd: i32) -> i32;  def _Py_get_inheritable(
+    ) -> i32;  def _Py_fstat_noraise(fd: i32, status: &mut _Py_stat_struct) -> i32;  def _Py_get_blocking(
         fd: i32
-    ) -> i32;  def _Py_normpath_and_size(
+    ) -> i32;  def _Py_get_inheritable(fd: i32) -> i32;  def _Py_normpath_and_size(
         path: ptr[i32], size: i64, length: &mut i64
     ) -> ptr[i32];  def _Py_open_noraise(pathname: ptr, flags: i32) -> i32;  def _Py_read(
         fd: i32, buf: ptr, count: u64

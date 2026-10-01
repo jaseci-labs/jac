@@ -638,8 +638,12 @@ def helpers -> tuple[
 def used_names(known: set[str]) -> set[str] {
     names: set[str] = set();
     # Functions a JacPython source defines under their C names (the interpreter
-    # hooks of atexit) are provided, not called through a declaration.
+    # hooks of atexit) are provided, not called through a declaration, unless
+    # a source imports one from cpython_api: code outside the object model
+    # consumes the C API the way C includes a header, so it links against
+    # whichever image defines the function.
     defined: set[str] = set();
+    imported: set[str] = set();
     for tree in SOURCES {
         for path in tree.rglob("*.jac") {
             # A generator's formatting scratch directory (.gen_*) holds a
@@ -654,6 +658,11 @@ def used_names(known: set[str]) -> set[str] {
             text = re.sub(r"(?m)^\s*#.*$", "", text);
             text = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', text);
             names.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text));
+            for block in re.findall(
+                r"import from jaclang\.runtime\.python\.cpython_api \{([^}]*)\}", text
+            ) {
+                imported.update(name.strip() for name in block.split(","));
+            }
             CALLED.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text));
             # jac fmt joins the definitions of a C block onto the line that
             # closes the previous one (`}  def PyUnstable_AtExit(...) {`).
@@ -674,11 +683,12 @@ def used_names(known: set[str]) -> set[str] {
             );
         }
     }
-    CALLED.difference_update(defined);
+    provided = defined - imported;
+    CALLED.difference_update(provided);
     return {
         name
         for name in names
-        if name in known and name not in defined
+        if name in known and name not in provided
     };
 }
 
