@@ -175,7 +175,9 @@ obj NativeUnitRegistry {
             f"  Kernel phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
             f"({frontend}), lowering {times.get('NATIVE_LOWER', 0.0):.1f}s, "
             f"optimize {times.get('NATIVE_OPTIMIZE', 0.0):.1f}s, "
-            f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s; "
+            f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s, "
+            f"settle {times.get('NATIVE_SETTLE', 0.0):.1f}s, "
+            f"persist {times.get('NATIVE_PERSIST', 0.0):.1f}s; "
             f"units analysed/lowered/optimized/emitted "
             f"{events.get('native_unit_analysis', 0)}/"
             f"{events.get('native_unit_lower', 0)}/"
@@ -1178,13 +1180,18 @@ obj NativeBuildSession {
         if len(self.prog.errors_had) > errors_before {
             raise RuntimeError("native product emission failed");
         }
-        for (path, mod) in pending {
-            if mod.gen.native_bitcode is None {
-                raise RuntimeError(f"native product emission failed for {path}");
+        started = self.registry._span_begin();
+        try {
+            for (path, mod) in pending {
+                if mod.gen.native_bitcode is None {
+                    raise RuntimeError(f"native product emission failed for {path}");
+                }
+                self.registry.record_module(mod, self.prog.options);
+                self.registry._stash_products(path, mod.gen);
+                self.prog._get_compiler()._persist_native_unit(path, mod, self.prog);
             }
-            self.registry.record_module(mod, self.prog.options);
-            self.registry._stash_products(path, mod.gen);
-            self.prog._get_compiler()._persist_native_unit(path, mod, self.prog);
+        } finally {
+            self.registry._span_end("NATIVE_PERSIST", started);
         }
     }
 
