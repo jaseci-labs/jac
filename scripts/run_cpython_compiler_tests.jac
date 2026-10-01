@@ -12,6 +12,7 @@ No upstream test corpus is checked into this repository.
 import argparse;
 import builtins;
 import ctypes;
+import faulthandler;
 import hashlib;
 import importlib;
 import io;
@@ -169,6 +170,8 @@ def main -> int {
 }
 
 def run_tests(args: any, calls: list[int]) -> int {
+    # A native crash inside an upstream test names its Python frame.
+    faulthandler.enable();
     library = fetch_tests(args.cache);
     sys.path.insert(0, str(library));
     try {
