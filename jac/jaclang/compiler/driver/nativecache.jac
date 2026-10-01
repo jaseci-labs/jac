@@ -262,28 +262,12 @@ obj NativeUnitRegistry {
         if prior is None or prior.digest() == iface.digest() {
             return;
         }
-        before = prior.digest_fields();
-        after = iface.digest_fields();
         changes: list[str] = [];
-        for field in sorted(after.keys()) {
-            old = before.get(field);
-            new = after[field];
-            if old == new {
-                continue;
-            }
-            if isinstance(old, dict) and isinstance(new, dict) {
-                keys = sorted(
-                    k
-                    for k in set(old.keys()) | set(new.keys())
-                    if old.get(k) != new.get(k)
-                );
-                changes.append(f"{field} ({', '.join(str(k) for k in keys[:5])})");
-            } else {
-                changes.append(field);
-            }
-        }
+        _interface_changes(prior.digest_fields(), iface.digest_fields(), "", changes);
         sys.stderr.write(
-            f"[native cache] interface of {resolved} changed: {'; '.join(changes)}\n"
+            f"[native cache] interface of {resolved} changed: {'; '.join(changes[:8])}"
+                + (f" (+{len(changes) - 8} more)" if len(changes) > 8 else "")
+                + "\n"
         );
     }
 
@@ -942,6 +926,28 @@ def native_verdict_dep_rows(path: str) -> list[list[str]] {
     } except Exception {
         return [];
     }
+}
+
+def _interface_changes(before: any, after: any, path: str, out: list[str]) {
+    """The leaf paths at which two interface records differ, each marked added,
+    removed or changed.""";
+    if before == after {
+        return;
+    }
+    if isinstance(before, dict) and isinstance(after, dict) {
+        for key in sorted(set(before.keys()) | set(after.keys()), key=str) {
+            where = f"{path}.{key}" if path else str(key);
+            if key not in before {
+                out.append(f"{where}: added");
+            } elif key not in after {
+                out.append(f"{where}: removed");
+            } else {
+                _interface_changes(before[key], after[key], where, out);
+            }
+        }
+        return;
+    }
+    out.append(f"{path}: changed");
 }
 
 def verdict_deps_fresh(rows: list[list[str]], base_dir: str = "") -> bool {
