@@ -352,6 +352,11 @@ def build_link_plan(
     }
     target_token = push_native_target(opts.native_target or "");
     try {
+        import from jaclang.compiler.driver.nativecache { native_lower_workers }
+        workers = native_lower_workers();
+        if native_unit and workers > 1 and len(roots) == 1 {
+            session.lower_all_parallel(roots, workers);
+        }
         plan = _build_link_plan(prog, roots, opts, mode, native_unit);
         session.finish(
             [unit.path for unit in plan.units],

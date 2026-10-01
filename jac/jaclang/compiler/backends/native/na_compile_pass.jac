@@ -25,6 +25,7 @@ def optimize_unit(
 ) -> None;
 
 def unit_ir_bitcode(module: uni.Module) -> bytes;
+def install_unit_ir_text(module: uni.Module, text: str) -> None;
 def native_codegen_workers -> int;
 def codegen_unit_products(
     unit_bitcode: bytes,

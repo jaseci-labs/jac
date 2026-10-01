@@ -64,6 +64,12 @@ impl unit_ir_bitcode(module: uni.Module) -> bytes {
     return module_bitcode(mod);
 }
 
+impl install_unit_ir_text(module: uni.Module, text: str) -> None {
+    mod = llvm.parse_assembly(text);
+    mod.verify();
+    module.gen.llvm_ir = mod;
+}
+
 impl native_codegen_workers -> int {
     import os;
     raw = os.environ.get("JAC_NATIVE_JOBS", "").strip();

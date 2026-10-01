@@ -748,6 +748,7 @@ obj NativeBuildSession {
         options: CompileOptions,
         prog: JacProgram postinit,
         lowered: dict[str, Module] = {},
+        analyzed: dict[str, Module] = {},
         source_keys: dict[str, str | None] = {};
 
     def postinit {
@@ -781,7 +782,7 @@ obj NativeBuildSession {
         errors_before = len(self.prog.errors_had);
         try {
             opts = self.options.clone_for_native_import();
-            mod = self.lowered.get(resolved);
+            mod = self.lowered.get(resolved) or self.analyzed.get(resolved);
             if mod is None {
                 self.source_keys[resolved] = NativeUnitRegistry._source_key(resolved);
                 opts.no_cgen = True;
@@ -851,6 +852,206 @@ obj NativeBuildSession {
             pop_native_target(target_token);
             reset_native_unit_compile(unit_token);
         }
+    }
+
+    def analyze_closure(roots: list[str]) -> dict[str, list[str]] {
+        import from jaclang.compiler.frontend.codeinfo {
+            set_native_unit_compile,
+            reset_native_unit_compile
+        }
+        import from jaclang.compiler.driver.compile_options {
+            push_native_target,
+            pop_native_target
+        }
+        opts = self.options.clone_for_native_import();
+        opts.no_cgen = True;
+        edges: dict[str, list[str]] = {};
+        queue = [os.path.realpath(r) for r in roots];
+        unit_token = set_native_unit_compile(self.options.native_unit);
+        target_token = push_native_target(self.options.native_target or "");
+        try {
+            self._analyze_queue(queue, edges, opts);
+        } finally {
+            pop_native_target(target_token);
+            reset_native_unit_compile(unit_token);
+        }
+        return edges;
+    }
+
+    def _analyze_queue(
+        queue: list[str], edges: dict[str, list[str]], opts: CompileOptions
+    ) {
+        import from jaclang.compiler.placement.placement_facts { native_unit }
+        import jaclang.compiler.frontend.unitree as uni;
+        while queue {
+            path = queue.pop(0);
+            if path in edges {
+                continue;
+            }
+            deps: list[str] = [];
+            edges[path] = deps;
+            mod = self.lowered.get(path) or self.analyzed.get(path);
+            if mod is None {
+                if not os.path.isfile(path) {
+                    continue;
+                }
+                self.source_keys[path] = NativeUnitRegistry._source_key(path);
+                started = self.registry._span_begin();
+                mod = self.prog.compile(path, options=opts);
+                self.registry._span_end("NATIVE_ANALYSIS", started);
+                self.registry._event("native_unit_analysis");
+                self.analyzed[path] = mod;
+            }
+            for imp in mod.get_all_sub_nodes(uni.Import) {
+                targets: list[uni.ModulePath] = [];
+                if imp.from_loc is not None {
+                    targets.append(imp.from_loc);
+                } else {
+                    for item in imp.items {
+                        if isinstance(item, uni.ModulePath) {
+                            targets.append(item);
+                        }
+                    }
+                }
+                for mp in targets {
+                    try {
+                        dep = os.path.realpath(mp.resolve_relative_path());
+                    } except Exception {
+                        continue;
+                    }
+                    if dep == path
+                        or not dep.endswith(".jac")
+                        or not os.path.isfile(dep) {
+                        continue;
+                    }
+                    if dep in deps
+                        or not native_unit(dep, self.options.native_unit, self.prog) {
+                        continue;
+                    }
+                    deps.append(dep);
+                    queue.append(dep);
+                }
+            }
+        }
+    }
+
+    def lower_all_parallel(roots: list[str], workers: int) -> int {
+        import multiprocessing;
+        import from jaclang.compiler.driver.dependency_graph { dependency_groups }
+        import from jaclang.compiler.frontend.codeinfo {
+            KERNEL_UNIT_REL,
+            kernel_unit_path
+        }
+        edges = self.analyze_closure(roots);
+        if len(edges) < 2 * workers {
+            return 0;
+        }
+        for rel in KERNEL_UNIT_REL {
+            kpath = os.path.realpath(kernel_unit_path(rel));
+            if kpath in edges and kpath not in self.lowered {
+                self.lower(kpath);
+            }
+        }
+        groups = dependency_groups(edges, [os.path.realpath(r) for r in roots]);
+        level_of: dict[str, int] = {};
+        levels: list[list[list[str]]] = [];
+        for group in groups {
+            members = set(group);
+            depth = 0;
+            for member in group {
+                for dep in edges.get(member, []) {
+                    if dep not in members {
+                        depth = max(depth, level_of.get(dep, 0) + 1);
+                    }
+                }
+            }
+            for member in group {
+                level_of[member] = depth;
+            }
+            while len(levels) <= depth {
+                levels.append([]);
+            }
+            levels[depth].append(list(group));
+        }
+        lowered_before = len(self.lowered);
+        context = multiprocessing.get_context("fork");
+        for level in levels {
+            pending = [
+                g
+                for g in level
+                if any(p not in self.lowered for p in g)
+            ];
+            if not pending {
+                continue;
+            }
+            if len(pending) == 1 or workers <= 1 {
+                for group in pending {
+                    for path in group {
+                        self.lower(path);
+                    }
+                }
+                continue;
+            }
+            jobs = min(workers, len(pending));
+            batches: list[list[str]] = [[] for _ in range(jobs)];
+            ordered = sorted(pending, key=lambda (g: list[str]) { -len(g); });
+            for (i, group) in enumerate(ordered) {
+                batches[i % jobs].extend(group);
+            }
+            _PARALLEL_SESSION.clear();
+            _PARALLEL_SESSION.append(self);
+            started = self.registry._span_begin();
+            try {
+                with context.Pool(processes=jobs) as pool {
+                    results = pool.map(_lower_batch_in_child, batches);
+                }
+            } finally {
+                self.registry._span_end("NATIVE_LOWER", started);
+                _PARALLEL_SESSION.clear();
+            }
+            for batch in results {
+                for rec in batch {
+                    self._absorb_lowered(rec);
+                }
+            }
+        }
+        return len(self.lowered) - lowered_before;
+    }
+
+    def _absorb_lowered(rec: dict[str, any]) {
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            install_unit_ir_text
+        }
+        path = str(rec["path"]);
+        if path in self.lowered {
+            return;
+        }
+        failure = rec.get("failure");
+        if failure {
+            self.registry.failures[path] = str(failure);
+            return;
+        }
+        mod = self.analyzed.get(path);
+        if mod is None {
+            return;
+        }
+        iface = NativeIface.from_bytes(rec.get("iface"));
+        if iface is None {
+            self.registry.failures[path] = "the worker returned no native interface";
+            return;
+        }
+        iface.resolve_deps(path);
+        install_unit_ir_text(mod, str(rec.get("ir") or ""));
+        mod.gen.native_iface = iface;
+        mod.gen.native_deps = list(rec.get("deps") or []);
+        mod.gen.native_layout = rec.get("layout");
+        mod.gen._clib_paths = list(rec.get("clib_paths") or []);
+        mod.gen._clib_symbol_lib = dict(rec.get("clib_symbol_lib") or {});
+        mod.gen._exported_symbols = list(rec.get("exports") or []);
+        self.lowered[path] = mod;
+        self.registry._event("native_unit_lower");
+        self.registry.record_module(mod, self.options.clone_for_native_import());
+        self.registry._stash_products(path, mod.gen);
     }
 
     def finish(paths: list[str], emit_objects: bool = False) {
@@ -996,6 +1197,63 @@ obj NativeBuildSession {
         self.prog._natives = None;
         self.prog.release_compile_closure();
     }
+}
+
+glob _PARALLEL_SESSION: list[NativeBuildSession] = [];
+
+def native_lower_workers -> int {
+    raw = os.environ.get("JAC_NATIVE_LOWER_JOBS", "").strip();
+    if raw {
+        try {
+            return max(1, int(raw));
+        } except ValueError {}
+    }
+    if not hasattr(os, "fork") {
+        return 1;
+    }
+    return max(1, min(8, os.cpu_count() or 1));
+}
+
+def _lower_batch_in_child(paths: list[str]) -> list[dict[str, any]] {
+    session = _PARALLEL_SESSION[0];
+    before = set(session.lowered.keys());
+    out: list[dict[str, any]] = [];
+    for path in paths {
+        if path in session.lowered {
+            continue;
+        }
+        session.lower(path);
+    }
+    for (resolved, mod) in session.lowered.items() {
+        if resolved in before {
+            continue;
+        }
+        iface = mod.gen.native_iface;
+        out.append(
+            {
+                "path": resolved,
+                "ir": str(mod.gen.llvm_ir) if mod.gen.llvm_ir is not None else None,
+                "iface": iface.to_bytes() if iface is not None else None,
+                "deps": list(mod.gen.native_deps or []),
+                "layout": mod.gen.native_layout,
+                "clib_paths": list(mod.gen._clib_paths),
+                "clib_symbol_lib": dict(mod.gen._clib_symbol_lib),
+                "exports": list(mod.gen._exported_symbols)
+            }
+        );
+    }
+    for path in paths {
+        if path not in session.lowered {
+            out.append(
+                {
+                    "path": path,
+                    "failure": session.registry.failures.get(path)
+                        or "the worker could not lower this unit"
+                }
+            );
+        }
+    }
+    return out;
 }
 
 glob _closure_memo:
