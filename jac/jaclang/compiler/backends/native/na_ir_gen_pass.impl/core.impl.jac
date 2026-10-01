@@ -7,11 +7,6 @@ def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
 }
 
 def _source_param_names(func: ir.Function) -> list[str] {
-    """A function's parameter names as the source spells them. The IR keeps
-    each name unique within its function by appending `.N`, and which name
-    gets the suffix depends on what was named first -- an accident of
-    lowering order that must not reach the unit's interface, where a changed
-    name re-lowers every consumer.""";
     names: list[str] = [];
     for arg in func.args {
         (stem, _, suffix) = arg.name.rpartition(".");

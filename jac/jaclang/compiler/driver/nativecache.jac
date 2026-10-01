@@ -114,8 +114,6 @@ obj NativeUnitRegistry {
     }
 
     def _miss(path: str, why: str) {
-        """Say why a unit's cached products cannot be used, when asked to: a
-        rebuild that cannot be explained cannot be made incremental.""";
         import from jaclang.compiler.driver.compile_options { env_na_debug }
         if env_na_debug() {
             sys.stderr.write(f"[native cache] miss {path}: {why}\n");
@@ -246,9 +244,6 @@ obj NativeUnitRegistry {
     def _explain_iface_change(
         path: str, iface: NativeIface, options: (CompileOptions | None)
     ) {
-        """When a unit is lowered again, name the parts of its native interface
-        that differ from the products still on disk: every consumer of a unit
-        whose interface changed is lowered again too.""";
         resolved = os.path.realpath(path);
         try {
             data = get_module_cache_path(resolved).read_bytes();
@@ -935,9 +930,6 @@ def native_verdict_dep_rows(path: str) -> list[list[str]] {
 }
 
 def _interface_changes(before: any, after: any, path: str, out: list[str]) {
-    """The leaf paths at which two interface records differ, each marked added,
-    removed or changed. Callers pass the records as their digest serializes
-    them, so a tuple read back as a list is not a change.""";
     if before == after {
         return;
     }
@@ -951,6 +943,14 @@ def _interface_changes(before: any, after: any, path: str, out: list[str]) {
             } else {
                 _interface_changes(before[key], after[key], where, out);
             }
+        }
+        return;
+    }
+    if isinstance(before, list)
+        and isinstance(after, list)
+        and len(before) == len(after) {
+        for (index, (item_before, item_after)) in enumerate(zip(before, after)) {
+            _interface_changes(item_before, item_after, f"{path}[{index}]", out);
         }
         return;
     }

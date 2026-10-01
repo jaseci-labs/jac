@@ -323,9 +323,6 @@ obj CtEvaluator(CtCaller) {
     }
 
     def _note_definition(nd: UniNode) {
-        """Evaluating `nd` read the definition around it -- a function, class or
-        enum in another file -- so the result depends on that definition, not
-        on everything else in its file.""";
         home = nd.find_parent_of_type(Module);
         evaluated = self._ct_root;
         if home is None or evaluated is None or home is evaluated {

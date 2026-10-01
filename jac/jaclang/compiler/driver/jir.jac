@@ -969,8 +969,6 @@ def ct_deps_section(
 }
 
 def module_ct_deps_section(mod: any) -> (bytes | None) {
-    """The comptime dependency rows of a compiled module, or None when it has
-    none.""";
     files: list[str] = getattr(mod, "ct_file_deps", []) or [];
     bodies: list[str] = getattr(mod, "ct_body_deps", []) or [];
     definitions: list[tuple[str, str]] = getattr(mod, "ct_def_deps", []) or [];
@@ -1134,8 +1132,6 @@ def ct_dep_text_fresh(text: str, base: str = "") -> bool {
 }
 
 def stale_ct_dep_rows(text: str, base: str = "") -> list[str] {
-    """Every comptime dependency row of `text` whose input changed, named for a
-    reader: which file, and what of it the row covered.""";
     return _stale_ct_rows(_ct_dep_rows(text), base);
 }
 
@@ -1589,8 +1585,6 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
 }
 
 def module_cache_invalid_reason(source_path: str, cache_path: Path) -> str {
-    """Why the cached module at `cache_path` cannot stand for `source_path`, or
-    an empty string when it can.""";
     if not cache_path.exists() {
         return "no cached module";
     }
