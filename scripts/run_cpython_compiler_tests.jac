@@ -63,6 +63,8 @@ def fetch_tests(cache: Path) -> Path {
 }
 
 def main -> int {
+    # A native crash inside an upstream test names its Python frame.
+    faulthandler.enable();
     parser = argparse.ArgumentParser(description=__doc__);
     parser.add_argument(
         "--cache",
@@ -170,8 +172,6 @@ def main -> int {
 }
 
 def run_tests(args: any, calls: list[int]) -> int {
-    # A native crash inside an upstream test names its Python frame.
-    faulthandler.enable();
     library = fetch_tests(args.cache);
     sys.path.insert(0, str(library));
     try {
