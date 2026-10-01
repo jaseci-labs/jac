@@ -1235,7 +1235,8 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         return self._emit_unlowerable_type(type_expr, _ptb);
     }
     if isinstance(type_expr, uni.Expr) {
-        if type_expr.type is None {
+        annotated = self._annotation_type(type_expr);
+        if annotated is None {
             _structural = self._lower_untyped_annotation(type_expr);
             if _structural is not None {
                 return _structural;
@@ -1243,16 +1244,16 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return self._emit_unlowerable_type(type_expr, None);
         }
         if type_tag_borrows(type_expr) {
-            _view = self._lower_view_container(type_expr.type);
+            _view = self._lower_view_container(annotated);
             if _view is not None {
                 return _view;
             }
         }
-        lowered = self._lower_type(type_expr.type);
+        lowered = self._lower_type(annotated);
         if lowered is not None {
             return lowered;
         }
-        return self._emit_unlowerable_type(type_expr, type_expr.type);
+        return self._emit_unlowerable_type(type_expr, annotated);
     }
 
     if isinstance(type_expr, (uni.HasVar, uni.ParamVar))
