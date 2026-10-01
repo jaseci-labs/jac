@@ -183,7 +183,13 @@ def run_tests(args: any, calls: list[int]) -> int {
     support = importlib.import_module("test.support");
     # Resource decorators are evaluated when the test module is imported.
     support.use_resources = [];
-    reference_module = importlib.import_module(args.module);
+    try {
+        reference_module = importlib.import_module(args.module);
+    } except unittest.SkipTest as reason {
+        # A module the platform does not support skips itself on import.
+        print(f"{args.module} skipped: {reason}", file=sys.stderr);
+        return 0;
+    }
     test_module: any = reference_module;
     # Verify runtime compilation before measuring individual tests.
     builtins.compile("pass", "<warmup>", "exec", dont_inherit=True);

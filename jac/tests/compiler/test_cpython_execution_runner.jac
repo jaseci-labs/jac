@@ -73,3 +73,47 @@ test "execution mode counts successes while preserving upstream skips" {
         }
     }
 }
+
+test "a module that skips itself on import is reported as skipped" {
+    repo = Path(JAC_ROOT).parent;
+    script = repo / "scripts/run_cpython_compiler_tests.jac";
+    if not script.is_file() {
+        testskip("repository test runner is not installed");
+    }
+    sys.path.insert(0, str(repo));
+    try {
+        runner = importlib.import_module("scripts.run_cpython_compiler_tests");
+    } finally {
+        sys.path.pop(0);
+    }
+    package = types.ModuleType("test");
+    package.__path__ = [];
+    modules = {"test": package, "test.support": types.ModuleType("test.support")};
+    args = types.SimpleNamespace(
+        cache=repo,
+        module="test.other_platform_probe",
+        compile_tests=False,
+        execution_tests=True,
+        symtable_api=False,
+        tokenize_api=False,
+        native_modules=[],
+        tests=None
+    );
+    real_import = importlib.import_module;
+    def import_or_skip(name: str) -> types.ModuleType {
+        if name == "test.other_platform_probe" {
+            raise unittest.SkipTest("test works only on another platform");
+        }
+        return real_import(name);
+    }
+    stderr = io.StringIO();
+    with patch.dict(sys.modules, modules), patch.object(
+        runner, "fetch_tests", return_value=repo
+    ), patch.object(importlib, "import_module", side_effect=import_or_skip), contextlib.redirect_stderr(
+        stderr
+    ) {
+        assert runner.run_tests(args, [0]) == 0;
+    }
+    assert "test.other_platform_probe skipped: test works only on another platform"
+        in stderr.getvalue() , stderr.getvalue();
+}
