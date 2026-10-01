@@ -3821,6 +3821,25 @@ impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
     return False;
 }
 
+impl definition_qualname(decl: UniNode) -> str {
+    if not isinstance(decl, (Ability, Archetype, Enum)) {
+        return "";
+    }
+    name = decl.sym_name;
+    if not name {
+        return "";
+    }
+    parts: list[str] = [name];
+    cur = decl.parent;
+    while cur is not None and not isinstance(cur, Module) {
+        if isinstance(cur, (Archetype, Enum)) {
+            parts.insert(0, cur.sym_name);
+        }
+        cur = cur.parent;
+    }
+    return ".".join(parts);
+}
+
 impl bind_assignment_targets(nd: Assignment) -> None {
     for i in nd.target {
         if isinstance(i, AstSymbolNode) {

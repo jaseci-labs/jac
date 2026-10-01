@@ -2929,6 +2929,7 @@ def def_insert_unpacking(
 ) -> None;
 
 def bind_assignment_targets(nd: Assignment) -> None;
+def definition_qualname(decl: UniNode) -> str;
 
 def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);
 

@@ -101,3 +101,19 @@ test "a top-level function is named by its bare name" {
         assert os.path.isfile(str(decl));
     }
 }
+
+test "a class or enum digest covers that declaration and nothing else" {
+    with TemporaryDirectory() as directory {
+        (decl, _) = write_module(directory);
+        decl.write_text(DECL + "\nenum Shade {\n    LIGHT = 1,\n    DARK = 2\n}\n");
+        box_before = definition_digest(str(decl), "Box");
+        shade_before = definition_digest(str(decl), "Shade");
+        assert box_before and shade_before;
+        decl.write_text(
+            DECL.replace("x + 1", "x + 6")
+                + "\nenum Shade {\n    LIGHT = 1,\n    DARK = 3\n}\n"
+        );
+        assert definition_digest(str(decl), "Box") == box_before;
+        assert definition_digest(str(decl), "Shade") != shade_before;
+    }
+}

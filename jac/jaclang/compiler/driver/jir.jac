@@ -980,28 +980,13 @@ def module_ct_deps_section(mod: any) -> (bytes | None) {
     return ct_deps_section(files, bodies, definitions=definitions);
 }
 
-def definition_qualname(ability: any) -> str {
-    import jaclang.compiler.frontend.unitree as uni;
-    name = ability.sym_name if isinstance(ability, uni.Ability) else "";
-    if not name {
-        return "";
-    }
-    parts: list[str] = [name];
-    cur = ability.parent;
-    while cur is not None and not isinstance(cur, uni.Module) {
-        if isinstance(cur, uni.Archetype) {
-            parts.insert(0, cur.sym_name);
-        }
-        cur = cur.parent;
-    }
-    return ".".join(parts);
-}
 
 glob _DEFINITION_TEXTS: dict[str, tuple[str, dict[str, list[str]]]] = {};
 
 def _definition_texts(path: str) -> dict[str, list[str]] {
     import from jaclang.compiler.driver.program { JacProgram }
     import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.frontend.unitree { definition_qualname }
     try {
         content_digest = compute_content_sha256(path);
         with open(path, encoding="utf-8") as handle {
@@ -1020,11 +1005,16 @@ def _definition_texts(path: str) -> dict[str, list[str]] {
         tree = JacProgram().parse_source(text, path);
     } except Exception {}
     if tree is not None {
-        for ability in tree.get_all_sub_nodes(uni.Ability) {
-            qualname = definition_qualname(ability);
-            if qualname and ability.loc {
+        definitions: list[uni.UniNode] = [
+            *tree.get_all_sub_nodes(uni.Ability),
+            *tree.get_all_sub_nodes(uni.Archetype),
+            *tree.get_all_sub_nodes(uni.Enum)
+        ];
+        for definition in definitions {
+            qualname = definition_qualname(definition);
+            if qualname and definition.loc {
                 texts.setdefault(qualname, []).append(
-                    text[ability.loc.pos_start:ability.loc.pos_end]
+                    text[definition.loc.pos_start:definition.loc.pos_end]
                 );
             }
         }

@@ -446,7 +446,7 @@ impl NaIRGenPass._instantiate_generic(
 }
 
 impl NaIRGenPass._record_generic_definition(ability: uni.Ability) -> None {
-    import from jaclang.compiler.driver.jir { definition_qualname }
+    import from jaclang.compiler.frontend.unitree { definition_qualname }
     path = ability.loc.mod_path;
     qualname = definition_qualname(ability);
     if qualname {
