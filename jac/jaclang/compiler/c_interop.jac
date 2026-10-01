@@ -581,9 +581,10 @@ def c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any
     }
     if isinstance(expr, Name) {
         value = final_glob_value(expr);
-        return c_scalar_constant(value, depth + 1)
-            if value is not None
-            else (False, None);
+        if value is None {
+            return (False, None);
+        }
+        return c_scalar_constant(value, depth + 1);
     }
     folded = fold_const(expr);
     if not folded[0] and isinstance(expr, (BinaryExpr, UnaryExpr)) {
@@ -606,7 +607,10 @@ def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
         if op == "~" {
             return (True, ~value);
         }
-        return (True, value) if op == "+" else (False, None);
+        if op == "+" {
+            return (True, value);
+        }
+        return (False, None);
     }
     if not isinstance(expr, BinaryExpr) {
         return (False, None);
