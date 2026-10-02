@@ -96,8 +96,16 @@ obj _JsonParser {
                     out += chr(self._hex4());
                 }
             } else {
-                out += self.src[self.pos];
+                start: int = self.pos;
                 self.pos += 1;
+                while True {
+                    c2: int = self._cc();
+                    if c2 == 34 or c2 == -1 or c2 == 92 {
+                        break;
+                    }
+                    self.pos += 1;
+                }
+                out += self.src[start:self.pos];
             }
         }
         return out;
@@ -244,29 +252,35 @@ def _dump_str(s: str) -> str {
     out: str = "\"";
     n: int = len(s);
     i: int = 0;
+    start: int = 0;
     while i < n {
         ch: int = ord(s[i]);
-        if ch == 34 {
-            out += "\\\"";
-        } elif ch == 92 {
-            out += "\\\\";
-        } elif ch == 10 {
-            out += "\\n";
-        } elif ch == 9 {
-            out += "\\t";
-        } elif ch == 13 {
-            out += "\\r";
-        } elif ch == 8 {
-            out += "\\b";
-        } elif ch == 12 {
-            out += "\\f";
-        } elif ch < 32 {
-            out += "\\u" + _hex4_str(ch);
+        if ch == 34 or ch == 92 or ch < 32 {
+            out += s[start:i];
+            if ch == 34 {
+                out += "\\\"";
+            } elif ch == 92 {
+                out += "\\\\";
+            } elif ch == 10 {
+                out += "\\n";
+            } elif ch == 9 {
+                out += "\\t";
+            } elif ch == 13 {
+                out += "\\r";
+            } elif ch == 8 {
+                out += "\\b";
+            } elif ch == 12 {
+                out += "\\f";
+            } else {
+                out += "\\u" + _hex4_str(ch);
+            }
+            i += 1;
+            start = i;
         } else {
-            out += s[i];
+            i += 1;
         }
-        i += 1;
     }
+    out += s[start:n];
     out += "\"";
     return out;
 }

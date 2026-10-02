@@ -5,6 +5,7 @@ def _parse_line(line: str) -> list[str] {
         return fields;
     }
     cur: str = "";
+    cstart: int = 0;
     i: int = 0;
     quoted: bool = False;
     started: bool = False;
@@ -16,29 +17,38 @@ def _parse_line(line: str) -> list[str] {
                 break;
             }
             started = True;
-            if c == 34 and cur == "" {
+            if c == 34 and cur == "" and cstart == i {
                 quoted = True;
+                cstart = i + 1;
             } elif c == 44 {
+                cur += line[cstart:i];
                 fields.append(cur);
                 cur = "";
+                cstart = i + 1;
             } else {
-                cur += line[i];
+                i += 1;
+                continue;
             }
         } elif c == 34 {
             if i + 1 < n and ord(line[i + 1]) == 34 {
-                cur += "\"";
+                cur += line[cstart:i] + "\"";
                 i += 1;
+                cstart = i + 1;
             } else {
+                cur += line[cstart:i];
                 quoted = False;
+                cstart = i + 1;
             }
         } else {
-            cur += line[i];
+            i += 1;
+            continue;
         }
         i += 1;
     }
     if not started {
         return fields;
     }
+    cur += line[cstart:i];
     fields.append(cur);
     return fields;
 }
