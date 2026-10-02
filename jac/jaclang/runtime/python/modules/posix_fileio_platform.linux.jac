@@ -25,14 +25,14 @@ import from c {
         has it_interval: timespec,
             it_value: timespec;
     }  def sendfile(
-        out_fd: i32, in_fd: i32, offset: (&mut i64 | None), count: u64
+        out_fd: i32, in_fd: i32, offset: &mut i64 | None, count: u64
     ) -> i64;  def ctermid(buffer: ptr[u8]) -> ptr[u8];  def dup3(
         fd: i32, fd2: i32, flags: i32
     ) -> i32;  def pipe2(fds: &mut fd_pair, flags: i32) -> i32;  def splice(
         fd_in: i32,
-        off_in: (&mut i64 | None),
+        off_in: &mut i64 | None,
         fd_out: i32,
-        off_out: (&mut i64 | None),
+        off_out: &mut i64 | None,
         len: u64,
         flags: u32
     ) -> i64;  def eventfd(initval: u32, flags: i32) -> i32;  def eventfd_read(
