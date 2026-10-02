@@ -430,7 +430,8 @@ install_binary() {
         info "Performing initial setup, this may take a moment..."
         # No stderr redirect: the launcher narrates its one-time extract
         # (payload read, sha256, live percent) on stderr -- show it.
-        jac || true
+        # Another jac may precede INSTALL_DIR on PATH; initialize this download.
+        "${INSTALL_DIR}/jac" || true
         info ""
     else
         warn "Binary installed to ${INSTALL_DIR}/jac but 'jac' is not on PATH."

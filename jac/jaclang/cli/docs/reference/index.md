@@ -80,6 +80,10 @@ jac run
 
 `main.jac` is the default entry point; pass a different name explicitly (e.g. `jac run app.jac`). See [Installation](../quick-guide/install.md) for details.
 
+The installer saves and initializes the selected binary at `~/.local/bin/jac`.
+If `jac --version` still shows an older installation, use `command -v jac` to
+check which binary your shell finds and put `~/.local/bin` first on your `PATH`.
+
 ---
 
 ## Using Jac with AI coding assistants
