@@ -2002,6 +2002,19 @@ jac completions --shell fish --install
 
 > **Note:** After installing, run `source ~/.bashrc` (or restart your shell) to activate completions. Completions cover subcommands, options, and file paths.
 
+For zsh, initialize its completion system before the installed Jac source block
+in `~/.zshrc` (shell frameworks may already do this):
+
+```zsh
+autoload -Uz compinit
+compinit
+```
+
+Run `jac completions --shell zsh --install`, then restart zsh or run
+`source ~/.zshrc`. Sourcing the generated script registers the Jac handler.
+It can also be saved as `_jac` in a directory on `fpath` before `compinit`
+for autoload activation.
+
 ---
 
 ## Client Framework Commands

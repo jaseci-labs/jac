@@ -111,7 +111,8 @@ impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
         }
         subcases.append("            %s)\n%s" % (c["name"], body));
     }
-    return _ZSH_TEMPLATE % (exe, exe, "\n".join(cmd_descs), "\n".join(subcases), exe);
+    return _ZSH_TEMPLATE
+        % (exe, exe, "\n".join(cmd_descs), "\n".join(subcases), exe, exe, exe);
 }
 
 impl _static_fish(commands: list[dict[str, any]], exe: str) -> str {
