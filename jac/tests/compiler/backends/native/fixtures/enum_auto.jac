@@ -9,7 +9,10 @@ of the evaluator.
 generated. CPython counts from the largest value already assigned, not the
 last one written, so a member declared after `10` and then `3` is `11` and
 not `4`. `Step` asks the same question in the declared-enum spelling, where
-an explicit value follows the generated ones.
+an explicit value follows the generated ones. `Bare` and `Resume` spell no
+value at all, which the Python backend lowers to `auto()`; the native layout
+once read it as unknown and stored every such member as `0`, so all of
+`Bare` compared equal (#9367).
 """
 
 import from enum { IntEnum, auto }
@@ -37,6 +40,12 @@ class Mixed(IntEnum) {
 enum Step { First = auto(), Second = auto(), Third = 9 }
 
 
+enum Bare { First, Second, Third }
+
+
+enum Resume { High = 10, Low = 3, Next }
+
+
 def category(n: int) -> int {
     if n == 0 {
         return int(Cat.Positional);
@@ -58,6 +67,17 @@ def stepped -> int {
 }
 
 
+def bare -> int {
+    return (int(Bare.First) * 100) + (int(Bare.Second) * 10) + int(Bare.Third);
+}
+
+
+def distinct -> bool {
+    seen: set[Bare] = {Bare.First};
+    return Bare.First != Bare.Third and Bare.Third not in seen;
+}
+
+
 def run -> int {
     print(category(0));
     print(category(1));
@@ -66,6 +86,9 @@ def run -> int {
     print(int(Mixed.Low));
     print(counted());
     print(stepped());
+    print(bare());
+    print(int(Resume.Next));
+    print(distinct());
     return 0;
 }
 
