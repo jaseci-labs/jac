@@ -1050,8 +1050,9 @@ test "the autoscaler's view is reachable from the public SDK" {
     # Before this, asking why a workload sat at zero meant importing internal
     # module paths and wiring three Kubernetes API clients by hand, so the
     # capability existed and no application could use it.
-    assert hasattr(ScaleClient, "autoscaler_status");
-    assert hasattr(ScaleClient, "watch_autoscaler_transitions");
+    import from jaclang.scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
+    import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+    import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
     assert AutoscalerRuntimeStatus is not None;
     assert AutoscalerTransition is not None;
 
@@ -1059,4 +1060,30 @@ test "the autoscaler's view is reachable from the public SDK" {
     # autoscaler resource is live depends on the scaling mode, and deriving it
     # is what the abstraction is for.
     assert ScaleClient()._scale_target_name("orders") == "orders-deployment";
+
+    # hasattr was the whole test here, and it passed while both methods reached
+    # the wrong engine: the bare spec these helpers build leaves
+    # `autoscaler_engine` at its "hpa" default, so a KEDA app reported a replica
+    # count with no trigger or scaler field and watching raised the base
+    # NotImplementedError. The engine is resolved on the cluster now.
+    for (drives, want) in [(True, KEDAAutoscaler), (False, HPAAutoscaler)] {
+        with unittest.mock.patch.object(
+            KubernetesTarget, "_load_cluster_config"
+        ) as loader, unittest.mock.patch.object(
+            KEDAAutoscaler, "scales_target", return_value=drives
+        ) {
+            got = ScaleClient()._autoscaler_for(
+                "orders", "prod", "auto", "orders-deployment"
+            );
+            assert isinstance(got, want) , (
+                f"a target whose ScaledObject probe says {drives} must resolve "
+                f"to {want}, got {type(got)}"
+            );
+            assert loader.called , (
+                "the cluster config must load before any client is built, or "
+                "ScaleClient(kube_context=...) reads whatever cluster the "
+                "process defaulted to"
+            );
+        }
+    }
 }
