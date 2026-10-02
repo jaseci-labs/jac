@@ -1186,25 +1186,60 @@ obj NativeBuildSession {
     }
 
     def _probe_served(roots: list[str]) {
-        """What the cache already holds for this build: a unit whose products
+        """What the cache already holds for this build. A unit whose products
         the registry serves is neither analysed nor lowered, and the
-        dependencies it recorded stand in for its imports.""";
+        dependencies it recorded stand in for its imports. A unit whose own
+        source changed is lowered first, here, against the served cache, so
+        its importers are then judged by its new interface digest: an edit
+        that leaves the interface alone costs one unit, not the closure.""";
+        import sys;
         probe = self.options.clone_for_native_import();
+        started = time.perf_counter();
         candidates = [os.path.realpath(r) for r in roots]
             + list(kernel_dep_hint(queue_anchor(roots)).keys());
+        edited: list[str] = [];
+        stale: list[str] = [];
         for unit in candidates {
             if unit in self.served or not os.path.isfile(unit) {
                 continue;
             }
-            ent = self.registry.ensure(unit, compile_on_miss=False, options=probe);
-            if ent is None {
+            if self._serve(unit, probe) {
                 continue;
             }
-            self.served[unit] = [
-                os.path.realpath(dep)
-                for (dep, _digest) in self.registry.recorded_native_deps(unit, probe)
-            ];
+            if self.registry._module_jir(unit) is None {
+                edited.append(unit);
+            } else {
+                stale.append(unit);
+            }
         }
+        probed = time.perf_counter();
+        for unit in edited {
+            self.lower(unit);
+        }
+        lowered = time.perf_counter();
+        recovered = [
+            u
+            for u in stale
+            if self._serve(u, probe)
+        ];
+        sys.stderr.write(
+            f"[lower] cache: served {len(self.served) - len(recovered)} units in "
+            f"{probed - started:.1f}s, lowered {len(edited)} edited units in "
+            f"{lowered - probed:.1f}s, then served {len(recovered)} more; "
+            f"{len(stale) - len(recovered)} importers need lowering\n"
+        );
+    }
+
+    def _serve(unit: str, probe: CompileOptions) -> bool {
+        ent = self.registry.ensure(unit, compile_on_miss=False, options=probe);
+        if ent is None {
+            return False;
+        }
+        self.served[unit] = [
+            os.path.realpath(dep)
+            for (dep, _digest) in self.registry.recorded_native_deps(unit, probe)
+        ];
+        return True;
     }
 
     def _lower_masked(path: str, mask: list[str]) {
