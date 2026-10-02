@@ -6,8 +6,8 @@ def show(f: io.FileIO, size: int) {
     print(len(chunk), chunk.decode("ascii"));
 }
 
+glob path = "fileio_probe.bin";
 with entry {
-    path = "fileio_probe.bin";
     with open(path, "wb") as out {
         out.write(b"0123456789abcdefghij");
     }

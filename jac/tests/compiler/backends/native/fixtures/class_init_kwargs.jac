@@ -9,7 +9,7 @@ class Point {
     has x: int = 0,
         y: int = 0;
 
-    def __init__(self: Point, x: int, y: int) {
+    def init(self: Point, x: int, y: int) {
         self.x = x;
         self.y = y;
     }

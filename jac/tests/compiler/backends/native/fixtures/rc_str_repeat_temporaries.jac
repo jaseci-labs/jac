@@ -24,6 +24,7 @@ def owned_right_operand(base: str, i: int) -> int {
 }
 
 glob base = "abcd";
+
 with entry {
     total = 0;
     __rc_debug_enable();

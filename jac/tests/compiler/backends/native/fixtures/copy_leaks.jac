@@ -44,7 +44,12 @@ def shallow_round(i: int) -> int {
 
 def deep_round(i: int) -> int {
     shared = Tag(name="s" + str(i), refs=["a", "b"]);
-    b = Box(tag=shared, spare=shared, tags=[shared, Tagged(weight=i, label="d" + str(i))], index={"k": [i, i]});
+    b = Box(
+        tag=shared,
+        spare=shared,
+        tags=[shared, Tagged(weight=i, label="d" + str(i))],
+        index={"k": [i, i]}
+    );
     b2 = copy.deepcopy(b);
     nested = [[i], [i, i]];
     n2 = copy.deepcopy(nested);

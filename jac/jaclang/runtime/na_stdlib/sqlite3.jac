@@ -219,9 +219,21 @@ glob SQLITE_INTEGER: int = 1,
      SQLITE_NULL: int = 5;
 
 
-obj:pub Warning(Exception) {}
+obj:pub Warning(Exception) {
+    has message: str = "";
 
-obj:pub Error(Exception) {}
+    def __str__ -> str {
+        return self.message;
+    }
+}
+
+obj:pub Error(Exception) {
+    has message: str = "";
+
+    def __str__ -> str {
+        return self.message;
+    }
+}
 
 obj:pub InterfaceError(Error) {}
 
