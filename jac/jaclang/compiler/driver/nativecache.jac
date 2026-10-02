@@ -1035,12 +1035,12 @@ obj NativeBuildSession {
         state: dict[str, int] = {};
         masks: dict[str, list[str]] = {};
         finished: list[str] = [];
-        for root in roots {
-            if root in state {
+        for start in roots {
+            if start in state {
                 continue;
             }
-            state[root] = 1;
-            stack: list[list[any]] = [[root, 0]];
+            state[start] = 1;
+            stack: list[list[any]] = [[start, 0]];
             while stack {
                 frame = stack[-1];
                 unit = str(frame[0]);
@@ -1296,7 +1296,8 @@ obj NativeBuildSession {
     }
 }
 
-glob _PARALLEL_SESSION: list[NativeBuildSession] = [];
+glob _PARALLEL_SESSION: list[NativeBuildSession] = [],
+     LOWER_WORKER_BYTES: int = 6 * 1024 * 1024 * 1024;
 
 def native_lower_workers -> int {
     raw = os.environ.get("JAC_NATIVE_LOWER_JOBS", "").strip();
@@ -1308,7 +1309,20 @@ def native_lower_workers -> int {
     if not hasattr(os, "fork") {
         return 1;
     }
-    return max(1, min(8, os.cpu_count() or 1));
+    by_cpu = min(8, os.cpu_count() or 1);
+    return max(1, min(by_cpu, _workers_by_memory()));
+}
+
+def _workers_by_memory -> int {
+    """A forked lowering worker grows to several GiB of its own pages, so
+    the worker count is bounded by the memory free now, not by the cores.""";
+    try {
+        pages = os.sysconf("SC_AVPHYS_PAGES");
+        page = os.sysconf("SC_PAGE_SIZE");
+    } except (ValueError, OSError, AttributeError) {
+        return 8;
+    }
+    return max(1, int((pages * page) // LOWER_WORKER_BYTES));
 }
 
 def _lower_unit_in_child(path: str, mask: list[str]) -> list[dict[str, any]] {
