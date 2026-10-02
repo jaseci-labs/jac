@@ -486,6 +486,24 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "errno bundled",
+             "prim_errno.jac",
+             "errno_py",
+             "errno_cl",
+             "errno_na",
+             ["na"]
+         ),
+         ("glob bundled", "prim_glob.jac", "glob_py", "glob_cl", "glob_na", ["na"]),
+         ("stat bundled", "prim_stat.jac", "stat_py", "stat_cl", "stat_na", ["na"]),
+         (
+             "platform bundled",
+             "prim_platform.jac",
+             "platform_py",
+             "platform_cl",
+             "platform_na",
+             ["na"]
+         ),
+         (
              "secrets bundled",
              "prim_secrets.jac",
              "secrets_py",
