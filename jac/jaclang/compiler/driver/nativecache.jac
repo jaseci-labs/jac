@@ -1,4 +1,6 @@
 import os;
+import sys;
+import time;
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { NativeVerdict }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
@@ -8,8 +10,9 @@ import from jaclang.compiler.driver.jir {
     compute_content_sha256,
     NativeStamp,
     SEC_NCTDEPS,
-    ct_deps_section,
+    module_ct_deps_section,
     ct_dep_text_fresh,
+    stale_ct_dep_rows,
     SEC_NBITCODE,
     SEC_NIFACE,
     SEC_NOBJ,
@@ -18,6 +21,7 @@ import from jaclang.compiler.driver.jir {
     current_native_stamp,
     get_module_cache_path,
     is_module_cache_valid,
+    module_cache_invalid_reason,
     jir_cacheable_source_path,
     module_cache_key,
     native_section_payload,
@@ -110,9 +114,47 @@ obj NativeUnitRegistry {
         }
     }
 
+    def _miss(path: str, why: str) {
+        import from jaclang.compiler.driver.compile_options { env_na_debug }
+        if env_na_debug() {
+            sys.stderr.write(f"[native cache] miss {path}: {why}\n");
+        }
+    }
+
     def _event(name: str) {
         counters = self.prog.analysis.cache_events;
         counters[name] = counters.get(name, 0) + 1;
+    }
+
+    def _add_time(name: str, seconds: float) {
+        times = self.prog.analysis.phase_time;
+        times[name] = times.get(name, 0.0) + seconds;
+    }
+
+    def _timed(name: str, started: float) {
+        self._add_time(name, time.perf_counter() - started);
+    }
+
+    def phase_summary -> str {
+        times = self.prog.analysis.phase_time;
+        events = self.prog.analysis.cache_events;
+        frontend = ", ".join(
+            f"{phase.lower()} {times.get('NATIVE_FRONTEND_' + phase, 0.0):.1f}"
+            for phase in ("PARSE", "IR", "PLACEMENT", "ANALYSIS", "BOUNDARIES")
+        );
+        return (
+            f"  Kernel phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
+            f"({frontend}), lowering {times.get('NATIVE_LOWER', 0.0):.1f}s, "
+            f"optimize {times.get('NATIVE_OPTIMIZE', 0.0):.1f}s, "
+            f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s; "
+            f"units analysed/lowered/optimized/emitted "
+            f"{events.get('native_unit_analysis', 0)}/"
+            f"{events.get('native_unit_lower', 0)}/"
+            f"{events.get('native_unit_codegen', 0)}/"
+            f"{events.get('native_object_emit', 0)}; "
+            f"interface hits {events.get('native_iface_hit', 0)}, "
+            f"dependency misses {events.get('native_dep_miss', 0)}"
+        );
     }
 
     def note_codegen(path: str, object_emitted: bool = True) {
@@ -144,9 +186,11 @@ obj NativeUnitRegistry {
     def _module_jir(resolved: str) -> (tuple[bytes, str] | None) {
         try {
             cache_path = get_module_cache_path(resolved);
-            if is_module_cache_valid(resolved, cache_path) {
+            why = module_cache_invalid_reason(resolved, cache_path);
+            if not why {
                 return (cache_path.read_bytes(), "", );
             }
+            self._miss(resolved, why);
         } except Exception {}
         try {
             return self.prog._get_compiler()._precompiled_jir_data(resolved);
@@ -213,16 +257,51 @@ obj NativeUnitRegistry {
         if gen.native_iface is None {
             return None;
         }
+        import from jaclang.compiler.driver.compile_options { env_na_debug }
+        if env_na_debug() {
+            self._explain_iface_change(module.loc.mod_path, gen.native_iface, options);
+        }
         ent = self.record(
             module.loc.mod_path,
             gen.native_iface,
             options,
             dep_digests=self.dep_digests(list(gen.native_deps or [])),
-            compile_deps=ct_deps_section(module.ct_file_deps, module.ct_body_deps)
+            compile_deps=module_ct_deps_section(module) or b""
         );
         ent.object_bytes = gen.native_object;
         ent.bitcode = gen.native_bitcode;
         return ent;
+    }
+
+    def _explain_iface_change(
+        path: str, iface: NativeIface, options: (CompileOptions | None)
+    ) {
+        resolved = os.path.realpath(path);
+        try {
+            data = get_module_cache_path(resolved).read_bytes();
+        } except Exception {
+            return;
+        }
+        stamp = self.stamp_for(options or self._options(), resolved);
+        prior = NativeIface.from_bytes(
+            native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
+        );
+        if prior is None or prior.digest() == iface.digest() {
+            return;
+        }
+        changes: list[str] = [];
+        import json;
+        _interface_changes(
+            json.loads(json.dumps(prior.digest_fields())),
+            json.loads(json.dumps(iface.digest_fields())),
+            "",
+            changes
+        );
+        sys.stderr.write(
+            f"[native cache] interface of {resolved} changed: {'; '.join(changes[:8])}"
+                + (f" (+{len(changes) - 8} more)" if len(changes) > 8 else "")
+                + "\n"
+        );
     }
 
     def recorded_native_deps(
@@ -280,20 +359,33 @@ obj NativeUnitRegistry {
         payload = native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp);
         iface = NativeIface.from_bytes(payload);
         if iface is None {
+            self._miss(resolved, "no native products for this codegen");
             return None;
         }
         compile_deps = native_section_payload(
             read_section_bytes(data, SEC_NCTDEPS), stamp
         );
-        if compile_deps is None
-            or not ct_dep_text_fresh(compile_deps.decode("utf-8"), base_dir) {
+        if compile_deps is None {
             self._event("native_comptime_miss");
+            self._miss(resolved, "no comptime dependency record for this codegen");
+            return None;
+        }
+        if not ct_dep_text_fresh(compile_deps.decode("utf-8"), base_dir) {
+            self._event("native_comptime_miss");
+            self._miss(
+                resolved,
+                "comptime dependency changed: "
+                    + ", ".join(
+                        stale_ct_dep_rows(compile_deps.decode("utf-8"), base_dir)
+                    )
+            );
             return None;
         }
         iface.resolve_deps(resolved);
         if check_deps
             and not self._deps_match(data, stamp, base_dir, resolved, options) {
             self._event("native_dep_miss");
+            self._miss(resolved, "a dependency's native interface changed");
             return None;
         }
         ent = self._register(resolved, iface, stamp, "disk");
@@ -510,6 +602,41 @@ obj NativeUnitRegistry {
         return NativeIface.verified_digest(payload) or "";
     }
 
+    def emit_objects(paths: list[str], options: (CompileOptions | None) = None) {
+        pending: list[NativeUnitEntry] = [];
+        bitcodes: list[bytes] = [];
+        for path in paths {
+            ent = self.ensure(path, options=options, check_deps=False);
+            if ent is not None and ent.object_bytes is None and ent.bitcode is None {
+                ent = self.compile_unit(path, options);
+            }
+            if ent is not None
+                and ent.object_bytes is None
+                and ent.bitcode is not None {
+                pending.append(ent);
+                bitcodes.append(ent.bitcode);
+            }
+        }
+        if len(pending) < 2 {
+            return;
+        }
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            emit_unit_objects
+        }
+        import from jaclang.compiler.driver.jir { write_module_cache }
+        opts = options if options is not None else self._options();
+        started = time.perf_counter();
+        objects = emit_unit_objects(bitcodes, opts);
+        self._timed("NATIVE_EMIT", started);
+        for (ent, object_bytes) in zip(pending, objects) {
+            ent.object_bytes = object_bytes;
+            self._event("native_object_emit");
+            write_module_cache(
+                ent.path, None, extra_sections=self.product_sections(ent.path)
+            );
+        }
+    }
+
     def object_for(
         path: str, options: (CompileOptions | None) = None
     ) -> (bytes | None) {
@@ -524,7 +651,9 @@ obj NativeUnitRegistry {
                 }
                 import from jaclang.compiler.driver.jir { write_module_cache }
                 opts = options if options is not None else self._options();
+                started = time.perf_counter();
                 ent.object_bytes = emit_unit_object(ent.bitcode, opts);
+                self._timed("NATIVE_EMIT", started);
                 self._event("native_object_emit");
                 write_module_cache(
                     ent.path, None, extra_sections=self.product_sections(ent.path)
@@ -646,8 +775,9 @@ obj NativeBuildSession {
             if mod is None {
                 self.source_keys[resolved] = NativeUnitRegistry._source_key(resolved);
                 opts.no_cgen = True;
-
+                started = time.perf_counter();
                 mod = self.prog.compile(resolved, use_str=use_str, options=opts);
+                self.registry._timed("NATIVE_ANALYSIS", started);
                 self.registry._event("native_unit_analysis");
             }
             if len(self.prog.errors_had) > errors_before {
@@ -672,7 +802,9 @@ obj NativeBuildSession {
             mod.gen.native_iface = None;
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;
+            started = time.perf_counter();
             self.prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
+            self.registry._timed("NATIVE_LOWER", started);
             self.registry._event("native_unit_lower");
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_iface is None {
@@ -755,7 +887,9 @@ obj NativeBuildSession {
                 }
             }
             errors_before = len(self.prog.errors_had);
+            started = time.perf_counter();
             self.prog.run_schedule(mod, [NativeCompilePass]);
+            self.registry._timed("NATIVE_OPTIMIZE", started);
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
                 raise RuntimeError(f"native product emission failed for {path}");
@@ -767,6 +901,9 @@ obj NativeBuildSession {
     }
 
     def close {
+        for (phase, seconds) in self.prog.analysis.phase_time.items() {
+            self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
+        }
         self.lowered.clear();
         self.source_keys.clear();
         self.prog._natives = None;
@@ -867,6 +1004,34 @@ def native_verdict_dep_rows(path: str) -> list[list[str]] {
     } except Exception {
         return [];
     }
+}
+
+def _interface_changes(before: any, after: any, path: str, out: list[str]) {
+    if before == after {
+        return;
+    }
+    if isinstance(before, dict) and isinstance(after, dict) {
+        for key in sorted(set(before.keys()) | set(after.keys()), key=str) {
+            where = f"{path}.{key}" if path else str(key);
+            if key not in before {
+                out.append(f"{where}: added");
+            } elif key not in after {
+                out.append(f"{where}: removed");
+            } else {
+                _interface_changes(before[key], after[key], where, out);
+            }
+        }
+        return;
+    }
+    if isinstance(before, list)
+        and isinstance(after, list)
+        and len(before) == len(after) {
+        for (index, (item_before, item_after)) in enumerate(zip(before, after)) {
+            _interface_changes(item_before, item_after, f"{path}[{index}]", out);
+        }
+        return;
+    }
+    out.append(f"{path}: {str(before)[:60]} -> {str(after)[:60]}");
 }
 
 def verdict_deps_fresh(rows: list[list[str]], base_dir: str = "") -> bool {

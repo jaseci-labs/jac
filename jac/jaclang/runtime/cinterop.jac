@@ -875,7 +875,7 @@ class CGlobal {
             } elif kind == "array" {
                 ctype = _field_ctype(self._spec[1], self._scope) * 1;
             }
-            self._slot = ctype.in_dll(self._lib, self._name);
+            self._slot = ctype.in_dll(_loaded_library(self._lib), self._name);
         }
         return self._slot;
     }
@@ -965,9 +965,37 @@ def c_function_ptr(fn: any, spec_json: str, scope: any) -> JacPtr {
     return JacPtr(ctypes.cast(callback, ctypes.c_void_p).value or 0);
 }
 
+class _LazyLibrary {
+    def init(self: _LazyLibrary, desc: dict[str, any], module_file: str) {
+        self._desc = desc;
+        self._module_file = module_file;
+        self._lib = None;
+    }
+
+    def __getattr__(self: _LazyLibrary, name: str) -> any {
+        if name.startswith("_") {
+            raise AttributeError(name);
+        }
+        if self._lib is None {
+            self._lib = _load_library(self._desc, self._module_file);
+        }
+        return getattr(self._lib, name);
+    }
+}
+
+def _loaded_library(lib: any) -> any {
+    if isinstance(lib, _LazyLibrary) {
+        if lib._lib is None {
+            lib._lib = _load_library(lib._desc, lib._module_file);
+        }
+        return lib._lib;
+    }
+    return lib;
+}
+
 def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     desc = json.loads(desc_json);
-    lib = _load_library(desc["lib"], scope.get("__file__") or "");
+    lib = _LazyLibrary(desc["lib"], scope.get("__file__") or "");
     local: dict[str, any] = {};
     lookup = _ChainScope(local, scope);
     for name in desc.get("opaque", []) {

@@ -24,7 +24,7 @@ import from jaclang.scale.scheduler.scheduler {
     TriggerSpec,
     new_engine
 }
-import from jaclang.server.task_scheduler { tick_of }
+import from jaclang.server.task_scheduler { Scheduler, ScheduleSpec, tick_of }
 
 glob _holder: dict[str, any] = {};
 
@@ -174,6 +174,66 @@ test "each scheduled occurrence of a job is claimed by exactly one pod" {
     second = [pod_b._claim_fire('claim-job', nxt), pod_a._claim_fire('claim-job', nxt)];
     assert sorted(second) == [False, True] , f"the next occurrence is claimable once, got {second}";
     assert pod_b._claim_fire('claim-job', tick) is False , "claims only move forward";
+}
+
+
+test "a busy pod skips a static tick another pod claims and runs alongside it" {
+    # #9029 bounds overlap per process only: a busy pod leaves its tick
+    # unclaimed, so another pod claims it and both run the task at once.
+    store_a = _store();
+    if store_a is None {
+        return;
+    }
+    store_b = _store();
+    if store_b is None {
+        return;
+    }
+    lock = threading.Lock();
+    state: dict[str, int] = {"live": 0, "peak": 0};
+    runs: dict[str, int] = {"a": 0, "b": 0};
+    won: list[int] = [];
+    pods: list[Scheduler] = [];
+    for (name, store) in [("a", store_a), ("b", store_b)] {
+        pod = Scheduler();
+        pod.namespace = "overlap";
+        def claim(key: str, tick: int, st: PgStore = store) -> bool {
+            got = bool(st.kv_claim_tick(key, tick));
+            if got {
+                with lock {
+                    won.append(tick);
+                }
+            }
+            return got;
+        }
+        def slow(pod_name: str = name) {
+            with lock {
+                runs[pod_name] += 1;
+                state["live"] += 1;
+                state["peak"] = max(state["peak"], state["live"]);
+            }
+            time.sleep(0.7);
+            with lock {
+                state["live"] -= 1;
+            }
+        }
+        pod.claim = claim;
+        pod.register("slow_fn", slow, ScheduleSpec(interval=0.2), False);
+        pods.append(pod);
+    }
+    for pod in pods {
+        pod.start();
+    }
+    try {
+        time.sleep(2.5);
+    } finally {
+        for pod in pods {
+            pod.stop(timeout=2.0);
+        }
+    }
+    assert len(won) == len(set(won)) , f"a tick ran twice: {sorted(won)}";
+    assert runs["a"] >= 1 and runs["b"] >= 1 , runs;
+    assert runs["a"] + runs["b"] == len(won) , (runs, won);
+    assert state["peak"] == 2 , f"expected the pods to overlap, peak {state['peak']}";
 }
 
 

@@ -307,6 +307,16 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (t === "object") return (o.constructor && o.constructor.name) || "object";
       return t;
     },
+    // A jac dict lowers to a plain object, so "judge this like a dict" has to
+    // mean that exact shape and not every value whose `typeof` is "object".
+    // Host objects (File, Blob, Date, Response, DOM nodes) and archetype
+    // instances carry their own prototype and are not dicts, however few own
+    // enumerable keys they happen to expose.
+    _isdict(o) {
+      if (o === null || o === undefined || typeof o !== "object") return false;
+      const p = Object.getPrototypeOf(o);
+      return p === Object.prototype || p === null;
+    },
     // --- per-runtime-type Python method tables (keyed by Python name) ---
     // Trivial native-mapped ops are inline; non-trivial ones delegate to the
     // shared `_jac.<type>` helpers (which the typed emitters also use), so the
@@ -448,11 +458,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         if (_jac.poly._map[m]) return _jac.poly._map[m](o, ...args);
       } else if (o instanceof Uint8Array) {
         if (_jac.bytes[m]) return _jac.bytes[m](o, ...args);
-      } else if (
-        o !== null && o !== undefined && typeof o === "object"
-        && (Object.getPrototypeOf(o) === Object.prototype
-            || Object.getPrototypeOf(o) === null)
-      ) {
+      } else if (_jac.poly._isdict(o)) {
         // A plain object is a Python dict literal.
         if (_jac.poly._dict[m]) return _jac.poly._dict[m](o, ...args);
       }
@@ -1425,10 +1431,23 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     },
     complex(re, im) { return {re: re || 0, im: im || 0}; },
     bool(x) {
-      if (x === null || x === undefined || x === false || x === 0 || x === "" || Number.isNaN(x)) return false;
+      // Python's truth test. Emptiness decides only for the containers jac
+      // actually lowers to; a value that defines `__bool__`/`__len__` answers
+      // for itself, and every other object is truthy. Judging all of `typeof
+      // "object"` by its own enumerable keys made host objects falsy -- a
+      // File, Blob, Date, Response or DOM node keeps its data on prototype
+      // getters, so `Object.keys(file)` is `[]` and `bool(file)` was false.
+      if (x === null || x === undefined || x === false || x === 0 || x === 0n
+          || x === "" || Number.isNaN(x)) return false;
+      if (typeof x !== "object") return true;
       if (Array.isArray(x)) return x.length > 0;
       if (x instanceof Set || x instanceof Map) return x.size > 0;
-      if (typeof x === "object") return Object.keys(x).length > 0;
+      if (x instanceof Uint8Array) return x.length > 0;
+      // Before the dunders, so a dict carrying a "__bool__" key is still
+      // judged by emptiness; an archetype is never a plain object.
+      if (_jac.poly._isdict(x)) return Object.keys(x).length > 0;
+      if (typeof x.__bool__ === "function") return x.__bool__() ? true : false;
+      if (typeof x.__len__ === "function") return x.__len__() !== 0;
       return true;
     },
     float(x) {
