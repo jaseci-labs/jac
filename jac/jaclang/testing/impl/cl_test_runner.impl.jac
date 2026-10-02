@@ -372,6 +372,7 @@ impl run_cl_test_file(
     serve: bool = True,
     timeout: float = 120.0
 ) -> list[ClTestResult] {
+    filepath = module_entry_for(filepath);
     (module_js, tests, imports, server_imports) = compile_cl_module(filepath);
     if test_name {
         tests = [
@@ -553,8 +554,18 @@ impl _parse_results(stdout: str, tests: list[any]) -> (list[ClTestResult] | None
     return None;
 }
 
+impl module_entry_for(filepath: str) -> str {
+    import from jaclang.jac0core.ext_registry { is_annex }
+    path = str(filepath);
+    if not is_annex(os.path.basename(path)) {
+        return path;
+    }
+    import from jaclang.compiler.driver.bccache { discover_base_file }
+    return discover_base_file(path) or path;
+}
+
 impl module_is_client(filepath: str) -> bool {
-    path = os.path.abspath(str(filepath));
+    path = os.path.abspath(module_entry_for(str(filepath)));
     if path in _COLOR_CACHE {
         return _COLOR_CACHE[path];
     }

@@ -29,7 +29,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
             return None;
         }
         v = self._str_materialize(v)
-            if _in_return and self._elem_kind(v.type) == "str"
+            if (_in_return or self._is_owned(v)) and self._elem_kind(v.type) == "str"
             else self._str_norm(v);
 
         if declared_fields {

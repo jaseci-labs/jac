@@ -726,6 +726,7 @@ def unit_objects(
     registry = plan.prog.native_units();
     objs: list[bytes] = [];
     ordered = plan.units;
+    registry.emit_objects([u.path for u in ordered], plan.options);
     for u in ordered {
         object_bytes = registry.object_for(u.path, plan.options);
         if object_bytes is None {
@@ -1033,6 +1034,9 @@ def link_artifact(
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
+    if plan.mode != NATIVE_LINK_MODE_BITCODE {
+        registry.emit_objects([unit.path for unit in plan.units], plan.options);
+    }
     for unit in plan.units {
         product = (
             registry.bitcode_for(unit.path, plan.options)

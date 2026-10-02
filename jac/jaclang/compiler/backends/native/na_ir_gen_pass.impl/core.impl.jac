@@ -1920,7 +1920,8 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
 impl NaIRGenPass._primitive_method_takes_kwargs(
     type_name: str, method_name: str
 ) -> bool {
-    return (type_name, method_name) in {("list", "sort"), ("str", "splitlines")};
+    return (type_name, method_name)
+        in {("list", "sort"), ("str", "splitlines"), ("bytes", "decode")};
 }
 
 impl NaIRGenPass._dispatch_primitive_method(
@@ -1933,7 +1934,8 @@ impl NaIRGenPass._dispatch_primitive_method(
     kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     target = self._str_norm(target);
-    args = [self._str_norm(_a) for _a in args];
+    originals = list(args);
+    args = [self._str_borrow(_a) for _a in args];
     _emitter = self._ensure_emitters().get(type_name);
     if _emitter is None {
         return None;
@@ -1957,7 +1959,11 @@ impl NaIRGenPass._dispatch_primitive_method(
         _ctx.receiver_node = kw_node.target.target;
     }
     try {
-        return _emit_fn(_ctx, target, args);
+        result = _emit_fn(_ctx, target, args);
+        if result is not None {
+            self._consume_str_args(originals);
+        }
+        return result;
     } except Exception as _pm_exc {
         if self._na_debug_on() {
             import sys as _pm_sys;
@@ -1988,7 +1994,8 @@ impl NaIRGenPass._dispatch_builtin(
     type_key: str = "",
     arg_nodes: (list[uni.UniNode] | None) = None
 ) -> (ir.Value | None) {
-    args = [self._str_norm(_a) for _a in args];
+    originals = list(args);
+    args = [self._str_borrow(_a) for _a in args];
     self._ensure_emitters();
     if (
         func_name == "str"
@@ -2017,7 +2024,11 @@ impl NaIRGenPass._dispatch_builtin(
         arg_nodes=(arg_nodes or []),
         call_node=kw_node
     );
-    return _emit_fn(_ctx, args);
+    result = _emit_fn(_ctx, args);
+    if result is not None {
+        self._consume_str_args(originals);
+    }
+    return result;
 }
 
 impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict[str, uni.UniNode] {
