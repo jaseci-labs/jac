@@ -66,6 +66,17 @@ curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile
 
 Identity types: `username`, `email` (max one of each; login works with either). Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
 
+## Media and downloads: the session cookie
+
+A browser cannot attach `Authorization` to `<img src>`, `<video src>`, `<audio src>` or an `<a href download>` navigation. Opt in with env `JAC_SERVE_AUTH_SESSION_COOKIE=1` and `/user/register`, `/user/login`, `/user/refresh-token` and `PUT /user/username` also set `jac_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` on HTTPS), which carries the same JWT:
+
+- It is read for `GET` and `HEAD` only, and only when the request has no `Authorization` header. A write never authenticates by cookie, so keep `GET` endpoints read-only.
+- A bad, expired or duplicated cookie is anonymous (401 on a protected endpoint), exactly like a bad header. The token is never read from the query string.
+- `POST /user/logout` clears it (so do a password change and a password reset), and `jacLogout()` calls it. The cookie is invisible to script, so a hand-rolled client that only drops its stored token stays signed in for media until the token expires.
+- A session that began elsewhere (SSO, a token minted before the switch) gets its cookie from `POST /user/refresh-token`.
+- Cookie-authorized responses get `Vary: Cookie` and, unless the endpoint set its own, `Cache-Control: private`.
+- The cookie is host-only: pages and API must share an origin. `Secure` follows the request scheme, so behind a TLS-terminating proxy list it in `[serve.proxy] trusted`. In a fleet, set the variable on the gateway and on every service. Admin, `/metrics`, WebSockets and service-to-service calls stay header-only.
+
 ## Roles
 
 Scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`; the bootstrap admin is created on first start. Set roles via the admin API or the admin portal at `/admin`:

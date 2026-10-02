@@ -85,7 +85,8 @@ obj AuthSettings {
         password_hash_cost: int = 14,
         registration_challenge: bool = False,
         registration_attempts_per_hour: int = 0,
-        registration_challenges_per_10_minutes: int = 0;
+        registration_challenges_per_10_minutes: int = 0,
+        session_cookie: bool = False;
 
     def resolve_secret(base_path: str) -> str;
 }

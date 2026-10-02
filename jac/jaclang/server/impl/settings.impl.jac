@@ -234,6 +234,7 @@ impl ServeSettings.load(
             registration_challenge=cfg.auth.registration_challenge,
             registration_attempts_per_hour=cfg.auth.registration_attempts_per_hour,
             registration_challenges_per_10_minutes=cfg.auth.registration_challenges_per_10_minutes,
+            session_cookie=env_bool('AUTH_SESSION_COOKIE', False),
             password_hash_cost=max(
                 10,
                 min(17, env_int('AUTH_PASSWORD_HASH_COST', cfg.auth.password_hash_cost))
