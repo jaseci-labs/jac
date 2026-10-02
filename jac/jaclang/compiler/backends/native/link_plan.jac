@@ -501,6 +501,20 @@ def _build_link_plan(
             if not stale {
                 continue;
             }
+            if all(not recorded.get(dep) for dep in stale)
+                and registry.adopt_dep_digests(
+                    u.path, {dep: units[dep].digest for dep in stale}
+                ) {
+                if env_na_debug() {
+                    sys.stderr.write(
+                        f"[link plan] adopting digests for {u.path}: {', '.join(
+                            stale
+                        )}\n"
+                    );
+                }
+                rebuilt = True;
+                continue;
+            }
             source_text = virtual_sources.get(u.path);
             if not os.path.isfile(u.path) {
                 source_module = prog.find_module(u.path);
