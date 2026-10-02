@@ -48,8 +48,10 @@ obj ModuleCompilation {
             product_ready,
             CompilationProduct
         }
+        import from jaclang.compiler.placement.placement_facts { variant_selected }
         if (
-            self.analysis.options.no_cgen
+            variant_selected(self.analysis.path) is not False
+            and self.analysis.options.no_cgen
             and (
                 self.analysis.options.native_parity
                 or self.analysis.options.native_required_for(self.analysis.path)

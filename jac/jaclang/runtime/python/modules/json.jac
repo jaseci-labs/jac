@@ -6,12 +6,41 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_dict_default,
+    jacpy_dict_size,
+    jacpy_error_pending,
+    jacpy_fast_item,
+    jacpy_fast_size,
+    jacpy_float_repr,
+    jacpy_float_value,
+    jacpy_is_bool,
+    jacpy_is_dict,
+    jacpy_is_exact_dict,
+    jacpy_is_float,
+    jacpy_is_list,
+    jacpy_is_long,
+    jacpy_is_tuple,
+    jacpy_is_unicode,
+    jacpy_list_new,
+    jacpy_list_size,
+    jacpy_long_repr,
+    jacpy_recursion_enter,
+    jacpy_release,
+    jacpy_tuple_item,
+    jacpy_unicode_size,
+    jacpy_writer_new,
     NULL,
-    PyBool_FromLong,
+    Py_LeaveRecursiveCall,
+    Py_NewRef,
+    Py_None,
     PyDict_DelItem,
     PyDict_New,
+    PyDict_Next,
     PyDict_SetItem,
     PyErr_SetObject,
+    PyExc_StopIteration,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyImport_ImportModuleAttrString,
     PyList_Append,
     PyList_GetItemRef,
@@ -28,46 +57,18 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Fast,
     PySequence_Repeat,
     PyTuple_Size,
+    PyUnicode_Concat,
+    PyUnicode_ReadChar,
+    PyUnicode_Substring,
     PyUnicodeWriter,
     PyUnicodeWriter_Discard,
     PyUnicodeWriter_Finish,
     PyUnicodeWriter_WriteASCII,
     PyUnicodeWriter_WriteChar,
     PyUnicodeWriter_WriteStr,
-    PyUnicodeWriter_WriteSubstring,
-    PyUnicode_Concat,
-    PyUnicode_ReadChar,
-    PyUnicode_Substring,
-    Py_LeaveRecursiveCall,
-    Py_NewRef,
-    jacpy_dict_default,
-    jacpy_dict_entry,
-    jacpy_dict_size,
-    jacpy_error_pending,
-    jacpy_fast_item,
-    jacpy_fast_size,
-    jacpy_float_repr,
-    jacpy_float_value,
-    jacpy_is_bool,
-    jacpy_is_dict,
-    jacpy_is_exact_dict,
-    jacpy_is_float,
-    jacpy_is_list,
-    jacpy_is_long,
-    jacpy_is_none,
-    jacpy_is_tuple,
-    jacpy_is_unicode,
-    jacpy_list_new,
-    jacpy_list_size,
-    jacpy_long_repr,
-    jacpy_none,
-    jacpy_raise_value,
-    jacpy_recursion_enter,
-    jacpy_release,
-    jacpy_tuple_item,
-    jacpy_unicode_size,
-    jacpy_writer_new
+    PyUnicodeWriter_WriteSubstring
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi {
     new_writer,
     boundary_failure,
@@ -224,7 +225,7 @@ obj json_input {
     def stop(position: int) {
         index = required(PyLong_FromLongLong(i64(position)));
         try {
-            jacpy_raise_value("StopIteration", index);
+            PyErr_SetObject(PyExc_StopIteration, index);
         } finally {
             jacpy_release(index);
         }
@@ -434,7 +435,7 @@ obj json_scan {
     }
 
     def object -> ptr[PyObject] {
-        pairs = jacpy_is_none(self.pairs_hook) == 0;
+        pairs = self.pairs_hook != Py_None;
         result = required(jacpy_list_new() if pairs else PyDict_New());
         try {
             self.input.position += 1;
@@ -505,7 +506,7 @@ obj json_scan {
             }
             self.input.position += 1;
             hook = self.pairs_hook if pairs else self.object_hook;
-            if jacpy_is_none(hook) == 0 {
+            if hook != Py_None {
                 return required(PyObject_CallOneArg(hook, result));
             }
             return Py_NewRef(result);
@@ -536,7 +537,7 @@ obj json_scan {
         }
         if self.input.matches("null") {
             self.input.position += 4;
-            return jacpy_none();
+            return Py_NewRef(Py_None);
         }
         if self.input.matches("true") {
             self.input.position += 4;
@@ -567,7 +568,7 @@ def:pub jacpy_json_scanstring(
     try {
         size = int(jacpy_unicode_size(source));
         if end < 0 or end > i64(size) {
-            object_error("ValueError", "end is out of bounds");
+            object_error(PyExc_ValueError, "end is out of bounds");
             return NULL;
         }
         input = json_input(source, size, int(end), strict != 0);
@@ -591,7 +592,7 @@ def:pub jacpy_json_scan(
     memo: ptr[PyObject] = NULL;
     try {
         if start < 0 {
-            object_error("ValueError", "idx cannot be negative");
+            object_error(PyExc_ValueError, "idx cannot be negative");
             return NULL;
         }
         input = json_input(
@@ -614,7 +615,7 @@ def:pub jacpy_json_scan(
 
 import from jaclang.runtime.python.capi { type_name, repr_value, serialization_note }
 
-def encoding_error(kind: str, message: str) {
+def encoding_error(kind: ptr[PyObject], message: str) {
     object_error(kind, message);
     raise boundary_failure();
 }
@@ -633,7 +634,7 @@ obj json_output {
         indent_cache: list[ptr[PyObject]] = [];
 
     def initialize_indent(level: int) {
-        if jacpy_is_none(self.indent) != 0 {
+        if self.indent == Py_None {
             return;
         }
         newline = text_object("\n");
@@ -685,7 +686,7 @@ obj json_output {
     }
 
     def mark(value: ptr[PyObject]) -> ptr[PyObject] {
-        if jacpy_is_none(self.markers) != 0 {
+        if self.markers == Py_None {
             return NULL;
         }
         identity = required(PyLong_FromVoidPtr(value));
@@ -693,7 +694,7 @@ obj json_output {
             found = PySequence_Contains(self.markers, identity);
             checked(found);
             if found != 0 {
-                encoding_error("ValueError", "Circular reference detected");
+                encoding_error(PyExc_ValueError, "Circular reference detected");
             }
             checked(PyDict_SetItem(self.markers, identity, value));
             return Py_NewRef(identity);
@@ -715,7 +716,7 @@ obj json_output {
             or number < -1.7976931348623157e308 {
             if not self.allow_nan {
                 encoding_error(
-                    "ValueError",
+                    PyExc_ValueError,
                     "Out of range float values are not JSON compliant: "
                         + repr_value(value)
                 );
@@ -732,7 +733,7 @@ obj json_output {
         try {
             if jacpy_is_unicode(encoded) == 0 {
                 encoding_error(
-                    "TypeError",
+                    PyExc_TypeError,
                     "encoder() must return a string, not " + type_name(encoded)[:80]
                 );
             }
@@ -743,7 +744,7 @@ obj json_output {
     }
 
     def encode(value: ptr[PyObject], level: int) {
-        if jacpy_is_none(value) != 0 {
+        if value == Py_None {
             write_ascii(self.writer, "null");
         } elif jacpy_is_bool(value) != 0 {
             write_ascii(
@@ -864,7 +865,7 @@ obj json_output {
             text = Py_NewRef(key);
         } elif jacpy_is_float(key) != 0 {
             text = self.float_text(key);
-        } elif jacpy_is_none(key) != 0 {
+        } elif key == Py_None {
             text = text_object("null");
         } elif jacpy_is_bool(key) != 0 {
             text = text_object("true" if PyObject_IsTrue(key) != 0 else "false");
@@ -874,7 +875,7 @@ obj json_output {
             return first;
         } else {
             encoding_error(
-                "TypeError",
+                PyExc_TypeError,
                 "keys must be str, int, float, bool or None, not "
                     + type_name(key)[:100]
             );
@@ -926,7 +927,7 @@ obj json_output {
                         try {
                             if jacpy_is_tuple(item) == 0 or PyTuple_Size(item) != 2 {
                                 encoding_error(
-                                    "ValueError", "items must return 2-tuples"
+                                    PyExc_ValueError, "items must return 2-tuples"
                                 );
                             }
                             key = required(jacpy_tuple_item(item, 0));
@@ -952,36 +953,22 @@ obj json_output {
                 }
             } else {
                 position: i64 = 0;
-                while True {
-                    record = jacpy_dict_entry(value, position);
-                    if record == 0 {
-                        if jacpy_error_pending() != 0 {
-                            raise boundary_failure();
-                        }
-                        break;
-                    }
+                entry_key: ptr[PyObject] = NULL;
+                entry_value: ptr[PyObject] = NULL;
+                while PyDict_Next(
+                    value, &mut position, &mut entry_key, &mut entry_value
+                )
+                    != 0 {
+                    # Held across the encoder callbacks, which run user code.
+                    key = Py_NewRef(entry_key);
+                    child = Py_NewRef(entry_value);
                     try {
-                        index = required(jacpy_tuple_item(record, 0));
-                        try {
-                            position = PyLong_AsLongLong(index);
-                        } finally {
-                            jacpy_release(index);
-                        }
-                        key = required(jacpy_tuple_item(record, 1));
-                        try {
-                            child = required(jacpy_tuple_item(record, 2));
-                            try {
-                                first = self.key_value(
-                                    value, key, child, level, separator, first
-                                );
-                            } finally {
-                                jacpy_release(child);
-                            }
-                        } finally {
-                            jacpy_release(key);
-                        }
+                        first = self.key_value(
+                            value, key, child, level, separator, first
+                        );
                     } finally {
-                        jacpy_release(record);
+                        jacpy_release(child);
+                        jacpy_release(key);
                     }
                 }
             }

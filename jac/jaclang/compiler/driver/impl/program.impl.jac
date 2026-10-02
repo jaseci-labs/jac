@@ -441,12 +441,19 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
     import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
     import from jaclang.compiler.frontend.codeinfo { is_client_by_location }
     import from jaclang.compiler.native_scope { package_host_edge }
-    import from jaclang.compiler.placement.placement_facts { native_only, native_unit }
+    import from jaclang.compiler.placement.placement_facts {
+        native_only,
+        native_unit,
+        variant_selected
+    }
     import from jaclang.compiler.placement.placement_pins {
         config_kind_space,
         effective_module_pin
     }
     opts = self.options;
+    if variant_selected(file_path) is False {
+        return 'server';
+    }
     if native_only(file_path) {
         return 'native';
     }

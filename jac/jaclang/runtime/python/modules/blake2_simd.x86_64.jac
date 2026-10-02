@@ -6,7 +6,6 @@ jacpy_hacl_simd_features() reports the CPU can run them, as
 blake2module.c does.
 """
 
-import from jaclang.runtime.python.cpython_api { jacpy_offset }
 import from c {
     obj Hacl_Hash_Blake2b_blake2_params {
         has digest_length: u8 = 0,
@@ -62,7 +61,7 @@ def simd128_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_Blake2s_Simd128_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_Blake2s_Simd128_update(hacl, cursor, u32(remaining));
 }
@@ -73,7 +72,7 @@ def simd256_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_Blake2b_Simd256_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_Blake2b_Simd256_update(hacl, cursor, u32(remaining));
 }

@@ -2,12 +2,13 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
-    PyBool_FromLong,
+    PyExc_ImportError,
     PyLong_FromUnsignedLong,
     PyModule_AddIntConstant,
     PyObject,
     PyUnicode_FromString
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -222,7 +223,7 @@ def:priv constants -> list[tuple[str, u64]] {
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
-            "ImportError",
+            PyExc_ImportError,
             "_stat has no stat_platform.<os>.jac for this target platform"
         );
         return i32(-1);

@@ -9,6 +9,7 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Clear,
     PyErr_Occurred,
+    PyExc_RuntimeError,
     PyInterpreterState_Get,
     PyInterpreterState_Main,
     PyList_GetItem,
@@ -24,8 +25,7 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     _PySys_GetOptionalAttrString,
     jacpy_is_unicode,
-    jacpy_release,
-    jacpy_syslog
+    jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error, object_tuple }
 import from jaclang.runtime.python.bindings.converters { borrowed_none }
@@ -33,7 +33,7 @@ import from jaclang.runtime.python.modules.syslog_constants { LOG_USER, LOG_INFO
 import from c {
     def openlog(ident: ptr[u8], option: i32, facility: i32);  def closelog;  def setlogmask(
         mask: i32
-    ) -> i32;
+    ) -> i32;  def syslog(priority: i32, message_format: str, *args: any);
 }
 
 glob:priv ident_object: ptr[PyObject] = NULL,
@@ -103,7 +103,7 @@ def syslog_openlog_impl(
     module: ptr[PyObject], ident: ptr[PyObject], logopt: i64, facility: i64
 ) -> ptr[PyObject] {
     if not is_main_interpreter() {
-        object_error("RuntimeError", "subinterpreter can't use syslog.openlog()");
+        object_error(PyExc_RuntimeError, "subinterpreter can't use syslog.openlog()");
         return NULL;
     }
     name = NULL;
@@ -149,7 +149,7 @@ def syslog_syslog_impl(
     if not log_open {
         if not is_main_interpreter() {
             object_error(
-                "RuntimeError",
+                PyExc_RuntimeError,
                 "subinterpreter can't use syslog.syslog() until the syslog is opened by the main interpreter"
             );
             return NULL;
@@ -163,14 +163,14 @@ def syslog_syslog_impl(
     # Keep the ident alive while the message is logged: openlog() keeps a
     # pointer to its UTF-8 buffer rather than a copy.
     ident = Py_NewRef(ident_object) if ident_object else NULL;
-    jacpy_syslog(priority, message);
+    syslog(priority, "%s", message);
     jacpy_release(ident);
     return Py_NewRef(borrowed_none());
 }
 
 def syslog_closelog_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if not is_main_interpreter() {
-        object_error("RuntimeError", "subinterpreter can't use syslog.closelog()");
+        object_error(PyExc_RuntimeError, "subinterpreter can't use syslog.closelog()");
         return NULL;
     }
     if not audit("syslog.closelog", []) {

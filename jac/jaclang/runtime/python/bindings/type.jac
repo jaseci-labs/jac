@@ -1,7 +1,20 @@
 """Native declarations for Python heap types and their C ABI callbacks."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyObject, Py_buffer }
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    Py_buffer,
+    Py_TYPE,
+    PyErr_NoMemory,
+    PyMem_Free,
+    PyMem_Malloc,
+    PyMem_RawCalloc,
+    PyObject,
+    PyType_GetSlot
+}
+import from jaclang.runtime.python.layouts { PyGetSetDef }
+import from jaclang.runtime.python.capi { c_string_copy }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, install_methods }
+import from jaclang.runtime.python.bindings.members { MemberField }
 
 enum TypeFlags {
     DEFAULT = 0,
@@ -11,10 +24,11 @@ enum TypeFlags {
     GC = 16384,
     MANAGED_WEAKREF = 8,
     DISALLOW_INSTANTIATION = 128,
-    SEQUENCE = 32
+    SEQUENCE = 32,
+    METHOD_DESCRIPTOR = 131072
 }
 
-enum TypeSlot { INIT = 60, NEW = 65 }
+enum TypeSlot { DESCR_GET = 54, INIT = 60, NEW = 65 }
 
 import from c {
     obj TypeHooks {
@@ -64,7 +78,10 @@ import from c {
             release_buffer: Callable[[ptr[PyObject], ptr[Py_buffer]], None] = 0,
             get_attribute: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
             set_attribute:
-                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0;
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], i32] = 0,
+            string: Callable[[ptr[PyObject]], ptr[PyObject]] = 0,
+            finalize: Callable[[ptr[PyObject]], None] = 0,
+            boolean: Callable[[ptr[PyObject]], i32] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
@@ -73,7 +90,21 @@ import from c {
         hooks: TypeHooks,
         property_count: i64,
         instance_dict: i64,
-        unhashable: i64
+        unhashable: i64,
+        field_count: i64,
+        record_size: i64,
+        options: i64
+    ) -> ptr;  def jacpy_binding_member(
+        handle: ptr,
+        index: i64,
+        name: str,
+        type: i64,
+        offset: i64,
+        readonly: i64,
+        doc: str,
+        has_doc: i64
+    ) -> i64;  def jacpy_binding_record(
+        object: ptr[PyObject], definition: ptr
     ) -> ptr;  def jacpy_binding_type_discard(handle: ptr);  def jacpy_binding_type_create(
         handle: ptr, module: ptr[PyObject], bases: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_binding_owner(
@@ -107,6 +138,46 @@ obj PropertyDefinition {
         doc: str = "";
 }
 
+import from c {
+    # A PyGetSetDef whose getter and setter have PropertyCallbacks' types.
+    obj PropertyRecord {
+        has name: ptr[u8] = ptr[u8](),
+            read: Callable[[ptr[PyObject], u64], ptr[PyObject]] = 0,
+            write: Callable[[ptr[PyObject], ptr[PyObject], u64], i32] = 0,
+            doc: ptr[u8] = ptr[u8](),
+            context: u64 = 0;
+    }
+}
+
+# A NULL-terminated PyGetSetDef table of `properties` for a type defined as C
+# data, the tp_getset counterpart of method_table(): it lives for the process
+# lifetime, and an empty doc is C's NULL. NULL with MemoryError when
+# allocation fails.
+def getset_table(properties: list[PropertyDefinition]) -> ptr[PyGetSetDef] {
+    count = len(properties);
+    table = ptr[PropertyRecord](PyMem_RawCalloc(u64(count + 1), 40));
+    if table.is_null() {
+        PyErr_NoMemory();
+        return ptr[PyGetSetDef]();
+    }
+    for index in range(count) {
+        property = properties[index];
+        name = c_string_copy(property.name);
+        doc = c_string_copy(property.doc) if property.doc else ptr[u8]();
+        if name.is_null() or (property.doc and doc.is_null()) {
+            PyErr_NoMemory();
+            return ptr[PyGetSetDef]();
+        }
+        record = (table + index).view(1);
+        record[0].name = name;
+        record[0].read = property.callbacks.read;
+        record[0].write = property.callbacks.write;
+        record[0].doc = doc;
+        record[0].context = property.context;
+    }
+    return ptr[PyGetSetDef](table);
+}
+
 obj TypeDefinition {
     has handle: ptr = NULL;
 
@@ -118,11 +189,17 @@ obj TypeDefinition {
         hooks: TypeHooks,
         properties: (list[PropertyDefinition] | None) = None,
         instance_dict: bool = False,
-        unhashable: bool = False
+        unhashable: bool = False,
+        members: (list[MemberField] | None) = None,
+        record_size: int = 0,
+        weaklist: bool = False,
+        generic_getattr: bool = False,
+        generic_setattr: bool = False
     ) {
         declarations: list[PropertyDefinition] = properties
             if properties is not None
             else [];
+        fields: list[MemberField] = members if members is not None else [];
         self.handle = jacpy_binding_type(
             name,
             doc,
@@ -131,7 +208,11 @@ obj TypeDefinition {
             hooks,
             i64(len(declarations)),
             i64(instance_dict),
-            i64(unhashable)
+            i64(unhashable),
+            i64(len(fields)),
+            i64(record_size),
+            # JAC_TYPE_WEAKLIST, JAC_TYPE_GENERIC_GETATTR, JAC_TYPE_GENERIC_SETATTR.
+            i64(int(weaklist) | int(generic_getattr) << 1 | int(generic_setattr) << 2)
         );
         if self.handle and not install_methods(self.handle, methods) {
             jacpy_binding_type_discard(self.handle);
@@ -139,6 +220,24 @@ obj TypeDefinition {
         }
         if not self.handle {
             return;
+        }
+        for index in range(len(fields)) {
+            field = fields[index];
+            if jacpy_binding_member(
+                self.handle,
+                i64(index),
+                field.name,
+                i64(field.kind),
+                i64(field.offset),
+                i64(field.readonly),
+                field.doc or "",
+                i64(field.doc is not None)
+            )
+                < 0 {
+                jacpy_binding_type_discard(self.handle);
+                self.handle = ptr();
+                return;
+            }
         }
         for index in range(len(declarations)) {
             property = declarations[index];
@@ -171,7 +270,7 @@ import from c {
         object: ptr[PyObject]
     ) -> i64;  def jacpy_binding_dict_peek(object: ptr[PyObject]) -> ptr[PyObject];  def jacpy_binding_dict_replace(
         object: ptr[PyObject], dictionary: ptr[PyObject]
-    ) -> i64;  def jacpy_binding_marker -> ptr[PyObject];
+    ) -> i64;
 }
 
 import from c {
@@ -202,4 +301,88 @@ import from c {
 
 import from c {
     def jacpy_binding_type_matches(type: ptr[PyObject], definition: ptr) -> i64;
+    # The binding definition nearest to `type` along its tp_base chain.
+    def jacpy_binding_token(type: ptr[PyObject]) -> ptr;
+}
+
+import from c {
+    # A cell holding a tp_descr_get slot, so the slot can be called.
+    obj DescriptorGetSlot {
+        has call:
+            Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0;
+    }
+}
+
+# type(descriptor)->tp_descr_get(descriptor, instance, owner), called directly
+# as C code calls the slot. A new reference, or NULL with the exception set;
+# NULL with no exception when the type has no __get__.
+def descriptor_get(
+    descriptor: ptr[PyObject], instance: ptr[PyObject], owner: ptr[PyObject]
+) -> ptr[PyObject] {
+    slot = PyType_GetSlot(Py_TYPE(descriptor), i32(TypeSlot.DESCR_GET.value));
+    if not slot {
+        return NULL;
+    }
+    cell = ptr[u64](PyMem_Malloc(8));
+    if not cell {
+        return NULL;
+    }
+    cell.view(1)[0] = u64(int(slot));
+    result = ptr[DescriptorGetSlot](cell).view(1)[0].call(descriptor, instance, owner);
+    PyMem_Free(cell);
+    return result;
+}
+
+import from jaclang.runtime.python.cpython_api { PyErr_NoMemory, PyMem_RawCalloc }
+import from jaclang.runtime.python.layouts {
+    PY_STRUCT_SEQUENCE_DESC_SIZE,
+    PY_STRUCT_SEQUENCE_FIELD_SIZE,
+    PyStructSequence_Desc,
+    PyStructSequence_Field
+}
+import from jaclang.runtime.python.object_model.structseq {
+    PyStructSequence_NewType,
+    PyStructSequence_UnnamedField
+}
+import from jaclang.runtime.python.capi { c_string_copy }
+
+# A C string kept for the process, NULL for "" when `empty_is_null`.
+def:priv kept_text(text: str, empty_is_null: bool) -> ptr[u8] {
+    if empty_is_null and not text {
+        return ptr[u8]();
+    }
+    return c_string_copy(text);
+}
+
+"""PyStructSequence_NewType() over a descriptor built from (name, doc) fields,
+the first `visible` of them in the tuple. A name of "" is an unnamed field
+(PyStructSequence_UnnamedField) and a doc of "" is NULL, as in a C module's
+static field array. The descriptor and its strings are raw memory kept for
+the process, as that static array is. NULL with the exception set."""
+def struct_sequence_type(
+    name: str, doc: str, fields: list[tuple[str, str]], visible: int
+) -> ptr[PyObject] {
+    table = ptr[PyStructSequence_Field](
+        PyMem_RawCalloc(u64(len(fields) + 1), u64(PY_STRUCT_SEQUENCE_FIELD_SIZE))
+    );
+    desc = ptr[PyStructSequence_Desc](
+        PyMem_RawCalloc(1, u64(PY_STRUCT_SEQUENCE_DESC_SIZE))
+    );
+    if not table or not desc {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    for index in range(len(fields)) {
+        (field_name, field_doc) = fields[index];
+        entry_address = table + index;
+        entry_address.view(1)[0].name = PyStructSequence_UnnamedField
+            if not field_name
+            else kept_text(field_name, False);
+        entry_address.view(1)[0].doc = kept_text(field_doc, True);
+    }
+    desc.view(1)[0].name = kept_text(name, False);
+    desc.view(1)[0].doc = kept_text(doc, True);
+    desc.view(1)[0].fields = table;
+    desc.view(1)[0].n_in_sequence = i32(visible);
+    return PyStructSequence_NewType(desc);
 }

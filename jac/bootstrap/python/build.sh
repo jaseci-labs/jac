@@ -239,14 +239,30 @@ SETUP
                 echo "native_api.jac does not import PyInit_$module" >&2
                 exit 1
             }
-            echo "$module $flags" >> Modules/Setup.local
-            # A flag naming an archive under Modules/ is one of CPython's own
-            # make targets (the vendored HACL* libraries). makesetup only puts
-            # it on the link line: a module without a C source has no rule
-            # that depends on it, so it is built before the interpreter.
+            # A flag prefixed with an OS (linux:-lrt) applies only there.
+            selected=
             for flag in $flags; do
+                case "$flag" in
+                    *:*)
+                        [ "${flag%%:*}" = "${platform%%-*}" ] || continue
+                        flag=${flag#*:}
+                        ;;
+                esac
+                # A library the build vendors (-lz, -lsqlite3) links its
+                # static archive, as the C modules' LIB*_LIBS do, never the
+                # system's copy.
+                case "$flag" in
+                    -l*) [ -f "$deps/lib/lib${flag#-l}.a" ] && flag="$deps/lib/lib${flag#-l}.a" ;;
+                esac
+                selected="$selected $flag"
+                # A flag naming an archive under Modules/ is one of CPython's
+                # own make targets (the vendored HACL* libraries). makesetup
+                # only puts it on the link line: a module without a C source
+                # has no rule that depends on it, so it is built before the
+                # interpreter.
                 case "$flag" in Modules/*.a) archives="$archives $flag" ;; esac
             done
+            echo "$module$selected" >> Modules/Setup.local
         done < "$registry"
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
@@ -263,6 +279,16 @@ SETUP
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
         --with-system-expat --with-system-libmpdec --without-readline
+    if [ -n "$host" ]; then
+        # Native Jac defines and reads objects through layouts.jac; its
+        # generated asserts fail the build if this configuration disagrees.
+        "$CC" $CFLAGS -DPy_BUILD_CORE -I. -IInclude -c -o "$work/layouts_check.o" "$recipe/layouts_check.c"
+        rm -f "$work/layouts_check.o"
+        # The configure features the generated constant tables recorded
+        # must be this build's.
+        "$CC" $CFLAGS -I. -IInclude -c -o "$work/features_check.o" "$recipe/features_check.c"
+        rm -f "$work/features_check.o"
+    fi
     if [ -n "$archives" ]; then
         # shellcheck disable=SC2086 # one make target per archive
         python_make -j"$jobs" $archives

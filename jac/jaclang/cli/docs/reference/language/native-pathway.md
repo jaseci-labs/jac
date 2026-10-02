@@ -454,6 +454,7 @@ At native strict sites, using a `T | None` value where the unwrapped `T` is requ
 | Init constructor | `def init(x: int) { self.x = x; }` |
 | Postinit hook | `def postinit() { self.setup(); }` |
 | Recursion | `def fib(n: int) -> int { return fib(n-1) + fib(n-2); }` |
+| Guaranteed tail calls | `return tail step(n - 1, acc);` lowers to `musttail` (constant stack; `E5113` when it cannot) |
 
 ### Operators
 
@@ -853,6 +854,8 @@ with entry {
 
 The scalar travels through an addressable slot of its C type and is written back after the call, so `&mut flag` with `flag: bool` passes a C `bool*`. On the native backend a struct is passed as a pointer to its payload; the LLVM `noalias` / `readonly` facts on borrowed Jac parameters are unaffected.
 
+That write-back is the C boundary's. A Jac function's own `&mut` scalar parameter is a value: assigning it, lending it on as `&mut p`, or passing it to a parameter the callee declares `&mut` would change only the function's copy, so the checker rejects each (`E1159`). Return the new value (a tuple for several), or take a `ptr[T]` to storage the caller owns.
+
 ### C pointers: `ptr[T]`
 
 `ptr[T]` is a **non-owning C address** of a `T` (a sized scalar, a foreign struct, an opaque C type, or another `ptr`); a bare `ptr` is `void*`. It is a builtin generic type name like `list[T]`, not a keyword, and it is plain data: it can be a local, a field of a Jac object, a container element, a foreign struct field, a clib parameter or a clib return, and it copies like an `int`. That is how a Jac object holds a C handle.
@@ -863,12 +866,16 @@ A pointer supports exactly these operations:
 |---|---|
 | `p.is_null()` | the address is NULL; `bool(p)` / `if p` test the same thing |
 | `p == q`, `p != q` | address equality |
+| `p + n`, `p - n`, `p += n`, `p -= n` | step `n` elements of `T`, as in C (bytes for a bare `ptr` or an opaque `T`) |
+| `p - q` | the distance from `q` to `p` in elements |
+| `p < q`, `p <= q`, `p > q`, `p >= q` | order by unsigned address, as C orders pointers into one object; both sides have one pointee type (a bare `ptr` side takes any `ptr[T]`, which widens to it) |
+| `int(p)`, `ptr[T](n)` | the address as an integer, and the pointer at an integer address |
 | passing `p` to C | the address, as is |
 | `p.view(n)` | a bounds-checked view of `n` elements ([below](#views-of-c-memory-pviewn)) |
 | `ptr[T]()` | the null pointer |
 | `ptr[T](q)` | the same address retyped as a `T*` |
 
-There is no dereference, no arithmetic and no `free`: C memory is freed by the C API that allocated it. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
+There is no dereference and no `free`: memory is read and written through `p.view(n)`, and C memory is freed by the C API that allocated it. As in C, a step must not carry a pointer around the ends of the address space (past address 0 or the highest address); the native backend relies on it, knowing a pointer stepped forward is not null, so a view of it needs no null check. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
 
 <!-- jac-skip -->
 ```jac

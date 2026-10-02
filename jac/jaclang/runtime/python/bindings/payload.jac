@@ -2,7 +2,7 @@
 
 import from jaclang.runtime.python.cpython_api { PyObject, Py_TYPE }
 import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
+import from jaclang.runtime.python.bindings.module { visit_reference }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_dict_visit,
     jacpy_binding_dict_clear,
@@ -22,10 +22,17 @@ import from c {
     );
 }
 
+import from c {
+    # The state through the instance's own type's binding definition.
+    def jacpy_binding_own_present(object: ptr[PyObject]) -> i64;  def jacpy_binding_own_get(
+        object: ptr[PyObject]
+    ) -> NativeState;
+}
+
 def traverse_payload(
     instance: ptr[PyObject], definition: ptr, visitor: ptr, context: ptr
 ) -> i32 {
-    result = jacpy_binding_visit(Py_TYPE(instance), visitor, context);
+    result = visit_reference(Py_TYPE(instance), visitor, context);
     if result != 0 {
         return result;
     }

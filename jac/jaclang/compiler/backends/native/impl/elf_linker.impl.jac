@@ -704,6 +704,25 @@ def _apply_debug_reloc(
 }
 
 
+def _is_data_import(sym: ElfSymbol, direct_refs: set[str]) -> bool {
+    if sym.typ == STT_OBJECT {
+        return True;
+    }
+    if sym.typ != STT_NOTYPE {
+        return False;
+    }
+    return sym.name in {"stdin", "stdout", "stderr", "environ"}
+        or sym.name not in direct_refs;
+}
+
+def _direct_reference_names(relocations: list[ElfRela], arch: ArchConfig) -> set[str] {
+    return {
+        rela.sym_name
+        for rela in relocations
+        if rela.sym_name and rela.rtype not in arch.gotpcrel_rtypes
+    };
+}
+
 impl ElfLinker._undefined_bindings -> dict[str, int] {
     bindings: dict[str, int] = {};
     for sym in self.symbols {
@@ -773,7 +792,7 @@ impl ElfLinker.build_executable -> bytes {
 
     undefined_bindings = self._undefined_bindings();
     referenced_names = {rela.sym_name for rela in self.relocations};
-    known_data_syms = {"stdin", "stdout", "stderr", "environ"};
+    direct_refs = _direct_reference_names(self.relocations, arch);
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
     local_sym_map: dict[str, tuple[str, int]] = {};
@@ -792,8 +811,7 @@ impl ElfLinker.build_executable -> bytes {
             and sym.bind >= STB_GLOBAL
             and sym.name not in defined_names
             and sym.name in referenced_names {
-            is_data = sym.typ == STT_OBJECT
-                or (sym.typ == STT_NOTYPE and sym.name in known_data_syms);
+            is_data = _is_data_import(sym, direct_refs);
             if is_data {
                 if sym.name not in extern_data_syms {
                     extern_data_syms.append(sym.name);
@@ -846,6 +864,17 @@ impl ElfLinker.build_executable -> bytes {
             data_got_syms.append(rela.sym_name);
         }
     }
+    copy_data_syms = [
+        nm
+        for nm in extern_data_syms
+        if nm in direct_refs
+    ];
+    bound_data_syms = [
+        nm
+        for nm in data_got_syms
+        if nm not in direct_refs
+    ];
+    n_rela_dyn = len(copy_data_syms) + len(bound_data_syms);
 
     ehdr_size = 64;
     num_phdrs = 5;
@@ -911,9 +940,9 @@ impl ElfLinker.build_executable -> bytes {
     dyn_entries.append((DT_PLTRELSZ, len(extern_func_syms) * 24));
     dyn_entries.append((DT_PLTREL, DT_RELA));
     dyn_entries.append((DT_JMPREL, 0));
-    if len(extern_data_syms) > 0 {
+    if n_rela_dyn > 0 {
         dyn_entries.append((DT_RELA, 0));
-        dyn_entries.append((DT_RELASZ, len(extern_data_syms) * 24));
+        dyn_entries.append((DT_RELASZ, n_rela_dyn * 24));
         dyn_entries.append((DT_RELAENT, 24));
     }
 
@@ -941,7 +970,7 @@ impl ElfLinker.build_executable -> bytes {
     cur_offset += len(extern_func_syms) * 24;
     cur_offset = _align(cur_offset, 8);
     rela_dyn_foff = cur_offset;
-    rela_dyn_size = len(extern_data_syms) * 24;
+    rela_dyn_size = n_rela_dyn * 24;
     cur_offset += rela_dyn_size;
     cur_offset = _align(cur_offset, 16);
     plt_foff = cur_offset;
@@ -961,7 +990,7 @@ impl ElfLinker.build_executable -> bytes {
     cur_offset = _align(cur_offset, 8);
     data_got_foff = cur_offset;
 
-    data_got_size = (len(extern_data_syms) + len(local_got_syms) + len(data_got_syms))
+    data_got_size = (len(copy_data_syms) + len(local_got_syms) + len(data_got_syms))
         * 8;
     cur_offset += data_got_size;
     cur_offset = _align(cur_offset, 8);
@@ -1010,8 +1039,8 @@ impl ElfLinker.build_executable -> bytes {
         dynamic_data.extend(struct.pack("<qQ", tag, val));
     }
 
-    for idx in range(len(extern_data_syms)) {
-        dynsym_offset = (1 + len(extern_func_syms) + idx) * 24;
+    for (idx, nm) in enumerate(copy_data_syms) {
+        dynsym_offset = (1 + len(extern_func_syms) + extern_data_syms.index(nm)) * 24;
         copy_vaddr = data_got_vaddr + idx * 8;
         struct.pack_into("<QQ", dynsym_data, dynsym_offset + 8, copy_vaddr, 8);
     }
@@ -1055,9 +1084,9 @@ impl ElfLinker.build_executable -> bytes {
     }
 
     rela_dyn_data = bytearray();
-    for idx in range(len(extern_data_syms)) {
+    for (idx, nm) in enumerate(copy_data_syms) {
         r_offset = data_got_vaddr + idx * 8;
-        dynsym_idx = 1 + len(extern_func_syms) + idx;
+        dynsym_idx = 1 + len(extern_func_syms) + extern_data_syms.index(nm);
         r_info = (dynsym_idx << 32) | arch.copy_rtype;
         r_addend = 0;
         rela_dyn_data.extend(struct.pack("<QQq", r_offset, r_info, r_addend));
@@ -1072,12 +1101,12 @@ impl ElfLinker.build_executable -> bytes {
             + plt_idx * plt_entry_size;
     }
     extern_got_addr: dict[str, int] = {};
-    for got_idx in range(len(extern_data_syms)) {
-        extern_got_addr[extern_data_syms[got_idx]] = data_got_vaddr + got_idx * 8;
+    for (got_idx, nm) in enumerate(copy_data_syms) {
+        extern_got_addr[nm] = data_got_vaddr + got_idx * 8;
     }
 
     local_got_slot: dict[str, int] = {};
-    _lg_base = len(extern_data_syms);
+    _lg_base = len(copy_data_syms);
     for lg_idx in range(len(local_got_syms)) {
         _lg_name = local_got_syms[lg_idx];
         local_got_slot[_lg_name] = data_got_vaddr + (_lg_base + lg_idx) * 8;
@@ -1100,9 +1129,21 @@ impl ElfLinker.build_executable -> bytes {
     for dg_idx in range(len(data_got_syms)) {
         _dg_name = data_got_syms[dg_idx];
         data_got_slot[_dg_name] = data_got_vaddr + (_dg_base + dg_idx) * 8;
-        struct.pack_into(
-            "<Q", data_got_data, (_dg_base + dg_idx) * 8, extern_got_addr[_dg_name]
-        );
+        if _dg_name in extern_got_addr {
+            struct.pack_into(
+                "<Q", data_got_data, (_dg_base + dg_idx) * 8, extern_got_addr[_dg_name]
+            );
+        } else {
+            dynsym_idx = 1 + len(extern_func_syms) + extern_data_syms.index(_dg_name);
+            rela_dyn_data.extend(
+                struct.pack(
+                    "<QQq",
+                    data_got_slot[_dg_name],
+                    (dynsym_idx << 32) | arch.glob_dat_rtype,
+                    0
+                )
+            );
+        }
     }
 
     code_bytes = bytearray(code_data);
@@ -1115,7 +1156,7 @@ impl ElfLinker.build_executable -> bytes {
         is_data_extern = rela.sym_name in extern_got_addr;
 
         if rela.rtype in arch.gotpcrel_rtypes {
-            if is_data_extern {
+            if rela.sym_name in data_got_slot {
                 sym_addr = data_got_slot[rela.sym_name];
             } elif is_func_extern {
                 func_idx = extern_func_syms.index(rela.sym_name);
@@ -1746,7 +1787,7 @@ impl ElfLinker.build_shared_object -> bytes {
 
     undefined_bindings = self._undefined_bindings();
     referenced_names = {rela.sym_name for rela in self.relocations};
-    known_data_syms = {"stdin", "stdout", "stderr", "environ"};
+    direct_refs = _direct_reference_names(self.relocations, arch);
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
     local_sym_map: dict[str, tuple[str, int]] = {};
@@ -1757,8 +1798,7 @@ impl ElfLinker.build_shared_object -> bytes {
             and sym.name
             and sym.bind >= STB_GLOBAL
             and sym.name in referenced_names {
-            is_data = sym.typ == STT_OBJECT
-                or (sym.typ == STT_NOTYPE and sym.name in known_data_syms);
+            is_data = _is_data_import(sym, direct_refs);
             if is_data {
                 if sym.name not in extern_data_syms {
                     extern_data_syms.append(sym.name);

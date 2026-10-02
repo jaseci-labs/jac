@@ -8,6 +8,8 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_RuntimeError,
+    PyExc_ValueError,
     PyIter_Next,
     PyList_GetItemRef,
     PyObject,
@@ -62,7 +64,7 @@ def:pub jacpy_tee_block_init(
     next_block: ptr[PyObject]
 ) -> i64 {
     if values != 0 and jacpy_list_size(values) > 57 {
-        object_error("ValueError", "Invalid arguments");
+        object_error(PyExc_ValueError, "Invalid arguments");
         return -1;
     }
     state.source = Py_NewRef(source);
@@ -224,7 +226,7 @@ def:pub jacpy_tee_next(cursor: tee_cursor) -> ptr[PyObject] {
     }
     if cursor.index >= len(state.values) {
         if state.running {
-            object_error("RuntimeError", "cannot re-enter the tee iterator");
+            object_error(PyExc_RuntimeError, "cannot re-enter the tee iterator");
             return NULL;
         }
         state.running = True;

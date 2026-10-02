@@ -5,36 +5,12 @@ at the shared object boundary. Derived from CPython 3.14.6; see ../LICENSE.cpyth
 """
 
 import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyBool_FromLong,
-    PyComplex_FromDoubles,
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble,
-    PyDict_Clear,
-    PyDict_SetItem,
-    PyErr_Clear,
-    PyFloat_AsDouble,
-    PyFloat_FromDouble,
-    PyIndex_Check,
-    PyLong_AsLongLong,
-    PyLong_AsUnsignedLongLong,
-    PyLong_AsVoidPtr,
-    PyLong_FromLongLong,
-    PyLong_FromUnsignedLongLong,
-    PyNumber_Index,
-    PyObject,
-    PyObject_CallOneArg,
-    PyObject_IsTrue,
-    PyTuple_New,
-    PyTuple_Size,
-    Py_NewRef,
     jacpy_bytes_address,
     jacpy_bytes_from_memory,
     jacpy_bytes_length,
     jacpy_complex_value,
     jacpy_dict_get,
     jacpy_dict_size,
-    jacpy_error_is,
     jacpy_error_pending,
     jacpy_float_pack,
     jacpy_float_unpack,
@@ -42,31 +18,77 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_is_bytes,
     jacpy_is_long,
     jacpy_long_address,
-    jacpy_memory_byte,
     jacpy_memory_copy,
-    jacpy_memory_set,
     jacpy_memory_zero,
     jacpy_native_float_store,
     jacpy_native_little_endian,
     jacpy_native_size,
-    jacpy_offset,
     jacpy_release,
     jacpy_set_exception,
     jacpy_tuple_item,
-    jacpy_tuple_set_owned
+    jacpy_tuple_set_owned,
+    NULL,
+    Py_NewRef,
+    PyDict_Clear,
+    PyDict_SetItem,
+    PyErr_Clear,
+    PyErr_ExceptionMatches,
+    PyExc_OverflowError,
+    PyFloat_AsDouble,
+    PyFloat_FromDouble,
+    PyIndex_Check,
+    PyLong_AsLongLong,
+    PyLong_AsUnsignedLongLong,
+    PyNumber_Index,
+    PyObject,
+    PyObject_CallOneArg,
+    PyObject_IsTrue,
+    PyTuple_New,
+    PyExc_RuntimeError,
+    PyExc_TypeError,
+    PyUnicode_AsEncodedString,
+    Py_None,
+    Py_TYPE,
+    jacpy_is_unicode
 }
+import from jaclang.runtime.python.object_model.complex {
+    PyComplex_FromDoubles,
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble
+}
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.binary_scalars {
     read_bits,
     write_bits,
     integer_from_bits
 }
 import from jaclang.runtime.python.capi {
+    type_name,
     boundary_failure,
     required,
     checked,
     object_error,
     jac_heap_size,
-    jac_list_heap_size
+    jac_list_heap_size,
+    memory_byte,
+    memory_set
+}
+import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_owner
+}
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
+}
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
 }
 
 obj format_field {
@@ -154,13 +176,13 @@ def:pub jacpy_struct_compile(
         data = jacpy_bytes_address(format);
         length = int(jacpy_bytes_length(format));
         for j in range(length) {
-            if jacpy_memory_byte(data, i64(j)) == 0 {
+            if memory_byte(data, i64(j)) == 0 {
                 struct_error(error, "embedded null character");
             }
         }
         index = 0;
         if length > 0 {
-            prefix = int(jacpy_memory_byte(data, 0));
+            prefix = int(memory_byte(data, 0));
             if prefix == 64
                 or prefix == 61
                 or prefix == 60
@@ -177,7 +199,7 @@ def:pub jacpy_struct_compile(
         }
         limit = 9223372036854775807;
         while index < length {
-            code = int(jacpy_memory_byte(data, i64(index)));
+            code = int(memory_byte(data, i64(index)));
             index += 1;
             if code == 32 or (code >= 9 and code <= 13) {
                 continue;
@@ -196,7 +218,7 @@ def:pub jacpy_struct_compile(
                             error, "repeat count given without format specifier"
                         );
                     }
-                    code = int(jacpy_memory_byte(data, i64(index)));
+                    code = int(memory_byte(data, i64(index)));
                     index += 1;
                 }
             }
@@ -259,7 +281,7 @@ def:priv integer_bits(
     try {
         if code == 80 {
             result = jacpy_long_address(number);
-            if jacpy_error_is("OverflowError") != 0 {
+            if PyErr_ExceptionMatches(PyExc_OverflowError) != 0 {
                 struct_error(error, "int too large to convert");
             }
             pending();
@@ -289,7 +311,7 @@ def:priv integer_bits(
             invalid = result > maximum;
         }
         if jacpy_error_pending() != 0 {
-            if jacpy_error_is("OverflowError") == 0 {
+            if PyErr_ExceptionMatches(PyExc_OverflowError) == 0 {
                 raise boundary_failure();
             }
             invalid = True;
@@ -332,8 +354,8 @@ def:priv pack_field(
                 return;
             }
             length = min(length, size - 1);
-            jacpy_memory_set(address, 0, i64(min(length, 255)));
-            address = jacpy_offset(address, 1);
+            memory_set(address, 0, i64(min(length, 255)));
+            address += 1;
         } else {
             length = min(length, size);
         }
@@ -350,7 +372,7 @@ def:priv pack_field(
     if code == 63 {
         truth = PyObject_IsTrue(value);
         checked(truth);
-        jacpy_memory_set(address, 0, truth);
+        memory_set(address, 0, truth);
         return;
     }
     if code == 101 or code == 102 or code == 100 {
@@ -373,9 +395,7 @@ def:priv pack_field(
             if plan.native {
                 jacpy_native_float_store(real, address, i64(component_size));
                 jacpy_native_float_store(
-                    imaginary,
-                    jacpy_offset(address, component_size),
-                    i64(component_size)
+                    imaginary, address + component_size, i64(component_size)
                 );
             } else {
                 checked(
@@ -386,7 +406,7 @@ def:priv pack_field(
                 checked(
                     jacpy_float_pack(
                         imaginary,
-                        jacpy_offset(address, component_size),
+                        address + component_size,
                         i64(component_size),
                         i64(plan.little)
                     )
@@ -418,7 +438,7 @@ def:pub jacpy_struct_pack(
                     pack_field(
                         plan,
                         field,
-                        jacpy_offset(address, field.offset + repetition * field.size),
+                        address + (field.offset + repetition * field.size),
                         value,
                         error
                     );
@@ -445,16 +465,14 @@ def:priv unpack_field(
     if code == 112 {
         length = 0;
         if size != 0 {
-            length = min(int(jacpy_memory_byte(address, 0)), size - 1);
+            length = min(int(memory_byte(address, 0)), size - 1);
         }
         return required(
-            jacpy_bytes_from_memory(
-                jacpy_offset(address, 1 if size != 0 else 0), i64(length)
-            )
+            jacpy_bytes_from_memory(address + (1 if size != 0 else 0), i64(length))
         );
     }
     if code == 63 {
-        return required(PyBool_FromLong(i64(jacpy_memory_byte(address, 0) != 0)));
+        return required(PyBool_FromLong(i64(memory_byte(address, 0) != 0)));
     }
     if code == 101 or code == 102 or code == 100 {
         number = jacpy_float_unpack(address, i64(size), i64(plan.little));
@@ -466,7 +484,7 @@ def:priv unpack_field(
         real = jacpy_float_unpack(address, i64(component_size), i64(plan.little));
         pending();
         imaginary = jacpy_float_unpack(
-            jacpy_offset(address, component_size), i64(component_size), i64(plan.little)
+            address + component_size, i64(component_size), i64(plan.little)
         );
         pending();
         return required(PyComplex_FromDoubles(real, imaginary));
@@ -484,9 +502,7 @@ def:pub jacpy_struct_unpack(plan: struct_plan, address: ptr) -> ptr[PyObject] {
         for field in plan.fields {
             for repetition in range(field.count) {
                 value = unpack_field(
-                    plan,
-                    field,
-                    jacpy_offset(address, field.offset + repetition * field.size)
+                    plan, field, address + (field.offset + repetition * field.size)
                 );
                 checked(jacpy_tuple_set_owned(result, index, value));
                 index += 1;
@@ -575,9 +591,7 @@ def:pub jacpy_struct_next(cursor: unpack_cursor) -> ptr[PyObject] {
     if cursor.index == cursor.length {
         return NULL;
     }
-    result = jacpy_struct_unpack(
-        cursor.plan, jacpy_offset(cursor.address, cursor.index)
-    );
+    result = jacpy_struct_unpack(cursor.plan, cursor.address + cursor.index);
     cursor.index += cursor.plan.size;
     return result;
 }
@@ -610,4 +624,244 @@ def:pub jacpy_struct_memory(plan: struct_plan) -> i64 {
         total += jac_heap_size(u64(id(field)));
     }
     return total;
+}
+
+# The definitions the binding creates; the methods find the receiver's state
+# and module by them.
+glob Struct_token = ClassToken(),
+     unpack_iterator_token = ClassToken(),
+     struct_module_token = ClassToken();
+
+obj StructState(ReferenceState) {
+    has plan: struct_plan;
+}
+
+obj UnpackState(NativeState) {
+    has cursor: (unpack_cursor | None) = None,
+        buffer: (BufferArgument | None) = None,
+        owner: ptr[PyObject] = NULL;
+
+    def clear {
+        previous_owner = self.owner;
+        previous_buffer = self.buffer;
+        self.cursor = None;
+        self.buffer = None;
+        self.owner = NULL;
+        if previous_buffer is not None {
+            previous_buffer.close();
+        }
+        jacpy_release(previous_owner);
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        status = visit_reference(self.owner, visitor, context);
+        if status != 0 {
+            return status;
+        }
+        buffer = self.buffer;
+        if buffer is not None {
+            return visit_reference(buffer.owner(), visitor, context);
+        }
+        return i32(0);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+def state_for(instance: ptr[PyObject]) -> (StructState | None) {
+    if jacpy_binding_native_present(instance, Struct_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, Struct_token.handle);
+        if isinstance(state, StructState) and state.references[0] != 0 {
+            return state;
+        }
+    }
+    object_error(PyExc_RuntimeError, "Struct object is not initialized");
+    return None;
+}
+
+def module_for(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_binding_owner(Py_TYPE(instance), struct_module_token.handle);
+}
+
+def module_error(module: ptr[PyObject], message: str) {
+    jacpy_set_exception(
+        jacpy_binding_state_get(module, 0), message, i64(len(message.encode("utf-8")))
+    );
+}
+
+def iterator_state(instance: ptr[PyObject]) -> (UnpackState | None) {
+    if jacpy_binding_native_present(instance, unpack_iterator_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, unpack_iterator_token.handle);
+        if isinstance(state, UnpackState) {
+            return state;
+        }
+    }
+    return None;
+}
+
+# The Argument Clinic _impl functions.
+def Struct___init___impl(instance: ptr[PyObject], format_: ptr[PyObject]) -> i32 {
+    source = format_;
+    format: ptr[PyObject] = NULL;
+    if jacpy_is_unicode(source) != 0 {
+        format = PyUnicode_AsEncodedString(source, "ascii", "strict");
+    } elif jacpy_is_bytes(source) != 0 {
+        format = Py_NewRef(source);
+    } else {
+        object_error(
+            PyExc_TypeError,
+            f"Struct() argument 1 must be a str or bytes object, not {type_name(source)[:200]}"
+        );
+        return i32(-1);
+    }
+    if format == 0 {
+        return i32(-1);
+    }
+    state = StructState(references=[format], plan=struct_plan());
+    module = module_for(instance);
+    if module == 0 {
+        return i32(-1);
+    }
+    if jacpy_struct_compile(state.plan, format, jacpy_binding_state_get(module, 0))
+        < 0 {
+        return i32(-1);
+    }
+    if jacpy_binding_native_set(instance, Struct_token.handle, state) < 0 {
+        return i32(-1);
+    }
+    return i32(0);
+}
+
+def Struct_unpack_impl(
+    instance: ptr[PyObject], buffer: BufferArgument
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    plan = state.plan;
+    module = module_for(instance);
+    if module == 0 {
+        return NULL;
+    }
+    size = jacpy_struct_size(plan);
+    if buffer.size() != size {
+        module_error(module, f"unpack requires a buffer of {size} bytes");
+        return NULL;
+    }
+    return jacpy_struct_unpack(plan, buffer.address());
+}
+
+def Struct_unpack_from_impl(
+    instance: ptr[PyObject], buffer: BufferArgument, offset: i64
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    plan = state.plan;
+    module = module_for(instance);
+    if module == 0 {
+        return NULL;
+    }
+    start = jacpy_struct_offset(
+        plan, buffer.size(), offset, 0, jacpy_binding_state_get(module, 0)
+    );
+    if start < 0 {
+        return NULL;
+    }
+    return jacpy_struct_unpack(plan, buffer.address() + start);
+}
+
+def Struct_iter_unpack_impl(
+    instance: ptr[PyObject], buffer: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    plan = state.plan;
+    module = module_for(instance);
+    if module == 0 {
+        return NULL;
+    }
+    size = jacpy_struct_size(plan);
+    if size == 0 {
+        module_error(module, "cannot iteratively unpack with a struct of length 0");
+        return NULL;
+    }
+    iterator = jacpy_binding_allocate(jacpy_binding_state_get(module, 2));
+    if iterator == 0 {
+        return NULL;
+    }
+    view = BufferArgument();
+    iterator_data = UnpackState(buffer=view);
+    if jacpy_binding_native_set(iterator, unpack_iterator_token.handle, iterator_data)
+        < 0 {
+        jacpy_release(iterator);
+        return NULL;
+    }
+    if not view.acquire(buffer) {
+        jacpy_release(iterator);
+        return NULL;
+    }
+    if view.size() % size != 0 {
+        module_error(
+            module,
+            f"iterative unpacking requires a buffer of a multiple of {size} bytes"
+        );
+        jacpy_release(iterator);
+        return NULL;
+    }
+    iterator_data.owner = Py_NewRef(instance);
+    iterator_data.cursor = jacpy_struct_cursor(plan, view.address(), view.size());
+    return iterator;
+}
+
+# cache_struct_converter: the cached Struct for `format`, a new reference
+# the glue releases.
+def convert_cache_struct_converter(
+    module: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+) -> ptr[PyObject] {
+    result = jacpy_struct_cached(
+        jacpy_binding_state_get(module, 3), jacpy_binding_state_get(module, 1), value
+    );
+    if result == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+def _clearcache_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+    PyDict_Clear(jacpy_binding_state_get(module, 3));
+    return Py_NewRef(Py_None);
+}
+
+# calcsize returns clinic's Py_ssize_t.
+def calcsize_impl(module: ptr[PyObject], s_object: ptr[PyObject]) -> i64 {
+    state = state_for(s_object);
+    if state is None {
+        return -1;
+    }
+    return jacpy_struct_size(state.plan);
+}
+
+def unpack_impl(
+    module: ptr[PyObject], s_object: ptr[PyObject], buffer: BufferArgument
+) -> ptr[PyObject] {
+    return Struct_unpack_impl(s_object, buffer);
+}
+
+def unpack_from_impl(
+    module: ptr[PyObject], s_object: ptr[PyObject], buffer: BufferArgument, offset: i64
+) -> ptr[PyObject] {
+    return Struct_unpack_from_impl(s_object, buffer, offset);
+}
+
+def iter_unpack_impl(
+    module: ptr[PyObject], s_object: ptr[PyObject], buffer: ptr[PyObject]
+) -> ptr[PyObject] {
+    return Struct_iter_unpack_impl(s_object, buffer);
 }

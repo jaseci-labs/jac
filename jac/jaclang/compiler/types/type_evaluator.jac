@@ -7,6 +7,7 @@ import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
 import from jaclang.compiler.types.ct_value { CtValue }
+import from jaclang.compiler.c_interop { is_va_list_type }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.frontend.unitree {
     literal_string_value,
@@ -842,6 +843,7 @@ walker TypeEvaluator {
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
     def _is_sv_async_call(expr: FuncCall) -> bool;
+    def _c_lent_args(args: MatchArgsToParamsResult) -> set[Expr | KWPair];
     def validate_arg_types(
         args: MatchArgsToParamsResult,
         checking_overload: bool = False,
@@ -882,6 +884,7 @@ walker TypeEvaluator {
 
     def _create_object_init_method(class_type: ClassType) -> FunctionType;
     def _scope_has_fields(tab: UniScopeNode | None) -> bool;
+    def _dataclass_shadows_base_init(class_type: ClassType) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
     def _create_special_builtin_type(name: str, base_class: ClassType) -> ClassType;
     def _validate_constructor_method(

@@ -12,7 +12,6 @@ import from jaclang.runtime.python.cpython_api {
     PyErr_NoMemory,
     PyObject,
     Py_TYPE,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
@@ -85,7 +84,7 @@ def:priv update_256(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_SHA2_update_256(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_SHA2_update_256(hacl, cursor, u32(remaining));
 }
@@ -98,7 +97,7 @@ def:priv update_512(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_SHA2_update_512(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_SHA2_update_512(hacl, cursor, u32(remaining));
 }

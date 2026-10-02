@@ -271,10 +271,13 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
     """Assign header and field slots with stable dispatch requirements.
 
     Abstract interfaces reserve a vtable even when their implementations live
-    in other modules. Local parents, isinstance targets, and OSP archetypes
-    likewise require dispatch. A concrete class may initially acquire a slot
+    in other modules, and so does every class other modules can subclass
+    whose own methods they could override (`open_dispatch`). Local parents,
+    isinstance targets, and OSP archetypes likewise require dispatch. A concrete class may initially acquire a slot
     merely because it declares a base; imported-base adoption can remove that
-    provisional slot when neither the class nor its ancestors need dispatch.
+    provisional slot when neither the class nor its ancestors need dispatch,
+    or when an isinstance test is its only use and the build's allocation
+    header carries the class identity instead.
     """;
     reg = self.registry;
     aname = archetype_native_name(arch);
@@ -291,13 +294,12 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         }
     }
 
-    vtable_by_dispatch = (
-        is_osp
-        or arch.is_abstract
-        or aname in parents_set
-        or aname in self.isinstance_targets
+    by_hierarchy = (
+        is_osp or arch.is_abstract or aname in parents_set or open_dispatch(arch)
     );
+    vtable_by_dispatch = by_hierarchy or aname in self.isinstance_targets;
     needs_vtable = bool(parents) or vtable_by_dispatch;
+    vtable_by_isinstance_only = aname in self.isinstance_targets and not by_hierarchy;
 
     fields: list[FieldLayout] = [];
     field_index: dict[str, int] = {};
@@ -441,6 +443,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         field_index=field_index,
         has_vtable=needs_vtable,
         vtable_by_dispatch=vtable_by_dispatch,
+        vtable_by_isinstance_only=vtable_by_isinstance_only,
         parent_field_start=parent_field_start,
         is_osp=is_osp,
         vtable_ptr_slot=vtable_ptr_slot,

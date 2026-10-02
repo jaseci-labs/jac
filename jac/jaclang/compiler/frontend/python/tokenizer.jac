@@ -649,6 +649,27 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
         }
     }
     spell = st.data[start:st.pos].decode("utf-8");
+    # lexer.c: a decimal integer with a leading zero and a nonzero digit is
+    # an old-style octal, refused outside the tokenize module (gh-105549).
+    if not based
+        and not st.extra_tokens
+        and spell[0] == "0"
+        and spell.replace("_", "").isdigit()
+        and spell.replace("_", "").strip("0") {
+        nonzero = 1;
+        while nonzero < len(spell) and spell[nonzero] in "0_" {
+            nonzero += 1;
+        }
+        bad = mk_diag(
+            "SyntaxError",
+            "leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers",
+            tok_loc_span(st.lineno, st.lineno, start_col, start_col + nonzero + 1),
+            st.filename
+        );
+        st.error = bad;
+        st.done = True;
+        return bad;
+    }
     if _is_id_start(_peek(st)) and not st.extra_tokens {
         kind = "decimal";
         if spell.lower().startswith("0x") {

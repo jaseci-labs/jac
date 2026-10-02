@@ -40,6 +40,7 @@ impl TypeCheckPass.exit_name with Name exit {
     if here.sym is not None {
         self._check_comptime_only_use(here);
         self._check_type_only_value_use(here);
+        self._check_c_global_use(here);
     }
 }
 
@@ -224,6 +225,8 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
     here.chunks_recv_type = _chunks_receiver_type(here);
 
     here.callee_decl = ability_of_symbol(resolve_expr_symbol(here.target));
+    self._check_c_variadic_args(here);
+    self._check_borrowed_scalar_forward(here);
 
     if (
         here.callee_decl is not None
@@ -437,6 +440,7 @@ impl TypeCheckPass._judge_immutable_write(
     target: (Expr | None), rebind_scope: (UniNode | None) = None
 ) -> None {
     for leaf in self._write_leaves(target) {
+        self._check_borrowed_scalar_write(leaf);
         if isinstance(leaf, AtomTrailer)
             and leaf.is_attr
             and isinstance(leaf.right, Name) {
@@ -754,10 +758,12 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                     for d in target.sym.defn
                 )
             );
+            import from jaclang.compiler.c_interop { c_bytes_array_definition }
             if (
                 here.aug_op is None
                 and not is_evolving_reassign
                 and not is_module_fallback_rebind
+                and not c_bytes_array_definition(here, left_type)
             ) {
                 verdict = self.evaluator.assign_expr(
                     here.value,
@@ -923,6 +929,7 @@ impl TypeCheckPass.enter_ability with Ability entry {
 impl TypeCheckPass.exit_ability with Ability exit {
     import from jaclang.compiler.frontend.constant { OwnershipKind }
     self.evaluator.validate_typevar_variance(here);
+    self._check_c_variadic_def(here);
 
     self._check_intrinsic_collision(here);
 
@@ -2331,7 +2338,11 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
     }
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
     for decl in imp.clib_decls or [] {
-        if isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
+        if isinstance(decl, GlobalVars) {
+            for assign in decl.assignments {
+                self._check_c_global_decl(assign);
+            }
+        } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             for hv in decl.get_has_vars() {
                 tag = hv.type_tag.tag if hv.type_tag else None;
                 ftype = self._c_instance_of(tag);
@@ -2361,6 +2372,10 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
                     );
                 }
             }
+        } elif isinstance(decl, Ability)
+            and isinstance(decl.signature, FuncSignature)
+            and decl.body {
+            self._check_c_function_def(decl);
         } elif isinstance(decl, Ability)
             and isinstance(decl.signature, FuncSignature) {
             for param in decl.signature.get_parameters() {
@@ -2418,6 +2433,204 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
     }
 }
 
+impl TypeCheckPass._check_c_global_decl(assign: Assignment) -> None {
+    target = assign.target[0] if assign.target else None;
+    if not isinstance(target, Name) {
+        return;
+    }
+    import from jaclang.compiler.c_interop { c_array_elem }
+    tag = assign.type_tag.tag if assign.type_tag else None;
+    ctype = self._c_instance_of(tag);
+    opaque = self._opaque_member(ctype);
+    elem = c_array_elem(ctype);
+    if elem is not None {
+        elem_type = self.evaluator._convert_to_instance(elem);
+        if not self._c_plain_data(elem_type) {
+            self.ctx.emit(
+                E1153,
+                node_override=assign,
+                name=target.sym_name,
+                reason=f"is an array of {elem_type}, which is not C data"
+            );
+            return;
+        }
+    } elif not self._c_plain_data(ctype) and opaque is None {
+        self.ctx.emit(
+            E1153,
+            node_override=assign,
+            name=target.sym_name,
+            reason=f"has type {ctype}, which is not C data"
+        );
+        return;
+    }
+    if assign.value is None {
+        return;
+    }
+    if opaque is not None {
+        self.ctx.emit(
+            E1153,
+            node_override=assign,
+            name=target.sym_name,
+            reason=f"has opaque type {opaque.name.value}, which has no layout for Jac to define"
+        );
+        return;
+    }
+    problem = self._c_const_problem(assign.value, ctype);
+    if problem is not None {
+        self.ctx.emit(
+            E1155, node_override=assign.value, name=target.sym_name, reason=problem
+        );
+    }
+}
+
+impl TypeCheckPass._c_const_problem(
+    expr: Expr, ctype: (TypeBase | None)
+) -> (str | None) {
+    import from jaclang.compiler.c_interop {
+        c_array_elem,
+        c_bytes_elem_shape,
+        c_bytes_literal,
+        c_scalar_constant,
+        c_string_literal,
+        foreign_struct_of_type,
+        is_builtin_addressof_call,
+        is_ptr_type,
+        named_function_of
+    }
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if isinstance(expr, Null) {
+        return None;
+    }
+    elem = c_array_elem(ctype);
+    if elem is not None {
+        elem_type = self.evaluator._convert_to_instance(elem);
+        data = c_bytes_literal(expr);
+        if data is not None {
+            shape = c_bytes_elem_shape(elem_type);
+            if shape is None {
+                return f"initializes a C array of {elem_type} with a bytes literal, which lays out only sized integers";
+            }
+            if len(data) % shape[0] != 0 {
+                return f"initializes a C array of {elem_type} with {len(
+                    data
+                )} bytes, not a multiple of its {shape[0]}-byte width";
+            }
+            return None;
+        }
+        if not isinstance(expr, ListVal) {
+            return "initializes a C array with something other than a list literal or a bytes literal";
+        }
+        for item in expr.values {
+            if isinstance(item, Expr)
+                and (problem := self._c_const_problem(item, elem_type)) is not None {
+                return problem;
+            }
+        }
+        return None;
+    }
+    arch = foreign_struct_of_type(ctype);
+    if arch is not None {
+        if not isinstance(expr, FuncCall)
+            or foreign_struct_of_type(expr.type) is not arch {
+            return f"initializes a {arch.name.value} with something other than its constructor";
+        }
+        fields = list(arch.get_has_vars());
+        for (i, param) in enumerate(expr.params or []) {
+            field: (HasVar | None) = None;
+            value: Expr = param;
+            if isinstance(param, KWPair) {
+                value = param.value;
+                field = next(
+                    (
+                        f
+                        for f in fields
+                        if isinstance(param.key, Name)
+                            and f.name.sym_name == param.key.sym_name
+                    ),
+                    None
+                );
+            } elif i < len(fields) {
+                field = fields[i];
+            }
+            if field is None {
+                continue;
+            }
+            tag = field.type_tag.tag if field.type_tag else None;
+            problem = self._c_const_problem(value, self._c_instance_of(tag));
+            if problem is not None {
+                return problem;
+            }
+        }
+        return None;
+    }
+    if isinstance(ctype, FunctionType) {
+        if named_function_of(expr) is not None {
+            return None;
+        }
+        return "sets a callback field to something other than a named function";
+    }
+    if is_ptr_type(ctype) {
+        if isinstance(expr, FuncCall) {
+            if is_builtin_addressof_call(expr) {
+                return None;
+            }
+            params = list(expr.params or []);
+            callee_type = expr.target.type;
+            if is_ptr_type(callee_type)
+                and callee_type is not None
+                and not callee_type.is_instance()
+                and (
+                    not params
+                    or (
+                        len(params) == 1
+                        and (
+                            c_string_literal(params[0]) is not None
+                            or c_scalar_constant(params[0])[0]
+                            or named_function_of(params[0]) is not None
+                            or is_builtin_addressof_call(params[0])
+                        )
+                    )
+                ) {
+                return None;
+            }
+        } elif c_scalar_constant(expr)[0] {
+            return None;
+        }
+        return "sets a pointer to something other than a C constant address";
+    }
+    if c_scalar_constant(expr)[0] {
+        return None;
+    }
+    return "is not a compile-time constant";
+}
+
+impl TypeCheckPass._check_c_global_use(nd: Name) -> None {
+    import from jaclang.compiler.c_interop {
+        clib_global_of_name,
+        foreign_struct_of_type,
+        is_builtin_addressof_call
+    }
+    assign = clib_global_of_name(nd);
+    if assign is None
+        or nd.find_parent_of_type(Import) is not None
+        or is_builtin_addressof_call(nd.parent) {
+        return;
+    }
+    tag = assign.type_tag.tag if assign.type_tag else None;
+    ctype = self._c_instance_of(tag);
+    if self._c_plain_data(ctype) and foreign_struct_of_type(ctype) is None {
+        return;
+    }
+    self.ctx.emit(
+        E1153,
+        node_override=nd,
+        name=nd.sym_name,
+        reason=f"is a C object of type {ctype}, which Jac handles only by address: use addressof({nd.sym_name})"
+    );
+}
+
 impl TypeCheckPass._foreign_struct_contains(
     t: (TypeBase | None), target: Archetype
 ) -> bool {
@@ -2441,9 +2654,127 @@ impl TypeCheckPass._foreign_struct_contains(
     return False;
 }
 
+impl TypeCheckPass._check_c_function_def(nd: Ability) -> None {
+    import from jaclang.compiler.c_interop { c_variadic_param, foreign_struct_of_type }
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    sig = nd.signature;
+    if not isinstance(sig, FuncSignature) {
+        return;
+    }
+    name = nd.name_ref.sym_name if nd.name_ref else "";
+    variadic = c_variadic_param(sig);
+    for param in sig.get_parameters() {
+        if param is variadic {
+            continue;
+        }
+        pname = param.name.value if param.name else "";
+        if param.is_vararg or param.is_kwargs {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"packs '{pname}', which C cannot pass; a C variadic parameter is `*{pname}: VaList`"
+            );
+            continue;
+        }
+        if param.type_tag is not None and is_borrow_kind(param.type_tag.ownership) {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"borrows '{pname}'; take its address as a `ptr[T]`"
+            );
+            continue;
+        }
+        ptype = self._c_instance_of(param.type_tag.tag if param.type_tag else None);
+        if not self._c_plain_data(ptype, allow_callable=True) {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"takes '{pname}' of type {ptype}, which is not C data"
+            );
+        } elif variadic is not None
+            and (
+                foreign_struct_of_type(ptype) is not None
+                or (isinstance(ptype, ClassType) and ptype.is_builtin("bool"))
+            ) {
+            self.ctx.emit(
+                E1158,
+                node_override=param,
+                name=name,
+                reason=f"is variadic and passes '{pname}' of type {ptype} by value; take a scalar or `ptr`"
+            );
+        }
+    }
+    ret = sig.return_type;
+    if ret is None or isinstance(ret, Null) {
+        return;
+    }
+    rtype = self._c_instance_of(ret);
+    if not self._c_plain_data(rtype, allow_callable=True) {
+        self.ctx.emit(
+            E1158,
+            node_override=ret,
+            name=name,
+            reason=f"returns {rtype}, which is not C data"
+        );
+    }
+}
+
+impl TypeCheckPass._check_c_variadic_def(nd: Ability) -> None {
+    import from jaclang.compiler.c_interop { c_variadic_param }
+    sig = nd.signature;
+    if c_variadic_param(sig) is None or not isinstance(sig, FuncSignature) {
+        return;
+    }
+    if sig.kwonlyargs or sig.kwargs is not None {
+        self.ctx.emit(
+            E1157,
+            node_override=sig,
+            what=f"function '{nd.name_ref.sym_name
+                if nd.name_ref
+                else ''}' cannot also take keyword-only or ** parameters"
+        );
+    }
+}
+
+impl TypeCheckPass._check_c_variadic_args(nd: FuncCall) -> None {
+    import from jaclang.compiler.c_interop { c_variadic_param }
+    callee = nd.callee_decl;
+    sig = callee.signature if callee is not None else None;
+    if not isinstance(sig, FuncSignature) or sig.varargs is None {
+        return;
+    }
+    if c_variadic_param(sig) is None and nd.call_kind != "clib" {
+        return;
+    }
+    fixed = len(sig.posonly_params) + len(sig.params or []);
+    for arg in list(nd.params or [])[fixed:] {
+        if not isinstance(arg, Expr) {
+            continue;
+        }
+        arg_type = self.evaluator._convert_to_instance(
+            self.evaluator.get_type_of_expression(arg)
+        );
+        text = isinstance(arg_type, ClassType)
+            and arg_type.is_builtin(["str", "bytes", "bytearray"]);
+        if not text and not self._c_plain_data(arg_type) {
+            self.ctx.emit(
+                E1157,
+                node_override=arg,
+                what=f"argument needs a C scalar, ptr, str or bytes, not {arg_type}"
+            );
+        }
+    }
+}
+
 impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
     import from jaclang.compiler.c_interop {
+        c_string_literal,
         c_type_arg,
+        clib_global_of_name,
+        is_builtin_addressof_call,
         is_builtin_pin_call,
         is_ptr_type,
         opaque_c_of_type
@@ -2453,6 +2784,45 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
         and callee.is_instantiable_class()
         and (arch := opaque_c_of_type(callee)) is not None {
         self.ctx.emit(E1151, node_override=nd, name=arch.name.value, use="constructed");
+        return;
+    }
+    if is_ptr_type(callee)
+        and isinstance(callee, ClassType)
+        and not callee.is_instance()
+        and len(nd.params or []) == 1 {
+        text = (nd.params or [])[0];
+        text_type = self.evaluator.get_type_of_expression(text)
+            if isinstance(text, Expr)
+            else None;
+        if isinstance(text_type, ClassType) and text_type.is_builtin("str") {
+            elem = c_type_arg(callee);
+            elem_name = elem.shared.class_name if isinstance(elem, ClassType) else "";
+            if c_string_literal(text) is None {
+                self.ctx.emit(E1156, node_override=text, what="a computed string");
+            } elif elem_name not in ("u8", "i8") {
+                self.ctx.emit(
+                    E1156,
+                    node_override=text,
+                    what=f"a pointer to {elem_name or 'untyped memory'}"
+                );
+            }
+        }
+        return;
+    }
+    if is_builtin_addressof_call(nd) {
+        args = list(nd.params or []);
+        target = args[0] if len(args) == 1 else None;
+        if not isinstance(target, Name) or clib_global_of_name(target) is None {
+            self.ctx.emit(
+                E1154,
+                node_override=nd,
+                what=f"'{target.sym_name}'"
+                    if isinstance(target, Name)
+                    else (
+                        "an expression" if len(args) == 1 else f"{len(args)} arguments"
+                    )
+            );
+        }
         return;
     }
     if is_builtin_pin_call(nd) {
@@ -2491,4 +2861,107 @@ impl TypeCheckPass._c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None) {
         return None;
     }
     return self.evaluator._convert_to_instance(arg);
+}
+
+impl TypeCheckPass._borrowed_scalar_param(name: Name) -> bool {
+    import from jaclang.compiler.c_interop { clib_import_of, is_ptr_type }
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    sym = name.sym;
+    if sym is None or sym.decl is None {
+        return False;
+    }
+    param = sym.decl.name_of;
+    if not isinstance(param, ParamVar)
+        or param.type_tag is None
+        or param.type_tag.ownership != OwnershipKind.MUT_BORROW {
+        return False;
+    }
+    ability = param.find_parent_of_type(Ability);
+    if ability is None or clib_import_of(ability) is not None {
+        return False;
+    }
+    declared = self.evaluator._convert_to_instance(
+        self.evaluator.get_type_of_symbol(sym)
+    );
+    members = declared.types if isinstance(declared, UnionType) else [declared];
+    for member in members {
+        if not isinstance(member, ClassType) {
+            continue;
+        }
+        if is_ptr_type(member)
+            or (
+                member.is_builtin()
+                and JAC_TYPE_REGISTRY.is_numeric(member.shared.class_name)
+            ) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeCheckPass._check_borrowed_scalar_write(leaf: Expr) -> None {
+    if isinstance(leaf, Name)
+        and leaf.sym is not None
+        and leaf.sym.decl is not leaf
+        and self._borrowed_scalar_param(leaf) {
+        self.ctx.emit(
+            E1159,
+            node_override=leaf,
+            name=leaf.value,
+            what="assigning it cannot reach the caller"
+        );
+    }
+}
+
+impl TypeCheckPass._check_borrowed_scalar_forward(nd: FuncCall) -> None {
+    import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
+    callee = nd.callee_decl;
+    sig = callee.signature if callee is not None else None;
+    params: list[ParamVar] = sig.get_parameters()
+        if isinstance(sig, FuncSignature)
+        else [];
+    positional = 0;
+    for arg in nd.params or [] {
+        value = arg.value if isinstance(arg, KWPair) else arg;
+        target: (ParamVar | None) = None;
+        if isinstance(arg, KWPair) {
+            key = arg.key.value if isinstance(arg.key, Name) else "";
+            for p in params {
+                if p.name and p.name.value == key {
+                    target = p;
+                }
+            }
+        } else {
+            if positional < len(params) {
+                candidate = params[positional];
+                if not candidate.is_vararg and not candidate.is_kwargs {
+                    target = candidate;
+                }
+            }
+            positional += 1;
+        }
+        if isinstance(value, UnaryExpr)
+            and value.ownership == OwnershipKind.MUT_BORROW
+            and isinstance(value.operand, Name)
+            and self._borrowed_scalar_param(value.operand) {
+            self.ctx.emit(
+                E1159,
+                node_override=value,
+                name=value.operand.value,
+                what="lending it on writes only the function's copy"
+            );
+        } elif isinstance(value, Name)
+            and target is not None
+            and target.type_tag is not None
+            and target.type_tag.ownership == OwnershipKind.MUT_BORROW
+            and self._borrowed_scalar_param(value) {
+            self.ctx.emit(
+                E1159,
+                node_override=value,
+                name=value.value,
+                what="passing it where the callee writes through it writes only the function's copy"
+            );
+        }
+    }
 }

@@ -1,23 +1,23 @@
 """Compiler constants and code objects become retained CPython values."""
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_code_new,
+    jacpy_long_from_bytes,
+    jacpy_release,
+    jacpy_set_new,
+    jacpy_tuple_set_owned,
     NULL,
-    PyBool_FromLong,
-    PyComplex_FromDoubles,
+    Py_Ellipsis,
+    Py_NewRef,
+    Py_None,
     PyFloat_FromDouble,
     PyLong_FromLongLong,
     PyNumber_Negative,
     PyObject,
-    PySlice_New,
     PyTuple_New,
-    Py_NewRef,
-    jacpy_code_new,
-    jacpy_ellipsis,
-    jacpy_long_from_bytes,
-    jacpy_none,
-    jacpy_release,
-    jacpy_set_new,
-    jacpy_tuple_set_owned
+    PyComplex_FromDoubles,
+    PyBool_FromLong,
+    PySlice_New
 }
 import from jaclang.runtime.python.objects {
     PyObj,
@@ -63,10 +63,10 @@ obj constant_writer {
 
     def write(constant: PyObj) -> ptr[PyObject] {
         if isinstance(constant, PyNoneType) {
-            return required(jacpy_none());
+            return required(Py_NewRef(Py_None));
         }
         if isinstance(constant, PyEllipsis) {
-            return required(jacpy_ellipsis());
+            return required(Py_NewRef(Py_Ellipsis));
         }
         if isinstance(constant, PyBool) {
             return required(PyBool_FromLong(i64(constant.val)));

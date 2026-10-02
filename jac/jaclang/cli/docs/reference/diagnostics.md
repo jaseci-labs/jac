@@ -163,6 +163,7 @@ All three block code generation for the module that reports them.
 | `E0094` | Expected a wire ('provider --> consumer') or an edge rule here |
 | `E0095` | '*' must be the only item in a payload |
 | `E0096` | A rule payload lists names without aliases |
+| `E0097` | `return tail` needs a function call |
 
 ### Parser Warnings
 
@@ -301,8 +302,15 @@ Emitted by the type checker for [C library](language/native-pathway.md#c-library
 | `E1150` | Field '{field}' of foreign struct '{name}' {reason} |
 | `E1151` | Opaque C type '{name}' has no known size, so it cannot be {use} |
 | `E1152` | {what} needs C plain data, not {type} |
+| `E1153` | C data symbol '{name}' {reason} |
+| `E1154` | addressof() takes a C data symbol, not {what} |
+| `E1155` | C data definition '{name}' {reason} |
+| `E1156` | A C string pointer is made from a string literal of bytes, not {what} |
+| `E1157` | C variadic {what} |
+| `E1158` | C function definition '{name}' {reason} |
+| `E1159` | '{name}' is a borrowed scalar parameter; {what} |
 
-A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bool`, another foreign struct (nested by value, never containing itself), `ptr[T]` / `ptr`, or a named-function callback (`E1150`). A bodiless `obj Name;` declares an opaque C type, usable only as `ptr[Name]` (`E1151`). `pin(value)`, `p.view(n)` and `&T` / `&mut T` clib parameters lay their payload out in C memory, so `T` needs a known size (`E1152`). Escaping a `PtrView` of C memory is `E1315`, and passing anything but a `Pinned[T]` to a `&mut Pinned[T]` parameter is an ordinary argument mismatch (`E1053`).
+A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bool`, another foreign struct (nested by value, never containing itself), `ptr[T]` / `ptr`, or a named-function callback (`E1150`). A bodiless `obj Name;` declares an opaque C type, usable only as `ptr[Name]` (`E1151`). `pin(value)`, `p.view(n)` and `&T` / `&mut T` clib parameters lay their payload out in C memory, so `T` needs a known size (`E1152`). `glob name: T;` in a C library import declares a C variable and `glob name: T = value;` defines one; a C object (foreign struct, opaque type or `list[T]` array) is used only by address (`E1153`), `addressof()` takes only such a symbol (`E1154`), a definition's initializer is a C constant, where `ptr(function)` is a named function's address for a `ptr` field such as a `PyMethodDef` entry and a sized integer array also takes a bytes literal, read as its little-endian elements (`E1155`), and `ptr[u8]("text")` takes a string literal (`E1156`). A C variadic function takes C scalars, pointers, `str` or `bytes` as extra arguments and no keyword parameters (`E1157`), and a `def` with a body in a C library import defines a C function whose parameters and result are C data, under a C symbol no other linked module declares with a different signature (`E1158`). Escaping a `PtrView` of C memory is `E1315`, and passing anything but a `Pinned[T]` to a `&mut Pinned[T]` parameter is an ordinary argument mismatch (`E1053`), as is `&mut x` for a `ptr[T]` parameter unless the callee is a C function and `x` is exactly `T` (then it lends x's address for the call). A Jac function's `&mut` parameter holding a scalar (a number, a bool or a pointer) is a value: assigning it, lending it on as `&mut p`, or passing it to a parameter the callee declares `&mut` would write only the function's copy, so each is `E1159`; return the new value or take a `ptr[T]` to storage the caller owns.
 
 ### Exception / Context Manager / Yield
 
@@ -472,6 +480,14 @@ See [Project Wiring](wiring.md).
 | `E1142` | '{module}' cannot be a wire's consumer: {detail} |
 | `E1143` | A wire cannot connect '{module}' to itself |
 | `E1144` | Import of '{module}' is not declared by arch.jac for '{consumer}' |
+
+### Unresolved Names
+
+| Code | Message |
+|------|---------|
+| `E1145` | Cannot import name '{name}' from Jac module '{module}': it defines no such name |
+
+Native lowering reports `E1145` when a module imports a name that the Jac module it binds to does not define. There is no symbol to bind the name to, and every use of it used to lower to a null value (a glob initializer received NULL and the binary crashed at load). The checker reports the same import as the `W1101` warning: its lazy resolution can miss a name that exists (an import cycle still being analyzed, or a sibling module shadowing a standard-library one), so only native lowering, which reads the bound module's complete symbol table, makes it an error.
 
 ## Semantic Errors (E2xxx / W2xxx)
 
@@ -674,7 +690,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 | Code | Message |
 |------|---------|
-| `E5060` | C library import declaration '{name}' must not have a body |
+| `E5113` | `return tail` cannot be a guaranteed tail call: {reason} |
 
 ### Client Code Generation
 

@@ -128,9 +128,45 @@ static int32_t *retained_counter = NULL;
 void cp_counter_retain(int32_t *counter) { retained_counter = counter; }
 void cp_counter_tick(void) { if (retained_counter) *retained_counter += 10; }
 
+/* An optional scalar out-parameter: written only when the caller passes one. */
+int32_t cp_maybe_count(int64_t *out) {
+    if (!out) return 0;
+    *out = 7;
+    return 1;
+}
+
 typedef struct { int32_t count; CpVec3 *items; } CpPointList;
 
 void cp_pointlist_fill(CpPointList *pl, int32_t n) {
     pl->count = n;
     pl->items = cp_points_new(n);
 }
+
+int32_t cp_global_count = 7;
+bool cp_global_flag = true;
+CpVec3 cp_global_origin = {1.0f, 2.0f, 3.0f};
+CpVec3 *cp_global_origin_ref = &cp_global_origin;
+int32_t cp_global_read(void) { return cp_global_count; }
+
+typedef struct {
+    int32_t count;
+    int32_t (*scale)(int32_t);
+    const char *label;
+    CpVec3 *origin;
+} CpRecipe;
+
+int32_t cp_recipe_run(const CpRecipe *r, int32_t v) { return r->scale(v) + r->count; }
+int32_t cp_label_len(const char *s) { return (int32_t)strlen(s); }
+
+/* A table of type-erased function pointers, as CPython's method tables hold
+ * PyCFunction casts of functions with other signatures. */
+typedef struct {
+    const char *name;
+    void *fn;
+} CpErased;
+
+int64_t cp_erased_call(const CpErased *e, int64_t a, int64_t b) {
+    return ((int64_t (*)(int64_t, int64_t))e->fn)(a, b);
+}
+int64_t cp_address_call(void *fn, int64_t a) { return ((int64_t (*)(int64_t))fn)(a); }
+int32_t cp_call_i32(void *fn, int32_t v) { return ((int32_t (*)(int32_t))fn)(v); }

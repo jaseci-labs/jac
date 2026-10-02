@@ -6,12 +6,31 @@ see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_dict_default,
+    jacpy_dict_repr,
+    jacpy_error_pending,
+    jacpy_release,
+    jacpy_tuple_set_owned,
     NULL,
-    PyBool_FromLong,
+    Py_NewRef,
+    Py_None,
+    Py_ReprEnter,
+    Py_ReprLeave,
+    PyErr_SetObject,
+    PyExc_IndexError,
+    PyExc_KeyError,
+    PyExc_MemoryError,
+    PyExc_RuntimeError,
+    PyExc_ValueError,
     PyIter_Next,
     PyLong_FromLongLong,
     PyNumber_Add,
     PyObject,
+    _PyObject_GetState,
+    Py_TYPE,
+    PyLong_AsSsize_t,
+    PyExc_TypeError,
+    PyExc_SystemError,
     PyObject_Call,
     PyObject_GetAttr,
     PyObject_GetIter,
@@ -19,17 +38,9 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_SetItem,
     PySequence_List,
     PyTuple_New,
-    Py_NewRef,
-    Py_ReprEnter,
-    Py_ReprLeave,
-    jacpy_dict_default,
-    jacpy_dict_repr,
-    jacpy_error_pending,
-    jacpy_is_none,
-    jacpy_release,
-    jacpy_set_key_error,
-    jacpy_tuple_set_owned
+    PyTuple_Pack
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.object_ring { object_ring }
 import from jaclang.runtime.python.capi {
     jac_heap_size,
@@ -43,6 +54,28 @@ import from jaclang.runtime.python.capi {
     repr_value,
     type_name
 }
+
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
+}
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_basicsize,
+    jacpy_binding_matches,
+    jacpy_binding_owner,
+    jacpy_binding_record
+}
+import from jaclang.runtime.python.bindings.payload {
+    clear_payload,
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
+}
+import from jaclang.runtime.python.bindings.members { record_set_object }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
 
 obj deque_state {
     has items: object_ring = object_ring(),
@@ -115,7 +148,7 @@ def:pub jacpy_deque_append(state: deque_state, value: ptr[PyObject], left: i64) 
 
 def:pub jacpy_deque_pop(state: deque_state, left: i64) -> ptr[PyObject] {
     if state.items.count == 0 {
-        object_error("IndexError", "pop from an empty deque");
+        object_error(PyExc_IndexError, "pop from an empty deque");
         return NULL;
     }
     result = state.items.pop(left != 0);
@@ -159,7 +192,7 @@ def:pub jacpy_deque_extend(
 
 def:pub jacpy_deque_item(state: deque_state, index: i64) -> ptr[PyObject] {
     if index < 0 or index >= i64(state.items.count) {
-        object_error("IndexError", "deque index out of range");
+        object_error(PyExc_IndexError, "deque index out of range");
         return NULL;
     }
     return Py_NewRef(state.items.borrow(int(index)));
@@ -169,7 +202,7 @@ def:pub jacpy_deque_assign(
     state: deque_state, index: i64, value: ptr[PyObject]
 ) -> i64 {
     if index < 0 or index >= i64(state.items.count) {
-        object_error("IndexError", "deque index out of range");
+        object_error(PyExc_IndexError, "deque index out of range");
         return -1;
     }
     i = int(index);
@@ -232,7 +265,7 @@ def:pub jacpy_deque_insert(
     state: deque_state, index: i64, value: ptr[PyObject]
 ) -> i64 {
     if state.maxlen >= 0 and i64(state.items.count) >= state.maxlen {
-        object_error("IndexError", "deque already at its maximum size");
+        object_error(PyExc_IndexError, "deque already at its maximum size");
         return -1;
     }
     at = index;
@@ -282,7 +315,7 @@ def:pub jacpy_deque_search(
         }
         if state.version != version {
             object_error(
-                "IndexError" if mode == 3 else "RuntimeError",
+                PyExc_IndexError if mode == 3 else PyExc_RuntimeError,
                 "deque mutated during iteration"
             );
             return -1;
@@ -296,7 +329,7 @@ def:pub jacpy_deque_search(
     }
     if mode >= 2 {
         object_error(
-            "ValueError",
+            PyExc_ValueError,
             "deque.remove(x): x not in deque"
                 if mode == 3
                 else "deque.index(x): x not in deque"
@@ -322,7 +355,7 @@ def:pub jacpy_deque_cursor(
 def:pub jacpy_deque_next(cursor: deque_cursor) -> ptr[PyObject] {
     if cursor.version != cursor.state.version {
         cursor.remaining = 0;
-        object_error("RuntimeError", "deque mutated during iteration");
+        object_error(PyExc_RuntimeError, "deque mutated during iteration");
         return NULL;
     }
     if cursor.remaining == 0 {
@@ -424,7 +457,7 @@ def:pub jacpy_deque_repeat(state: deque_state, repetitions: i64) -> i64 {
         return 0;
     }
     if repetitions > i64(9223372036854775807) // i64(size) {
-        object_error("MemoryError", "");
+        object_error(PyExc_MemoryError, "");
         return -1;
     }
     total = repetitions * i64(size);
@@ -474,8 +507,13 @@ def:pub jacpy_deque_repr(state: deque_state, owner: ptr[PyObject]) -> ptr[PyObje
 def:pub jacpy_default_missing(
     mapping: ptr[PyObject], factory: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if factory == 0 or jacpy_is_none(factory) != 0 {
-        jacpy_set_key_error(key);
+    if factory == 0 or factory == Py_None {
+        tup = PyTuple_Pack(1, key);
+        if not tup {
+            return NULL;
+        }
+        PyErr_SetObject(PyExc_KeyError, tup);
+        jacpy_release(tup);
         return NULL;
     }
     args = PyTuple_New(0);
@@ -573,4 +611,325 @@ def:pub jacpy_default_repr(
     } finally {
         jacpy_release(base);
     }
+}
+
+# The definitions the binding creates; methods find the receiver's state and
+# module by them.
+glob deque_token = ClassToken(),
+     dequeiter_token = ClassToken(),
+     dequereviter_token = ClassToken(),
+     defdict_token = ClassToken(),
+     _tuplegetter_token = ClassToken(),
+     collections_module_token = ClassToken();
+
+obj DequeState(NativeState) {
+    has native: deque_state;
+
+    def clear {
+        jacpy_deque_clear(self.native);
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        for i in range(int(jacpy_deque_size(self.native))) {
+            status = visit_reference(
+                jacpy_deque_borrow(self.native, i64(i)), visitor, context
+            );
+            if status != 0 {
+                return status;
+            }
+        }
+        return i32(0);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+obj DequeIteratorState(ReferenceState) {
+    has cursor: (deque_cursor | None);
+
+    def clear {
+        self.cursor = None;
+        super.clear();
+    }
+}
+
+obj TupleGetterState(ReferenceState) {
+    has index: i64;
+}
+
+def module_for(type: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_binding_owner(type, collections_module_token.handle);
+}
+
+def deque_value(instance: ptr[PyObject]) -> (DequeState | None) {
+    if jacpy_binding_native_present(instance, deque_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, deque_token.handle);
+        if isinstance(state, DequeState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native deque state is unavailable");
+    return None;
+}
+
+def allocate(
+    type: ptr[PyObject], definition: ptr, state: NativeState
+) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(type);
+    if instance != 0 and jacpy_binding_native_set(instance, definition, state) < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+def search(
+    instance: ptr[PyObject], value: ptr[PyObject], first: i64, last: i64, kind: i64
+) -> i64 {
+    state = deque_value(instance);
+    return jacpy_deque_search(state.native, value, first, last, kind)
+        if state is not None
+        else i64(-1);
+}
+
+def iterator_create(
+    type: ptr[PyObject], owner: ptr[PyObject], reverse: bool, advance: i64
+) -> ptr[PyObject] {
+    native = deque_value(owner);
+    if native is None {
+        return NULL;
+    }
+    state = DequeIteratorState(
+        references=[Py_NewRef(owner)],
+        cursor=jacpy_deque_cursor(native.native, i64(reverse), advance)
+    );
+    return allocate(
+        type, dequereviter_token.handle if reverse else dequeiter_token.handle, state
+    );
+}
+
+def:priv deque_push(
+    instance: ptr[PyObject], value: ptr[PyObject], left: i64
+) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_deque_append(state.native, value, left);
+    return Py_NewRef(Py_None);
+}
+
+def:priv deque_take(instance: ptr[PyObject], left: i64) -> ptr[PyObject] {
+    state = deque_value(instance);
+    return jacpy_deque_pop(state.native, left) if state is not None else NULL;
+}
+
+def:priv deque_grow(
+    instance: ptr[PyObject], iterable: ptr[PyObject], left: i64
+) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    return Py_NewRef(Py_None)
+        if jacpy_deque_extend(state.native, instance, iterable, left) == 0
+        else NULL;
+}
+
+# The Argument Clinic _impl functions.
+def deque_pop_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return deque_take(instance, 0);
+}
+
+def deque_popleft_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return deque_take(instance, 1);
+}
+
+def deque_append_impl(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+    return deque_push(instance, item, 0);
+}
+
+def deque_appendleft_impl(
+    instance: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return deque_push(instance, item, 1);
+}
+
+def deque_extend_impl(
+    instance: ptr[PyObject], iterable: ptr[PyObject]
+) -> ptr[PyObject] {
+    return deque_grow(instance, iterable, 0);
+}
+
+def deque_extendleft_impl(
+    instance: ptr[PyObject], iterable: ptr[PyObject]
+) -> ptr[PyObject] {
+    return deque_grow(instance, iterable, 1);
+}
+
+def deque_copy_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    limit = jacpy_deque_limit(state.native);
+    args = owned_tuple([Py_NewRef(instance)])
+        if limit < 0
+        else owned_tuple([Py_NewRef(instance), PyLong_FromLongLong(limit)]);
+    if args == 0 {
+        return NULL;
+    }
+    result = PyObject_Call(Py_TYPE(instance), args, NULL);
+    jacpy_release(args);
+    if result != 0 and jacpy_binding_matches(result, deque_token.handle) == 0 {
+        object_error(
+            PyExc_TypeError,
+            f"{type_name(instance)[:200]}() must return a deque, not {type_name(result)[:200]}"
+        );
+        jacpy_release(result);
+        return NULL;
+    }
+    return result;
+}
+
+def deque___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    return deque_copy_impl(instance);
+}
+
+def deque_clearmethod_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    clear_payload(instance, deque_token.handle);
+    return Py_NewRef(Py_None);
+}
+
+def deque_rotate_impl(instance: ptr[PyObject], n: i64) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_deque_rotate(state.native, n);
+    return Py_NewRef(Py_None);
+}
+
+def deque_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_deque_reverse(state.native);
+    return Py_NewRef(Py_None);
+}
+
+def deque_count_impl(instance: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    count = search(instance, v, 0, 9223372036854775807, 0);
+    return PyLong_FromLongLong(count) if count >= 0 else NULL;
+}
+
+def deque_index_impl(
+    instance: ptr[PyObject], v: ptr[PyObject], start: i64, stop: i64
+) -> ptr[PyObject] {
+    found = search(instance, v, start, stop, 2);
+    return PyLong_FromLongLong(found) if found >= 0 else NULL;
+}
+
+def deque_insert_impl(
+    instance: ptr[PyObject], index: i64, value: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    return Py_NewRef(Py_None)
+        if jacpy_deque_insert(state.native, index, value) == 0
+        else NULL;
+}
+
+def deque_remove_impl(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return Py_NewRef(Py_None)
+        if search(instance, value, 0, 9223372036854775807, 3) >= 0
+        else NULL;
+}
+
+def deque___reduce___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    limit = jacpy_deque_limit(state.native);
+    saved = _PyObject_GetState(instance);
+    iterator = PyObject_GetIter(instance);
+    args = PyTuple_New(0)
+        if limit < 0
+        else owned_tuple([PyTuple_New(0), PyLong_FromLongLong(limit)]);
+    return owned_tuple([Py_NewRef(Py_TYPE(instance)), args, saved, iterator]);
+}
+
+# deque.__init__ returns clinic's int: -1 with the exception set.
+def deque_init_impl(
+    instance: ptr[PyObject], iterable: ptr[PyObject], maxlenobj: ptr[PyObject]
+) -> i32 {
+    limit: i64 = -1;
+    if maxlenobj != 0 and maxlenobj != Py_None {
+        limit = PyLong_AsSsize_t(maxlenobj);
+        if limit == -1 and jacpy_error_pending() != 0 {
+            return i32(-1);
+        }
+        if limit < 0 {
+            object_error(PyExc_ValueError, "maxlen must be non-negative");
+            return i32(-1);
+        }
+    }
+    state = deque_value(instance);
+    if state is None {
+        return i32(-1);
+    }
+    jacpy_deque_set_limit(state.native, limit);
+    jacpy_deque_clear(state.native);
+    if iterable != 0 and jacpy_deque_extend(state.native, instance, iterable, 0) < 0 {
+        return i32(-1);
+    }
+    return i32(0);
+}
+
+def deque___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = deque_value(instance);
+    if state is None {
+        return NULL;
+    }
+    return PyLong_FromLongLong(
+        jacpy_binding_basicsize(instance)
+            + jac_heap_size(u64(id(state)))
+            + jacpy_deque_memory(state.native)
+    );
+}
+
+def deque___reversed___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    module = module_for(Py_TYPE(instance));
+    if module == 0 {
+        return NULL;
+    }
+    return iterator_create(jacpy_binding_state_get(module, 2), instance, True, 0);
+}
+
+def _collections__count_elements_impl(
+    module: ptr[PyObject], mapping: ptr[PyObject], iterable: ptr[PyObject]
+) -> ptr[PyObject] {
+    return Py_NewRef(Py_None) if jacpy_count_elements(mapping, iterable) == 0 else NULL;
+}
+
+# _tuplegetter's record: the __doc__ member it owns at offset 0; the index
+# lives in the native state.
+def tuplegetter_new_impl(
+    type: ptr[PyObject], index: i64, doc: ptr[PyObject]
+) -> ptr[PyObject] {
+    instance = allocate(
+        type, _tuplegetter_token.handle, TupleGetterState(references=[], index=index)
+    );
+    if instance != 0 {
+        record_set_object(
+            jacpy_binding_record(instance, _tuplegetter_token.handle), 0, Py_NewRef(doc)
+        );
+    }
+    return instance;
 }

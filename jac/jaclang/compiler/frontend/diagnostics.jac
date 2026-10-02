@@ -418,6 +418,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A rule's payload says which names may cross; an alias belongs to"
          " the wire or module that imports the name."
      ),
+     E0097 = _err(
+         "E0097",
+         Category.SYNTAX,
+         "`return tail` needs a function call",
+         help="A guaranteed tail call replaces the current frame with the callee's, so its operand is a call: `return tail next_step(state);`."
+     ),
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
@@ -1096,6 +1102,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " missing wire. An inline suppression does not silence this; loosening"
          " the boundary is a change to arch.jac or jac.toml."
      ),
+     E1145 = _err(
+         "E1145",
+         Category.IMPORT,
+         "Cannot import name '{name}' from Jac module '{module}': it defines no such name",
+         help="The module declares no global, function, archetype, enum or import"
+         " named '{name}'. Native lowering binds an imported name to the symbol"
+         " its defining unit exports, and there is none, so the build stops here"
+         " rather than lowering every use of the name to a null value. Import a"
+         " name the module defines, or add the definition to it."
+     ),
      E1150 = _err(
          "E1150",
          Category.TYPE,
@@ -1128,6 +1144,89 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " must be a sized scalar, `int`, `float`, `bool`, a foreign struct or a"
          " `ptr`. A bare `ptr` or a `ptr` to an opaque C type has no element size:"
          " retype it first with `ptr[T](p)`.",
+         blocks_codegen=True
+     ),
+     E1153 = _err(
+         "E1153",
+         Category.TYPE,
+         "C data symbol '{name}' {reason}",
+         help="`glob name: T;` in a C library import declares a variable C"
+         " defines, and `glob name: T = value;` defines one: Jac provides the"
+         " C-layout storage under that symbol name. A symbol of C plain data (a"
+         " sized scalar, `int`, `float`, `bool` or a `ptr`) reads and writes the"
+         " variable in place. A symbol of a foreign struct or an opaque C type is"
+         " a C object Jac handles only by address: `addressof(name)` is its"
+         " `ptr[T]`. An opaque C type has no layout, so Jac cannot define one.",
+         blocks_codegen=True
+     ),
+     E1154 = _err(
+         "E1154",
+         Category.TYPE,
+         "addressof() takes a C data symbol, not {what}",
+         help="`addressof(name)` is the address of a variable C defines, declared"
+         " as `glob name: T;` in a C library import. A Jac value has no stable C"
+         " address: lend C the address of Jac storage through a `&T` / `&mut T`"
+         " parameter, or keep one alive with `pin(value)`.",
+         blocks_codegen=True
+     ),
+     E1155 = _err(
+         "E1155",
+         Category.TYPE,
+         "C data definition '{name}' {reason}",
+         help="A C data symbol Jac defines is laid out at link time, so its"
+         " initializer is a C constant: a literal, `None`, `ptr[T]()`, an integer"
+         " address, `ptr[u8](\"text\")`, `addressof(symbol)`, a named function"
+         " for a callback field, `ptr(function)` for the address of a named"
+         " function, a `ptr[T](...)` cast of any of these addresses, or a"
+         " constructor of a foreign struct whose arguments are all of these."
+         " An array is a list literal of these, or for sized integer elements"
+         " a bytes literal of its little-endian elements.",
+         blocks_codegen=True
+     ),
+     E1156 = _err(
+         "E1156",
+         Category.TYPE,
+         "A C string pointer is made from a string literal of bytes, not {what}",
+         help="`ptr[u8](\"text\")` (or `ptr[i8]`) is the address of an immortal,"
+         " NUL-terminated copy of the literal, like a C string literal. A string"
+         " computed at run time has no fixed C address: encode it and lend C a"
+         " buffer instead.",
+         blocks_codegen=True
+     ),
+     E1157 = _err(
+         "E1157",
+         Category.TYPE,
+         "C variadic {what}",
+         help="A C variadic function (`*args: VaList`, or a C library function"
+         " with `*args`) passes each extra argument by C's default promotions, so"
+         " an extra argument is a sized scalar, `int`, `float`, `bool`, a `ptr`,"
+         " `str` or `bytes`, and the function has no keyword-only or `**`"
+         " parameters.",
+         blocks_codegen=True
+     ),
+     E1158 = _err(
+         "E1158",
+         Category.TYPE,
+         "C function definition '{name}' {reason}",
+         help="A `def` with a body in a C library import defines a C function"
+         " under that exact symbol with the C calling convention, so C code and"
+         " other modules call it as they call any C function. Its parameters and"
+         " result are C data: sized scalars, `int`, `float`, `bool`, `ptr`,"
+         " foreign structs by value and named-function callbacks, with no `&`"
+         " borrows. A C variadic definition (`*args: VaList`) passes its fixed"
+         " parameters as scalars or pointers only.",
+         blocks_codegen=True
+     ),
+     E1159 = _err(
+         "E1159",
+         Category.TYPE,
+         "'{name}' is a borrowed scalar parameter; {what}",
+         help="A `&mut` parameter of a Jac function that holds a scalar (a number,"
+         " a bool or a pointer) is a value: assigning it, or lending it on to a"
+         " function that writes through it, changes only the function's copy and"
+         " never reaches the caller. Return the new value (a tuple for several),"
+         " or take a `ptr[T]` to storage the caller owns. `&mut local` lends a"
+         " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
      ),
      E1301 = _err(
@@ -2199,11 +2298,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Formatter displaced {count} comment(s) to end of file -- refusing to save (use 'jac format' to inspect)"
      ),
-     E5060 = _err(
-         "E5060",
-         Category.CODEGEN,
-         "C library import declaration '{name}' must not have a body"
-     ),
      E5090 = _err(
          "E5090",
          Category.CODEGEN,
@@ -2332,6 +2426,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Constructing '{cls}' would run '{owner}.postinit' on a Python shadow the native object cannot see",
          help="A native class over a Python-side base owns two halves: its own slots live in the native struct, the base's live on a Python shadow instance the bridge keeps beside it. Construction runs the base's `__post_init__` on that shadow, where the subclass's native slots do not exist and its method overrides are not on the shadow's class -- so a store the base initializer makes is invisible natively, and a call it dispatches reaches the base's body rather than the override. The object comes out with its declared defaults and nothing says so. Give '{cls}' a `postinit` of its own -- it suppresses the base's and can chain into it with `super.postinit()`, which does bridge -- or bring the base into the native unit so the whole chain lowers."
+     ),
+     E5113 = _err(
+         "E5113",
+         Category.CODEGEN,
+         "`return tail` cannot be a guaranteed tail call: {reason}",
+         help="A guaranteed tail call (LLVM `musttail`) reuses the caller's frame, so nothing may run after the call: the callee takes the caller's parameter list and return type and calling convention exactly, is not variadic, receives no address of a caller local, and the caller has no owned value, open region, `finally` or `with` block left to clean up at the return. Restructure so the call is the last thing the function does, or use a plain `return`."
      ),
      E5112 = _err(
          "E5112",

@@ -33,6 +33,16 @@ impl SymTabBuildPass._bind_import_path_symbols(module_path: ModulePath) -> None 
 
 impl SymTabBuildPass.enter_module with Module entry {
     self.push_scope_and_link(here);
+
+    for stmt in here.body {
+        if isinstance(stmt, Import) and stmt.clib_decls {
+            for decl in stmt.clib_decls {
+                if isinstance(decl, GlobalVars) {
+                    self._declare_global_vars(decl);
+                }
+            }
+        }
+    }
 }
 
 impl SymTabBuildPass.exit_module with Module exit {
@@ -56,12 +66,16 @@ impl SymTabBuildPass.enter_type_param with TypeParam entry {
 }
 
 impl SymTabBuildPass.exit_global_vars with GlobalVars exit {
+    self._declare_global_vars(here);
+}
+
+impl SymTabBuildPass._declare_global_vars(nd: GlobalVars) -> None {
     import from jaclang.compiler.frontend.constant { SymbolType }
-    for i in here.assignments {
+    for i in nd.assignments {
         for j in i.target {
             if isinstance(j, AstSymbolNode) {
                 j.name_spec._sym_category = SymbolType.MOD_VAR;
-                j.sym_tab.def_insert(j, access_spec=here, single_decl='global var');
+                j.sym_tab.def_insert(j, access_spec=nd, single_decl='global var');
             } else {
                 self.ctx.ice('Expected name type for global vars');
             }

@@ -1060,6 +1060,11 @@ test "multiple impl-separated property accessors in one class resolve independen
     assert output == "ok\n";
 }
 
+test "a property setter on a class receives the instance and the value" {
+    output = run_jac(os.path.join(FIXTURES, "prop_class_setter.jac"));
+    assert output == "ok\n";
+}
+
 test "as cast is type erased" {
     output = run_jac(os.path.join(FIXTURES, "as_cast.jac"));
     assert output == "42\n7\n6\n43\n";

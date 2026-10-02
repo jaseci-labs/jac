@@ -786,6 +786,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_init", loc=_dinit_loc);
 
     self._release_owned_args([first_store_key, first_store_val], op="dict_init");
+    self._nogc_release_dict_key(first_store_key);
 
     for i in range(1, len(nd.kv_pairs)) {
         pair = nd.kv_pairs[i];
@@ -813,6 +814,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             self._rc_call_with_ctx(_set_fn, _set_args, op="dict_init", loc=_dinit_loc);
 
             self._release_owned_args([k, v], op="dict_init");
+            self._nogc_release_dict_key(k);
         }
     }
 
@@ -885,6 +887,7 @@ impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
             }
             self._rc_call_with_ctx(set_fn, setter_args, op="dict_init");
             self._release_owned_args([key, value], op="dict_init");
+            self._nogc_release_dict_key(key);
         }
     }
     return result;
@@ -961,6 +964,7 @@ impl NaIRGenPass._codegen_dict_set(
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_set", loc=_dset_ctx_loc);
 
     self._release_owned_args([key_val, value], op="dict_set");
+    self._nogc_release_dict_key(key_val);
 }
 
 impl NaIRGenPass._emit_dict_eq(

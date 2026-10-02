@@ -7,23 +7,25 @@ changes made by comparisons. Derived from CPython; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_IndexError,
+    PyExc_RuntimeError,
     PyList_Append,
     PyList_GetItemRef,
     PyObject,
     Py_NewRef,
+    Py_None,
     jacpy_less,
     jacpy_list_delete,
     jacpy_list_exchange,
     jacpy_list_size,
     jacpy_list_swap,
-    jacpy_none,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error }
 
 def heap_size_unchanged(heap: ptr[PyObject], size: i64) -> bool {
     if jacpy_list_size(heap) != size {
-        object_error("RuntimeError", "list changed size during iteration");
+        object_error(PyExc_RuntimeError, "list changed size during iteration");
         return False;
     }
     return True;
@@ -50,7 +52,7 @@ def heap_siftdown(
 ) -> i64 {
     size = jacpy_list_size(heap);
     if position >= size {
-        object_error("IndexError", "index out of range");
+        object_error(PyExc_IndexError, "index out of range");
         return -1;
     }
     while position > start {
@@ -75,7 +77,7 @@ def heap_siftup(heap: ptr[PyObject], position: i64, maximum: bool) -> i64 {
     end = jacpy_list_size(heap);
     start = position;
     if position >= end {
-        object_error("IndexError", "index out of range");
+        object_error(PyExc_IndexError, "index out of range");
         return -1;
     }
     while position < (end >> 1) {
@@ -107,13 +109,13 @@ def:pub jacpy_heap_push(
     if heap_siftdown(heap, 0, jacpy_list_size(heap) - 1, maximum != 0) < 0 {
         return NULL;
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
 }
 
 def:pub jacpy_heap_pop(heap: ptr[PyObject], maximum: i64) -> ptr[PyObject] {
     size = jacpy_list_size(heap);
     if size == 0 {
-        object_error("IndexError", "index out of range");
+        object_error(PyExc_IndexError, "index out of range");
         return NULL;
     }
     last = PyList_GetItemRef(heap, size - 1);
@@ -143,7 +145,7 @@ def:pub jacpy_heap_replace(
     heap: ptr[PyObject], item: ptr[PyObject], maximum: i64
 ) -> ptr[PyObject] {
     if jacpy_list_size(heap) == 0 {
-        object_error("IndexError", "index out of range");
+        object_error(PyExc_IndexError, "index out of range");
         return NULL;
     }
     result = jacpy_list_exchange(heap, 0, item);
@@ -225,5 +227,62 @@ def:pub jacpy_heapify(heap: ptr[PyObject], maximum: i64) -> ptr[PyObject] {
             position -= 1;
         }
     }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
+}
+
+# The Argument Clinic _impl functions; the glue checks that `heap` is a list.
+def _heapq_heappush_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_push(heap, item, 0);
+}
+
+def _heapq_heappush_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_push(heap, item, 1);
+}
+
+def _heapq_heappop_impl(module: ptr[PyObject], heap: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_heap_pop(heap, 0);
+}
+
+def _heapq_heappop_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_pop(heap, 1);
+}
+
+def _heapq_heapreplace_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_replace(heap, item, 0);
+}
+
+def _heapq_heapreplace_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_replace(heap, item, 1);
+}
+
+def _heapq_heappushpop_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_pushpop(heap, item, 0);
+}
+
+def _heapq_heappushpop_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heap_pushpop(heap, item, 1);
+}
+
+def _heapq_heapify_impl(module: ptr[PyObject], heap: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_heapify(heap, 0);
+}
+
+def _heapq_heapify_max_impl(
+    module: ptr[PyObject], heap: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_heapify(heap, 1);
 }

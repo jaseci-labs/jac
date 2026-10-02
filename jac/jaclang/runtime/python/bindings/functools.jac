@@ -2,33 +2,41 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyBaseObject_Type,
     PyCallable_Check,
+    PyDict_New,
+    PyDict_SetItem,
+    PyExc_AttributeError,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyIndex_Check,
-    PyMethod_New,
     PyObject,
+    PyObject_CallNoArgs,
     PyObject_GenericGetDict,
     PyObject_GenericSetDict,
     PyObject_GetAttrString,
     PyObject_IsTrue,
     PyObject_RichCompare,
+    PyTuple_GetItem,
     PyTuple_GetSlice,
     PyTuple_New,
     PyTuple_Size,
-    Py_GenericAlias,
     Py_LeaveRecursiveCall,
     Py_NewRef,
+    Py_None,
+    Py_NotImplemented,
     Py_TYPE,
+    PyVectorcall_NARGS,
     jacpy_dict_size,
     jacpy_error_pending,
-    jacpy_is_none,
-    jacpy_none,
-    jacpy_not_implemented,
     jacpy_recursion_enter,
     jacpy_release,
     jacpy_tuple_item,
     jacpy_tuple_set_owned,
     jacpy_type_check
 }
+import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
+import from jaclang.runtime.python.object_model.method { PyMethod_New }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodDefinition,
@@ -38,7 +46,7 @@ import from jaclang.runtime.python.bindings.module {
     jacpy_binding_state_get,
     jacpy_binding_state_set,
     add_owned,
-    jacpy_binding_visit
+    visit_reference
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -48,10 +56,10 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     jacpy_binding_owner,
     jacpy_binding_allocate,
+    jacpy_binding_record,
     jacpy_binding_dict_present,
     jacpy_binding_dict_peek,
-    jacpy_binding_dict_replace,
-    jacpy_binding_marker
+    jacpy_binding_dict_replace
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.payload {
@@ -67,9 +75,13 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
     invoke,
-    index_value
+    index_value,
+    vector_tuple
 }
 import from jaclang.runtime.python.modules.functools {
+    KeyWrapper_token,
+    LruState,
+    _lru_cache_wrapper_token,
     partial_state,
     lru_state,
     jacpy_partial_field,
@@ -78,14 +90,28 @@ import from jaclang.runtime.python.modules.functools {
     jacpy_partial_call,
     jacpy_partial_restore,
     jacpy_partial_repr,
-    jacpy_lru_field,
-    jacpy_lru_destroy,
     jacpy_lru_init,
     jacpy_lru_call,
-    jacpy_lru_clear,
-    jacpy_lru_info,
-    jacpy_reduce,
     jacpy_cmp_key
+}
+import from jaclang.runtime.python.bindings.members {
+    MemberField,
+    MemberType,
+    record_clear,
+    record_set_object
+}
+import from jaclang.runtime.python.bindings.clinic.functools {
+    _functools_doc,
+    _lru_cache_wrapper_methods,
+    keyobject_members_obj_doc,
+    lru_cache_doc,
+    module_methods,
+    partial_doc,
+    partial_memberlist_args_doc,
+    partial_memberlist_func_doc,
+    partial_memberlist_keywords_doc,
+    partial_methods___class_getitem___doc,
+    placeholder_doc
 }
 import from jaclang.runtime.python.capi { text_object, object_error, boundary_failure }
 obj PartialState(NativeState) {
@@ -97,7 +123,7 @@ obj PartialState(NativeState) {
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for i in range(4) {
-            status = jacpy_binding_visit(
+            status = visit_reference(
                 jacpy_partial_field(self.native, i64(i)), visitor, context
             );
             if status != 0 {
@@ -112,29 +138,6 @@ obj PartialState(NativeState) {
     }
 }
 
-obj LruState(NativeState) {
-    has native: lru_state;
-
-    def clear {
-        jacpy_lru_destroy(self.native);
-    }
-
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        for i in range(7) {
-            status = jacpy_binding_visit(
-                jacpy_lru_field(self.native, i64(i)), visitor, context
-            );
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
-
-    def drop {
-        self.clear();
-    }
-}
 
 obj CacheKeyState(ReferenceState) {
     has hash: i64;
@@ -151,7 +154,7 @@ def:priv partial_value(instance: ptr[PyObject]) -> (PartialState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native partial state is unavailable");
+    object_error(PyExc_SystemError, "native partial state is unavailable");
     return None;
 }
 
@@ -162,7 +165,7 @@ def:priv lru_value(instance: ptr[PyObject]) -> (LruState | None) {
             return state;
         }
     }
-    object_error("SystemError", "native cache state is unavailable");
+    object_error(PyExc_SystemError, "native cache state is unavailable");
     return None;
 }
 
@@ -175,7 +178,7 @@ def:priv reference_value(
             return state;
         }
     }
-    object_error("SystemError", "native callable references are unavailable");
+    object_error(PyExc_SystemError, "native callable references are unavailable");
     return None;
 }
 
@@ -194,7 +197,7 @@ def:priv allocate(
 def:priv bind(
     instance: ptr[PyObject], object: ptr[PyObject], type: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if object == 0 or jacpy_is_none(object) != 0 {
+    if object == 0 or object == Py_None {
         return Py_NewRef(instance);
     }
     return PyMethod_New(instance, object);
@@ -205,7 +208,7 @@ def:priv partial_create(
 ) -> ptr[PyObject] {
     count = PyTuple_Size(args);
     if count < 1 {
-        object_error("TypeError", "type 'partial' takes at least one argument");
+        object_error(PyExc_TypeError, "type 'partial' takes at least one argument");
         return NULL;
     }
     # Own every input before allocation or another user callback can collect it.
@@ -215,7 +218,7 @@ def:priv partial_create(
         return NULL;
     }
     if PyCallable_Check(function) == 0 {
-        object_error("TypeError", "the first argument must be callable");
+        object_error(PyExc_TypeError, "the first argument must be callable");
         return NULL;
     }
     module = module_for(type);
@@ -252,7 +255,53 @@ def:priv partial_create(
         < 0 {
         return NULL;
     }
-    return allocate(type, partial_type, state);
+    instance = allocate(type, partial_type, state);
+    if instance != 0 {
+        mirror_partial(instance, state);
+    }
+    return instance;
+}
+
+# partial_memberlist[]: func, args and keywords over the record, which mirrors
+# the native state's references.
+def:priv mirror_partial(instance: ptr[PyObject], state: PartialState) {
+    record = jacpy_binding_record(instance, partial_type.handle);
+    for i in range(3) {
+        record_set_object(record, 8 * i, jacpy_partial_field(state.native, i64(i)));
+    }
+}
+
+# partial_vectorcall(): the positional stack as a tuple and kwnames as a dict,
+# through the same call.
+def:priv partial_vector(
+    instance: ptr[PyObject], args: ptr, count: u64, names: ptr[PyObject]
+) -> ptr[PyObject] {
+    size = PyVectorcall_NARGS(count);
+    stack = ptr[ptr[PyObject]](int(args));
+    positional = vector_tuple(stack, size);
+    if positional == 0 {
+        return NULL;
+    }
+    keywords: ptr[PyObject] = NULL;
+    if names != 0 and PyTuple_Size(names) > 0 {
+        keywords = PyDict_New();
+        values = stack.view(int(size + PyTuple_Size(names)));
+        for i in range(int(PyTuple_Size(names))) {
+            if keywords == 0
+                or PyDict_SetItem(
+                    keywords, PyTuple_GetItem(names, i64(i)), values[int(size) + i]
+                )
+                    < 0 {
+                jacpy_release(keywords);
+                jacpy_release(positional);
+                return NULL;
+            }
+        }
+    }
+    result = partial_call(instance, positional, keywords);
+    jacpy_release(keywords);
+    jacpy_release(positional);
+    return result;
 }
 
 def:priv partial_call(
@@ -280,15 +329,6 @@ def:priv partial_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_partial_repr(state.native, instance);
 }
 
-def:priv partial_field(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = partial_value(instance);
-    if state is None {
-        return NULL;
-    }
-    field = jacpy_partial_field(state.native, i64(context));
-    return Py_NewRef(field) if field != 0 else jacpy_none();
-}
-
 def:priv partial_reduce(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
@@ -304,11 +344,13 @@ def:priv partial_reduce(
     for i in range(3) {
         field = jacpy_partial_field(state.native, i64(i));
         jacpy_tuple_set_owned(
-            saved, i64(i), Py_NewRef(field) if field != 0 else jacpy_none()
+            saved, i64(i), Py_NewRef(field) if field != 0 else Py_NewRef(Py_None)
         );
     }
     dictionary = jacpy_binding_dict_peek(instance);
-    jacpy_tuple_set_owned(saved, 3, dictionary if dictionary != 0 else jacpy_none());
+    jacpy_tuple_set_owned(
+        saved, 3, dictionary if dictionary != 0 else Py_NewRef(Py_None)
+    );
     jacpy_tuple_set_owned(held.references[1], 0, Py_NewRef(state.native.function));
     jacpy_tuple_set_owned(held.references[0], 0, Py_NewRef(Py_TYPE(instance)));
     jacpy_tuple_set_owned(held.references[0], 1, Py_NewRef(held.references[1]));
@@ -327,11 +369,12 @@ def:priv partial_setstate(
     if dictionary == 0 {
         return NULL;
     }
+    mirror_partial(instance, state);
     status = jacpy_binding_dict_replace(
-        instance, NULL if jacpy_is_none(dictionary) != 0 else dictionary
+        instance, NULL if dictionary == Py_None else dictionary
     );
     jacpy_release(dictionary);
-    return jacpy_none() if status == 0 else NULL;
+    return Py_NewRef(Py_None) if status == 0 else NULL;
 }
 
 # __dict__ accessors for the property table, whose closure is an integer tag.
@@ -373,7 +416,7 @@ def:priv key_compare(
     instance: ptr[PyObject], other: ptr[PyObject], operation: i32
 ) -> ptr[PyObject] {
     if Py_TYPE(instance) != Py_TYPE(other) {
-        object_error("TypeError", "other argument must be K instance");
+        object_error(PyExc_TypeError, "other argument must be K instance");
         return NULL;
     }
     left = reference_value(instance, key_type);
@@ -382,7 +425,7 @@ def:priv key_compare(
         return NULL;
     }
     if left.references[1] == 0 or right.references[1] == 0 {
-        object_error("AttributeError", "object");
+        object_error(PyExc_AttributeError, "object");
         return NULL;
     }
     return jacpy_cmp_key(
@@ -396,7 +439,7 @@ def:priv key_object(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
         return NULL;
     }
     value = state.references[1];
-    return Py_NewRef(value) if value != 0 else jacpy_none();
+    return Py_NewRef(value) if value != 0 else Py_NewRef(Py_None);
 }
 
 def:priv key_set_object(
@@ -435,7 +478,7 @@ def:priv hashed_compare(
     instance: ptr[PyObject], other: ptr[PyObject], operation: i32
 ) -> ptr[PyObject] {
     if Py_TYPE(instance) != Py_TYPE(other) {
-        return jacpy_not_implemented();
+        return Py_NewRef(Py_NotImplemented);
     }
     left = reference_value(instance, hashed_type);
     right = reference_value(other, hashed_type);
@@ -453,13 +496,13 @@ glob:priv lru_signature = CallSignature(
 
 def:priv lru_create_bound(args: BoundArguments) -> ptr[PyObject] {
     if PyCallable_Check(args.values[0]) == 0 {
-        object_error("TypeError", "the first argument must be callable");
+        object_error(PyExc_TypeError, "the first argument must be callable");
         return NULL;
     }
     maximum: i64 = -1;
-    if jacpy_is_none(args.values[1]) == 0 {
+    if args.values[1] != Py_None {
         if PyIndex_Check(args.values[1]) == 0 {
-            object_error("TypeError", "maxsize should be integer or None");
+            object_error(PyExc_TypeError, "maxsize should be integer or None");
             return NULL;
         }
         value = index_value(args.values[1]);
@@ -515,26 +558,6 @@ def:priv lru_call(
     }
 }
 
-def:priv lru_cache_clear(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
-    state = lru_value(instance);
-    if state is None {
-        return NULL;
-    }
-    return jacpy_none() if jacpy_lru_clear(state.native) == 0 else NULL;
-}
-
-def:priv lru_cache_info(
-    instance: ptr[PyObject], unused: ptr[PyObject]
-) -> ptr[PyObject] {
-    state = lru_value(instance);
-    if state is None {
-        return NULL;
-    }
-    return jacpy_lru_info(state.native);
-}
-
 def:priv lru_reduce(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_GetAttrString(instance, "__qualname__");
 }
@@ -547,7 +570,7 @@ def:priv placeholder_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyTuple_Size(args) != 0 or (kwargs != 0 and jacpy_dict_size(kwargs) != 0) {
-        object_error("TypeError", "Placeholder takes no arguments");
+        object_error(PyExc_TypeError, "PlaceholderType takes no arguments");
         return NULL;
     }
     module = module_for(type);
@@ -567,31 +590,6 @@ def:priv placeholder_reduce(
     return text_object("Placeholder");
 }
 
-glob:priv reduce_signature = CallSignature(
-         "reduce", ["function", "iterable", "initial"], 2, 3, 2
-     ),
-     cmp_signature = CallSignature("cmp_to_key", ["mycmp"], 1, 1);
-
-def:priv reduce_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_reduce(args.values[0], args.values[1], args.values[2]);
-}
-
-def:priv reduce(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(reduce_signature, args, kwargs, reduce_bound);
-}
-
-def:priv cmp_bound(args: BoundArguments) -> ptr[PyObject] {
-    return key_create(jacpy_binding_state_get(args.context, 1), args.values[0], NULL);
-}
-
-def:priv cmp_to_key(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(cmp_signature, args, kwargs, cmp_bound, module);
-}
-
 def:priv partial_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
@@ -599,6 +597,7 @@ def:priv partial_traverse(
 }
 
 def:priv partial_clear(instance: ptr[PyObject]) -> i32 {
+    record_clear(jacpy_binding_record(instance, partial_type.handle), 24);
     return clear_payload(instance, partial_type.handle);
 }
 
@@ -662,20 +661,14 @@ def:priv placeholder_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, placeholder_type.handle);
 }
 
-glob:priv callable_flags = u64(
-         TypeFlags.GC.value
-             | TypeFlags.IMMUTABLE.value
-             | TypeFlags.BASETYPE.value
-             | TypeFlags.MANAGED_WEAKREF.value
-     ),
-     sealed_flags = u64(
+glob:priv sealed_flags = u64(
          TypeFlags.GC.value
              | TypeFlags.IMMUTABLE.value
              | TypeFlags.DISALLOW_INSTANTIATION.value
      ),
      partial_type = TypeDefinition(
          "functools.partial",
-         "partial(func, /, *args, **keywords)\n--\n\nCreate a new function with partial application of the given arguments\nand keywords.",
+         partial_doc,
          [
              MethodDefinition(
                  "__reduce__", MethodCallbacks(positional=partial_reduce), "", flags=4
@@ -689,11 +682,16 @@ glob:priv callable_flags = u64(
              MethodDefinition(
                  "__class_getitem__",
                  MethodCallbacks(positional=Py_GenericAlias),
-                 "partial is generic over the wrapped function's return type",
+                 partial_methods___class_getitem___doc,
                  flags=24
              )
          ],
-         callable_flags,
+         u64(
+             TypeFlags.GC.value
+                 | TypeFlags.BASETYPE.value
+                 | TypeFlags.VECTORCALL.value
+                 | TypeFlags.IMMUTABLE.value
+         ),
          TypeHooks(
              create=partial_create,
              dealloc=partial_dealloc,
@@ -701,33 +699,43 @@ glob:priv callable_flags = u64(
              clear=partial_clear,
              call=partial_call,
              repr=partial_repr,
-             descriptor=bind
+             descriptor=bind,
+             vectorcall=partial_vector
          ),
          [
-             PropertyDefinition(
-                 "func",
-                 PropertyCallbacks(read=partial_field),
-                 context=0,
-                 doc="function object to use in future partial calls"
-             ),
-             PropertyDefinition(
-                 "args",
-                 PropertyCallbacks(read=partial_field),
-                 context=1,
-                 doc="tuple of arguments to future partial calls"
-             ),
-             PropertyDefinition(
-                 "keywords",
-                 PropertyCallbacks(read=partial_field),
-                 context=2,
-                 doc="dictionary of keyword arguments to future partial calls"
-             ),
              PropertyDefinition(
                  "__dict__",
                  PropertyCallbacks(read=generic_get_dict, write=generic_set_dict)
              )
          ],
-         instance_dict=True
+         instance_dict=True,
+         members=[
+             MemberField(
+                 name="func",
+                 kind=MemberType.OBJECT.value,
+                 offset=0,
+                 readonly=True,
+                 doc=partial_memberlist_func_doc
+             ),
+             MemberField(
+                 name="args",
+                 kind=MemberType.OBJECT.value,
+                 offset=8,
+                 readonly=True,
+                 doc=partial_memberlist_args_doc
+             ),
+             MemberField(
+                 name="keywords",
+                 kind=MemberType.OBJECT.value,
+                 offset=16,
+                 readonly=True,
+                 doc=partial_memberlist_keywords_doc
+             )
+         ],
+         record_size=24,
+         weaklist=True,
+         generic_getattr=True,
+         generic_setattr=True
      ),
      key_type = TypeDefinition(
          "functools.KeyWrapper",
@@ -745,7 +753,7 @@ glob:priv callable_flags = u64(
              PropertyDefinition(
                  "obj",
                  PropertyCallbacks(read=key_object, write=key_set_object),
-                 doc="Value wrapped by a key function."
+                 doc=keyobject_members_obj_doc
              ),
              PropertyDefinition(
                  "__text_signature__", PropertyCallbacks(read=key_text_signature)
@@ -768,31 +776,24 @@ glob:priv callable_flags = u64(
      ),
      lru_type = TypeDefinition(
          "functools._lru_cache_wrapper",
-         "Create a cached callable that wraps another function.",
-         [
-             MethodDefinition(
-                 "cache_clear",
-                 MethodCallbacks(positional=lru_cache_clear),
-                 "cache_clear($self, /)\n--\n\nClear the cache and cache statistics",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "cache_info",
-                 MethodCallbacks(positional=lru_cache_info),
-                 "cache_info($self, /)\n--\n\nReport cache statistics",
-                 flags=4
-             ),
-             MethodDefinition(
-                 "__reduce__", MethodCallbacks(positional=lru_reduce), "", flags=4
-             ),
-             MethodDefinition(
-                 "__copy__", MethodCallbacks(positional=lru_copy), "", flags=1
-             ),
-             MethodDefinition(
-                 "__deepcopy__", MethodCallbacks(positional=lru_copy), "", flags=1
-             )
-         ],
-         callable_flags,
+         lru_cache_doc,
+         _lru_cache_wrapper_methods
+             + [
+                 MethodDefinition(
+                     "__reduce__", MethodCallbacks(positional=lru_reduce), "", flags=4
+                 ),
+                 MethodDefinition(
+                     "__copy__", MethodCallbacks(positional=lru_copy), "", flags=1
+                 ),
+                 MethodDefinition(
+                     "__deepcopy__", MethodCallbacks(positional=lru_copy), "", flags=1
+                 )
+             ],
+         u64(
+             TypeFlags.GC.value
+                 | TypeFlags.METHOD_DESCRIPTOR.value
+                 | TypeFlags.IMMUTABLE.value
+         ),
          TypeHooks(
              create=lru_create,
              dealloc=lru_dealloc,
@@ -807,11 +808,12 @@ glob:priv callable_flags = u64(
                  PropertyCallbacks(read=generic_get_dict, write=generic_set_dict)
              )
          ],
-         instance_dict=True
+         instance_dict=True,
+         weaklist=True
      ),
      placeholder_type = TypeDefinition(
          "functools._PlaceholderType",
-         "",
+         placeholder_doc,
          [
              MethodDefinition(
                  "__reduce__",
@@ -830,6 +832,8 @@ glob:priv callable_flags = u64(
      );
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
+    KeyWrapper_token.handle = key_type.handle;
+    _lru_cache_wrapper_token.handle = lru_type.handle;
     declarations = [partial_type, key_type, lru_type, hashed_type, placeholder_type];
     for i in range(len(declarations)) {
         type = declarations[i].create(module);
@@ -845,7 +849,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     }
     jacpy_binding_state_set(module, 5, placeholder);
     jacpy_release(placeholder);
-    marker = jacpy_binding_marker();
+    marker = PyObject_CallNoArgs(addressof(PyBaseObject_Type));
     if marker == 0 {
         return i32(-1);
     }
@@ -854,6 +858,9 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_owned(module, "partial", Py_NewRef(jacpy_binding_state_get(module, 0)))
         or not add_owned(
             module, "_lru_cache_wrapper", Py_NewRef(jacpy_binding_state_get(module, 2))
+        )
+        or not add_owned(
+            module, "_PlaceholderType", Py_NewRef(jacpy_binding_state_get(module, 4))
         )
         or not add_owned(
             module, "Placeholder", Py_NewRef(jacpy_binding_state_get(module, 5))
@@ -865,19 +872,8 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 
 glob:priv definition = ModuleDefinition(
          "_functools",
-         "Native Jac callable policies.",
-         [
-             MethodDefinition(
-                 "reduce",
-                 MethodCallbacks(keywords=reduce),
-                 "reduce($module, function, iterable, /, initial=<unrepresentable>)\n--\n\nApply a function of two arguments cumulatively to the items of an iterable."
-             ),
-             MethodDefinition(
-                 "cmp_to_key",
-                 MethodCallbacks(keywords=cmp_to_key),
-                 "cmp_to_key($module, /, mycmp)\n--\n\nConvert a cmp= function into a key= function."
-             )
-         ],
+         _functools_doc,
+         module_methods,
          hooks=ModuleHooks(execute=execute),
          state_count=7
      );

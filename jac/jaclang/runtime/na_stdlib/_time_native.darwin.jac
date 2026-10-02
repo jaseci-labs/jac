@@ -6,7 +6,8 @@ glob CLK_REALTIME: int = 0,
      CLK_MONOTONIC: int = 6,
      CLK_MONOTONIC_RAW: int = 4,
      CLK_PROCESS_CPUTIME: int = 12,
-     CLK_THREAD_CPUTIME: int = 16;
+     CLK_THREAD_CPUTIME: int = 16,
+     CLK_PY_MONOTONIC: int = 8;
 
 def:pub time_sleep_ns(ns: int) {
     sec: int = ns // NS_PER_SEC;

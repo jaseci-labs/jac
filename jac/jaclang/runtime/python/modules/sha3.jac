@@ -10,6 +10,8 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBytes_FromStringAndSize,
     PyErr_NoMemory,
+    PyExc_SystemError,
+    PyExc_ValueError,
     PyLong_FromLong,
     PyMem_Free,
     PyMem_Malloc,
@@ -19,7 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_TYPE,
     _Py_strhex,
     jacpy_bytes_from_memory,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error }
@@ -86,7 +87,7 @@ def:priv sha3_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_SHA3_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_SHA3_update(hacl, cursor, u32(remaining));
 }
@@ -144,7 +145,7 @@ def py_sha3_new_impl(
     }
     index = type_index(type);
     if index < 0 {
-        object_error("SystemError", "bad argument to internal function");
+        object_error(PyExc_SystemError, "bad argument to internal function");
         return NULL;
     }
     instance = new_sha3_object(
@@ -215,7 +216,7 @@ def:priv shake_digest(
         return NULL;
     }
     if length >= u64(1 << 29) {
-        object_error("ValueError", "length is too large");
+        object_error(PyExc_ValueError, "length is too large");
         return NULL;
     }
     output = PyMem_Malloc(length);
@@ -254,7 +255,7 @@ def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
 def get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     index = type_index(Py_TYPE(instance));
     if index < 0 {
-        object_error("SystemError", "bad argument to internal function");
+        object_error(PyExc_SystemError, "bad argument to internal function");
         return NULL;
     }
     return PyUnicode_FromString(SHA3_TYPES[index][0]);

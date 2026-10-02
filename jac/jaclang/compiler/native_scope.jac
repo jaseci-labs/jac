@@ -146,6 +146,23 @@ def scope_allows_inferred_path(mod_path: str) -> bool {
     return not native_unit_compile_active() or not package_host_edge(mod_path);
 }
 
+def binds_bare_arch_names(mod_path: str) -> bool {
+    import from jaclang.compiler.kernel_target { target_package_rel }
+    import from jaclang.compiler.frontend.codeinfo { kernel_unit_rels }
+    rel = target_package_rel(mod_path) if mod_path else None;
+    if rel is None {
+        return False;
+    }
+    rel = rel.lstrip("/");
+    if rel.endswith(".pyi")
+        or (rel.startswith("runtime/") and rel.count("/") == 1)
+        or rel in KERNEL_ABI_CONTRACT_REL
+        or rel in kernel_unit_rels() {
+        return True;
+    }
+    return ("jaclang/" + rel) in native_scope_path_suffixes();
+}
+
 def scope_modules -> list[str] {
     import from jaclang.compiler.kernel_target { active_kernel_target }
     spec = active_kernel_target();

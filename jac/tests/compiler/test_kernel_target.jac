@@ -12,7 +12,7 @@ import shutil;
 import tempfile;
 import from jaclang.compiler.frontend.codeinfo {
     bundled_stdlib_module_of,
-    is_in_jaclang_package,
+    is_toolchain_unit,
     is_kernel_unit_path,
     is_native_by_location,
     is_shared_runtime_module,
@@ -111,7 +111,7 @@ test "a kernel target retargets the package predicates at a staging copy" {
         # abort stub in the kernel it built.
         assert is_native_by_location(math_copy);
         assert bundled_stdlib_module_of(math_copy) == "math";
-        assert is_in_jaclang_package(math_copy);
+        assert is_toolchain_unit(math_copy);
         assert is_shared_runtime_module(fragment_copy);
         real_copy = os.path.realpath(copy) + os.sep;
         assert os.path.realpath(kernel_root_path()).startswith(real_copy) , kernel_root_path();

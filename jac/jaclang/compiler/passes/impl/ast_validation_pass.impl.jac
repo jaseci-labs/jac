@@ -314,6 +314,9 @@ impl ASTValidationPass.enter_global_vars with GlobalVars entry {
     if here.is_frozen and isinstance(here.parent, Archetype) {
         return;
     }
+    if isinstance(here.parent, Import) and here.parent.clib_decls {
+        return;
+    }
     if not isinstance(here.parent, valid_parents) {
         self.ctx.emit(E0063, node_override=here);
     }

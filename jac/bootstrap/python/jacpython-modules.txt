@@ -11,7 +11,8 @@
 #   linker flags      Extra Setup.local flags for a foreign library. A path
 #                     Modules/<name>.a names an archive CPython's makefile
 #                     builds (the vendored HACL* libraries); build.sh makes
-#                     it before linking the interpreter.
+#                     it before linking the interpreter. A flag prefixed
+#                     with an OS (linux:-lrt) applies only on that OS.
 #
 # This file is the single list. build.sh writes the Setup.local *static* block
 # from it and fails when native_api.jac does not import a listed PyInit;
@@ -48,13 +49,48 @@ _weakref        test.test_weakref
 _tracemalloc    test.test_tracemalloc
 zlib            test.test_zlib                          -lz
 _bz2            test.test_bz2                           -lbz2
+_lzma           test.test_lzma                          -llzma
+_zstd           test.test_zstd                          -lzstd
+_sqlite3        test.test_sqlite3                       -lsqlite3 -lm -lpthread
+pyexpat         test.test_pyexpat                       -lexpat
+_elementtree    test.test_xml_etree_c
 errno           test.test_errno
 syslog          test.test_syslog
 resource        test.test_resource
 atexit          test.test_atexit
+time            test.test_time,test.test_strftime
+select          test.test_select,test.test_poll,test.test_kqueue,test.test_epoll,test.test_selectors
+mmap            test.test_mmap
 _md5            test.test_hashlib                       Modules/_hacl/libHacl_Hash_MD5.a
 _sha1           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA1.a
 _sha2           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA2.a
 _sha3           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA3.a
 _blake2         test.test_hashlib                       Modules/_hacl/libHacl_Hash_BLAKE2.a
 _hmac           test.test_hmac                          Modules/_hacl/libHacl_HMAC.a
+fcntl           test.test_fcntl
+termios         test.test_termios,test.test_tty
+_posixsubprocess test.test_subprocess
+_uuid           test.test_uuid
+_lsprof         test.test_cprofile,test.test_profile
+_multiprocessing test.test_multiprocessing_spawn.test_misc
+_posixshmem     test.test_multiprocessing_spawn.test_misc   linux:-lrt
+_abc            test.test_abc,test.test_isinstance
+_codecs         test.test_codecs,test.test_codeccallbacks
+_locale         test.test_locale,test.test__locale
+_zoneinfo       test.test_zoneinfo
+unicodedata     test.test_unicodedata,test.test_ucn
+_datetime       test.test_datetime
+_decimal        test.test_decimal                       -lmpdec -lm
+_multibytecodec test.test_multibytecodec
+_codecs_cn      test.test_codecencodings_cn,test.test_codecmaps_cn
+_codecs_hk      test.test_codecencodings_hk,test.test_codecmaps_hk
+_codecs_iso2022 test.test_codecencodings_iso2022
+_codecs_jp      test.test_codecencodings_jp,test.test_codecmaps_jp
+_codecs_kr      test.test_codecencodings_kr,test.test_codecmaps_kr
+_codecs_tw      test.test_codecencodings_tw,test.test_codecmaps_tw
+_socket         test.test_socket,test.test_selectors
+_sre            test.test_re
+_hashlib        test.test_hashlib,test.test_hmac        -lcrypto
+_ssl            test.test_ssl                           -lssl -lcrypto
+_asyncio        test.test_asyncio,test.test_contextlib_async
+posix           test.test_os,test.test_posix,test.test_shutil,test.test_glob,test.test_tempfile   linux:-lutil

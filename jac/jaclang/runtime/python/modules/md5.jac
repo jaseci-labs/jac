@@ -9,7 +9,6 @@ import from jaclang.runtime.python.cpython_api {
     PyErr_NoMemory,
     PyObject,
     Py_TYPE,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
@@ -62,7 +61,7 @@ def:priv md5_update(hacl: ptr, address: ptr, size: i64) {
     while remaining > UINT32_MAX {
         _Py_LibHacl_Hacl_Hash_MD5_update(hacl, cursor, u32(UINT32_MAX));
         remaining -= UINT32_MAX;
-        cursor = jacpy_offset(cursor, UINT32_MAX);
+        cursor += UINT32_MAX;
     }
     _Py_LibHacl_Hacl_Hash_MD5_update(hacl, cursor, u32(remaining));
 }

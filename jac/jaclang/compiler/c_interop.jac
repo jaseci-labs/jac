@@ -1,17 +1,23 @@
 import from jaclang.compiler.frontend.unitree {
+    Ability,
     Archetype,
     Assignment,
     AtomTrailer,
     AtomUnit,
     Expr,
+    GlobalVars,
     Import,
+    Name,
+    ParamVar,
+    Symbol,
     UnaryExpr,
+    resolved_decl_of,
     UniNode
 }
 
 import type from jaclang.compiler.types.types { ClassType, TypeBase }
 
-glob C_BUILTIN_GENERICS: tuple[str, ...] = ("ptr", "PtrView", "Pinned");
+glob C_BUILTIN_TYPES: tuple[str, ...] = ("ptr", "PtrView", "Pinned", "VaList");
 
 def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
     if nd is None {
@@ -22,6 +28,25 @@ def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
         return imp;
     }
     return None;
+}
+
+def clib_block_defines(imp: (UniNode | None)) -> bool {
+    import from jaclang.compiler.frontend.unitree { Ability }
+    if not isinstance(imp, Import) or not imp.clib_decls {
+        return False;
+    }
+    for decl in imp.clib_decls {
+        if isinstance(decl, Ability)
+            and decl.body is not None
+            and not (isinstance(decl.body, list) and not decl.body) {
+            return True;
+        }
+        if isinstance(decl, GlobalVars)
+            and any(a.value is not None for a in decl.assignments) {
+            return True;
+        }
+    }
+    return False;
 }
 
 def is_clib_archetype(arch: (UniNode | None)) -> bool {
@@ -68,10 +93,10 @@ def opaque_c_of_type(t: (TypeBase | None)) -> (Archetype | None) {
 
 def c_builtin_kind(t: (TypeBase | None)) -> str {
     cls = _class_of(t);
-    if cls is None or cls.shared.class_name not in C_BUILTIN_GENERICS {
+    if cls is None or cls.shared.class_name not in C_BUILTIN_TYPES {
         return "";
     }
-    if cls.is_builtin(list(C_BUILTIN_GENERICS)) {
+    if cls.is_builtin(list(C_BUILTIN_TYPES)) {
         return cls.shared.class_name;
     }
     return "";
@@ -87,6 +112,20 @@ def is_ptr_view_type(t: (TypeBase | None)) -> bool {
 
 def is_pinned_type(t: (TypeBase | None)) -> bool {
     return c_builtin_kind(t) == "Pinned";
+}
+
+def is_va_list_type(t: (TypeBase | None)) -> bool {
+    return c_builtin_kind(t) == "VaList";
+}
+
+def c_variadic_param(sig: (UniNode | None)) -> (ParamVar | None) {
+    import from jaclang.compiler.frontend.unitree { FuncSignature }
+    if not isinstance(sig, FuncSignature) or sig.varargs is None {
+        return None;
+    }
+    tag = sig.varargs.type_tag.tag if sig.varargs.type_tag else None;
+    tag_type = tag.type if tag is not None else None;
+    return sig.varargs if is_va_list_type(tag_type) else None;
 }
 
 def c_type_arg(t: (TypeBase | None)) -> (TypeBase | None) {
@@ -123,6 +162,26 @@ def reads_foreign_storage(nd: (UniNode | None)) -> bool {
     return is_ptr_view_type(base_type);
 }
 
+def foreign_field_of(nd: (UniNode | None)) -> (tuple[Archetype, int] | None) {
+    while isinstance(nd, AtomUnit) and isinstance(nd.value, Expr) {
+        nd = nd.value;
+    }
+    if not isinstance(nd, AtomTrailer) or not nd.is_attr {
+        return None;
+    }
+    arch = foreign_struct_of_type(nd.target.type);
+    name = nd.right.sym_name if isinstance(nd.right, Name) else None;
+    if arch is None or name is None {
+        return None;
+    }
+    for (index, field) in enumerate(arch.get_has_vars()) {
+        if field.name.sym_name == name {
+            return (arch, index);
+        }
+    }
+    return None;
+}
+
 def foreign_read_is_place(nd: UniNode) -> bool {
     cur = nd;
     parent = cur.parent;
@@ -153,28 +212,45 @@ def foreign_read_copies(nd: (UniNode | None)) -> bool {
         and not foreign_read_is_place(nd);
 }
 
-def is_builtin_pin_call(call: (UniNode | None)) -> bool {
+def _ambient_c_call_returns(
+    call: (UniNode | None), name: str
+) -> list[(TypeBase | None)] {
     import from jaclang.compiler.frontend.unitree { FuncCall, Name }
-    if not isinstance(call, FuncCall) or not isinstance(call.target, Name) {
-        return False;
+    if not isinstance(call, FuncCall)
+        or not isinstance(call.target, Name)
+        or call.target.value != name {
+        return [];
     }
+    import from jaclang.compiler.types.types { FunctionType, OverloadedType }
     tgt = call.target;
-    if tgt.value != "pin" {
-        return False;
-    }
-    import from jaclang.compiler.types.types { FunctionType }
     decl = tgt.sym.decl if tgt.sym is not None else None;
-    if decl is not None and decl.loc is not None {
-        if str(decl.loc.mod_path).endswith(".jac") {
-            return False;
-        }
+    if decl is not None
+        and decl.loc is not None
+        and str(decl.loc.mod_path).endswith(".jac") {
+        return [];
     }
     fn_type = tgt.type;
-    return isinstance(fn_type, FunctionType) and is_pinned_type(fn_type.return_type);
+    if isinstance(fn_type, FunctionType) {
+        return [fn_type.return_type];
+    }
+    if isinstance(fn_type, OverloadedType) {
+        return [o.return_type for o in fn_type.overloads];
+    }
+    return [];
+}
+
+def is_builtin_pin_call(call: (UniNode | None)) -> bool {
+    returns = _ambient_c_call_returns(call, "pin");
+    return bool(returns) and all(is_pinned_type(r) for r in returns);
+}
+
+def is_builtin_addressof_call(call: (UniNode | None)) -> bool {
+    returns = _ambient_c_call_returns(call, "addressof");
+    return bool(returns) and all(is_ptr_type(r) for r in returns);
 }
 
 def is_c_value_type(t: (TypeBase | None)) -> bool {
-    return c_builtin_kind(t) in ("ptr", "PtrView");
+    return c_builtin_kind(t) in ("ptr", "PtrView", "VaList");
 }
 
 def c_call_borrows_args(call: (UniNode | None)) -> bool {
@@ -186,6 +262,103 @@ def c_call_borrows_args(call: (UniNode | None)) -> bool {
         return True;
     }
     return is_ptr_type(call.target.type);
+}
+
+def c_lent_elem(
+    param_type: (TypeBase | None), operand_type: (TypeBase | None)
+) -> (TypeBase | None) {
+    if not is_ptr_type(param_type) {
+        return None;
+    }
+    elem = c_type_arg(param_type);
+    if elem is None {
+        return None;
+    }
+    spec = c_type_spec(elem, None);
+    if spec[0] not in ("s", "ptr", "struct") or spec == ["s", "bool"] {
+        return None;
+    }
+    return elem if c_type_spec(operand_type, None) == spec else None;
+}
+
+def c_abi_callee(call: (UniNode | None)) -> (Ability | None) {
+    import from jaclang.compiler.frontend.unitree { FuncCall }
+    import from jaclang.compiler.symbol_utils { resolved_callee }
+    if not isinstance(call, FuncCall) {
+        return None;
+    }
+    callee = resolved_callee(call);
+    if not isinstance(callee, Ability) or clib_import_of(callee) is None {
+        return None;
+    }
+    return callee;
+}
+
+def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None) {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    if not isinstance(arg, UnaryExpr) or not is_borrow_kind(arg.ownership) {
+        return None;
+    }
+    param = c_lent_param(arg);
+    call = arg.parent;
+    if param is None or call is None {
+        return None;
+    }
+    return c_lent_elem(c_param_type(call, param), arg.operand.type);
+}
+
+def c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None) {
+    import from jaclang.compiler.frontend.unitree { FuncCall }
+    import from jaclang.compiler.types.types { FunctionType }
+    if param.type is not None {
+        return param.type;
+    }
+    fn_type = call.target.type if isinstance(call, FuncCall) else None;
+    if not isinstance(fn_type, FunctionType) {
+        return None;
+    }
+    name = param.name.value if param.name is not None else None;
+    for p in fn_type.parameters or [] {
+        if p.name == name and not p.is_self and not p.is_cls {
+            return p.param_type;
+        }
+    }
+    return None;
+}
+
+def c_lent_param(arg: UniNode) -> (ParamVar | None) {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    import from jaclang.compiler.frontend.unitree { FuncCall, FuncSignature, KWPair }
+    call = arg.parent;
+    if not isinstance(call, FuncCall) {
+        return None;
+    }
+    callee = c_abi_callee(call);
+    if callee is None or not isinstance(callee.signature, FuncSignature) {
+        return None;
+    }
+    params = [
+        p
+        for p in callee.signature.get_parameters()
+        if not (p.is_vararg or p.is_kwargs)
+    ];
+    args = list(call.params or []);
+    target: (ParamVar | None) = None;
+    for (i, a) in enumerate(args) {
+        if isinstance(a, KWPair) {
+            break;
+        }
+        if a is arg and i < len(params) {
+            target = params[i];
+        }
+    }
+    if target is None
+        or (
+            target.type_tag is not None and is_borrow_kind(target.type_tag.ownership)
+        ) {
+        return None;
+    }
+    return target;
 }
 
 glob _SPEC_SCALAR_ALIASES: dict[str, str] = {"int": "i64", "float": "f64"};
@@ -216,7 +389,14 @@ def c_type_spec(
         ];
     }
     if isinstance(t, ClassType) and t._shared is not None {
+        elem = c_array_elem(t);
+        if elem is not None {
+            return ["array", c_type_spec(elem, None)];
+        }
         kind = c_builtin_kind(t);
+        if kind == "VaList" {
+            return ["va_list"];
+        }
         if kind == "ptr" {
             arg = c_type_arg(t);
             return ["ptr", None if arg is None else c_type_spec(arg, None)];
@@ -273,4 +453,259 @@ def _annotation_name(annotation: (UniNode | None)) -> (str | None) {
         return annotation.value;
     }
     return None;
+}
+
+def clib_global_assignment(decl: (UniNode | None)) -> (Assignment | None) {
+    assign = decl if isinstance(decl, Assignment) else None;
+    if assign is None and decl is not None {
+        assign = decl.find_parent_of_type(Assignment);
+    }
+    if assign is None or not isinstance(assign.parent, GlobalVars) {
+        return None;
+    }
+    return assign if clib_import_of(assign.parent) is not None else None;
+}
+
+def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None) {
+    return clib_global_assignment(resolved_decl_of(sym)) if sym is not None else None;
+}
+
+def clib_global_of_name(nd: (UniNode | None)) -> (Assignment | None) {
+    import from jaclang.compiler.frontend.unitree {
+        Ability,
+        ImplDef,
+        LambdaExpr,
+        Module,
+        Test
+    }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    sym = nd.sym;
+    found = clib_global_of_symbol(sym);
+    if found is not None or sym.imported {
+        return found;
+    }
+    if not isinstance(sym.parent_tab, (Ability, ImplDef, Test, LambdaExpr)) {
+        return None;
+    }
+    decl = sym.decl;
+    if decl is None
+        or not isinstance(decl.parent, Assignment)
+        or decl.parent.type_tag is not None
+        or any(
+            not isinstance(defn.parent, Assignment) or defn.parent.type_tag is not None
+            for defn in sym.defn
+        ) {
+        return None;
+    }
+    module = nd.find_parent_of_type(Module);
+    outer = module.names_in_scope.get(nd.sym_name) if module is not None else None;
+    if outer is None or not outer.imported {
+        return None;
+    }
+    return clib_global_of_symbol(outer);
+}
+
+def c_string_literal(expr: (UniNode | None)) -> (str | None) {
+    import from jaclang.compiler.frontend.unitree {
+        FString,
+        MultiString,
+        literal_string_value
+    }
+    if expr is None
+        or (
+            isinstance(expr, MultiString)
+            and any(isinstance(part, FString) for part in expr.strings)
+        ) {
+        return None;
+    }
+    return literal_string_value(expr);
+}
+
+def named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
+    import from jaclang.compiler.frontend.unitree { Ability, Name }
+    while isinstance(nd, AtomUnit) and isinstance(nd.value, Expr) {
+        nd = nd.value;
+    }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    decl = resolved_decl_of(nd.sym);
+    owner = decl.name_of if decl is not None else None;
+    return owner if isinstance(owner, Ability) else None;
+}
+
+def final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
+    import from jaclang.compiler.frontend.unitree { Name }
+    if not isinstance(nd, Name) or nd.sym is None {
+        return None;
+    }
+    decl = resolved_decl_of(nd.sym);
+    assign = decl if isinstance(decl, Assignment) else None;
+    if assign is None and decl is not None {
+        assign = decl.find_parent_of_type(Assignment);
+    }
+    if assign is None
+        or not isinstance(assign.parent, GlobalVars)
+        or clib_import_of(assign.parent) is not None
+        or len(assign.target) != 1
+        or assign.type_tag is None {
+        return None;
+    }
+    tag = assign.type_tag.tag;
+    if isinstance(tag, AtomTrailer) and not tag.is_attr {
+        tag = tag.target;
+    }
+    if not isinstance(tag, Name) or tag.value != "Final" {
+        return None;
+    }
+    return assign.value;
+}
+
+def c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any] {
+    import from jaclang.compiler.frontend.unitree { BinaryExpr, FuncCall, Name }
+    import from jaclang.compiler.frontend.const_fold { fold_const }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if depth > 32 {
+        return (False, None);
+    }
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if isinstance(expr, FuncCall)
+        and isinstance(expr.target, Name)
+        and JAC_TYPE_REGISTRY.is_numeric(expr.target.value)
+        and len(expr.params or []) == 1 {
+        return c_scalar_constant((expr.params or [])[0], depth + 1);
+    }
+    if isinstance(expr, Name) {
+        value = final_glob_value(expr);
+        if value is None {
+            return (False, None);
+        }
+        return c_scalar_constant(value, depth + 1);
+    }
+    folded = fold_const(expr);
+    if not folded[0] and isinstance(expr, (BinaryExpr, UnaryExpr)) {
+        return _fold_with_finals(expr, depth);
+    }
+    return folded;
+}
+
+def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
+    import from jaclang.compiler.frontend.unitree { BinaryExpr }
+    if isinstance(expr, UnaryExpr) {
+        (ok, value) = c_scalar_constant(expr.operand, depth + 1);
+        if not ok or not isinstance(value, int) or isinstance(value, bool) {
+            return (False, None);
+        }
+        op = expr.op.value;
+        if op == "-" {
+            return (True, -value);
+        }
+        if op == "~" {
+            return (True, ~value);
+        }
+        if op == "+" {
+            return (True, value);
+        }
+        return (False, None);
+    }
+    if not isinstance(expr, BinaryExpr) {
+        return (False, None);
+    }
+    (lok, left) = c_scalar_constant(expr.left, depth + 1);
+    (rok, right) = c_scalar_constant(expr.right, depth + 1);
+    if not lok
+        or not rok
+        or not isinstance(left, int)
+        or not isinstance(right, int)
+        or isinstance(left, bool)
+        or isinstance(right, bool) {
+        return (False, None);
+    }
+    op = expr.op?.value or "";
+    if op == "+" {
+        return (True, left + right);
+    }
+    if op == "-" {
+        return (True, left - right);
+    }
+    if op == "*" {
+        return (True, left * right);
+    }
+    if op == "|" {
+        return (True, left | right);
+    }
+    if op == "&" {
+        return (True, left & right);
+    }
+    if op == "^" {
+        return (True, left ^ right);
+    }
+    if op == "<<" and 0 <= right and right < 64 {
+        return (True, left << right);
+    }
+    if op == ">>" and 0 <= right and right < 64 {
+        return (True, left >> right);
+    }
+    return (False, None);
+}
+
+def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None) {
+    cls = _class_of(t);
+    if cls is None or cls._shared is None or not cls.is_builtin("list") {
+        return None;
+    }
+    args = cls.private.type_args if cls.private else None;
+    return args[0] if args else None;
+}
+
+def c_bytes_literal(expr: (UniNode | None)) -> (bytes | None) {
+    import from jaclang.compiler.frontend.unitree { MultiString, String }
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, (String, MultiString)) {
+        return None;
+    }
+    try {
+        value = expr.lit_value;
+    } except ValueError {
+        return None;
+    }
+    return value if isinstance(value, bytes) else None;
+}
+
+def c_bytes_elem_shape(elem: (TypeBase | None)) -> (tuple[int, bool] | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    cls = _class_of(elem);
+    if cls is None or cls._shared is None or not cls.is_builtin() {
+        return None;
+    }
+    shape = JAC_TYPE_REGISTRY.shape_of(cls.shared.class_name);
+    if shape is None or not shape.sized or shape.is_float {
+        return None;
+    }
+    return (shape.size_bytes(), shape.signed);
+}
+
+def c_bytes_array_values(data: bytes, width: int, signed: bool) -> list[int] {
+    return [
+        int.from_bytes(data[i:i + width], "little", signed=signed)
+        for i in range(0, len(data), width)
+    ];
+}
+
+def c_bytes_array_definition(assign: Assignment, ctype: (TypeBase | None)) -> bool {
+    import from jaclang.compiler.frontend.unitree { MultiString, String }
+    value = assign.value;
+    while isinstance(value, AtomUnit) and isinstance(value.value, Expr) {
+        value = value.value;
+    }
+    return isinstance(value, (String, MultiString))
+        and c_array_elem(ctype) is not None
+        and clib_import_of(assign) is not None
+        and c_bytes_literal(value) is not None;
 }
