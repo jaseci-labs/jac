@@ -1213,8 +1213,12 @@ obj NativeBuildSession {
             }
         }
         probed = time.perf_counter();
-        for unit in edited {
-            self.lower(unit);
+        if edited and len(edited) * 4 <= len(candidates) {
+            for unit in edited {
+                self.lower(unit);
+            }
+        } else {
+            edited = [];
         }
         lowered = time.perf_counter();
         recovered = [
