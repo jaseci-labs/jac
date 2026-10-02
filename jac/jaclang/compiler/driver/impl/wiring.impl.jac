@@ -23,6 +23,7 @@ impl WiringSpec.postinit -> None {
     import from jaclang.compiler.frontend.parser.frontend { parse_woven }
     self.digest = hashlib.sha256(self.source.encode()).hexdigest();
     self._lines = self.source.split("\n");
+    self.package_prefix = _package_prefix(self.root_dir);
     (mod, had_error) = parse_woven(self.source, self.path, None, []);
     self.module = mod;
     self.parse_failed = bool(had_error);
@@ -70,8 +71,13 @@ impl WiringSpec._ensure_policy -> None {
 }
 
 impl WiringSpec.module_name(path: str) -> (str | None) {
+    local = local_module_name(self.root_dir, path);
+    return self.package_prefix + local if local is not None else None;
+}
+
+impl local_module_name(root_dir: str, path: str) -> (str | None) {
     try {
-        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(self.root_dir));
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
     } except ValueError {
         return None;
     }
@@ -101,11 +107,30 @@ impl WiringSpec.module_name(path: str) -> (str | None) {
     return ".".join(parts);
 }
 
-impl WiringSpec.module_file(name: str) -> (str | None) {
-    if not name {
+impl WiringSpec._local_name(name: str) -> (str | None) {
+    if not self.package_prefix {
+        return name;
+    }
+    if not name.startswith(self.package_prefix) {
         return None;
     }
-    parts = name.split(".");
+    return name[len(self.package_prefix):];
+}
+
+def _package_prefix(root_dir: str) -> str {
+    facts = active_host().project_facts(root_dir);
+    if facts is None or not facts.package_name {
+        return "";
+    }
+    return facts.package_name.replace("/", ".") + ".";
+}
+
+impl WiringSpec.module_file(name: str) -> (str | None) {
+    local = self._local_name(name) if name else None;
+    if not local {
+        return None;
+    }
+    parts = local.split(".");
     if any([not p for p in parts]) {
         return None;
     }
@@ -117,10 +142,11 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
 }
 
 impl WiringSpec.is_package_dir(name: str) -> bool {
-    if not name {
+    local = self._local_name(name) if name else None;
+    if not local {
         return False;
     }
-    return os.path.isdir(os.path.join(self.root_dir, name.replace(".", os.sep)));
+    return os.path.isdir(os.path.join(self.root_dir, local.replace(".", os.sep)));
 }
 
 impl WiringSpec.project_modules -> list[str] {

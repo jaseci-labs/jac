@@ -12,6 +12,7 @@ obj WheelBuilder {
         abi_tag: str = "none",
         platform_tag: str = "any",
         transpile_jac: bool = True,
+        allow_drop_client: bool = False,
         skipped_codespace: list[str] = [],
         vendored_runtime_modules: int = 0,
         _src_data_cache: dict[str, bytes] | None = None;

@@ -4,6 +4,7 @@ import from c { def unlink(path: str) -> i32;  }
 import from c { def rmdir(path: str) -> i32;  }
 import from c { def rename(oldp: str, newp: str) -> i32;  }
 import from _directory_native { try_directory_names }
+import from _errno_native { errno_message }
 
 
 def:pub which(cmd: str) -> (str | None) {
@@ -59,12 +60,13 @@ def:pub move(src: str, dst: str) -> str {
     if rename(src, real_dst) == 0 {
         return real_dst;
     }
+    reason = errno_message();
     if os.path.isdir(src) {
-        raise ValueError(f"move: cannot relocate directory '{src}' across filesystems");
+        raise ValueError(f"move: could not move directory '{src}': {reason}");
     }
     copyfile(src, real_dst);
     if unlink(src) != 0 {
-        raise ValueError(f"move: could not remove '{src}'");
+        raise ValueError(f"move: could not remove '{src}': {errno_message()}");
     }
     return real_dst;
 }
@@ -80,6 +82,7 @@ def _rmtree_children(path: str, ignore_errors: bool) -> bool {
         if unlink(child) == 0 {
             continue;
         }
+        reason = errno_message();
         if os.path.isdir(child) {
             if not _rmtree_walk(child, ignore_errors) {
                 ok = False;
@@ -87,7 +90,7 @@ def _rmtree_children(path: str, ignore_errors: bool) -> bool {
             continue;
         }
         if not ignore_errors {
-            raise ValueError(f"rmtree: could not remove '{child}'");
+            raise ValueError(f"rmtree: could not remove '{child}': {reason}");
         }
         ok = False;
     }
@@ -102,7 +105,9 @@ def _rmtree_walk(path: str, ignore_errors: bool) -> bool {
         }
         if rmdir(path) != 0 {
             if not ignore_errors {
-                raise ValueError(f"rmtree: could not remove '{path}'");
+                raise ValueError(
+                    f"rmtree: could not remove '{path}': {errno_message()}"
+                );
             }
             return False;
         }
