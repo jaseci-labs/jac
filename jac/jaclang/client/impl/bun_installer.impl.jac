@@ -90,7 +90,47 @@ impl bun_unavailable_message -> str {
 }
 
 
+def _js_engine_enabled -> bool {
+    raw = os.environ.get("ENABLE_JS_ENGINE", "");
+    return raw.strip().lower() not in {"", "0", "false", "no", "off"};
+}
+
+
+def _find_js_engine -> str | None {
+    configured = os.environ.get("JS_ENGINE_BIN", "").strip();
+    if configured {
+        if os.path.isfile(configured) {
+            return configured;
+        }
+        console.error(
+            f"ENABLE_JS_ENGINE is set but JS_ENGINE_BIN points at '{configured}', "
+            "which is not a file.",
+            emoji=False
+        );
+        return None;
+    }
+    on_path = shutil.which("js_engine");
+    if on_path {
+        return on_path;
+    }
+    console.error(
+        "ENABLE_JS_ENGINE is set but JS_ENGINE_BIN is not, and no js_engine was "
+        "found on PATH. Export JS_ENGINE_BIN=/absolute/path/to/js_engine.",
+        emoji=False
+    );
+    return None;
+}
+
+
 impl get_bun -> str | None {
+    if _js_engine_enabled() {
+        engine = _find_js_engine();
+        if engine is not None {
+            _ensure_executable(engine);
+        }
+        return engine;
+    }
+
     bundled = _find_bundled_bun();
     if bundled is not None {
         _ensure_executable(bundled);
