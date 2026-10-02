@@ -69,6 +69,25 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
     return None;
 }
 
+def _without_keys(record: dict[str, any], dropped: str) -> dict[str, any] {
+    return {
+        key: value
+        for (key, value) in record.items()
+        if key != dropped
+    };
+}
+
+def _portable_manifest(manifest: dict[str, any]) -> dict[str, any] {
+    result = _without_keys(manifest, 'root');
+    if result.get('surface') {
+        result['surface'] = {
+            name: _without_keys(rec, 'module')
+            for (name, rec) in result['surface'].items()
+        };
+    }
+    return result;
+}
+
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None) {
     program = JacProgram();
     program.options = CompileOptions(skip_native_engine=True);
@@ -92,10 +111,11 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
             str(proj_root.resolve()),
             services=[svc.entry_path(str(proj_root.resolve())) for svc in services]
         );
-        result = dict(prepared.manifests[str(entry_file.resolve())]);
+        result = _portable_manifest(prepared.manifests[str(entry_file.resolve())]);
         result['module_manifests'] = {
-            os.path.relpath(path, prepared.root).replace(os.sep, '/'): manifest
-            for application in [prepared, *prepared.applications]
+            os.path.relpath(path, prepared.root).replace(os.sep, '/'): _portable_manifest(
+                manifest
+            ) for application in [prepared, *prepared.applications]
             for (path, manifest) in application.manifests.items()
         };
         return result;
