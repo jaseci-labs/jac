@@ -884,62 +884,89 @@ obj NativeBuildSession {
         queue: list[str], edges: dict[str, list[str]], opts: CompileOptions
     ) {
         import from jaclang.compiler.placement.placement_facts { native_unit }
+        import from jaclang.compiler.frontend.codeinfo {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        }
         import jaclang.compiler.frontend.unitree as uni;
-        while queue {
-            path = queue.pop(0);
-            if path in edges {
-                continue;
-            }
-            deps: list[str] = [];
-            edges[path] = deps;
-            mod = self.lowered.get(path) or self.analyzed.get(path);
-            if mod is None {
-                if not os.path.isfile(path) {
+        prior_codespace = get_effective_default_codespace_override();
+        first = True;
+        try {
+            while queue {
+                path = queue.pop(0);
+                if path in edges {
                     continue;
                 }
-                self.source_keys[path] = NativeUnitRegistry._source_key(path);
-                started = self.registry._span_begin();
-                mod = self.prog.compile(path, options=opts);
-                self.registry._span_end("NATIVE_ANALYSIS", started);
-                self.registry._event("native_unit_analysis");
-                self.analyzed[path] = mod;
+                deps: list[str] = [];
+                edges[path] = deps;
+                mod = self.lowered.get(path) or self.analyzed.get(path);
+                if mod is None {
+                    if not os.path.isfile(path) {
+                        continue;
+                    }
+                    self.source_keys[path] = NativeUnitRegistry._source_key(path);
+                    started = self.registry._span_begin();
+                    mod = self.prog.compile(path, options=opts);
+                    self.registry._span_end("NATIVE_ANALYSIS", started);
+                    self.registry._event("native_unit_analysis");
+                    self.analyzed[path] = mod;
+                    if first {
+                        set_effective_default_codespace("native");
+                        first = False;
+                    }
+                }
+                self._queue_native_imports(mod, path, deps, edges, queue);
             }
-            for imp in mod.get_all_sub_nodes(uni.Import) {
-                targets: list[uni.ModulePath] = [];
-                if imp.from_loc is not None {
-                    targets.append(imp.from_loc);
-                } else {
-                    for item in imp.items {
-                        if isinstance(item, uni.ModulePath) {
-                            targets.append(item);
-                        }
+        } finally {
+            set_effective_default_codespace(prior_codespace);
+        }
+    }
+
+    def _queue_native_imports(
+        mod: Module,
+        path: str,
+        deps: list[str],
+        edges: dict[str, list[str]],
+        queue: list[str]
+    ) {
+        import from jaclang.compiler.placement.placement_facts { native_unit }
+        import jaclang.compiler.frontend.unitree as uni;
+        for imp in mod.get_all_sub_nodes(uni.Import) {
+            targets: list[uni.ModulePath] = [];
+            if imp.from_loc is not None {
+                targets.append(imp.from_loc);
+            } else {
+                for item in imp.items {
+                    if isinstance(item, uni.ModulePath) {
+                        targets.append(item);
                     }
                 }
-                for mp in targets {
-                    try {
-                        dep = os.path.realpath(mp.resolve_relative_path());
-                    } except Exception {
-                        continue;
-                    }
-                    if dep == path
-                        or not dep.endswith(".jac")
-                        or not os.path.isfile(dep) {
-                        continue;
-                    }
-                    if dep in deps
-                        or not native_unit(dep, self.options.native_unit, self.prog) {
-                        continue;
-                    }
-                    deps.append(dep);
-                    queue.append(dep);
+            }
+            for mp in targets {
+                try {
+                    dep = os.path.realpath(mp.resolve_relative_path());
+                } except Exception {
+                    continue;
                 }
+                if dep == path or not dep.endswith(".jac") or not os.path.isfile(dep) {
+                    continue;
+                }
+                if dep in deps
+                    or not native_unit(dep, self.options.native_unit, self.prog) {
+                    continue;
+                }
+                deps.append(dep);
+                queue.append(dep);
             }
         }
     }
 
     def lower_all_parallel(roots: list[str], workers: int) -> int {
-        import multiprocessing;
-        import from jaclang.compiler.driver.dependency_graph { dependency_groups }
+        """Lower the native closure of the roots level by level in forked
+        workers. The walk cuts the same back edges nested lowering masks as
+        building, so each unit is lowered once against the partners the
+        serial walk would have given it, and the digests of the masked
+        partners are adopted at settlement as they are for a serial build.""";
         import from jaclang.compiler.frontend.codeinfo {
             KERNEL_UNIT_REL,
             kernel_unit_path
@@ -954,89 +981,112 @@ obj NativeBuildSession {
                 self.lower(kpath);
             }
         }
-        groups = dependency_groups(edges, [os.path.realpath(r) for r in roots]);
-        level_of: dict[str, int] = {};
-        levels: list[list[list[str]]] = [];
-        for group in groups {
-            members = set(group);
-            depth = 0;
-            for member in group {
-                for dep in edges.get(member, []) {
-                    if dep not in members {
-                        depth = max(depth, level_of.get(dep, 0) + 1);
-                    }
+        (masks, finished) = NativeBuildSession._cut_back_edges(
+            edges, [os.path.realpath(r) for r in roots]
+        );
+        depth: dict[str, int] = {};
+        for unit in finished {
+            cut = set(masks.get(unit, []));
+            level = 0;
+            for dep in edges.get(unit, []) {
+                if dep in cut or dep not in depth {
+                    continue;
                 }
+                level = max(level, depth[dep] + 1);
             }
-            for member in group {
-                level_of[member] = depth;
-            }
-            while len(levels) <= depth {
+            depth[unit] = level;
+        }
+        levels: list[list[str]] = [];
+        for unit in finished {
+            while len(levels) <= depth[unit] {
                 levels.append([]);
             }
-            levels[depth].append(list(group));
+            levels[depth[unit]].append(unit);
         }
         lowered_before = len(self.lowered);
         for level in levels {
-            pending = [
-                g
-                for g in level
-                if any(p not in self.lowered for p in g)
-            ];
-            if not pending {
-                continue;
-            }
             todo = [
-                p for g in pending
-                for p in g
+                p
+                for p in level
                 if p not in self.lowered
             ];
-            if len(todo) <= 1 or workers <= 1 {
+            if not todo {
+                continue;
+            }
+            if len(todo) == 1 or workers <= 1 {
                 for path in todo {
-                    self.lower(path);
+                    self._lower_masked(path, masks.get(path, []));
                 }
                 continue;
             }
-            cyclic = [
-                p
-                for g in pending
-                if len(g) > 1 for p in g
-            ];
-            self._lower_round(todo, cyclic, workers, False);
-            stale = list(cyclic);
-            rounds = 0;
-            while stale and rounds < 5 {
-                self._lower_round(stale, [], workers, True);
-                rounds += 1;
-                stale = self._stale_members(cyclic);
-            }
+            self._lower_round(todo, masks, workers);
         }
         return len(self.lowered) - lowered_before;
     }
 
-    def _stale_members(paths: list[str]) -> list[str] {
-        out: list[str] = [];
-        for path in paths {
-            ent = self.registry.entries.get(path);
-            if ent is None {
+    static def _cut_back_edges(
+        edges: dict[str, list[str]], roots: list[str]
+    ) -> tuple[dict[str, list[str]], list[str]] {
+        """Depth first from the roots in import order, the way nested lowering
+        walks them: an edge into a unit still on the stack is the partner the
+        serial walk finds building. Returns the masked partners of each unit
+        and the units in finishing order, where every unmasked dependency
+        finishes before the unit that imports it.""";
+        state: dict[str, int] = {};
+        masks: dict[str, list[str]] = {};
+        finished: list[str] = [];
+        for root in roots {
+            if root in state {
                 continue;
             }
-            for (dep, recorded) in ent.dep_digests.items() {
-                if recorded and recorded != self.registry.known_digest(dep) {
-                    out.append(path);
-                    break;
+            state[root] = 1;
+            stack: list[list[any]] = [[root, 0]];
+            while stack {
+                frame = stack[-1];
+                unit = str(frame[0]);
+                deps = edges.get(unit, []);
+                index = int(frame[1]);
+                if index >= len(deps) {
+                    state[unit] = 2;
+                    finished.append(unit);
+                    stack.pop();
+                    continue;
+                }
+                frame[1] = index + 1;
+                dep = deps[index];
+                seen = state.get(dep, 0);
+                if seen == 0 {
+                    state[dep] = 1;
+                    stack.append([dep, 0]);
+                } elif seen == 1 {
+                    masks.setdefault(unit, []).append(dep);
                 }
             }
         }
-        return out;
+        return (masks, finished);
     }
 
-    def _lower_round(paths: list[str], mask: list[str], workers: int, relower: bool) {
+    def _lower_masked(path: str, mask: list[str]) {
+        masked = [
+            m
+            for m in mask
+            if m != path and m not in self.lowered
+        ];
+        self.registry.building.update(masked);
+        try {
+            self.lower(path);
+        } finally {
+            self.registry.building.difference_update(masked);
+        }
+    }
+
+    def _lower_round(paths: list[str], masks: dict[str, list[str]], workers: int) {
         import multiprocessing;
         jobs = max(1, min(workers, len(paths)));
-        batches: list[list[str]] = [[] for _ in range(jobs)];
-        for (i, path) in enumerate(paths) {
-            batches[i % jobs].append(path);
-        }
+        ordered = sorted(
+            paths,
+            key=lambda (p: str) { -(os.path.getsize(p) if os.path.isfile(p) else 0); }
+        );
         _PARALLEL_SESSION.clear();
         _PARALLEL_SESSION.append(self);
         started = self.registry._span_begin();
@@ -1044,7 +1094,9 @@ obj NativeBuildSession {
             context = multiprocessing.get_context("fork");
             with context.Pool(processes=jobs) as pool {
                 results = pool.starmap(
-                    _lower_batch_in_child, [(b, mask, relower) for b in batches]
+                    _lower_unit_in_child,
+                    [(p, masks.get(p, [])) for p in ordered],
+                    chunksize=1
                 );
             }
         } finally {
@@ -1053,27 +1105,25 @@ obj NativeBuildSession {
         }
         for batch in results {
             for rec in batch {
-                self._absorb_lowered(rec, relower);
+                self._absorb_lowered(rec);
             }
         }
     }
 
-    def _absorb_lowered(rec: dict[str, any], replace: bool = False) {
+    def _absorb_lowered(rec: dict[str, any]) {
         import from jaclang.compiler.backends.native.na_compile_pass {
             install_unit_ir_text
         }
         path = str(rec["path"]);
-        if path in self.lowered and not replace {
+        if path in self.lowered {
             return;
         }
         failure = rec.get("failure");
         if failure {
-            if path not in self.lowered {
-                self.registry.failures[path] = str(failure);
-            }
+            self.registry.failures[path] = str(failure);
             return;
         }
-        mod = self.analyzed.get(path) or self.lowered.get(path);
+        mod = self.analyzed.get(path);
         if mod is None {
             return;
         }
@@ -1261,31 +1311,15 @@ def native_lower_workers -> int {
     return max(1, min(8, os.cpu_count() or 1));
 }
 
-def _lower_batch_in_child(
-    paths: list[str], mask: list[str], relower: bool
-) -> list[dict[str, any]] {
+def _lower_unit_in_child(path: str, mask: list[str]) -> list[dict[str, any]] {
     session = _PARALLEL_SESSION[0];
     before = set(session.lowered.keys());
-    wanted = set(paths);
     out: list[dict[str, any]] = [];
-    for path in paths {
-        if path in session.lowered and not relower {
-            continue;
-        }
-        masked = [
-            m
-            for m in mask
-            if m != path and m not in session.lowered
-        ];
-        session.registry.building.update(masked);
-        try {
-            session.lower(path);
-        } finally {
-            session.registry.building.difference_update(masked);
-        }
+    if path not in session.lowered {
+        session._lower_masked(path, mask);
     }
     for (resolved, mod) in session.lowered.items() {
-        if resolved in before and (resolved not in wanted or not relower) {
+        if resolved in before {
             continue;
         }
         iface = mod.gen.native_iface;
@@ -1302,16 +1336,14 @@ def _lower_batch_in_child(
             }
         );
     }
-    for path in paths {
-        if path not in session.lowered {
-            out.append(
-                {
-                    "path": path,
-                    "failure": session.registry.failures.get(path)
-                        or "the worker could not lower this unit"
-                }
-            );
-        }
+    if path not in session.lowered {
+        out.append(
+            {
+                "path": path,
+                "failure": session.registry.failures.get(path)
+                    or "the worker could not lower this unit"
+            }
+        );
     }
     return out;
 }
