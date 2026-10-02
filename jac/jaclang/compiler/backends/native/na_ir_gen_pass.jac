@@ -1362,6 +1362,9 @@ walker NaIRGenPass(CompilerPass) {
         name: str, container_type: ir.Type, layout: dict[str, any]
     ) -> ir.Function;
 
+    def _dict_key_of_ptr(t: ir.Type) -> (str | None);
+    def _emit_dict_box_fn(dict_key: str) -> (ir.Function | None);
+    def _emit_dict_unbox_fn(dict_key: str) -> (ir.Function | None);
     def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _ellipsis_jacval -> (ir.Value | None);
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
