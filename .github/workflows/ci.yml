@@ -125,6 +125,10 @@ jobs:
     # stage-0 pin or a units-cache miss) lowers the analysis zone in one
     # process and peaks near 15 GB, which starves a 4-vCPU runner.
     runs-on: blacksmith-8vcpu-ubuntu-2404
+    # contents: write only so main can publish its stage-0 kernel to the
+    # rolling `kernels` prerelease; a pull request never reaches that step.
+    permissions:
+      contents: write
     env:
       # A pull request's kit links the stage-0 kernel from cached unit objects
       # instead of re-optimizing it as one program, so a kernel-touching PR
@@ -222,6 +226,33 @@ jobs:
           fi
           echo "src=$src" >> "$GITHUB_OUTPUT"
           echo "units=$units" >> "$GITHUB_OUTPUT"
+
+      # The kernel stage 0 built for these exact sources is published once, by
+      # main, under the rolling `kernels` prerelease: a checkout whose inputs
+      # match downloads it instead of running stage 0 (kernel_fetch.jac).
+      - name: Publish the stage-0 kernel for these sources (main only)
+        if: >-
+          steps.stage0.outputs.stage0 != 'self' &&
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
+          steps.stage0-made.outputs.units == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGE0_CACHE: ${{ steps.stage0.outputs.cache_home }}
+        run: |
+          set -euo pipefail
+          out="$STAGE0_CACHE/jir/stage0-kernel/out/libjac_compiler.so"
+          [ -f "$out" ] && [ -f "$out.layout.json" ] || { echo "no stage-0 kernel to publish"; exit 0; }
+          DIR="$(find jac/.precompiled-build/jacpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
+          name="$("$DIR/bin/python3" -P scripts/kernel_asset_name.py)"
+          mkdir -p dist-kernel
+          cp "$out" "dist-kernel/$name"
+          cp "$out.layout.json" "dist-kernel/$name.layout.json"
+          gh release create kernels --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "Prebuilt compiler kernels (rolling)" \
+            --notes "Stage-0 kernels keyed by their inputs. Fetched by checkouts whose sources match; not for direct download." \
+            2>/dev/null || true
+          gh release upload kernels --repo "$GITHUB_REPOSITORY" \
+            "dist-kernel/$name" "dist-kernel/$name.layout.json" --clobber
 
       - name: Save the stage-0 snapshot (main only)
         if: >-

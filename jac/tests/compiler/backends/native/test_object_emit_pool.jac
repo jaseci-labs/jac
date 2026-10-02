@@ -95,6 +95,9 @@ test "a link emits each pending object once and keeps it" {
     events = program.analysis.cache_events;
     saved = with_jobs({"JAC_NATIVE_EMIT_JOBS": "4"});
     try {
+        for path in paths {
+            registry.entries[os.path.realpath(path)].object_bytes = None;
+        }
         before = events.get("native_object_emit", 0);
         registry.emit_objects(paths, options);
         emitted = events.get("native_object_emit", 0) - before;

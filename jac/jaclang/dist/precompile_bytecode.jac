@@ -1334,8 +1334,10 @@ def seal_native(
         link_artifact
     }
     import from jaclang.compiler.backends.native.kernel_resolve {
+        PR_KIT_EVENT,
         SEALED_LINK_MODE,
-        kernel_lib_name
+        kernel_lib_name,
+        seal_link_mode
     }
     import from jaclang.compiler.driver.jir {
         native_section_payload,
@@ -1369,7 +1371,7 @@ def seal_native(
     }
 
     plan = build_link_plan(
-        prog, roots, options, mode=SEALED_LINK_MODE, native_unit=True
+        prog, roots, options, mode=seal_link_mode(), native_unit=True
     );
     result = link_artifact(
         plan, str(artifact_path), ArtifactKind.SHARED, log=console.print
@@ -1414,17 +1416,18 @@ def seal_native(
         f"  Native artifact: {artifact_rel} (plan {result.plan_digest[:12]}, "
         f"layout {result.layout_digest[:12]})"
     );
-    return {
-        "units": unit_records,
-        "artifact": {
-            "path": Path(artifact_rel).as_posix(),
-            "sha256": result.sha256,
-            "layout_digest": result.layout_digest,
-            "plan_digest": result.plan_digest,
-            "triple": plan.triple,
-            "mode": plan.mode
-        }
+    artifact: dict[str, any] = {
+        "path": Path(artifact_rel).as_posix(),
+        "sha256": result.sha256,
+        "layout_digest": result.layout_digest,
+        "plan_digest": result.plan_digest,
+        "triple": plan.triple,
+        "mode": plan.mode
     };
+    if plan.mode != SEALED_LINK_MODE {
+        artifact["kit"] = PR_KIT_EVENT;
+    }
+    return {"units": unit_records, "artifact": artifact};
 }
 
 def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
