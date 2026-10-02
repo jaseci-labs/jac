@@ -29,7 +29,11 @@ import from jaclang.runtime.python.cpython_api {
     _PyType_AddMethod,
     jacpy_release
 }
-import from jaclang.runtime.python.layouts { METH_NOARGS, PyTypeObject as TypeLayout }
+import from jaclang.runtime.python.layouts {
+    METH_COEXIST,
+    METH_NOARGS,
+    PyTypeObject as TypeLayout
+}
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
 import from jaclang.runtime.python.bindings.module {
@@ -138,7 +142,7 @@ import from c {
     glob:priv sched_param_reduce_method: PyMethodDef = PyMethodDef(
              ml_name=ptr[u8]("__reduce__"),
              ml_meth=ptr(sched_param_reduce),
-             ml_flags=METH_NOARGS,
+             ml_flags=METH_NOARGS | METH_COEXIST,
              ml_doc=ptr[u8]()
          );
 }
