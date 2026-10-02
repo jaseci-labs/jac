@@ -752,6 +752,7 @@ obj NativeBuildSession {
         prog: JacProgram postinit,
         lowered: dict[str, Module] = {},
         analyzed: dict[str, Module] = {},
+        lowering_stack: list[str] = [],
         source_keys: dict[str, str | None] = {};
 
     def postinit {
@@ -767,6 +768,10 @@ obj NativeBuildSession {
             return None;
         }
         self.registry.building.add(resolved);
+        if _PARALLEL_SESSION {
+            _LOWER_TRACE.append((resolved, list(self.lowering_stack)));
+        }
+        self.lowering_stack.append(resolved);
         import from jaclang.compiler.frontend.codeinfo {
             set_native_unit_compile,
             reset_native_unit_compile,
@@ -850,6 +855,7 @@ obj NativeBuildSession {
             }
             self.registry._span_unwind(span_depth);
             self.registry.building.discard(resolved);
+            self.lowering_stack.pop();
             self.prog.options = prior_options;
             set_effective_default_codespace(prior_codespace);
             pop_native_target(target_token);
@@ -1002,10 +1008,18 @@ obj NativeBuildSession {
                 or self.prog.mod.hub.get(dep)
                 or self.prog.mod.hub.get(os.path.abspath(full));
             if through is None {
+                try {
+                    through = self.prog.load_dependency_module(dep, need_tree=True);
+                } except Exception {
+                    through = None;
+                }
+            }
+            if through is None {
                 continue;
             }
             through_base = os.path.dirname(dep);
-            for imp in ModuleFacts.iter_module_imports(through) {
+            for imp in ModuleFacts.iter_module_imports(through)
+                + ModuleFacts.iter_nested_imports(through, CodeContext.NATIVE) {
                 name = NativeBuildSession._import_module_name(imp);
                 if name {
                     todo.append((name, through_base));
@@ -1193,6 +1207,7 @@ obj NativeBuildSession {
         busy = 0.0;
         extra: list[str] = [];
         stale: list[str] = [];
+        traces: dict[str, list[str]] = {};
         analyses = 0;
         slowest: list[tuple[float, str]] = [];
         for batch in results {
@@ -1203,6 +1218,7 @@ obj NativeBuildSession {
                     analyses += int(stats["analyses"]);
                     extra.extend(stats["extra"]);
                     stale.extend(stats["stale"]);
+                    traces[str(rec["path"])] = list(stats["trace"]);
                     slowest.append((float(stats["seconds"]), str(rec["path"])));
                     continue;
                 }
@@ -1237,6 +1253,15 @@ obj NativeBuildSession {
         if unaccepted {
             sys.stderr.write(
                 "[lower] unaccepted: " + ", ".join(unaccepted[:12]) + "\n"
+            );
+        }
+        if slowest and traces.get(slowest[0][1]) {
+            sys.stderr.write(
+                f"[lower] first nested lowerings under {os.path.basename(
+                    slowest[0][1]
+                )}: "
+                    + "; ".join(traces[slowest[0][1]])
+                    + "\n"
             );
         }
         if extra {
@@ -1435,6 +1460,7 @@ obj NativeBuildSession {
 }
 
 glob _PARALLEL_SESSION: list[NativeBuildSession] = [],
+     _LOWER_TRACE: list[tuple[str, list[str]]] = [],
      LOWER_WORKER_BYTES: int = 6 * 1024 * 1024 * 1024,
      KERNEL_DEPS_ENV: str = "JAC_KERNEL_DEPS",
      KERNEL_DEPS_REL: str = "bootstrap/kernel_deps.json";
@@ -1510,9 +1536,14 @@ def _lower_unit_in_child(
     analyses_before = counters.get("native_unit_analysis", 0);
     started = time.perf_counter();
     stale = _heal_lowered_entries(session, deps);
+    _LOWER_TRACE.clear();
     if path not in session.lowered {
         session._lower_masked(path, mask);
     }
+    trace = [
+        os.path.basename(p) + " <- " + "/".join(os.path.basename(q) for q in stack)
+        for (p, stack) in _LOWER_TRACE[1:9]
+    ];
     out.append(
         {
             "path": path,
@@ -1520,6 +1551,7 @@ def _lower_unit_in_child(
                 "seconds": time.perf_counter() - started,
                 "analyses": counters.get("native_unit_analysis", 0) - analyses_before,
                 "stale": stale,
+                "trace": trace,
                 "extra": [
                     p
                     for p in session.lowered.keys()
