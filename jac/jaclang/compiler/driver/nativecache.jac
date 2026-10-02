@@ -802,6 +802,7 @@ obj NativeBuildSession {
         lowered: dict[str, Module] = {},
         analyzed: dict[str, Module] = {},
         served: dict[str, list[str]] = {},
+        hint_coverage: float = 0.0,
         lowering_stack: list[str] = [],
         source_keys: dict[str, str | None] = {};
 
@@ -956,6 +957,7 @@ obj NativeBuildSession {
             sys.stderr.write(
                 f"[lower] dependency hint covers {hinted} of {len(edges)} units\n"
             );
+            self.hint_coverage = hinted / len(edges) if edges else 0.0;
         } finally {
             pop_native_target(target_token);
             reset_native_unit_compile(unit_token);
@@ -1127,6 +1129,12 @@ obj NativeBuildSession {
         }
         edges = self.analyze_closure(roots);
         if len(edges) - len(self.served) < 2 * workers {
+            return 0;
+        }
+        if self.hint_coverage < 0.5 {
+            """Without the recorded graph the levels come from imports alone,
+            and a worker then lowers what its unit really depends on nested,
+            once per worker; the serial walk is cheaper than that.""";
             return 0;
         }
         for rel in KERNEL_UNIT_REL {
@@ -1630,11 +1638,16 @@ def queue_anchor(roots: list[str]) -> str {
 }
 
 def kernel_dep_hint(anchor: str) -> dict[str, list[str]] {
-    """The dependency graph a previous build recorded, as a scheduling hint:
-    what each unit's lowering asked for is only known once it has run, since
-    a unit depends on the units whose types it touches, not on what it
-    imports. A missing or stale hint costs parallelism, never correctness.""";
+    """The dependency graph a previous kernel build recorded, as a scheduling
+    hint for the next one: what each unit's lowering asked for is only known
+    once it has run, since a unit depends on the units whose types it
+    touches, not on what it imports. Any other root gets no hint. A missing
+    or stale hint costs parallelism, never correctness.""";
     import json;
+    import from jaclang.compiler.native_scope { kernel_root_path }
+    if os.path.realpath(anchor) != os.path.realpath(kernel_root_path()) {
+        return {};
+    }
     import from jaclang.compiler.backends.native.stage0_pin { stage0_source_dir }
     import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
     path = os.environ.get(KERNEL_DEPS_ENV, "").strip()
@@ -1649,13 +1662,21 @@ def kernel_dep_hint(anchor: str) -> dict[str, list[str]] {
     if not isinstance(raw, dict) {
         return {};
     }
+    import from jaclang.compiler.kernel_target { target_pkg_root }
+    parent = os.path.dirname(os.path.realpath(target_pkg_root()));
+    def place(ref: str) -> str {
+        if os.path.isabs(ref) {
+            return os.path.realpath(ref);
+        }
+        under = os.path.join(parent, *ref.split("/"));
+        if os.path.isfile(under) {
+            return os.path.realpath(under);
+        }
+        return os.path.realpath(resolve_native_unit_ref(ref, anchor));
+    }
     out: dict[str, list[str]] = {};
     for (ref, deps) in raw.items() {
-        unit = os.path.realpath(resolve_native_unit_ref(str(ref), anchor));
-        out[unit] = [
-            os.path.realpath(resolve_native_unit_ref(str(d), anchor))
-            for d in list(deps or [])
-        ];
+        out[place(str(ref))] = [place(str(d)) for d in list(deps or [])];
     }
     return out;
 }
