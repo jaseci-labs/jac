@@ -683,7 +683,7 @@ test "scheduling hint injected when parallel plus tools plus parallel_hint" {
     reset_byllm_config();
 }
 
-test "no annotations or hint when parallel is OFF" {
+test "no annotations, but a serial hint, when parallel is OFF" {
     os.environ.pop("BYLLM_PARALLEL_TOOL_CALLING", None);
     reset_byllm_config();
 
@@ -708,10 +708,69 @@ test "no annotations or hint when parallel is OFF" {
     assert "[PARALLEL" not in a_desc , f"No tags when parallel OFF: {a_desc}";
     assert "[SEQUENTIAL" not in a_desc , f"No tags when parallel OFF: {a_desc}";
 
-    # System prompt should not have scheduling hint
+    # System prompt should carry the serial counterpart, not the parallel one --
+    # cardinality guidance is now decided once here, not asserted separately (and
+    # unconditionally) by byLLM's tool-calling instructions (jaseci-labs/jac#9644).
     sys_content = params["messages"][0]["content"];
     assert "Intelligent tool scheduling rules" not in sys_content , (
         "No scheduling hint when parallel is OFF"
+    );
+    assert "one at a time" in sys_content.lower() , (
+        f"a serial cardinality hint must still guide the model, got {sys_content!r}"
+    );
+
+    # Cleanup
+    reset_byllm_config();
+}
+
+test "parallel hint is never injected for a model without native tool calling" {
+    # format_tools_for_prompt's prompted-tool-calling fallback only ever
+    # recovers one tool call per reply (tool_protocol.jac's
+    # _extract_first_tool_call), so promising the model it can batch tools in
+    # parallel here would be an instruction the recovery path can't honor.
+    os.environ.pop("BYLLM_PARALLEL_TOOL_CALLING", None);
+    reset_byllm_config();
+
+    def np_a(x: str) -> str {
+        return x;
+    }
+    tool_a = Tool(func=np_a, description="Tool A");
+    ft = Tool.make_finish_tool(str);
+
+    model = Model(model_name="gpt-4o", config={"native_tools": False});
+    assert model.supports_native_tools == False , "test setup: model must be non-native";
+
+    mt_run = mk_run(
+        call_params={"parallelize": True},
+        tools=[tool_a, ft],
+        finish=False,
+        messages=[Message(role=MessageRole.SYSTEM, content="You are helpful.")]
+    );
+
+    params = model.make_model_params(mt_run);
+
+    # A non-native model's tool schemas are converted into the prompted text
+    # format entirely (tool_protocol.jac's inject_tool_hint pops "tools" once
+    # it renders format_tools_for_prompt's block into the system message), so
+    # there is no native tools= schema left to tag [PARALLEL-SAFE]/[SEQUENTIAL]
+    # on -- confirming that conversion happened is itself part of the test.
+    assert "tools" not in params , (
+        "a non-native model must not receive a native tools= param"
+    );
+
+    sys_content = params["messages"][0]["content"];
+    assert "Intelligent tool scheduling rules" not in sys_content , (
+        "parallelize=True must not promise parallel tool calling for a model "
+        "whose tool-calling protocol cannot honor it"
+    );
+    assert "one at a time" not in sys_content.lower() , (
+        "the serial hint belongs to the native tool-calling path; a non-native "
+        "model already gets its own cardinality instruction from "
+        "format_tools_for_prompt once inject_tool_hint runs"
+    );
+    assert "Call exactly one tool per reply" in sys_content , (
+        f"the prompted fallback must still give its own accurate cardinality "
+        f"instruction, got {sys_content[:400]!r}"
     );
 
     # Cleanup

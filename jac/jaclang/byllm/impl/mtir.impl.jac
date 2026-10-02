@@ -3,8 +3,7 @@ glob SYSTEM_PERSONA = """\
     Do not include explanations, code, or extra text—only the result.
     """,
      INSTRUCTION_TOOL = """
-    Use the tools provided to reach the goal. Call one tool at a time with \
-    proper args—no explanations, no narration. Think step by step, invoking tools \
+    Use the tools provided to reach the goal. Think step by step, invoking tools \
     as needed. When done, always call finish_tool(output) to return the final
     output. Only use tools.
     """;
@@ -144,9 +143,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     }
     if call_system_prompt {
-        system_content = f"{system_content}\n\n{call_system_prompt}"
-            if system_content
-            else str(call_system_prompt);
+        system_content = str(call_system_prompt);
     }
 
     conv_arg = call_params.get("conversation");

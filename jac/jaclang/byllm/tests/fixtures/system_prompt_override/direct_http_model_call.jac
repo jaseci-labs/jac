@@ -9,7 +9,7 @@ glob llm: any = None;
 
 def say_hello(name: str) -> str by llm();
 
-# A per-call system_prompt extends the jac.toml base, it does not replace it.
+# A per-call system_prompt replaces the jac.toml base entirely.
 def say_hello_brief(name: str) -> str by llm(
     system_prompt="Respond in three words maximum."
 );

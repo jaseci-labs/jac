@@ -26,6 +26,10 @@ glob _PARALLEL_TOOL_HINT: str = (
          "call all the relevant tools in a single response so they run in parallel. "
          "Call tools sequentially (one per turn) only when a later call depends on "
          "the result of an earlier one."
+     ),
+     _SERIAL_TOOL_HINT: str = (
+         "\n\nCall tools one at a time, waiting for each tool's result before "
+         "deciding your next call."
      );
 
 

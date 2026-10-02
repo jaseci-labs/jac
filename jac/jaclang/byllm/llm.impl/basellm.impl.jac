@@ -1194,63 +1194,77 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
     messages = reroute_tool_images_to_user_message(messages);
     tools = mt_run.get_tool_list() or None;
 
-    if _should_parallelize(mt_run)
+    if self.supports_native_tools
         and tools
         and mt_run.call_params.get("parallel_hint", True)
         and messages
         and len(messages) > 0 {
-        annotated: list[dict[str, any]] = [];
-        serial_names: list[str] = [];
-        for (i, schema) in enumerate(tools) {
-            tool_obj = mt_run.tools[i] if i < len(mt_run.tools) else None;
-            is_serial = bool(getattr(tool_obj, "serialize", False));
-            is_finish = tool_obj.is_finish_tool() if tool_obj else False;
-            if is_finish {
-                annotated.append(schema);
-            } else {
-                fn = schema.get("function", {});
-                desc = fn.get("description", "");
-                if is_serial {
-                    serial_names.append(fn.get("name", "unknown"));
-                    tag = " [SEQUENTIAL: has side-effects - must be called alone, never batch with other tools]";
+        if _should_parallelize(mt_run) {
+            annotated: list[dict[str, any]] = [];
+            serial_names: list[str] = [];
+            for (i, schema) in enumerate(tools) {
+                tool_obj = mt_run.tools[i] if i < len(mt_run.tools) else None;
+                is_serial = bool(getattr(tool_obj, "serialize", False));
+                is_finish = tool_obj.is_finish_tool() if tool_obj else False;
+                if is_finish {
+                    annotated.append(schema);
                 } else {
-                    tag = " [PARALLEL-SAFE: can be batched with other independent tools in one response]";
-                }
-                annotated.append(
-                    {** schema, "function": {** fn, "description": desc + tag}}
-                );
-            }
-        }
-        tools = annotated;
-
-        first_msg = messages[0];
-        if isinstance(first_msg, dict) and first_msg.get("role") == "system" {
-            content = first_msg.get("content", "");
-            if isinstance(content, str) and _PARALLEL_TOOL_HINT not in content {
-                hint = _PARALLEL_TOOL_HINT;
-
-                hint += (
-                    "\n\n**Intelligent tool scheduling rules:**"
-                    "\nBATCH in one response (parallel) when:"
-                    "\n - You already know ALL required arguments for every tool"
-                    "\n - No tool in the group needs another tool's output as input"
-                    "\n - No two tools in the group modify the same resource"
-                    "\nSEPARATE into different responses (sequential) when:"
-                    "\n - A tool's argument depends on another tool's return value"
-                    "\n - Two tools write to the same file or shared state"
-                    "\n - A tool is labeled [SEQUENTIAL] in its description"
-                    "\n\nKEY TEST: For each tool ask - 'Can I fill in ALL of this tool's arguments RIGHT NOW"
-                    " without waiting for any other tool's result?' YES for all → batch. NO for any → separate it."
-                );
-
-                if serial_names {
-                    hint += (
-                        f"\n\nTools that must ALWAYS run alone (never batch): {serial_names}"
+                    fn = schema.get("function", {});
+                    desc = fn.get("description", "");
+                    if is_serial {
+                        serial_names.append(fn.get("name", "unknown"));
+                        tag = " [SEQUENTIAL: has side-effects - must be called alone, never batch with other tools]";
+                    } else {
+                        tag = " [PARALLEL-SAFE: can be batched with other independent tools in one response]";
+                    }
+                    annotated.append(
+                        {** schema, "function": {** fn, "description": desc + tag}}
                     );
                 }
+            }
+            tools = annotated;
 
-                messages = list(messages);
-                messages[0] = {** first_msg, "content": content + hint};
+            first_msg = messages[0];
+            if isinstance(first_msg, dict) and first_msg.get("role") == "system" {
+                content = first_msg.get("content", "");
+                if isinstance(content, str) and _PARALLEL_TOOL_HINT not in content {
+                    hint = _PARALLEL_TOOL_HINT;
+
+                    hint += (
+                        "\n\n**Intelligent tool scheduling rules:**"
+                        "\nBATCH in one response (parallel) when:"
+                        "\n - You already know ALL required arguments for every tool"
+                        "\n - No tool in the group needs another tool's output as input"
+                        "\n - No two tools in the group modify the same resource"
+                        "\nSEPARATE into different responses (sequential) when:"
+                        "\n - A tool's argument depends on another tool's return value"
+                        "\n - Two tools write to the same file or shared state"
+                        "\n - A tool is labeled [SEQUENTIAL] in its description"
+                        "\n\nKEY TEST: For each tool ask - 'Can I fill in ALL of this tool's arguments RIGHT NOW"
+                        " without waiting for any other tool's result?' YES for all → batch. NO for any → separate it."
+                    );
+
+                    if serial_names {
+                        hint += (
+                            f"\n\nTools that must ALWAYS run alone (never batch): {serial_names}"
+                        );
+                    }
+
+                    messages = list(messages);
+                    messages[0] = {** first_msg, "content": content + hint};
+                }
+            }
+        } else {
+            first_msg = messages[0];
+            if isinstance(first_msg, dict) and first_msg.get("role") == "system" {
+                content = first_msg.get("content", "");
+                if isinstance(content, str) and _SERIAL_TOOL_HINT not in content {
+                    messages = list(messages);
+                    messages[0] = {
+                        ** first_msg,
+                        "content": content + _SERIAL_TOOL_HINT
+                    };
+                }
             }
         }
     }

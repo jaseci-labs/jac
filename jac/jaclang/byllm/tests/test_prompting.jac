@@ -408,7 +408,7 @@ test "the model can be any expression, and a bound call keeps its tools" {
 }
 
 
-test "a jac.toml system prompt reaches the model, and a per-call one extends it" {
+test "a jac.toml system prompt reaches the model, and a per-call one replaces it" {
     # The fixture sits beside its own jac.toml because byLLM resolves config
     # from the module's location, so this cannot be done by patching a dict.
     mod = Jac.jac_import(
@@ -430,11 +430,41 @@ test "a jac.toml system prompt reaches the model, and a per-call one extends it"
     assert "three words" not in base , "the per-call prompt must not leak into the first call";
 
     assert mod.say_hello_brief("Alice") == "Hi Alice, welcome!";
-    extended = str(llm.sent("messages")[1][0]);
-    assert "You are a friendly assistant" in extended , (
-        "a per-call system_prompt extends the base, it does not replace it"
+    replaced = str(llm.sent("messages")[1][0]);
+    assert "Respond in three words maximum." in replaced , (
+        f"the per-call system_prompt is missing, got {replaced[:200]!r}"
     );
-    assert "Respond in three words maximum." in extended , (
-        f"the per-call system_prompt is missing, got {extended[:200]!r}"
+    assert "You are a friendly assistant" not in replaced , (
+        "a per-call system_prompt replaces the jac.toml base; byLLM has no way "
+        "to know its own base still fits what the caller asked for"
+    );
+}
+
+
+test "a custom system prompt replaces the built-in persona, even with tools" {
+    # Nothing in this fixture's jac.toml sets [byllm] system_prompt, so the
+    # base here is byLLM's own built-in SYSTEM_PERSONA, not a project override.
+    llm = MockLLM(
+        outputs=[call("_wind_speed", {"city": "Kandy"}), say("Sunny in Kandy.")]
+    );
+
+    def weather_agent(city: str) -> str by llm(
+        tools=[_wind_speed],
+        system_prompt="You are WeatherBot. Narrate every step you take in one sentence."
+    );
+
+    assert weather_agent("Kandy") == "Sunny in Kandy.";
+    sys_msg = str(llm.sent("messages")[0][0]);
+    assert "You are WeatherBot" in sys_msg , (
+        f"the custom system_prompt must reach the model, got {sys_msg[:200]!r}"
+    );
+    assert "only the result" not in sys_msg , (
+        "the built-in persona must not survive next to a custom system prompt "
+        "the caller wrote on purpose"
+    );
+    assert "no narration" not in sys_msg , (
+        "byLLM's own tool-calling instructions must not tell the model to avoid "
+        "narration when the caller's own system_prompt explicitly asked for it "
+        "(jaseci-labs/jac#9644)"
     );
 }

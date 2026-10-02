@@ -51,7 +51,8 @@ import from jaclang.byllm.telemetry {
 import from jaclang.byllm.parallel {
     dispatch_batch,
     _index_by_identity,
-    _PARALLEL_TOOL_HINT
+    _PARALLEL_TOOL_HINT,
+    _SERIAL_TOOL_HINT
 }
 import from jaclang.byllm.schema { inject_schema_hint }
 import from jaclang.byllm.tool_protocol {
