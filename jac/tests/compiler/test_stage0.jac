@@ -645,6 +645,54 @@ def _stage0_sidecar(lib: str, unit: str, pin: Stage0Pin) -> dict[str, any] {
     };
 }
 
+test "a published kernel for these inputs is fetched, verified and accepted before stage 0 builds" {
+    import from jaclang.compiler.backends.native.kernel_fetch {
+        KERNEL_FETCH_ENV,
+        fetch_published_kernel,
+        kernel_asset_name,
+        kernel_publish_key
+    }
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        pin_path = os.path.join(tmp, "stage0.json");
+        pin = _commit_pin();
+        write_stage0_pin(pin, pin_path);
+        published = os.path.join(tmp, "published");
+        os.makedirs(published);
+        lib = os.path.join(tmp, "tree", "libjac_compiler.so");
+        os.makedirs(os.path.dirname(lib));
+        def with_pin(fn: any) -> any {
+            return _with_env(
+                {STAGE0_PIN_ENV: pin_path, KERNEL_FETCH_ENV: "file://" + published}, fn
+            );
+        }
+        key = with_pin(lambda() { kernel_publish_key(); });
+        assert key , "a commit pin yields a publish key";
+        assert key == with_pin(lambda() { kernel_publish_key(); }) , "the key is stable";
+        assert with_pin(lambda() { fetch_published_kernel(lib); }) is False , "nothing published yet";
+        assert not os.path.exists(lib);
+        name = kernel_asset_name(key);
+        body = b"a published kernel";
+        Path(published, name).write_bytes(body);
+        unit = os.path.join(tmp, "unit.jac");
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        Path(lib + ".src").write_bytes(body);
+        sidecar = _stage0_sidecar(lib + ".src", unit, pin);
+        _write_json(os.path.join(published, name + ".layout.json"), sidecar);
+        assert with_pin(lambda() { fetch_published_kernel(lib); }) is True , "the asset is fetched";
+        assert Path(lib).read_bytes() == body;
+        assert with_pin(lambda() { _accept_in_tree(lib); }) is not None , "the installed kernel is accepted";
+        Path(published, name).write_bytes(b"tampered");
+        os.remove(lib);
+        assert with_pin(lambda() { fetch_published_kernel(lib); }) is False , "a hash mismatch installs nothing";
+        assert not os.path.exists(lib);
+        assert _with_env(
+            {STAGE0_PIN_ENV: pin_path, KERNEL_FETCH_ENV: "off"},
+            lambda() { fetch_published_kernel(lib); }
+        )
+            is False , "fetching can be turned off";
+    }
+}
+
 test "a stage-0 kernel is accepted by its pin, ABI and unit sources, not by this compiler's digest" {
     with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
         unit = os.path.join(tmp, "unit.jac");

@@ -352,8 +352,16 @@ def build_link_plan(
     }
     target_token = push_native_target(opts.native_target or "");
     try {
+        import from jaclang.compiler.driver.nativecache { native_lower_workers }
+        workers = native_lower_workers();
+        if native_unit and workers > 1 and len(roots) == 1 {
+            session.lower_all_parallel(roots, workers);
+        }
         plan = _build_link_plan(prog, roots, opts, mode, native_unit);
-        session.finish([unit.path for unit in plan.units]);
+        session.finish(
+            [unit.path for unit in plan.units],
+            emit_objects=plan.mode == NATIVE_LINK_MODE_OBJECTS
+        );
         return plan;
     } finally {
         registry.session = None;
@@ -439,6 +447,7 @@ def _build_link_plan(
         }
     }
 
+    settle_started = registry._span_begin();
     for root_u in real_roots {
         walk_unit(root_u, []);
     }
@@ -501,6 +510,20 @@ def _build_link_plan(
             if not stale {
                 continue;
             }
+            if all(not recorded.get(dep) for dep in stale)
+                and registry.adopt_dep_digests(
+                    u.path, {dep: units[dep].digest for dep in stale}
+                ) {
+                if env_na_debug() {
+                    sys.stderr.write(
+                        f"[link plan] adopting digests for {u.path}: {', '.join(
+                            stale
+                        )}\n"
+                    );
+                }
+                rebuilt = True;
+                continue;
+            }
             source_text = virtual_sources.get(u.path);
             if not os.path.isfile(u.path) {
                 source_module = prog.find_module(u.path);
@@ -554,6 +577,7 @@ def _build_link_plan(
         }
     }
 
+    registry._span_end("NATIVE_SETTLE", settle_started);
     check_prefix_collisions(ordered);
     check_pub_collisions(ordered);
     import from jaclang.compiler.driver.na_coverage { na_coverage_replay }
@@ -735,6 +759,11 @@ def unit_objects(
         objs.append(object_bytes);
     }
     (glue_mod, exports) = _glue_module(plan, spec, tm);
+    if spec.shared
+        and system_elf_linker() is not None
+        and _platform_of(plan.triple) == "elf" {
+        glue_mod.link_in(llvm.parse_assembly(_shared_init_ctor_ir()));
+    }
     dump_path = plan.options.dump_ir_path or "";
     if dump_path {
         """In objects mode the program is its units' objects plus the glue;
@@ -1171,19 +1200,32 @@ def link_artifact(
             archive_members=inputs.archive_members
         );
     } else {
-        import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-        ok = ElfLinker.link(
-            objects=inputs.objects,
-            output_path=output_path,
-            needed_libs=inputs.needed_libs,
-            crt_objects=inputs.crt_objects,
-            shared=shared,
-            export_symbols=inputs.export_symbols,
-            init_funcs=inputs.init_funcs,
-            soname=soname,
-            archive_members=inputs.archive_members,
-            static_link=static_musl
-        );
+        tool = system_elf_linker();
+        if shared and tool is not None and not static_musl {
+            ok = _system_elf_link(
+                tool,
+                inputs.objects,
+                inputs.archive_members,
+                output_path,
+                inputs.needed_libs,
+                inputs.export_symbols,
+                soname
+            );
+        } else {
+            import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+            ok = ElfLinker.link(
+                objects=inputs.objects,
+                output_path=output_path,
+                needed_libs=inputs.needed_libs,
+                crt_objects=inputs.crt_objects,
+                shared=shared,
+                export_symbols=inputs.export_symbols,
+                init_funcs=inputs.init_funcs,
+                soname=soname,
+                archive_members=inputs.archive_members,
+                static_link=static_musl
+            );
+        }
     }
     if not ok {
         raise LinkPlanError(f"{platform} link failed: could not parse an object");
@@ -1202,6 +1244,108 @@ def link_artifact(
         classes=classes,
         units=[u.path for u in plan.units]
     );
+}
+
+def system_elf_linker -> (str | None) {
+    import shutil;
+    requested = os.environ.get("JAC_NATIVE_LINKER", "").strip().lower();
+    if requested != "system" or not sys.platform.startswith("linux") {
+        return None;
+    }
+    for tool in ("gcc", "cc", "ld") {
+        found = shutil.which(tool);
+        if found {
+            return found;
+        }
+    }
+    return None;
+}
+
+def _shared_init_ctor_ir -> str {
+    return (
+        f"declare void @{SHARED_INIT_SYMBOL}()\n"
+        "@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] "
+        f"[{{ i32, ptr, ptr }} {{ i32 65535, ptr @{SHARED_INIT_SYMBOL}, ptr null }}]\n"
+    );
+}
+
+def _needed_lib_flag(lib: str) -> str {
+    name = os.path.basename(lib);
+    if name.startswith("lib") {
+        name = name[3:];
+    }
+    dot = name.find(".so");
+    if dot >= 0 {
+        name = name[:dot];
+    }
+    return "-l" + name;
+}
+
+def _system_elf_link(
+    tool: str,
+    objects: list[bytes],
+    archive_members: list[bytes],
+    output_path: str,
+    needed_libs: list[str],
+    export_symbols: list[str],
+    soname: str
+) -> bool {
+    import shutil;
+    import subprocess;
+    import tempfile;
+    work = tempfile.mkdtemp(prefix="jac-link-");
+    try {
+        inputs: list[str] = [];
+        for (i, data) in enumerate(objects + archive_members) {
+            path = os.path.join(work, f"in{i}.o");
+            with open(path, "wb") as f {
+                f.write(data);
+            }
+            inputs.append(path);
+        }
+        script = os.path.join(work, "exports.map");
+        with open(script, "w", encoding="utf-8") as f {
+            f.write("{ global: ");
+            for sym in export_symbols {
+                f.write(f'"{sym}"; ');
+            }
+            f.write("local: *; };\n");
+        }
+        driver = os.path.basename(tool) != "ld";
+        cmd: list[str] = [tool, "-shared", "-o", output_path];
+        if driver {
+            cmd += [
+                "-nostdlib",
+                "-Wl,-soname," + soname,
+                "-Wl,--version-script," + script,
+                "-Wl,-z,noexecstack",
+                "-Wl,--hash-style=both"
+            ];
+        } else {
+            cmd += [
+                "-soname",
+                soname,
+                "--version-script",
+                script,
+                "-z",
+                "noexecstack",
+                "--hash-style=both"
+            ];
+        }
+        cmd += inputs;
+        for lib in needed_libs {
+            cmd.append(_needed_lib_flag(lib));
+        }
+        proc = subprocess.run(cmd, capture_output=True, text=True);
+        if proc.returncode != 0 {
+            raise LinkPlanError(
+                f"system linker failed ({' '.join(cmd[:4])} ...): {proc.stderr.strip()[-2000:]}"
+            );
+        }
+        return True;
+    } finally {
+        shutil.rmtree(work, ignore_errors=True);
+    }
 }
 
 def expose_root_exports(plan: LinkPlan, merged: ModuleRef) -> list[str] {

@@ -494,6 +494,15 @@ def _derive_in_tree(lib_path: str) -> (ResolvedKernel | None) {
         if found is not None {
             return found;
         }
+        import from jaclang.compiler.backends.native.kernel_fetch {
+            fetch_published_kernel
+        }
+        if fetch_published_kernel(lib_path) {
+            found = _accept_in_tree(lib_path);
+            if found is not None {
+                return found;
+            }
+        }
         import from jaclang.compiler.driver.setup_progress { setup_progress }
         setup_progress.on_kernel_build(lib_path);
         tmp = f"{lib_path}.{os.getpid()}.tmp";

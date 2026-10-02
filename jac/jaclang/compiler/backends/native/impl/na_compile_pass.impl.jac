@@ -80,6 +80,123 @@ impl optimize_unit(
     mpm.run(mod, pb);
 }
 
+impl unit_ir_bitcode(module: uni.Module) -> bytes {
+    unit_ir = module.gen.llvm_ir;
+    if isinstance(unit_ir, llvm.ModuleRef) {
+        return module_bitcode(unit_ir);
+    }
+    mod = llvm.parse_assembly(str(unit_ir));
+    mod.verify();
+    return module_bitcode(mod);
+}
+
+impl install_unit_ir_text(module: uni.Module, text: str) -> None {
+    mod = llvm.parse_assembly(text);
+    mod.verify();
+    module.gen.llvm_ir = mod;
+}
+
+impl native_codegen_workers -> int {
+    import os;
+    raw = os.environ.get("JAC_NATIVE_JOBS", "").strip();
+    if raw {
+        try {
+            return max(1, int(raw));
+        } except ValueError {}
+    }
+    return max(1, min(32, os.cpu_count() or 1));
+}
+
+impl codegen_unit_products(
+    unit_bitcode: bytes,
+    target_machine: TargetMachine,
+    opt_level: int,
+    emit_object: bool
+) -> tuple[bytes, (bytes | None)] {
+    import from jaclang.compiler.backends.native.llvm.binding.context { create_context }
+    context = create_context();
+    mod = llvm.parse_bitcode(unit_bitcode, context);
+    mod.verify();
+    optimize_unit(mod, target_machine, opt_level);
+    bitcode = module_bitcode(mod);
+    object_bytes: (bytes | None) = None;
+    if emit_object {
+        emitted = target_machine.emit_object(mod);
+        assert isinstance(emitted, bytes);
+        object_bytes = emitted;
+    }
+    return (bitcode, object_bytes);
+}
+
+impl codegen_units_parallel(
+    jobs: list[tuple[str, bytes]],
+    options: CompileOptions,
+    opt_level: int,
+    emit_object: bool
+) -> dict[str, tuple[bytes, (bytes | None)]] {
+    import from concurrent.futures { ThreadPoolExecutor }
+    out: dict[str, tuple[bytes, (bytes | None)]] = {};
+    if not jobs {
+        return out;
+    }
+    llvm.initialize_native_target();
+    llvm.initialize_native_asmprinter();
+    machines: list[TargetMachine] = [];
+    for _ in jobs {
+        machines.append(create_unit_target_machine(options));
+    }
+    workers = max(1, min(native_codegen_workers(), len(jobs)));
+    with ThreadPoolExecutor(max_workers=workers) as pool {
+        pending: list[tuple[str, any]] = [];
+        for (i, job) in enumerate(jobs) {
+            (path, unit_bitcode) = job;
+            pending.append(
+                (
+                    path,
+                    pool.submit(
+                        _codegen_job,
+                        path,
+                        unit_bitcode,
+                        machines[i],
+                        opt_level,
+                        emit_object
+                    )
+                )
+            );
+        }
+        for (path, future) in pending {
+            (_, seconds, products) = future.result();
+            CODEGEN_SECONDS[path] = seconds;
+            out[path] = products;
+        }
+    }
+    return out;
+}
+
+impl _codegen_job(
+    path: str,
+    unit_bitcode: bytes,
+    target_machine: TargetMachine,
+    opt_level: int,
+    emit_object: bool
+) -> tuple[str, float, tuple[bytes, (bytes | None)]] {
+    import time;
+    started = time.perf_counter();
+    products = codegen_unit_products(
+        unit_bitcode, target_machine, opt_level, emit_object
+    );
+    return (path, time.perf_counter() - started, products);
+}
+
+impl codegen_unit_seconds(paths: list[str]) -> list[tuple[float, str]] {
+    found = [
+        (CODEGEN_SECONDS[p], p)
+        for p in paths
+        if p in CODEGEN_SECONDS
+    ];
+    return sorted(found, reverse=True);
+}
+
 impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
