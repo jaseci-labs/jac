@@ -3,7 +3,8 @@ import time;
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { NativeVerdict }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.frontend.unitree { Import, Module }
+import from jaclang.compiler.frontend.unitree { ModulePath }
 import from jaclang.compiler.driver.jir {
     PRECOMPILE_SENTINEL,
     compute_content_sha256,
@@ -932,36 +933,81 @@ obj NativeBuildSession {
         edges: dict[str, list[str]],
         queue: list[str]
     ) {
+        """The units lowering will ask for: every import resolved the way
+        IR generation resolves it, through the native module resolver, and
+        the units behind a module that only re-exports them.""";
         import from jaclang.compiler.placement.placement_facts { native_unit }
-        import jaclang.compiler.frontend.unitree as uni;
-        for imp in mod.get_all_sub_nodes(uni.Import) {
-            targets: list[uni.ModulePath] = [];
-            if imp.from_loc is not None {
-                targets.append(imp.from_loc);
-            } else {
-                for item in imp.items {
-                    if isinstance(item, uni.ModulePath) {
-                        targets.append(item);
-                    }
-                }
-            }
-            for mp in targets {
-                try {
-                    dep = os.path.realpath(mp.resolve_relative_path());
-                } except Exception {
-                    continue;
-                }
-                if dep == path or not dep.endswith(".jac") or not os.path.isfile(dep) {
-                    continue;
-                }
-                if dep in deps
-                    or not native_unit(dep, self.options.native_unit, self.prog) {
-                    continue;
-                }
-                deps.append(dep);
-                queue.append(dep);
+        import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+        import from jaclang.compiler.frontend.constant { CodeContext }
+        import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+        todo: list[tuple[str, str]] = [];
+        base = os.path.dirname(path);
+        for imp in ModuleFacts.iter_module_imports(mod)
+            + ModuleFacts.iter_nested_imports(mod, CodeContext.NATIVE) {
+            name = NativeBuildSession._import_module_name(imp);
+            if name {
+                todo.append((name, base));
             }
         }
+        passed: set[str] = set();
+        while todo {
+            (name, cur_base) = todo.pop(0);
+            (_src, full) = resolve_native_module(name, cur_base);
+            if full is None {
+                continue;
+            }
+            dep = os.path.realpath(full);
+            if dep == path
+                or dep in passed
+                or not dep.endswith(".jac")
+                or not os.path.isfile(dep) {
+                continue;
+            }
+            passed.add(dep);
+            if native_unit(dep, self.options.native_unit, self.prog) {
+                if dep not in deps {
+                    deps.append(dep);
+                    queue.append(dep);
+                }
+                continue;
+            }
+            through = self.lowered.get(dep)
+                or self.analyzed.get(dep)
+                or self.prog.mod.hub.get(dep)
+                or self.prog.mod.hub.get(os.path.abspath(full));
+            if through is None {
+                continue;
+            }
+            through_base = os.path.dirname(dep);
+            for imp in ModuleFacts.iter_module_imports(through) {
+                name = NativeBuildSession._import_module_name(imp);
+                if name {
+                    todo.append((name, through_base));
+                }
+            }
+        }
+    }
+
+    static def _import_module_name(imp: Import) -> (str | None) {
+        if imp.clib_decls {
+            return None;
+        }
+        if not imp.from_loc or not isinstance(imp.from_loc, ModulePath) {
+            for it in imp.items {
+                if isinstance(it, ModulePath) and it.path {
+                    return ".".join(getattr(p, "value", str(p)) for p in it.path);
+                }
+            }
+            return None;
+        }
+        if imp.from_loc.string_path_value is not None {
+            return None;
+        }
+        name = imp.from_loc.dot_path_str;
+        if not name and imp.from_loc.path {
+            name = ".".join(getattr(p, "value", str(p)) for p in imp.from_loc.path);
+        }
+        return name;
     }
 
     def lower_all_parallel(roots: list[str], workers: int) -> int {
