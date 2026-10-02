@@ -45,6 +45,7 @@ obj NativeUnitEntry {
 obj NativeUnitRegistry {
     has prog: JacProgram,
         session: (NativeBuildSession | None) = None,
+        _spans: list[list[float]] = [],
         entries: dict[str, NativeUnitEntry] = {},
         building: set[str] postinit,
         checking: set[str] postinit,
@@ -121,8 +122,28 @@ obj NativeUnitRegistry {
         times[name] = times.get(name, 0.0) + seconds;
     }
 
-    def _timed(name: str, started: float) {
-        self._add_time(name, time.perf_counter() - started);
+    def _span_begin -> float {
+        self._spans.append([0.0]);
+        return time.perf_counter();
+    }
+
+    def _span_end(name: str, started: float) {
+        total = time.perf_counter() - started;
+        nested = self._spans.pop()[0] if self._spans else 0.0;
+        self._add_time(name, total - nested);
+        if self._spans {
+            self._spans[-1][0] += total;
+        }
+    }
+
+    def _span_depth -> int {
+        return len(self._spans);
+    }
+
+    def _span_unwind(depth: int) {
+        while len(self._spans) > depth {
+            self._spans.pop();
+        }
     }
 
     def phase_summary -> str {
@@ -556,9 +577,12 @@ obj NativeUnitRegistry {
                 }
                 import from jaclang.compiler.driver.jir { write_module_cache }
                 opts = options if options is not None else self._options();
-                started = time.perf_counter();
-                ent.object_bytes = emit_unit_object(ent.bitcode, opts);
-                self._timed("NATIVE_EMIT", started);
+                started = self._span_begin();
+                try {
+                    ent.object_bytes = emit_unit_object(ent.bitcode, opts);
+                } finally {
+                    self._span_end("NATIVE_EMIT", started);
+                }
                 self._event("native_object_emit");
                 write_module_cache(
                     ent.path, None, extra_sections=self.product_sections(ent.path)
@@ -669,6 +693,7 @@ obj NativeBuildSession {
             push_native_target,
             pop_native_target
         }
+        span_depth = self.registry._span_depth();
         unit_token = set_native_unit_compile(self.options.native_unit);
         target_token = push_native_target(self.options.native_target or "");
         prior_codespace = get_effective_default_codespace_override();
@@ -680,9 +705,9 @@ obj NativeBuildSession {
             if mod is None {
                 self.source_keys[resolved] = NativeUnitRegistry._source_key(resolved);
                 opts.no_cgen = True;
-                started = time.perf_counter();
+                started = self.registry._span_begin();
                 mod = self.prog.compile(resolved, use_str=use_str, options=opts);
-                self.registry._timed("NATIVE_ANALYSIS", started);
+                self.registry._span_end("NATIVE_ANALYSIS", started);
                 self.registry._event("native_unit_analysis");
             }
             if len(self.prog.errors_had) > errors_before {
@@ -707,9 +732,9 @@ obj NativeBuildSession {
             mod.gen.native_iface = None;
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;
-            started = time.perf_counter();
+            started = self.registry._span_begin();
             self.prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
-            self.registry._timed("NATIVE_LOWER", started);
+            self.registry._span_end("NATIVE_LOWER", started);
             self.registry._event("native_unit_lower");
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_iface is None {
@@ -739,6 +764,7 @@ obj NativeBuildSession {
                     for alert in self.prog.errors_had[errors_before:]
                 );
             }
+            self.registry._span_unwind(span_depth);
             self.registry.building.discard(resolved);
             self.prog.options = prior_options;
             set_effective_default_codespace(prior_codespace);
@@ -792,9 +818,12 @@ obj NativeBuildSession {
                 }
             }
             errors_before = len(self.prog.errors_had);
-            started = time.perf_counter();
-            self.prog.run_schedule(mod, [NativeCompilePass]);
-            self.registry._timed("NATIVE_OPTIMIZE", started);
+            started = self.registry._span_begin();
+            try {
+                self.prog.run_schedule(mod, [NativeCompilePass]);
+            } finally {
+                self.registry._span_end("NATIVE_OPTIMIZE", started);
+            }
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
                 raise RuntimeError(f"native product emission failed for {path}");
