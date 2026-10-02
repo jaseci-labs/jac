@@ -1,0 +1,13 @@
+[project]
+name = "job-queue"
+version = "1.0.0"
+description = "Fixture for the durable job queue served in-process"
+entry-point = "app"
+
+[scale.jobs]
+enabled = true
+poll_seconds = 0.1
+system_targets = ["Housekeeping"]
+
+[scale.jobs.queues]
+agents = { concurrency = 2, lease_s = 5 }

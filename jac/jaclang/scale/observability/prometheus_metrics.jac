@@ -53,6 +53,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         _ws_connections_active: any = None,
         _ws_broadcasts_total: any = None,
         _read_tier_retries: any = None,
+        _jobs: any = None,
+        _job_series: set[tuple[str, str]] = set(),
         _jac_info: any = None;
 
     def postinit {
@@ -157,6 +159,27 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             "WebSocket broadcast publishes",
             registry=self._registry
         );
+
+        self._jobs = Gauge(
+            f"{self._namespace}_jobs",
+            "Jobs in the durable job queue by queue and status",
+            ["queue", "status"],
+            registry=self._registry,
+            multiprocess_mode="livemostrecent"
+        );
+    }
+
+    def record_job_counts(counts: dict[tuple[str, str], int]) {
+        if not self._enabled or self._jobs is None {
+            return;
+        }
+        for series in self._job_series - set(counts.keys()) {
+            self._jobs.labels(queue=series[0], status=series[1]).set(0);
+        }
+        for ((queue, status), n) in counts.items() {
+            self._jobs.labels(queue=queue, status=status).set(n);
+        }
+        self._job_series = self._job_series | set(counts.keys());
     }
 
     def record_read_tier_retry(unit_key: str) {

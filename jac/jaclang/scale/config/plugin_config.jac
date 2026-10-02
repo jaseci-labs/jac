@@ -1220,6 +1220,38 @@ class JacScalePluginConfig {
                         }
                     }
                 },
+                "jobs": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Durable job queue (jaclang.scale.jobs). Off by default. When enabled, every server worker runs a job runner for the declared queues.",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Run a job runner in each server worker"
+                        },
+                        "queues": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Queue name to { concurrency, lease_s }. A 'default' queue (concurrency 4, lease_s 60) always exists."
+                        },
+                        "poll_seconds": {
+                            "type": "float",
+                            "default": 1.0,
+                            "description": "Seconds between claim attempts when no notification arrives"
+                        },
+                        "retention_seconds": {
+                            "type": "float",
+                            "default": 604800.0,
+                            "description": "Seconds a done or cancelled job is kept (its key stays deduplicated until then); 0 keeps them forever"
+                        },
+                        "system_targets": {
+                            "type": "list",
+                            "default": [],
+                            "description": "Walker or function names whose jobs always run as the internal system user, whoever queued them. Every other job runs as the root that queued it."
+                        }
+                    }
+                },
                 "scheduler": {
                     "type": "dict",
                     "default": {},
