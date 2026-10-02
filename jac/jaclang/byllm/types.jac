@@ -157,6 +157,7 @@ obj Image(Media) {
         mime_type: str | None = None;
 
     def postinit -> None;
+    def _set_from_path(path: str | bytes) -> None;
     def _format_to_mime(fmt: str | None) -> str;
     def _data_url_from_bytes(data: bytes, fmt: str | None) -> str;
     def to_dict -> list[dict[str, any]];

@@ -3,6 +3,7 @@
 Assert on the request byLLM actually sent, not on a rendered string.
 """
 
+import os;
 import from jaclang.byllm.lib { Image, Video }
 import from jaclang.byllm.lib { ConfigurationError, MockLLM }
 import from jaclang.testing.requires { require_module }
@@ -24,6 +25,14 @@ obj Person {
     has full_name: str,
         year_of_death: str,
         personality: Personality;
+}
+
+obj _BytesPath {
+    has path: str;
+
+    def __fspath__ -> bytes {
+        return os.fsencode(self.path);
+    }
 }
 
 
@@ -166,6 +175,7 @@ test "every accepted image source becomes a usable url" {
         ("PIL Image", pil, "data:image/"),
         ("file path", jpg, "data:image/jpeg"),
         ("PathLike", Path(jpg), "data:image/jpeg"),
+        ("bytes PathLike", _BytesPath(jpg), "data:image/jpeg"),
         ("raw bytes", raw, "data:image/"),
         ("bytearray", bytearray(raw), "data:image/"),
         ("memoryview", memoryview(raw), "data:image/"),
