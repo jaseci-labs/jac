@@ -182,6 +182,33 @@ def run -> f32 {
     assert 'declare i8* @"cp_find"(i32 %"key")' in text;
 }
 
+test "an optional borrowed C parameter is a nullable pointer however it is grouped" {
+    code = """
+import from c {
+    def bare_send(fd: i32, offset: &mut i64 | None, count: u64) -> i64;
+    def grouped_send(fd: i32, offset: (&mut i64 | None), count: u64) -> i64;
+}
+
+def absent(fd: i32, count: u64) -> i64 {
+    return bare_send(fd, None, count) + grouped_send(fd, None, count);
+}
+
+def present(fd: i32, start: i64, count: u64) -> i64 {
+    offset = start;
+    sent = bare_send(fd, &mut offset, count) + grouped_send(fd, &mut offset, count);
+    return sent + offset;
+}
+""";
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, code);
+        text = str(compile_native_ir("probe.jac", fixture_dir=directory).gen.llvm_ir);
+    }
+    for name in ["bare_send", "grouped_send"] {
+        assert f'declare i64 @"{name}"(i32 %"fd", i8* %"offset", i64 %"count")'
+            in text , text;
+    }
+}
+
 test "a pointer step does not wrap around the address space" {
     code = """
 def step(p: ptr[i32], n: int) -> ptr[i32] {

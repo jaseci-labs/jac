@@ -1019,6 +1019,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_pin(arg: uni.Expr) -> (ir.Value | None);
     def _c_release_temp(val: ir.Value) -> None;
     def _clib_param_info(p: uni.ParamVar) -> dict[str, any];
+    def _clib_param_borrowed(p: uni.ParamVar) -> bool;
     def _clib_ret_is_cptr(sig: uni.FuncSignature) -> bool;
     def _c_decl_type_of(type_expr: uni.UniNode) -> any;
     def _clib_place_ptr(expr: uni.Expr) -> (ir.Value | None);

@@ -501,7 +501,6 @@ impl NaIRGenPass._codegen_pin(arg: uni.Expr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     ptype = p.type;
     optional = False;
     if isinstance(ptype, UnionType) {
@@ -517,7 +516,7 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
             optional = True;
         }
     }
-    borrowed = p.type_tag is not None and is_borrow_kind(p.type_tag.ownership);
+    borrowed = self._clib_param_borrowed(p);
     if is_pinned_type(ptype) {
         return {"borrow": "pinned", "optional": optional};
     }
@@ -543,6 +542,32 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
         return {};
     }
     return {"borrow": "scalar", "elem": ptype, "llt": llt, "optional": optional};
+}
+
+impl NaIRGenPass._clib_param_borrowed(p: uni.ParamVar) -> bool {
+    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    tag = p.type_tag;
+    if tag is None {
+        return False;
+    }
+    if is_borrow_kind(tag.ownership) {
+        return True;
+    }
+    pending: list[uni.UniNode] = [tag.tag];
+    while pending {
+        expr = pending.pop();
+        while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+            expr = expr.value;
+        }
+        if isinstance(expr, uni.UnaryExpr) and is_borrow_kind(expr.ownership) {
+            return True;
+        }
+        if isinstance(expr, uni.BinaryExpr) {
+            pending.append(expr.left);
+            pending.append(expr.right);
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._clib_ret_is_cptr(sig: uni.FuncSignature) -> bool {
