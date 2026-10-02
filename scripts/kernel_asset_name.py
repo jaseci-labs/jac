@@ -11,6 +11,9 @@ from jaclang.compiler.backends.native.kernel_fetch import (  # noqa: E402
     kernel_publish_key,
 )
 
+from jaclang.compiler.backends.native.llvm import _find_shim  # noqa: E402
+
+_find_shim()  # the name folds the host triple the shim reports; no shim, no name
 key = kernel_publish_key()
 if key is None:
     sys.exit("no publish key: the stage-0 pin is self or unreadable")

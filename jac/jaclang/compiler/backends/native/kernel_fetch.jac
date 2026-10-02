@@ -24,17 +24,33 @@ def kernel_unit_paths(pkg_root: str = "") -> list[str] {
     paths.extend(
         os.path.join(spec.`root, *rel.split("/")) for rel in spec.kernel_unit_rel
     );
+    import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
+    stdlib = native_stdlib_root();
+    if stdlib and os.path.isdir(stdlib) {
+        for (folder, _dirs, files) in os.walk(stdlib) {
+            paths.extend(
+                os.path.join(folder, f)
+                for f in files
+                if f.endswith(".jac")
+            );
+        }
+    }
     return sorted(
-        os.path.realpath(p)
-        for p in paths
-        if os.path.isfile(p)
+        {
+            os.path.realpath(p)
+            for p in paths
+            if os.path.isfile(p)
+        }
     );
 }
 
 def kernel_publish_key(pkg_root: str = "") -> (str | None) {
     """The inputs a stage-0 kernel is accepted by, folded into one name:
     the pin, the ABI, the target, the interpreter and every unit's source
-    and policy. A checkout under a self pin publishes nothing.""";
+    and policy, over the scope modules, the kernel units and the native
+    stdlib. The target triple comes from the LLVM shim, so the name is only
+    reliable where the shim loads. A checkout under a self pin publishes
+    nothing.""";
     import from jaclang.compiler.backends.native.stage0_pin {
         Stage0PinError,
         abi_contract_digest,
@@ -64,7 +80,6 @@ def kernel_publish_key(pkg_root: str = "") -> (str | None) {
         str(NATIVE_ABI_VERSION),
         abi_contract_digest(pkg),
         options.effective_triple(),
-        options.base_codegen_identity(),
         f"{sys.version_info.major}.{sys.version_info.minor}"
     ] {
         h.update(part.encode("utf-8"));
