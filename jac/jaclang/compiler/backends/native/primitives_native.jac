@@ -1734,71 +1734,8 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         ascii_end = b.basic_block;
         b.branch(done_bb);
         b.position_at_end(wide_bb);
-        p._set_rc_ctx("chr", "");
-        buf = p._str_alloc(b, ir.Constant(i64, 5), name="chr.buf");
-        p._clear_rc_ctx();
-        width = b.select(
-            b.icmp_unsigned("<", point, ir.Constant(i64, 2048), name="chr.two"),
-            ir.Constant(i64, 2),
-            b.select(
-                b.icmp_unsigned("<", point, ir.Constant(i64, 65536), name="chr.three"),
-                ir.Constant(i64, 3),
-                ir.Constant(i64, 4),
-                name="chr.width.wide"
-            ),
-            name="chr.width"
-        );
-        lead_prefix = b.select(
-            b.icmp_unsigned("==", width, ir.Constant(i64, 2), name="chr.lead.two"),
-            ir.Constant(i64, 192),
-            b.select(
-                b.icmp_unsigned(
-                    "==", width, ir.Constant(i64, 3), name="chr.lead.three"
-                ),
-                ir.Constant(i64, 224),
-                ir.Constant(i64, 240),
-                name="chr.lead.wide"
-            ),
-            name="chr.lead.prefix"
-        );
-        continuation = b.sub(width, ir.Constant(i64, 1), name="chr.cont");
-        lead = b.or_(
-            lead_prefix,
-            b.lshr(
-                point,
-                b.mul(continuation, ir.Constant(i64, 6), name="chr.lead.shift"),
-                name="chr.lead.bits"
-            ),
-            name="chr.lead"
-        );
-        b.store(b.trunc(lead, i8, name="chr.lead.byte"), buf);
-        for offset in range(1, 4) {
-            position = ir.Constant(i64, offset);
-            shift = b.select(
-                b.icmp_unsigned("<", position, width, name=f"chr.in.{offset}"),
-                b.mul(
-                    b.sub(continuation, position, name=f"chr.rest.{offset}"),
-                    ir.Constant(i64, 6),
-                    name=f"chr.shift.{offset}"
-                ),
-                ir.Constant(i64, 0),
-                name=f"chr.bits.{offset}"
-            );
-            payload = b.and_(
-                b.lshr(point, shift, name=f"chr.part.{offset}"),
-                ir.Constant(i64, 63),
-                name=f"chr.low.{offset}"
-            );
-            b.store(
-                b.trunc(
-                    b.or_(payload, ir.Constant(i64, 128), name=f"chr.byte.{offset}"),
-                    i8,
-                    name=f"chr.cont.{offset}"
-                ),
-                b.gep(buf, [position], name=f"chr.slot.{offset}")
-            );
-        }
-        p._str_finish(b, buf, width);
+
+        buf = b.call(p._one_char_wide_fn(), [point], name="chr.wide.str");
         wide_end = b.basic_block;
         b.branch(done_bb);
         b.position_at_end(done_bb);

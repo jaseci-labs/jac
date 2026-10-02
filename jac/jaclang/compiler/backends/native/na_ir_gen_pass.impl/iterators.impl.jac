@@ -257,18 +257,21 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     b.cbranch(ok, cont, stop);
     b.position_at_end(cont);
 
+    remaining = b.sub(n, idx, name="sit.rem");
     char_ptr = b.gep(s_ptr, [idx], name="sit.char.ptr");
-    char_val = b.load(char_ptr, name="sit.char");
-    byte_idx = b.zext(char_val, i64, name="sit.char.idx");
-    cache_gv = self._get_char_cache_gv();
-    ch = b.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="sit.char.cached"
+    lead_v = b.zext(b.load(char_ptr), i64, name="sit.char.lead");
+    ch_width = self._call_utf8_width(b, lead_v, remaining, name="sit.char.w");
+    ch_width = b.select(
+        b.icmp_signed("<", ch_width, ir.Constant(i64, 1), name="sit.w.z"),
+        ir.Constant(i64, 1),
+        ch_width,
+        name="sit.char.w.min"
     );
+    cp_v = self._call_utf8_cp_at(b, char_ptr, remaining, name="sit.char.cp");
+    ch = self._emit_one_char_str(cp_v, b=b);
     out_t = b.bitcast(fn.args[1], i8p.as_pointer(), name="sit.out");
     b.store(ch, out_t);
-    b.store(b.add(idx, ir.Constant(i64, 1), name="sit.idx.next"), idx_slot);
+    b.store(b.add(idx, ch_width, name="sit.idx.next"), idx_slot);
     b.ret(ir.Constant(i1, 1));
     b.position_at_end(stop);
     b.ret(ir.Constant(i1, 0));
