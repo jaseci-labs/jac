@@ -890,6 +890,7 @@ obj NativeBuildSession {
         }
         import jaclang.compiler.frontend.unitree as uni;
         prior_codespace = get_effective_default_codespace_override();
+        prior_options = self.prog.options;
         first = True;
         try {
             while queue {
@@ -912,12 +913,14 @@ obj NativeBuildSession {
                     self.analyzed[path] = mod;
                     if first {
                         set_effective_default_codespace("native");
+                        self.prog.options = opts;
                         first = False;
                     }
                 }
                 self._queue_native_imports(mod, path, deps, edges, queue);
             }
         } finally {
+            self.prog.options = prior_options;
             set_effective_default_codespace(prior_codespace);
         }
     }
@@ -1090,6 +1093,7 @@ obj NativeBuildSession {
         _PARALLEL_SESSION.clear();
         _PARALLEL_SESSION.append(self);
         started = self.registry._span_begin();
+        wall = time.perf_counter();
         try {
             context = multiprocessing.get_context("fork");
             with context.Pool(processes=jobs) as pool {
@@ -1103,10 +1107,39 @@ obj NativeBuildSession {
             self.registry._span_end("NATIVE_LOWER", started);
             _PARALLEL_SESSION.clear();
         }
+        busy = 0.0;
+        extra: list[str] = [];
+        analyses = 0;
+        slowest: list[tuple[float, str]] = [];
         for batch in results {
             for rec in batch {
+                stats = rec.get("stats");
+                if stats is not None {
+                    busy += float(stats["seconds"]);
+                    analyses += int(stats["analyses"]);
+                    extra.extend(stats["extra"]);
+                    slowest.append((float(stats["seconds"]), str(rec["path"])));
+                    continue;
+                }
                 self._absorb_lowered(rec);
             }
+        }
+        slowest.sort(reverse=True);
+        top = ", ".join(
+            f"{os.path.basename(p)} {sec:.1f}s" for (sec, p) in slowest[:3]
+        );
+        import sys;
+        sys.stderr.write(
+            f"[lower] level of {len(paths)} units on {jobs} workers: "
+            f"wall {time.perf_counter() - wall:.1f}s, busy {busy:.1f}s, "
+            f"extra lowered {len(extra)}, analyses {analyses}; slowest {top}\n"
+        );
+        if extra {
+            sys.stderr.write(
+                "[lower] extra: "
+                    + ", ".join(sorted(set(os.path.basename(e) for e in extra)))
+                    + "\n"
+            );
         }
     }
 
@@ -1329,9 +1362,26 @@ def _lower_unit_in_child(path: str, mask: list[str]) -> list[dict[str, any]] {
     session = _PARALLEL_SESSION[0];
     before = set(session.lowered.keys());
     out: list[dict[str, any]] = [];
+    counters = session.prog.analysis.cache_events;
+    analyses_before = counters.get("native_unit_analysis", 0);
+    started = time.perf_counter();
     if path not in session.lowered {
         session._lower_masked(path, mask);
     }
+    out.append(
+        {
+            "path": path,
+            "stats": {
+                "seconds": time.perf_counter() - started,
+                "analyses": counters.get("native_unit_analysis", 0) - analyses_before,
+                "extra": [
+                    p
+                    for p in session.lowered.keys()
+                    if p not in before and p != path
+                ]
+            }
+        }
+    );
     for (resolved, mod) in session.lowered.items() {
         if resolved in before {
             continue;
