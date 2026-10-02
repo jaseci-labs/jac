@@ -475,6 +475,10 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
     if cursor == old_name {
         raise ValueError(f'Persistent type alias cycle involving {old_name}');
     }
+
+    if new_name not in Serializer._registry {
+        Serializer.register(cls);
+    }
     Serializer._aliases[old_name] = new_name;
 }
 
