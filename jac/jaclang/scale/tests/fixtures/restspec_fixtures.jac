@@ -142,6 +142,45 @@ walker:pub GetProjectTaskWalker {
     }
 }
 
+"""A list walker one segment shorter than its item route, both on PUT: the
+list walker's implicit `/{nd}` route has the item route's shape."""
+@restspec(method=HTTPMethod.PUT, path="/boards/{board_id}/cards")
+walker:pub ReorderCards {
+    has board_id: str = "";
+
+    can reorder with Root entry {
+        report {"message": "ReorderCards executed", "board_id": self.board_id};
+    }
+}
+
+"""The item route the list walker's `/{nd}` route must not shadow. Its
+parameter name sorts after `nd`, which is the case that lost the tie."""
+@restspec(method=HTTPMethod.PUT, path="/boards/{board_id}/cards/{slot}")
+walker:pub EditCard {
+    has board_id: str = "",
+        slot: str = "";
+
+    can edit with Root entry {
+        report {
+            "message": "EditCard executed",
+            "board_id": self.board_id,
+            "slot": self.slot
+        };
+    }
+}
+
+"""A catch-all behind a path parameter, which the server's own `/{file_path:path}`
+page fallback must not shadow on GET."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/boards/{board_id}/files/{file_path:path}",
+    produces="text/plain",
+    envelope=False
+)
+def:pub board_file(board_id: str, file_path: str) -> str {
+    return board_id + ":" + file_path;
+}
+
 node UserProfile {
     has user_id: str = "",
         name: str = "";

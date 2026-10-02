@@ -42,6 +42,7 @@ obj JEndPoint {
         requires_auth: bool = False,
         forward_undeclared_query_params: bool = True,
         include_in_schema: bool = True,
+        yields_to_declared: bool = False,
         callback_spec: any = None;
 }
 

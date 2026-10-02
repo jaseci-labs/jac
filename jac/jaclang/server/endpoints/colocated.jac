@@ -205,7 +205,8 @@ def _mount_provider(
                 summary=f"{provider_app}.{walker_name}",
                 description=f"Spawn {walker_name} in the colocated app {provider_app} on a node.",
                 requires_auth=walker_auth,
-                forward_undeclared_query_params=False
+                forward_undeclared_query_params=False,
+                yields_to_declared=True
             )
         );
         server.add_endpoint(

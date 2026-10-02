@@ -436,6 +436,40 @@ test "walker with node parameter functional test" {
     }
 }
 
+test "a declared route outranks a walker's implicit node route of the same shape" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # /boards/{board_id}/cards/{nd} (ReorderCards on a node) and
+        # /boards/{board_id}/cards/{slot} (EditCard) have the same shape.
+        r = client.put("/boards/b1/cards/c1", json={});
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["reports"][0];
+        assert d == {"message": "EditCard executed", "board_id": "b1", "slot": "c1"};
+
+        r = client.put("/boards/b1/cards", json={});
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["reports"][0]
+            == {"message": "ReorderCards executed", "board_id": "b1"};
+    } finally {
+        client.close();
+    }
+}
+
+test "a catch-all behind a path parameter outranks the page fallback" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/boards/b1/files/output.mp4");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "b1:output.mp4";
+
+        r = client.get("/boards/b1/files/scenes/s1/video.mp4");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "b1:scenes/s1/video.mp4";
+    } finally {
+        client.close();
+    }
+}
+
 # ============================================================================
 # Custom Object Body Parameter Tests — walker + function + recursive
 # One integration test per variant; schema + runtime + validation in one flow.

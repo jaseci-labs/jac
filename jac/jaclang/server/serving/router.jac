@@ -90,17 +90,20 @@ def compile_route(path: str) -> CompiledRoute {
     return route;
 }
 
-def route_sort_key(route: CompiledRoute) -> tuple[int, int, int, str] {
+def route_sort_key(route: CompiledRoute) -> tuple[int, int, int, int, str] {
     path = '';
+    yields = False;
     if route.endpoint is not None {
         path = route.endpoint.path;
+        yields = route.endpoint.yields_to_declared;
     } elif route.ws_endpoint is not None {
         path = route.ws_endpoint.path;
     }
     return (
         1 if route.catchall is not None else 0,
-        route.param_count,
+        1 if yields else 0,
         -len(route.segments),
+        route.param_count,
         path
     );
 }

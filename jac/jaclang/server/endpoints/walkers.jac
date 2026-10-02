@@ -245,7 +245,8 @@ def register_walker_endpoints(server: JacAPIServer) {
                 summary=f"Spawn {walker_name} on a node",
                 description=f"Spawn the {walker_name} walker on the node named by `nd`.",
                 requires_auth=requires_auth,
-                forward_undeclared_query_params=False
+                forward_undeclared_query_params=False,
+                yields_to_declared=True
             )
         );
         server.add_endpoint(
