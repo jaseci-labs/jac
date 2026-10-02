@@ -23,6 +23,22 @@ def optimize_unit(
     mod: ModuleRef, target_machine: TargetMachine, opt_level: int
 ) -> None;
 
+def unit_ir_bitcode(module: uni.Module) -> bytes;
+def native_codegen_workers -> int;
+def codegen_unit_products(
+    unit_bitcode: bytes,
+    target_machine: TargetMachine,
+    opt_level: int,
+    emit_object: bool
+) -> tuple[bytes, (bytes | None)];
+
+def codegen_units_parallel(
+    jobs: list[tuple[str, bytes]],
+    options: CompileOptions,
+    opt_level: int,
+    emit_object: bool
+) -> dict[str, tuple[bytes, (bytes | None)]];
+
 walker NativeCompilePass(CompilerPass) {
     def postinit -> None;
     def _run_impl(ir_in: uni.Module) -> uni.Module;

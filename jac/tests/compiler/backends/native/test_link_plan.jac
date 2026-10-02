@@ -17,6 +17,7 @@ import shutil;
 import subprocess;
 import sys;
 import tempfile;
+import time;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options {
     CompileOptions,
@@ -83,6 +84,9 @@ test "the plan holds every unit of the diamond, dependencies first" {
     ];
     assert sorted(names) == sorted(UNITS) , names;
     assert toolchain;
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_lower", 0)
+        == events.get("native_unit_analysis", 0) , events;
     for u in plan.units {
         for dep in u.iface.deps {
             assert plan.units.index(plan.unit(dep)) < plan.units.index(u) , f"{dep} must precede its consumer {u.path}";
@@ -128,16 +132,27 @@ test "a body edit rewrites one object and keeps every interface" {
 test "a no-op build lowers no units and preserves the linked artifact" {
     if _can_link_host() {
         root_dir = _diamond_copy();
+        wall_started = time.perf_counter();
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         first = link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        wall = time.perf_counter() - wall_started;
         before = os.stat(output).st_mtime_ns;
         timed = prog.analysis.phase_time;
+        native_total = sum(
+            timed.get(phase, 0.0)
+            for phase in (
+                "NATIVE_ANALYSIS",
+                "NATIVE_LOWER",
+                "NATIVE_OPTIMIZE",
+                "NATIVE_EMIT"
+            )
+        );
+        assert native_total <= wall , f"native phases {native_total:.2f}s exceed the build's {wall:.2f}s: nested spans were counted twice";
         for phase in (
             "NATIVE_ANALYSIS",
             "NATIVE_LOWER",
             "NATIVE_OPTIMIZE",
-            "NATIVE_EMIT",
             "NATIVE_FRONTEND_PARSE"
         ) {
             assert timed.get(phase, 0.0) > 0.0 , f"{phase} was not timed: {timed}";
@@ -634,6 +649,8 @@ test "an import cycle settles without repeating frontend analysis or optimizatio
         assert str(even.resolve()) in compiled and str(odd.resolve()) in compiled;
         assert len(compiled) == len(set(compiled));
         assert events.get("native_unit_analysis", 0) == len(compiled);
+        assert events.get("native_unit_lower", 0) == len(compiled) , events;
+        assert events.get("native_dep_adopt", 0) >= 1 , events;
         for unit in plan.units {
             consumed = prog.native_units().entries[unit.path].dep_digests;
             for dep in unit.iface.deps {
