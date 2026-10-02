@@ -85,10 +85,15 @@ echo "=== drive a real cycle via the HTTP-activation e2e ==="
 E2E_KEEP_NS=1 bash "${INNER_E2E}" "${FIXTURE_DIR}"
 
 echo "=== stop the observer and inspect what it saw ==="
-# The namespace is still up, so this waits out one more poll of a workload that
-# is genuinely idle at zero. Deleting first made the same wait read teardown:
-# the last transition landed on degraded or unknown, never on inactive.
-sleep 15
+# The ScaledObject's deactivating -> inactive flip can trail the pod's
+# scale-to-zero by tens of seconds, so a fixed settle races it. Wait until the
+# stream holds a complete ... -> active ... -> inactive cycle before stopping
+# the recorder, bounded so a wedged observer still fails in finite time.
+deadline=$((SECONDS + ${E2E_SETTLE_SECONDS:-120}))
+until awk '/ -> active( |$)/ {a=1} a && / -> inactive( |$)/ {f=1} END {exit(f?0:1)}' \
+        "${TRANSITIONS}" 2>/dev/null || (( SECONDS >= deadline )); do
+    sleep 2
+done
 if kill -0 "${RECORDER_PID}" 2>/dev/null; then
     kill "${RECORDER_PID}" 2>/dev/null || true
     wait "${RECORDER_PID}" 2>/dev/null || true
@@ -100,20 +105,30 @@ if [[ ! -s "${TRANSITIONS}" ]]; then
     exit 1
 fi
 
-# The cycle under test ends when the target returns to inactive. The wrapped
-# e2e deletes the namespace from its own cleanup trap, which runs before the
-# observer is stopped, so anything recorded after that point is teardown: the
-# ScaledObject going unready as it is removed, then the Deployment vanishing.
-# Asserting over those would make this fail on how fast a namespace deletes,
-# which is not what the cycle is being judged on. Truncate at the first
-# inactive, and fail loudly if the cycle never got there.
+# The cycle under test is the wrapped e2e's real 0 -> 1 -> 0. The recorder can
+# also catch a partial settle cycle before it (the Deployment flapping to
+# inactive while KEDA first reconciles the ScaledObject) and teardown after
+# it, so extract the span around the first '-> active': from just after the
+# preceding '-> inactive' through the next '-> inactive'. Fail loudly if the
+# stream never completed a cycle.
 CYCLE="$(mktemp)"
-if ! grep -qE " -> inactive( |$)" "${TRANSITIONS}"; then
-    echo "FAIL: never observed a transition into 'inactive'" >&2
+awk '
+    / -> inactive( |$)/ && !act { pre = NR }
+    / -> active( |$)/ && !act { act = NR }
+    { line[NR] = $0 }
+    END {
+        if (!act) exit 1;
+        end = NR;
+        for (i = act + 1; i <= NR; i++) {
+            if (line[i] ~ / -> inactive( |$)/) { end = i; break }
+        }
+        for (i = pre + 1; i <= end; i++) print line[i];
+    }' "${TRANSITIONS}" > "${CYCLE}"
+if [[ ! -s "${CYCLE}" ]] || ! grep -qE " -> inactive( |$)" "${CYCLE}"; then
+    echo "FAIL: never observed a complete active -> inactive cycle" >&2
     cat "${TRANSITIONS}" >&2
     exit 1
 fi
-awk '{ print } / -> inactive( |$)/ { exit }' "${TRANSITIONS}" > "${CYCLE}"
 echo "=== cycle under test (teardown excluded) ==="
 cat "${CYCLE}"
 
