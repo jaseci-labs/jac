@@ -81,10 +81,7 @@ def _is_bundle_required(rel: Path) -> bool {
         return True;
     }
 
-    if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
-        return True;
-    }
-    return len(parts) == 2 and parts[0] == ".jac" and parts[1] == "serve_manifest.json";
+    return len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin";
 }
 
 
@@ -652,6 +649,20 @@ def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
 }
 
 
+def require_serve_manifest(stage: Path, detail: str = "") -> Path {
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
+
+    serve_manifest = stage / SERVE_MANIFEST_REL;
+    if not serve_manifest.is_file() {
+        raise RuntimeError(
+            f"The app stage has no {serve_manifest}, so the deploy cannot "
+            f"produce a .jab a pod can boot from. {detail}".rstrip()
+        );
+    }
+    return serve_manifest;
+}
+
+
 def _precompile_app(
     base: Path,
     seal_binary: bytes,
@@ -696,6 +707,7 @@ def _precompile_app(
                     + (prepared.stderr or prepared.stdout).strip()[-4000:]
             );
         }
+        require_serve_manifest(stage, (prepared.stdout or "").strip()[-4000:]);
 
         result = subprocess.run(
             [str(jac_path), "precompile", str(stage_root)] + seal_flags,
@@ -1044,14 +1056,11 @@ def pack_jab(
                     f"Sealed {count} precompiled app-module artifacts into the .jab."
                 );
                 import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
-                serve_manifest = staged / SERVE_MANIFEST_REL;
-                if serve_manifest.is_file() {
-                    tar.add(
-                        str(serve_manifest),
-                        arcname=SERVE_MANIFEST_REL,
-                        filter=det_tar_member
-                    );
-                }
+                tar.add(
+                    str(require_serve_manifest(staged)),
+                    arcname=SERVE_MANIFEST_REL,
+                    filter=det_tar_member
+                );
                 ven = staged / "_vendor";
                 if ven.is_dir() {
                     wheel_count = 0;

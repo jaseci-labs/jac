@@ -1,3 +1,4 @@
+import contextlib;
 import io;
 import os;
 import shutil;
@@ -182,14 +183,57 @@ test "pack_jab without a pod binary is a hard error (a .jab requires a seal)" {
 }
 
 
-test "an unrunnable pod binary fails the seal instead of shipping unsealed" {
-    caught = False;
-    try {
-        pack_jab(_mini_app(), b"not-an-elf");
-    } except Exception {
-        caught = True;
+test "a seal that cannot yield a bootable .jab fails the pack instead of the pod" {
+    import from unittest.mock { patch }
+    import jaclang.scale.injector.bundle as bundle;
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
+
+    def bake_writes_nothing(*args: any, **kwargs: any) -> subprocess.CompletedProcess {
+        return subprocess.CompletedProcess(
+            args, 0, stdout="sealing without serve payloads", stderr=""
+        );
     }
-    assert caught;
+
+    def seal_without_manifest(base: Path, *args: any, **kwargs: any) -> Path {
+        stage = _stage_app(base, None) / "app";
+        (stage / "_precompiled").mkdir();
+        (stage / "_precompiled" / "MANIFEST.json").write_text("{}\n");
+        return stage;
+    }
+
+    cases = [
+        ("an unrunnable pod binary", contextlib.nullcontext(), []),
+        (
+            "a bake that writes no manifest over a stale local copy",
+            patch.object(bundle.subprocess, "run", bake_writes_nothing),
+            ["RuntimeError", SERVE_MANIFEST_REL, "sealing without serve payloads"]
+        ),
+        (
+            "a stage that lost its manifest before the tar",
+            patch.object(bundle, "_precompile_app", seal_without_manifest),
+            ["RuntimeError", SERVE_MANIFEST_REL]
+        )
+    ];
+    for (label, patcher, expected) in cases {
+        base = Path(_mini_app());
+        (base / "jac.toml").write_text(
+            '[project]\nname="mini"\n\n[scale]\nfat_bundle = false\n'
+        );
+        (base / ".jac").mkdir();
+        (base / ".jac" / "serve_manifest.json").write_text('{"stale": true}\n');
+        caught = "";
+        with patcher {
+            try {
+                pack_jab(str(base), b"not-an-elf");
+            } except Exception as e {
+                caught = f"{type(e).__name__}: {e}";
+            }
+        }
+        assert caught , label;
+        for text in expected {
+            assert text in caught , (label, text, caught);
+        }
+    }
 }
 
 
