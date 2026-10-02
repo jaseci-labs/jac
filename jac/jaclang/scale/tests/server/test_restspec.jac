@@ -690,6 +690,98 @@ test "raw body sends a bytearray verbatim (#9234)" {
     }
 }
 
+test "raw body sends a returned Response as returned (#9291)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/response", params={"name": "q3"});
+        assert r.status_code == 200 , r.text;
+        assert r.text == "a,b\n1,2\n" , r.text;
+        assert r.headers["content-type"].startswith("text/csv");
+        assert r.headers["content-disposition"] == 'attachment; filename="q3.csv"';
+
+        # Status and media type are the function's, not the route's.
+        r = client.get("/raw/response", params={"kind": "missing"});
+        assert r.status_code == 404 , r.text;
+        assert r.text == "<h1>no such report</h1>" , r.text;
+        assert r.headers["content-type"].startswith("text/html");
+
+        # A header value cannot smuggle a second header onto the wire.
+        r = client.get(
+            "/raw/response",
+            params={"kind": "header", "name": "a\r\nSet-Cookie: stolen=1"}
+        );
+        assert r.status_code == 500 , r.text;
+        assert r.headers.get("set-cookie") is None;
+        assert r.headers.get("x-report-name") is None;
+        r = client.get("/raw/response", params={"kind": "header", "name": "q3"});
+        assert r.status_code == 200 and r.headers["x-report-name"] == "q3" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body sends a returned RedirectResponse (#9291)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/moved", allow_redirects=False);
+        assert r.status_code == 302 , r.text;
+        assert r.headers["location"] == "/raw/plain";
+        r = client.get("/raw/moved");
+        assert r.status_code == 200 and r.text == "plain body" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body pair picks the media type per request (#9291)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/pair");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "a,b\n1,2\n" , r.text;
+        assert r.headers["content-type"].startswith("text/csv");
+
+        r = client.get("/raw/pair", params={"fmt": "view"});
+        assert r.status_code == 200 , r.text;
+        assert r.text == "<h1>report</h1>" , r.text;
+        assert r.headers["content-type"].startswith("text/html");
+
+        # Control: a plain body from the same route still uses `produces`.
+        r = client.get("/raw/pair", params={"fmt": "plain"});
+        assert r.status_code == 200 and r.text == "plain default" , r.text;
+        assert r.headers["content-type"].startswith("text/plain");
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body serves a returned FileResponse with Range (#9291)" {
+    import os;
+    import tempfile;
+    client = make_client("restspec_fixtures.jac");
+    media = os.path.join(tempfile.mkdtemp(), "clip.mp4");
+    blob = bytes(range(256)) * 4;
+    with open(media, "wb") as fh {
+        fh.write(blob);
+    }
+    try {
+        r = client.get("/raw/file", params={"path": media});
+        assert r.status_code == 200 , r.text;
+        assert r.content == blob;
+        assert r.headers["content-type"].startswith("video/mp4");
+        assert r.headers["accept-ranges"] == "bytes";
+
+        r = client.get(
+            "/raw/file", params={"path": media}, headers={"Range": "bytes=0-99"}
+        );
+        assert r.status_code == 206 , str(r.status_code);
+        assert r.content == blob[:100];
+        assert r.headers["content-range"] == "bytes 0-99/1024";
+    } finally {
+        client.close();
+    }
+}
+
 test "envelope remains the default" {
     client = make_client("restspec_fixtures.jac");
     try {
