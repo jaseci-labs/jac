@@ -179,8 +179,65 @@ def main -> int {
     }
 }
 
+# Tests whose premise the Jac runtime does not provide, by module and
+# "Class.method", with the reason each is skipped.
+glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
+     LAUNCHER_ENVIRONMENT: str = "the jac launcher starts the interpreter without the PYTHON* environment",
+     RUNTIME_DIFFERENCES: dict[str, dict[str, str]] = {
+         "test.test_posix": {"PosixTester.test_pipe2_c_limits": NO_TESTCAPI},
+         "test.test_asyncio": {
+             "BaseEventLoopTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
+             "CoroutineGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
+             "FutureGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT
+         }
+     };
+
+def skip_runtime_differences(suite: unittest.TestSuite, module: str) {
+    reasons = RUNTIME_DIFFERENCES.get(module, {});
+    pending: list[any] = [suite] if reasons else [];
+    while pending {
+        item = pending.pop();
+        if isinstance(item, unittest.TestSuite) {
+            pending.extend(item);
+            continue;
+        }
+        name = getattr(item, "_testMethodName", "");
+        reason = reasons.get(f"{type(item).__name__}.{name}");
+        if reason {
+            setattr(item, name, unittest.skip(reason)(getattr(item, name)));
+        }
+    }
+}
+
+# The upstream suite assumes two things of the interpreter it runs in: the
+# test package sits beside the standard library, where every interpreter a
+# test starts can import it, and the main module is one a spawn or forkserver
+# child can re-import by name. The Jac runtime ships no test package and this
+# runner is a Jac application, so for the run the fetched package is linked
+# into the standard library and the main module is a neutral stand-in.
 def run_tests(args: any, calls: list[int]) -> int {
     library = fetch_tests(args.cache);
+    main_module = sys.modules["__main__"];
+    sys.modules["__main__"] = types.ModuleType("__main__");
+    link = Path(unittest.__file__).resolve().parent.parent / "test";
+    if link.is_symlink() {
+        link.unlink();
+    }
+    linked = not link.exists();
+    if linked {
+        link.symlink_to(library / "test", target_is_directory=True);
+    }
+    try {
+        return run_library_tests(args, calls, library);
+    } finally {
+        if linked {
+            link.unlink();
+        }
+        sys.modules["__main__"] = main_module;
+    }
+}
+
+def run_library_tests(args: any, calls: list[int], library: Path) -> int {
     sys.path.insert(0, str(library));
     try {
         importlib.import_module("test");
@@ -381,16 +438,6 @@ def run_tests(args: any, calls: list[int]) -> int {
             );
         }
     }
-    if args.module == "test.test_multiprocessing_spawn.test_misc"
-        and hasattr(test_module, "TestFlags") {
-        # The test starts a fresh interpreter with -E -S that imports the
-        # upstream test package by name, and the Jac runtime does not ship it.
-        test_module.TestFlags.test_flags = unittest.skip(
-            "the Jac runtime does not ship the test package to a fresh interpreter"
-        )(
-            test_module.TestFlags.test_flags
-        );
-    }
     print("Compiler path: native Jac machine code", flush=True);
     if args.execution_tests {
         print(
@@ -417,23 +464,8 @@ def run_tests(args: any, calls: list[int]) -> int {
         } else {
             suite = unittest.defaultTestLoader.loadTestsFromModule(test_module);
         }
-        # A child a test starts by spawn or forkserver re-imports the parent's
-        # main module by name and copies its sys.path. This runner is a Jac
-        # application a plain child cannot import, and the upstream test
-        # package is not in the installed tree, so for the run the main module
-        # is a neutral stand-in and the test library follows the installed
-        # tree on sys.path.
-        main_module = sys.modules["__main__"];
-        sys.modules["__main__"] = types.ModuleType("__main__");
-        sys.path.append(str(library));
-        try {
-            result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(
-                suite
-            );
-        } finally {
-            sys.path.remove(str(library));
-            sys.modules["__main__"] = main_module;
-        }
+        skip_runtime_differences(suite, args.module);
+        result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(suite);
         return int(not result.wasSuccessful());
     } finally {
         sys.modules[args.module] = reference_module;

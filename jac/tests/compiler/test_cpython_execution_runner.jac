@@ -118,13 +118,17 @@ test "a module that skips itself on import is reported as skipped" {
         in stderr.getvalue() , stderr.getvalue();
 }
 
-test "a test can start a child process that imports from the test library" {
+test "a child process a test starts can import the test package" {
     import multiprocessing;
     import tempfile;
     repo = Path(JAC_ROOT).parent;
     script = repo / "scripts/run_cpython_compiler_tests.jac";
     if not script.is_file() {
         testskip("repository test runner is not installed");
+    }
+    link = Path(unittest.__file__).resolve().parent.parent / "test";
+    if link.exists() and not link.is_symlink() {
+        testskip("this runtime ships its own test package");
     }
     sys.path.insert(0, str(repo));
     try {
@@ -137,7 +141,7 @@ test "a test can start a child process that imports from the test library" {
         def test_spawned_child(self: Probe) {
             seen["main"] = sys.modules["__main__"];
             child = multiprocessing.get_context("spawn").Process(
-                target=importlib.import_module, args=("library_only_probe", )
+                target=importlib.import_module, args=("test.child_only_probe", )
             );
             child.start();
             child.join(60);
@@ -155,7 +159,9 @@ test "a test can start a child process that imports from the test library" {
     };
     main_before = sys.modules["__main__"];
     with tempfile.TemporaryDirectory() as library {
-        (Path(library) / "library_only_probe.py").write_text("VALUE = 1\n");
+        (Path(library) / "test").mkdir();
+        (Path(library) / "test" / "__init__.py").write_text("");
+        (Path(library) / "test" / "child_only_probe.py").write_text("VALUE = 1\n");
         args = types.SimpleNamespace(
             cache=repo,
             module="test.child_process_probe",
@@ -172,8 +178,45 @@ test "a test can start a child process that imports from the test library" {
         ), contextlib.redirect_stderr(stderr) {
             assert runner.run_tests(args, [0]) == 0 , stderr.getvalue();
         }
-        assert library not in sys.path;
     }
+    assert not link.is_symlink() , "the run left its test package link behind";
     assert seen["main"] is not main_before;
     assert sys.modules["__main__"] is main_before;
+}
+
+test "a test the runtime cannot support is skipped with its reason" {
+    repo = Path(JAC_ROOT).parent;
+    script = repo / "scripts/run_cpython_compiler_tests.jac";
+    if not script.is_file() {
+        testskip("repository test runner is not installed");
+    }
+    sys.path.insert(0, str(repo));
+    try {
+        runner = importlib.import_module("scripts.run_cpython_compiler_tests");
+    } finally {
+        sys.path.pop(0);
+    }
+    class Probe(unittest.TestCase) {
+        def test_supported(self: Probe) {
+            self.assertEqual(6 * 7, 42);
+        }
+
+        def test_unsupported(self: Probe) {
+            self.fail("a test the runtime cannot support ran");
+        }
+    }
+    suite = unittest.TestSuite(
+        [unittest.defaultTestLoader.loadTestsFromTestCase(Probe)]
+    );
+    with patch.dict(
+        runner.RUNTIME_DIFFERENCES,
+        {"test.difference_probe": {"Probe.test_unsupported": "not provided here"}}
+    ) {
+        runner.skip_runtime_differences(suite, "test.difference_probe");
+    }
+    stream = io.StringIO();
+    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite);
+    assert result.wasSuccessful() , stream.getvalue();
+    assert [reason for (_, reason) in result.skipped] == ["not provided here"];
+    assert result.testsRun == 2;
 }
