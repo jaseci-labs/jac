@@ -41,6 +41,12 @@ def step_a -> str {
 }
 
 
+# Big enough that the first round is worth a summariser call in a 1000-token window.
+def bulky_step -> str {
+    return "x" * 1000;
+}
+
+
 def finish_tool(final_output: str) -> str {
     return final_output;
 }
@@ -729,7 +735,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
         ctx_window=1000,
         outputs=[
             call(
-                "step_a",
+                "bulky_step",
                 usage={
                     "prompt_tokens": 100,
                     "completion_tokens": 10,
@@ -737,7 +743,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
                 }
             ),
             call(
-                "step_a",
+                "bulky_step",
                 usage={
                     "prompt_tokens": 850,
                     "completion_tokens": 10,
@@ -761,7 +767,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
     );
 
     def task(q: str) -> str by llm(
-        tools=[step_a],
+        tools=[bulky_step],
         stream=True,
         logging=True,
         threshold_ratio=0.80,
