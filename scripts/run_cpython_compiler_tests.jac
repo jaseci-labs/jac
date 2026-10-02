@@ -101,10 +101,18 @@ def main -> int {
         action="store_true",
         help="Count public native tokenizer calls"
     );
+    parser.add_argument(
+        "--timeout",
+        `type=int,
+        `default=1800,
+        help="Seconds one module may run before every thread's stack is dumped and the run fails"
+    );
     # Retained command-line compatibility: every run now uses these native APIs.
     parser.add_argument("--runtime", action="store_true", help=argparse.SUPPRESS);
     parser.add_argument("--ast-api", action="store_true", help=argparse.SUPPRESS);
     args = parser.parse_args();
+    # A module that hangs fails with the stacks of its threads, not the job's time limit.
+    faulthandler.dump_traceback_later(args.timeout, `exit=True);
     bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 4 {
         raise RuntimeError(
@@ -373,6 +381,16 @@ def run_tests(args: any, calls: list[int]) -> int {
             );
         }
     }
+    if args.module == "test.test_multiprocessing_spawn.test_misc"
+        and hasattr(test_module, "TestFlags") {
+        # The test starts a fresh interpreter with -E -S that imports the
+        # upstream test package by name, and the Jac runtime does not ship it.
+        test_module.TestFlags.test_flags = unittest.skip(
+            "the Jac runtime does not ship the test package to a fresh interpreter"
+        )(
+            test_module.TestFlags.test_flags
+        );
+    }
     print("Compiler path: native Jac machine code", flush=True);
     if args.execution_tests {
         print(
@@ -399,7 +417,23 @@ def run_tests(args: any, calls: list[int]) -> int {
         } else {
             suite = unittest.defaultTestLoader.loadTestsFromModule(test_module);
         }
-        result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(suite);
+        # A child a test starts by spawn or forkserver re-imports the parent's
+        # main module by name and copies its sys.path. This runner is a Jac
+        # application a plain child cannot import, and the upstream test
+        # package is not in the installed tree, so for the run the main module
+        # is a neutral stand-in and the test library follows the installed
+        # tree on sys.path.
+        main_module = sys.modules["__main__"];
+        sys.modules["__main__"] = types.ModuleType("__main__");
+        sys.path.append(str(library));
+        try {
+            result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(
+                suite
+            );
+        } finally {
+            sys.path.remove(str(library));
+            sys.modules["__main__"] = main_module;
+        }
         return int(not result.wasSuccessful());
     } finally {
         sys.modules[args.module] = reference_module;

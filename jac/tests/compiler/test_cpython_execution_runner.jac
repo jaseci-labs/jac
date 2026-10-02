@@ -117,3 +117,63 @@ test "a module that skips itself on import is reported as skipped" {
     assert "test.other_platform_probe skipped: test works only on another platform"
         in stderr.getvalue() , stderr.getvalue();
 }
+
+test "a test can start a child process that imports from the test library" {
+    import multiprocessing;
+    import tempfile;
+    repo = Path(JAC_ROOT).parent;
+    script = repo / "scripts/run_cpython_compiler_tests.jac";
+    if not script.is_file() {
+        testskip("repository test runner is not installed");
+    }
+    sys.path.insert(0, str(repo));
+    try {
+        runner = importlib.import_module("scripts.run_cpython_compiler_tests");
+    } finally {
+        sys.path.pop(0);
+    }
+    seen: dict[str, object] = {};
+    class Probe(unittest.TestCase) {
+        def test_spawned_child(self: Probe) {
+            seen["main"] = sys.modules["__main__"];
+            child = multiprocessing.get_context("spawn").Process(
+                target=importlib.import_module, args=("library_only_probe", )
+            );
+            child.start();
+            child.join(60);
+            self.assertEqual(child.exitcode, 0);
+        }
+    }
+    package = types.ModuleType("test");
+    package.__path__ = [];
+    fixture = types.ModuleType("test.child_process_probe");
+    fixture.Probe = Probe;
+    modules = {
+        "test": package,
+        "test.support": types.ModuleType("test.support"),
+        "test.child_process_probe": fixture
+    };
+    main_before = sys.modules["__main__"];
+    with tempfile.TemporaryDirectory() as library {
+        (Path(library) / "library_only_probe.py").write_text("VALUE = 1\n");
+        args = types.SimpleNamespace(
+            cache=repo,
+            module="test.child_process_probe",
+            compile_tests=False,
+            execution_tests=True,
+            symtable_api=False,
+            tokenize_api=False,
+            native_modules=[],
+            tests=None
+        );
+        stderr = io.StringIO();
+        with patch.dict(sys.modules, modules), patch.object(
+            runner, "fetch_tests", return_value=Path(library)
+        ), contextlib.redirect_stderr(stderr) {
+            assert runner.run_tests(args, [0]) == 0 , stderr.getvalue();
+        }
+        assert library not in sys.path;
+    }
+    assert seen["main"] is not main_before;
+    assert sys.modules["__main__"] is main_before;
+}
