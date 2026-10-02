@@ -329,7 +329,9 @@ obj WebhookExtension(ServerExtension) {
             return await self.process_api_key(server, walker_name, request);
         }
 
-        async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+        async def callback(
+            request: Request, /, **kwargs: JsonValue
+        ) -> TransportResponse {
             resp = await _process(request);
             status = resp.meta.extra.get('http_status') if resp?.meta else None;
             outcome = 'ok'

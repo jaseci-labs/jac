@@ -436,6 +436,22 @@ test "walker with node parameter functional test" {
     }
 }
 
+test "a field named request reaches the walker and the function" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        body = {"request": {"rawText": "two oil filters"}, "status": "draft"};
+        r = client.post("/orders/save", json=body);
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["reports"][0] == body;
+
+        r = client.post("/orders/echo", json=body);
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["result"] == body;
+    } finally {
+        client.close();
+    }
+}
+
 # ============================================================================
 # Custom Object Body Parameter Tests — walker + function + recursive
 # One integration test per variant; schema + runtime + validation in one flow.

@@ -398,6 +398,7 @@ obj CallbackSpec {
         body_candidates: list[str] = [],
         accepts_var_kw: bool = False,
         wants_request: bool = False,
+        request_positional: bool = False,
         introspectable: bool = True,
         is_async: bool = False;
 }
@@ -412,9 +413,14 @@ def build_callback_spec(callback: any) -> CallbackSpec {
     names: set[str] = set();
     body_candidates: list[str] = [];
     accepts_var_kw = False;
+    request_positional = False;
     for (pname, param) in sig.parameters.items() {
         if param.kind == inspect.Parameter.VAR_KEYWORD {
             accepts_var_kw = True;
+            continue;
+        }
+        if pname == 'request' and param.kind == inspect.Parameter.POSITIONAL_ONLY {
+            request_positional = True;
             continue;
         }
         names.add(pname);
@@ -432,6 +438,7 @@ def build_callback_spec(callback: any) -> CallbackSpec {
         body_candidates=body_candidates,
         accepts_var_kw=accepts_var_kw,
         wants_request='request' in names,
+        request_positional=request_positional,
         introspectable=True,
         is_async=is_async
     );

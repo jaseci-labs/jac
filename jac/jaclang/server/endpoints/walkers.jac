@@ -170,7 +170,7 @@ def walker_callback(
     requires_auth = server.introspector.is_auth_required_for_walker(walker_name);
 
     async def callback(
-        request: Request, nd: (str | None) = None, **kwargs: JsonValue
+        request: Request, /, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
         username = request_caller(server, request);
         if requires_auth and not username {
@@ -316,7 +316,7 @@ def function_callback(
         else 'text/plain';
 
     async def callback(
-        request: Request, **kwargs: JsonValue
+        request: Request, /, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
         username = request_caller(server, request);
         if requires_auth and not username {

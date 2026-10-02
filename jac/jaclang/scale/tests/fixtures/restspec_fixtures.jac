@@ -142,6 +142,24 @@ walker:pub GetProjectTaskWalker {
     }
 }
 
+"""A walker field named `request`, the name the server uses for its own
+request object."""
+@restspec(method=HTTPMethod.POST, path="/orders/save")
+walker:pub SaveOrder {
+    has request: dict[str, any] = {},
+        status: str = "";
+
+    can save with Root entry {
+        report {"request": self.request, "status": self.status};
+    }
+}
+
+"""A function parameter named `request`."""
+@restspec(method=HTTPMethod.POST, path="/orders/echo")
+def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] {
+    return {"request": request, "status": status};
+}
+
 node UserProfile {
     has user_id: str = "",
         name: str = "";
