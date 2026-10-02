@@ -1094,7 +1094,7 @@ obj NativeBuildSession {
                 }
                 continue;
             }
-            self._lower_round(todo, masks, workers);
+            self._lower_round(todo, masks, edges, workers);
         }
         return len(self.lowered) - lowered_before;
     }
@@ -1155,7 +1155,12 @@ obj NativeBuildSession {
         }
     }
 
-    def _lower_round(paths: list[str], masks: dict[str, list[str]], workers: int) {
+    def _lower_round(
+        paths: list[str],
+        masks: dict[str, list[str]],
+        edges: dict[str, list[str]],
+        workers: int
+    ) {
         import multiprocessing;
         jobs = max(1, min(workers, len(paths)));
         ordered = sorted(
@@ -1171,7 +1176,7 @@ obj NativeBuildSession {
             with context.Pool(processes=jobs) as pool {
                 results = pool.starmap(
                     _lower_unit_in_child,
-                    [(p, masks.get(p, [])) for p in ordered],
+                    [(p, masks.get(p, []), edges.get(p, [])) for p in ordered],
                     chunksize=1
                 );
             }
@@ -1181,6 +1186,7 @@ obj NativeBuildSession {
         }
         busy = 0.0;
         extra: list[str] = [];
+        stale: list[str] = [];
         analyses = 0;
         slowest: list[tuple[float, str]] = [];
         for batch in results {
@@ -1190,12 +1196,21 @@ obj NativeBuildSession {
                     busy += float(stats["seconds"]);
                     analyses += int(stats["analyses"]);
                     extra.extend(stats["extra"]);
+                    stale.extend(stats["stale"]);
                     slowest.append((float(stats["seconds"]), str(rec["path"])));
                     continue;
                 }
                 self._absorb_lowered(rec);
             }
         }
+        probe = self.options.clone_for_native_import();
+        unaccepted = [
+            os.path.basename(p)
+            for p in paths
+            if p in self.lowered
+                and self.registry.ensure(p, compile_on_miss=False, options=probe)
+                    is None
+        ];
         slowest.sort(reverse=True);
         top = ", ".join(
             f"{os.path.basename(p)} {sec:.1f}s" for (sec, p) in slowest[:3]
@@ -1204,8 +1219,20 @@ obj NativeBuildSession {
         sys.stderr.write(
             f"[lower] level of {len(paths)} units on {jobs} workers: "
             f"wall {time.perf_counter() - wall:.1f}s, busy {busy:.1f}s, "
-            f"extra lowered {len(extra)}, analyses {analyses}; slowest {top}\n"
+            f"extra lowered {len(extra)}, analyses {analyses}, "
+            f"stale entries seen by workers {len(stale)}, "
+            f"absorbed but not accepted here {len(unaccepted)}; slowest {top}\n"
         );
+        if stale {
+            sys.stderr.write(
+                "[lower] stale: " + ", ".join(sorted(set(stale))[:12]) + "\n"
+            );
+        }
+        if unaccepted {
+            sys.stderr.write(
+                "[lower] unaccepted: " + ", ".join(unaccepted[:12]) + "\n"
+            );
+        }
         if extra {
             sys.stderr.write(
                 "[lower] extra: "
@@ -1467,13 +1494,16 @@ def _workers_by_memory -> int {
     return max(1, int((pages * page) // LOWER_WORKER_BYTES));
 }
 
-def _lower_unit_in_child(path: str, mask: list[str]) -> list[dict[str, any]] {
+def _lower_unit_in_child(
+    path: str, mask: list[str], deps: list[str]
+) -> list[dict[str, any]] {
     session = _PARALLEL_SESSION[0];
     before = set(session.lowered.keys());
     out: list[dict[str, any]] = [];
     counters = session.prog.analysis.cache_events;
     analyses_before = counters.get("native_unit_analysis", 0);
     started = time.perf_counter();
+    stale = _heal_lowered_entries(session, deps);
     if path not in session.lowered {
         session._lower_masked(path, mask);
     }
@@ -1483,6 +1513,7 @@ def _lower_unit_in_child(path: str, mask: list[str]) -> list[dict[str, any]] {
             "stats": {
                 "seconds": time.perf_counter() - started,
                 "analyses": counters.get("native_unit_analysis", 0) - analyses_before,
+                "stale": stale,
                 "extra": [
                     p
                     for p in session.lowered.keys()
@@ -1519,6 +1550,40 @@ def _lower_unit_in_child(path: str, mask: list[str]) -> list[dict[str, any]] {
         );
     }
     return out;
+}
+
+def _heal_lowered_entries(session: NativeBuildSession, deps: list[str]) -> list[str] {
+    """A dependency the parent lowered must be served from its entry here,
+    or this worker lowers the closure again on its own. Report why an entry
+    is refused and re-record it from the lowered module.""";
+    opts = session.options.clone_for_native_import();
+    registry = session.registry;
+    stale: list[str] = [];
+    for dep in deps {
+        mod = session.lowered.get(dep);
+        if mod is None {
+            continue;
+        }
+        ent = registry.entries.get(dep);
+        name = os.path.basename(dep);
+        if ent is None {
+            stale.append(f"{name}:no-entry");
+        } elif not ent.stamp.matches(registry.stamp_for(opts, dep)) {
+            stale.append(
+                f"{name}:stamp {ent.stamp.key()} != {registry.stamp_for(
+                    opts, dep
+                ).key()}"
+            );
+        } elif not registry._entry_fresh(ent) {
+            stale.append(f"{name}:not-fresh");
+        } elif registry.ensure(dep, compile_on_miss=False, options=opts) is None {
+            stale.append(f"{name}:ensure-none");
+        } else {
+            continue;
+        }
+        registry.record_module(mod, opts);
+    }
+    return stale;
 }
 
 glob _closure_memo:
