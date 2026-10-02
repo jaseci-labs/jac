@@ -1606,19 +1606,37 @@ impl NaIRGenPass._register_imported_globals(
     nd: uni.GlobalVars, source_path: str = ""
 ) -> None {
     import os;
+    real_source = os.path.realpath(source_path) if source_path else "";
+    aliases: dict[str, list[str]] = {};
+    for (item, path, _) in self._native_import_items {
+        alias = self._get_name(item.alias) if item.alias is not None else None;
+        if alias is not None and path == real_source {
+            aliases.setdefault(item.name.value, []).append(alias);
+        }
+    }
+    _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+    _owner = nd.find_parent_of_type(uni.Module);
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
             else [(assign.target)];
         for target in targets {
             var_name = self._get_name(target);
-            if var_name is None or var_name in self.global_vars {
+            if var_name is None {
                 continue;
             }
             _bound = self._glob_import_sources.get(var_name);
-            if _bound is not None
-                and source_path
-                and os.path.realpath(source_path) != _bound {
+            names: list[str] = [];
+            if var_name not in self.global_vars
+                and (_bound is None or not real_source or real_source == _bound) {
+                names.append(var_name);
+            }
+            for alias in aliases.get(var_name, []) {
+                if alias not in self.global_vars {
+                    names.append(alias);
+                }
+            }
+            if not names {
                 continue;
             }
             var_type: ir.Type = ir.IntType(64);
@@ -1636,19 +1654,18 @@ impl NaIRGenPass._register_imported_globals(
                     var_type = inferred;
                 }
             }
-            _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
-            _owner = nd.find_parent_of_type(uni.Module);
-            global_var = ir.GlobalVariable(
-                self.llvm_module,
-                var_type,
-                name=self._symbol_for(var_name, _owner, _is_pub)
-            );
-            global_var.linkage = "external";
-            self.global_vars[var_name] = global_var;
-            self.global_var_types[var_name] = var_type;
-
-            if source_path {
-                self._global_origins[var_name] = source_path;
+            symbol = self._symbol_for(var_name, _owner, _is_pub);
+            global_var = self.llvm_module.globals.get(symbol);
+            if global_var is None {
+                global_var = ir.GlobalVariable(self.llvm_module, var_type, name=symbol);
+                global_var.linkage = "external";
+            }
+            for name in names {
+                self.global_vars[name] = global_var;
+                self.global_var_types[name] = var_type;
+                if source_path {
+                    self._global_origins[name] = source_path;
+                }
             }
             self.has_native_code = True;
         }

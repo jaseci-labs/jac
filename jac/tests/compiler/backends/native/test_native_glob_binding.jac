@@ -119,3 +119,32 @@ with entry {
     body = body[:body.index("\n}")];
     assert "11864" in body , body;
 }
+
+test "a global imported under an alias reads the exporting module's value" {
+    import tempfile;
+    import from tests.support { assert_native_identity }
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "flags.jac").write_text(
+            "glob FLAG: i64 = 524288,\n     OTHER: i64 = 7;\n"
+        );
+        (Path(directory) / "core.jac").write_text(
+            """import from flags { FLAG as FLAG_VALUE, OTHER as OTHER_VALUE }
+glob FLAG: i32 = i32(FLAG_VALUE),
+     RENAMED: i32 = i32(OTHER_VALUE);
+def flag_now -> i64 {
+    return FLAG_VALUE;
+}
+"""
+        );
+        main = Path(directory) / "reader.jac";
+        main.write_text(
+            """import from core { FLAG, RENAMED, flag_now }
+with entry {
+    print(FLAG, RENAMED, flag_now());
+}
+"""
+        );
+        out = assert_native_identity(str(main));
+    }
+    assert out.split() == ["524288", "7", "524288"] , out;
+}
