@@ -374,3 +374,93 @@ max_jobs_per_user = 25
 - When a server shuts down it stops starting static runs as soon as it begins draining, and waits for the runs already going within what is left of `[serve.timeouts] drain` after in-flight requests. A run still going when that budget is spent is cut off, and the log names it. Dynamic jobs are waited on for `shutdown_timeout`.
 - Every fire missed within `misfire_grace_time` runs on recovery, each claiming its own tick, so a replica that stalls makes up to `misfire_grace_time / interval` runs back to back before it catches up. Misses older than the grace window are dropped. Lower `misfire_grace_time` if a burst is worse for your job than a gap.
 - Keep scheduled work idempotent where possible. Interval and cron jobs will run many times, and a restart near a fire time can produce a make-up run.
+
+## Job Queue
+
+A schedule runs work at a time. The job queue runs one piece of work once, soon, with arguments and retries. Use it when a request has to kick off something slow (an LLM call, a report, a sync) without holding the response open, and the work has to survive a restart.
+
+Turn the runner on in `jac.toml`:
+
+```toml
+[scale.jobs]
+enabled = true
+
+[scale.jobs.queues]
+agents = { concurrency = 2, lease_s = 120 }
+```
+
+Queue a job from any walker or function:
+
+```jac
+import from jaclang.scale.jobs { enqueue }
+
+walker RunAgent {
+    has run_id: str;
+
+    can run with Root entry {
+        # the slow part
+    }
+}
+
+walker MoveToReview {
+    has task_id: str;
+
+    can move with Root entry {
+        enqueue(
+            RunAgent, {"run_id": self.task_id},
+            key="review:" + self.task_id,
+            queue="agents",
+            max_attempts=3,
+            timeout_s=240
+        );
+        report {"queued": True};
+    }
+}
+```
+
+`enqueue` returns the job's id straight away. A runner in one of the server's workers picks the job up and spawns `RunAgent` with `run_id` set.
+
+### `enqueue` arguments
+
+| Argument | Default | Meaning |
+|----------|---------|---------|
+| `target` | required | The walker or function to run, or its name. It can be private (no `:pub`) and live in any module of the app. A walker or function passed directly is recorded by its module's persistent identity, so it resolves after a redeploy, and a job whose module is not loaded is `dead` rather than run as some other target of the same name |
+| `args` | `{}` | Walker fields or function keyword arguments. Must be JSON-serializable |
+| `key` | `""` | Idempotency key. A second `enqueue` with the same key from the same service writes nothing and returns the first job's id |
+| `queue` | `"default"` | A queue declared under `[scale.jobs] queues`. An undeclared name raises `ValueError` |
+| `run_at` | now | A `datetime` or ISO string. The job is not claimed before it. A naive value is read as UTC |
+| `max_attempts` | `3` | Attempts before the job is marked `dead` |
+| `timeout_s` | `0` | Seconds the runner waits for one attempt. Past it the attempt counts as failed and the runner stops renewing its lease. Python cannot stop a running thread, so the abandoned attempt keeps running until it returns, and its writes may still commit. `0` means no limit |
+
+`cancel(job_id)` stops a job that has not started yet and returns `True`. It returns `False` for a job that is running or already finished. `job_info(job_id)` returns a `JobInfo` with the job's `status`, `attempts`, `run_at` and `last_error`, or `None`.
+
+### What happens to a job
+
+| Status | Meaning |
+|--------|---------|
+| `queued` | Waiting for a runner |
+| `running` | A runner holds it under a lease |
+| `failed` | The last attempt failed. It runs again after a backoff of 1s, 2s, 4s and so on, capped at 5 minutes |
+| `done` | Finished |
+| `dead` | Failed `max_attempts` times, or its target is not served by the app. It is never retried |
+| `cancelled` | Stopped by `cancel` before it started |
+
+- Jobs live in the `jac_jobs` table of the scale database, so they survive restarts. Locally that is the embedded Postgres server; deployed, it is `[scale.database] url` or `JAC_DB_URL`.
+- A runner claims a job with `FOR UPDATE SKIP LOCKED`, so two runners never take the same job, across workers and across pods.
+- A job belongs to the service that queued it (`JAC_SV_NAME`, else the app's module), and only that service's runners claim it. Services that share one database never run each other's jobs, and each has its own keys, lease recovery and retention.
+- A runner renews the lease of each job it is still waiting on. If the runner dies, the lease runs out and another runner of the same service picks the job up. That counts as an attempt.
+- On shutdown a runner stops claiming, waits for its running jobs until the server's drain budget runs out, then stops renewing their leases, so another runner takes whatever is still running.
+- A new job wakes the runners with `pg_notify`. Runners also poll every `poll_seconds`.
+- Jobs run as the internal `__system__` account, like static schedules.
+- A job can run more than once: a runner can die after the work finished but before it recorded that. Keep job targets idempotent.
+
+### `[scale.jobs]` reference
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `false` | Run a job runner in each server worker. `enqueue` works without it, but nothing in this app runs the jobs |
+| `queues` | `{}` | Queue name to `{ concurrency, lease_s }`. A `default` queue (concurrency `4`, lease `60`) always exists and can be overridden here. `concurrency` is the number of jobs one worker runs at once from that queue |
+| `poll_seconds` | `1.0` | How often an idle runner checks for due jobs when no notification arrives. Jobs with a future `run_at` and retries after a backoff are found this way. Must be greater than 0; a value that is not is reported at boot and the default is used |
+| `retention_seconds` | `604800` | How long `done` and `cancelled` jobs are kept, which is also how long their keys stay deduplicated. `0` keeps them forever. `dead` jobs are always kept |
+
+With `[scale.monitoring]` enabled, `/metrics` exports `jaclang_scale_jobs{queue, status}`, the number of jobs in each state.

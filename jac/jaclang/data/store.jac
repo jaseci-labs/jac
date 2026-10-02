@@ -22,7 +22,8 @@ glob logger = logging.getLogger(__name__),
          'SCHEMA_VERSION',
          'SCHEMA_STAMP_KEY',
          'SessionConflictError',
-         'OUTBOX_SCHEMA_SQL'
+         'OUTBOX_SCHEMA_SQL',
+         'JOBS_SCHEMA_SQL'
      ];
 
 
