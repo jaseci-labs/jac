@@ -682,6 +682,11 @@ impl native_capability_violations(
                         and (_chain[_ci].f_type is not None) {
                         _ci += 1;
                     }
+                    if (_ci < len(_chain))
+                        and (not isinstance(_chain[_ci], EdgeOpRef))
+                        and (not isinstance(_chain[_ci], FilterCompr)) {
+                        _ci += 1;
+                    }
                 }
                 _shape_ok = (_hops > 0) and (_ci == len(_chain));
                 if not _shape_ok {

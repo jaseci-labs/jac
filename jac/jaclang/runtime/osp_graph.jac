@@ -828,6 +828,30 @@ obj OspGraph {
         return cur;
     }
 
+    def hop_only(
+        origins: list[int], dir: int, edge_tag: int, edges_only: bool, target: int
+    ) -> list[int] {
+        """Hop results that land on a bound endpoint (`[p ->:E:-> c]`).
+
+        For node hops the result must be `target` itself; for edge hops the
+        edge's far endpoint from `origin` must be `target`.
+        """;
+        out: list[int] = [];
+        seen: set[int] = set();
+        for origin in origins {
+            for h in self.refs(origin, dir, edge_tag, edges_only) {
+                hit = (self.edge_peer(h, origin) == target)
+                    if edges_only
+                    else (h == target);
+                if hit and h not in seen {
+                    seen.add(h);
+                    out.append(h);
+                }
+            }
+        }
+        return out;
+    }
+
     def conn_many(
         srcs: list[int],
         tgts: list[int],
@@ -1304,6 +1328,12 @@ def osp_disconn_between_many(
     srcs: list[int], tgts: list[int], dir: int, edge_tag: int
 ) -> int {
     return DEFAULT_GRAPH.disconnect_between_many(srcs, tgts, dir, edge_tag);
+}
+
+def osp_hop_only(
+    origins: list[int], dir: int, edge_tag: int, edges_only: int, target: int
+) -> list[int] {
+    return DEFAULT_GRAPH.hop_only(origins, dir, edge_tag, edges_only != 0, target);
 }
 
 def osp_wrap1(x: int) -> list[int] {

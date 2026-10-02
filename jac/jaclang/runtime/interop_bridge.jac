@@ -2,6 +2,7 @@ import ctypes;
 import logging;
 import from collections.abc { Callable, Iterable }
 import from typing { Protocol }
+import type from jaclang.compiler.frontend.codeinfo { InteropManifest }
 class CallbackSignature(Protocol) {
     has name: str,
         ret_type: str,
@@ -98,6 +99,31 @@ def _pyb_import_module(mod_path: str) -> object {
     mod = mods[0] if isinstance(mods, tuple) else mods;
     _pyb_module_memo[key] = mod;
     return mod;
+}
+
+def pyb_mirror_member(mod_path: str, name: str) -> object {
+    """Bind one member of a natively-placed module into the server codespace.
+
+    Server-side code that imports from a module pinned native cannot emit a
+    plain Python import -- the native lane owns the module -- so the JCIR
+    emitter splices calls to this helper in place of the dropped import: it
+    loads the target module's server-tier image through the ordinary Jac
+    import machinery and hands back the named member. Without it the dropped
+    import bound nothing, and constructing a native-placed obj from server
+    code died with NameError.
+
+    When per-module AOT execution lands this seam upgrades to dylib-backed
+    shadows without touching consumer code.
+    """;
+    mod = _pyb_import_module(mod_path);
+    member = getattr(mod, name, None);
+    if member is None {
+        raise AttributeError(
+            f"native-placed module '{mod_path}' exposes no '{name}' "
+                + "to mirror into the server codespace"
+        );
+    }
+    return member;
 }
 
 def _pyb_class_for(
@@ -219,4 +245,58 @@ def register_py_callbacks(
         }
         register_symbol(binding.name, cb_addr);
     }
+}
+
+
+def ensure_py_funcs_loaded(
+    manifest: InteropManifest,
+    py_func_table: dict[(str, Callable[(..., object)])],
+    base_path: str,
+    default_module: str = ''
+) -> int {
+    """Fill the native->server callback table before native execution.
+
+    register_py_callbacks binds each `native_imports` symbol to a ctypes
+    trampoline that resolves its Python callable lazily out of
+    py_func_table. Only the importing module's Python image fills that table
+    (through the meta importer's interop setup), and a natively-executed
+    entry never runs that image -- so the callback answers 0 and the native
+    caller silently reads a wrong value. Resolve the bound server functions
+    here instead: import each binding's source module through the ordinary
+    Jac import machinery and register the named member. Returns how many
+    functions were made callable.
+    """;
+    loaded: int = 0;
+    for binding in manifest.native_imports {
+        if binding.kind != 'function' or binding.name in py_func_table {
+            continue;
+        }
+
+        src_mod = binding.source_module or default_module;
+        if not src_mod {
+            continue;
+        }
+        try {
+            import from jaclang.runtime.runtime { JacModule }
+            mods = JacModule.jac_import(target=src_mod, base_path=base_path);
+            mod = mods[0] if isinstance(mods, tuple) else mods;
+            fn = getattr(mod, binding.name, None);
+        } except Exception as e {
+            logger.warning(
+                f"native interop: failed to load '{binding.name}' from "
+                    + f"'{src_mod}': {e}"
+            );
+            continue;
+        }
+        if fn is None {
+            logger.warning(
+                f"native interop: '{src_mod}' exposes no '{binding.name}' "
+                    + "for the native callback table"
+            );
+            continue;
+        }
+        py_func_table[binding.name] = fn;
+        loaded += 1;
+    }
+    return loaded;
 }

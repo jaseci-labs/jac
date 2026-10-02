@@ -95,6 +95,7 @@ import from jaclang.compiler.backends.native.na_constants {
     EXC_LINEAGE_MIX,
     EXC_LINEAGE_SLOTS,
     JACVAL_ELLIPSIS_TAG,
+    JACVAL_STRUCT_TAG,
     LIVE_NODE_NEXT_OFF,
     LIVE_NODE_RC_OFF,
     LIVE_NODE_SIZE,
@@ -104,8 +105,7 @@ import from jaclang.compiler.backends.native.na_constants {
     NATIVE_COPY_FUNCS,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
-    NATIVE_RANDOM_FUNCS,
-    NATIVE_STRUCT_FUNCS,
+    NATIVE_STDLIB_FUNC_TABLES,
     RC_BUFFERED_BIT,
     RC_COLOR_BLACK,
     RC_COLOR_GRAY,
@@ -491,6 +491,8 @@ walker NaIRGenPass(CompilerPass) {
         set_release_fns: dict[str, ir.Function] = {},
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        _native_stdlib_bare_names: dict[str, tuple[(str, str)]] = {},
+        _stdlib_call_emitters: dict[str, Callable] = {},
         _native_module_imports: set[str] = set(),
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
@@ -815,6 +817,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _emit_new(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_jid(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
     def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_buffer_isinstance(
@@ -1247,6 +1250,8 @@ walker NaIRGenPass(CompilerPass) {
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
     def _process_clib_imports(module: uni.Module) -> None;
+    def _record_stdlib_bare_name(mod_name: str, item: uni.UniNode) -> None;
+    def _stdlib_call_emitter(mod_name: str) -> (Callable | None);
     def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type, pointee_names: dict[(ir.Type, str)]) -> str;
@@ -1521,6 +1526,13 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
     def _emit_yield_suspend(v: ir.Value) -> None;
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
+    def _finish_lambda_ret(
+        nd: uni.LambdaExpr,
+        body_value: (ir.Value | None),
+        ret_type: ir.Type,
+        err_count: int
+    ) -> None;
+
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);
@@ -1566,6 +1578,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
     def _predeclare_nested_siblings(nd: uni.Ability) -> None;
+    def _test_call_reaches_demoted(call: uni.FuncCall, seen: set[str]) -> bool;
     def _codegen_test(nd: uni.Test) -> None;
     def _demote_native_test(nd: uni.Test, func: ir.Function, local_mark: int) -> None;
     def _apply_static_decorators -> None;
@@ -2763,6 +2776,7 @@ walker NaIRGenPass(CompilerPass) {
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
     def _opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None);
+    def _peer_container_of(t: ir.Type) -> (ir.Type | None);
     def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
     def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;

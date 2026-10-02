@@ -225,7 +225,7 @@ impl NaIRGenPass._jacval_pointer_tag(pointer_type: ir.Type) -> int {
         (self.list_types, 3),
         (self.dict_types, 4),
         (self.set_types, 5),
-        (self.struct_types, 6)
+        (self.struct_types, JACVAL_STRUCT_TAG)
     ) {
         for family in families.values() {
             if pointer_type == family.as_pointer() {

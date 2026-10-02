@@ -472,6 +472,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _top_level_bound_names(items: any) -> list[str];
     def _native_test_shim_stmts(nd: Test) -> list[CgItem];
     def _generate_sv_to_sv_stubs(nd: Import) -> bool;
+    def _gen_native_import_mirrors(nd: Import) -> bool;
     def _gen_py_sv_boundary_types -> None;
     def _gen_py_wire_methods -> list[str];
     def _sv_consumer_app_expr -> str;

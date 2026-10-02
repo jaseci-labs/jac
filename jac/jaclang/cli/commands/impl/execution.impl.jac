@@ -1061,6 +1061,21 @@ def _exec_file(
                     and ir_mod.gen.native_engine
                 ) {
                     engine = ir_mod.gen.native_engine;
+
+                    _na_manifest = ir_mod.gen.interop_manifest;
+                    if _na_manifest is not None and _na_manifest.native_imports {
+                        import from jaclang.runtime.interop_bridge {
+                            ensure_py_funcs_loaded
+                        }
+                        ensure_py_funcs_loaded(
+                            _na_manifest,
+                            ir_mod.gen.interop_py_funcs,
+                            base_path=os.path.dirname(full_path),
+                            default_module=os.path.splitext(os.path.basename(full_path))[
+                                0
+                            ]
+                        );
+                    }
                     _populate_native_argv(engine, sys.argv);
                     if main {
                         addr = engine.get_function_address("jac_entry");

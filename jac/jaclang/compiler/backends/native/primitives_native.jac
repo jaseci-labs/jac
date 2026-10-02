@@ -15,6 +15,8 @@ import from jaclang.compiler.backends.common.primitives {
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import type from jaclang.compiler.types.types { TypeBase }
+import from jaclang.compiler.backends.native.na_constants { JACVAL_STRUCT_TAG }
+import from jaclang.compiler.frontend.codeinfo { HDR_ALLOC_ID_OFF }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 
@@ -1594,6 +1596,108 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             );
         }
         return None;
+    }
+
+    def emit_jid(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = get_builder(p);
+        i8p = ir.IntType(8).as_pointer();
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        arg_val = args[0];
+
+        _is_graph_type = False;
+        for _part in (ctx.type_key or "").replace(" ", "").split("|") {
+            if _part
+                and _part not in ("None", "NoneType")
+                and p._arch_is_osp_name(_part) {
+                _is_graph_type = True;
+                break;
+            }
+        }
+
+        obj_ptr: ir.Value;
+        if p?.jacval_type is not None and arg_val.type == p.jacval_type {
+            _tag = b.extract_value(arg_val, 0, name="jid.tag");
+            _payload = b.extract_value(arg_val, 1, name="jid.payload");
+            _is_graph = b.icmp_unsigned(
+                "==",
+                _tag,
+                ir.Constant(ir.IntType(8), JACVAL_STRUCT_TAG),
+                name="jid.is_graph"
+            );
+            _has_payload = b.icmp_unsigned(
+                "!=", _payload, ir.Constant(i64, 0), name="jid.has_payload"
+            );
+            p._emit_runtime_raise(
+                b.not_(
+                    b.and_(_is_graph, _has_payload, name="jid.ok"), name="jid.invalid"
+                ),
+                "TypeError",
+                "jid() requires a graph object"
+            );
+            obj_ptr = b.inttoptr(_payload, i8p, name="jid.boxed_ptr");
+        } elif p._opt_ptr_payload_of(arg_val.type) is not None {
+            if not _is_graph_type {
+                return None;
+            }
+            _opt_payload = b.extract_value(arg_val, 1, name="jid.opt_payload");
+            p._emit_runtime_raise(
+                b.icmp_unsigned(
+                    "==",
+                    b.ptrtoint(_opt_payload, i64, name="jid.opt_int"),
+                    ir.Constant(i64, 0),
+                    name="jid.opt_null"
+                ),
+                "TypeError",
+                "jid() requires a graph object"
+            );
+            obj_ptr = b.bitcast(_opt_payload, i8p, name="jid.opt_ptr");
+        } elif isinstance(arg_val.type, ir.PointerType) {
+            if not _is_graph_type {
+                return None;
+            }
+            obj_ptr = b.bitcast(arg_val, i8p, name="jid.ptr");
+        } else {
+            return None;
+        }
+
+        _alloc_slot = b.gep(
+            obj_ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="jid.alloc_id.slot"
+        );
+        _header_id = b.load(
+            b.bitcast(_alloc_slot, i64.as_pointer(), name="jid.alloc_id.p"),
+            name="jid.alloc_id"
+        );
+        _identity = b.select(
+            b.icmp_unsigned(
+                "==", _header_id, ir.Constant(i64, 0), name="jid.no_alloc_id"
+            ),
+            b.ptrtoint(obj_ptr, i64, name="jid.pointer_id"),
+            _header_id,
+            name="jid.identity"
+        );
+
+        p._set_rc_ctx("jid", "");
+        _buf = p._str_alloc(b, ir.Constant(i64, 33), name="jid.buf");
+        p._clear_rc_ctx();
+        _snprintf = p._get_or_declare_extern(
+            "snprintf", i32, [i8p, i64, i8p], var_arg=True
+        );
+        _fmt = p._get_snprintf_fmt("%032llx");
+        _fmt_ptr = b.bitcast(_fmt, i8p, name="jid.fmt.ptr");
+        b.call(
+            _snprintf,
+            [_buf, ir.Constant(i64, 33), _fmt_ptr, _identity],
+            name="jid.format"
+        );
+        p._str_finish(b, _buf, ir.Constant(i64, 32));
+        return p._mark_owned(_buf);
     }
 
     def emit_hash(

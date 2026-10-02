@@ -1151,7 +1151,67 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             return None;
         }
         _edges_only = 1 if (nd.edges_only and _is_last_hop) else 0;
-        if _ec_compares {
+
+        _only_val: (ir.Value | None) = None;
+        if (_idx < len(chain))
+            and (not isinstance(chain[_idx], uni.EdgeOpRef))
+            and (not isinstance(chain[_idx], uni.FilterCompr)) {
+            if _ec_compares {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="expression",
+                    name="EdgeRefTrailer",
+                    help_text="edge attribute predicates combined with a bound "
+                    "endpoint in the same hop are not lowered natively yet"
+                );
+                return None;
+            }
+            _only_val = self._codegen_expr(chain[_idx]);
+            if _only_val is None {
+                return None;
+            }
+            _idx += 1;
+        }
+
+        if _only_val is not None {
+            _only_fn = self.func_symtab.get("osp_hop_only");
+            _wrap_fn2 = self.func_symtab.get("osp_wrap1");
+            if _only_fn is None {
+                self.emit(
+                    E5092, node_override=nd, kind="expression", name="EdgeRefTrailer"
+                );
+                return None;
+            }
+            if _cur is not None {
+                _origins = _cur;
+            } elif _wrap_fn2 is not None {
+                _origins = self.builder.call(
+                    _wrap_fn2,
+                    [self._coerce_type(origin_val, _wrap_fn2.function_type.args[0])],
+                    name="osp.only.org"
+                );
+            } else {
+                self.emit(
+                    E5092, node_override=nd, kind="expression", name="EdgeRefTrailer"
+                );
+                return None;
+            }
+            _oargtys = _only_fn.function_type.args;
+            _result = self.builder.call(
+                _only_fn,
+                [
+                    self._coerce_type(_origins, _oargtys[0]),
+                    self._coerce_type(ir.Constant(i64, _dir), _oargtys[1]),
+                    self._coerce_type(_edge_tag, _oargtys[2]),
+                    self._coerce_type(ir.Constant(i64, _edges_only), _oargtys[3]),
+                    self._coerce_type(_only_val, _oargtys[4])
+                ],
+                name="osp.only"
+            );
+            self._mark_owned(_result);
+            self._emit_rc_release_simple(_origins, op="osp_refs_only", loc="");
+        } elif _ec_compares {
             _wrap_fn = self.func_symtab.get("osp_wrap1");
             _eph_fn = self.func_symtab.get("osp_refs_edge_pred");
             _pred_pair = self._osp_pred_pair(_etname or "", _ec_compares, nd);

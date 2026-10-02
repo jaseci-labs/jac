@@ -44,6 +44,14 @@ glob NATIVE_STRUCT_FUNCS: set[str] = {
          "unpack_from",
 
      };
+
+glob NATIVE_STDLIB_FUNC_TABLES: dict[str, set[str]] = {
+         "os": NATIVE_OS_FUNCS,
+         "os.path": NATIVE_OSPATH_FUNCS,
+         "random": NATIVE_RANDOM_FUNCS,
+         "struct": NATIVE_STRUCT_FUNCS
+     };
+
 glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_WHITE: int = 1,
      RC_COLOR_GRAY: int = 2,
@@ -54,7 +62,8 @@ glob RC_COLOR_BLACK: int = 0,
      RC_CYCLE_THRESHOLD: int = 1000,
      RC_CYCLE_PACE: int = 4;
 
-glob JACVAL_ELLIPSIS_TAG: int = 9;
+glob JACVAL_ELLIPSIS_TAG: int = 9,
+     JACVAL_STRUCT_TAG: int = 6;
 
 glob CLASS_DISPLAY_OFF: int = 24;
 glob LIVE_NODE_ID_OFF: int = 0,
