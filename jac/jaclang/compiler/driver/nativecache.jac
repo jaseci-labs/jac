@@ -1056,15 +1056,15 @@ obj NativeBuildSession {
                 self.lower(kpath);
             }
         }
-        (masks, finished) = NativeBuildSession._cut_back_edges(
+        (masks, cut, finished) = NativeBuildSession._cut_back_edges(
             edges, [os.path.realpath(r) for r in roots]
         );
         depth: dict[str, int] = {};
         for unit in finished {
-            cut = set(masks.get(unit, []));
+            back = set(cut.get(unit, []));
             level = 0;
             for dep in edges.get(unit, []) {
-                if dep in cut or dep not in depth {
+                if dep in back or dep not in depth {
                     continue;
                 }
                 level = max(level, depth[dep] + 1);
@@ -1101,20 +1101,25 @@ obj NativeBuildSession {
 
     static def _cut_back_edges(
         edges: dict[str, list[str]], roots: list[str]
-    ) -> tuple[dict[str, list[str]], list[str]] {
+    ) -> tuple[dict[str, list[str]], dict[str, list[str]], list[str]] {
         """Depth first from the roots in import order, the way nested lowering
-        walks them: an edge into a unit still on the stack is the partner the
-        serial walk finds building. Returns the masked partners of each unit
-        and the units in finishing order, where every unmasked dependency
-        finishes before the unit that imports it.""";
+        walks them. A unit's mask is the whole stack above it, since the serial
+        walk finds every ancestor building when lowering asks for it, whether
+        the unit imports that ancestor directly or reaches it through a
+        dependency's imports. Returns each unit's mask, the back edges that
+        set the levels, and the units in finishing order, where every unit
+        reached through a non-back edge finishes before the unit that
+        reaches it.""";
         state: dict[str, int] = {};
         masks: dict[str, list[str]] = {};
+        cut: dict[str, list[str]] = {};
         finished: list[str] = [];
         for start in roots {
             if start in state {
                 continue;
             }
             state[start] = 1;
+            masks[start] = [];
             stack: list[list[any]] = [[start, 0]];
             while stack {
                 frame = stack[-1];
@@ -1132,13 +1137,14 @@ obj NativeBuildSession {
                 seen = state.get(dep, 0);
                 if seen == 0 {
                     state[dep] = 1;
+                    masks[dep] = [str(frame[0]) for frame in stack];
                     stack.append([dep, 0]);
                 } elif seen == 1 {
-                    masks.setdefault(unit, []).append(dep);
+                    cut.setdefault(unit, []).append(dep);
                 }
             }
         }
-        return (masks, finished);
+        return (masks, cut, finished);
     }
 
     def _lower_masked(path: str, mask: list[str]) {
