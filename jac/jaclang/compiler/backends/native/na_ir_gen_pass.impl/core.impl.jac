@@ -1655,8 +1655,10 @@ impl NaIRGenPass._register_imported_globals(
                 }
             }
             symbol = self._symbol_for(var_name, _owner, _is_pub);
-            global_var = self.llvm_module.globals.get(symbol);
-            if global_var is None {
+            declared = self.llvm_module.globals.get(symbol);
+            if isinstance(declared, ir.GlobalVariable) {
+                global_var = declared;
+            } else {
                 global_var = ir.GlobalVariable(self.llvm_module, var_type, name=symbol);
                 global_var.linkage = "external";
             }
