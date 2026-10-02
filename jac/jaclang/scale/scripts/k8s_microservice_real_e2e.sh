@@ -36,6 +36,16 @@ allow_credentials = true
 TOML
     echo "# appended the e2e-harness overlay (logs/ingress/cors) to jac.toml"
 fi
+# Own marker: the overlay above is already committed in the fixture, so its guard never appends.
+if ! grep -q "e2e-harness memory_request" "${PROJECT_DIR}/jac.toml"; then
+    cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
+
+# --- e2e-harness memory_request (appended by k8s_microservice_real_e2e.sh) ---
+[apps.cart_app.scale]
+memory_request = "1Gi"
+TOML
+    echo "# appended the e2e-harness memory_request for cart_app to jac.toml"
+fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
@@ -358,7 +368,7 @@ fi
 echo "  breaker opened after ${BREAKER_CALLS} call(s) and shed load in ${BREAKER_SECS}s"
 
 _t "circuit breaker load shedding OK"
-echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
+echo "=== verify HPA OOM guardrails (memory metric only with a configured memory_request, behavior rate limits) ==="
 # The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
 HPA_JSON="$(mktemp)"
 kubectl get hpa -n "${NAMESPACE}" -l managed=jac-scale -o json > "${HPA_JSON}"
@@ -370,6 +380,10 @@ with open(sys.argv[1]) as f:
     items = json.load(f).get("items", [])
 if not items:
     sys.exit("FAIL: no managed HPAs found in namespace")
+# Only cart_app sets memory_request in the harness overlay.
+MEMORY_DEPLOYMENT = "cart-app-deployment"
+if not any(h["spec"]["scaleTargetRef"]["name"] == MEMORY_DEPLOYMENT for h in items):
+    sys.exit(f"FAIL: no managed HPA targets {MEMORY_DEPLOYMENT}")
 for hpa in items:
     name = hpa["metadata"]["name"]
     spec = hpa["spec"]
@@ -378,8 +392,9 @@ for hpa in items:
         for m in spec.get("metrics", [])
         if m.get("type") == "Resource"
     )
-    if metric_names != ["cpu", "memory"]:
-        sys.exit(f"FAIL: {name} metrics={metric_names}, expected cpu+memory")
+    expected = ["cpu", "memory"] if spec["scaleTargetRef"]["name"] == MEMORY_DEPLOYMENT else ["cpu"]
+    if metric_names != expected:
+        sys.exit(f"FAIL: {name} metrics={metric_names}, expected {'+'.join(expected)}")
     behavior = spec.get("behavior") or {}
     up = behavior.get("scaleUp") or {}
     down = behavior.get("scaleDown") or {}
