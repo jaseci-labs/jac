@@ -142,6 +142,29 @@ walker:pub GetProjectTaskWalker {
     }
 }
 
+"""One field of each scalar type, plus an optional one and a list, to send
+JSON null to."""
+@restspec(method=HTTPMethod.POST, path="/nulls")
+walker:pub NullFields {
+    has title: str = "seed",
+        note: str | None = "seed",
+        count: int = -1,
+        ratio: float = 0.5,
+        flag: bool = True,
+        tags: list[str] = [];
+
+    can echo with Root entry {
+        report {
+            "title": self.title,
+            "note": self.note,
+            "count": self.count,
+            "ratio": self.ratio,
+            "flag": self.flag,
+            "tags": self.tags
+        };
+    }
+}
+
 node UserProfile {
     has user_id: str = "",
         name: str = "";

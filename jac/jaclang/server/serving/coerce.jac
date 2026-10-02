@@ -168,11 +168,16 @@ def coerce_value(value: any, target: any = None) -> any {
         return coerce_value(value, named);
     }
     origin = get_origin(target);
+    if origin is Union or origin is UnionType {
+        return _coerce_union(value, get_args(target));
+    }
+    if value is None {
+        raise ValueError(
+            f"null is not allowed for {getattr(target, '__name__', str(target))}"
+        );
+    }
     if origin is not None {
         args = get_args(target);
-        if origin is Union or origin is UnionType {
-            return _coerce_union(value, args);
-        }
         if origin is list {
             item_t = args[0] if args else None;
             return [coerce_value(v, item_t) for v in _as_item_list(value)];

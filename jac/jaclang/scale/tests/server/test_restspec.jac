@@ -436,6 +436,35 @@ test "walker with node parameter functional test" {
     }
 }
 
+test "a JSON null is refused for a field that is not optional, whatever its type" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # Each non-optional field answers the same 422; str used to store "None"
+        # and bool used to read null as an invalid boolean string.
+        for (name, body) in [
+            ("title", {"title": None}),
+            ("count", {"count": None}),
+            ("ratio", {"ratio": None}),
+            ("flag", {"flag": None}),
+            ("tags", {"tags": None}),
+            ("tags", {"tags": ["a", None]})
+        ] {
+            r = client.post("/nulls", json=body);
+            assert r.status_code == 422 , f"{body}: {r.status_code} {r.text}";
+            detail = _as_any(r.json())["detail"];
+            assert [d["loc"] for d in detail] == [["body", name]] , r.text;
+            assert "null is not allowed" in detail[0]["msg"] , r.text;
+        }
+
+        r = client.post("/nulls", json={"note": None});
+        assert r.status_code == 200 , r.text;
+        got = extract_data(r.json())["reports"][0];
+        assert got["note"] is None and got["title"] == "seed";
+    } finally {
+        client.close();
+    }
+}
+
 # ============================================================================
 # Custom Object Body Parameter Tests — walker + function + recursive
 # One integration test per variant; schema + runtime + validation in one flow.
