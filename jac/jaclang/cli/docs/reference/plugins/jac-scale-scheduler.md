@@ -426,7 +426,7 @@ walker MoveToReview {
 |----------|---------|---------|
 | `target` | required | The walker or function to run, or its name. It can be private (no `:pub`) and live in any module of the app. A walker or function passed directly is recorded by its module's persistent identity, so it resolves after a redeploy, and a job whose module is not loaded is `dead` rather than run as some other target of the same name |
 | `args` | `{}` | Walker fields or function keyword arguments. Must be JSON-serializable |
-| `key` | `""` | Idempotency key. A second `enqueue` with the same key writes nothing and returns the first job's id |
+| `key` | `""` | Idempotency key. A second `enqueue` with the same key from the same service writes nothing and returns the first job's id |
 | `queue` | `"default"` | A queue declared under `[scale.jobs] queues`. An undeclared name raises `ValueError` |
 | `run_at` | now | A `datetime` or ISO string. The job is not claimed before it. A naive value is read as UTC |
 | `max_attempts` | `3` | Attempts before the job is marked `dead` |
@@ -447,8 +447,8 @@ walker MoveToReview {
 
 - Jobs live in the `jac_jobs` table of the scale database, so they survive restarts. Locally that is the embedded Postgres server; deployed, it is `[scale.database] url` or `JAC_DB_URL`.
 - A runner claims a job with `FOR UPDATE SKIP LOCKED`, so two runners never take the same job, across workers and across pods.
-- A job belongs to the service that queued it (`JAC_SV_NAME`, else the app's module), and only that service's runners claim it. Services that share one database never run each other's jobs.
-- A runner renews the lease of each job it is still waiting on. If the runner dies, the lease runs out and another runner picks the job up. That counts as an attempt.
+- A job belongs to the service that queued it (`JAC_SV_NAME`, else the app's module), and only that service's runners claim it. Services that share one database never run each other's jobs, and each has its own keys, lease recovery and retention.
+- A runner renews the lease of each job it is still waiting on. If the runner dies, the lease runs out and another runner of the same service picks the job up. That counts as an attempt.
 - On shutdown a runner stops claiming, waits for its running jobs until the server's drain budget runs out, then stops renewing their leases, so another runner takes whatever is still running.
 - A new job wakes the runners with `pg_notify`. Runners also poll every `poll_seconds`.
 - Jobs run as the internal `__system__` account, like static schedules.

@@ -16,7 +16,7 @@ impl JobQueueStore.insert(
             :id, :svc, :q, :t, CAST(:a AS jsonb), :k, :st,
             COALESCE(CAST(:r AS timestamptz), now()), :m, :to
         )
-        ON CONFLICT (key) DO NOTHING
+        ON CONFLICT (service, key) DO NOTHING
         RETURNING id
         """,
         {
@@ -33,7 +33,10 @@ impl JobQueueStore.insert(
         }
     );
     if not rows {
-        found = self.store.rows("SELECT id FROM jac_jobs WHERE key = :k", {'k': key});
+        found = self.store.rows(
+            "SELECT id FROM jac_jobs WHERE service = :svc AND key = :k",
+            {'svc': self.service, 'k': key}
+        );
         if not found {
             raise RuntimeError(
                 f"job key '{key}' is held by a job this transaction cannot see yet"
@@ -155,10 +158,15 @@ impl JobQueueStore.reap -> list[str] {
             lease_owner = '', lease_until = NULL, run_at = now(),
             last_error = 'lease expired: the runner holding this job stopped',
             updated_at = now()
-        WHERE status = :running AND lease_until < now()
+        WHERE service = :svc AND status = :running AND lease_until < now()
         RETURNING id
         """,
-        {'dead': STATUS_DEAD, 'queued': STATUS_QUEUED, 'running': STATUS_RUNNING}
+        {
+            'dead': STATUS_DEAD,
+            'queued': STATUS_QUEUED,
+            'running': STATUS_RUNNING,
+            'svc': self.service
+        }
     );
     return [str(r[0]) for r in rows];
 }
@@ -206,11 +214,16 @@ impl JobQueueStore.prune(retention_s: float) -> int {
     rows = self.store.rows(
         """
         DELETE FROM jac_jobs
-        WHERE status IN (:done, :cancelled)
+        WHERE service = :svc AND status IN (:done, :cancelled)
           AND updated_at < now() - make_interval(secs => CAST(:r AS double precision))
         RETURNING id
         """,
-        {'done': STATUS_DONE, 'cancelled': STATUS_CANCELLED, 'r': float(retention_s)}
+        {
+            'done': STATUS_DONE,
+            'cancelled': STATUS_CANCELLED,
+            'r': float(retention_s),
+            'svc': self.service
+        }
     );
     return len(rows);
 }
