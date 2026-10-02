@@ -11,11 +11,37 @@ impl module_bitcode(mod: ModuleRef) -> bytes {
 }
 
 impl emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes {
-    mod = llvm.parse_bitcode(bitcode);
+    mod = llvm.parse_bitcode(bitcode, llvm.create_context());
     tm = create_unit_target_machine(options);
     result = tm.emit_object(mod);
     assert isinstance(result, bytes);
     return result;
+}
+
+impl object_emit_jobs -> int {
+    import os;
+    for name in ("JAC_NATIVE_EMIT_JOBS", "JAC_JOBS") {
+        raw = os.environ.get(name, "").strip();
+        if raw.isdigit() {
+            return max(1, int(raw));
+        }
+    }
+    return min(os.cpu_count() or 1, 8);
+}
+
+impl emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes] {
+    workers = min(len(bitcodes), object_emit_jobs());
+    if workers < 2 {
+        return [emit_unit_object(bitcode, options) for bitcode in bitcodes];
+    }
+    import from concurrent.futures { ThreadPoolExecutor }
+    create_unit_target_machine(options);
+    def emit_one(bitcode: bytes) -> bytes {
+        return emit_unit_object(bitcode, options);
+    }
+    with ThreadPoolExecutor(max_workers=workers) as pool {
+        return list(pool.map(emit_one, bitcodes));
+    }
 }
 
 impl create_unit_target_machine(

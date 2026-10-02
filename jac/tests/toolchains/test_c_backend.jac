@@ -154,6 +154,39 @@ test "C projection preserves signed and unsigned three way comparisons" {
     }
 }
 
+test "C projection saturates unsigned subtraction at zero" {
+    cc = c_compiler();
+    source = '';
+    for bits in [32, 64] {
+        source += f'declare i{bits} @llvm.usub.sat.i{bits}(i{bits}, i{bits})\n'
+            + f'define i{bits} @usub_sat_{bits}(i{bits} %a, i{bits} %b) {{\n'
+            + f'  %r = call i{bits} @llvm.usub.sat.i{bits}(i{bits} %a, i{bits} %b)\n'
+            + f'  ret i{bits} %r\n}}\n';
+    }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        path = base / 'saturate.c';
+        path.write_text(emit_c(source));
+        library = base / 'saturate.so';
+        built = subprocess.run(
+            [cc, '-shared', '-fPIC', str(path), '-o', str(library)],
+            capture_output=True,
+            text=True
+        );
+        assert built.returncode == 0 , built.stderr;
+        loaded = ctypes.CDLL(str(library));
+        for (bits, arg_type) in [(32, ctypes.c_uint32), (64, ctypes.c_uint64)] {
+            top = (1 << bits) - 1;
+            subtract = getattr(loaded, f'usub_sat_{bits}');
+            subtract.argtypes = [arg_type, arg_type];
+            subtract.restype = arg_type;
+            for (a, b) in [(0, 0), (5, 3), (3, 5), (0, top), (top, 0), (top, top)] {
+                assert subtract(a, b) == max(a - b, 0);
+            }
+        }
+    }
+}
+
 test "native source executables use the C runtime startup and receive arguments" {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }

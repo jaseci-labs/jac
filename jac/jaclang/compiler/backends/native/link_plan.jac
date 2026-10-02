@@ -750,6 +750,7 @@ def unit_objects(
     registry = plan.prog.native_units();
     objs: list[bytes] = [];
     ordered = plan.units;
+    registry.emit_objects([u.path for u in ordered], plan.options);
     for u in ordered {
         object_bytes = registry.object_for(u.path, plan.options);
         if object_bytes is None {
@@ -1065,16 +1066,14 @@ def link_artifact(
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
-    unit_objects_ready: dict[str, (bytes | None)] = (
-        {}
-            if plan.mode == NATIVE_LINK_MODE_BITCODE
-            else registry.objects_for([u.path for u in plan.units], plan.options)
-    );
+    if plan.mode != NATIVE_LINK_MODE_BITCODE {
+        registry.emit_objects([unit.path for unit in plan.units], plan.options);
+    }
     for unit in plan.units {
         product = (
             registry.bitcode_for(unit.path, plan.options)
                 if plan.mode == NATIVE_LINK_MODE_BITCODE
-                else unit_objects_ready.get(unit.path)
+                else registry.object_for(unit.path, plan.options)
         );
         if product is None {
             raise LinkPlanError(f"no {plan.mode} product for native unit {unit.path}");

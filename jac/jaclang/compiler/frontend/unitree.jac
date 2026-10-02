@@ -665,6 +665,7 @@ node Module(AstDocNode, UniScopeNode) {
         ct_resolved: bool = False,
         ct_file_deps: list[str] postinit,
         ct_body_deps: list[str] postinit,
+        ct_def_deps: list[tuple[str, str]] postinit,
         native_viols_reported: bool = False,
         client_viols_reported: bool = False,
         rc_last_use: dict[int, list[str]] postinit,
@@ -704,6 +705,7 @@ node Module(AstDocNode, UniScopeNode) {
 
     def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
     def record_comptime_dependency(path: str, body: bool = False) -> None;
+    def record_comptime_definition(path: str, qualname: str) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {
@@ -2927,6 +2929,7 @@ def def_insert_unpacking(
 ) -> None;
 
 def bind_assignment_targets(nd: Assignment) -> None;
+def definition_qualname(decl: UniNode) -> str;
 
 def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);
 

@@ -14,6 +14,8 @@ glob NATIVE_RELOC_MODEL: str = "pic",
 
 def module_bitcode(mod: ModuleRef) -> bytes;
 def emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes;
+def object_emit_jobs -> int;
+def emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes];
 def module_functions(mod: ModuleRef) -> list[any];
 def settle_unit_ir(module: uni.Module) -> None;
 def create_unit_target_machine(
