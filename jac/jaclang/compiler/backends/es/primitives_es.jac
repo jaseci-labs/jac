@@ -82,6 +82,21 @@ def _min_max_call(rt_name: str, ctx: ESEmitCtx, args: list[str]) -> (str | None)
 }
 
 
+# Positional order of the _jac.builtin.* helpers in jac_runtime_js.jac;
+# keep in sync when a helper's parameters change.
+glob BUILTIN_KWARG_PARAM_NAMES: dict[str, list[str]] = {
+         "round": ["number", "ndigits"],
+         "sum": ["iterable", "start"],
+         "sorted": ["iterable", "key", "reverse"],
+         "enumerate": ["iterable", "start"],
+         "pow": ["base", "exp", "mod"]
+     };
+
+def builtin_kwarg_param_names(name: str) -> (list[str] | None) {
+    return BUILTIN_KWARG_PARAM_NAMES.get(name);
+}
+
+
 class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
     def emit_bit_length(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
