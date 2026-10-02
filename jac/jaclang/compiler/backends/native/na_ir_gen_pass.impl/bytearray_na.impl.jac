@@ -335,43 +335,9 @@ impl NaIRGenPass._emit_struct_pack_into(
         buf_val, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="pi.data.p"
     );
     data = b.load(data_p, name="pi.data");
-    off = 0;
-    ai = 0;
-    for (kind, sz, signed) in fields {
-        if kind == "pad" {
-            pos_v = b.add(off_val, ir.Constant(i64, off), name="pi.pad.off");
-            ptr = b.gep(data, [pos_v], name="pi.pad");
-            b.store(ir.Constant(i8, 0), ptr);
-            off = off + 1;
-            continue;
-        }
-        if ai >= len(arg_vals) {
-            break;
-        }
-        raw = arg_vals[ai];
-        ai = ai + 1;
-
-        bits: ir.Value = ir.Constant(i64, 0);
-        if kind == "float" and sz == 4 {
-            fv = self._coerce_type(raw, f64);
-            small = b.fptrunc(fv, f32, name="pi.f32");
-            asi = b.bitcast(small, i32, name="pi.f32.bits");
-            bits = b.zext(asi, i64, name="pi.f32.ext");
-        } elif kind == "float" {
-            fv = self._coerce_type(raw, f64);
-            bits = b.bitcast(fv, i64, name="pi.f64.bits");
-        } else {
-            bits = self._coerce_type(raw, i64);
-        }
-        for k in range(sz) {
-            shifted = b.lshr(bits, ir.Constant(i64, k * 8), name="pi.sh");
-            byte = b.trunc(shifted, i8, name="pi.byte");
-            rel = off + (k if little else (sz - 1 - k));
-            pos_v = b.add(off_val, ir.Constant(i64, rel), name="pi.off");
-            ptr = b.gep(data, [pos_v], name="pi.ptr");
-            b.store(byte, ptr);
-        }
-        off = off + sz;
+    base = b.gep(data, [off_val], name="pi.base");
+    if not self._emit_struct_pack_fields(nd, arg_vals, fields, little, base) {
+        return None;
     }
     return ir.Constant(i64, 0);
 }

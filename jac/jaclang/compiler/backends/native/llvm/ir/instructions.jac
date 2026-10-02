@@ -537,6 +537,7 @@ class LoadInstr(Instruction) {
         }
         super.init(parent, typ, "load", [ptr], name=name);
         self.align = None;
+        self.volatile = False;
     }
 
     def descr(self: LoadInstr, buf: any) -> object {
@@ -546,8 +547,10 @@ class LoadInstr(Instruction) {
         } else {
             align = '';
         }
+        vol = 'volatile ' if self.volatile else '';
         buf.append(
-            "load {0}, {1} {2}{3}{4}\n".format(
+            "load {0}{1}, {2} {3}{4}{5}\n".format(
+                vol,
                 self.type,
                 val.type,
                 val.get_reference(),
