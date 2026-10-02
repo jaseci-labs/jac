@@ -874,6 +874,32 @@ obj NativeBuildSession {
         target_token = push_native_target(self.options.native_target or "");
         try {
             self._analyze_queue(queue, edges, opts);
+            hinted = 0;
+            for (unit, deps) in kernel_dep_hint(queue_anchor(roots)).items() {
+                known = edges.get(unit);
+                if known is None {
+                    continue;
+                }
+                hinted += 1;
+                for dep in deps {
+                    if dep == unit or not os.path.isfile(dep) {
+                        continue;
+                    }
+                    if dep not in known {
+                        known.append(dep);
+                    }
+                    if dep not in edges {
+                        queue.append(dep);
+                    }
+                }
+            }
+            if queue {
+                self._analyze_queue(queue, edges, opts);
+            }
+            import sys;
+            sys.stderr.write(
+                f"[lower] dependency hint covers {hinted} of {len(edges)} units\n"
+            );
         } finally {
             pop_native_target(target_token);
             reset_native_unit_compile(unit_token);
@@ -1376,7 +1402,9 @@ obj NativeBuildSession {
 }
 
 glob _PARALLEL_SESSION: list[NativeBuildSession] = [],
-     LOWER_WORKER_BYTES: int = 6 * 1024 * 1024 * 1024;
+     LOWER_WORKER_BYTES: int = 6 * 1024 * 1024 * 1024,
+     KERNEL_DEPS_ENV: str = "JAC_KERNEL_DEPS",
+     KERNEL_DEPS_REL: str = "bootstrap/kernel_deps.json";
 
 def native_lower_workers -> int {
     raw = os.environ.get("JAC_NATIVE_LOWER_JOBS", "").strip();
@@ -1390,6 +1418,41 @@ def native_lower_workers -> int {
     }
     by_cpu = min(8, os.cpu_count() or 1);
     return max(1, min(by_cpu, _workers_by_memory()));
+}
+
+def queue_anchor(roots: list[str]) -> str {
+    return os.path.realpath(roots[0]) if roots else "";
+}
+
+def kernel_dep_hint(anchor: str) -> dict[str, list[str]] {
+    """The dependency graph a previous build recorded, as a scheduling hint:
+    what each unit's lowering asked for is only known once it has run, since
+    a unit depends on the units whose types it touches, not on what it
+    imports. A missing or stale hint costs parallelism, never correctness.""";
+    import json;
+    import from jaclang.compiler.backends.native.stage0_pin { stage0_source_dir }
+    import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
+    path = os.environ.get(KERNEL_DEPS_ENV, "").strip()
+        or os.path.join(stage0_source_dir(), *KERNEL_DEPS_REL.split("/"));
+    try {
+        with open(path, encoding="utf-8") as handle {
+            raw = json.load(handle);
+        }
+    } except (OSError, ValueError) {
+        return {};
+    }
+    if not isinstance(raw, dict) {
+        return {};
+    }
+    out: dict[str, list[str]] = {};
+    for (ref, deps) in raw.items() {
+        unit = os.path.realpath(resolve_native_unit_ref(str(ref), anchor));
+        out[unit] = [
+            os.path.realpath(resolve_native_unit_ref(str(d), anchor))
+            for d in list(deps or [])
+        ];
+    }
+    return out;
 }
 
 def _workers_by_memory -> int {
