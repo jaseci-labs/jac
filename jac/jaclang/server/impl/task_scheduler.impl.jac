@@ -326,7 +326,10 @@ impl Scheduler._keep_hold(task: ScheduledTask, beat: threading.Event) -> None {
             held = False;
             reason = f" ({e})";
         }
-        if not held and not lost {
+        if held and lost {
+            lost = False;
+            logger.info(f"'{task.name}' has its run hold back while still running");
+        } elif not held and not lost {
             lost = True;
             logger.warning(
                 f"'{task.name}' lost its run hold while still running{reason}; "

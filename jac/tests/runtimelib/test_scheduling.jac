@@ -671,7 +671,7 @@ test "a claim or run hold that cannot be checked is logged once" {
         if len(renewals) == 1 {
             raise ConnectionError("database is restarting");
         }
-        return False;
+        return len(renewals) == 2;
     }
     sched.hold = lost;
     sched.hold_ttl = 1;
@@ -682,7 +682,7 @@ test "a claim or run hold that cannot be checked is logged once" {
     try {
         keeper.start();
         deadline = time.monotonic() + 5.0;
-        while len(renewals) < 3 and time.monotonic() < deadline {
+        while len(renewals) < 5 and time.monotonic() < deadline {
             time.sleep(0.02);
         }
     } finally {
@@ -690,12 +690,20 @@ test "a claim or run hold that cannot be checked is logged once" {
         keeper.join();
         log.removeHandler(records);
     }
-    assert len(renewals) >= 3 , renewals;
-    once = (
-        "WARNING 'mailer' lost its run hold while still running "
-        "(database is restarting); another replica may start it"
-    );
-    assert records.messages == [once] , records.messages;
+    assert len(renewals) >= 5 , renewals;
+    lost_each_time = [
+        m
+        for m in records.messages
+        if m.startswith("WARNING") and "lost its run hold" in m
+    ];
+    back = [
+        m
+        for m in records.messages
+        if m.startswith("INFO") and "run hold back" in m
+    ];
+    assert len(lost_each_time) == 2 , records.messages;
+    assert len(back) == 1 , records.messages;
+    assert len(records.messages) == 3 , records.messages;
 }
 
 
