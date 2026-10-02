@@ -21,7 +21,8 @@ import from jaclang.byllm.exceptions {
     RateLimitError,
     ModelNotFoundError,
     ConfigurationError,
-    CompactionNotEffectiveError
+    CompactionNotEffectiveError,
+    OutputTruncatedError
 }
 import from jaclang.byllm.types {
     CompletionResult,
@@ -169,7 +170,10 @@ obj BaseLLM {
         params: dict[str, any]
     ) -> AsyncIterator[object];
 
-    def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
+    def _stream_final_answer(
+        mt_run: MTRuntime, fallback: str = ""
+    ) -> Generator[str, None, None];
+
     def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
     def _yield_recovery_result(
@@ -180,6 +184,7 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
     def _invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object;
     def _resolve_api_base -> str;
     def _get_ctx_window(call_params: dict[str, any]) -> int;
