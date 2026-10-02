@@ -20,6 +20,7 @@ import from jaclang.byllm.exceptions {
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.types { Tool, Message, MessageRole }
+import from jaclang.byllm.schema { json_to_instance }
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
 import from support {
@@ -473,6 +474,26 @@ test "response format requests always carry the json word" {
         assert has_rf == want_rf , f"{label}: unexpected response_format={has_rf}";
         assert has_json == want_rf , f"{label}: json-word={has_json} but rf={has_rf}";
     }
+}
+
+test "structured responses decode dictionary wrappers inside lists" {
+    wrapped = {"schema_dict_wrapper": [{"key": "cat", "value": 2}]};
+    assert json_to_instance({"schema_object_wrapper": [wrapped]}, list[dict[str, int]])
+        == [{"cat": 2}];
+    assert json_to_instance(
+        {"schema_dict_wrapper": [{"key": "batch", "value": [wrapped]}]},
+        dict[str, list[dict[str, int]]]
+    )
+        == {"batch": [{"cat": 2}]};
+    assert json_to_instance(
+        {"schema_object_wrapper": [[wrapped]]}, list[list[dict[str, int]]]
+    )
+        == [[{"cat": 2}]];
+    assert json_to_instance(
+        {"schema_object_wrapper": [{"schema_dict_wrapper": []}]},
+        list[dict[str, list[int]]]
+    )
+        == [{}];
 }
 
 test "litellm debug config toggles litellm's verbose loggers" {
