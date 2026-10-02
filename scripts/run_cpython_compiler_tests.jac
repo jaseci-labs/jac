@@ -183,8 +183,24 @@ def main -> int {
 # "Class.method", with the reason each is skipped.
 glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
      LAUNCHER_ENVIRONMENT: str = "the jac launcher starts the interpreter without the PYTHON* environment",
+     LAUNCHER_SCRIPT: str = "the jac launcher runs a script path only when it ends in .py, .jac or .jab",
      RUNTIME_DIFFERENCES: dict[str, dict[str, str]] = {
          "test.test_posix": {"PosixTester.test_pipe2_c_limits": NO_TESTCAPI},
+         "test.test_os": {
+             "PseudoterminalTests.test_pipe_spawnl": LAUNCHER_SCRIPT,
+             "SpawnTests.test_nowait": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnl": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnle": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnlp": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnlpe": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnv": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve_bytes": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve_invalid_env": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvp": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvpe": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvpe_invalid_env": LAUNCHER_SCRIPT
+         },
          "test.test_asyncio": {
              "BaseEventLoopTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
              "CoroutineGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
