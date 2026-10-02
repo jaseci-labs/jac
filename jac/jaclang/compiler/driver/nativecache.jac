@@ -1191,7 +1191,11 @@ obj NativeBuildSession {
         dependencies it recorded stand in for its imports. A unit whose own
         source changed is lowered first, here, against the served cache, so
         its importers are then judged by its new interface digest: an edit
-        that leaves the interface alone costs one unit, not the closure.""";
+        that leaves the interface alone costs one unit, not the closure.
+        While it lowers, those importers are served by their old interfaces
+        without a dependency check, so a hub inside the cycle does not drag
+        its partners through nested lowering; the loose entries are dropped
+        before the strict probe decides who really needs lowering.""";
         import sys;
         probe = self.options.clone_for_native_import();
         started = time.perf_counter();
@@ -1214,8 +1218,16 @@ obj NativeBuildSession {
         }
         probed = time.perf_counter();
         if edited and len(edited) * 4 <= len(candidates) {
+            for unit in stale {
+                self.registry.ensure(
+                    unit, compile_on_miss=False, check_deps=False, options=probe
+                );
+            }
             for unit in edited {
                 self.lower(unit);
+            }
+            for unit in stale {
+                self.registry.entries.pop(unit, None);
             }
         } else {
             edited = [];
