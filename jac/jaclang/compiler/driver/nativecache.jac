@@ -1070,18 +1070,16 @@ obj NativeBuildSession {
                 self.lower(kpath);
             }
         }
-        (masks, cut, finished) = NativeBuildSession._cut_back_edges(
+        (masks, reach, finished) = NativeBuildSession._cut_back_edges(
             edges, [os.path.realpath(r) for r in roots]
         );
         depth: dict[str, int] = {};
         for unit in finished {
-            back = set(cut.get(unit, []));
             level = 0;
-            for dep in edges.get(unit, []) {
-                if dep in back or dep not in depth {
-                    continue;
+            for dep in reach.get(unit, []) {
+                if dep in depth {
+                    level = max(level, depth[dep] + 1);
                 }
-                level = max(level, depth[dep] + 1);
             }
             depth[unit] = level;
         }
@@ -1118,15 +1116,16 @@ obj NativeBuildSession {
     ) -> tuple[dict[str, list[str]], dict[str, list[str]], list[str]] {
         """Depth first from the roots in import order, the way nested lowering
         walks them. A unit's mask is the whole stack above it, since the serial
-        walk finds every ancestor building when lowering asks for it, whether
-        the unit imports that ancestor directly or reaches it through a
-        dependency's imports. Returns each unit's mask, the back edges that
-        set the levels, and the units in finishing order, where every unit
-        reached through a non-back edge finishes before the unit that
-        reaches it.""";
+        walk finds every ancestor building when lowering asks for it. IR
+        generation walks imports transitively, so what a masked ancestor
+        imports is asked for as if the unit imported it itself: the walk
+        descends into it from the unit and it counts toward the unit's level.
+        Returns each unit's mask, the units it reaches that way, and the units
+        in finishing order, where everything a unit reaches finishes before
+        it.""";
         state: dict[str, int] = {};
         masks: dict[str, list[str]] = {};
-        cut: dict[str, list[str]] = {};
+        reach: dict[str, list[str]] = {};
         finished: list[str] = [];
         for start in roots {
             if start in state {
@@ -1134,15 +1133,20 @@ obj NativeBuildSession {
             }
             state[start] = 1;
             masks[start] = [];
-            stack: list[list[any]] = [[start, 0]];
+            stack: list[list[any]] = [[start, 0, list(edges.get(start, []))]];
             while stack {
                 frame = stack[-1];
                 unit = str(frame[0]);
-                deps = edges.get(unit, []);
+                deps: list[str] = frame[2];
                 index = int(frame[1]);
                 if index >= len(deps) {
                     state[unit] = 2;
                     finished.append(unit);
+                    reach[unit] = [
+                        d
+                        for d in deps
+                        if state.get(d, 0) == 2
+                    ];
                     stack.pop();
                     continue;
                 }
@@ -1151,14 +1155,18 @@ obj NativeBuildSession {
                 seen = state.get(dep, 0);
                 if seen == 0 {
                     state[dep] = 1;
-                    masks[dep] = [str(frame[0]) for frame in stack];
-                    stack.append([dep, 0]);
+                    masks[dep] = [str(f[0]) for f in stack];
+                    stack.append([dep, 0, list(edges.get(dep, []))]);
                 } elif seen == 1 {
-                    cut.setdefault(unit, []).append(dep);
+                    for behind in edges.get(dep, []) {
+                        if behind != unit and behind not in deps {
+                            deps.append(behind);
+                        }
+                    }
                 }
             }
         }
-        return (masks, cut, finished);
+        return (masks, reach, finished);
     }
 
     def _lower_masked(path: str, mask: list[str]) {
