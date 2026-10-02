@@ -473,6 +473,88 @@ Constructor arguments always take precedence over `jac.toml` values.
 
 ---
 
+## System One Models
+
+A System One model answers typed questions against a state and returns a calibrated probability distribution instead of generating text. TypeSafe's Jev was the first; open implementations (OpenJev, Laya) speak the same `/v1/systemone` wire format. For a call site whose return type is a closed set, byLLM can send the call to one of these instead of a chat model, with no change to the function. It is typically an order of magnitude faster and far cheaper per call, and it returns a confidence a chat model cannot.
+
+```jac
+glob llm = Model(model_name="systemone:typesafe/jev-latest");
+
+enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
+
+sem Category.OTHER = "Household chores and errands that fit no other category";
+
+def categorize(title: str) -> Category by llm();
+sem categorize = "Categorize a task based on its title";
+```
+
+The question is built from what the compiler recorded, not from a prompt: the function's `sem` is the instruction and each member's `sem` is that label's description. Annotating members matters more here than for a chat model, since a small decision model cannot infer what an undescribed label like `OTHER` means.
+
+### What can be answered
+
+| Return type | Asked as |
+|---|---|
+| `enum E` | one choice over its members |
+| `bool` | one yes/no |
+| `list[E]` | one yes/no per member; members above 0.5, most probable first |
+| `obj` whose fields are all enums or bools | one question per field, in a single request, rebuilt into the object |
+| `Decision[T]` for any of the above | as `T`, with the confidence attached (below) |
+
+Anything else (a `str` or number return, an object with an open-ended field, a call with `tools=` or `stream=True`, or media arguments) cannot be answered by a decision model. It goes to the `fallback`.
+
+### Model names and providers
+
+`systemone:<provider>/<model>`. With no provider, `typesafe` is assumed.
+
+| Provider | Endpoint | Key |
+|---|---|---|
+| `typesafe` | `https://api.typesafe.ai/v1/systemone` | `TYPESAFE_API_KEY` or `JEV_API_KEY` |
+| `litellm` | `http://localhost:4000/typesafe/v1/systemone` (a LiteLLM proxy) | `LITELLM_API_KEY` |
+| `openjev` | `http://localhost:8000/v1/systemone` | none |
+| `laya` | `http://localhost:8000/v1/systemone` | none |
+
+Each provider also carries capability limits. A call that exceeds them, such as an enum with more members than the model can reliably choose among, goes to the fallback rather than being truncated. `config={"max_choice_options": ..., "max_state_chars": ..., "api_base": ...}` overrides them.
+
+### Fallback and escalation
+
+```jac
+glob llm = Model(
+    model_name="systemone:typesafe/jev-latest",
+    config={"fallback": "claude-sonnet-4-6", "min_confidence": 0.7}
+);
+```
+
+- A call that cannot be answered is handed to `fallback` unchanged; the fallback sees the same prompt it would have without the System One model. Besides the return types above, this covers calls that pass `conversation=` or a per-call `system_prompt=`, which a System One state cannot express.
+- An answer whose confidence is below `min_confidence` is discarded and the call is re-asked of `fallback`.
+- If the endpoint is unreachable, overloaded or rejects the request, the call goes to `fallback`. A rejected API key (401) is raised instead, since it is a configuration error.
+- With no `fallback`, a call that cannot be answered raises `ConfigurationError`.
+
+The state sent to the endpoint holds the call's arguments, any `incl_info`, and, for a method, the receiver as `self`. The API key comes from the provider's environment variable or an `api_key=` passed to this `Model`; the project-wide `[byllm.model] api_key` belongs to your chat provider and is never sent.
+
+`SystemOneModel(fallback=..., min_confidence=...)` takes the same settings as constructor arguments.
+
+### Reading the confidence
+
+```jac
+def categorize(title: str) -> Decision[Category] by llm();
+
+with entry {
+    d = categorize("Water the plants");
+    # d.value: Category.OTHER, d.confidence: 0.0 to 1.0,
+    # d.probabilities: the distribution per question
+}
+```
+
+When the fallback answered, `d.answered_by` is `"fallback"`, `d.probabilities` is empty, and `d.confidence` is the System One confidence that caused the escalation (0 if the call was never answered by it).
+
+For a single choice, confidence is `(n * p_max - 1) / (n - 1)` over its `n` options; for a yes/no it is `|2p - 1|`; for a list or object it is that of the least certain question. Every call also records its tokens, confidence and distribution in telemetry under `call_kind: "systemone"`.
+
+### `visit ... by llm()`
+
+Routing asks over the live frontier of the current node. `select=1` is one choice; any other `select` is one yes/no per candidate. An exact `select=N` returns the `N` most probable candidates, or all of them if fewer exist; `select=(lo, hi)` returns those above 0.5 up to `hi`, filled by rank to at least `lo`. When a pick below 0.5 is used to fill the count, the confidence is 0, so `min_confidence` escalates it.
+
+---
+
 ## Project Configuration
 
 ### Default Model Configuration

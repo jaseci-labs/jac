@@ -14,6 +14,7 @@ def _configure_litellm {
 
 
 impl Model.postinit -> None {
+    so1_key = self.api_key;
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
     self.http_client = bool(
         self.config.get("http_client", _model_config.get("http_client", False))
@@ -36,7 +37,23 @@ impl Model.postinit -> None {
             call_params=self.call_params
         );
     }
-    if not self._mock_delegate and not self._local_delegate {
+    if self.model_name.startswith(SYSTEMONE_PREFIX) {
+        so1_config = {
+            k: v
+            for (k, v) in self.config.items()
+            if k != "api_key"
+        };
+        self._so1_delegate = SystemOneModel(
+            model_name=self.model_name,
+            config=so1_config,
+            api_key=so1_key,
+            api_base=self.api_base,
+            call_params=self.call_params
+        );
+    }
+    if not self._mock_delegate
+        and not self._local_delegate
+        and not self._so1_delegate {
         _configure_litellm();
 
         native_override = self.config.get(
@@ -80,6 +97,8 @@ impl Model.invoke(mt_run: MTRuntime) -> any {
             result = self._mock_delegate.invoke(mt_run);
         } elif self._local_delegate {
             result = self._local_delegate.invoke(mt_run);
+        } elif self._so1_delegate {
+            result = self._so1_delegate.invoke(mt_run);
         } else {
             result = super.invoke(mt_run);
         }
@@ -115,12 +134,15 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
 
     logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
     no_tools = len(mt_run.tools) == 0;
-    handled_directly = no_tools and not logging_stream;
+    handled_directly = (no_tools and not logging_stream)
+        or self._so1_delegate is not None;
     if not handled_directly {
         return await super.ainvoke(mt_run);
     }
 
-    delegate: BaseLLM | None = self._mock_delegate or self._local_delegate;
+    delegate: BaseLLM | None = (
+        self._mock_delegate or self._local_delegate or self._so1_delegate
+    );
 
     _parent = _current_invocation_id.get(None);
     mt_run._parent_invocation_id = _parent;

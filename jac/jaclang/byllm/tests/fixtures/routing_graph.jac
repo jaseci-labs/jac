@@ -4,13 +4,13 @@ Shape only: no model, no entry block, no prints. The test assigns `llm`, builds
 its graph and spawns a walker.
 
 `router` follows `[-->]`, `picker` takes an arbitrary node list that need not be
-adjacent, `collector` selects every candidate, `stream_router` streams the
+adjacent, `collector` selects every candidate, `duo` exactly two, `stream_router` streams the
 decision, `leaky` passes routing-control params alongside a real one.
 """
 
 glob llm: any = None;
 
-edge Route : any --> any {
+edge Route: any --> any {
     has priority: str = "low";
 }
 
@@ -28,6 +28,10 @@ node Agent {
     }
 
     can log_collected with collector entry {
+        visitor.visited.append(self.tag);
+    }
+
+    can log_duo with duo entry {
         visitor.visited.append(self.tag);
     }
 
@@ -58,6 +62,14 @@ walker collector {
 
     can go with Hub entry {
         visit [-->] by llm(select="all", intent="Visit every item");
+    }
+}
+
+walker duo {
+    has visited: list[str] = [];
+
+    can go with Hub entry {
+        visit [-->] by llm(select=2, intent="Visit exactly two");
     }
 }
 
