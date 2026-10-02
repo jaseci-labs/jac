@@ -100,27 +100,57 @@ impl NaIRGenPass._make_global_bytes(data: bytes) -> ir.Value {
     return self.builder.bitcast(payload, bt.as_pointer(), name="by.lit.obj");
 }
 
-impl NaIRGenPass._codegen_bytes_index(
-    bv: ir.Value, idx: ir.Value
-) -> (ir.Value | None) {
-    i8 = ir.IntType(8);
+impl NaIRGenPass._bytes_real_index(
+    bv: ir.Value, idx: ir.Value, name_prefix: str
+) -> ir.Value {
     i64 = ir.IntType(64);
     idx = self._coerce_type(idx, i64);
     length = self._bytes_len_val(bv);
-    is_neg = self.builder.icmp_signed("<", idx, ir.Constant(i64, 0), name="by.idx.neg");
-    adj = self.builder.add(idx, length, name="by.idx.adj");
-    real_idx = self.builder.select(is_neg, adj, idx, name="by.idx");
-
-    lo_bad = self.builder.icmp_signed(
-        "<", real_idx, ir.Constant(i64, 0), name="by.idx.lo"
+    is_neg = self.builder.icmp_signed(
+        "<", idx, ir.Constant(i64, 0), name=f"{name_prefix}.neg"
     );
-    hi_bad = self.builder.icmp_signed(">=", real_idx, length, name="by.idx.hi");
-    oob = self.builder.or_(lo_bad, hi_bad, name="by.idx.oob");
+    adj = self.builder.add(idx, length, name=f"{name_prefix}.adj");
+    real_idx = self.builder.select(is_neg, adj, idx, name=f"{name_prefix}.idx");
+    lo_bad = self.builder.icmp_signed(
+        "<", real_idx, ir.Constant(i64, 0), name=f"{name_prefix}.lo"
+    );
+    hi_bad = self.builder.icmp_signed(">=", real_idx, length, name=f"{name_prefix}.hi");
+    oob = self.builder.or_(lo_bad, hi_bad, name=f"{name_prefix}.oob");
     self._emit_runtime_raise(oob, "IndexError", "index out of range");
+    return real_idx;
+}
+
+impl NaIRGenPass._codegen_bytes_index(
+    bv: ir.Value, idx: ir.Value
+) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    real_idx = self._bytes_real_index(bv, idx, "by.idx");
     data = self._bytes_data_ptr(bv);
     bptr = self.builder.gep(data, [real_idx], name="by.bptr");
     byte = self.builder.load(bptr, name="by.byte");
     return self.builder.zext(byte, i64, name="by.byte.i64");
+}
+
+impl NaIRGenPass._codegen_bytes_index_set(
+    bv: ir.Value, idx: ir.Value, value: ir.Value
+) -> None {
+    value = self._coerce_type(value, ir.IntType(64));
+    byte_val = self.builder.trunc(value, ir.IntType(8), name="by.set.byte");
+    real_idx = self._bytes_real_index(bv, idx, "by.set");
+    data = self._bytes_data_ptr(bv);
+    bptr = self.builder.gep(data, [real_idx], name="by.set.bptr");
+    self.builder.store(byte_val, bptr);
+}
+
+impl NaIRGenPass._is_bytes_literal_target(target: uni.UniNode) -> bool {
+    if isinstance(target?.lit_value, bytes) {
+        return True;
+    }
+    if isinstance(target, uni.Name) and target.sym is not None {
+        _init = target.sym.decl?.parent?.value;
+        return isinstance(_init?.lit_value, bytes);
+    }
+    return False;
 }
 
 impl NaIRGenPass._codegen_bytes_slice(
