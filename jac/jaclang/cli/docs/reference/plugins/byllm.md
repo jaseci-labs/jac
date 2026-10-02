@@ -491,6 +491,7 @@ verbose = false                   # Log LLM calls to stderr
 temperature = 0.7                 # Optional; omit to use the provider default (0.0-2.0)
 max_tokens = 0                    # Max response tokens (0 = no limit)
 max_output_retries = 3            # Retries for structured output (0 = disabled)
+timeout = 600.0                   # Per-request timeout, seconds (0 = provider default)
 
 [byllm.litellm]
 local_cost_map = true             # Use local cost map
@@ -534,6 +535,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 | `temperature` | float | *unset* | Creativity/randomness (0.0-2.0, lower is more deterministic). Omitted from the request when unset, so the provider applies its own default |
 | `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
 | `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
+| `timeout` | float | `600.0` | Seconds a single non-streaming request may take before it raises `LLMTimeout`. `0` drops the bound and lets the provider resolve its own. Overridable per `Model(timeout=...)` and per `by llm(timeout=...)`. Streaming calls use `[byllm.streaming]` instead. See [Request Timeout](#request-timeout) |
 
 **`[byllm.litellm]` options:**
 
@@ -811,6 +813,92 @@ The original rejected text remains available on `raw_output` (see [`OutputConver
 
 ---
 
+## Request Timeout
+
+A non-streaming request is bounded by `[byllm.call_params] timeout`, in seconds.
+When it expires the call raises `LLMTimeout`.
+
+The bound exists because a provider that stalls does not fail: the connection
+stays open, no bytes arrive, and nothing raises. In a server that pins an HTTP
+worker thread or a background job slot for as long as the socket lives.
+
+### Resolution order
+
+The first value set wins:
+
+1. the call site, `by llm(timeout=30.0)`
+2. the model's call params, `llm(timeout=30.0)`
+3. the model field, `Model(model_name="gpt-4o", timeout=30.0)`
+4. `[byllm.call_params] timeout` in `jac.toml`
+5. `600.0`
+
+```jac
+glob reviewer = Model(model_name="gpt-4o", timeout=120.0);
+
+# Inherits the model's 120s.
+def review(diff: str) -> str by reviewer();
+
+# Tighter bound for a call that should be quick.
+def classify(text: str) -> str by reviewer(timeout=15.0);
+```
+
+```toml
+# jac.toml: project-wide default
+[byllm.call_params]
+timeout = 120.0
+```
+
+`0` drops the bound and lets the provider resolve its own, which is the
+behaviour of every non-streaming call before this setting existed. Use it for a
+long batch job that must not be interrupted.
+
+### What it does and does not bound
+
+It bounds **one request**, not one turn. Two multipliers sit above it:
+
+- a transient failure, including a timeout, is retried `[byllm.streaming]
+  num_retries` times (default `2`), so a 90s timeout is up to ~270s on one call
+  plus backoff
+- a ReAct loop makes one request per iteration
+
+Size it against a single provider call, then bound the turn separately with
+`max_react_iterations` or an `on_iteration` hook if a job slot needs a hard
+ceiling.
+
+### Streaming and pools are bounded elsewhere
+
+| Path | Setting | Default |
+|------|---------|---------|
+| non-streaming | `[byllm.call_params] timeout` | `600.0` |
+| streaming | `[byllm.streaming] read_timeout` and friends | `90.0` between chunks |
+| `ModelPool` | `[byllm.fallback] timeout`, applied by the litellm Router | `60.0` |
+
+A streaming call measures the gap between chunks, not the whole response, so the
+two settings are not interchangeable and a streaming call ignores
+`[byllm.call_params] timeout`. A `ModelPool` leaves the bound to its Router.
+
+### Catching it
+
+```jac
+import from jaclang.byllm.lib { LLMTimeout }
+
+with entry {
+    try {
+        verdict = review(diff);
+    } except LLMTimeout as e {
+        print(f"provider stalled: {e}");
+    }
+}
+```
+
+`LLMTimeout` subclasses both `ByLLMError` and `litellm.Timeout`. The second base
+is load-bearing: byLLM's own retry check treats a `litellm.Timeout` as
+transient, so an in-loop timeout still retries in place with the message and
+tool history intact, and existing `except litellm.Timeout` handlers keep
+working.
+
+---
+
 ## Invocation Parameters
 
 Parameters passed to `by llm()` at call time:
@@ -820,6 +908,7 @@ Parameters passed to `by llm()` at call time:
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Omitted when unset, so the provider default applies |
 | `max_tokens` | int | Maximum tokens in response |
 | `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
+| `timeout` | float | Seconds a single non-streaming request may take before raising `LLMTimeout`. `0` lets the provider resolve its own. Default: `600.0`. See [Request Timeout](#request-timeout) |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
@@ -1984,6 +2073,7 @@ ByLLMError (base)
 ├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
+├── LLMTimeout                   - A non-streaming request outlived its timeout
 └── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
 ```
 
@@ -1999,6 +2089,7 @@ All exceptions are importable from `byllm.lib`.
 | `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+| `LLMTimeout` | A non-streaming request outlived its `[byllm.call_params] timeout`. Also subclasses `litellm.Timeout`, so byLLM's own retries still treat it as transient and `except litellm.Timeout` keeps catching it. See [Request Timeout](#request-timeout) |
 | `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
@@ -2012,6 +2103,7 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         ConfigurationError,
+        LLMTimeout,
         CompactionNotEffectiveError
     }
     ```
@@ -2025,6 +2117,7 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         ConfigurationError,
+        LLMTimeout,
         CompactionNotEffectiveError,
     )
     ```

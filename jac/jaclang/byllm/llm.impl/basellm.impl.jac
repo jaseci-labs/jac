@@ -750,6 +750,25 @@ impl BaseLLM._resolve_stream_retries(mt_run: MTRuntime) -> int {
 }
 
 
+impl BaseLLM._resolve_timeout(mt_run: MTRuntime) -> float | None {
+    timeout: any = mt_run.call_params.get("timeout");
+    if timeout is None {
+        timeout = self.call_params.get("timeout");
+    }
+    if timeout is None {
+        timeout = self.timeout;
+    }
+    if timeout is None {
+        timeout = _call_params_config.get("timeout");
+    }
+    if timeout is None {
+        timeout = 600.0;
+    }
+    resolved = float(timeout);
+    return resolved if resolved > 0 else None;
+}
+
+
 impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
     max_attempts = self._resolve_output_attempts(mt_run);
     base_msgs = list(mt_run.messages);
@@ -1294,6 +1313,11 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
             write=_streaming_config.get("write_timeout", 30.0),
             pool=_streaming_config.get("pool_timeout", 30.0)
         );
+    } else {
+        call_timeout = self._resolve_timeout(mt_run);
+        if call_timeout is not None {
+            params["timeout"] = call_timeout;
+        }
     }
     return params;
 }

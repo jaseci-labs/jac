@@ -16,6 +16,8 @@ import from jaclang.byllm._optdeps.openai { openai, OpenAI, AsyncOpenAI }
 import from jaclang.project.capabilities { require_optional }
 import from jaclang.byllm.exceptions {
     AuthenticationError,
+    ByLLMError,
+    LLMTimeout,
     FinishToolError,
     OutputConversionError,
     RateLimitError,
@@ -106,13 +108,15 @@ obj BaseLLM {
         api_base: str = "",
         call_params: dict[(str, object)] = {},
         ctx_window: int = 0,
-        supports_native_tools: bool = True;
+        supports_native_tools: bool = True,
+        timeout: float | None = None;
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> any;
     async def ainvoke(mt_run: MTRuntime) -> any;
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _resolve_stream_retries(mt_run: MTRuntime) -> int;
+    def _resolve_timeout(mt_run: MTRuntime) -> float | None;
     def _should_retry_stream(
         mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
     ) -> bool;
@@ -242,6 +246,7 @@ obj ModelPool(BaseLLM) {
     override def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     override def model_call_with_stream(params: dict[str, any]) -> Iterable[object];
     override def _get_ctx_window(call_params: dict[str, any]) -> int;
+    override def _resolve_timeout(mt_run: MTRuntime) -> float | None;
 }
 
 obj Model(BaseLLM) {
