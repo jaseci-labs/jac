@@ -752,6 +752,7 @@ obj NativeBuildSession {
         prog: JacProgram postinit,
         lowered: dict[str, Module] = {},
         analyzed: dict[str, Module] = {},
+        served: dict[str, list[str]] = {},
         lowering_stack: list[str] = [],
         source_keys: dict[str, str | None] = {};
 
@@ -933,6 +934,16 @@ obj NativeBuildSession {
                 }
                 deps: list[str] = [];
                 edges[path] = deps;
+                recorded = self.served.get(path);
+                if recorded is not None {
+                    for dep in recorded {
+                        if dep != path and dep not in deps and os.path.isfile(dep) {
+                            deps.append(dep);
+                            queue.append(dep);
+                        }
+                    }
+                    continue;
+                }
                 mod = self.lowered.get(path) or self.analyzed.get(path);
                 if mod is None {
                     if not os.path.isfile(path) {
@@ -1060,8 +1071,13 @@ obj NativeBuildSession {
             KERNEL_UNIT_REL,
             kernel_unit_path
         }
+        self._probe_served(roots);
+        hinted = kernel_dep_hint(queue_anchor(roots));
+        if hinted and len(hinted) - len(self.served) < 2 * workers {
+            return 0;
+        }
         edges = self.analyze_closure(roots);
-        if len(edges) < 2 * workers {
+        if len(edges) - len(self.served) < 2 * workers {
             return 0;
         }
         for rel in KERNEL_UNIT_REL {
@@ -1095,7 +1111,7 @@ obj NativeBuildSession {
             todo = [
                 p
                 for p in level
-                if p not in self.lowered
+                if p not in self.lowered and p not in self.served
             ];
             if not todo {
                 continue;
@@ -1169,11 +1185,33 @@ obj NativeBuildSession {
         return (masks, reach, finished);
     }
 
+    def _probe_served(roots: list[str]) {
+        """What the cache already holds for this build: a unit whose products
+        the registry serves is neither analysed nor lowered, and the
+        dependencies it recorded stand in for its imports.""";
+        probe = self.options.clone_for_native_import();
+        candidates = [os.path.realpath(r) for r in roots]
+            + list(kernel_dep_hint(queue_anchor(roots)).keys());
+        for unit in candidates {
+            if unit in self.served or not os.path.isfile(unit) {
+                continue;
+            }
+            ent = self.registry.ensure(unit, compile_on_miss=False, options=probe);
+            if ent is None {
+                continue;
+            }
+            self.served[unit] = [
+                os.path.realpath(dep)
+                for (dep, _digest) in self.registry.recorded_native_deps(unit, probe)
+            ];
+        }
+    }
+
     def _lower_masked(path: str, mask: list[str]) {
         masked = [
             m
             for m in mask
-            if m != path and m not in self.lowered
+            if m != path and m not in self.lowered and m not in self.served
         ];
         self.registry.building.update(masked);
         try {
