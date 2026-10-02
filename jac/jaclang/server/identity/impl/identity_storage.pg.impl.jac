@@ -20,10 +20,46 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     )
     """,
          """
-    CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
-        ON identity_lookups (user_id)
+    DO $$
+    BEGIN
+        IF to_regclass('idx_identity_lookups_user') IS NULL THEN
+            CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
+                ON identity_lookups (user_id);
+        END IF;
+    END $$
     """
-     ];
+     ],
+     _PG_ACCOUNT_LOOKUP_TABLES: list[str] = ['identity_lookups', 'sso_lookups'];
+
+
+def _pg_account_fk_ddl(table: str) -> str {
+    return f"""
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = CAST('{table}' AS regclass)
+              AND conname = '{table}_user_id_fkey'
+        ) THEN
+            LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE;
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conrelid = CAST('{table}' AS regclass)
+                  AND conname = '{table}_user_id_fkey'
+            ) THEN
+                DELETE FROM {table} lk
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM identity_users u WHERE u.user_id = lk.user_id
+                );
+                ALTER TABLE {table}
+                    ADD CONSTRAINT {table}_user_id_fkey
+                    FOREIGN KEY (user_id) REFERENCES identity_users (user_id)
+                    ON DELETE CASCADE;
+            END IF;
+        END IF;
+    END $$
+    """;
+}
 
 
 def _pg_json_default(o: object) -> str {
@@ -31,13 +67,13 @@ def _pg_json_default(o: object) -> str {
 }
 
 
-def _pg_unique_violation(e: Exception) -> bool {
+def _pg_sqlstate(e: Exception) -> str {
     for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and arg.get('C') == '23505' {
-            return True;
+        if isinstance(arg, dict) and arg.get('C') {
+            return str(arg['C']);
         }
     }
-    return False;
+    return '';
 }
 
 
@@ -69,6 +105,9 @@ impl PgIdentityStorage.postinit -> None {
 impl PgIdentityStorage.ensure_indexes -> None {
     for stmt in _PG_IDENTITY_SCHEMA {
         self.store.rows(stmt, {});
+    }
+    for table in _PG_ACCOUNT_LOOKUP_TABLES {
+        self.store.rows(_pg_account_fk_ddl(table), {});
     }
 }
 
@@ -141,9 +180,71 @@ impl PgIdentityStorage.identity_taken(value: str) -> bool {
     return bool(rows);
 }
 
+impl PgIdentityStorage._user_exists(user_id: str) -> bool {
+    return bool(
+        self.store.rows(
+            'SELECT 1 FROM identity_users WHERE user_id = :u', {'u': user_id}
+        )
+    );
+}
+
+impl PgIdentityStorage._claim_lookup(value_normalized: str, user_id: str) -> bool {
+    try {
+        rows = self.store.rows(
+            """
+            INSERT INTO identity_lookups (value_normalized, user_id)
+            VALUES (:v, :u)
+            ON CONFLICT (value_normalized) DO UPDATE SET user_id = identity_lookups.user_id
+            WHERE identity_lookups.user_id = EXCLUDED.user_id
+            RETURNING user_id
+            """,
+            {'v': value_normalized, 'u': user_id}
+        );
+    } except Exception as e {
+        if _pg_sqlstate(e) == '23503' {
+            return False;
+        }
+        raise;
+    }
+    if not rows {
+        raise IdentityTakenError();
+    }
+    return True;
+}
+
+impl PgIdentityStorage._append_identity(
+    user_id: str, identity: dict[str, any]
+) -> bool {
+    rows = self.store.rows(
+        """
+        UPDATE identity_users
+        SET doc = jsonb_set(
+            doc,
+            '{identities}',
+            COALESCE(doc->'identities', CAST('[]' AS jsonb))
+                || jsonb_build_array(CAST(:i AS jsonb)),
+            true
+        ) || CAST(:p AS jsonb)
+        WHERE user_id = :u
+          AND NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(COALESCE(doc->'identities', CAST('[]' AS jsonb))) held
+            WHERE held->>'type' = :t AND held->>'value_normalized' = :v
+          )
+        RETURNING user_id
+        """,
+        {
+            'u': user_id,
+            'i': json.dumps(identity, `default=_pg_json_default),
+            'p': json.dumps({'updated_at': datetime.now(UTC).isoformat()}),
+            't': str(identity.get('type') or ''),
+            'v': str(identity.get('value_normalized') or '')
+        }
+    );
+    return bool(rows);
+}
+
 impl PgIdentityStorage.delete_user(user_id: str) -> bool {
-    self.store.rows('DELETE FROM identity_lookups WHERE user_id = :u', {'u': user_id});
-    self.store.rows('DELETE FROM sso_lookups WHERE user_id = :u', {'u': user_id});
     rows = self.store.rows(
         'DELETE FROM identity_users WHERE user_id = :u RETURNING user_id',
         {'u': user_id}
@@ -212,14 +313,8 @@ impl PgIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
 }
 
 impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> bool {
-    rows = self.store.rows(
-        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
-    );
-    if not rows {
-        return False;
-    }
-    try {
-        if identity.get('type') == 'sso' and identity.get('provider') {
+    if identity.get('type') == 'sso' and identity.get('provider') {
+        try {
             self.store.rows(
                 """
                 INSERT INTO sso_lookups (provider, external_id, user_id)
@@ -231,31 +326,28 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
                     'u': user_id
                 }
             );
-        } elif identity.get('value_normalized') {
-            self.store.rows(
-                """
-                INSERT INTO identity_lookups (value_normalized, user_id)
-                VALUES (:v, :u)
-                """,
-                {'v': identity['value_normalized'], 'u': user_id}
-            );
+        } except Exception as e {
+            state = _pg_sqlstate(e);
+            if state == '23505' {
+                raise IdentityTakenError();
+            }
+            if state == '23503' {
+                return False;
+            }
+            raise;
         }
-    } except Exception as e {
-        if _pg_unique_violation(e) {
-            raise IdentityTakenError();
+    } elif identity.get('value_normalized') {
+        if not self._claim_lookup(identity['value_normalized'], user_id) {
+            return False;
         }
-        raise;
     }
-    identities: list[dict[str, any]] = list(
-        _pg_load_doc(rows[0][0]).get('identities') or []
-    );
-    identities.append(identity);
-    patch = {'identities': identities, 'updated_at': datetime.now(UTC).isoformat()};
-    self.store.rows(
-        'UPDATE identity_users SET doc = doc || CAST(:p AS jsonb) WHERE user_id = :u',
-        {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
-    );
-    return True;
+    if self._append_identity(user_id, identity) {
+        return True;
+    }
+    if not self._user_exists(user_id) {
+        return False;
+    }
+    raise IdentityTakenError();
 }
 
 impl PgIdentityStorage._set_identity_verified(
@@ -323,54 +415,63 @@ impl PgIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> bool
 impl PgIdentityStorage._replace_username(
     user_id: str, identity: dict[str, any]
 ) -> bool {
-    rows = self.store.rows(
-        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
-    );
-    if not rows {
+    if not self._claim_lookup(identity['value_normalized'], user_id) {
         return False;
     }
-    identities: list[dict[str, any]] = list(
-        _pg_load_doc(rows[0][0]).get('identities') or []
-    );
-    kept = [
-        i
-        for i in identities
-        if i.get('type') != 'username'
-    ];
-    old_values = [
-        str(i.get('value_normalized') or '')
-        for i in identities
-        if i.get('type') == 'username'
-    ];
-    try {
-        self.store.rows(
-            """
-            INSERT INTO identity_lookups (value_normalized, user_id)
-            VALUES (:v, :u)
-            """,
-            {'v': identity['value_normalized'], 'u': user_id}
-        );
-    } except Exception as e {
-        if _pg_unique_violation(e) {
-            raise IdentityTakenError();
+    rows = self.store.rows(
+        """
+        WITH prev AS (
+            SELECT user_id, doc FROM identity_users WHERE user_id = :u FOR UPDATE
+        ),
+        kept AS (
+            SELECT h.held, h.ord
+            FROM prev,
+                jsonb_array_elements(COALESCE(prev.doc->'identities', CAST('[]' AS jsonb)))
+                    WITH ORDINALITY AS h(held, ord)
+            WHERE COALESCE(h.held->>'type', '') <> 'username'
+        ),
+        old_names AS (
+            SELECT held->>'value_normalized' AS value_normalized
+            FROM prev,
+                jsonb_array_elements(COALESCE(prev.doc->'identities', CAST('[]' AS jsonb))) held
+            WHERE held->>'type' = 'username'
+        ),
+        renamed AS (
+            UPDATE identity_users t
+            SET doc = jsonb_set(
+                prev.doc,
+                '{identities}',
+                jsonb_build_array(CAST(:i AS jsonb)) || COALESCE(
+                    (SELECT jsonb_agg(kept.held ORDER BY kept.ord) FROM kept),
+                    CAST('[]' AS jsonb)
+                ),
+                true
+            ) || CAST(:p AS jsonb)
+            FROM prev
+            WHERE t.user_id = prev.user_id
+            RETURNING t.user_id
+        ),
+        freed AS (
+            DELETE FROM identity_lookups lk
+            USING old_names
+            WHERE lk.user_id = :u
+              AND lk.value_normalized = old_names.value_normalized
+              AND lk.value_normalized <> :v
+              AND lk.value_normalized NOT IN (
+                SELECT kept.held->>'value_normalized' FROM kept
+                WHERE kept.held->>'value_normalized' IS NOT NULL
+              )
+        )
+        SELECT user_id FROM renamed
+        """,
+        {
+            'u': user_id,
+            'v': identity['value_normalized'],
+            'i': json.dumps(identity, `default=_pg_json_default),
+            'p': json.dumps({'updated_at': datetime.now(UTC).isoformat()})
         }
-        raise;
-    }
-    for old in old_values {
-        if old and old != identity['value_normalized'] {
-            self.store.rows(
-                'DELETE FROM identity_lookups WHERE value_normalized = :v AND user_id = :u',
-                {'v': old, 'u': user_id}
-            );
-        }
-    }
-    kept.insert(0, identity);
-    patch = {'identities': kept, 'updated_at': datetime.now(UTC).isoformat()};
-    self.store.rows(
-        'UPDATE identity_users SET doc = doc || CAST(:p AS jsonb) WHERE user_id = :u',
-        {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
     );
-    return True;
+    return bool(rows);
 }
 
 impl PgIdentityStorage._find_sso_link(

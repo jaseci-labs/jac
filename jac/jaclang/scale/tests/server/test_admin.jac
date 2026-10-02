@@ -269,6 +269,14 @@ test "admin delete user" {
             f"/admin/users/{username}", headers={"Authorization": f"Bearer {token}"}
         );
         assert get_resp.status_code == 404;
+
+        recreated = client.post(
+            "/admin/users",
+            json={"username": username, "password": "pass123", "role": "user"},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert recreated.status_code == 201;
+        assert client.login_user(username, "pass123");
     } finally {
         client.close();
     }
