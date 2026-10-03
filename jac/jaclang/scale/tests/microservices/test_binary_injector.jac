@@ -619,6 +619,151 @@ test "bootstrap reuses the image binary only on a checksum match" {
 }
 
 
+def _boot_rig(image_payload: bytes, shipped_payload: bytes) -> dict[str, str] {
+    import subprocess;
+    import from jaclang.scale.injector.pvc_injector { build_pvc_init_container }
+    rig_dir = tempfile.mkdtemp();
+    image_bin = os.path.join(rig_dir, "image-jac");
+    with open(image_bin, "wb") as handle {
+        handle.write(image_payload);
+    }
+    os.chmod(image_bin, 0o755);
+    bundles = os.path.join(rig_dir, "jac-bundles");
+    app = os.path.join(rig_dir, "app");
+    home = os.path.join(rig_dir, "home");
+    os.makedirs(os.path.join(bundles, "bundles", "orders"));
+    os.makedirs(os.path.join(bundles, "toolchain", "orders"));
+    os.makedirs(app);
+    os.makedirs(home);
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+        info = tarfile.TarInfo(name="main.jac");
+        info.size = 5;
+        tar.addfile(info, io.BytesIO(b"pass\n"));
+    }
+    with open(os.path.join(bundles, "bundles", "orders", "aaa.jab"), "wb") as handle {
+        handle.write(buf.getvalue());
+    }
+    with open(
+        os.path.join(bundles, "toolchain", "orders", "bbb.tar.gz"), "wb"
+    ) as handle {
+        handle.write(pack_binary_bytes(shipped_payload));
+    }
+    injector = BinaryInjector();
+    injector._object_key = "bundles/orders/aaa.jab";
+    injector._toolchain_object_key = "toolchain/orders/bbb.tar.gz";
+    injector._pod_binary_sha256 = hashlib.sha256(shipped_payload).hexdigest();
+
+    def localize(script: str) -> str {
+        return script.replace(BUNDLE_MOUNT_PATH, bundles).replace(
+            "/usr/local/bin/jac", image_bin
+        ).replace(
+            "/app", app
+        );
+    }
+
+    unpack = build_pvc_init_container(
+        "img", injector._unpack_bundle_paths(), injector._skip_when_image_binary()
+    )["args"][0];
+    subprocess.run(["sh", "-c", localize(unpack)], check=True);
+    select_cmd = [
+        c
+        for c in build_runtime_install_commands(KubernetesConfig())
+        if "ln -sf" in c
+    ][0];
+    subprocess.run(
+        ["sh", "-c", "mkdir -p \"$HOME/.local/bin\" && " + localize(select_cmd)],
+        check=True,
+        env={** os.environ, "HOME": home}
+    );
+    return {
+        "app": app,
+        "image_bin": image_bin,
+        "pod_jac": os.path.join(home, ".local", "bin", "jac")
+    };
+}
+
+
+test "an image binary that matches the shipped one skips the toolchain unpack" {
+    payload = b"#!/bin/sh\necho jac\n";
+    rig = _boot_rig(payload, payload);
+    assert os.path.isfile(os.path.join(rig["app"], "main.jac"));
+    assert not os.path.exists(os.path.join(rig["app"], TOOLCHAIN_SUBDIR));
+    assert os.path.islink(rig["pod_jac"]);
+    assert os.path.realpath(rig["pod_jac"]) == os.path.realpath(rig["image_bin"]);
+}
+
+
+test "an image binary that differs still gets the shipped toolchain binary" {
+    rig = _boot_rig(b"#!/bin/sh\necho stale\n", b"#!/bin/sh\necho shipped\n");
+    assert os.path.isfile(os.path.join(rig["app"], "main.jac"));
+    assert os.path.isfile(os.path.join(rig["app"], TOOLCHAIN_SUBDIR, "bin", "jac"));
+    assert not os.path.islink(rig["pod_jac"]);
+    with open(rig["pod_jac"], "rb") as handle {
+        assert handle.read() == b"#!/bin/sh\necho shipped\n";
+    }
+}
+
+
+test "without a known binary digest the toolchain is always unpacked" {
+    injector = BinaryInjector();
+    injector._object_key = "bundles/orders/aaa.jab";
+    injector._toolchain_object_key = "toolchain/orders/bbb.tar.gz";
+    assert injector._skip_when_image_binary() == {};
+}
+
+
+# A cold pod used to pip-install every vendored wheel into its empty volume on
+# each wake. The first pod of a bundle now publishes the installed venv and
+# later pods restore it instead of running `jac install` again.
+test "the installed venv is published by the first boot and restored without reinstalling" {
+    import subprocess;
+    import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+        install_with_venv_snapshot
+    }
+    work = tempfile.mkdtemp();
+    bin_dir = os.path.join(work, "bin");
+    os.makedirs(bin_dir);
+    calls = os.path.join(work, "calls");
+    fake_jac = os.path.join(bin_dir, "jac");
+    with open(fake_jac, "w") as handle {
+        handle.write(
+            "#!/bin/sh\n" "echo \"$@\" >> "
+                + calls
+                + "\n"
+                "mkdir -p \"$APP/.jac/venv/lib\" && echo installed > \"$APP/.jac/venv/lib/dep.py\"\n"
+        );
+    }
+    os.chmod(fake_jac, 0o755);
+    snapshot = os.path.join(work, "vol", "venv-cache", "orders", "aaa.tar.gz");
+
+    def boot(app: str) {
+        os.makedirs(app);
+        cmd = install_with_venv_snapshot(snapshot).replace("/app", app);
+        subprocess.run(
+            ["bash", "-c", "set -euo pipefail; " + cmd],
+            check=True,
+            env={** os.environ, "PATH": bin_dir + ":" + os.environ["PATH"], "APP": app}
+        );
+    }
+
+    boot(os.path.join(work, "first"));
+    assert os.path.isfile(snapshot) , "the first boot did not publish its venv";
+    with open(calls) as handle {
+        assert handle.read().split() == ["install"];
+    }
+
+    second = os.path.join(work, "second");
+    boot(second);
+    with open(calls) as handle {
+        assert handle.read().split() == ["install"] , "the second boot reinstalled";
+    }
+    with open(os.path.join(second, ".jac", "venv", "lib", "dep.py")) as handle {
+        assert handle.read().strip() == "installed";
+    }
+}
+
+
 test "pod dep installs are routed to the shared-volume venv" {
     script = str(
         build_bootstrap_init_container(KubernetesConfig(), "jaseci/jaclang:dev")["args"][

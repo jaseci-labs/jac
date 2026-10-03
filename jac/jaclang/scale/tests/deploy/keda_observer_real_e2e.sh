@@ -106,14 +106,18 @@ fi
 # ScaledObject going unready as it is removed, then the Deployment vanishing.
 # Asserting over those would make this fail on how fast a namespace deletes,
 # which is not what the cycle is being judged on. Truncate at the first
-# inactive, and fail loudly if the cycle never got there.
+# inactive that follows an active, and fail loudly if the cycle never got
+# there. A fresh deploy can scale its first pod to zero before the wake
+# request arrives; that earlier inactive is still asserted on but does not
+# end the cycle.
 CYCLE="$(mktemp)"
 if ! grep -qE " -> inactive( |$)" "${TRANSITIONS}"; then
     echo "FAIL: never observed a transition into 'inactive'" >&2
     cat "${TRANSITIONS}" >&2
     exit 1
 fi
-awk '{ print } / -> inactive( |$)/ { exit }' "${TRANSITIONS}" > "${CYCLE}"
+awk '{ print } / -> active( |$)/ { seen = 1 } seen && / -> inactive( |$)/ { exit }' \
+    "${TRANSITIONS}" > "${CYCLE}"
 echo "=== cycle under test (teardown excluded) ==="
 cat "${CYCLE}"
 

@@ -50,6 +50,15 @@ def identity_unresolvable(detail: str) -> JSONResponse {
 def gateway_timeout(service: str) -> JSONResponse {
     return error_response(
         code="GATEWAY_TIMEOUT",
+        message=f"Service '{service}' did not respond in time",
+        status=504,
+        service=service
+    );
+}
+
+def bad_gateway(service: str) -> JSONResponse {
+    return error_response(
+        code="BAD_GATEWAY",
         message=f"Failed to reach service '{service}'",
         status=502,
         service=service

@@ -41,7 +41,7 @@ ENV JAC_CACHE_HOME=/opt/jac/state
 
 COPY ${TARGETARCH}/jac /usr/local/bin/jac
 
-# ca-certificates: jac downloads deps over TLS. git: [dependencies.git] installs.
+# ca-certificates: jac downloads deps over TLS. git: git-sourced [dependencies.pypi] installs.
 # The seed project carries scale intent, so its `jac install` resolves the
 # serve capability closure via jac's own logic. The standalone binary installs
 # into the seed project's .jac/venv (created from the runtime's bundled
@@ -63,7 +63,7 @@ RUN apt-get update \
     && jac --version \
     && ls "${JAC_CACHE_HOME}"/rt/*/.ok \
     && mkdir /tmp/seed \
-    && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main"\n\n[dependencies]\nsetuptools = ">=75"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
+    && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main"\n\n[dependencies.pypi]\nsetuptools = ">=75"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
     && printf 'with entry {}\n' > /tmp/seed/main.jac \
     && rt_lib=$(ls -d "${JAC_CACHE_HOME}"/rt/*/python/lib/python3.*) \
     && "${JAC_CACHE_HOME}"/rt/*/python/bin/python3.* -m venv --without-pip /tmp/seed/.jac/venv \

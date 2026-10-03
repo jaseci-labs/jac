@@ -1,15 +1,16 @@
-def _configure_litellm {
-    import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
-    logging.getLogger("httpx").setLevel(logging.WARNING);
-    if HAS_LITELLM {
-        if not _litellm_config.get("debug", False) {
-            _disable_debugging();
-        }
-        litellm.drop_params = _litellm_config.get("drop_params", True);
-        litellm.include_cost_in_streaming_usage = _litellm_config.get(
-            "include_cost_in_streaming_usage", True
-        );
+def _apply_litellm_config(module: any) {
+    if not _litellm_config.get("debug", False) {
+        _disable_debugging();
     }
+    module.drop_params = _litellm_config.get("drop_params", True);
+    module.include_cost_in_streaming_usage = _litellm_config.get(
+        "include_cost_in_streaming_usage", True
+    );
+}
+
+def _configure_litellm {
+    logging.getLogger("httpx").setLevel(logging.WARNING);
+    when_litellm_loaded(_apply_litellm_config);
 }
 
 
@@ -290,7 +291,7 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
             );
         } elif self.proxy {
             require_optional("openai", "llm");
-            client = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
+            client: any = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
@@ -310,7 +311,7 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     try {
         if self.proxy {
             require_optional("openai", "llm");
-            client = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
+            client: any = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
             response = client.chat.completions.create(stream=True, **params);
         } else {
             require_optional("litellm", "llm");

@@ -349,7 +349,7 @@ Kubernetes uses readiness and liveness probes to decide when a pod is ready to s
 | TOML Key | Default | Description |
 |----------|---------|-------------|
 | `health_check_path` | `"/docs"` | Endpoint probed by both readiness and liveness checks |
-| `readiness_initial_delay` | `10` | Seconds to wait before first readiness check |
+| `readiness_initial_delay` | `0`  | Seconds to wait before first readiness check (the startup probe already gates readiness) |
 | `readiness_period` | `20` | Seconds between readiness checks |
 | `liveness_initial_delay`  | `10` | Seconds to wait before first liveness check |
 | `liveness_period`  | `20` | Seconds between liveness checks |
@@ -628,7 +628,7 @@ Controls the base images used for the application pod and init containers. Overr
 | TOML Key  | Default | Description |
 |----------|---------|-------------|
 | `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). Falls back to `python:3.12-slim` when the registry is unreachable and always on the local-binary channel |
-| `wait_image` | `busybox` | Init container image used for dependency wait checks (Postgres readiness) |
+| `wait_image` | `busybox:1.36` | Init container image used for dependency wait checks (Postgres readiness) |
 
 **To change in `jac.toml`:**
 
