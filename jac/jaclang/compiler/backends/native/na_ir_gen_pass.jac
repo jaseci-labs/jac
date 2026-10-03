@@ -426,6 +426,7 @@ walker NaIRGenPass(CompilerPass) {
         rc_cycles_enabled_gv: object = None,
         rc_debug_gv: object = None,
         rc_alloc_id_gv: object = None,
+        rc_threaded_gv: object = None,
         rc_live_head_gv: object = None,
         rc_ctx_op_gv: object = None,
         rc_ctx_loc_gv: object = None,
@@ -2397,6 +2398,17 @@ walker NaIRGenPass(CompilerPass) {
     def _str_alloc(b: ir.IRBuilder, size: ir.Value, name: str = "s.buf") -> ir.Value;
     def _str_finish(b: ir.IRBuilder, buf: ir.Value, len_val: ir.Value) -> None;
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
+    def _emit_rc_count_update(
+        fn: ir.Function,
+        b: ir.IRBuilder,
+        cnt_ptr: ir.Value,
+        old_cnt: (ir.Value | None),
+        op: str,
+        ordering: str,
+        tag: str
+    ) -> tuple[ir.IRBuilder, ir.Value];
+
+    def _emit_rc_mark_threaded -> None;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
