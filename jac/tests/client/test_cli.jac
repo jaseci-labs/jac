@@ -1137,7 +1137,11 @@ test "vite build injects core deps without prompting" {
     }
 }
 
-test "start dev prepares the client before initialization" {
+"""Boot a created web app with `jac run <mode_flags>` and assert its client is
+compiled before readiness, so no page request is left to build it. With
+`declare_kind` False the `[project] kind` line is removed and the kind has to be
+inferred, as it is for a project that never declared one."""
+def assert_client_prepared_before_ready(mode_flags: list[str], declare_kind: bool) {
     import signal;
     import socket;
     import subprocess;
@@ -1153,6 +1157,12 @@ test "start dev prepares the client before initialization" {
         );
         assert created.returncode == 0 , created.stdout + created.stderr;
         project = Path(temp_dir) / "test-start-dev-client";
+        if not declare_kind {
+            toml_path = project / "jac.toml";
+            declared = toml_path.read_text();
+            assert 'kind = "web-app"' in declared , declared;
+            toml_path.write_text(declared.replace('kind = "web-app"\n', ""));
+        }
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
             sock.bind(("127.0.0.1", 0));
             port = sock.getsockname()[1];
@@ -1160,7 +1170,7 @@ test "start dev prepares the client before initialization" {
         log = Path(temp_dir) / "server.log";
         with log.open("w") as stream {
             process = Popen(
-                [executable, "run", "--dev", "--port", str(port), "main.jac"],
+                [executable, "run", *mode_flags, "--port", str(port), "main.jac"],
                 cwd=project,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
@@ -1206,6 +1216,14 @@ test "start dev prepares the client before initialization" {
             }
         }
     }
+}
+
+test "start dev prepares the client before initialization" {
+    assert_client_prepared_before_ready(["--dev"], True);
+}
+
+test "serve prepares the client of a web app whose kind is inferred" {
+    assert_client_prepared_before_ready(["--serve"], False);
 }
 
 """Test that create_vite_config(build/dev) generate correct files."""
