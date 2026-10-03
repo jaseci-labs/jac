@@ -2617,6 +2617,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
             if type_name is not None {
+                _bound = self._emit_bound_method_closure(
+                    nd, obj_val, type_name, right_name
+                );
+                if _bound is not None {
+                    return _bound;
+                }
                 value = self._read_field_or_refuse(nd, obj_val, right_name, type_name);
 
                 if right_name not in self.struct_field_inline.get(type_name, set()) {
