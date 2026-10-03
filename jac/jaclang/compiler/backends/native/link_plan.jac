@@ -28,6 +28,7 @@ import from jaclang.compiler.backends.native.link_glue {
     ENTRY_SYMBOL,
     GlueSpec,
     GlueUnit,
+    RC_THREADED_SYMBOL,
     REGION_DIED_HOOK,
     SHARED_INIT_SYMBOL,
     STR_NEW_SYMBOL,
@@ -1362,6 +1363,22 @@ def _jit_image_path(plan: LinkPlan) -> (str | None) {
     return os.path.join(str(get_jir_cache_dir()), "jit", h.hexdigest()[:32] + ".bc");
 }
 
+def _has_global(module: ModuleRef, name: str) -> bool {
+    try {
+        module.get_global_variable(name);
+    } except NameError {
+        return False;
+    }
+    return True;
+}
+
+def _mark_host_rc_threaded(engine: ExecutionEngine) {
+    address = int(engine.get_global_value_address(RC_THREADED_SYMBOL));
+    if address {
+        ctypes.c_uint8.from_address(address).value = 1;
+    }
+}
+
 def jit_engine(plan: LinkPlan) -> ExecutionEngine {
     tm = _target_machine(plan, ArtifactKind.JIT);
     registry = plan.prog.native_units();
@@ -1422,10 +1439,14 @@ def jit_engine(plan: LinkPlan) -> ExecutionEngine {
         }
         symbols[symbol] = address;
     }
+    has_rc_flag = _has_global(merged, RC_THREADED_SYMBOL);
     engine = llvm.create_mcjit_compiler(merged, tm);
     assert isinstance(engine, llvm.ExecutionEngine);
     for (symbol, address) in symbols.items() {
         engine.add_global_mapping(merged.get_function(symbol), address);
+    }
+    if has_rc_flag {
+        _mark_host_rc_threaded(engine);
     }
     engine.static_init_symbols = list(plan.init_symbols());
     engine.static_init_chained = {JAC_ENTRY_SYMBOL};
