@@ -236,7 +236,7 @@ test "isolation: the read tier refuses writes at the server" {
 
 test "isolation: a read-tier unit that writes after its snapshot closed opens a writable txn (#9044)" {
     # A unit optimistically on the read tier updates a loaded node's field. The
-    # write is discovered by hashing at flush, so `_dirty` stays empty and the
+    # write is discovered by hashing at flush, with `_dirty` empty so the
     # isolation heuristic still wants the read tier. A concurrent sibling has
     # meanwhile committed the shared store, leaving no open transaction. The
     # flush must open a read-write transaction for the pending write, never a
@@ -256,9 +256,16 @@ test "isolation: a read-tier unit that writes after its snapshot closed opens a 
             loaded = s.get(aid);
             assert loaded is not None;
             _as_any(loaded).archetype.label = 'changed';
-            assert not s._dirty , (
-                'a field write on a loaded anchor is discovered by hashing, not '
-                'by mark_dirty: the guard under test only bites while _dirty is empty'
+            # The guard below only bites while the heuristic still wants the
+            # read tier, which is where a real unit lands when a write leaves
+            # no mark: an in-place mutation of a container field never reaches
+            # __setattr__, so nothing marks it and the flush finds it by
+            # hashing. Dropping the mark pins that precondition itself rather
+            # than the tracking gap that happens to produce it.
+            s._dirty.clear();
+            assert s._txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY , (
+                'the guard under test only bites while the isolation heuristic '
+                'still wants the read tier'
             );
             if _store(s).in_txn() {
                 _store(s).commit();

@@ -39,6 +39,22 @@ def _ctx(td: str) -> ExecutionContext {
 }
 
 
+def _seed(td: str) -> UUID {
+    old = JacRuntime.exec_ctx;
+    ctx = _ctx(td);
+    JacRuntime.exec_ctx = ctx;
+    try {
+        c = WCounter(n=0);
+        root ++> c;
+        ctx.mem.commit();
+        return c.__jac__.id;
+    } finally {
+        JacRuntime.exec_ctx = old;
+        ctx.close();
+    }
+}
+
+
 test "a stored anchor carries a version that advances on write" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
@@ -128,6 +144,77 @@ test "a write over a stale read reports instead of vanishing" {
         } finally {
             JacRuntime.exec_ctx = old;
             ctxa.close();
+        }
+    }
+}
+
+test "a pushed context does not shift a write onto the wrong session" {
+    # End to end over a real store, which the dirty-set tests in
+    # test_context_isolation cannot reach: a misattributed mark only becomes a
+    # stale write-back, a spurious conflict or a lost write once a flush runs.
+    # Both rows share one ambient layout (the caller is global, `bg` is pushed)
+    # and differ only in which session loaded the copy that gets written, so
+    # each pins one direction. For 'bg' the caller must stay clean and its
+    # later commit must be a no-op rather than a write-back of the copy it
+    # holds at the version it read. For 'caller' the pushed session must flush
+    # nothing, or it bumps the version under the caller's real write.
+    for (writer, want) in [('bg', 1), ('caller', 5)] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            cid = _seed(td);
+            caller = _ctx(td);
+            JacRuntime.exec_ctx = caller;
+            try {
+                held = caller.mem.get(cid);
+                assert held is not None , (
+                    f"{writer}: the caller must hold a copy that can go stale"
+                );
+                caller.mem.commit();
+
+                bg = _ctx(td);
+                token = JacRuntime.push_request_context(bg);
+                try {
+                    mine = bg.mem.get(cid);
+                    assert mine is not None , f"{writer}: both sessions hold a copy";
+                    target = mine if writer == 'bg' else held;
+                    _as_any(target).archetype.n = want;
+
+                    (owner, bystander) = (bg.mem, caller.mem)
+                        if writer == 'bg'
+                        else (caller.mem, bg.mem);
+                    assert cid in owner._dirty , (
+                        f"{writer}: the write belongs to the session holding the "
+                        "written copy"
+                    );
+                    assert cid not in bystander._dirty , (
+                        f"{writer}: a session that wrote nothing must flush nothing"
+                    );
+                    bg.mem.commit();
+                } finally {
+                    JacRuntime.reset_request_context(token);
+                    bg.close();
+                }
+
+                # Reads flush what the session was told it owes, so a leaked mark
+                # fails work that only reads, on an anchor it never touched.
+                caller.mem.read_barrier();
+                caller.mem.commit();
+            } finally {
+                JacRuntime.exec_ctx = old;
+                caller.close();
+            }
+            verify = _ctx(td);
+            JacRuntime.exec_ctx = verify;
+            try {
+                got = verify.mem.get(cid);
+                assert got is not None;
+                assert _as_any(got).archetype.n == want , (
+                    f"{writer}: the write must reach the store intact"
+                );
+            } finally {
+                JacRuntime.exec_ctx = old;
+                verify.close();
+            }
         }
     }
 }

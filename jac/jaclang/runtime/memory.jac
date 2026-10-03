@@ -59,6 +59,7 @@ obj Memory {
         aid = anchor.ensure_id();
         with self._lock {
             self.__mem__[aid] = anchor;
+            anchor.bind_memory(self);
             self._dirty[aid] = None;
             self._deleted.discard(aid);
         }

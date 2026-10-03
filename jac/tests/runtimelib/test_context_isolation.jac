@@ -26,25 +26,62 @@ node RequestValue {
 }
 
 test "persistent field writes mark the active request memory dirty" {
+    # A write is charged to the session that holds the anchor, which is not
+    # always the ambient one. The ambient layout is fixed across the rows below
+    # (global is `outer`, pushed is `request`) and only the session that took
+    # the anchor varies, so each row pins one direction an ambient guess gets
+    # wrong: reading the pushed context misattributes the 'ambient' row, and
+    # reading the global one misattributes the 'pushed' row. The 'unrelated'
+    # row holds an owner that neither ambient slot references, which a walk of
+    # the context chain would not reach either.
     import from jaclang.runtime.memory { Memory }
-    original = JacRuntime.exec_ctx;
-    outer = ExecutionContext(_parent=JacRuntime.get_context());
-    outer.mem = Memory();
-    request = ExecutionContext(_parent=outer);
-    request.mem = Memory();
-    JacRuntime.exec_ctx = outer;
-    token = JacRuntime.push_request_context(request);
-    try {
-        item = RequestValue();
-        JacRuntime.save(item);
-        request.mem.commit();
-        item.value = 2;
-        assert item.value == 2;
-        assert item.__jac__.id in request.mem._dirty;
-        assert not outer.mem._dirty;
-    } finally {
-        JacRuntime.reset_request_context(token);
-        JacRuntime.exec_ctx = original;
+    for (label, owner_key) in [
+        ('pushed', 'the pushed session'),
+        ('ambient', 'the global session'),
+        ('unrelated', 'a session nothing ambient references')
+    ] {
+        original = JacRuntime.exec_ctx;
+        outer = ExecutionContext(_parent=JacRuntime.get_context());
+        outer.mem = Memory();
+        request = ExecutionContext(_parent=outer);
+        request.mem = Memory();
+        unrelated = Memory();
+        JacRuntime.exec_ctx = outer;
+        owner = request.mem
+            if label == 'pushed'
+            else (outer.mem if label == 'ambient' else unrelated);
+        bystanders = [
+            m
+            for m in [request.mem, outer.mem, unrelated]
+            if m is not owner
+        ];
+        token = JacRuntime.push_request_context(request);
+        try {
+            item = RequestValue();
+            JacRuntime.save(item);
+            owner.put(item.__jac__);
+            for m in [request.mem, outer.mem, unrelated] {
+                m.commit();
+            }
+            assert item.__jac__.owning_memory() is owner , (
+                f"{label}: an anchor must be bound to {owner_key} that took it"
+            );
+
+            item.value = 2;
+            assert item.value == 2 , f"{label}: the write must land on the object";
+            assert item.__jac__.id in owner._dirty , (
+                f"{label}: the write belongs to {owner_key}, which holds the anchor"
+            );
+            for m in bystanders {
+                assert not m._dirty , (
+                    f"{label}: a session that does not hold the anchor must not "
+                    "be told to write it"
+                );
+            }
+        } finally {
+            JacRuntime.reset_request_context(token);
+            JacRuntime.exec_ctx = original;
+        }
     }
 }
 

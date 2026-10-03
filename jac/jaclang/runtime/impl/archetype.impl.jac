@@ -47,6 +47,19 @@ impl Anchor.own_access -> Permission {
     return perm;
 }
 
+impl Anchor.bind_memory(mem: any) -> None {
+    held = self.__dict__.get('_mem');
+    if held is not None and held() is mem {
+        return;
+    }
+    self.__dict__['_mem'] = weakref.ref(mem);
+}
+
+impl Anchor.owning_memory -> any {
+    held = self.__dict__.get('_mem');
+    return held() if held is not None else None;
+}
+
 impl Anchor.is_populated -> bool {
     return ('archetype' in self.__dict__);
 }

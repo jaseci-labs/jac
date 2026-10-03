@@ -996,6 +996,7 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     }
     self._version_seen[row.id] = row.version;
     self.__mem__[row.id] = anchor;
+    anchor.bind_memory(self);
     self._flushed_hash[row.id] = _persist_hash(anchor);
     anchor.hash = self._flushed_hash[row.id];
     if self._store is not None

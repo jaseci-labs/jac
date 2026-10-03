@@ -115,6 +115,8 @@ obj Anchor {
 
     def ensure_id -> UUID;
     def own_access -> Permission;
+    def bind_memory(mem: any) -> None;
+    def owning_memory -> any;
     def is_populated -> bool;
     def make_stub -> TANCH;
     def populate -> None;
@@ -630,7 +632,9 @@ def _dirty_setattr(self: any, name: str, value: any) -> None {
         return;
     }
     object.__setattr__(self, name, value);
-    md = ctx.mem?.mark_dirty;
+
+    owner = an.owning_memory();
+    md = owner?.mark_dirty;
     if md is not None {
         md(an);
     }
