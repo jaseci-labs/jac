@@ -155,6 +155,7 @@ impl ServeSettings.load(
     host_override = given.get('host');
     host = str(host_override) if host_override else (env_value('HOST') or cfg.host);
 
+    auth_defaults = AuthSettings();
     settings = ServeSettings(
         base_path=base_path,
         host=host,
@@ -234,6 +235,28 @@ impl ServeSettings.load(
             registration_challenge=cfg.auth.registration_challenge,
             registration_attempts_per_hour=cfg.auth.registration_attempts_per_hour,
             registration_challenges_per_10_minutes=cfg.auth.registration_challenges_per_10_minutes,
+            second_factor_issuer=env_value('AUTH_SECOND_FACTOR_ISSUER')
+                or auth_defaults.second_factor_issuer,
+            second_factor_attempts=max(
+                1,
+                env_int(
+                    'AUTH_SECOND_FACTOR_ATTEMPTS', auth_defaults.second_factor_attempts
+                )
+            ),
+            second_factor_lockout_seconds=max(
+                1,
+                env_int(
+                    'AUTH_SECOND_FACTOR_LOCKOUT_SECONDS',
+                    auth_defaults.second_factor_lockout_seconds
+                )
+            ),
+            second_factor_challenge_ttl_seconds=max(
+                30,
+                env_int(
+                    'AUTH_SECOND_FACTOR_CHALLENGE_TTL_SECONDS',
+                    auth_defaults.second_factor_challenge_ttl_seconds
+                )
+            ),
             password_hash_cost=max(
                 10,
                 min(17, env_int('AUTH_PASSWORD_HASH_COST', cfg.auth.password_hash_cost))

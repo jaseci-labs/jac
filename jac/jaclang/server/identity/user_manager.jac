@@ -12,6 +12,8 @@ import from jaclang.server.serving.authcrypt {
     jwt_decode,
     jwt_encode
 }
+import from jaclang.server.identity.assurance { carried_claims }
+import from jaclang.server.identity.second_factor { SecondFactorManager }
 import from jaclang.server.identity.config {
     signing_algorithm,
     signing_secret,
@@ -71,7 +73,13 @@ obj UserManager {
 
     def update_user_fields(user_id: str, fields: dict[str, any]) -> bool;
     def close -> None;
-    def create_jwt_token(user_id: str, include_role: bool = True) -> str;
+    def create_jwt_token(
+        user_id: str,
+        include_role: bool = True,
+        assurance: (dict[str, any] | None) = None
+    ) -> str;
+
+    def second_factors -> SecondFactorManager;
     def validate_jwt_token(token: str) -> str | None;
     def validate_jwt_token_detail(
         token: str | None, check_existence: bool = True

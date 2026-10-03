@@ -6,6 +6,7 @@ import from jaclang.server.identity.registration_challenge {
     issue_challenge,
     consume_challenge
 }
+import from jaclang.server.identity.assurance { token_assurance }
 import from jaclang.server.identity.audit { client_ip, emit as audit }
 import from jaclang.server.identity.auth_models {
     AddIdentityRequest,
@@ -26,7 +27,7 @@ import from jaclang.server.identity.identity_storage {
     primary_username
 }
 import from jaclang.server.identity.user_manager { UserRole }
-import from jaclang.server.middleware { require_user }
+import from jaclang.server.middleware { bearer_token, require_user }
 import from jaclang.server.serving.datatypes { Request }
 import from jaclang.server.serving.endpoint {
     APIParameter,
@@ -203,6 +204,18 @@ def register_auth_endpoints(server: EndpointHost) {
         if users.get_user_role(user_id) == UserRole.SYSTEM.value {
             return fail('UNAUTHORIZED', 'Invalid credentials', 401);
         }
+        if result.get('second_factor_required') {
+            try {
+                return ok(users.second_factors().begin_login(str(user_id)));
+            } except Exception as e {
+                logger.error(f"second factor challenge failed: {e}");
+                return fail(
+                    'SECOND_FACTOR_UNAVAILABLE',
+                    'Sign-in is temporarily unavailable. Please try again.',
+                    503
+                );
+            }
+        }
         result['token'] = users.create_jwt_token(user_id);
         return ok(dict[(str, JsonValue)](result));
     }
@@ -214,7 +227,7 @@ def register_auth_endpoints(server: EndpointHost) {
             request_model=LoginRequest,
             tags=['User APIs'],
             summary='User login',
-            description='Authenticate with an identity (username or email) and password. Returns a JWT.'
+            description='Authenticate with an identity (username or email) and password. Returns a JWT, or a challenge_token to finish at /user/mfa/login when the account has a verified second factor.'
         )
     );
 
@@ -318,7 +331,9 @@ def register_auth_endpoints(server: EndpointHost) {
             }
             return fail(code, result.get('error', 'Username update failed'), status);
         }
-        result['token'] = users.create_jwt_token(str(user_id));
+        result['token'] = users.create_jwt_token(
+            str(user_id), assurance=token_assurance(bearer_token(request))
+        );
         return ok(result);
     }
     server.add_endpoint(
@@ -623,4 +638,9 @@ def register_auth_endpoints(server: EndpointHost) {
             description='Sets a new password after verifying a reset token.'
         )
     );
+
+    import from jaclang.server.endpoints.second_factor {
+        register_second_factor_endpoints
+    }
+    register_second_factor_endpoints(server);
 }
