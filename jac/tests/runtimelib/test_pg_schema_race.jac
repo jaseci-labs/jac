@@ -266,3 +266,29 @@ test "an unrelated sqlstate is still raised" {
         );
     }
 }
+
+
+def _has_anchors(store: PgStore) -> bool {
+    return bool(store.rows("SELECT to_regclass('anchors') IS NOT NULL", {})[0][0]);
+}
+
+
+test "a database recreated under the same name gets its schema again" {
+    with TemporaryDirectory() as td {
+        (rt, info) = _fresh_db(td);
+        first = PgStore(conninfo=info, ensure_cb=rt.ensure);
+        first.ensure_schema_once({});
+        first.close();
+        rt.drop_database(info.database, force=True);
+        second = PgStore(conninfo=rt.ensure(), ensure_cb=rt.ensure);
+        try {
+            second.ensure_schema_once({});
+            assert _has_anchors(second) , (
+                'the schema memo outlived the database it described'
+            );
+        } finally {
+            second.close();
+            rt.drop_database(info.database, force=True);
+        }
+    }
+}

@@ -211,3 +211,6 @@ obj PgStore(Store) {
     def _reap_dead_sessions -> int;
     def _live_blockers -> list[dict[str, any]];
 }
+
+
+def forget_schema(info: ConnInfo) -> None;
