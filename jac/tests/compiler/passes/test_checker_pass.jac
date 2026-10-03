@@ -790,6 +790,57 @@ Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
              ]
          ),
          (
+             "equality_keeps_type",
+             "checker",
+             "checker_equality_keeps_type.jac",
+             6,
+             True,
+             [
+                 (
+                     0,
+                     """
+Cannot return str | NoneType, expected int
+        return v;  # <-- Error: neither str nor None equals 1, so v is not narrowed
+    """
+                 ),
+                 (
+                     1,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: 1 == True, so n is int, not bool
+    """
+                 ),
+                 (
+                     2,
+                     """
+Cannot return float, expected int
+    return f;  # <-- Error: 1.0 == 1, so f is float, not int
+    """
+                 ),
+                 (
+                     3,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: `and` keeps the equality rule
+    """
+                 ),
+                 (
+                     4,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: `not` keeps the equality rule
+    """
+                 ),
+                 (
+                     5,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: `in` compares with ==, so n is int, not bool
+    """
+                 )
+             ]
+         ),
+         (
              "literal_ne_does_not_over_narrow",
              "checker",
              "checker_literal_ne_no_over_narrow.jac",
