@@ -7,6 +7,7 @@ import from jaclang.server.server {
     JacAPIServer,
     JsonValue,
     ServerExtension,
+    target_protocol,
     target_restspec
 }
 import from jaclang.server.serving.datatypes { Request }
@@ -376,9 +377,9 @@ obj WebhookExtension(ServerExtension) {
 
     def register(server: JacAPIServer) {
         needs_keys = False;
-        for walker_name in list(server.get_walkers()) {
-            if server.introspector.walker_protocol(walker_name)
-                != APIProtocol.WEBHOOK {
+        walkers = server.get_walkers();
+        for walker_name in list(walkers) {
+            if target_protocol(walkers[walker_name]) != APIProtocol.WEBHOOK {
                 continue;
             }
             scheme = walker_scheme(server, walker_name);

@@ -11,7 +11,8 @@ import from unittest.mock { MagicMock, patch }
 import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
+import from jaclang.server.server { JacAPIServer, ModuleIntrospector, ServerExtension }
+import from jaclang.runtime.constructs { WalkerArchetype }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -328,6 +329,39 @@ test "api server construction is socket-free and builds a serving app" {
         app = srv.build_app();
         assert isinstance(app, ServingApp);
         assert app.router.all_endpoints() , "built app has no endpoints";
+    }
+}
+
+obj _CountingIntrospector(ModuleIntrospector) {
+    has collects: int = 0;
+
+    def _collect_walkers -> dict[str, type[WalkerArchetype]] {
+        self.collects += 1;
+        return super._collect_walkers();
+    }
+}
+
+"""Looking up the served walkers used to re-resolve every one of them, so route
+registration paid the walker count twice over. A module whose walkers all
+resolved and have not changed is collected once, at load."""
+test "repeated walker lookups do not re-resolve an unchanged module" {
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application }
+    prepared = prepare_application(
+        fixture_abs_path('serve_api.jac'), Jac.get_program(), FIXTURES
+    );
+    module = initialize_application(prepared);
+    with TemporaryDirectory() as tmpdir {
+        Jac.set_base_path(tmpdir);
+        introspector = _CountingIntrospector(module.__name__, tmpdir);
+        introspector.load();
+        assert introspector.collects == 1 , f"load collected {introspector.collects} times";
+        assert introspector.get_walkers() , "the fixture declares served walkers";
+        for _ in range(8) {
+            introspector.get_walkers();
+        }
+        extra = introspector.collects - 1;
+        assert introspector.collects == 1 , f"lookups re-collected {extra} times";
     }
 }
 

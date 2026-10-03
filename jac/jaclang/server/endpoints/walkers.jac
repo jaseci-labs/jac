@@ -24,6 +24,7 @@ import from jaclang.server.serving.sse { sse_frame_stream }
 import from jaclang.server.server {
     JacAPIServer,
     JsonValue,
+    target_protocol,
     target_restspec,
     target_schedule_spec
 }
@@ -217,9 +218,10 @@ def walker_callback(
 
 
 def register_walker_endpoints(server: JacAPIServer) {
-    for walker_name in list(server.get_walkers()) {
-        walker_cls = server.get_walkers()[walker_name];
-        protocol = server.introspector.walker_protocol(walker_name);
+    walkers = server.get_walkers();
+    for walker_name in list(walkers) {
+        walker_cls = walkers[walker_name];
+        protocol = target_protocol(walker_cls);
         if protocol in (APIProtocol.WEBHOOK, APIProtocol.WEBSOCKET) {
             continue;
         }
@@ -375,12 +377,13 @@ def function_callback(
 
 
 def register_function_endpoints(server: JacAPIServer) {
-    for func_name in list(server.get_functions()) {
-        func_obj = server.get_functions()[func_name];
+    functions = server.get_functions();
+    for func_name in list(functions) {
+        func_obj = functions[func_name];
         if target_schedule_spec(func_obj) is not None {
             continue;
         }
-        if server.introspector.function_protocol(func_name) == APIProtocol.WEBSOCKET {
+        if target_protocol(func_obj) == APIProtocol.WEBSOCKET {
             continue;
         }
         restspec: any = target_restspec(func_obj);
