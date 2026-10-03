@@ -1,4 +1,5 @@
 import from jaclang.server.endpoint_contract { check_endpoint_contract }
+import from jaclang.server.exchange { refusal_status, settle_envelope }
 import json;
 import logging;
 import from inspect { isgenerator }
@@ -89,7 +90,11 @@ def _failure(result: dict[str, any], fallback: str) -> TransportResponse {
     return TransportResponse.fail(
         code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
         message=result.get('error', fallback),
-        meta=Meta(extra={'http_status': int(result.get('http_status') or 500)})
+        meta=Meta(
+            extra={
+                'http_status': int(result.get('http_status') or refusal_status() or 500)
+            }
+        )
     );
 }
 
@@ -207,9 +212,12 @@ def walker_callback(
         }
         return remember_response(
             idem,
-            TransportResponse.success(
-                data=result, meta=Meta(extra={'http_status': 200})
-            )
+            settle_envelope(
+                TransportResponse.success(
+                    data=result, meta=Meta(extra={'http_status': 200})
+                )
+            ),
+            committed=True
         );
     }
     return callback;
@@ -365,9 +373,12 @@ def function_callback(
         }
         return remember_response(
             idem,
-            TransportResponse.success(
-                data=result, meta=Meta(extra={'http_status': 200})
-            )
+            settle_envelope(
+                TransportResponse.success(
+                    data=result, meta=Meta(extra={'http_status': 200})
+                )
+            ),
+            committed=True
         );
     }
     return callback;

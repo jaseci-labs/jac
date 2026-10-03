@@ -10,6 +10,7 @@ import from jaclang.data.serializer { Serializer }
 import from jaclang.client.artifact { ClientBundleError, MissingBunError }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
 import from jaclang.runtime.constants { Constants as Con }
+import from jaclang.server.exchange { forget_response_choice }
 import from jaclang.server.net { PORT_RETRY_LIMIT }
 import from jaclang.server.serving.server { ServingServer }
 import type from jaclang.runtime.constructs { Archetype }
@@ -225,6 +226,7 @@ async def _run_function_with_occ(
                 ctx.pending_effects.clear();
                 ctx.read_versions.clear();
                 ctx.diagnostics.clear();
+                forget_response_choice();
                 ro_retries += 1;
                 observe_read_tier_retry(mgr.metrics, rr.unit_key or unit_key or "");
                 if ro_retries <= 2 {
@@ -241,6 +243,7 @@ async def _run_function_with_occ(
                 ctx.read_versions.clear();
 
                 ctx.diagnostics.clear();
+                forget_response_choice();
                 if attempt >= max_attempts {
                     return {
                         'error': wc.message(),
@@ -1154,7 +1157,8 @@ impl JacAPIServer._install_middleware -> None {
     self.add_middleware(
         request_context_middleware(
             base_path_dir=Jac.get_base_path_dir() or self.base_path or None,
-            full_target_path=Jac.get_full_target_path() or self.module_file
+            full_target_path=Jac.get_full_target_path() or self.module_file,
+            public_origin=self.resolved_settings().public_origin
         )
     );
     self.add_middleware(jwt_middleware(self.user_manager));

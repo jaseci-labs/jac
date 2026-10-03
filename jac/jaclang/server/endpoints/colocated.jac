@@ -4,6 +4,7 @@ import os;
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.project.config { get_config }
 import from jaclang.server.endpoints.walkers { idempotency_key, request_caller }
+import from jaclang.server.exchange { refusal_status, settle_envelope }
 import from jaclang.server.outbox { remember_response, replay_cached }
 import from jaclang.server.serving.datatypes { Request, Response }
 import from jaclang.server.serving.endpoint {
@@ -53,19 +54,30 @@ def _fail(code: str, message: str, status: int) -> TransportResponse {
 }
 
 
-def _outcome(result: any, fallback: str) -> TransportResponse {
-    if isinstance(result, dict) and 'error' in result {
+def _unit_failed(result: any) -> bool {
+    return isinstance(result, dict) and 'error' in result;
+}
+
+
+def _outcome(result: any, fallback: str) -> (TransportResponse | Response) {
+    if _unit_failed(result) {
         if result.get('error') == 'User not found' {
             return _fail('UNAUTHORIZED', 'Unauthorized: unknown user', 401);
         }
         return TransportResponse.fail(
             code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
             message=result.get('error', fallback),
-            meta=Meta(extra={'http_status': int(result.get('http_status') or 500)})
+            meta=Meta(
+                extra={
+                    'http_status': int(
+                        result.get('http_status') or refusal_status() or 500
+                    )
+                }
+            )
         );
     }
-    return TransportResponse.success(
-        data=result, meta=Meta(extra={'http_status': 200})
+    return settle_envelope(
+        TransportResponse.success(data=result, meta=Meta(extra={'http_status': 200}))
     );
 }
 
@@ -106,7 +118,11 @@ def _walker_callback(
         result = await server.execution_manager.spawn_walker(
             walker_cls, fields, caller
         );
-        return remember_response(key, _outcome(result, 'Walker execution failed'));
+        return remember_response(
+            key,
+            _outcome(result, 'Walker execution failed'),
+            committed=not _unit_failed(result)
+        );
     }
     return callback;
 }
@@ -145,7 +161,11 @@ def _function_callback(
         result = await server.execution_manager.execute_function(
             func_obj, args, caller
         );
-        return remember_response(key, _outcome(result, 'Function execution failed'));
+        return remember_response(
+            key,
+            _outcome(result, 'Function execution failed'),
+            committed=not _unit_failed(result)
+        );
     }
     return callback;
 }

@@ -2,6 +2,7 @@ import logging;
 import time;
 import from jaclang.runtime.exceptions { MissingAnchorError }
 import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.server.exchange { close_exchange, open_exchange }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 import from jaclang.server.serving.drain { LIVENESS_PATHS }
@@ -53,7 +54,9 @@ def _service_unavailable(detail: str) -> JSONResponse {
 
 
 def request_context_middleware(
-    base_path_dir: (str | None) = None, full_target_path: (str | None) = None
+    base_path_dir: (str | None) = None,
+    full_target_path: (str | None) = None,
+    public_origin: str = ''
 ) -> Callable[..., any] {
     async def _middleware(request: Request, call_next: any) -> Response {
         next_fn: any = call_next;
@@ -75,6 +78,7 @@ def request_context_middleware(
             return _service_unavailable('unable to reach the database');
         }
         req_token = JacRuntime.push_request_context(ctx);
+        exchange_token = open_exchange(request, public_origin);
         user_id = request.state?.user_root_id;
         bind_error: any = None;
         if user_id {
@@ -119,6 +123,7 @@ def request_context_middleware(
             } except Exception as e {
                 logger.warning(f"Failed to close request context: {e}", exc_info=True);
             } finally {
+                close_exchange(exchange_token);
                 JacRuntime.reset_request_context(req_token);
             }
         }
