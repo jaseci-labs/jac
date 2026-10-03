@@ -1,3 +1,5 @@
+import asyncio;
+import calendar;
 import os;
 import json as json_module;
 import logging;
@@ -14,8 +16,16 @@ import from jaclang.server.serving.endpoint {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.admin.service_urls { service_base_url }
+import from jaclang.scale.admin.k8s_ops {
+    core_api,
+    ops_namespace,
+    k8s_available,
+    api_error_detail,
+    unavailable_detail
+}
 
 glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*"),
+     _POD_LOG_TAIL_LINES: int = 5000,
      logger = logging.getLogger(__name__);
 
 
@@ -221,6 +231,161 @@ def _flatten_loki_response(
 }
 
 
+def _use_pod_logs -> bool {
+    """Read pod logs from the Kubernetes API when no Loki is configured.""";
+    if os.getenv("LOKI_URL", "").strip() {
+        return False;
+    }
+    try {
+        logs_cfg = get_scale_config().get_gateway_config().get("logs") or {};
+    } except Exception {
+        logs_cfg = {};
+    }
+    return not bool(logs_cfg.get("enabled", False)) and k8s_available();
+}
+
+
+def _rfc3339_to_ns(stamp: str) -> int {
+    """Convert a kubelet RFC3339Nano UTC timestamp to epoch nanoseconds, 0 if invalid.""";
+    (head, _, frac) = stamp.rstrip("Z").partition(".");
+    try {
+        secs = calendar.timegm(time.strptime(head, "%Y-%m-%dT%H:%M:%S"));
+        return secs * 1_000_000_000 + int((frac + "000000000")[:9]);
+    } except (ValueError, TypeError) {
+        return 0;
+    }
+}
+
+
+def _line_matches(body: str, level: str, search: str, trace_id: str) -> bool {
+    """Apply the LogQL level, trace and search filters to one raw line.""";
+    if level and level.upper() not in body {
+        return False;
+    }
+    if trace_id
+        and f'trace_id":"{trace_id}' not in body
+        and f"[trace={trace_id[:8]}]" not in body {
+        return False;
+    }
+    return not search or search in body;
+}
+
+
+def _pod_log_lines(
+    text: str,
+    labels: dict[str, str],
+    start_ns: int,
+    end_ns: int,
+    level: str,
+    search: str,
+    trace_id: str
+) -> list[dict[str, any]] {
+    """Parse timestamped pod log text into log lines that pass the filters.""";
+    out: list[dict[str, any]] = [];
+    for raw in text.splitlines() {
+        (stamp, _, body) = raw.partition(" ");
+        ts_ns = _rfc3339_to_ns(stamp);
+        if ts_ns
+            and start_ns <= ts_ns <= end_ns
+            and _line_matches(body, level, search, trace_id) {
+            out.append(_parse_log_body(body, labels, str(ts_ns)));
+        }
+    }
+    return out;
+}
+
+
+def _collect_pod_logs(
+    service: str, level: str, search: str, trace_id: str, start_ns: int, end_ns: int
+) -> list[dict[str, any]] {
+    """Read the app pods' recent logs through the Kubernetes API.""";
+    core = core_api();
+    if core is None {
+        raise ConnectionError(unavailable_detail());
+    }
+    ns = ops_namespace();
+    pod_re = re.compile(_service_to_pod_regex(service)) if service else None;
+    since_s = max(1, (time.time_ns() - start_ns) // 1_000_000_000 + 1);
+    try {
+        pods = core.list_namespaced_pod(
+            namespace=ns, label_selector="jac-scale.role"
+        ).items;
+    } except Exception as e {
+        raise ConnectionError(api_error_detail(e));
+    }
+    out: list[dict[str, any]] = [];
+    for pod in (pods or []) {
+        name = pod.metadata.name;
+        if pod_re and not pod_re.fullmatch(name) {
+            continue;
+        }
+        for container in (pod.spec.containers or []) {
+            try {
+                text = core.read_namespaced_pod_log(
+                    name=name,
+                    namespace=ns,
+                    container=container.name,
+                    timestamps=True,
+                    since_seconds=since_s,
+                    tail_lines=_POD_LOG_TAIL_LINES
+                );
+            } except Exception as e {
+                if e?.status == 403 {
+                    raise ConnectionError(api_error_detail(e));
+                }
+                logger.warning(f"pod log read failed for {name}/{container.name}: {e}");
+                continue;
+            }
+            out.extend(
+                _pod_log_lines(
+                    text or "",
+                    {"pod": name, "container": container.name},
+                    start_ns,
+                    end_ns,
+                    level,
+                    search,
+                    trace_id
+                )
+            );
+        }
+    }
+    return out;
+}
+
+
+async def _fetch_log_lines(
+    service: str,
+    level: str,
+    search: str,
+    trace_id: str,
+    start_ns: int,
+    end_ns: int,
+    limit: int,
+    ascending: bool
+) -> tuple[list[dict[str, any]], str] {
+    """Fetch filtered log lines from Loki, or from the pods when Loki is off.""";
+    if _use_pod_logs() {
+        lines = await asyncio.to_thread(
+            _collect_pod_logs, service, level, search, trace_id, start_ns, end_ns
+        );
+        lines.sort(key=lambda (line) { int(line["ts_ns"]); }, reverse=not ascending);
+        return (lines[:limit], "");
+    }
+    logql = _build_logql(_app_namespace(), service, level, search, trace_id);
+    payload = await _loki_request(
+        "/loki/api/v1/query_range",
+        {
+            "query": logql,
+            "limit": str(limit),
+            "start": str(start_ns),
+            "end": str(end_ns),
+            "direction": "forward" if ascending else "backward"
+        }
+    );
+    return (_flatten_loki_response(payload, ascending=ascending), logql);
+}
+
+
 impl JacAPIServerLogs.register_logs_endpoints -> None {
     server = self.server;
     if server is None {
@@ -298,21 +463,13 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         }
 
         namespace = _app_namespace();
-        logql = _build_logql(namespace, service, level, search, trace);
 
         try {
-            payload = await _loki_request(
-                "/loki/api/v1/query_range",
-                {
-                    "query": logql,
-                    "limit": str(limit),
-                    "start": str(start_ns),
-                    "end": str(end_ns),
-                    "direction": "backward"
-                }
+            (lines, logql) = await _fetch_log_lines(
+                service, level, search, trace, start_ns, end_ns, limit, False
             );
         } except ConnectionError as e {
-            logger.warning(f"Loki query failed: {e}");
+            logger.warning(f"Log query failed: {e}");
             return JSONResponse(
                 status_code=502,
                 content={
@@ -321,8 +478,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                 }
             );
         }
-
-        lines = _flatten_loki_response(payload, ascending=False);
 
         next_before = None;
         if len(lines) >= limit and lines {
@@ -368,22 +523,13 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
 
         now_ns = int(time.time() * 1_000_000_000);
         start_ns = now_ns - (24 * 3600 * 1_000_000_000);
-        namespace = _app_namespace();
-        logql = _build_logql(namespace, "", "", "", trace_id);
 
         try {
-            payload = await _loki_request(
-                "/loki/api/v1/query_range",
-                {
-                    "query": logql,
-                    "limit": "500",
-                    "start": str(start_ns),
-                    "end": str(now_ns),
-                    "direction": "forward"
-                }
+            (lines, _) = await _fetch_log_lines(
+                "", "", "", trace_id, start_ns, now_ns, 500, True
             );
         } except ConnectionError as e {
-            logger.warning(f"Loki trace query failed: {e}");
+            logger.warning(f"Log trace query failed: {e}");
             return JSONResponse(
                 status_code=502,
                 content={
@@ -393,7 +539,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             );
         }
 
-        lines = _flatten_loki_response(payload);
         services_touched = sorted(
             {
                 line["service"]

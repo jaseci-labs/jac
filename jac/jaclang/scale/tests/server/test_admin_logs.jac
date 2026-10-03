@@ -4,12 +4,45 @@ handler bodies are integration-tested via the real-cluster e2e
 (scripts/k8s_microservice_real_e2e.sh) since they require a live
 Loki backend."""
 
+import asyncio;
+import os;
+import from types { SimpleNamespace }
+import from unittest.mock { patch, MagicMock }
+import from kubernetes.client.exceptions { ApiException }
+import from jaclang.scale.admin { logs as logs_mod }
 import from jaclang.scale.admin.logs { JacAPIServerLogs }
 import from jaclang.scale.tests.support { RecordingHost }
 
 
 obj LogsHost(JacAPIServerLogs) {
     has server: any = None;
+}
+
+
+obj FakePodApi {
+    has logs_by_pod: dict[str, str];
+
+    def list_namespaced_pod(namespace: str, label_selector: str) -> any {
+        return SimpleNamespace(
+            items=[
+                SimpleNamespace(
+                    metadata=SimpleNamespace(name=name),
+                    spec=SimpleNamespace(containers=[SimpleNamespace(name="app")])
+                ) for name in self.logs_by_pod
+            ]
+        );
+    }
+
+    def read_namespaced_pod_log(
+        name: str,
+        namespace: str,
+        container: str,
+        timestamps: bool,
+        since_seconds: int,
+        tail_lines: int
+    ) -> str {
+        return self.logs_by_pod[name];
+    }
 }
 
 
@@ -157,4 +190,86 @@ test "pod regex drops -deployment- infix in monolith mode" {
     # Underscore-to-hyphen sanity (some users key services with `_`).
     assert _service_to_pod_regex_for_mode("Foo_Bar", True) == "foo-bar-deployment-.*";
     assert _service_to_pod_regex_for_mode("Foo_Bar", False) == "foo-bar-.*";
+}
+
+
+test "logs fall back to pod logs only when Loki is unconfigured and in-cluster" {
+    cases = [
+        ("", False, True, True),
+        ("", True, True, False),
+        ("http://loki:3100", False, True, False),
+        ("", False, False, False)
+    ];
+    for (loki_url, logs_enabled, in_cluster, expected) in cases {
+        cfg = MagicMock();
+        cfg.get_gateway_config.return_value = {"logs": {"enabled": logs_enabled}};
+        with patch.dict(os.environ, {"LOKI_URL": loki_url}), patch.object(
+            logs_mod, "get_scale_config", lambda { cfg; }
+        ), patch.object(logs_mod, "k8s_available", lambda { in_cluster; }) {
+            got = logs_mod._use_pod_logs();
+        }
+        assert got == expected , f"{(loki_url, logs_enabled, in_cluster)} -> {got}";
+    }
+}
+
+
+test "pod log fallback applies the service, level, search, trace and before filters" {
+    api = FakePodApi(
+        logs_by_pod={
+            "gateway-deployment-abc-1": (
+                '2026-10-03T00:00:01.000000001Z {"level":"ERROR","trace_id":"abc12345-0000","msg":"boom"}\n'
+                "2026-10-03T00:00:02Z [trace=abc12345] INFO hello\n"
+            ),
+            "builder-sv-deployment-def-1": "2026-10-03T00:00:03Z INFO built\n"
+        }
+    );
+    second_ns = 1790985602000000000;
+    far = 10 ** 19;
+    cases = [
+        (
+            "",
+            "",
+            "",
+            "",
+            far,
+            10,
+            ["INFO built", "[trace=abc12345] INFO hello", "boom"]
+        ),
+        ("gateway", "", "", "", far, 10, ["[trace=abc12345] INFO hello", "boom"]),
+        ("", "error", "", "", far, 10, ["boom"]),
+        ("", "", "hello", "", far, 10, ["[trace=abc12345] INFO hello"]),
+        ("", "", "", "abc12345-0000", far, 10, ["[trace=abc12345] INFO hello", "boom"]),
+        ("", "", "", "", second_ns, 10, ["[trace=abc12345] INFO hello", "boom"]),
+        ("", "", "", "", far, 1, ["INFO built"])
+    ];
+    with patch.object(logs_mod, "_use_pod_logs", lambda { True; }), patch.object(
+        logs_mod, "_fleet_names", lambda { ["builder-sv"]; }
+    ), patch.object(logs_mod, "core_api", lambda { api; }), patch.object(
+        logs_mod, "ops_namespace", lambda { "ns"; }
+    ) {
+        for (service, level, search, trace, end_ns, limit, expected) in cases {
+            (lines, query) = asyncio.run(
+                logs_mod._fetch_log_lines(
+                    service, level, search, trace, 0, end_ns, limit, False
+                )
+            );
+            msgs = [line["msg"] for line in lines];
+            assert msgs == expected , f"{(service, level, search, trace, end_ns)} -> {msgs}";
+            assert query == "";
+        }
+        assert lines[0]["pod"] == "builder-sv-deployment-def-1";
+        assert lines[0]["ts_ns"] == "1790985603000000000";
+        denied = MagicMock();
+        denied.list_namespaced_pod.side_effect = ApiException(
+            status=403, reason="Forbidden"
+        );
+        with patch.object(logs_mod, "core_api", lambda { denied; }) {
+            try {
+                logs_mod._collect_pod_logs("", "", "", "", 0, far);
+                assert False , "expected ConnectionError on RBAC denial";
+            } except ConnectionError as e {
+                assert "ops_console = true" in str(e);
+            }
+        }
+    }
 }
