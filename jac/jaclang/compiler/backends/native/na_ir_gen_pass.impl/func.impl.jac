@@ -27,7 +27,10 @@ impl NaIRGenPass._apply_ownership_param_attrs(
             arg.add_attribute("noalias");
         }
         if kind in (OwnershipKind.BORROW, OwnershipKind.IMM) {
-            arg.add_attribute("readonly");
+            self.borrow_param_args.setdefault(func.name, set()).add(i + base);
+            if self._gc_mode() == "none" {
+                arg.add_attribute("readonly");
+            }
         }
     }
 }

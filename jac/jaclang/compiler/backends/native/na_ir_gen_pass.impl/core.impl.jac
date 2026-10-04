@@ -282,9 +282,9 @@ impl NaIRGenPass._export_native_iface -> None {
                         else "" for p in decl.signature.get_parameters()
                 ];
             }
+            _borrowed = self.borrow_param_args.get(fn.name, set());
             ex.ownership = [
-                "borrow" if "readonly" in [str(a) for a in arg.attributes] else "own"
-                for arg in fn.args
+                "borrow" if i in _borrowed else "own" for i in range(len(fn.args))
             ];
         }
         spelled = native_unit_spelling(name, mod_path);

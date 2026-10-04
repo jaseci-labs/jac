@@ -244,6 +244,7 @@ walker NaIRGenPass(CompilerPass) {
         _jacval_type: (ir.IdentifiedStructType | None) = None,
         _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
+        borrow_param_args: dict[str, set[int]] = {},
         local_vars: dict[str, ir.Value] = {},
         param_vars: set[str] = set(),
         _unlowered_locals: dict[str, set[str]] = {},

@@ -14,6 +14,11 @@ start (a Python process calls in from any thread), so the host side marks it
 threaded when it loads it: a shared library's `__jac_shared_init` and a JIT
 engine set the flag before any of the code runs. Only a standalone executable,
 whose threads all come from its own spawn sites, starts on the plain path.
+
+A plain store, unlike an atomic RMW, is deleted by LLVM when it writes through
+a `readonly` argument. Retaining a borrowed object writes its count header, so
+borrowed parameters carry `readonly` only in builds without refcounts; with it,
+a view that stored a borrowed list lost its retain and freed the list early.
 """
 
 import ctypes;
@@ -44,10 +49,10 @@ glob FIXTURE = os.path.join(
      MARK_RE = re.compile(r'store atomic i8 1, \S+ @"?__jac_rc_threaded"?'),
      SPAWN_RE = re.compile(r'call i32 @"?pthread_create"?\(');
 
-def _compile_ir(gc_mode: str) -> str {
+def _compile_ir(gc_mode: str, path: str = FIXTURE) -> str {
     prog = JacProgram();
     ir = prog.compile(
-        file_path=FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
+        file_path=path, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     return str(ir.gen.llvm_ir);
@@ -96,6 +101,28 @@ test "single-threaded RC churn computes correctly" {
     assert f(500) == 2 * (500 + 1390);
     assert f(1) == 4;
     assert f(0) == 0;
+}
+
+test "borrowed parameters are readonly only when nothing writes their refcount" {
+    view = os.path.join(
+        TESTS_DIR,
+        "compiler",
+        "backends",
+        "native",
+        "fixtures",
+        "nogc_identity",
+        "view_cursor.jac"
+    );
+    for (gc_mode, readonly) in (("cycles", False), ("rc", False), ("none", True)) {
+        sig = [
+            ln
+            for ln in _compile_ir(gc_mode, view).splitlines()
+            if ln.startswith("define") and re.search(r'\.walk"?\(', ln)
+        ];
+        assert len(sig) == 1 , f"{gc_mode}: walk not found";
+        assert "noalias" in sig[0] , f"{gc_mode}: {sig[0]}";
+        assert ("readonly" in sig[0]) == readonly , f"{gc_mode}: {sig[0]}";
+    }
 }
 
 test "shared string survives concurrent retain/release from flow tasks" {
