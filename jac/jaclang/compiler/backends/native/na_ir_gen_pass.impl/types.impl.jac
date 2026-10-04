@@ -4109,17 +4109,7 @@ impl NaIRGenPass._emit_comparison(
         _lp = self._str_cmp_parts_of(left);
         _rp = self._str_cmp_parts_of(right);
         if _lp is not None and _rp is not None {
-            _sc3 = self._call_str_cmp3(self.builder, _lp[0], _lp[1], _rp[0], _rp[1]);
-            _z32c = ir.Constant(ir.IntType(32), 0);
-            _cmp_op = {
-                Tok.EE: "==",
-                Tok.NE: "!=",
-                Tok.LT: "<",
-                Tok.GT: ">",
-                Tok.LTE: "<=",
-                Tok.GTE: ">="
-            }[op];
-            return self.builder.icmp_signed(_cmp_op, _sc3, _z32c, name="scmp3");
+            return self._emit_str_parts_cmp(op, _lp[0], _lp[1], _rp[0], _rp[1]);
         }
     }
     left = self._str_view(left);
