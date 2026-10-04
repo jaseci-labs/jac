@@ -644,9 +644,16 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
         return name.strip().lower().replace("-", "_").replace(".", "_");
     }
     wanted = norm(str(node_.path[0].value));
+    dotted = node_.dot_path_str;
     for declared in names {
-        if norm(str(declared)) == wanted {
-            return str(declared);
+        name = str(declared);
+        if "/" in name {
+            prefix = name.replace("/", ".");
+            if dotted == prefix or dotted.startswith(prefix + ".") {
+                return name;
+            }
+        } elif norm(name) == wanted {
+            return name;
         }
     }
     return None;

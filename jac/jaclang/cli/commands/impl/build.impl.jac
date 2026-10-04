@@ -55,7 +55,8 @@ def _build_app(
     platform: str | None,
     fat: bool,
     entry_override: str,
-    place: bool
+    place: bool,
+    allow_drop_client: bool = False
 ) -> int {
     import from jaclang.project.kinds { plan_app_run }
 
@@ -166,7 +167,8 @@ def _build_app(
             output=output,
             target=projection,
             fat=fat,
-            app=(app.name if app is not None else "")
+            app=(app.name if app is not None else ""),
+            allow_drop_client=allow_drop_client
         );
     }
     console.error(f"Unknown projection: '{projection}'");
@@ -186,7 +188,8 @@ impl build(
     memory: str = "",
     native_target: str = "",
     debug: bool = False,
-    native_link_mode: str = ""
+    native_link_mode: str = "",
+    allow_drop_client: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
     if native or lib or memory or native_target or debug or native_link_mode {
@@ -262,7 +265,8 @@ impl build(
                 platform,
                 fat,
                 "",
-                True
+                True,
+                allow_drop_client
             );
             if rc != 0 {
                 failed.append(app.name);
@@ -280,6 +284,15 @@ impl build(
         return rc;
     }
     return _build_app(
-        cfg, project_root, app, projection, output, platform, fat, file, False
+        cfg,
+        project_root,
+        app,
+        projection,
+        output,
+        platform,
+        fat,
+        file,
+        False,
+        allow_drop_client
     );
 }

@@ -871,13 +871,12 @@ impl JacCompiler._persist_module_cache(
         } except Exception {}
         import from jaclang.compiler.driver.jir {
             SEC_CTDEPS,
-            ct_deps_section,
+            module_ct_deps_section,
             write_module_cache
         }
-        if result.ct_file_deps {
-            sections[SEC_CTDEPS] = ct_deps_section(
-                result.ct_file_deps, result.ct_body_deps
-            );
+        ct_rows = module_ct_deps_section(result);
+        if ct_rows is not None {
+            sections[SEC_CTDEPS] = ct_rows;
         }
         write_module_cache(full_target, cache_bc, extra_sections=sections);
     } except Exception {}

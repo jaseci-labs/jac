@@ -1,6 +1,7 @@
 import from importlib.machinery { ModuleSpec }
 import os;
 import sys;
+import tomllib;
 import from pathlib { Path }
 import from jaclang.jac0core.ext_registry {
     MODULE_SUFFIXES,
@@ -134,6 +135,116 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
+glob _mounts_by_root: dict[str, tuple[str, str]] = {},
+     _self_mounted: set[str] = set(),
+     MOUNTS_DIR_NAME: str = 'packages';
+
+def is_scoped_package_name(name: str) -> bool {
+    parts = (name or '').split('/');
+    if len(parts) != 2 {
+        return False;
+    }
+    for part in parts {
+        if not part or not part.isascii() or not part[0].isalpha() {
+            return False;
+        }
+        if part != part.lower() {
+            return False;
+        }
+        if not part.replace('_', '').isalnum() {
+            return False;
+        }
+    }
+    return True;
+}
+
+def _ensure_self_mount(mounts: str, name: str, project_root: str) {
+    parts = name.split('/');
+    link = os.path.join(mounts, parts[0], parts[1]);
+    if os.path.lexists(link) {
+        return;
+    }
+    try {
+        os.makedirs(os.path.dirname(link), exist_ok=True);
+        os.symlink(os.path.realpath(project_root), link, target_is_directory=True);
+    } except OSError {
+        return;
+    }
+}
+
+def _mounts_entry(project_root: str) -> tuple[str, str] {
+    if project_root not in _mounts_by_root {
+        mounts = os.path.join(project_root, '.jac', MOUNTS_DIR_NAME);
+        name = '';
+        try {
+            with open(os.path.join(project_root, 'jac.toml'), 'rb') as fh {
+                data = tomllib.load(fh);
+            }
+            build = data.get('build', {});
+            if isinstance(build, dict) and isinstance(build.get('dir'), str) {
+                mounts = os.path.join(project_root, build['dir'], MOUNTS_DIR_NAME);
+            }
+            project = data.get('project', {});
+            if isinstance(project, dict) and isinstance(project.get('name'), str) {
+                name = project['name'];
+            }
+        } except Exception {
+            name = '';
+        }
+        _mounts_by_root[project_root] = (mounts, name);
+    }
+    return _mounts_by_root[project_root];
+}
+
+def project_mounts_dir(project_root: str) -> str {
+    """Where a project mounts its packages, without touching the disk: a
+    caller asking about someone else's package must not mount into it.""";
+    return _mounts_entry(project_root)[0];
+}
+
+def project_mounts(project_root: str) -> (str | None) {
+    (mounts, name) = _mounts_entry(project_root);
+    if project_root not in _self_mounted {
+        _self_mounted.add(project_root);
+        if is_scoped_package_name(name) {
+            _ensure_self_mount(mounts, name, project_root);
+        }
+    }
+    return mounts if os.path.isdir(mounts) else None;
+}
+
+def module_name_in(root_dir: str, path: str) -> (str | None) {
+    try {
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
+    } except ValueError {
+        return None;
+    }
+    if rel.startswith('..') {
+        return None;
+    }
+    stem = '';
+    if rel.endswith('.jac') {
+        stem = rel[:-4];
+    } elif rel.endswith('.py') {
+        stem = rel[:-3];
+    } else {
+        return None;
+    }
+    parts = stem.split(os.sep);
+    if parts and parts[-1] == '__init__' {
+        parts = parts[:-1];
+    }
+    if not parts {
+        return None;
+    }
+    for part in parts {
+        if not part.isidentifier() {
+            return None;
+        }
+    }
+    return '.'.join(parts);
+}
+
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     paths = [];
     if base_path {
@@ -147,6 +258,12 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     project_root = find_jac_project_root(base_path or active_base);
     if project_root {
         paths.append(project_root);
+    }
+    for owner in (project_root, find_jac_project_root(None)) {
+        mounts = project_mounts(owner) if owner else None;
+        if mounts {
+            paths.append(mounts);
+        }
     }
     paths.append(os.getcwd());
     if ('JACPATH' in os.environ) {
