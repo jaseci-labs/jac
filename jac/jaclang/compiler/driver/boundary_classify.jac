@@ -311,6 +311,13 @@ def import_bound_names(nd: uni.Import) -> list[str] {
             );
         }
     }
+    for decl in nd.clib_decls or [] {
+        if isinstance(decl, uni.Archetype) {
+            bound.append(decl.name.value);
+        } elif isinstance(decl, uni.Ability) and decl.name_ref is not None {
+            bound.append(decl.name_ref.sym_name);
+        }
+    }
     return bound;
 }
 

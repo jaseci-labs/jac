@@ -214,7 +214,6 @@ impl NaIRGenPass._emit_runtime_raise(
         self._declare_exception_runtime();
     }
     i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
     func = self.builder.function;
     raise_bb = func.append_basic_block(name=f"raise.{exc_type_name}");
     ok_bb = func.append_basic_block(name=f"ok.{exc_type_name}");
@@ -229,7 +228,6 @@ impl NaIRGenPass._emit_runtime_raise(
             self._emit_rc_release_simple(value, op="read_error");
         }
     }
-    exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
     if msg in self._rt_error_msgs {
         global_str = self._rt_error_msgs[msg];
@@ -246,16 +244,34 @@ impl NaIRGenPass._emit_runtime_raise(
         self._rt_error_msgs[msg] = global_str;
     }
     msg_val = self.builder.bitcast(global_str, i8p, name="rt.msg.cast");
-    if self._slot_lowering_active() {
-        self._codegen_raise_slot(msg_val, exc_type_id, msg_val);
-    } else {
-        self.builder.call(
-            self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id), msg_val]
-        );
-        self.builder.unreachable();
-    }
+    self._emit_raise_value(exc_type_name, msg_val);
 
     self.builder.position_at_end(ok_bb);
+}
+
+impl NaIRGenPass._emit_raise_value(exc_type_name: str, msg_val: ir.Value) -> None {
+    """Raise `exc_type_name` here with a message computed at run time.
+
+    The block ends at the raise, so the caller positions the builder elsewhere
+    before emitting more code.
+    """;
+    if not self._slot_lowering_active() and self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    if msg_val.type != i8p {
+        msg_val = self.builder.bitcast(msg_val, i8p, name="rt.msg.cast");
+    }
+    exc_type_id = self._get_or_register_exc_type(exc_type_name);
+    if self._slot_lowering_active() {
+        self._codegen_raise_slot(msg_val, exc_type_id, msg_val);
+        return;
+    }
+    self.builder.call(
+        self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id), msg_val]
+    );
+    self.builder.unreachable();
 }
 
 impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
