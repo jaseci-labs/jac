@@ -1834,6 +1834,14 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_aos_list_helpers(tname: str) -> ir.Type;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);
     def _coerce_container_element(value: ir.Value, element_type: ir.Type) -> ir.Value;
+    def _emit_list_index_check(
+        index_val: ir.Value,
+        len_val: ir.Value,
+        msg: str,
+        release_on_error: list[ir.Value],
+        tag: str
+    ) -> ir.Value;
+
     def _codegen_index(
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str
     ) -> (ir.Value | None);
