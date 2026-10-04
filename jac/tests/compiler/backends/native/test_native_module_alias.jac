@@ -23,7 +23,11 @@ test "an imported module's private global does not shadow an imported public one
     # The public global keeps its bare symbol; a unit-qualified @X_VALUE here is
     # private_glob_hidden's internal one, which the importer can never link.
     # Local names such as %"glob.X_VALUE" (a load of the public one) don't count.
-    leaked = [ln for ln in ir.splitlines() if re.search(r'@"[^"]+\.X_VALUE"', ln)];
+    leaked = [
+        ln
+        for ln in ir.splitlines()
+        if re.search(r'@"[^"]+\.X_VALUE"', ln)
+    ];
     assert not leaked , "\n".join(leaked);
     probe = get_func(engine, "private_glob_probe", ctypes.c_int64);
     assert probe() == 21;
