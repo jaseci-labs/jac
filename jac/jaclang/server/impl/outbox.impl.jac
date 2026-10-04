@@ -338,11 +338,7 @@ impl _writable_txn(mem: any, store: Store) -> None {
 
 
 impl _derive_worker_store(primary: PgStore) -> PgOutboxStore {
-    side = PgStore(
-        conninfo=primary.conninfo,
-        ensure_cb=primary.ensure_cb,
-        promotions=dict(primary.promotions)
-    );
+    side = primary.new_session();
     derived = PgOutboxStore(store=side);
     derived.ensure_tables();
     return derived;

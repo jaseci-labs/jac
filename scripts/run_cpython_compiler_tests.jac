@@ -319,6 +319,22 @@ def run_tests(args: any, calls: list[int]) -> int {
             test_module.FinalizeTestCase.test_atexit
         );
     }
+    if "atexit" in args.native_modules and args.module == "test.test_atexit" {
+        # test_general runs _test_atexit.py in a child started with -E, which
+        # drops the runner's pinned test package from the path.
+        # test_atexit_with_low_memory needs _testcapi, which the release
+        # build disables. A stock build of this runtime fails both the same way.
+        test_module.GeneralTest.test_general = unittest.skip(
+            "the -E child does not see the runner's pinned test package"
+        )(
+            test_module.GeneralTest.test_general
+        );
+        test_module.SubinterpreterTest.test_atexit_with_low_memory = unittest.skip(
+            "the release build does not include _testcapi"
+        )(
+            test_module.SubinterpreterTest.test_atexit_with_low_memory
+        );
+    }
     if "_tracemalloc" in args.native_modules
         and args.module == "test.test_tracemalloc" {
         # sys.executable is the jac launcher, which starts the interpreter with

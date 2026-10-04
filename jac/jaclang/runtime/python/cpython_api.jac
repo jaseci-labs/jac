@@ -67,42 +67,52 @@ import from c {
         arg0: ptr[PyObject]
     ) -> i32;  def PyIter_Next(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyList_Append(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
-    ) -> i32;  def PyList_GetItem(arg0: ptr[PyObject], arg1: i64) -> ptr[PyObject];  def PyList_GetItemRef(
+    ) -> i32;  def PyList_Clear(self_: ptr[PyObject]) -> i32;  def PyList_GetItem(
         arg0: ptr[PyObject], arg1: i64
-    ) -> ptr[PyObject];  def PyList_New(size: i64) -> ptr[PyObject];  def PyList_Size(
+    ) -> ptr[PyObject];  def PyList_GetItemRef(
+        arg0: ptr[PyObject], arg1: i64
+    ) -> ptr[PyObject];  def PyList_GetSlice(
+        arg0: ptr[PyObject], arg1: i64, arg2: i64
+    ) -> ptr[PyObject];  def PyList_Insert(
+        arg0: ptr[PyObject], arg1: i64, arg2: ptr[PyObject]
+    ) -> i32;  def PyList_New(size: i64) -> ptr[PyObject];  def PyList_SetSlice(
+        arg0: ptr[PyObject], arg1: i64, arg2: i64, arg3: ptr[PyObject]
+    ) -> i32;  def PyList_Size(arg0: ptr[PyObject]) -> i64;  def PyList_Sort(
         arg0: ptr[PyObject]
-    ) -> i64;  def PyList_Sort(arg0: ptr[PyObject]) -> i32;  def PyLong_AsDouble(
+    ) -> i32;  def PyLong_AsDouble(arg0: ptr[PyObject]) -> f64;  def PyLong_AsInt(
         arg0: ptr[PyObject]
-    ) -> f64;  def PyLong_AsInt(arg0: ptr[PyObject]) -> i32;  def PyLong_AsLong(
+    ) -> i32;  def PyLong_AsLong(arg0: ptr[PyObject]) -> i64;  def PyLong_AsLongLong(
         arg0: ptr[PyObject]
-    ) -> i64;  def PyLong_AsLongLong(arg0: ptr[PyObject]) -> i64;  def PyLong_AsSsize_t(
+    ) -> i64;  def PyLong_AsSsize_t(arg0: ptr[PyObject]) -> i64;  def PyLong_AsUnsignedLong(
         arg0: ptr[PyObject]
-    ) -> i64;  def PyLong_AsUnsignedLong(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongLong(
+    ) -> u64;  def PyLong_AsUnsignedLongLong(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongLongMask(
         arg0: ptr[PyObject]
-    ) -> u64;  def PyLong_AsUnsignedLongLongMask(arg0: ptr[PyObject]) -> u64;  def PyLong_AsUnsignedLongMask(
+    ) -> u64;  def PyLong_AsUnsignedLongMask(arg0: ptr[PyObject]) -> u64;  def PyLong_AsVoidPtr(
         arg0: ptr[PyObject]
-    ) -> u64;  def PyLong_AsVoidPtr(arg0: ptr[PyObject]) -> ptr;  def PyLong_FromDouble(
-        arg0: f64
-    ) -> ptr[PyObject];  def PyLong_FromLong(arg0: i64) -> ptr[PyObject];  def PyLong_FromLongLong(
+    ) -> ptr;  def PyLong_FromDouble(arg0: f64) -> ptr[PyObject];  def PyLong_FromLong(
         arg0: i64
-    ) -> ptr[PyObject];  def PyLong_FromSize_t(arg0: u64) -> ptr[PyObject];  def PyLong_FromSsize_t(
-        arg0: i64
-    ) -> ptr[PyObject];  def PyLong_FromUnsignedLong(arg0: u64) -> ptr[PyObject];  def PyLong_FromUnsignedLongLong(
+    ) -> ptr[PyObject];  def PyLong_FromLongLong(arg0: i64) -> ptr[PyObject];  def PyLong_FromSize_t(
         arg0: u64
-    ) -> ptr[PyObject];  def PyLong_FromVoidPtr(arg0: ptr) -> ptr[PyObject];  def PyLong_IsNegative(
-        obj_: ptr[PyObject]
-    ) -> i32;  def PyMapping_Items(o: ptr[PyObject]) -> ptr[PyObject];  def PyMem_Free(
-        ptr_: ptr
-    );  def PyMem_Malloc(size: u64) -> ptr;  def PyMem_RawFree(ptr_: ptr);  def PyMem_RawMalloc(
+    ) -> ptr[PyObject];  def PyLong_FromSsize_t(arg0: i64) -> ptr[PyObject];  def PyLong_FromUnsignedLong(
+        arg0: u64
+    ) -> ptr[PyObject];  def PyLong_FromUnsignedLongLong(arg0: u64) -> ptr[PyObject];  def PyLong_FromVoidPtr(
+        arg0: ptr
+    ) -> ptr[PyObject];  def PyLong_IsNegative(obj_: ptr[PyObject]) -> i32;  def PyMapping_Items(
+        o: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyMem_Free(ptr_: ptr);  def PyMem_Malloc(
         size: u64
-    ) -> ptr;  def PyMem_RawRealloc(ptr_: ptr, new_size: u64) -> ptr;  def PyMem_Realloc(
+    ) -> ptr;  def PyMem_RawFree(ptr_: ptr);  def PyMem_RawMalloc(size: u64) -> ptr;  def PyMem_RawRealloc(
         ptr_: ptr, new_size: u64
-    ) -> ptr;  def PyMemoryView_FromObject(base: ptr[PyObject]) -> ptr[PyObject];  def PyMethod_New(
+    ) -> ptr;  def PyMem_Realloc(ptr_: ptr, new_size: u64) -> ptr;  def PyMemoryView_FromObject(
+        base: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyMethod_New(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> ptr[PyObject];  def PyModule_AddIntConstant(
         arg0: ptr[PyObject], arg1: str, arg2: i64
     ) -> i32;  def PyModule_AddObjectRef(
         mod: ptr[PyObject], name: str, value: ptr[PyObject]
+    ) -> i32;  def PyModule_AddStringConstant(
+        arg0: ptr[PyObject], arg1: str, arg2: str
     ) -> i32;  def PyModule_GetDict(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyNumber_Absolute(
         o: ptr[PyObject]
     ) -> ptr[PyObject];  def PyNumber_Add(
@@ -153,12 +163,16 @@ import from c {
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyNumber_Subtract(
         o1: ptr[PyObject], o2: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyNumber_ToBase(
+        n: ptr[PyObject], base: i32
     ) -> ptr[PyObject];  def PyNumber_TrueDivide(
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyNumber_Xor(
         o1: ptr[PyObject], o2: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_Call(
         callable_: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyObject_CallNoArgs(
+        func: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallOneArg(
         func: ptr[PyObject], arg: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CheckBuffer(obj_: ptr[PyObject]) -> i32;  def PyObject_DelItem(
@@ -221,11 +235,13 @@ import from c {
         arg0: ptr[PyObject], arg1: i64, arg2: i64
     ) -> ptr[PyObject];  def PyTuple_New(size: i64) -> ptr[PyObject];  def PyTuple_Size(
         arg0: ptr[PyObject]
-    ) -> i64;  def PyType_GetModule(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyType_GetSlot(
-        arg0: ptr[PyObject], arg1: i32
-    ) -> ptr;  def PyType_IsSubtype(arg0: ptr[PyObject], arg1: ptr[PyObject]) -> i32;  def PyUnicodeWriter_Discard(
+    ) -> i64;  def PyType_GetDict(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyType_GetModule(
+        arg0: ptr[PyObject]
+    ) -> ptr[PyObject];  def PyType_GetSlot(arg0: ptr[PyObject], arg1: i32) -> ptr;  def PyType_IsSubtype(
+        arg0: ptr[PyObject], arg1: ptr[PyObject]
+    ) -> i32;  def PyUnicodeWriter_Discard(writer: ptr[PyUnicodeWriter]);  def PyUnicodeWriter_Finish(
         writer: ptr[PyUnicodeWriter]
-    );  def PyUnicodeWriter_Finish(writer: ptr[PyUnicodeWriter]) -> ptr[PyObject];  def PyUnicodeWriter_WriteASCII(
+    ) -> ptr[PyObject];  def PyUnicodeWriter_WriteASCII(
         writer: ptr[PyUnicodeWriter], str_: str, size: i64
     ) -> i32;  def PyUnicodeWriter_WriteChar(
         writer: ptr[PyUnicodeWriter], ch: u32
@@ -295,11 +311,17 @@ import from c {
         arg0: Py_complex, arg1: Py_complex
     ) -> Py_complex;  def _Py_c_quot(
         arg0: Py_complex, arg1: Py_complex
-    ) -> Py_complex;  def _Py_strhex_bytes_with_sep(
+    ) -> Py_complex;  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_strhex_bytes_with_sep(
         argbuf: str, arglen: i64, sep: ptr[PyObject], bytes_per_group: i32
     ) -> ptr[PyObject];  def jacpy_ast_kind(handle: ptr[PyObject]) -> i64;  def jacpy_ast_new(
         kind: i64
-    ) -> ptr[PyObject];  def jacpy_audit_pickle_find(
+    ) -> ptr[PyObject];  def jacpy_atexit_call(node_: ptr) -> ptr;  def jacpy_atexit_callbacks(
+        interp: ptr[PyInterpreterState]
+    ) -> ptr[PyObject];  def jacpy_atexit_detach(
+        interp: ptr[PyInterpreterState]
+    ) -> ptr;  def jacpy_atexit_push(
+        interp: ptr[PyInterpreterState], func: ptr, data: ptr
+    ) -> i32;  def jacpy_atexit_release_callbacks(interp: ptr[PyInterpreterState]);  def jacpy_audit_pickle_find(
         module: ptr[PyObject], name: ptr[PyObject]
     ) -> i64;  def jacpy_buffer_acquire(
         value: ptr[PyObject], ascii: i64
@@ -390,7 +412,7 @@ import from c {
         address: ptr, size: i64, little: i64
     ) -> f64;  def jacpy_float_value(handle: ptr[PyObject]) -> f64;  def jacpy_fs_text(
         text: ptr
-    ) -> ptr[PyObject];  def jacpy_hash_unsigned(
+    ) -> ptr[PyObject];  def jacpy_hacl_simd_features -> i64;  def jacpy_hash_unsigned(
         handle: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_insert(
         handle: ptr[PyObject], index: i64, value: ptr[PyObject]
@@ -414,9 +436,17 @@ import from c {
         handle: ptr[PyObject]
     ) -> i64;  def jacpy_is_type(value: ptr[PyObject]) -> i64;  def jacpy_is_unicode(
         a: ptr[PyObject]
-    ) -> i64;  def jacpy_less(left: ptr[PyObject], right: ptr[PyObject]) -> i64;  def jacpy_libm_parts(
-        value: f64, integral: i64
-    ) -> ptr[PyObject];  def jacpy_list_append_owned(
+    ) -> i64;  def jacpy_less(left: ptr[PyObject], right: ptr[PyObject]) -> i64;  def jacpy_libm_cos(
+        value: f64
+    ) -> f64;  def jacpy_libm_exp(value: f64) -> f64;  def jacpy_libm_exp2(
+        value: f64
+    ) -> f64;  def jacpy_libm_fma(x: f64, y: f64, z: f64) -> f64;  def jacpy_libm_log(
+        value: f64
+    ) -> f64;  def jacpy_libm_log10(value: f64) -> f64;  def jacpy_libm_log2(
+        value: f64
+    ) -> f64;  def jacpy_libm_parts(value: f64, integral: i64) -> ptr[PyObject];  def jacpy_libm_sin(
+        value: f64
+    ) -> f64;  def jacpy_libm_tan(value: f64) -> f64;  def jacpy_list_append_owned(
         target: ptr[PyObject], value: ptr[PyObject]
     ) -> i64;  def jacpy_list_delete(
         handle: ptr[PyObject], start: i64, end: i64
@@ -536,7 +566,9 @@ import from c {
         value: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_unicode_size(text: ptr[PyObject]) -> i64;  def jacpy_unicode_split(
         a: ptr[PyObject], sep: ptr[PyObject]
-    ) -> ptr[PyObject];  def jacpy_utf8(handle: ptr[PyObject]) -> ptr[PyObject];  def jacpy_value_kind(
+    ) -> ptr[PyObject];  def jacpy_unraisable(message: str, object_: ptr[PyObject]);  def jacpy_unsigned_converter(
+        value: ptr[PyObject], out: &mut u64, long_long: i64
+    ) -> i64;  def jacpy_utf8(handle: ptr[PyObject]) -> ptr[PyObject];  def jacpy_value_kind(
         handle: ptr[PyObject]
     ) -> i64;  def jacpy_wall_time -> i64;  def jacpy_warn(
         category: str, message: str, stacklevel: i64

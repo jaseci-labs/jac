@@ -481,3 +481,112 @@ test "stored imported function pointers follow ASLR in executables and dylibs" {
         }
     }
 }
+
+
+"""IR whose exported function calls an internal one and an imported one."""
+def local_symbol_ir(triple: str) -> str {
+    return (
+        f'target triple = "{triple}"\n'
+        + 'declare ptr @malloc(i64)\n'
+        + 'define internal ptr @jac_hidden_helper(i64 %n) noinline {\n'
+        + 'entry:\n'
+        + '  %p = call ptr @malloc(i64 %n)\n'
+        + '  ret ptr %p\n'
+        + '}\n'
+        + 'define ptr @jac_visible(i64 %n) {\n'
+        + 'entry:\n'
+        + '  %p = call ptr @jac_hidden_helper(i64 %n)\n'
+        + '  ret ptr %p\n'
+        + '}\n'
+    );
+}
+
+
+"""The symbol table of a linked image: its (name, type, section, value)
+entries, the LC_DYSYMTAB local/extdef/undef ranges and its indirect symbol
+indices."""
+def symbol_table(
+    img: bytes
+) -> tuple[list[tuple[str, int, int, int]], list[int], list[int]] {
+    entries: list[tuple[str, int, int, int]] = [];
+    ranges: list[int] = [];
+    indirect: list[int] = [];
+    off = 32;
+    for _ in range(struct.unpack_from("<I", img, 16)[0]) {
+        (cmd, size) = struct.unpack_from("<II", img, off);
+        if cmd == 0x2 {
+            (symoff, nsyms, stroff, _strsize) = struct.unpack_from(
+                "<IIII", img, off + 8
+            );
+            for i in range(nsyms) {
+                (strx, n_type, n_sect, _desc, value) = struct.unpack_from(
+                    "<IBBhQ", img, symoff + i * 16
+                );
+                end = img.index(b"\x00", stroff + strx);
+                entries.append(
+                    (img[stroff + strx:end].decode(), n_type, n_sect, value)
+                );
+            }
+        } elif cmd == 0xB {
+            ranges = list(struct.unpack_from("<IIIIII", img, off + 8));
+            (ind_off, n_ind) = struct.unpack_from("<II", img, off + 56);
+            indirect = [
+                struct.unpack_from("<I", img, ind_off + i * 4)[0] for i in range(n_ind)
+            ];
+        }
+        off += size;
+    }
+    return (entries, ranges, indirect);
+}
+
+
+test "linked images keep internal functions' names as local symbols" {
+    # Without them a profiler or crash report attributes every internal
+    # function's samples to the nearest exported symbol before it.
+    relobj = emit_large_object(local_symbol_ir(MACHO_TRIPLE), MACHO_TRIPLE);
+    for shared in [False, True] {
+        d = tempfile.mkdtemp();
+        out = os.path.join(d, "probe.dylib" if shared else "probe");
+        ok = MachOLinker.link(
+            objects=[relobj],
+            output_path=out,
+            needed_libs=["/usr/lib/libSystem.B.dylib"],
+            shared=shared,
+            export_symbols=["jac_visible"],
+            soname="probe.dylib" if shared else ""
+        );
+        assert ok , "MachOLinker.link returned False";
+        with open(out, "rb") as f {
+            img = f.read();
+        }
+        (entries, ranges, indirect) = symbol_table(img);
+        (ilocal, nlocal, iextdef, nextdef, iundef, nundef) = ranges;
+        names = [symbol[0] for symbol in entries];
+        assert "_jac_hidden_helper" in names , f"shared={shared}: {names}";
+        helper = entries[names.index("_jac_hidden_helper")];
+        visible = entries[names.index("_jac_visible")];
+        assert helper[1] == 0x0E
+            and helper[2] == visible[2]
+            and helper[3] != 0 , helper;
+        assert visible[1] == 0x0F , visible;
+        # Locals first, then the defined externals, then the undefined ones,
+        # and every indirect entry still names an undefined import.
+        assert (ilocal, iextdef, iundef) == (0, nlocal, nlocal + nextdef) , ranges;
+        assert iundef + nundef == len(entries) , ranges;
+        assert names.index("_jac_hidden_helper")
+            < nlocal
+            <= names.index("_jac_visible");
+        imports = [
+            entries[i][0]
+            for i in indirect
+            if i < 0x80000000
+        ];
+        assert imports
+            and all(
+                iundef <= i < iundef + nundef
+                for i in indirect
+                if i < 0x80000000
+            );
+        assert "_malloc" in imports , imports;
+    }
+}

@@ -55,6 +55,7 @@ obj PlacementSummary {
         native_blocker: str = '',
         native_verdict: str = '',
         native_verdict_code: str = '',
+        native_verdict_deps: list[list[str]] = [],
         jac_deps: list[str] = [],
         has_refs: bool = False,
         elements: list[ElementSummary] = [];
@@ -687,6 +688,7 @@ def summarize_module(
         if pending is not None {
             ps.native_verdict_code = pending[0];
             ps.native_verdict = pending[1];
+            ps.native_verdict_deps = [list(row) for row in pending[2]];
         }
     }
     ps.jac_deps = deps;
@@ -752,13 +754,46 @@ def summary_store(prog: JacProgram) -> dict[str, PlacementSummary] {
     return prog.analysis.placement_summaries;
 }
 
-def note_native_verdict(prog: JacProgram, resolved: str, code: str, detail: str) {
-    prog.analysis.native_verdict_notes[resolved] = (code, detail);
+def note_native_verdict(
+    prog: JacProgram,
+    resolved: str,
+    code: str,
+    detail: str,
+    deps: (list[list[str]] | None) = None
+) {
+    rows = [list(row) for row in (deps or [])];
+    prog.analysis.native_verdict_notes[resolved] = (code, detail, rows);
     cached = prog.analysis.placement_summaries.get(os.path.abspath(resolved));
     if cached is not None {
         cached.native_verdict_code = code;
         cached.native_verdict = detail;
+        cached.native_verdict_deps = rows;
     }
+}
+
+def jac_import_targets(module: uni.Module) -> list[str] {
+    targets: list[str] = [];
+    for imp in module.get_all_sub_nodes(uni.Import) {
+        nodes: list[(uni.ModulePath | uni.ModuleItem)] = [];
+        if imp.from_loc is not None {
+            nodes.append(imp.from_loc);
+        }
+        for item in imp.items {
+            if isinstance(item, (uni.ModulePath, uni.ModuleItem)) {
+                nodes.append(item);
+            }
+        }
+        for nd in nodes {
+            path = _resolve_import_path(nd);
+            if path is not None and path.endswith('.jac') {
+                real = os.path.realpath(path);
+                if real not in targets {
+                    targets.append(real);
+                }
+            }
+        }
+    }
+    return targets;
 }
 
 def record_placement_evidence(prog: JacProgram, mod_path: str, index: int, note: str) {

@@ -133,6 +133,9 @@ glob OPAQUE: list[str] = [
          "PyFloat_Unpack8": {0},
          "PyBytes_DecodeEscape": {0}
      },
+     # `const char *` parameters that read memory the caller holds as a raw
+     # address (a HACL* digest buffer), not a Jac value; they take `ptr`.
+     ADDRESS_PARAMETERS: dict[str, set[int]] = {"_Py_strhex": {0}},
      # Pointer out-parameters the Jac side writes through `&mut`.
      OUT_POINTERS: dict[str, str] = {
          "PyObject **": "&mut ptr[PyObject]",
@@ -256,6 +259,9 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
         if index is None {
             return "ptr[u8]";
         }
+        if index in ADDRESS_PARAMETERS.get(function, set()) {
+            return "ptr";
+        }
         if index in PAYLOAD_PARAMETERS.get(function, set()) or "const" not in ctype {
             return "bytes";
         }
@@ -338,6 +344,9 @@ def helpers -> tuple[
 
 def used_names(functions: dict[str, tuple[str, list[tuple[str, str]]]]) -> set[str] {
     names: set[str] = set();
+    # Functions a JacPython source defines under their C names (the interpreter
+    # hooks of atexit) are provided, not called through a declaration.
+    defined: set[str] = set();
     for tree in SOURCES {
         for path in tree.rglob("*.jac") {
             if path == OUTPUT {
@@ -348,12 +357,18 @@ def used_names(functions: dict[str, tuple[str, list[tuple[str, str]]]]) -> set[s
             text = re.sub(r"(?m)^\s*#.*$", "", text);
             names.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text));
             CALLED.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text));
+            defined.update(
+                re.findall(
+                    r"(?m)^def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text
+                )
+            );
         }
     }
+    CALLED.difference_update(defined);
     return {
         name
         for name in names
-        if name in functions
+        if name in functions and name not in defined
     };
 }
 

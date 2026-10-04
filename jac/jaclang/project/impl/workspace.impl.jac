@@ -173,7 +173,12 @@ impl _build_workspace(
         app.real_entry = _real(app.`entry) if app.`entry else '';
         app.fact_digest = _fact_digest(app, root_dir);
     }
+    namespace = persistence_namespace(
+        doc.get("persistence", {}), str(project.get("name", ""))
+    );
     h = hashlib.sha256();
+    h.update(namespace.encode());
+    h.update(json.dumps(doc.get("persistence", {}), sort_keys=True).encode());
     h.update(
         json.dumps(
             [explicit, default_app, [a.fact_digest for a in apps.values()]],
@@ -187,6 +192,7 @@ impl _build_workspace(
         default_app=default_app,
         explicit=explicit,
         digest=h.hexdigest()[:12],
+        persistence_namespace=namespace,
         base_pins=base_pins,
         base_npm_names=base_npm
     );
@@ -260,4 +266,15 @@ impl _fact_digest(app: AppSpec, ws_root: str) -> str {
 
 impl serving_apps(ws: WorkspaceSpec) -> list[AppSpec] {
     return ws.serving_apps();
+}
+
+impl persistence_namespace(raw: any, project_name: str) -> str {
+    if (not isinstance(raw, dict) or set(raw) - {'namespace'}) {
+        raise ValueError('[persistence] accepts only namespace');
+    }
+    namespace = raw.get('namespace', project_name.strip() or 'main');
+    if not isinstance(namespace, str) or not namespace.strip() {
+        raise ValueError('[persistence] namespace must be a nonempty string');
+    }
+    return namespace;
 }

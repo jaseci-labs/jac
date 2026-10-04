@@ -264,8 +264,7 @@ obj ManifestBuilder {
         client_entry: (str | None) = None,
         dry_run: bool = False,
         _bundle_files_cache: (dict[str, str] | None) = None,
-        _serve_settings_cache: (ServeSettings | None) = None,
-        _minted_secret: str = "";
+        _serve_settings_cache: (ServeSettings | None) = None;
 
     def _gateway_cfg -> dict[str, any] {
         if self.gateway_config is not None {
@@ -382,9 +381,9 @@ obj ManifestBuilder {
             _stage_app,
             release_binary_env,
             remove_stage_root,
-            sanitized_jac_toml,
             source_filter_for
         }
+        import from jaclang.dist.sanitize { sanitized_jac_toml }
         import from jaclang.scale.runtime.context.util { jac_executable }
         client_entry = self._client_entry();
         if client_entry
@@ -749,10 +748,10 @@ obj ManifestBuilder {
         import from pathlib { Path }
         import from jaclang.scale.injector.bundle {
             nested_sanitized_tomls,
-            sanitized_jac_toml,
             source_filter_for,
             unresolved_toml_references
         }
+        import from jaclang.dist.sanitize { sanitized_jac_toml }
         base = Path(self.project_dir);
         self._check_deploy_settings_resolve();
         base_toml = sanitized_jac_toml(base);
@@ -905,7 +904,7 @@ obj ManifestBuilder {
     }
 
     def _signing_secret -> str {
-        import secrets;
+        import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
         configured = str(self.secrets.get("JAC_SERVE_AUTH_SECRET") or "").strip();
         if configured {
             return configured;
@@ -914,10 +913,7 @@ obj ManifestBuilder {
         if from_project {
             return from_project;
         }
-        if not self._minted_secret {
-            self._minted_secret = secrets.token_urlsafe(48);
-        }
-        return self._minted_secret;
+        return PLACEHOLDER_JWT_SECRET;
     }
 
     def _serve_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]] {
