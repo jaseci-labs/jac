@@ -757,6 +757,21 @@ def unit_objects(
     return (objs, exports);
 }
 
+def name_private_functions(merged: ModuleRef) {
+    """Give `private` functions a symbol (`internal` linkage) so the JAC_SYMMAP
+    symbol map names them. Both linkages are module-local, but a private
+    function gets no symbol-table entry, so a profile charged its cost to the
+    preceding named function (the refcount, dict and list helpers showed up
+    under whatever user function the linker placed before them). Only for the
+    merged whole-program module, where names are unique; per-unit objects
+    share helper names across units.""";
+    for fn in merged.functions {
+        if not fn.is_declaration and fn.linkage == llvm.Linkage.private {
+            fn.linkage = llvm.Linkage.internal;
+        }
+    }
+}
+
 def optimize_whole_program(
     plan: LinkPlan, merged: ModuleRef, kind: ArtifactKind, tm: TargetMachine
 ) -> None {
@@ -847,6 +862,10 @@ def plan_objects(
         with open(dump_path, "w") as df {
             df.write(str(merged));
         }
+    }
+    import from jaclang.compiler.driver.compile_options { env_symmap_requested }
+    if env_symmap_requested() {
+        name_private_functions(merged);
     }
     object_bytes = tm.emit_object(merged);
     assert isinstance(object_bytes, bytes);
