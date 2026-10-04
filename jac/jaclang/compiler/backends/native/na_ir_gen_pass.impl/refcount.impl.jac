@@ -2670,9 +2670,7 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
             if not self._nogc_headerless() {
-                val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
-                self._emit_rc_release_typed(val, op="iter_end", loc=loc);
-                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+                self._emit_iter_slot_release(alloca, var_name, loc);
             } elif var_name in self.nogc_owned_str_vars {
                 val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
                 self._nogc_str_free_owned(val);
@@ -2705,14 +2703,38 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
                 _region_handles.append((var_name, alloca));
                 continue;
             }
-            val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
-            self._emit_rc_release_typed(val, op="iter_end", loc=loc);
-            self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            self._emit_iter_slot_release(alloca, var_name, loc);
         }
     }
     for (var_name, alloca) in _region_handles {
         self._emit_region_handle_drop(alloca, var_name);
     }
+}
+
+impl NaIRGenPass._emit_iter_slot_release(
+    alloca: ir.Value, var_name: str, loc: str
+) -> None {
+    val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
+
+    held = val;
+    if self._str_desc_ty is not None and val.type == self._str_desc_ty {
+        held = self.builder.extract_value(val, 0, name=f"iter.root.{var_name}");
+    }
+    func = self.builder.function;
+    rel_bb = func.append_basic_block(name=f"iter.rel.{var_name}");
+    cont_bb = func.append_basic_block(name=f"iter.cont.{var_name}");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "!=", held, ir.Constant(held.type, None), name=f"iter.set.{var_name}"
+        ),
+        rel_bb,
+        cont_bb
+    );
+    self.builder.position_at_end(rel_bb);
+    self._emit_rc_release_typed(val, op="iter_end", loc=loc);
+    self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+    self.builder.branch(cont_bb);
+    self.builder.position_at_end(cont_bb);
 }
 
 impl NaIRGenPass._bind_loop_coll_slot(val: ir.Value) -> (str | None) {

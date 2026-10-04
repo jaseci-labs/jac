@@ -2473,6 +2473,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_loop_iter_cleanup(body_locals: list[str], loc: str = "") -> None;
+    def _emit_iter_slot_release(alloca: ir.Value, var_name: str, loc: str) -> None;
     def _bind_loop_coll_slot(val: ir.Value) -> (str | None);
     def _release_loop_coll_slot(var_name: str, op: str = "", loc: str = "") -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str", raw: bool = False) -> ir.Value;
