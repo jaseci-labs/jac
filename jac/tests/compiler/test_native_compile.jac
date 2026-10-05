@@ -225,3 +225,101 @@ test "a client module importing a virtual Jac module compiles in the kernel" {
         assert_same_products(emitted, expected);
     }
 }
+
+"""The arch file weaves an import into each consumer it wires, attributed to
+the arch file, so the snapshot has to learn the resolutions that woven text
+asks for and not only the arch file's own imports."""
+test "a module wired by the arch file compiles in the kernel" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'arch.jac').write_text(
+            'impl import {\n    edge CoreInternal: core.* --> core.*;\n}\n\n'
+                + 'impl import core {\n    util --> core.svc { Spark }\n}\n'
+        );
+        (base / 'core').mkdir();
+        (base / 'core' / 'util.jac').write_text(
+            'obj Spark {\n    has x: int = 0;\n}\n'
+        );
+        (base / 'core' / 'svc.jac').write_text(
+            'def serve -> int {\n    return Spark(x=1).x;\n}\n'
+        );
+        entry_file = str(base / 'core' / 'svc.jac');
+        expected = host_products(entry_file);
+        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+        arch_file = str(base / 'arch.jac');
+        checked = run_kernel_compile(kernel_json(arch_file), arch_file, None);
+        assert checked.analysis.status == ANALYSIS_OK , checked.analysis.message;
+        assert not checked.analysis.misses , checked.analysis.misses;
+    }
+}
+
+"""The native kernel sees jaclang's own modules only through their interfaces,
+which carry no bodies, so placement must not read an import from one as free
+to pull into client code; the host, which sees the body, keeps it on the
+server."""
+test "a server-side comptime import beside client code stays on the server" {
+    kernel = loaded_kernel();
+    if kernel is None {
+        return;
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(
+            '[project]\nname="kernel-web"\nentry-point="app"\nkind="web-app"\n'
+        );
+        (base / 'app.jac').write_text(
+            'import from jaclang.comptime { fields, get_field }\n\n'
+                + 'def:pub app -> JsxElement {\n    return <div>hi</div>;\n}\n\n'
+                + 'obj Item {\n    has name: str = "", qty: int = 0;\n}\n\n'
+                + 'walker Copy {\n    can go with Root entry {\n'
+                + '        src = Item(name="a", qty=1);\n'
+                + '        out: dict[str, str] = {};\n'
+                + '        comptime for f in fields(Item) {\n'
+                + '            out[f.name] = str(get_field(src, f.name));\n'
+                + '        }\n        report out;\n    }\n}\n'
+        );
+        entry_file = str(base / 'app.jac');
+        expected = host_products(entry_file);
+        outcome = CompileReport.from_json(
+            call_kernel(
+                kernel, COMPILE_ENTRY, kernel_json(entry_file), entry_file, None
+            )
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+    }
+}
+
+"""An import of `urllib.error` loads the empty `urllib/__init__.pyi`, which the
+stub catalog has to carry like any other stub, and an import of a module the
+native stdlib also ships makes the kernel ask about that native module; the
+snapshot has to answer both."""
+test "stdlib packages and native stdlib variants compile in the kernel" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'main.jac').write_text(
+            'import urllib.error;\nimport from pathlib { Path }\n\n'
+                + 'def fetch(name: str) -> str {\n'
+                + '    try {\n        return Path(name).name;\n'
+                + '    } except urllib.error.URLError {\n        return "";\n    }\n}\n'
+        );
+        entry_file = str(base / 'main.jac');
+        expected = host_products(entry_file);
+        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+    }
+}

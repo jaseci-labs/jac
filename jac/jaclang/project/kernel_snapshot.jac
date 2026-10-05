@@ -70,17 +70,11 @@ obj ClosureScan {
             self.seen.add(path);
             self.scan_module(path);
         }
-        edges_scanned: set[str] = set();
-        pending = sorted(self.package_edges);
-        while pending and len(edges_scanned) < SCAN_LIMIT {
-            package_path = pending.pop();
-            if package_path in edges_scanned {
-                continue;
-            }
-            edges_scanned.add(package_path);
+        direct = sorted(self.package_edges);
+        for package_path in direct {
             self.scan_module(package_path);
-            pending.extend(sorted(self.package_edges - edges_scanned));
         }
+        self.package_edges = set(direct);
     }
 
     def scan_module(path: str) {
@@ -111,11 +105,44 @@ obj ClosureScan {
                 continue;
             }
             self.scan_imports(tree);
+            self.learn_arch(tree, source_path);
         }
         try {
-            import from jaclang.compiler.driver.wiring { wiring_for_path }
+            import from jaclang.compiler.driver.wiring {
+                wiring_annex_for,
+                wiring_for_path
+            }
             wiring_for_path(path);
+            annex = wiring_annex_for(path);
+            if annex is not None {
+                (tree, _) = parse(annex.source, annex.path);
+                self.scan_imports(tree);
+            }
         } except Exception {}
+    }
+
+    def learn_arch(tree: uni.Module, path: str) {
+        import from jaclang.compiler.driver.wiring { is_arch_file, wiring_for_path }
+        if not is_arch_file(path) {
+            return;
+        }
+        spec = wiring_for_path(path);
+        if spec is None {
+            return;
+        }
+        names: list[str] = [];
+        for block in tree.get_all_sub_nodes(uni.ImplImport) {
+            if block.scope is not None {
+                names.append(block.scope_prefix);
+            }
+        }
+        for wire in tree.get_all_sub_nodes(uni.ImportWire) {
+            names.append(wire.provider_path);
+            names.extend(consumer.dot_path_str for consumer in wire.consumers);
+        }
+        for name in names {
+            spec.module_file(name);
+        }
     }
 
     def scan_python(path: str) {
@@ -156,6 +183,7 @@ obj ClosureScan {
                 spec = mod_path.dot_path_str;
             }
             self.follow(self.resolved(mod_path, None));
+            self.learn_native_variant(spec, owner);
             self.learn_npm(spec, owner);
             if spec.startswith("@jac/") {
                 virtual_path = learner.jac_virtual_module_path(spec);
@@ -192,6 +220,23 @@ obj ClosureScan {
         return "";
     }
 
+    def learn_native_variant(spec: str, owner: str) {
+        import from jaclang.compiler.frontend.codeinfo {
+            NATIVE_STDLIB_EXTENSIONS,
+            is_bundled_native_module,
+            resolve_native_module
+        }
+        if not spec
+            or spec in NATIVE_STDLIB_EXTENSIONS
+            or not is_bundled_native_module(spec) {
+            return;
+        }
+        (_, full_path) = resolve_native_module(spec, os.path.dirname(owner));
+        if full_path {
+            self.follow(full_path);
+        }
+    }
+
     def learn_npm(spec: str, owner: str) {
         if not spec {
             return;
@@ -213,6 +258,7 @@ obj ClosureScan {
         if not self.in_scope(path) {
             if is_compiler_source_path(path) and not path.endswith(".pyi") {
                 self.package_edges.add(os.path.realpath(path));
+                self.package_inits(path);
             }
             return;
         }
@@ -258,6 +304,23 @@ obj ClosureScan {
             self.learn_path(real);
         }
         self.learn_package_chain(path);
+    }
+
+    def package_inits(path: str) {
+        folder = os.path.dirname(os.path.realpath(path));
+        while is_compiler_source_path(os.path.join(folder, "__init__.jac")) {
+            for name in ("__init__.py", "__init__.jac") {
+                init = os.path.join(folder, name);
+                if init != path and os.path.isfile(init) {
+                    self.package_edges.add(init);
+                }
+            }
+            parent = os.path.dirname(folder);
+            if parent == folder {
+                return;
+            }
+            folder = parent;
+        }
     }
 
     def learn_package_chain(path: str) {
@@ -488,6 +551,7 @@ def snapshot_closure(
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
     import from jaclang.compiler.types.stubcat.locate { catalog_origin }
     catalog_dir = "";
+    host.compiler_for(program).ensure_stub_catalog();
     catalog_active = host.has_active_stub_catalog();
     if catalog_active {
         import from jaclang.jac0core.stubcat_hook { active }
@@ -675,7 +739,6 @@ def kernel_inputs_json(
     options: CompileOptions,
     source: (str | None) = None
 ) -> str {
-    host.compiler_for(program).ensure_stub_catalog();
     inputs = kernel_analysis_inputs(host, program, path, options, source);
     if not options.no_cgen {
         import from jaclang.client.client_surface { injected_virtual_modules }
