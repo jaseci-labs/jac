@@ -13,9 +13,8 @@ import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.runtime.semantic { info_graph_to_json }
 import from jaclang.runtime.surface { SurfaceEntry }
 
-glob CLIENT_RECORD_VERSION: int = 4;
-
-glob DEF_DEP_SEP: str = "\x1f";
+glob CLIENT_RECORD_VERSION: int = 4,
+     DEF_DEP_SEP: str = "\x1f";
 
 obj UnitProducts {
     has path: str,
@@ -343,7 +342,9 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
         jcir=module.gen.jcir or b"",
         ct_file_deps=list(module.ct_file_deps),
         ct_body_deps=list(module.ct_body_deps),
-        ct_def_deps=[path + DEF_DEP_SEP + qualname for (path, qualname) in module.ct_def_deps]
+        ct_def_deps=[
+            path + DEF_DEP_SEP + qualname for (path, qualname) in module.ct_def_deps
+        ]
     );
     if program.mtir_map {
         products.mtir = info_graph_to_json(program.mtir_map);
