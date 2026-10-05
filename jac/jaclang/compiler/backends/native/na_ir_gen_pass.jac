@@ -108,6 +108,7 @@ import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_SIZE,
     LIVE_NODE_TAG_OFF,
     LIVE_NODE_USER_OFF,
+    NATIVE_CONTAINER_CODES,
     NATIVE_COPY_FUNCS,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
@@ -1943,6 +1944,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.Archetype, arch_name: str, block: uni.ModuleCode
     ) -> None;
 
+    def _build_jc_layout -> dict[str, any];
     def _register_one_class_const(
         arch_name: str,
         fname: str,
@@ -1986,6 +1988,12 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] | None);
+    def _jc_reference_schema(
+        ft: ir.Type,
+        layouts: dict[str, tuple[list[int], int]],
+        semantic: TypeBase | None = None
+    ) -> (dict[str, any] | None);
+
     def _codegen_union_member(
         obj_val: ir.Value, field_name: str, nd: uni.AtomTrailer, parts: list[str]
     ) -> (ir.Value | None);

@@ -4834,10 +4834,83 @@ impl NaIRGenPass._emit_class_routed_call(
     return _sr;
 }
 
-impl NaIRGenPass._build_class_layouts -> dict[str, any] {
+impl NaIRGenPass._jc_reference_schema(
+    ft: ir.Type,
+    layouts: dict[str, tuple[list[int], int]],
+    semantic: TypeBase | None = None
+) -> (dict[str, any] | None) {
+    """Combine semantic reference types with the backend's container ABI.""";
+    args = semantic.private.type_args or [] if isinstance(semantic, ClassType) else [];
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    semantic_name = (class_type_native_name(semantic) or "")
+        if isinstance(semantic, ClassType)
+        else "";
+    if not isinstance(ft, ir.PointerType) {
+        return None;
+    }
+    if isinstance(ft.pointee, ir.IntType) and ft.pointee.width == 8 {
+        if semantic_name in self.struct_field_indices {
+            return {"code": "obj", "class": semantic_name};
+        }
+        return {"code": "str"} if semantic_name == "str" else None;
+    }
+    name = getattr(ft.pointee, "name", "") or "";
+    if name in self.struct_field_indices {
+        return {"code": "obj", "class": name};
+    }
+    layout = self.container_layouts.get(name);
+    if layout is None {
+        return None;
+    }
+    data_fields = layout["data_fields"];
+    (offsets, _) = layouts[name];
+    if layout["kind"] == "dense" and len(data_fields) == 1 {
+        child = self._jc_reference_schema(
+            data_fields[0][1], layouts, args[0] if args else None
+        );
+        if child is not None {
+            return {
+                "code": "list",
+                "element": child,
+                "data_offset": offsets[data_fields[0][0]]
+            };
+        }
+    } elif layout["kind"] == "hash" and len(data_fields) == 2 {
+        key = self._jc_reference_schema(
+            data_fields[0][1], layouts, args[0] if args else None
+        );
+        child = self._jc_reference_schema(
+            data_fields[1][1], layouts, args[1] if len(args) > 1 else None
+        );
+        if key is not None and key["code"] == "str" and child is not None {
+            return {
+                "code": "dict",
+                "element": child,
+                "key_offset": offsets[data_fields[0][0]],
+                "data_offset": offsets[data_fields[1][0]],
+                "order_offset": offsets[layout["order_idx"]]
+            };
+        }
+    } elif layout["kind"] == "hash" and len(data_fields) == 1 {
+        child = self._jc_reference_schema(
+            data_fields[0][1], layouts, args[0] if args else None
+        );
+        if child is not None {
+            return {
+                "code": "set",
+                "element": child,
+                "key_offset": offsets[data_fields[0][0]],
+                "order_offset": offsets[layout["order_idx"]]
+            };
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._build_jc_layout -> dict[str, any] {
     import from jaclang.compiler.backends.native.abi { struct_layouts }
     layouts = struct_layouts(self.llvm_module);
-    classes: dict[str, any] = {};
+    out: dict[str, any] = {"classes": {}};
     _model = self.module.gen.native_osp_model;
     _tags = _model.tags if _model is not None else {};
     _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
@@ -4854,14 +4927,108 @@ impl NaIRGenPass._build_class_layouts -> dict[str, any] {
             continue;
         }
         (offsets, total) = layouts[arch_name];
-        fields: dict[str, dict[str, int]] = {};
-        for (fname, fidx) in self.struct_field_indices.get(arch_name, {}).items() {
-            if fidx < len(offsets) {
-                fields[fname] = {"index": fidx, "offset": offsets[fidx]};
+        idx_map = self.struct_field_indices.get(arch_name, {});
+        ftypes = self.struct_field_types.get(arch_name, {});
+        enum_map = self.struct_field_enum_type.get(arch_name, {});
+        arch_layout = self._arch_layout(arch_name);
+        semantic_fields = {f.name: f.semantic_type for f in arch_layout.fields}
+            if arch_layout is not None
+            else {};
+        fields: dict[str, dict[str, any]] = {};
+        for (fname, fidx) in idx_map.items() {
+            if fidx >= len(offsets) {
+                continue;
+            }
+            ft = ftypes.get(fname);
+            code = "opaque";
+            aux = "";
+            schema: (dict[str, any] | None) = None;
+            if fname in self.struct_field_foreign.get(arch_name, set()) {
+                code = "opaque";
+            } elif fname in enum_map {
+                code = "enum";
+                aux = enum_map[fname];
+            } elif fname in self.struct_field_erased_tv.get(arch_name, {}) {
+                code = "obj";
+            } elif (
+                isinstance(ft, ir.PointerType)
+                and isinstance(ft.pointee, ir.IntType)
+                and ft.pointee.width == 8
+            ) {
+                reference = self._jc_reference_schema(
+                    ft, layouts, semantic_fields.get(fname)
+                );
+                if reference is not None {
+                    code = reference["code"];
+                    aux = reference.get("class", "");
+                }
+            } elif getattr(ft, "name", "") == "JacVal" {
+                code = "union";
+            } elif (
+                isinstance(ft, ir.BaseStructType)
+                and ft.elements is not None
+                and len(ft.elements) == 2
+                and isinstance(ft.elements[0], ir.IntType)
+                and isinstance(ft.elements[1], ir.PointerType)
+            ) {
+                code = "optref";
+                _opn = getattr(ft.elements[1].pointee, "name", "") or "";
+                aux = _opn;
+                schema = self._jc_reference_schema(
+                    ft.elements[1],
+                    layouts,
+                    _jc_optional_payload(semantic_fields.get(fname))
+                );
+            } elif isinstance(ft, ir.IntType) {
+                code = "bool" if ft.width == 1 else "int";
+            } elif isinstance(ft, ir.DoubleType) {
+                code = "float";
+            } elif isinstance(ft, ir.PointerType) {
+                _pn = getattr(ft.pointee, "name", "") or "";
+                _is_list = False;
+                for (_, _lt) in self.list_types.items() {
+                    if ft == _lt.as_pointer() {
+                        _is_list = True;
+                        break;
+                    }
+                }
+                if _is_list {
+                    code = "natlist";
+                    aux = _pn;
+                    schema = self._jc_reference_schema(
+                        ft, layouts, semantic_fields.get(fname)
+                    );
+                } elif _pn in self.struct_field_indices {
+                    code = "obj";
+                    aux = _pn;
+                } elif _pn == "jac.str" or _pn.endswith(".str") or _pn == "str" {
+                    code = "str";
+                } else {
+                    code = "ptr";
+                    aux = _pn;
+                    schema = self._jc_reference_schema(
+                        ft, layouts, semantic_fields.get(fname)
+                    );
+                    if schema is not None
+                        and schema["code"] in NATIVE_CONTAINER_CODES {
+                        code = NATIVE_CONTAINER_CODES[schema["code"]];
+                    } else {
+                        schema = None;
+                    }
+                }
+            }
+            fields[fname] = {
+                "index": fidx,
+                "offset": offsets[fidx],
+                "code": code,
+                "aux": aux
+            };
+            if schema is not None {
+                fields[fname]["schema"] = schema;
             }
         }
         _lay_tag_idx = self.osp_type_tag_field.get(arch_name);
-        classes[arch_name] = {
+        out["classes"][arch_name] = {
             "size": total,
             "tag": _tags.get(arch_name, 0),
             "tag_offset": offsets[_lay_tag_idx]
@@ -4869,8 +5036,9 @@ impl NaIRGenPass._build_class_layouts -> dict[str, any] {
                 else -1,
             "fields": fields,
             "bases": list(self._mro_of(arch_name)),
-            "vtable": list(self.vtable_layouts.get(arch_name) or [])
+            "vtable": list(self.vtable_layouts.get(arch_name) or []),
+            "is_node": "_role_shapes" in fields
         };
     }
-    return classes;
+    return out;
 }

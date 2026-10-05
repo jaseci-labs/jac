@@ -64,6 +64,8 @@ obj FieldLayout {
         owner: str = "",
         is_func_ptr: bool = False,
         decl_node: (HasVar | TypeParam | None) = None;
+
+    has semantic_type: TypeBase | None { getter; }
 }
 
 obj MethodSlot {

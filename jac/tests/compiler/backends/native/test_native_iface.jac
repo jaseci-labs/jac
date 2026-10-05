@@ -91,6 +91,36 @@ test "the record round-trips through its bytes with a stable digest" {
     assert back.classes["Point"].to_dict() == iface.classes["Point"].to_dict();
 }
 
+test "cached interfaces preserve nested container schemas for materialization" {
+    schema: dict[str, any] = {
+        "code": "dict",
+        "key_offset": 16,
+        "data_offset": 24,
+        "order_offset": 32,
+        "element": {
+            "code": "list",
+            "data_offset": 16,
+            "element": {"code": "obj", "class": "Symbol"}
+        }
+    };
+    slot = NativeFieldSlot.from_dict(
+        {"index": 0, "offset": 8, "code": "natdict", "schema": schema}
+    );
+    iface = NativeIface(
+        module="scope",
+        classes={"Scope": NativeClassLayout(name="Scope", fields={"names": slot})}
+    );
+    back = NativeIface.from_bytes(iface.to_bytes());
+    assert back is not None;
+    assert back.digest() == iface.digest();
+    layouts = merge_class_layouts([back]);
+    assert layouts["Scope"]["fields"]["names"]["schema"] == schema;
+    restored = back.classes["Scope"].fields["names"].schema;
+    assert restored is not None;
+    restored.data_offset += 8;
+    assert back.digest() != iface.digest();
+}
+
 test "a body edit keeps the digest; an export change moves it" {
     src = (Path(FIXTURES) / "base.jac").read_text();
     scratch = tempfile.mkdtemp(prefix="jac-niface-");
@@ -139,7 +169,7 @@ test "the section in the module JIR carries the stamp of its compile" {
 test "merged layouts refuse a class two units lay out differently" {
     a = NativeIface(module="a", prefix="a");
     b = NativeIface(module="b", prefix="b");
-    slot = NativeFieldSlot(index=0, offset=0);
+    slot = NativeFieldSlot(index=0, offset=0, code="int");
     a.classes["P"] = NativeClassLayout(name="P", size=8, fields={"x": slot});
     b.classes["P"] = NativeClassLayout(name="P", size=8, fields={"x": slot});
     merged = merge_class_layouts([a, b]);
