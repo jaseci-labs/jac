@@ -34,7 +34,31 @@ def _dangling_edge_stub -> any {
 }
 
 
-test "collect_node_connections skips an unresolvable edge instead of raising" {
+def _ctx(td: str) -> ExecutionContext {
+    return ExecutionContext(
+        base_path_dir=td, full_target_path=str(Path(td) / "graph_app.jac")
+    );
+}
+
+
+"""Run `body` against a store of its own. A test that reads the ambient
+context inherits whatever the previous file in its worker left there, and a
+context whose database is gone answers a read with an error."""
+def _in_own_store(body: any) {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            body();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+def _dangling_edge_is_skipped {
     root_arch: any = Root();
     ranch: any = root_arch.__jac__;
     ranch.edges.append(_dangling_edge_stub());
@@ -48,7 +72,7 @@ test "collect_node_connections skips an unresolvable edge instead of raising" {
     assert len(connections) == 0;
 }
 
-test "collect_node_connections still returns the resolvable part of the graph" {
+def _healthy_edge_survives {
     root_arch: any = Root();
     other_arch: any = Root();
     ranch: any = root_arch.__jac__;
@@ -74,13 +98,13 @@ test "collect_node_connections still returns the resolvable part of the graph" {
     assert other_arch in visited;
 }
 
-
-def _ctx(td: str) -> ExecutionContext {
-    return ExecutionContext(
-        base_path_dir=td, full_target_path=str(Path(td) / "graph_app.jac")
-    );
+test "collect_node_connections skips an unresolvable edge instead of raising" {
+    _in_own_store(_dangling_edge_is_skipped);
 }
 
+test "collect_node_connections still returns the resolvable part of the graph" {
+    _in_own_store(_healthy_edge_survives);
+}
 
 def _mk_root(mem: any) -> any {
     anch: any = Root().__jac__;

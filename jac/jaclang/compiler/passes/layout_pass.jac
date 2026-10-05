@@ -13,6 +13,7 @@ import from jaclang.compiler.frontend.unitree {
     Expr,
     FuncCall,
     FuncSignature,
+    GlobalVars,
     HasVar,
     Import,
     IndexSlice,
@@ -21,6 +22,7 @@ import from jaclang.compiler.frontend.unitree {
     ModuleItem,
     Name,
     Null,
+    ParamVar,
     Token,
     TupleVal,
     TypeParam,
@@ -755,6 +757,7 @@ walker LayoutPass(CompilerPass) {
     def postinit -> None;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
+    def _type_declaration_surface(module: Module) -> None;
     def _collect_archetypes(module: Module) -> dict[str, Archetype];
     def _collect_isinstance_targets(module: Module) -> None;
     def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;

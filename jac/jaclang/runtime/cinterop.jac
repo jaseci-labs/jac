@@ -615,9 +615,27 @@ class CFunction {
     }
 }
 
+class _LazyLibrary {
+    def init(self: _LazyLibrary, desc: dict[str, any], module_file: str) {
+        self._desc = desc;
+        self._module_file = module_file;
+        self._lib = None;
+    }
+
+    def __getattr__(self: _LazyLibrary, name: str) -> any {
+        if name.startswith("_") {
+            raise AttributeError(name);
+        }
+        if self._lib is None {
+            self._lib = _load_library(self._desc, self._module_file);
+        }
+        return getattr(self._lib, name);
+    }
+}
+
 def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     desc = json.loads(desc_json);
-    lib = _load_library(desc["lib"], scope.get("__file__") or "");
+    lib = _LazyLibrary(desc["lib"], scope.get("__file__") or "");
     local: dict[str, any] = {};
     lookup = _ChainScope(local, scope);
     for name in desc.get("opaque", []) {

@@ -15,7 +15,8 @@ import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 obj NativeVerdict {
     has demoted: bool = False,
         code: str = "",
-        detail: str = "";
+        detail: str = "",
+        deps: list[list[str]] = [];
 }
 
 obj CheckSettings {
@@ -69,7 +70,10 @@ obj ProjectFacts {
     has project_root: str,
         check: CheckSettings,
         arch_closed: list[str] = [],
-        client_framework: str = "react";
+        client_framework: str = "react",
+        package_name: str = "",
+        package_exports: list[str] = [],
+        package_mounts: str = "";
 }
 
 obj HostServices {

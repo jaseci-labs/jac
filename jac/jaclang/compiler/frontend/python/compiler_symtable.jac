@@ -1,3 +1,4 @@
+import from jaclang.runtime.python.cpython_api { _PyST_GetScope, _Py_Mangle }
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
 
 # Symbol table for the P4 front track (INTEGRATION_PLAN Phase 5).

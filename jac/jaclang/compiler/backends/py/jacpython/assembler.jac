@@ -27,7 +27,6 @@ import from jaclang.compiler.backends.py.jacpython.flowgraph {
     flatten_blocks
 }
 
-
 glob CONTINUATION_BIT: int = 64;
 
 def append_except_varint(out: list[int], value: int, first_msb: int) {

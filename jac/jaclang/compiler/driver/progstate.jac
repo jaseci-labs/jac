@@ -320,7 +320,7 @@ class AnalysisCaches {
     has placement_summaries: dict[str, PlacementSummary],
         placement_work: (PlacementWork | None),
         placement_evidence: dict[str, list[str]],
-        native_verdict_notes: dict[str, tuple[str, str]],
+        native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         pass_runs: dict[str, int],
@@ -336,7 +336,7 @@ class AnalysisCaches {
         self.placement_summaries: dict[str, PlacementSummary] = {};
         self.placement_work: (PlacementWork | None) = None;
         self.placement_evidence: dict[str, list[str]] = {};
-        self.native_verdict_notes: dict[str, tuple[str, str]] = {};
+        self.native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.pass_runs: dict[str, int] = {};

@@ -6,6 +6,7 @@ import logging;
 import math;
 import os;
 import from jaclang.runtime.builtin { ScheduleTrigger }
+import from jaclang.server.serving.drain { DrainState }
 
 glob _scheduler_instance: (Scheduler | None) = None,
      logger = logging.getLogger(__name__),
@@ -74,7 +75,11 @@ obj Scheduler {
         _done_event: (threading.Event | None) = None,
         claim: (Callable[[str, int], bool] | None) = None,
         namespace: str = "",
-        _failing_claims: set[str] = set();
+        _failing_claims: set[str] = set(),
+        drain: (DrainState | None) = None,
+        _in_flight: dict[int, tuple[str, threading.Thread]] = {},
+        _flight_lock: threading.Lock = threading.Lock(),
+        _overlapping: set[str] = set();
 
     static def instance -> Scheduler;
     def register(
@@ -84,7 +89,10 @@ obj Scheduler {
     def start -> None;
     def start_if_pending -> None;
     def _may_fire(task: ScheduledTask, due: datetime.datetime) -> bool;
-    def stop -> None;
+    def _still_running(task: ScheduledTask) -> bool;
+    def _launch(task: ScheduledTask) -> None;
+    def _run_tracked(task: ScheduledTask) -> None;
+    def stop(timeout: (float | None) = None) -> None;
     def `wait -> None;
     def has_pending -> bool;
     def _run_loop -> None;

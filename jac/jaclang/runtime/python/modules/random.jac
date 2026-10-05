@@ -4,34 +4,37 @@ Derived from CPython's _randommodule and the MT2002 algorithm by Makoto
 Matsumoto and Takuji Nishimura. See the Mersenne Twister notice in
 ../LICENSE.cpython. No host random implementation is called.
 """
-import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_int,
-    object_error,
-    jacpy_is_long,
-    jacpy_long_absolute,
-    jacpy_hash_unsigned,
-    jacpy_long_bits,
-    jacpy_long_bytes,
-    jacpy_long_from_bytes,
-    jacpy_unsigned_long,
-    jacpy_integer_value,
-    jacpy_entropy,
-    jacpy_clear_error,
-    jacpy_error_pending,
-    jacpy_wall_time,
-    jacpy_monotonic_time,
-    jacpy_process_id,
-    jacpy_is_tuple,
-    jacpy_tuple_size,
-    jacpy_tuple_new,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned,
-    jacpy_buffer_size,
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyErr_Clear,
+    PyLong_AsLongLong,
+    PyLong_AsUnsignedLong,
+    PyLong_FromLongLong,
+    PyObject,
+    PyTuple_New,
+    PyTuple_Size,
+    _PyLong_NumBits,
     jacpy_buffer_byte,
     jacpy_buffer_new,
-    jacpy_buffer_set
+    jacpy_buffer_set,
+    jacpy_buffer_size,
+    jacpy_entropy,
+    jacpy_error_pending,
+    jacpy_hash_unsigned,
+    jacpy_is_long,
+    jacpy_is_tuple,
+    jacpy_long_absolute,
+    jacpy_long_bytes,
+    jacpy_long_from_bytes,
+    jacpy_monotonic_time,
+    jacpy_process_id,
+    jacpy_release,
+    jacpy_tuple_item,
+    jacpy_tuple_set_owned,
+    jacpy_wall_time
 }
+import from jaclang.runtime.python.capi { object_error }
 
 import from jaclang.runtime.python.bindings.state { NativeState }
 
@@ -39,7 +42,7 @@ obj mt19937(NativeState) {
     has words: list[u32] = [u32(0) for i in range(624)],
         index: int = 0;
 
-    def traverse_refs(visitor: u64, context: u64) -> i32 {
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         return i32(0);
     }
 
@@ -109,7 +112,7 @@ def random_seed_words(state: mt19937, keys: list[u32]) {
     state.index = 624;
 }
 
-def random_seed_buffer(state: mt19937, data: u64) {
+def random_seed_buffer(state: mt19937, data: ptr[PyObject]) {
     keys: list[u32] = [];
     count = int(jacpy_buffer_size(data) // 4);
     for i in range(count) {
@@ -122,7 +125,7 @@ def random_seed_buffer(state: mt19937, data: u64) {
     random_seed_words(state, keys);
 }
 
-def:pub jacpy_random_seed(state: mt19937, argument: u64) -> i64 {
+def:pub jacpy_random_seed(state: mt19937, argument: ptr[PyObject]) -> i64 {
     if argument == 0 {
         entropy = jacpy_entropy(2496);
         if entropy != 0 {
@@ -130,7 +133,7 @@ def:pub jacpy_random_seed(state: mt19937, argument: u64) -> i64 {
             jacpy_release(entropy);
             return 0;
         }
-        jacpy_clear_error();
+        PyErr_Clear();
         now = jacpy_wall_time();
         if jacpy_error_pending() != 0 {
             return -1;
@@ -157,7 +160,7 @@ def:pub jacpy_random_seed(state: mt19937, argument: u64) -> i64 {
     if number == 0 {
         return -1;
     }
-    bits = jacpy_long_bits(number);
+    bits = _PyLong_NumBits(number);
     size = max(i64(1), (bits + 31) // 32) * 4;
     data = jacpy_long_bytes(number, size);
     jacpy_release(number);
@@ -175,30 +178,33 @@ def:pub jacpy_random_float(state: mt19937) -> f64 {
     return (f64(a) * f64(67108864.0) + f64(b)) * f64(1.0 / 9007199254740992.0);
 }
 
-def:pub jacpy_random_getstate(state: mt19937) -> u64 {
-    result = jacpy_tuple_new(625);
+def:pub jacpy_random_getstate(state: mt19937) -> ptr[PyObject] {
+    result = PyTuple_New(625);
     if result == 0 {
-        return 0;
+        return NULL;
     }
     for i in range(624) {
-        if jacpy_tuple_set_owned(result, i64(i), jacpy_int(i64(state.words[i]))) < 0 {
+        if jacpy_tuple_set_owned(
+            result, i64(i), PyLong_FromLongLong(i64(state.words[i]))
+        )
+            < 0 {
             jacpy_release(result);
-            return 0;
+            return NULL;
         }
     }
-    if jacpy_tuple_set_owned(result, 624, jacpy_int(i64(state.index))) < 0 {
+    if jacpy_tuple_set_owned(result, 624, PyLong_FromLongLong(i64(state.index))) < 0 {
         jacpy_release(result);
-        return 0;
+        return NULL;
     }
     return result;
 }
 
-def:pub jacpy_random_setstate(state: mt19937, value: u64) -> i64 {
+def:pub jacpy_random_setstate(state: mt19937, value: ptr[PyObject]) -> i64 {
     if jacpy_is_tuple(value) == 0 {
         object_error("TypeError", "state vector must be a tuple");
         return -1;
     }
-    if jacpy_tuple_size(value) != 625 {
+    if PyTuple_Size(value) != 625 {
         object_error("ValueError", "state vector is the wrong size");
         return -1;
     }
@@ -208,7 +214,7 @@ def:pub jacpy_random_setstate(state: mt19937, value: u64) -> i64 {
         if item == 0 {
             return -1;
         }
-        word = jacpy_unsigned_long(item);
+        word = PyLong_AsUnsignedLong(item);
         jacpy_release(item);
         if jacpy_error_pending() != 0 {
             return -1;
@@ -219,7 +225,7 @@ def:pub jacpy_random_setstate(state: mt19937, value: u64) -> i64 {
     if item == 0 {
         return -1;
     }
-    index = jacpy_integer_value(item);
+    index = PyLong_AsLongLong(item);
     jacpy_release(item);
     if jacpy_error_pending() != 0 {
         return -1;
@@ -233,21 +239,21 @@ def:pub jacpy_random_setstate(state: mt19937, value: u64) -> i64 {
     return 0;
 }
 
-def:pub jacpy_random_bits(state: mt19937, bits: u64) -> u64 {
+def:pub jacpy_random_bits(state: mt19937, bits: u64) -> ptr[PyObject] {
     if bits == 0 {
-        return jacpy_int(0);
+        return PyLong_FromLongLong(0);
     }
     if bits <= 32 {
-        return jacpy_int(i64(random_word(state) >> u32(32 - bits)));
+        return PyLong_FromLongLong(i64(random_word(state) >> u32(32 - bits)));
     }
     count = (bits - 1) // 32 + 1;
     if count > u64(0x7fffffffffffffff) // 4 {
         object_error("MemoryError", "");
-        return 0;
+        return NULL;
     }
     data = jacpy_buffer_new(i64(count * 4));
     if data == 0 {
-        return 0;
+        return NULL;
     }
     for i in range(int(count)) {
         word = random_word(state);

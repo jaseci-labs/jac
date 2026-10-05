@@ -116,6 +116,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
         isinstance(here, Import)
         and here.code_context == CodeContext.NATIVE
         and (not here.items)
+        and (not here.clib_decls)
     ) {
         osp_skip_rest();
         return;
@@ -164,6 +165,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
         isinstance(here, Import)
         and here.code_context == CodeContext.NATIVE
         and (not here.items)
+        and (not here.clib_decls)
     ) {
         osp_skip_rest();
         return;

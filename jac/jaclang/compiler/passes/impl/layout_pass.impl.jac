@@ -9,6 +9,7 @@ impl LayoutPass.postinit -> None {
 impl LayoutPass._run_impl(ir_in: Module) -> Module {
     module = self.module;
 
+    self._type_declaration_surface(module);
     self._build_enum_layouts(module);
 
     arch_map = self._collect_archetypes(module);
@@ -47,6 +48,38 @@ impl LayoutPass._run_impl(ir_in: Module) -> Module {
 
     module.gen.layout_registry = self.registry;
     return ir_in;
+}
+
+impl LayoutPass._type_declaration_surface(module: Module) -> None {
+    annotations: list[Expr] = [];
+    for typed in module.get_all_sub_nodes(HasVar)
+        + module.get_all_sub_nodes(ParamVar) {
+        if typed.type_tag is not None {
+            annotations.append(typed.type_tag.tag);
+        }
+    }
+    for sig in module.get_all_sub_nodes(FuncSignature) {
+        if sig.return_type is not None {
+            annotations.append(sig.return_type);
+        }
+    }
+    for decl in module.get_all_sub_nodes(GlobalVars) {
+        for assign in decl.assignments {
+            if assign.type_tag is not None {
+                annotations.append(assign.type_tag.tag);
+            }
+        }
+    }
+    evaluator = self.prog.get_type_evaluator();
+    for annotation in annotations {
+        for nd in reversed(annotation.flatten()) {
+            if isinstance(nd, Expr) and nd.type is None {
+                try {
+                    evaluator.get_type_of_expression(nd);
+                } except Exception {}
+            }
+        }
+    }
 }
 
 impl LayoutPass._collect_archetypes(module: Module) -> dict[str, Archetype] {

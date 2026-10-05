@@ -252,6 +252,75 @@ def native_only_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) 
     return None;
 }
 
+def _python_side_emits(stmt: uni.UniNode, native_module: bool) -> bool {
+    owner = stmt;
+    if isinstance(stmt, uni.ImplDef) and stmt.decl_link is not None {
+        owner = stmt.decl_link;
+        while owner.parent is not None and not isinstance(owner.parent, uni.Module) {
+            owner = owner.parent;
+        }
+    }
+    if not isinstance(owner, uni.ContextAwareNode) {
+        return True;
+    }
+    if owner.code_context == CodeContext.CLIENT and not owner.codespace_dual {
+        return False;
+    }
+    if owner.code_context != CodeContext.NATIVE {
+        return True;
+    }
+    if isinstance(owner, uni.Test) {
+        return False;
+    }
+    return native_module;
+}
+
+def python_side_name_refs(mod: uni.Module) -> set[str] {
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+    native_module = mod.decided_codespace == 'native';
+    emitted: list[uni.UniNode] = [];
+    for (body, _strip) in ModuleFacts.iter_woven_segments(mod) {
+        for stmt in body {
+            if not isinstance(stmt, uni.Import)
+                and _python_side_emits(stmt, native_module) {
+                emitted.append(stmt);
+            }
+        }
+    }
+    names: set[str] = set();
+    for stmt in emitted {
+        in_imports: set[int] = set();
+        for imp in stmt.get_all_sub_nodes(uni.Import) {
+            in_imports.update(id(nm) for nm in imp.get_all_sub_nodes(uni.Name));
+        }
+        for nm in stmt.get_all_sub_nodes(uni.Name) {
+            if id(nm) not in in_imports {
+                names.add(nm.value);
+            }
+        }
+    }
+    return names;
+}
+
+def import_bound_names(nd: uni.Import) -> list[str] {
+    bound: list[str] = [];
+    for item in nd.items {
+        if isinstance(item, uni.ModuleItem) {
+            bound.append(
+                item.alias.sym_name if item.alias is not None else item.name.value
+            );
+        }
+    }
+    for decl in nd.clib_decls or [] {
+        if isinstance(decl, uni.Archetype) {
+            bound.append(decl.name.value);
+        } elif isinstance(decl, uni.Ability) and decl.name_ref is not None {
+            bound.append(decl.name_ref.sym_name);
+        }
+    }
+    return bound;
+}
+
 def is_client_native_edge_import(nd: uni.Import, prog: JacProgram) -> bool {
     if nd.code_context == CodeContext.CLIENT {} elif nd.code_context
         == CodeContext.SERVER

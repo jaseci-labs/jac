@@ -259,6 +259,10 @@ runs:
       env:
         # The shared CI kit exercises the native Python compiler.
         JACPYTHON: "1"
+        # A PR reuses the JacPython runtime main last built when the sources it
+        # was lowered from are unchanged (build_python.zig sourcesKey). Main
+        # keeps the full key, so the runtime is at most one main build behind.
+        JAC_JACPYTHON_REUSE: ${{ github.event_name == 'pull_request' && '1' || '' }}
       # On a shim-cache hit, stage the restored shim OUTSIDE its in-tree place
       # path before passing it via -Dshim-bin: the build's place step copies
       # -Dshim-bin back to that path, and a self-copy would read the file it is
