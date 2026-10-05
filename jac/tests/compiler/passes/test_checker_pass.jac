@@ -1876,7 +1876,7 @@ test "return_type" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_return_type.jac");
     mod = program.compile(path, options=NO_TC);
-    assert len(program.errors_had) == 4;
+    assert len(program.errors_had) == 5;
 
     expected_errors = [
         """
@@ -1892,7 +1892,7 @@ test "return_type" {
         """
         Cannot return Literal[""], expected int
 
-        def bar()  -> int {
+        def bar -> int {
             return "";  # <-- Error
             ^^^^^^^^^^
         """,
@@ -1900,9 +1900,15 @@ test "return_type" {
         Cannot return float, expected int
             return 1.1;  # <-- Error
             ^^^^^^^^^^
+        """,
+        """
+        Return type annotation required when function returns a value
+            return 0;  # <-- Error (no return annotation, but returning a value)
+            ^^^^^^^^^
         """
     ];
 
+    # Regression (#9094): caller's `return bump();` must not also raise E1002.
     for i in range(len(expected_errors)) {
         assert_error_pretty_found(
             expected_errors[i], program.errors_had[i].pretty_print()
@@ -4956,6 +4962,43 @@ test "pipe_forward_typing_matches_call_form" {
     assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
         if err.code
         else 'no-code'}:\n{err.pretty_print()}";
+}
+
+test "pipe operands keep the pipe expression as their only parent" {
+    # A pipe is typed and emitted through a temporary call over its operands.
+    # A temporary left linked only goes away at a cycle collection, so
+    # collection stays off while the graph is read.
+    import gc;
+    import from jaclang.compiler.frontend.roles { Kid }
+    path = os.path.join(CHECKER_FIXTURES, "checker_pipe_operand_parents.jac");
+    collecting = gc.isenabled();
+    gc.disable();
+    try {
+        program = JacProgram();
+        mod = program.compile(path, options=NO_TC);
+        assert not program.errors_had;
+        assert mod.gen.py_ast;
+        pipes = [
+            expr
+            for expr in mod.get_all_sub_nodes(uni.BinaryExpr)
+            if isinstance(expr.op, uni.Token)
+                and expr.op.value in ("|>", ":>", "<|", "<:")
+        ];
+        assert len(pipes) == 8;
+        for expr in pipes {
+            for operand in (expr.left, expr.right) {
+                holders = [operand<-:Kid:<-];
+                assert len(holders) == 1 and holders[0] is expr , f"line {expr.loc.first_line}: a pipe operand is held by {[
+                    type(h).__name__ for h in holders
+                ]}";
+                assert operand.parent is expr;
+            }
+        }
+    } finally {
+        if collecting {
+            gc.enable();
+        }
+    }
 }
 
 test "as_cast_resolves_any_assignment" {

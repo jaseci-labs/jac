@@ -15,6 +15,8 @@ import from jaclang.runtime.surface { SurfaceEntry }
 
 glob CLIENT_RECORD_VERSION: int = 4;
 
+glob DEF_DEP_SEP: str = "\x1f";
+
 obj UnitProducts {
     has path: str,
         jcir: bytes = b"",
@@ -23,7 +25,8 @@ obj UnitProducts {
         client: str = "",
         placement: str = "",
         ct_file_deps: list[str] = [],
-        ct_body_deps: list[str] = [];
+        ct_body_deps: list[str] = [],
+        ct_def_deps: list[str] = [];
 }
 
 def interop_record(module: uni.Module) -> dict[str, any] {
@@ -339,7 +342,8 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
         path=module.loc.mod_path,
         jcir=module.gen.jcir or b"",
         ct_file_deps=list(module.ct_file_deps),
-        ct_body_deps=list(module.ct_body_deps)
+        ct_body_deps=list(module.ct_body_deps),
+        ct_def_deps=[path + DEF_DEP_SEP + qualname for (path, qualname) in module.ct_def_deps]
     );
     if program.mtir_map {
         products.mtir = info_graph_to_json(program.mtir_map);
@@ -365,7 +369,8 @@ def products_record(products: UnitProducts) -> dict[str, any] {
         "client": products.client,
         "placement": products.placement,
         "ct_file_deps": list(products.ct_file_deps),
-        "ct_body_deps": list(products.ct_body_deps)
+        "ct_body_deps": list(products.ct_body_deps),
+        "ct_def_deps": list(products.ct_def_deps)
     };
 }
 
@@ -379,6 +384,18 @@ def products_from_record(raw: dict[str, any]) -> UnitProducts {
         client=str(raw.get("client", "")),
         placement=str(raw.get("placement", "")),
         ct_file_deps=json_str_list(raw.get("ct_file_deps")),
-        ct_body_deps=json_str_list(raw.get("ct_body_deps"))
+        ct_body_deps=json_str_list(raw.get("ct_body_deps")),
+        ct_def_deps=json_str_list(raw.get("ct_def_deps"))
     );
+}
+
+def definition_deps(products: UnitProducts) -> list[tuple[str, str]] {
+    out: list[tuple[str, str]] = [];
+    for row in products.ct_def_deps {
+        (path, _, qualname) = row.partition(DEF_DEP_SEP);
+        if path and qualname {
+            out.append((path, qualname));
+        }
+    }
+    return out;
 }

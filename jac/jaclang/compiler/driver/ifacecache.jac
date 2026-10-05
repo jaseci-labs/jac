@@ -18,7 +18,7 @@ import from jaclang.compiler.driver.jir {
     SEC_PATH_ROOT,
     JirPaths,
     cache_mode,
-    ct_deps_section,
+    module_ct_deps_section,
     deps_section,
     get_module_cache_path,
     is_compiler_tree_path,
@@ -991,8 +991,9 @@ obj IfaceRegistry(CatalogResolver) {
                 get_module_summary(mod, self.prog)
             );
         } except Exception {}
-        if mod.ct_file_deps {
-            sections[SEC_CTDEPS] = ct_deps_section(mod.ct_file_deps, mod.ct_body_deps);
+        ct_rows = module_ct_deps_section(mod);
+        if ct_rows is not None {
+            sections[SEC_CTDEPS] = ct_rows;
         }
         if not options.symtab_ir_only {
             try {

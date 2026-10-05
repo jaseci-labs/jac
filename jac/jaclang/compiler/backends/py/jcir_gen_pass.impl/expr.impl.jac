@@ -276,8 +276,12 @@ impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
         if nd.parent is not None {
             func_node.set_parent(nd.parent);
         }
-        self._exit_func_call_impl(func_node);
-        return self.outs(func_node);
+        try {
+            self._exit_func_call_impl(func_node);
+            return self.outs(func_node);
+        } finally {
+            del [edge func_node-->];
+        }
     } elif (nd.op.name in [Tok.KW_SPAWN]) {
         for side in (nd.right, nd.left) {
             if self._sv_bridge_walker_call(side) is not None {
@@ -301,8 +305,12 @@ impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
         if nd.parent is not None {
             func_node.set_parent(nd.parent);
         }
-        self._exit_func_call_impl(func_node);
-        return self.outs(func_node);
+        try {
+            self._exit_func_call_impl(func_node);
+            return self.outs(func_node);
+        } finally {
+            del [edge func_node-->];
+        }
     } elif (nd.op.name in [Tok.KW_BY]) {
         return [
             self.call_node(

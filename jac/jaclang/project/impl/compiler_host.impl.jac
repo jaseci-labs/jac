@@ -49,8 +49,14 @@ impl ProjectHost.check_settings(target_app: str) -> CheckSettings {
     return check_settings_of(cfg.check);
 }
 
+def package_name_of(name: str) -> str {
+    import from jaclang.project.modresolver { is_scoped_package_name }
+    return name if is_scoped_package_name(name) else "";
+}
+
 impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
     import from pathlib { Path }
+    import from jaclang.project.modresolver { project_mounts_dir }
     try {
         import from jaclang.project.config { get_config_for_path }
         cfg = get_config_for_path(Path(path));
@@ -69,7 +75,10 @@ impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
         project_root=project_root,
         check=check_settings_of(cfg.check),
         arch_closed=list(cfg.arch.closed),
-        client_framework=cfg.client.framework if cfg.client else "react"
+        client_framework=cfg.client.framework if cfg.client else "react",
+        package_name=package_name_of(cfg.project.name),
+        package_exports=list(cfg.project.exports),
+        package_mounts=project_mounts_dir(project_root)
     );
     self._facts[project_root] = (cfg, facts);
     return facts;
@@ -106,14 +115,24 @@ impl ProjectHost.declared_dependencies(
     if cfg is None {
         return None;
     }
-    names: list[str] = [*cfg.dependencies, *cfg.dev_dependencies];
+    scopes = [cfg];
     owner = cfg.app_for_path(str(Path(module_path).resolve()));
     app_name = owner.name if owner is not None else fallback_app;
     if app_name and app_name in cfg.apps {
         try {
-            app_cfg = cfg.effective_for_app(app_name);
-            names.extend([*app_cfg.dependencies, *app_cfg.dev_dependencies]);
+            scopes.append(cfg.effective_for_app(app_name));
         } except Exception {}
+    }
+    names: list[str] = [];
+    for scope in scopes {
+        names.extend(
+            [
+                *scope.dependencies,
+                *scope.dev_dependencies,
+                *scope.pypi_dependencies,
+                *scope.pypi_dev_dependencies
+            ]
+        );
     }
     return [str(n) for n in names];
 }

@@ -28,6 +28,7 @@ obj RequestOptions {
         resolve_annex_parent: bool = False,
         aot_mode: bool = False,
         native_unit: bool = False,
+        kernel_build: bool = False,
         force_codespace: str = "",
         memory_profile: str = "managed",
         nogc_enforce_all: bool = False,
@@ -57,6 +58,7 @@ obj RequestOptions {
             resolve_annex_parent=self.resolve_annex_parent,
             aot_mode=self.aot_mode,
             native_unit=self.native_unit,
+            kernel_build=self.kernel_build,
             force_codespace=self.force_codespace,
             memory_profile=self.memory_profile,
             nogc_enforce_all=self.nogc_enforce_all,
@@ -254,6 +256,7 @@ def request_of(options: CompileOptions) -> RequestOptions {
         resolve_annex_parent=options.resolve_annex_parent,
         aot_mode=options.aot_mode,
         native_unit=options.native_unit,
+        kernel_build=options.kernel_build,
         force_codespace=options.force_codespace,
         memory_profile=options.memory_profile or "managed",
         nogc_enforce_all=bool(options.nogc_enforce_all),
@@ -285,6 +288,7 @@ def request_to_dict(request: RequestOptions) -> dict[str, any] {
         "resolve_annex_parent": request.resolve_annex_parent,
         "aot_mode": request.aot_mode,
         "native_unit": request.native_unit,
+        "kernel_build": request.kernel_build,
         "force_codespace": request.force_codespace,
         "memory_profile": request.memory_profile,
         "nogc_enforce_all": request.nogc_enforce_all,
@@ -317,6 +321,7 @@ def request_from_dict(raw: dict[str, any]) -> RequestOptions {
         resolve_annex_parent=bool(raw.get("resolve_annex_parent", False)),
         aot_mode=bool(raw.get("aot_mode", False)),
         native_unit=bool(raw.get("native_unit", False)),
+        kernel_build=bool(raw.get("kernel_build", False)),
         force_codespace=str(raw.get("force_codespace", "")),
         memory_profile=str(raw.get("memory_profile", "managed")),
         nogc_enforce_all=bool(raw.get("nogc_enforce_all", False)),
@@ -402,7 +407,10 @@ def facts_to_dict(facts: ProjectFacts) -> dict[str, any] {
         "project_root": facts.project_root,
         "check": check_to_dict(facts.check),
         "arch_closed": list(facts.arch_closed),
-        "client_framework": facts.client_framework
+        "client_framework": facts.client_framework,
+        "package_name": facts.package_name,
+        "package_exports": list(facts.package_exports),
+        "package_mounts": facts.package_mounts
     };
 }
 
@@ -411,7 +419,10 @@ def facts_from_dict(raw: dict[str, any]) -> ProjectFacts {
         project_root=str(raw.get("project_root", "")),
         check=check_from_dict(json_map(raw.get("check"))),
         arch_closed=json_str_list(raw.get("arch_closed")),
-        client_framework=str(raw.get("client_framework", "react"))
+        client_framework=str(raw.get("client_framework", "react")),
+        package_name=str(raw.get("package_name", "")),
+        package_exports=json_str_list(raw.get("package_exports")),
+        package_mounts=str(raw.get("package_mounts", ""))
     );
 }
 

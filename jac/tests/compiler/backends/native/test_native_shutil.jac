@@ -88,7 +88,7 @@ test "rmtree with ignore_errors returns on an undeletable child and removes what
     assert (inner / "file").is_file();
 }
 
-test "rmtree without ignore_errors names the file it could not remove" {
+test "rmtree and move without ignore_errors name the path and the reason" {
     if os.name != "posix" or os.geteuid() == 0 {
         return;
     }
@@ -98,6 +98,12 @@ test "rmtree without ignore_errors names the file it could not remove" {
         proc = subprocess.run(
             [probe, "strict", str(base)], capture_output=True, text=True, timeout=120
         );
+        moved = subprocess.run(
+            [probe, "move", str(inner), str(base / "moved")],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
     } finally {
         unlock(inner);
     }
@@ -105,5 +111,10 @@ test "rmtree without ignore_errors names the file it could not remove" {
     stuck = str(inner / "file");
     output = proc.stdout + proc.stderr;
     assert stuck in output , f"the error must name the file, not its parent:\n{output}";
+    assert "Permission denied" in output , f"the error must say why:\n{output}";
     assert "removed" not in proc.stdout , "the probe must not report success";
+    move_output = moved.stdout + moved.stderr;
+    assert moved.returncode != 0;
+    assert "Permission denied" in move_output
+        and "across filesystems" not in move_output , f"a same-filesystem rename failure must report its own reason:\n{move_output}";
 }

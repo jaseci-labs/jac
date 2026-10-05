@@ -2405,23 +2405,10 @@ impl NativeStrEmitter.emit_maketrans(
 impl NativeBytesEmitter.emit_decode(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
-    n = p._bytes_len_val(target);
-    alloc_sz = b.add(n, ir.Constant(i64, 1), name="dec.alloc");
-    p._set_rc_ctx("bytes_decode", "");
-    new_str = p._str_alloc(b, alloc_sz, name="dec.str");
-    p._clear_rc_ctx();
-    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    b.call(memcpy_fn, [new_str, p._bytes_data_ptr(target), n]);
-    dec_end = b.gep(new_str, [n], name="dec.end");
-    b.store(ir.Constant(ir.IntType(8), 0), dec_end);
-
-    p._stamp_str_len(b, new_str, n);
-    p._mark_owned(new_str);
-    return new_str;
+    call_node = ctx.receiver_node?.parent?.parent if ctx.receiver_node else None;
+    return ctx.pass_ref._emit_bytes_decode(
+        target, args, ctx.call_kwargs or {}, call_node
+    );
 }
 
 impl NativeBytesEmitter.emit_hex(

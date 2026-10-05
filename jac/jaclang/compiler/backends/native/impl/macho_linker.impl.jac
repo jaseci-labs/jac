@@ -53,7 +53,8 @@ glob N_EXT = 0x01,
      N_WEAK_DEF = 0x0080,
      N_TYPE_MASK = 0x0E,
      N_UNDF = 0x00,
-     N_SECT = 0x0E;
+     N_SECT = 0x0E,
+     N_STAB = 0xE0;
 
 glob ARM64_RELOC_UNSIGNED = 0,
      ARM64_RELOC_SUBTRACTOR = 1,
@@ -102,32 +103,6 @@ glob CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0,
      CS_PAGE_SIZE_LOG2 = 12;
 
 
-def _local_code_syms(
-    symbols: list[MachOSymbol],
-    placements: dict[int, tuple[str, int]],
-    exported: set[str]
-) -> list[tuple[str, int]] {
-    out: list[tuple[str, int]] = [];
-    seen: set[tuple[str, int]] = set();
-    for (idx, sym) in enumerate(symbols) {
-        if (sym.n_type & N_EXT) != 0 or (sym.n_type & N_TYPE_MASK) != N_SECT {
-            continue;
-        }
-        name = sym.name;
-        if not name or not name.startswith("_") or name in exported {
-            continue;
-        }
-        place = placements.get(idx);
-        if place is None or place[0] != "code" or (name, place[1]) in seen {
-            continue;
-        }
-        seen.add((name, place[1]));
-        out.append((name, place[1]));
-    }
-    return out;
-}
-
-
 def _resolve_macho_name(
     local_sym_map: dict[str, tuple[str, int]], nm: str
 ) -> (str | None) {
@@ -140,6 +115,27 @@ def _resolve_macho_name(
     return None;
 }
 
+
+def _local_code_symbols(
+    symbols: list[MachOSymbol], sym_idx_map: dict[int, tuple[str, int]]
+) -> list[tuple[str, int]] {
+    found: list[tuple[str, int]] = [];
+    for (sym_idx, sym) in enumerate(symbols) {
+        if (sym.n_type & N_EXT) != 0
+            or (sym.n_type & N_STAB) != 0
+            or (sym.n_type & N_TYPE_MASK) != N_SECT {
+            continue;
+        }
+        if not sym.name or sym.name.startswith("ltmp") or sym.name.startswith("L") {
+            continue;
+        }
+        place = sym_idx_map.get(sym_idx);
+        if place is not None and place[0] == "code" {
+            found.append((sym.name, place[1]));
+        }
+    }
+    return found;
+}
 
 def _trie_common_prefix(a: str, b: str) -> int {
     n = min(len(a), len(b));
@@ -1260,11 +1256,9 @@ impl MachOLinker.build_executable -> bytes {
         }
     }
 
-    local_syms = _local_code_syms(
-        self.symbols, sym_idx_map, {name for (name, _, _) in defined_syms}
-    );
+    local_code_syms = _local_code_symbols(self.symbols, sym_idx_map);
     strtab_names: list[str] = [];
-    for (name, _) in local_syms {
+    for (name, _) in local_code_syms {
         strtab_names.append(name);
     }
     for (name, _, _) in defined_syms {
@@ -1276,7 +1270,7 @@ impl MachOLinker.build_executable -> bytes {
     (strtab_data, strtab_offsets) = _build_strtab(strtab_names, b" \x00");
 
     symtab_entries = bytearray();
-    n_local = len(local_syms);
+    n_local = len(local_code_syms);
     n_defined = len(defined_syms);
     n_undef = len(all_extern_syms);
 
@@ -1293,7 +1287,7 @@ impl MachOLinker.build_executable -> bytes {
     }
     out_sec_num_data = next_sec if len(data_data) > 0 else 0;
 
-    for (name, off) in local_syms {
+    for (name, off) in local_code_syms {
         symtab_entries.extend(
             struct.pack(
                 "<IBBhQ",
@@ -2249,11 +2243,10 @@ impl MachOLinker.build_shared_object -> bytes {
             }
         }
     }
-    local_syms = _local_code_syms(
-        self.symbols, sym_idx_map, {name for (name, _, _) in defined_syms}
-    );
+
+    local_code_syms = _local_code_symbols(self.symbols, sym_idx_map);
     strtab_names: list[str] = [];
-    for (name, _) in local_syms {
+    for (name, _) in local_code_syms {
         strtab_names.append(name);
     }
     for (name, _, _) in defined_syms {
@@ -2264,7 +2257,7 @@ impl MachOLinker.build_shared_object -> bytes {
     }
     (strtab_data, strtab_offsets) = _build_strtab(strtab_names, b" \x00");
     symtab_entries = bytearray();
-    n_local = len(local_syms);
+    n_local = len(local_code_syms);
     n_defined = len(defined_syms);
     n_undef = len(all_extern_syms);
     out_sec_num_text = 1;
@@ -2279,7 +2272,7 @@ impl MachOLinker.build_shared_object -> bytes {
         next_sec += 1;
     }
     out_sec_num_data = next_sec if len(data_data) > 0 else 0;
-    for (name, off) in local_syms {
+    for (name, off) in local_code_syms {
         symtab_entries.extend(
             struct.pack(
                 "<IBBhQ",

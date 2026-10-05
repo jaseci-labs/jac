@@ -16,7 +16,9 @@ import from jaclang.compiler.driver.jir {
     SEC_PLACEMENT,
     SEC_CLIENT,
     SEC_CTDEPS,
+    FLAG_CARRIED,
     FLAG_PRECOMPILED,
+    carried_module_bytecode,
     ct_deps_section,
     compute_content_sha256,
     get_module_cache_path,
@@ -43,6 +45,7 @@ import from jaclang.compiler.driver.unit_products {
     client_artifact_from_json,
     client_artifact_json,
     client_artifact_of,
+    definition_deps,
     interop_manifest_of,
     interop_record,
     placement_record,
@@ -152,9 +155,11 @@ def unit_sections(
     if products.placement {
         sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
     }
-    if products.ct_file_deps {
+    if products.ct_file_deps or products.ct_body_deps or products.ct_def_deps {
         sections[SEC_CTDEPS] = ct_deps_section(
-            products.ct_file_deps, products.ct_body_deps
+            products.ct_file_deps,
+            products.ct_body_deps,
+            definitions=definition_deps(products)
         );
     }
     return sections;

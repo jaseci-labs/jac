@@ -186,6 +186,7 @@ def kernel_options -> CompileOptions {
         na_debug=False,
         default_codespace="native",
         native_unit=True,
+        kernel_build=True,
         skip_native_engine=True,
         native_target="",
         na_gc_mode="cycles",
@@ -314,6 +315,7 @@ def _unit_sources_match(
     of a file outside the running package fingerprints its project, so the
     key a kit's build folded is never the one a checkout computes.""";
     import from jaclang.compiler.driver.jir {
+        native_producer_digest,
         running_compiler_digest,
         unit_source_digest
     }
@@ -326,7 +328,8 @@ def _unit_sources_match(
         if not stage0_sidecar_matches(sidecar) {
             return False;
         }
-    } elif str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
+    } elif str(sidecar.get("compiler_digest", ""))
+        not in (running_compiler_digest(), native_producer_digest(options.kernel_build))
         or str(sidecar.get("codegen_identity", ""))
             != options.base_codegen_identity() {
         return False;
