@@ -156,15 +156,33 @@ class NativeCompiler {
 
     def _resolve_classes(self: NativeCompiler) {
         import importlib;
+        import from jaclang.compiler.frontend.codeinfo { NATIVE_ARCH_SCOPE_SEP }
+        by_stem: dict[str, dict[str, type]] = {};
         for modname in CLASS_MODULES {
             mod = importlib.import_module(modname);
             for name in `list(vars(mod)) {
-                if name in self.layout and name not in self.classes {
-                    cls = getattr(mod, name);
-                    if isinstance(cls, `type) {
-                        self.classes[name] = cls;
-                    }
+                cls = getattr(mod, name);
+                if not isinstance(cls, `type) {
+                    continue;
                 }
+                if name in self.layout and name not in self.classes {
+                    self.classes[name] = cls;
+                }
+                owner = sys.modules.get(cls.__module__);
+                owner_file = str(getattr(owner, "__file__", "") or "");
+                stem = os.path.basename(owner_file).split(".")[0];
+                by_stem.setdefault(stem, {})[cls.__name__] = cls;
+            }
+        }
+        for key in self.layout {
+            if key in self.classes or NATIVE_ARCH_SCOPE_SEP not in key {
+                continue;
+            }
+            (bare, _, scope) = key.partition(NATIVE_ARCH_SCOPE_SEP);
+            stem = scope.rsplit("_", 1)[0];
+            cls = by_stem.get(stem, {}).get(bare);
+            if cls is not None {
+                self.classes[key] = cls;
             }
         }
     }
