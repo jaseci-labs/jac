@@ -244,12 +244,21 @@ impl clone_env(parent: dict[str, str] | None = None) -> dict[str, str] {
 impl run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) -> bool {
     sys.stderr.flush();
     sys.stdout.flush();
+    import time;
+    started = time.time();
+    child_env = dict(env) if env is not None else dict(os.environ);
+    child_env["JAC_PAYLOAD_CHILD_T0"] = str(started);
     try {
-        rc = subprocess.run(argv, env=env).returncode;
+        rc = subprocess.run(argv, env=child_env).returncode;
     } except OSError as e {
         die(f"spawn {argv[0]} failed: {type(e).__name__}: {e}");
     }
     ok = rc == 0;
+    took = time.time() - started;
+    if took >= 5.0 {
+        label = " ".join(os.path.basename(a) for a in argv[1:4]);
+        log(f"   ({label}: {took:.1f}s)");
+    }
     if not ok and not allow_fail {
         die(f"command failed: {argv[0]}");
     }

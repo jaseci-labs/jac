@@ -30,6 +30,8 @@ glob logger = logging.getLogger(__name__),
          'promotions_for',
          'conninfo_from_url',
          'shared_pg_data_dir',
+         'ProjectDatabase',
+         'project_database',
          'project_db_name',
          'takeover_project',
          'mark_scratch_base',
@@ -107,6 +109,14 @@ obj ScratchState {
 
 def promotions_for(base_path: (str | None)) -> dict[str, list[str]];
 def shared_pg_data_dir -> str;
+obj ProjectDatabase {
+    has name: str,
+        owner: str,
+        in_project: bool = False;
+}
+
+
+def project_database(base_path: str, target_path: (str | None)) -> ProjectDatabase;
 def project_db_name(base_path: str, target_path: (str | None)) -> str;
 def conninfo_from_url(url: str) -> ConnInfo;
 def takeover_project(base_path: str, target_path: (str | None) = None) -> int;
@@ -134,7 +144,25 @@ obj Session(Memory) {
         _ro_units: int postinit,
         _unit_stack: list[tuple[(str | None), bool]] postinit,
         _snapshot_reads: set[UUID] postinit,
-        _version_seen: dict[UUID, int] postinit;
+        _version_seen: dict[UUID, int] postinit,
+        _foreign_refs: set[UUID] postinit;
+
+    override def new_session(target_path: str) -> Session {
+        if self.store is None {
+            raise RuntimeError(
+                'Cannot create a provider session without a bound store'
+            );
+        }
+        return Session(
+            _store=self.store.new_session(),
+            base_path=self.base_path,
+            target_path=target_path
+        );
+    }
+
+    override def preserve_unresolved_ref(id: UUID) -> bool {
+        return id in self._foreign_refs;
+    }
 
     has store: (Store | None) {
         getter {

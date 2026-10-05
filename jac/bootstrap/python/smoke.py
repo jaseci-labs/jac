@@ -76,9 +76,15 @@ if required_compiler is not None:
     import array
     import _pickle
     import _statistics
-    for replacement in (_bisect, _heapq, _random, binascii, _operator, _queue, _json, _csv, _struct, cmath, math, _collections, _functools, itertools, array, _pickle, _statistics):
-        assert replacement.__name__ in sys.builtin_module_names
-        assert replacement.__spec__.origin == "built-in"
+    import importlib
+    registry = Path(__file__).with_name("jacpython-modules.txt").read_text()
+    for line in registry.splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        name = line.split()[0]
+        replacement = importlib.import_module(name)
+        assert name in sys.builtin_module_names, name
+        assert replacement.__spec__.origin == "built-in", name
     # Startup imports itertools and functools; each native module must also
     # support an isolated interpreter with its own interpreter lock.
     from concurrent import interpreters

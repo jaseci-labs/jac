@@ -80,6 +80,7 @@ obj PgRuntime {
         kind: DbKind = DbKind.PROJECT,
         retention_days: int = 0,
         owner_pid: int = 0,
+        sole_owner_database: bool = False,
         _bin_dir: (str | None) postinit,
         _proc: (any | None) postinit,
         _lock: threading.RLock postinit,
@@ -114,6 +115,7 @@ obj PgRuntime {
     def _start(bin_dir: str) -> None;
     def _wait_ready(timeout: float = 60.0) -> None;
     def _ensure_database -> None;
+    def _warn_superseded(conn: any) -> None;
     def _reap_scratch(conn: any) -> int;
     def _reap(conn: any, records: list[DbRecord]) -> int;
     def _sweep_on_start -> None;

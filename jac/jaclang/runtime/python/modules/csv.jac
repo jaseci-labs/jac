@@ -3,50 +3,57 @@
 CPython owns public objects and protocol calls; typed native state owns parsing
 and quoting. Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyUnicodeWriter,
+    PyBool_FromLong,
+    PyDict_Keys,
+    PyDict_SetItem,
+    PyErr_Clear,
+    PyIter_Next,
+    PyList_Append,
+    PyLong_AsInt,
+    PyLong_AsLongLong,
+    PyLong_FromLongLong,
+    PyNumber_Check,
+    PyNumber_Float,
+    PyObject,
+    PyObject_CallOneArg,
+    PyObject_GetAttrString,
+    PyObject_GetIter,
+    PyObject_IsTrue,
+    PyObject_Str,
+    PyUnicodeWriter_Discard,
+    PyUnicodeWriter_Finish,
+    PyUnicodeWriter_WriteChar,
+    PyUnicode_ReadChar,
+    Py_NewRef,
+    jacpy_dict_get,
+    jacpy_dict_pop_discard,
+    jacpy_error_is,
+    jacpy_error_pending,
+    jacpy_is_exact_long,
+    jacpy_is_none,
+    jacpy_is_unicode,
+    jacpy_list_new,
+    jacpy_none,
+    jacpy_release,
+    jacpy_set_exception,
+    jacpy_tuple_item,
+    jacpy_type_check,
+    jacpy_unicode_size,
+    jacpy_writer_new
+}
 import from jaclang.runtime.python.capi {
+    new_writer,
     boundary_failure,
     required,
     checked,
     object_error,
     text_object,
     type_name,
-    object_tuple,
-    jacpy_retain,
-    jacpy_release,
-    jacpy_none,
-    jacpy_boolean,
-    jacpy_int,
-    jacpy_is_none,
-    jacpy_is_unicode,
-    jacpy_is_exact_long,
-    jacpy_type_check,
-    jacpy_long_as_int32,
-    jacpy_integer_value,
-    jacpy_truth,
-    jacpy_error_pending,
-    jacpy_clear_error,
-    jacpy_error_is,
-    jacpy_set_exception,
-    jacpy_getattr_string,
-    jacpy_dict_get,
-    jacpy_dict_set,
-    jacpy_dict_pop_discard,
-    jacpy_dict_keys,
-    jacpy_tuple_item,
-    jacpy_unicode_size,
-    jacpy_unicode_char,
-    jacpy_writer_new,
-    jacpy_writer_char,
-    jacpy_writer_finish,
-    jacpy_writer_discard,
-    jacpy_list_new,
-    jacpy_list_append,
-    jacpy_iter,
-    jacpy_iter_next,
-    jacpy_number_float,
-    jacpy_number_check,
-    jacpy_object_str,
-    jacpy_call_one
+    object_tuple
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
 
@@ -54,7 +61,7 @@ obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;
 
     def clear {}
-    def traverse_refs(visitor: u64, context: u64) -> i32 {
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         return i32(0);
     }
 }
@@ -64,7 +71,7 @@ def:priv fail(kind: str, message: str) {
     raise boundary_failure();
 }
 
-def:priv csv_error(error: u64, message: str) {
+def:priv csv_error(error: ptr[PyObject], message: str) {
     jacpy_set_exception(error, message, i64(len(message.encode("utf-8"))));
     raise boundary_failure();
 }
@@ -75,7 +82,9 @@ def:priv pending {
     }
 }
 
-def:priv dialect_char(name: str, value: u64, fallback: int, optional: bool) -> int {
+def:priv dialect_char(
+    name: str, value: ptr[PyObject], fallback: int, optional: bool
+) -> int {
     if value == 0 {
         return fallback;
     }
@@ -94,35 +103,41 @@ def:priv dialect_char(name: str, value: u64, fallback: int, optional: bool) -> i
     if size != 1 {
         fail("TypeError", expected + "a string of length " + str(size));
     }
-    return int(jacpy_unicode_char(value, 0));
+    return int(PyUnicode_ReadChar(value, 0));
 }
 
-def:priv dialect_bool(value: u64, fallback: bool) -> bool {
+def:priv dialect_bool(value: ptr[PyObject], fallback: bool) -> bool {
     if value == 0 {
         return fallback;
     }
-    result = jacpy_truth(value);
+    result = PyObject_IsTrue(value);
     checked(result);
     return result != 0;
 }
 
-def:priv valid_character(name: str, character: int, space: bool, terminator: u64) {
+def:priv valid_character(
+    name: str, character: int, space: bool, terminator: ptr[PyObject]
+) {
     if character == 10 or character == 13 or (character == 32 and not space) {
         fail("ValueError", "bad " + name + " value");
     }
     for i in range(int(jacpy_unicode_size(terminator))) {
-        if int(jacpy_unicode_char(terminator, i64(i))) == character {
+        if int(PyUnicode_ReadChar(terminator, i64(i))) == character {
             fail("ValueError", "bad " + name + " or lineterminator value");
         }
     }
 }
 
 def:pub jacpy_csv_dialect(
-    base: u64, overrides: u64, registry: u64, dialect_type: u64, error: u64
-) -> u64 {
-    dialect: u64 = 0;
-    values: list[u64] = [];
-    result: list[u64] = [];
+    base: ptr[PyObject],
+    overrides: ptr[PyObject],
+    registry: ptr[PyObject],
+    dialect_type: ptr[PyObject],
+    error: ptr[PyObject]
+) -> ptr[PyObject] {
+    dialect: ptr[PyObject] = NULL;
+    values: list[ptr[PyObject]] = [];
+    result: list[ptr[PyObject]] = [];
     try {
         if base != 0 {
             if jacpy_is_unicode(base) != 0 {
@@ -132,7 +147,7 @@ def:pub jacpy_csv_dialect(
                     csv_error(error, "unknown dialect");
                 }
             } else {
-                dialect = jacpy_retain(base);
+                dialect = Py_NewRef(base);
             }
         }
         names = [
@@ -160,13 +175,13 @@ def:pub jacpy_csv_dialect(
         if dialect != 0
             and not overridden
             and jacpy_type_check(dialect, dialect_type) != 0 {
-            return jacpy_retain(dialect);
+            return Py_NewRef(dialect);
         }
         for i in range(len(names)) {
             if values[i] == 0 and dialect != 0 {
-                values[i] = jacpy_getattr_string(dialect, names[i]);
+                values[i] = PyObject_GetAttrString(dialect, names[i]);
                 if values[i] == 0 {
-                    jacpy_clear_error();
+                    PyErr_Clear();
                 }
             }
         }
@@ -193,7 +208,7 @@ def:pub jacpy_csv_dialect(
                     "\"quoting\" must be an integer, not " + type_name(values[5], True)
                 );
             }
-            quoting = int(jacpy_long_as_int32(values[5]));
+            quoting = int(PyLong_AsInt(values[5]));
             pending();
         }
         skipspace = dialect_bool(values[6], False);
@@ -221,17 +236,17 @@ def:pub jacpy_csv_dialect(
                 }
             }
         }
-        result.append(required(jacpy_int(i64(delimiter))));
-        result.append(required(jacpy_boolean(i64(doublequote))));
-        result.append(required(jacpy_int(i64(escapechar))));
-        result.append(jacpy_retain(terminator));
-        result.append(required(jacpy_int(i64(quotechar))));
-        result.append(required(jacpy_int(i64(quoting))));
-        result.append(required(jacpy_boolean(i64(skipspace))));
-        result.append(required(jacpy_boolean(i64(strict))));
+        result.append(required(PyLong_FromLongLong(i64(delimiter))));
+        result.append(required(PyBool_FromLong(i64(doublequote))));
+        result.append(required(PyLong_FromLongLong(i64(escapechar))));
+        result.append(Py_NewRef(terminator));
+        result.append(required(PyLong_FromLongLong(i64(quotechar))));
+        result.append(required(PyLong_FromLongLong(i64(quoting))));
+        result.append(required(PyBool_FromLong(i64(skipspace))));
+        result.append(required(PyBool_FromLong(i64(strict))));
         return object_tuple(result);
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(dialect);
         for value in values {
@@ -247,23 +262,23 @@ obj csv_dialect {
     has delimiter: int,
         doublequote: bool,
         escapechar: int,
-        terminator: u64,
+        terminator: ptr[PyObject],
         quotechar: int,
         quoting: int,
         skipspace: bool,
         strict: bool;
 }
 
-def:priv setting(options: u64, index: int) -> int {
+def:priv setting(options: ptr[PyObject], index: int) -> int {
     value = required(jacpy_tuple_item(options, i64(index)));
     try {
-        return int(jacpy_integer_value(value));
+        return int(PyLong_AsLongLong(value));
     } finally {
         jacpy_release(value);
     }
 }
 
-def:priv settings(options: u64) -> csv_dialect {
+def:priv settings(options: ptr[PyObject]) -> csv_dialect {
     # The caller retains options throughout this borrowed Unicode reference.
     terminator = required(jacpy_tuple_item(options, 3));
     jacpy_release(terminator);
@@ -279,18 +294,18 @@ def:priv settings(options: u64) -> csv_dialect {
     );
 }
 
-def:priv unicode_field(characters: list[int]) -> u64 {
-    writer = required(jacpy_writer_new());
+def:priv unicode_field(characters: list[int]) -> ptr[PyObject] {
+    writer = new_writer();
     try {
         for character in characters {
-            checked(jacpy_writer_char(writer, i64(character)));
+            checked(PyUnicodeWriter_WriteChar(writer, u32(character)));
         }
-        result = jacpy_writer_finish(writer);
-        writer = 0;
+        result = PyUnicodeWriter_Finish(writer);
+        writer = ptr[PyUnicodeWriter]();
         return required(result);
     } finally {
         if writer != 0 {
-            jacpy_writer_discard(writer);
+            PyUnicodeWriter_Discard(writer);
         }
     }
 }
@@ -308,7 +323,7 @@ enum parse_state {
 }
 
 obj csv_reader {
-    has fields: u64 = 0,
+    has fields: ptr[PyObject] = NULL,
         field: list[int] = [],
         state: parse_state = parse_state.START_RECORD,
         unquoted: bool = False,
@@ -325,7 +340,7 @@ obj csv_reader {
     }
 
     def save(dialect: csv_dialect) {
-        value: u64 = 0;
+        value: ptr[PyObject] = NULL;
         try {
             if self.unquoted
                 and len(self.field) == 0
@@ -336,19 +351,19 @@ obj csv_reader {
                 if self.unquoted
                     and len(self.field) != 0
                     and (dialect.quoting == 2 or dialect.quoting == 4) {
-                    numeric = required(jacpy_number_float(value));
+                    numeric = required(PyNumber_Float(value));
                     jacpy_release(value);
                     value = numeric;
                 }
                 self.field.clear();
             }
-            checked(jacpy_list_append(self.fields, value));
+            checked(PyList_Append(self.fields, value));
         } finally {
             jacpy_release(value);
         }
     }
 
-    def append(character: int, module: CsvConfig, error: u64) {
+    def append(character: int, module: CsvConfig, error: ptr[PyObject]) {
         limit = int(module.limit);
         if len(self.field) >= limit {
             csv_error(error, "field larger than field limit (" + str(limit) + ")");
@@ -356,7 +371,9 @@ obj csv_reader {
         self.field.append(character);
     }
 
-    def feed(character: int, dialect: csv_dialect, module: CsvConfig, error: u64) {
+    def feed(
+        character: int, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
+    ) {
         # -2 is the physical line boundary; -1 is an unset dialect character.
         if self.state == parse_state.START_RECORD {
             if character == -2 {
@@ -477,11 +494,11 @@ def:pub jacpy_csv_reader_new -> csv_reader {
 
 def:pub jacpy_csv_reader_clear(reader: csv_reader) {
     old = reader.fields;
-    reader.fields = 0;
+    reader.fields = NULL;
     jacpy_release(old);
 }
 
-def:pub jacpy_csv_reader_fields(reader: csv_reader) -> u64 {
+def:pub jacpy_csv_reader_fields(reader: csv_reader) -> ptr[PyObject] {
     return reader.fields;
 }
 
@@ -490,13 +507,17 @@ def:pub jacpy_csv_reader_line(reader: csv_reader) -> i64 {
 }
 
 def:pub jacpy_csv_read(
-    reader: csv_reader, iterator: u64, options: u64, module: CsvConfig, error: u64
-) -> u64 {
+    reader: csv_reader,
+    iterator: ptr[PyObject],
+    options: ptr[PyObject],
+    module: CsvConfig,
+    error: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         reader.reset();
         dialect = settings(options);
         while True {
-            line = jacpy_iter_next(iterator);
+            line = PyIter_Next(iterator);
             if line == 0 {
                 pending();
                 if len(reader.field) != 0
@@ -507,7 +528,7 @@ def:pub jacpy_csv_read(
                     reader.save(dialect);
                     break;
                 }
-                return 0;
+                return NULL;
             }
             try {
                 if jacpy_is_unicode(line) == 0 {
@@ -524,7 +545,7 @@ def:pub jacpy_csv_read(
                 reader.line_num += 1;
                 for i in range(int(jacpy_unicode_size(line))) {
                     reader.feed(
-                        int(jacpy_unicode_char(line, i64(i))), dialect, module, error
+                        int(PyUnicode_ReadChar(line, i64(i))), dialect, module, error
                     );
                 }
             } finally {
@@ -536,10 +557,10 @@ def:pub jacpy_csv_read(
             }
         }
         fields = reader.fields;
-        reader.fields = 0;
+        reader.fields = NULL;
         return fields;
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
@@ -547,7 +568,9 @@ obj csv_writer {
     has record: list[int] = [],
         num_fields: int = 0;
 
-    def append(field: u64, quoted: bool, dialect: csv_dialect, error: u64) {
+    def append(
+        field: ptr[PyObject], quoted: bool, dialect: csv_dialect, error: ptr[PyObject]
+    ) {
         length = int(jacpy_unicode_size(field)) if field != 0 else 0;
         if length == 0 and dialect.delimiter == 32 and dialect.skipspace {
             if dialect.quoting == 3
@@ -561,7 +584,7 @@ obj csv_writer {
         }
         data: list[int] = [];
         for i in range(length) {
-            character = int(jacpy_unicode_char(field, i64(i)));
+            character = int(PyUnicode_ReadChar(field, i64(i)));
             special = character == dialect.delimiter
                 or character == dialect.escapechar
                 or character == dialect.quotechar
@@ -569,7 +592,7 @@ obj csv_writer {
                 or character == 13;
             if not special {
                 for j in range(int(jacpy_unicode_size(dialect.terminator))) {
-                    if int(jacpy_unicode_char(dialect.terminator, i64(j)))
+                    if int(PyUnicode_ReadChar(dialect.terminator, i64(j)))
                         == character {
                         special = True;
                         break;
@@ -614,8 +637,13 @@ obj csv_writer {
         self.num_fields += 1;
     }
 
-    def row(value: u64, output: u64, options: u64, error: u64) -> u64 {
-        iterator = jacpy_iter(value);
+    def row(
+        value: ptr[PyObject],
+        output: ptr[PyObject],
+        options: ptr[PyObject],
+        error: ptr[PyObject]
+    ) -> ptr[PyObject] {
+        iterator = PyObject_GetIter(value);
         if iterator == 0 {
             if jacpy_error_is("TypeError") != 0 {
                 csv_error(error, "iterable expected, not " + type_name(value)[:200]);
@@ -628,25 +656,25 @@ obj csv_writer {
             self.num_fields = 0;
             null_field = False;
             while True {
-                field = jacpy_iter_next(iterator);
+                field = PyIter_Next(iterator);
                 if field == 0 {
                     pending();
                     break;
                 }
                 try {
                     quoted = dialect.quoting == 1
-                        or (dialect.quoting == 2 and jacpy_number_check(field) == 0)
+                        or (dialect.quoting == 2 and PyNumber_Check(field) == 0)
                         or (dialect.quoting == 4 and jacpy_is_unicode(field) != 0)
                         or (dialect.quoting == 5 and jacpy_is_none(field) == 0);
                     null_field = jacpy_is_none(field) != 0;
                     if jacpy_is_unicode(field) != 0 {
                         self.append(field, quoted, dialect, error);
                     } elif null_field {
-                        self.append(u64(0), quoted, dialect, error);
+                        self.append(NULL, quoted, dialect, error);
                     } else {
-                        text = required(jacpy_object_str(field));
+                        text = required(PyObject_Str(field));
                         jacpy_release(field);
-                        field = 0;
+                        field = NULL;
                         try {
                             self.append(text, quoted, dialect, error);
                         } finally {
@@ -665,14 +693,14 @@ obj csv_writer {
                     csv_error(error, "single empty field record must be quoted");
                 }
                 self.num_fields -= 1;
-                self.append(u64(0), True, dialect, error);
+                self.append(NULL, True, dialect, error);
             }
             for i in range(int(jacpy_unicode_size(dialect.terminator))) {
-                self.record.append(int(jacpy_unicode_char(dialect.terminator, i64(i))));
+                self.record.append(int(PyUnicode_ReadChar(dialect.terminator, i64(i))));
             }
             line = unicode_field(self.record);
             try {
-                return required(jacpy_call_one(output, line));
+                return required(PyObject_CallOneArg(output, line));
             } finally {
                 jacpy_release(line);
             }
@@ -687,16 +715,21 @@ def:pub jacpy_csv_writer_new -> csv_writer {
 }
 
 def:pub jacpy_csv_write(
-    writer: csv_writer, value: u64, output: u64, options: u64, error: u64, many: i64
-) -> u64 {
+    writer: csv_writer,
+    value: ptr[PyObject],
+    output: ptr[PyObject],
+    options: ptr[PyObject],
+    error: ptr[PyObject],
+    many: i64
+) -> ptr[PyObject] {
     try {
         if many == 0 {
             return writer.row(value, output, options, error);
         }
-        iterator = required(jacpy_iter(value));
+        iterator = required(PyObject_GetIter(value));
         try {
             while True {
-                row = jacpy_iter_next(iterator);
+                row = PyIter_Next(iterator);
                 if row == 0 {
                     pending();
                     break;
@@ -712,16 +745,20 @@ def:pub jacpy_csv_write(
         }
         return jacpy_none();
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
 def:pub jacpy_csv_registry(
-    registry: u64, key: u64, value: u64, error: u64, operation: i64
-) -> u64 {
+    registry: ptr[PyObject],
+    key: ptr[PyObject],
+    value: ptr[PyObject],
+    error: ptr[PyObject],
+    operation: i64
+) -> ptr[PyObject] {
     try {
         if operation == 0 {
-            return required(jacpy_dict_keys(registry));
+            return required(PyDict_Keys(registry));
         }
         if operation == 1 {
             found = jacpy_dict_get(registry, key);
@@ -732,7 +769,7 @@ def:pub jacpy_csv_registry(
             return found;
         }
         if operation == 2 {
-            checked(jacpy_dict_set(registry, key, value));
+            checked(PyDict_SetItem(registry, key, value));
         } else {
             removed = jacpy_dict_pop_discard(registry, key);
             checked(removed);
@@ -742,6 +779,6 @@ def:pub jacpy_csv_registry(
         }
         return jacpy_none();
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }

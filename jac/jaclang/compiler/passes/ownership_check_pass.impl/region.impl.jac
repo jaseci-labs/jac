@@ -2,6 +2,7 @@ import from jaclang.compiler.frontend.diagnostics { E1307, E1314, W1310 }
 import from jaclang.compiler.types.type_utils { is_builtin_region_type }
 import from jaclang.compiler.symbol_utils { CallKind, classify_call }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.compiler.c_interop { is_ptr_type }
 
 impl OwnershipCheckPass._partition_sugar_reason(call: FuncCall) -> str {
     _params = [p for p in (call.params or [])];
@@ -476,6 +477,10 @@ impl OwnershipCheckPass._region_expr_is_scalar(expr: Expr | None) -> bool {
     }
     if expr.type is None {
         return False;
+    }
+
+    if is_ptr_type(expr.type) {
+        return True;
     }
     _m = "";
     try {

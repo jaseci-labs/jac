@@ -1027,9 +1027,7 @@ impl NaIRGenPass._forward_declare_method(
 
     param_types: list[ir.Type] = [] if _is_static else [receiver_type];
     for p in _m_params {
-        param_types.append(
-            self._resolve_sig_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_sig_type(p));
     }
 
     ret_type = self._resolve_sig_type(sig.return_type)
@@ -1707,6 +1705,15 @@ impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._event_from_walker(method: uni.Ability) -> bool {
+    owner = method.find_parent_of_type(uni.Archetype);
+    if owner is not None {
+        return owner.arch_kind == "walker";
+    }
+    sig = method.signature;
+    return isinstance(sig, uni.EventSignature) and sig.from_walker;
+}
+
 impl NaIRGenPass._forward_declare_event_method(
     arch_name: str, method: uni.Ability
 ) -> None {
@@ -1738,7 +1745,7 @@ impl NaIRGenPass._forward_declare_event_method(
         name=self._symbol_for(full_name, _owner if _imported else None)
     );
     func.args[0].name = "self";
-    func.args[1].name = "here" if sig.from_walker else "visitor";
+    func.args[1].name = "here" if self._event_from_walker(method) else "visitor";
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
     if not _imported {
@@ -1778,10 +1785,11 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
         }
         self._bind_function_parameter("self", func.args[0]);
 
-        loc_name = "here" if sig.from_walker else "visitor";
+        from_walker = self._event_from_walker(method);
+        loc_name = "here" if from_walker else "visitor";
         loc_arg = func.args[1];
         self._bind_function_parameter(loc_name, loc_arg);
-        _grow_anchor = loc_arg if sig.from_walker else func.args[0];
+        _grow_anchor = loc_arg if from_walker else func.args[0];
         self._region_enter(self._region_of_value(_grow_anchor));
         self.region_open_stack.append(len(self.loop_stack));
         if sig.arch_tag_info is not None {
@@ -2159,7 +2167,7 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        if not self._arch_is_walker_name(type_name) {
+        if not self._arch_is_walker_name(type_name) and not self._osp_pins_refs() {
             self._osp_make_immortal(obj_ptr);
         }
     }
@@ -3633,7 +3641,9 @@ impl NaIRGenPass._codegen_accessor_call(
     }
     _all_args: list[ir.Value] = [obj_val] + args;
     if self._arch_has_vtable(type_name) {
-        result = self._codegen_virtual_call(obj_val, slot, _all_args, type_name);
+        result = self._codegen_virtual_call(
+            obj_val, slot, _all_args, type_name, release_args=False
+        );
         if result is not None {
             return self._mark_reference_owned(result);
         }
@@ -4521,31 +4531,19 @@ impl NaIRGenPass._emit_field_store(
     }
 
     _borrow_field = field_name in self.struct_field_borrow.get(type_name, set());
+    _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    old_field_val: (ir.Value | None) = None;
     if self._elem_kind(ftype) != "raw" and not _borrow_field {
-        self._emit_take_ref(
-            value,
-            op="field_set",
-            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
-                if nd.loc
-                else 0}"
-        );
+        self._emit_take_ref(value, op="field_set", loc=_fs_loc);
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
-        self._set_rc_ctx(
-            "field_set",
-            f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
-                if nd.loc
-                else 0}"
-        );
-        self._emit_elem_release(self.builder, ftype, old_field_val);
-        self._clear_rc_ctx();
     }
+    _fs_old_pv: (ir.Value | None) = None;
     _fs_opt = self._opt_payload_of(ftype);
     if _fs_opt is not None
         and isinstance(_fs_opt, ir.PointerType)
         and not _borrow_field {
-        _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
-            if nd.loc
-            else 0}";
         if self._opt_result_owned(value, value_node) {
             self.rc_ops_elided += 1;
         } else {
@@ -4558,9 +4556,16 @@ impl NaIRGenPass._emit_field_store(
         _fs_old_pv = self.builder.extract_value(
             _fs_old, 1, name=f"field.{field_name}.oldpv"
         );
-        self._emit_rc_release_simple(_fs_old_pv, op="field_set", loc=_fs_loc);
     }
     self.builder.store(value, field_ptr);
+    if old_field_val is not None {
+        self._set_rc_ctx("field_set", _fs_loc);
+        self._emit_elem_release(self.builder, ftype, old_field_val);
+        self._clear_rc_ctx();
+    }
+    if _fs_old_pv is not None {
+        self._emit_rc_release_simple(_fs_old_pv, op="field_set", loc=_fs_loc);
+    }
     self._nogc_consume_local(value_node);
 }
 

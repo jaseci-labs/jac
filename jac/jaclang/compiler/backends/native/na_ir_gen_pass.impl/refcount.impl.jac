@@ -474,8 +474,19 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _cy_is_purple = b.icmp_unsigned(
             "==", _cy_color, ir.Constant(i8, RC_COLOR_PURPLE), name="cy.is.purple"
         );
+
+        _cy_untraced = b.icmp_unsigned(
+            "!=",
+            b.and_(_cy_cb, ir.Constant(i8, RC_UNTRACED_BIT), name="cy.unt.bit"),
+            ir.Constant(i8, 0),
+            name="cy.untraced"
+        );
         set_root_bb = release_fn.append_basic_block("set_root");
-        b.cbranch(_cy_is_purple, dbg_rel_bb, set_root_bb);
+        b.cbranch(
+            b.or_(_cy_is_purple, _cy_untraced, name="cy.not.root"),
+            dbg_rel_bb,
+            set_root_bb
+        );
 
         b = ir.IRBuilder(set_root_bb);
         _cy_word = b.load(_cy_csp, name="cy.word");
@@ -515,32 +526,38 @@ impl NaIRGenPass._emit_rc_helpers -> None {
             name="cd.in.coll"
         );
         b.cbranch(_cd_in_coll, dbg_rel_bb, unbuf_pre);
+
+        unbuf_hit = release_fn.append_basic_block("unbuf.hit");
         b = ir.IRBuilder(unbuf_pre);
         _ub_buf = b.load(self.rc_roots_buf_gv, name="ub.buf");
         _ub_count = b.load(self.rc_roots_count_gv, name="ub.count");
         b.branch(unbuf_hdr);
         b = ir.IRBuilder(unbuf_hdr);
         _ub_i = b.phi(i64, name="ub.i");
-        _ub_i.add_incoming(ir.Constant(i64, 0), unbuf_pre);
+        _ub_i.add_incoming(_ub_count, unbuf_pre);
         b.cbranch(
-            b.icmp_unsigned(">=", _ub_i, _ub_count, name="ub.end"),
+            b.icmp_unsigned("==", _ub_i, ir.Constant(i64, 0), name="ub.end"),
             unbuf_clear,
             unbuf_body
         );
         b = ir.IRBuilder(unbuf_body);
+        _ub_prev = b.sub(_ub_i, ir.Constant(i64, 1), name="ub.prev");
         _ub_slot = b.gep(
-            _ub_buf, [b.mul(_ub_i, ir.Constant(i64, 8), name="ub.off")], name="ub.slot"
+            _ub_buf,
+            [b.mul(_ub_prev, ir.Constant(i64, 8), name="ub.off")],
+            name="ub.slot"
         );
         _ub_pp = b.bitcast(_ub_slot, i8_ptr.as_pointer(), name="ub.pp");
         _ub_obj = b.load(_ub_pp, name="ub.obj");
-        _ub_match = b.icmp_unsigned("==", _ub_obj, release_fn.args[0], name="ub.match");
-        b.store(
-            b.select(_ub_match, ir.Constant(i8_ptr, None), _ub_obj, name="ub.new"),
-            _ub_pp
+        _ub_i.add_incoming(_ub_prev, unbuf_body);
+        b.cbranch(
+            b.icmp_unsigned("==", _ub_obj, release_fn.args[0], name="ub.match"),
+            unbuf_hit,
+            unbuf_hdr
         );
-        _ub_next = b.add(_ub_i, ir.Constant(i64, 1), name="ub.next");
-        _ub_i.add_incoming(_ub_next, unbuf_body);
-        b.branch(unbuf_hdr);
+        b = ir.IRBuilder(unbuf_hit);
+        b.store(ir.Constant(i8_ptr, None), _ub_pp);
+        b.branch(unbuf_clear);
         b = ir.IRBuilder(unbuf_clear);
         (_ub_csp, _ub_cb) = self._emit_rc_color_load(b, release_fn.args[0]);
         self._emit_rc_clear_buffered(b, _ub_csp);
@@ -570,7 +587,19 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     dtor_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     dtor_fn_i8 = b.inttoptr(dtor_val, i8_ptr, name="dtor.i8");
     dtor_fn_ptr = b.bitcast(dtor_fn_i8, dtor_fnty.as_pointer(), name="dtor.fn");
+    _depth_gv = self.rc_release_depth_gv;
+    if _depth_gv is not None {
+        b.store(
+            b.add(b.load(_depth_gv, name="rel.depth"), ir.Constant(i64, 1)), _depth_gv
+        );
+    }
     b.call(dtor_fn_ptr, [release_fn.args[0]]);
+    if _depth_gv is not None {
+        b.store(
+            b.sub(b.load(_depth_gv, name="rel.depth.after"), ir.Constant(i64, 1)),
+            _depth_gv
+        );
+    }
     post_dtor_live_rm_bb = release_fn.append_basic_block("post_dtor_live_rm");
     b.branch(post_dtor_live_rm_bb);
 
@@ -1313,11 +1342,20 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     ub.ret(ir.Constant(i8p, None));
     ub = ir.IRBuilder(_u_probe);
     _u_end = ub.load(ub.gep(_u_data, [_u_len], name="u.endp"), name="u.end");
-    ub.cbranch(
-        ub.icmp_unsigned("==", _u_end, ir.Constant(i8, 0), name="u.hasnul"),
-        _u_pass,
-        _u_copy
-    );
+    _u_whole = ub.icmp_unsigned("==", _u_end, ir.Constant(i8, 0), name="u.hasnul");
+    if not _hl {
+        _u_whole = ub.and_(
+            _u_whole,
+            ub.icmp_unsigned(
+                "==",
+                _u_data,
+                ub.extract_value(uf.args[0], 0, name="u.root"),
+                name="u.isroot"
+            ),
+            name="u.whole"
+        );
+    }
+    ub.cbranch(_u_whole, _u_pass, _u_copy);
     ub = ir.IRBuilder(_u_pass);
     ub.ret(_u_data);
     ub = ir.IRBuilder(_u_copy);
@@ -1382,6 +1420,9 @@ impl NaIRGenPass._str_norm(val: ir.Value) -> ir.Value {
     if self._str_desc_ty is None or val.type != self._str_desc_ty {
         return val;
     }
+    if not self._is_owned(val) and not self._nogc_headerless() {
+        return self._str_view(val);
+    }
     if self.str_unwrap_fn is None {
         self._emit_str_desc_helpers();
     }
@@ -1419,6 +1460,25 @@ impl NaIRGenPass._str_view(val: ir.Value) -> ir.Value {
         self.builder.select(copied, view, previous, name="s.view.hold"), slot
     );
     return view;
+}
+
+impl NaIRGenPass._str_borrow(val: ir.Value) -> ir.Value {
+    if self._str_desc_ty is None or val.type != self._str_desc_ty {
+        return val;
+    }
+    return self._str_view(val);
+}
+
+impl NaIRGenPass._consume_str_args(values: list[ir.Value]) -> None {
+    if self._str_desc_ty is None or self._nogc_headerless() {
+        return;
+    }
+    for value in values {
+        if value.type == self._str_desc_ty and self._is_owned(value) {
+            self._release_owned_args([value], op="str_arg");
+            value.is_owned = False;
+        }
+    }
 }
 
 impl NaIRGenPass._str_materialize(val: ir.Value) -> ir.Value {
@@ -2739,6 +2799,16 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     _hook = self._drop_hook_for(arch_name);
     if _hook is not None {
         b.call(_hook, [b.bitcast(release_fn.args[0], _hook.args[0].type)]);
+    }
+
+    _node_lay = self._arch_layout(arch_name);
+    if self._osp_pins_refs()
+        and _node_lay is not None
+        and _node_lay.arch_type == "node" {
+        b.call(
+            self._osp_reclaim_hook(),
+            [b.ptrtoint(release_fn.args[0], i64, name="osp.forget.h")]
+        );
     }
 
     if self._pyb_base_of(arch_name) is not None {

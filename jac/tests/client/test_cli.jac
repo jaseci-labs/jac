@@ -516,7 +516,7 @@ test "add npm with mixed deps" {
             os.chdir(temp_dir);
 
             # Create jac.toml with both pypi and npm sections
-            toml_content = '[project]\nname = "fullstack-app"\nversion = "1.0.0"\ndescription = "Test project with mixed deps"\nentry-point = "app"\n\n[dependencies]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
+            toml_content = '[project]\nname = "fullstack-app"\nversion = "1.0.0"\ndescription = "Test project with mixed deps"\nentry-point = "app"\n\n[dependencies.pypi]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\n\n[dev-dependencies.pypi]\npytest = ">=8.0.0"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);

@@ -1259,7 +1259,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         and type_expr.type_tag is not None {
         return self._resolve_jac_type(type_expr.type_tag.tag);
     }
-    return ir.IntType(64);
+    return self._emit_unlowerable_type(type_expr, _ptb);
 }
 
 impl NaIRGenPass._resolve_decl_type(
@@ -5498,6 +5498,17 @@ impl NaIRGenPass._sort_key_orderable(ty: (TypeBase | None)) -> (bool | None) {
         return False;
     }
     _args = ty.private.type_args or [];
+    if _name == "tuple" {
+        import from jaclang.compiler.types.types { UnknownType }
+        _known = [
+            a
+            for a in _args
+            if not isinstance(a, UnknownType)
+        ];
+        if _known and len(_known) < len(_args) {
+            _args = _known;
+        }
+    }
     if not _args {
         return None;
     }

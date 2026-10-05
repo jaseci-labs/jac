@@ -10,9 +10,11 @@ import from jaclang.runtime.memory { Memory }
 impl ExecutionContext.postinit -> None {
     import from jaclang.runtime.runtime { JacRuntime }
     if self._parent is not None {
-        self.mem = self._parent.mem;
         self.base_path_dir = self._parent.base_path_dir;
-        self.full_target_path = self._parent.full_target_path;
+        self.full_target_path = self.full_target_path or self._parent.full_target_path;
+        self.mem = self._parent.mem.new_session(self.full_target_path or '')
+            if self._own_session
+            else self._parent.mem;
         return;
     }
 
@@ -52,7 +54,7 @@ impl ExecutionContext._resolve_roots -> None {
         return;
     }
     outer = self._parent;
-    if outer is not None {
+    if outer is not None and self.mem is outer.mem {
         self._system_root = outer.system_root;
         self._user_root = outer.user_root;
         self._entry_node = outer.entry_node;
@@ -100,7 +102,7 @@ impl ExecutionContext.set_entry_node(entry_node: (str | None)) -> None {
 }
 
 impl ExecutionContext.close -> None {
-    if self._parent is not None {
+    if self._parent is not None and self.mem is self._parent.mem {
         return;
     }
 
@@ -153,4 +155,82 @@ impl ExecutionContext.aset_user_root(root_id: str) -> None {
     self._resolve_roots();
     self._user_root = await self._aget_anchor(root_id);
     self._entry_node = self._user_root;
+}
+
+
+impl ExecutionContext.bind_stream(value: any) -> any {
+    import inspect;
+    import from jaclang.runtime.runtime { JacRuntime }
+    context = self;
+    if inspect.isgenerator(value) {
+        def stream -> Generator[any, None, None] {
+            try {
+                yield None;
+                while True {
+                    token = JacRuntime.push_request_context(context);
+                    try {
+                        item = next(value);
+                    } except StopIteration {
+                        return;
+                    } finally {
+                        JacRuntime.reset_request_context(token);
+                    }
+                    yield item;
+                }
+            } except BaseException {
+                context.mem.abort();
+                raise;
+            } finally {
+                token = JacRuntime.push_request_context(context);
+                try {
+                    try {
+                        value.close();
+                    } finally {
+                        context.close();
+                    }
+                } finally {
+                    JacRuntime.reset_request_context(token);
+                }
+            }
+        }
+        wrapped: Generator[any, None, None] = stream();
+        next(wrapped);
+        return wrapped;
+    }
+    if inspect.isasyncgen(value) {
+        async def astream -> AsyncGenerator[any, None] {
+            try {
+                yield None;
+                while True {
+                    token = JacRuntime.push_request_context(context);
+                    try {
+                        item = await value.__anext__();
+                    } except StopAsyncIteration {
+                        return;
+                    } finally {
+                        JacRuntime.reset_request_context(token);
+                    }
+                    yield item;
+                }
+            } except BaseException {
+                context.mem.abort();
+                raise;
+            } finally {
+                token = JacRuntime.push_request_context(context);
+                try {
+                    try {
+                        await value.aclose();
+                    } finally {
+                        context.close();
+                    }
+                } finally {
+                    JacRuntime.reset_request_context(token);
+                }
+            }
+        }
+        wrapped_async: AsyncGenerator[any, None] = astream();
+        await wrapped_async.__anext__();
+        return wrapped_async;
+    }
+    return value;
 }

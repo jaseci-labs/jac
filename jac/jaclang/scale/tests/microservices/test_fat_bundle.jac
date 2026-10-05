@@ -199,7 +199,7 @@ test "fat_bundle=true stages _vendor/wheels resolved by the seal binary" {
 test "the bundle digest is deterministic and moves when a wheel changes" {
     pod = _pod_binary();
     pinned = (
-        "[project]\nname = \"mini\"\n\n[dependencies]\n"
+        "[project]\nname = \"mini\"\n\n[dependencies.pypi]\n"
         "python-dotenv = \"{}\"\n\n[scale]\nfat_bundle = true\n"
     );
     app = _app(pinned.format("==1.2.1"));
@@ -263,7 +263,7 @@ test "RECORD lines pointing outside site-packages are stripped" {
 test "pack_jab seals a prebuilt venv unless JAC_SEAL_SKIP_VENV opts out" {
     pod = _pod_binary();
     toml = (
-        "[project]\nname = \"mini\"\n\n[dependencies]\n"
+        "[project]\nname = \"mini\"\n\n[dependencies.pypi]\n"
         "python-dotenv = \"==1.2.1\"\n\n[scale]\nfat_bundle = true\n"
     );
     os.environ["JAC_SEAL_SKIP_VENV"] = "1";
