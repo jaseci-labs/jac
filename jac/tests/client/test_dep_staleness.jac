@@ -58,7 +58,7 @@ class _RecordingBundler(ViteBundler) {
         force: bool = False,
         capture_output: bool = False,
         clean_stale: bool = False
-    ) -> None {
+    ) {
         self.saw_stale = install_dir is not None and client_deps_stale(install_dir);
     }
 }
