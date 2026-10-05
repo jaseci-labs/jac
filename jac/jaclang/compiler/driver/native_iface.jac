@@ -240,7 +240,7 @@ def native_layout_from_dict(raw: any) -> NativeModuleLayout {
     return layout;
 }
 
-glob NIFACE_FORMAT: int = 3,
+glob NIFACE_FORMAT: int = 5,
      NIFACE_HASH_LEN: int = 64,
      EXPORT_FUNCTION: str = "function",
      EXPORT_METHOD: str = "method",
