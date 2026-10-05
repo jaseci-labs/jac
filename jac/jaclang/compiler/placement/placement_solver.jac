@@ -369,7 +369,13 @@ def _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | N
         return None;
     }
     placement_work(prog).observe_path(resolved);
-    return _materialize_module(os.path.abspath(resolved), prog);
+    found = _materialize_module(os.path.abspath(resolved), prog);
+    import from jaclang.compiler.types.stubcat.reader { CatModule }
+    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+    if isinstance(found, CatModule) and is_compiler_source_path(resolved) {
+        return None;
+    }
+    return found;
 }
 
 def _closure_pullable(

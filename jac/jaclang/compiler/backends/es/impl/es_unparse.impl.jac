@@ -696,7 +696,7 @@ impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
     if (nd is None) {
         return '';
     }
-    kids: list[tuple[es.Node, str, list[any]]] = [];
+    kids: list[EmitFrame] = [];
     self._frames.append(kids);
     try {
         result: (str | None) = self.dispatch(nd);
@@ -706,10 +706,11 @@ impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
     if result is None {
         result = f"/* Unsupported node type: {nd.type} */";
     }
+    frame = EmitFrame(nd=nd, text=result, kids=kids);
     if self._frames {
-        self._frames[-1].append((nd, result, kids));
+        self._frames[-1].append(frame);
     } else {
-        self._root = [(nd, result, kids)];
+        self._root = [frame];
     }
     return result;
 }
@@ -717,12 +718,12 @@ impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
 impl JSCodeGenerator.build_segments(code: str) -> list[tuple[int, int, int, int, str]] {
     line_starts = _line_starts(code);
     found: dict[tuple[int, int], tuple[int, int, str]] = {};
-    pending: list[tuple[tuple[es.Node, str, list[any]], int, any]] = [
+    pending: list[tuple[EmitFrame, int, (es.SourceLocation | None)]] = [
         (`entry, 0, None) for `entry in self._root
     ];
     while pending {
         (frame, offset, inherited) = pending.pop();
-        (nd, text, kids) = frame;
+        (nd, text, kids) = (frame.nd, frame.text, frame.kids);
         loc = nd.loc
             if (
                 nd.loc is not None
@@ -737,7 +738,7 @@ impl JSCodeGenerator.build_segments(code: str) -> list[tuple[int, int, int, int,
         }
         cursor = 0;
         for kid in kids {
-            kid_text: str = kid[1];
+            kid_text = kid.text;
             if kid_text == '' {
                 pending.append((kid, offset + cursor, loc));
                 continue;

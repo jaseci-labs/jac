@@ -1,12 +1,18 @@
 import jaclang.compiler.backends.es.estree as es;
 
+obj EmitFrame {
+    has nd: es.Node,
+        text: str = "",
+        kids: list[EmitFrame] = [];
+}
+
 obj JSCodeGenerator {
     def init(indent: str = '  ') -> None;
 
     has indent_str: str,
         indent_level: int = 0,
-        _frames: list[list[tuple[es.Node, str, list[any]]]] = [],
-        _root: list[tuple[es.Node, str, list[any]]] = [];
+        _frames: list[list[EmitFrame]] = [],
+        _root: list[EmitFrame] = [];
 
     def indent -> str;
     def build_segments(code: str) -> list[tuple[int, int, int, int, str]];
