@@ -506,6 +506,93 @@ def _jac_hex_digit(ch: str) -> int {
     return idx if idx < 16 else idx - 6;
 }
 
+def _jac_int_digit(ch: str) -> int {
+    idx = "0123456789abcdefghijklmnopqrstuvwxyz".find(ch.lower());
+    return idx if idx >= 0 else 99;
+}
+
+def _jac_int_bad(text: str, base: int) {
+    raise ValueError(f"invalid literal for int() with base {base}: '{text}'");
+}
+
+def jac_int_parse(text: str, base: int) -> int {
+    if base != 0 and (base < 2 or base > 36) {
+        raise ValueError("int() base must be >= 2 and <= 36, or 0");
+    }
+    i = 0;
+    j = len(text);
+    while i < j and text[i] in " \t\n\r\x0b\x0c" {
+        i += 1;
+    }
+    while j > i and text[j - 1] in " \t\n\r\x0b\x0c" {
+        j -= 1;
+    }
+    neg = False;
+    if i < j and (text[i] == "+" or text[i] == "-") {
+        neg = text[i] == "-";
+        i += 1;
+    }
+    radix = base;
+    prefixed = False;
+    if i + 1 < j and text[i] == "0" {
+        mark = text[i + 1].lower();
+        found = 16
+            if mark == "x"
+            else (8 if mark == "o" else (2 if mark == "b" else 0));
+        if found != 0 and (base == 0 or base == found) {
+            radix = found;
+            prefixed = True;
+            i += 2;
+        }
+    }
+    decimal_zero_rule = radix == 0;
+    if radix == 0 {
+        radix = 10;
+    }
+    value = 0;
+    digits = 0;
+    nonzero = False;
+    under_ok = prefixed;
+    last_under = False;
+    while i < j {
+        ch = text[i];
+        if ch == "_" {
+            if not under_ok {
+                _jac_int_bad(text, base);
+            }
+            under_ok = False;
+            last_under = True;
+            i += 1;
+            continue;
+        }
+        d = _jac_int_digit(ch);
+        if d >= radix {
+            _jac_int_bad(text, base);
+        }
+        if d != 0 {
+            nonzero = True;
+        }
+        value = value * radix + d;
+        digits += 1;
+        under_ok = True;
+        last_under = False;
+        i += 1;
+    }
+    if digits == 0 or last_under {
+        _jac_int_bad(text, base);
+    }
+    if decimal_zero_rule and nonzero and digits > 1 {
+        k = 0;
+        while k < len(text) and text[k] in " \t\n\r\x0b\x0c+-" {
+            k += 1;
+        }
+        if k < len(text) and text[k] == "0" {
+            _jac_int_bad(text, base);
+        }
+    }
+    return -value if neg else value;
+}
+
 def jac_bytes_hex(data: bytes) -> str {
     digits = "0123456789abcdef";
     out = "";

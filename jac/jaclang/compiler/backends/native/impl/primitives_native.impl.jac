@@ -5986,6 +5986,18 @@ impl NativeBuiltinEmitter._int_from_c_string(
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
+    parse_fn = p._get_fmt_kernel_fn("jac_int_parse");
+    if parse_fn is not None and len(parse_fn.args) == 2 {
+        base_val = base if base is not None else ir.Constant(i32, 10);
+        return b.call(
+            parse_fn,
+            [
+                p._coerce_type(text, parse_fn.args[0].type),
+                p._coerce_type(base_val, parse_fn.args[1].type)
+            ],
+            name="int.parse"
+        );
+    }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
     endptr_alloca = b.alloca(i8p, name="endptr");
     result_val = b.call(
