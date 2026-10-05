@@ -1,5 +1,14 @@
 """Python's streaming token iterator backed by the shared Jac scanner."""
 
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyLong_FromLongLong,
+    PyObject,
+    PyTuple_New,
+    jacpy_readline,
+    jacpy_release,
+    jacpy_tuple_set_owned
+}
 import type from typing { Never }
 import from jaclang.compiler.frontend.python.compiler_diagnostics {
     report_token_warnings
@@ -27,11 +36,7 @@ import from jaclang.runtime.python.capi {
     boundary_failure,
     checked,
     required,
-    text_object,
-    jacpy_int,
-    jacpy_tuple_new,
-    jacpy_tuple_set_owned,
-    jacpy_release
+    text_object
 }
 import from jaclang.runtime.python.native_services {
     take_buffer,
@@ -39,7 +44,6 @@ import from jaclang.runtime.python.native_services {
     parse_float
 }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-import from c { def jacpy_readline(reader: u64, encoding: str, decode: i64) -> u64;  }
 obj native_token {
     has kind: int,
         spelling: str,
@@ -70,7 +74,7 @@ def _character_column(line: str, column: int) -> int {
 }
 
 obj token_iterator_state(token_source) {
-    has reader: u64,
+    has reader: ptr[PyObject],
         encoding: str | None,
         scanner: tok_state,
         lines: list[str] = [],
@@ -254,7 +258,7 @@ obj token_iterator_state(token_source) {
 }
 
 def:pub token_iterator(
-    reader: u64, encoding: str, decode: bool, extra: bool
+    reader: ptr[PyObject], encoding: str, decode: bool, extra: bool
 ) -> token_iterator_state {
     scanner = tok_state(data=b"", filename="<string>", extra_tokens=extra);
     result = token_iterator_state(
@@ -266,14 +270,18 @@ def:pub token_iterator(
 
 # (type, string, (start line, column), (end line, column), line); zero with no
 # exception set once the stream is exhausted.
-def token_object(iterator: token_iterator_state) -> u64 {
+def token_object(iterator: token_iterator_state) -> ptr[PyObject] {
     value = iterator.next_token();
     if value is None {
-        return 0;
+        return NULL;
     }
-    result = required(jacpy_tuple_new(5));
+    result = required(PyTuple_New(5));
     try {
-        checked(jacpy_tuple_set_owned(result, 0, required(jacpy_int(i64(value.kind)))));
+        checked(
+            jacpy_tuple_set_owned(
+                result, 0, required(PyLong_FromLongLong(i64(value.kind)))
+            )
+        );
         checked(jacpy_tuple_set_owned(result, 1, text_object(value.spelling)));
         checked(
             jacpy_tuple_set_owned(result, 2, position(value.start_line, value.start))
@@ -287,11 +295,15 @@ def token_object(iterator: token_iterator_state) -> u64 {
     return result;
 }
 
-def position(line: int, column: int) -> u64 {
-    result = required(jacpy_tuple_new(2));
+def position(line: int, column: int) -> ptr[PyObject] {
+    result = required(PyTuple_New(2));
     try {
-        checked(jacpy_tuple_set_owned(result, 0, required(jacpy_int(i64(line)))));
-        checked(jacpy_tuple_set_owned(result, 1, required(jacpy_int(i64(column)))));
+        checked(
+            jacpy_tuple_set_owned(result, 0, required(PyLong_FromLongLong(i64(line))))
+        );
+        checked(
+            jacpy_tuple_set_owned(result, 1, required(PyLong_FromLongLong(i64(column))))
+        );
     } except Exception {
         jacpy_release(result);
         raise;

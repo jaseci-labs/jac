@@ -792,7 +792,11 @@ def get_type_of_binary_operation(
         if expr.parent is not None {
             synth_call.set_parent(expr.parent);
         }
-        return evaluator.validate_call_args(synth_call);
+        try {
+            return evaluator.validate_call_args(synth_call);
+        } finally {
+            del [edge synth_call-->];
+        }
     }
     return UnknownType();
 }

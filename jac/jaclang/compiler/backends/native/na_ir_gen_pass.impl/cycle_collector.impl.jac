@@ -22,10 +22,29 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     roots_count_gv.initializer = ir.Constant(i64, 0);
     self.rc_roots_count_gv = roots_count_gv;
 
+    threshold_gv = ir.GlobalVariable(
+        self.llvm_module, i64, name="__rc_roots_threshold"
+    );
+    threshold_gv.linkage = "weak";
+    threshold_gv.initializer = ir.Constant(i64, RC_CYCLE_THRESHOLD);
+    self.rc_roots_threshold_gv = threshold_gv;
+
+    traced_gv = ir.GlobalVariable(self.llvm_module, i64, name="__rc_traced");
+    traced_gv.linkage = "weak";
+    traced_gv.initializer = ir.Constant(i64, 0);
+    self.rc_traced_gv = traced_gv;
+
     collecting_gv = ir.GlobalVariable(self.llvm_module, i8, name="__rc_collecting");
     collecting_gv.linkage = "weak";
     collecting_gv.initializer = ir.Constant(i8, 0);
     self.rc_collecting_gv = collecting_gv;
+
+    release_depth_gv = ir.GlobalVariable(
+        self.llvm_module, i64, name="__rc_release_depth"
+    );
+    release_depth_gv.linkage = "weak";
+    release_depth_gv.initializer = ir.Constant(i64, 0);
+    self.rc_release_depth_gv = release_depth_gv;
 
     cycles_enabled_gv = ir.GlobalVariable(
         self.llvm_module, i8, name="__rc_cycles_enabled"
@@ -62,7 +81,37 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     pr_trigger = push_fn.append_basic_block("trigger");
     pr_done = push_fn.append_basic_block("done");
 
+    pr_lookup = push_fn.append_basic_block("lookup");
+    pr_untraced = push_fn.append_basic_block("untraced");
+    pr_buffer = push_fn.append_basic_block("buffer");
     b = ir.IRBuilder(pr_entry);
+    _pr_dtor = b.load(
+        b.bitcast(
+            b.gep(push_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="dtor.raw"),
+            i64.as_pointer(),
+            name="dtor.ptr"
+        ),
+        name="dtor"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", _pr_dtor, ir.Constant(i64, 0), name="no.dtor"),
+        pr_untraced,
+        pr_lookup
+    );
+    b = ir.IRBuilder(pr_lookup);
+    _pr_trace = b.call(lookup_fn, [_pr_dtor], name="trace");
+    b.cbranch(
+        b.icmp_unsigned("==", _pr_trace, ir.Constant(i64, 0), name="no.trace"),
+        pr_untraced,
+        pr_buffer
+    );
+    b = ir.IRBuilder(pr_untraced);
+    (_pr_csp, _pr_cb) = self._emit_rc_color_load(b, push_fn.args[0]);
+    self._emit_rc_color_reset(b, _pr_csp);
+    self._emit_rc_mark_untraced(b, _pr_csp);
+    b.branch(pr_done);
+
+    b = ir.IRBuilder(pr_buffer);
     _cnt = b.load(roots_count_gv, name="cnt");
     _cap = b.load(roots_cap_gv, name="cap");
     b.cbranch(b.icmp_unsigned(">=", _cnt, _cap, name="full"), pr_grow, pr_store);
@@ -99,7 +148,7 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     b.store(_cnt3, roots_count_gv);
     b.cbranch(
         b.icmp_unsigned(
-            ">=", _cnt3, ir.Constant(i64, RC_CYCLE_THRESHOLD), name="thresh"
+            ">=", _cnt3, b.load(threshold_gv, name="threshold"), name="thresh"
         ),
         pr_chk_thresh,
         pr_done
@@ -115,7 +164,21 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
         ir.Constant(i8, 0),
         name="cyc.off"
     );
-    b.cbranch(b.or_(_pr_collecting, _pr_disabled, name="pr.skip"), pr_done, pr_trigger);
+    _pr_releasing = b.icmp_unsigned(
+        "!=",
+        b.load(release_depth_gv, name="rel.depth"),
+        ir.Constant(i64, 0),
+        name="releasing"
+    );
+    b.cbranch(
+        b.or_(
+            b.or_(_pr_collecting, _pr_disabled, name="pr.skip.flags"),
+            _pr_releasing,
+            name="pr.skip"
+        ),
+        pr_done,
+        pr_trigger
+    );
 
     b = ir.IRBuilder(pr_trigger);
     b.call(collect_fn, []);
@@ -263,7 +326,11 @@ impl NaIRGenPass._emit_rc_color_load(
     csp = b.bitcast(_slot, i64_ptr, name="csp");
     _word = b.load(csp, name="cword");
     _field = b.lshr(_word, ir.Constant(i64, RC_COLOR_SHIFT), name="cfield");
-    cb = b.trunc(b.and_(_field, ir.Constant(i64, 7), name="cbits"), i8, name="cb");
+    cb = b.trunc(
+        b.and_(_field, ir.Constant(i64, 7 | RC_UNTRACED_BIT), name="cbits"),
+        i8,
+        name="cb"
+    );
     return (csp, cb);
 }
 
@@ -283,6 +350,18 @@ impl NaIRGenPass._emit_rc_color_reset(b: ir.IRBuilder, csp: ir.Value) -> None {
     _word = b.load(csp, name="crw");
     b.store(
         b.and_(_word, ir.Constant(i64, ~(7 << RC_COLOR_SHIFT)), name="crw.new"), csp
+    );
+}
+
+impl NaIRGenPass._emit_rc_mark_untraced(b: ir.IRBuilder, csp: ir.Value) -> None {
+    i64 = ir.IntType(64);
+    b.store(
+        b.or_(
+            b.load(csp, name="cuw"),
+            ir.Constant(i64, RC_UNTRACED_BIT << RC_COLOR_SHIFT),
+            name="cuw.new"
+        ),
+        csp
     );
 }
 
@@ -325,19 +404,35 @@ impl NaIRGenPass._emit_rc_trace_dispatch(
     trace_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, i8_ptr]);
     trace_fn_ptype = trace_fnty.as_pointer();
 
+    dtor_block = fn.append_basic_block("trace_dtor");
     lookup_block = fn.append_basic_block("trace_lookup");
+    untraced_block = fn.append_basic_block("trace_untraced");
     call_block = fn.append_basic_block("trace_call");
-    _di = b.load(
-        b.bitcast(
-            b.gep(obj_i8, [ir.Constant(i64, HDR_DTOR_OFF)], name="tdsp"),
+
+    (_tcsp, _tcb) = self._emit_rc_color_load(b, obj_i8);
+    b.cbranch(
+        b.icmp_unsigned(
+            "!=",
+            b.and_(_tcb, ir.Constant(ir.IntType(8), RC_UNTRACED_BIT), name="tunt.bit"),
+            ir.Constant(ir.IntType(8), 0),
+            name="tuntraced"
+        ),
+        done_block,
+        dtor_block
+    );
+
+    db = ir.IRBuilder(dtor_block);
+    _di = db.load(
+        db.bitcast(
+            db.gep(obj_i8, [ir.Constant(i64, HDR_DTOR_OFF)], name="tdsp"),
             i64_ptr,
             name="tdptr"
         ),
         name="tdi"
     );
-    b.cbranch(
-        b.icmp_unsigned("==", _di, ir.Constant(i64, 0), name="tdnull"),
-        done_block,
+    db.cbranch(
+        db.icmp_unsigned("==", _di, ir.Constant(i64, 0), name="tdnull"),
+        untraced_block,
         lookup_block
     );
 
@@ -345,9 +440,13 @@ impl NaIRGenPass._emit_rc_trace_dispatch(
     _ti = lb.call(self.rc_trace_lookup_fn, [_di], name="ti");
     lb.cbranch(
         lb.icmp_unsigned("==", _ti, ir.Constant(i64, 0), name="tnull"),
-        done_block,
+        untraced_block,
         call_block
     );
+
+    ub = ir.IRBuilder(untraced_block);
+    self._emit_rc_mark_untraced(ub, _tcsp);
+    ub.branch(done_block);
 
     cb = ir.IRBuilder(call_block);
     cb.call(
@@ -478,6 +577,14 @@ impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
     );
     b = ir.IRBuilder(mg_set);
     self._emit_rc_color_store(b, _mg_csp, _mg_cb, RC_COLOR_GRAY);
+    b.store(
+        b.add(
+            b.load(self.rc_traced_gv, name="traced"),
+            ir.Constant(i64, 1),
+            name="traced.next"
+        ),
+        self.rc_traced_gv
+    );
     self._emit_rc_trace_dispatch(
         mark_gray_fn, b, mark_gray_fn.args[0], mg_vis_fn, mg_done
     );
@@ -883,6 +990,7 @@ impl NaIRGenPass._emit_rc_collect_loop(
 
     b = ir.IRBuilder(cc_start);
     b.store(ir.Constant(i8, 1), self.rc_collecting_gv);
+    b.store(ir.Constant(i64, 0), self.rc_traced_gv);
     _cc_count = b.load(self.rc_roots_count_gv, name="count");
 
     p3pre = self._emit_rc_root_pass(
@@ -897,6 +1005,27 @@ impl NaIRGenPass._emit_rc_collect_loop(
     );
 
     b = ir.IRBuilder(cc_finish);
+
+    _cc_traced = b.load(self.rc_traced_gv, name="cc.traced");
+    _cc_garbage = b.load(self.rc_garbage_count_gv, name="cc.garbage");
+    _cc_live = b.select(
+        b.icmp_unsigned(">", _cc_traced, _cc_garbage, name="cc.some.live"),
+        b.sub(_cc_traced, _cc_garbage, name="cc.live.n"),
+        ir.Constant(i64, 0),
+        name="cc.live"
+    );
+    _cc_paced = b.udiv(_cc_live, ir.Constant(i64, RC_CYCLE_PACE), name="cc.paced");
+    b.store(
+        b.select(
+            b.icmp_unsigned(
+                ">", _cc_paced, ir.Constant(i64, RC_CYCLE_THRESHOLD), name="cc.large"
+            ),
+            _cc_paced,
+            ir.Constant(i64, RC_CYCLE_THRESHOLD),
+            name="cc.threshold"
+        ),
+        self.rc_roots_threshold_gv
+    );
     b.call(self._emit_rc_reclaim_garbage_fn(), []);
     b.store(ir.Constant(i64, 0), self.rc_roots_count_gv);
     b.store(ir.Constant(i8, 0), self.rc_collecting_gv);

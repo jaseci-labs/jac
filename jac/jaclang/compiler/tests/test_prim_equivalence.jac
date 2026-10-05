@@ -504,6 +504,62 @@ glob STR_NA_GAPS: list[any] = [
          ),
          ("uuid bundled", "prim_uuid.jac", "uuid_py", "uuid_cl", "uuid_na", ["na"]),
          (
+             "colorsys bundled",
+             "prim_colorsys.jac",
+             "colorsys_py",
+             "colorsys_cl",
+             "colorsys_na",
+             ["na"]
+         ),
+         (
+             "sched bundled",
+             "prim_sched.jac",
+             "sched_py",
+             "sched_cl",
+             "sched_na",
+             ["na"]
+         ),
+         (
+             "ipaddress bundled",
+             "prim_ipaddress.jac",
+             "ipaddress_py",
+             "ipaddress_cl",
+             "ipaddress_na",
+             ["na"]
+         ),
+         (
+             "mimetypes bundled",
+             "prim_mimetypes.jac",
+             "mimetypes_py",
+             "mimetypes_cl",
+             "mimetypes_na",
+             ["na"]
+         ),
+         (
+             "locale bundled",
+             "prim_locale.jac",
+             "locale_py",
+             "locale_cl",
+             "locale_na",
+             ["na"]
+         ),
+         (
+             "gettext bundled",
+             "prim_gettext.jac",
+             "gettext_py",
+             "gettext_cl",
+             "gettext_na",
+             ["na"]
+         ),
+         (
+             "logging bundled",
+             "prim_logging.jac",
+             "logging_py",
+             "logging_cl",
+             "logging_na",
+             ["na"]
+         ),
+         (
              "static members",
              "prim_static_members.jac",
              "static_members_py",

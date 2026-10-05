@@ -4,6 +4,21 @@
 # helpers. It was shared with the removed Jac interpreter; retain its behavior
 # until compiler values can be separated from the remaining object slots.
 # Its only import is opcode_meta, which defines the NB_* operation kinds.
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyErr_SetFromErrnoWithFilenameObjects,
+    PyObject_IsTrue,
+    PyObject_RichCompare,
+    PyObject_RichCompareBool,
+    PySequence_Fast,
+    PySequence_GetItem,
+    PySequence_Tuple,
+    PySlice_AdjustIndices,
+    PyUnicode_Format,
+    _Py_c_pow,
+    _Py_c_quot
+}
 import from jaclang.runtime.python.opcode_meta {
     NB_ADD,
     NB_AND,
@@ -182,7 +197,6 @@ def int_true_divide(av: int, bv: int) -> PyObj {
     }
     return PyFloat(t="float", val=result);
 }
-
 
 obj PyInt(PyObj) {
     has val: int;
@@ -3226,7 +3240,6 @@ def _construct_exc_group(
 obj PyEgroupTypeMember(PyObj) {
     has name: str;
 }
-
 
 obj PyExceptionType(PyObj) {
     has name: str;

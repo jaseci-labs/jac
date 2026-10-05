@@ -3,6 +3,58 @@
 The format plan owns typed Jac fields; Python values and exported buffers stay
 at the shared object boundary. Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyBool_FromLong,
+    PyComplex_FromDoubles,
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble,
+    PyDict_Clear,
+    PyDict_SetItem,
+    PyErr_Clear,
+    PyFloat_AsDouble,
+    PyFloat_FromDouble,
+    PyIndex_Check,
+    PyLong_AsLongLong,
+    PyLong_AsUnsignedLongLong,
+    PyLong_AsVoidPtr,
+    PyLong_FromLongLong,
+    PyLong_FromUnsignedLongLong,
+    PyNumber_Index,
+    PyObject,
+    PyObject_CallOneArg,
+    PyObject_IsTrue,
+    PyTuple_New,
+    PyTuple_Size,
+    Py_NewRef,
+    jacpy_bytes_address,
+    jacpy_bytes_from_memory,
+    jacpy_bytes_length,
+    jacpy_complex_value,
+    jacpy_dict_get,
+    jacpy_dict_size,
+    jacpy_error_is,
+    jacpy_error_pending,
+    jacpy_float_pack,
+    jacpy_float_unpack,
+    jacpy_is_bytearray,
+    jacpy_is_bytes,
+    jacpy_is_long,
+    jacpy_long_address,
+    jacpy_memory_byte,
+    jacpy_memory_copy,
+    jacpy_memory_set,
+    jacpy_memory_zero,
+    jacpy_native_float_store,
+    jacpy_native_little_endian,
+    jacpy_native_size,
+    jacpy_offset,
+    jacpy_release,
+    jacpy_set_exception,
+    jacpy_tuple_item,
+    jacpy_tuple_set_owned
+}
 import from jaclang.runtime.python.modules.binary_scalars {
     read_bits,
     write_bits,
@@ -14,52 +66,7 @@ import from jaclang.runtime.python.capi {
     checked,
     object_error,
     jac_heap_size,
-    jac_list_heap_size,
-    jacpy_set_exception,
-    jacpy_error_pending,
-    jacpy_error_is,
-    jacpy_clear_error,
-    jacpy_dict_get,
-    jacpy_dict_size,
-    jacpy_dict_set,
-    jacpy_dict_clear,
-    jacpy_call_one,
-    jacpy_retain,
-    jacpy_release,
-    jacpy_int,
-    jacpy_uint,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_tuple_new,
-    jacpy_tuple_set_owned,
-    jacpy_is_long,
-    jacpy_index_check,
-    jacpy_index,
-    jacpy_integer_value,
-    jacpy_long_u64,
-    jacpy_long_pointer,
-    jacpy_truth,
-    jacpy_boolean,
-    jacpy_is_bytes,
-    jacpy_is_bytearray,
-    jacpy_bytes_address,
-    jacpy_bytes_length,
-    jacpy_bytes_from_memory,
-    jacpy_memory_byte,
-    jacpy_memory_set,
-    jacpy_memory_copy,
-    jacpy_memory_zero,
-    jacpy_native_size,
-    jacpy_native_little_endian,
-    jacpy_number_as_double,
-    jacpy_float,
-    jacpy_float_pack,
-    jacpy_float_unpack,
-    jacpy_native_float_store,
-    jacpy_complex_value,
-    jacpy_complex_real,
-    jacpy_complex_imag,
-    jacpy_complex
+    jac_list_heap_size
 }
 
 obj format_field {
@@ -77,7 +84,7 @@ obj struct_plan {
         little: bool = True;
 }
 
-def:priv struct_error(error: u64, message: str) {
+def:priv struct_error(error: ptr[PyObject], message: str) {
     jacpy_set_exception(error, message, i64(len(message.encode("utf-8"))));
     raise boundary_failure();
 }
@@ -140,7 +147,9 @@ def:pub jacpy_struct_new -> struct_plan {
     return struct_plan(little=jacpy_native_little_endian() != 0);
 }
 
-def:pub jacpy_struct_compile(plan: struct_plan, format: u64, error: u64) -> i64 {
+def:pub jacpy_struct_compile(
+    plan: struct_plan, format: ptr[PyObject], error: ptr[PyObject]
+) -> i64 {
     try {
         data = jacpy_bytes_address(format);
         length = int(jacpy_bytes_length(format));
@@ -240,15 +249,16 @@ def:pub jacpy_struct_items(plan: struct_plan) -> i64 {
     return i64(plan.items);
 }
 
-
-def:priv integer_bits(value: u64, code: int, size: int, error: u64) -> u64 {
-    if jacpy_index_check(value) == 0 and jacpy_is_long(value) == 0 {
+def:priv integer_bits(
+    value: ptr[PyObject], code: int, size: int, error: ptr[PyObject]
+) -> u64 {
+    if PyIndex_Check(value) == 0 and jacpy_is_long(value) == 0 {
         struct_error(error, "required argument is not an integer");
     }
-    number = required(jacpy_index(value));
+    number = required(PyNumber_Index(value));
     try {
         if code == 80 {
-            result = jacpy_long_pointer(number);
+            result = jacpy_long_address(number);
             if jacpy_error_is("OverflowError") != 0 {
                 struct_error(error, "int too large to convert");
             }
@@ -268,14 +278,14 @@ def:priv integer_bits(value: u64, code: int, size: int, error: u64) -> u64 {
                 minimum = -(i64(1) << bits);
             }
             maximum = (u64(1) << bits) - u64(1);
-            actual = jacpy_integer_value(number);
+            actual = PyLong_AsLongLong(number);
             result = ~u64(-(actual + i64(1))) if actual < 0 else u64(actual);
             invalid = actual < minimum or (actual >= 0 and u64(actual) > maximum);
         } else {
             if size < 8 {
                 maximum = (u64(1) << i64(size * 8)) - u64(1);
             }
-            result = jacpy_long_u64(number);
+            result = PyLong_AsUnsignedLongLong(number);
             invalid = result > maximum;
         }
         if jacpy_error_pending() != 0 {
@@ -302,7 +312,11 @@ def:priv integer_bits(value: u64, code: int, size: int, error: u64) -> u64 {
 }
 
 def:priv pack_field(
-    plan: struct_plan, field: format_field, address: u64, value: u64, error: u64
+    plan: struct_plan,
+    field: format_field,
+    address: ptr,
+    value: ptr[PyObject],
+    error: ptr[PyObject]
 ) {
     code = field.code;
     size = field.size;
@@ -319,7 +333,7 @@ def:priv pack_field(
             }
             length = min(length, size - 1);
             jacpy_memory_set(address, 0, i64(min(length, 255)));
-            address += u64(1);
+            address = jacpy_offset(address, 1);
         } else {
             length = min(length, size);
         }
@@ -334,13 +348,13 @@ def:priv pack_field(
         return;
     }
     if code == 63 {
-        truth = jacpy_truth(value);
+        truth = PyObject_IsTrue(value);
         checked(truth);
         jacpy_memory_set(address, 0, truth);
         return;
     }
     if code == 101 or code == 102 or code == 100 {
-        number = jacpy_number_as_double(value);
+        number = PyFloat_AsDouble(value);
         if jacpy_error_pending() != 0 {
             struct_error(error, "required argument is not a float");
         }
@@ -354,12 +368,14 @@ def:priv pack_field(
         }
         try {
             component_size = size // 2;
-            real = jacpy_complex_real(complex_handle);
-            imaginary = jacpy_complex_imag(complex_handle);
+            real = PyComplex_RealAsDouble(complex_handle);
+            imaginary = PyComplex_ImagAsDouble(complex_handle);
             if plan.native {
                 jacpy_native_float_store(real, address, i64(component_size));
                 jacpy_native_float_store(
-                    imaginary, address + u64(component_size), i64(component_size)
+                    imaginary,
+                    jacpy_offset(address, component_size),
+                    i64(component_size)
                 );
             } else {
                 checked(
@@ -370,7 +386,7 @@ def:priv pack_field(
                 checked(
                     jacpy_float_pack(
                         imaginary,
-                        address + u64(component_size),
+                        jacpy_offset(address, component_size),
                         i64(component_size),
                         i64(plan.little)
                     )
@@ -386,7 +402,11 @@ def:priv pack_field(
 }
 
 def:pub jacpy_struct_pack(
-    plan: struct_plan, args: u64, start: i64, address: u64, error: u64
+    plan: struct_plan,
+    args: ptr[PyObject],
+    start: i64,
+    address: ptr,
+    error: ptr[PyObject]
 ) -> i64 {
     try {
         jacpy_memory_zero(address, i64(plan.size));
@@ -398,7 +418,7 @@ def:pub jacpy_struct_pack(
                     pack_field(
                         plan,
                         field,
-                        address + u64(field.offset + repetition * field.size),
+                        jacpy_offset(address, field.offset + repetition * field.size),
                         value,
                         error
                     );
@@ -414,7 +434,9 @@ def:pub jacpy_struct_pack(
     }
 }
 
-def:priv unpack_field(plan: struct_plan, field: format_field, address: u64) -> u64 {
+def:priv unpack_field(
+    plan: struct_plan, field: format_field, address: ptr
+) -> ptr[PyObject] {
     code = field.code;
     size = field.size;
     if code == 115 or code == 99 {
@@ -426,41 +448,45 @@ def:priv unpack_field(plan: struct_plan, field: format_field, address: u64) -> u
             length = min(int(jacpy_memory_byte(address, 0)), size - 1);
         }
         return required(
-            jacpy_bytes_from_memory(address + u64(1 if size != 0 else 0), i64(length))
+            jacpy_bytes_from_memory(
+                jacpy_offset(address, 1 if size != 0 else 0), i64(length)
+            )
         );
     }
     if code == 63 {
-        return required(jacpy_boolean(i64(jacpy_memory_byte(address, 0) != 0)));
+        return required(PyBool_FromLong(i64(jacpy_memory_byte(address, 0) != 0)));
     }
     if code == 101 or code == 102 or code == 100 {
         number = jacpy_float_unpack(address, i64(size), i64(plan.little));
         pending();
-        return required(jacpy_float(number));
+        return required(PyFloat_FromDouble(number));
     }
     if code == 70 or code == 68 {
         component_size = size // 2;
         real = jacpy_float_unpack(address, i64(component_size), i64(plan.little));
         pending();
         imaginary = jacpy_float_unpack(
-            address + u64(component_size), i64(component_size), i64(plan.little)
+            jacpy_offset(address, component_size), i64(component_size), i64(plan.little)
         );
         pending();
-        return required(jacpy_complex(real, imaginary));
+        return required(PyComplex_FromDoubles(real, imaginary));
     }
     return integer_from_bits(
         read_bits(address, size, plan.little), size, chr(code) in "bhilqn"
     );
 }
 
-def:pub jacpy_struct_unpack(plan: struct_plan, address: u64) -> u64 {
-    result: u64 = 0;
+def:pub jacpy_struct_unpack(plan: struct_plan, address: ptr) -> ptr[PyObject] {
+    result: ptr[PyObject] = NULL;
     try {
-        result = required(jacpy_tuple_new(i64(plan.items)));
+        result = required(PyTuple_New(i64(plan.items)));
         index: i64 = 0;
         for field in plan.fields {
             for repetition in range(field.count) {
                 value = unpack_field(
-                    plan, field, address + u64(field.offset + repetition * field.size)
+                    plan,
+                    field,
+                    jacpy_offset(address, field.offset + repetition * field.size)
                 );
                 checked(jacpy_tuple_set_owned(result, index, value));
                 index += 1;
@@ -469,13 +495,13 @@ def:pub jacpy_struct_unpack(plan: struct_plan, address: u64) -> u64 {
         return result;
     } except boundary_failure {
         jacpy_release(result);
-        return 0;
+        return NULL;
     }
 }
 
 # Offset arithmetic stays native and is shared by pack_into and unpack_from.
 def:pub jacpy_struct_offset(
-    plan: struct_plan, length: i64, offset: i64, packing: i64, error: u64
+    plan: struct_plan, length: i64, offset: i64, packing: i64, error: ptr[PyObject]
 ) -> i64 {
     try {
         size = i64(plan.size);
@@ -528,16 +554,15 @@ def:pub jacpy_struct_offset(
     }
 }
 
-
 obj unpack_cursor {
     has plan: struct_plan,
-        address: u64,
+        address: ptr,
         length: int,
         index: int = 0;
 }
 
 def:pub jacpy_struct_cursor(
-    plan: struct_plan, address: u64, length: i64
+    plan: struct_plan, address: ptr, length: i64
 ) -> unpack_cursor {
     return unpack_cursor(plan=plan, address=address, length=int(length));
 }
@@ -546,35 +571,38 @@ def:pub jacpy_struct_remaining(cursor: unpack_cursor) -> i64 {
     return i64((cursor.length - cursor.index) // cursor.plan.size);
 }
 
-def:pub jacpy_struct_next(cursor: unpack_cursor) -> u64 {
+def:pub jacpy_struct_next(cursor: unpack_cursor) -> ptr[PyObject] {
     if cursor.index == cursor.length {
-        return 0;
+        return NULL;
     }
-    result = jacpy_struct_unpack(cursor.plan, cursor.address + u64(cursor.index));
+    result = jacpy_struct_unpack(
+        cursor.plan, jacpy_offset(cursor.address, cursor.index)
+    );
     cursor.index += cursor.plan.size;
     return result;
 }
 
-def:pub jacpy_struct_cached(cache: u64, type: u64, format: u64) -> u64 {
+def:pub jacpy_struct_cached(
+    cache: ptr[PyObject], type: ptr[PyObject], format: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         result = jacpy_dict_get(cache, format);
         pending();
         if result != 0 {
             return result;
         }
-        result = required(jacpy_call_one(type, format));
+        result = required(PyObject_CallOneArg(type, format));
         if jacpy_dict_size(cache) >= 100 {
-            jacpy_dict_clear(cache);
+            PyDict_Clear(cache);
         }
-        if jacpy_dict_set(cache, format, result) < 0 {
-            jacpy_clear_error();
+        if PyDict_SetItem(cache, format, result) < 0 {
+            PyErr_Clear();
         }
         return result;
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
-
 
 def:pub jacpy_struct_memory(plan: struct_plan) -> i64 {
     total = jac_heap_size(u64(id(plan))) + jac_list_heap_size(u64(id(plan.fields)));

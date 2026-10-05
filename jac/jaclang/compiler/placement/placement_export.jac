@@ -60,6 +60,7 @@ def summary_to_dict(ps: PlacementSummary) -> dict[str, any] {
         'native_blocker': ps.native_blocker,
         'native_verdict': ps.native_verdict,
         'native_verdict_code': ps.native_verdict_code,
+        'native_verdict_deps': [list(row) for row in ps.native_verdict_deps],
         'jac_deps': list(ps.jac_deps),
         'has_refs': ps.has_refs,
         'elements': [element_to_dict(e) for e in ps.elements]
@@ -77,6 +78,11 @@ def summary_from_dict(d: dict[str, any]) -> (PlacementSummary | None) {
     ps.native_blocker = str(d.get('native_blocker', ''));
     ps.native_verdict = str(d.get('native_verdict', ''));
     ps.native_verdict_code = str(d.get('native_verdict_code', ''));
+    ps.native_verdict_deps = [
+        [str(row[0]), str(row[1])]
+        for row in d.get('native_verdict_deps', [])
+        if isinstance(row, list) and len(row) == 2
+    ];
     ps.jac_deps = [str(x) for x in d.get('jac_deps', [])];
     ps.has_refs = bool(d.get('has_refs', False));
     ps.elements = [
@@ -103,6 +109,9 @@ def summary_from_bytes(
         if summary is not None and path_mapper is not None {
             summary.mod_path = path_mapper(summary.mod_path);
             summary.jac_deps = [path_mapper(p) for p in summary.jac_deps];
+            summary.native_verdict_deps = [
+                [path_mapper(row[0]), row[1]] for row in summary.native_verdict_deps
+            ];
             for element in summary.elements {
                 element.import_jac_target = path_mapper(element.import_jac_target);
                 element.import_py_targets = [

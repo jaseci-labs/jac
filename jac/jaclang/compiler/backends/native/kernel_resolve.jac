@@ -18,7 +18,10 @@ glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
      STAGE0_BUILDER: str = "stage0",
      KERNEL_DEV_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
-     SEALED_LINK_MODE: str = NATIVE_LINK_MODE_BITCODE;
+     SEALED_LINK_MODE: str = NATIVE_LINK_MODE_BITCODE,
+     PR_KIT_LINK_ENV: str = "JAC_PR_KIT_KERNEL_LINK",
+     PR_KIT_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
+     PR_KIT_EVENT: str = "pull_request";
 
 obj ResolvedKernel {
     has lib_path: str,
@@ -75,6 +78,46 @@ def _from_explicit(path: str) -> ResolvedKernel {
     );
 }
 
+def seal_link_mode -> str {
+    requested = os.environ.get(PR_KIT_LINK_ENV, "").strip().lower();
+    if requested in ("", SEALED_LINK_MODE) {
+        return SEALED_LINK_MODE;
+    }
+    if requested != PR_KIT_LINK_MODE {
+        raise ValueError(
+            f"{PR_KIT_LINK_ENV}={requested!r}: expected {PR_KIT_LINK_MODE} or "
+            f"{SEALED_LINK_MODE}"
+        );
+    }
+    event = os.environ.get("GITHUB_EVENT_NAME", "");
+    if os.environ.get("GITHUB_ACTIONS") != "true" or event != PR_KIT_EVENT {
+        raise RuntimeError(
+            f"{PR_KIT_LINK_ENV}={PR_KIT_LINK_MODE} is honored only in a "
+            f"{PR_KIT_EVENT} CI build (this is {event or 'not a CI build'}); a "
+            f"shipped kernel is a {SEALED_LINK_MODE} link"
+        );
+    }
+    return PR_KIT_LINK_MODE;
+}
+
+def sealed_link_refusal(record: dict[str, any], sidecar: dict[str, any]) -> str {
+    mode = str(record.get("mode", SEALED_LINK_MODE));
+    linked = str(sidecar.get("link_mode", SEALED_LINK_MODE));
+    if linked != mode {
+        return f"the manifest records a {mode} link but the sidecar a {linked} link";
+    }
+    if mode == SEALED_LINK_MODE {
+        return "";
+    }
+    if mode == PR_KIT_LINK_MODE and record.get("kit") == PR_KIT_EVENT {
+        return "";
+    }
+    return (
+        f"a {mode} link ships only in a {PR_KIT_EVENT} CI kit; a sealed image "
+        f"carries a {SEALED_LINK_MODE} link"
+    );
+}
+
 def _from_sealed_image -> (ResolvedKernel | None) {
     import from jaclang.jac0core { sealed }
     image = sealed._jaclang_image();
@@ -105,12 +148,9 @@ def _from_sealed_image -> (ResolvedKernel | None) {
             f"sealed kernel {lib_path} does not match its manifest sha256"
         );
     }
-    if str(record.get("mode", SEALED_LINK_MODE)) != SEALED_LINK_MODE
-        or str(sidecar.get("link_mode", SEALED_LINK_MODE)) != SEALED_LINK_MODE {
-        raise KernelUnavailable(
-            f"sealed kernel {lib_path} is not a {SEALED_LINK_MODE} link; an "
-            "incremental kernel never ships in a sealed image"
-        );
+    refusal = sealed_link_refusal(record, sidecar);
+    if refusal {
+        raise KernelUnavailable(f"sealed kernel {lib_path}: {refusal}");
     }
     if str(sidecar.get("plan_digest", "")) != str(record.get("plan_digest", "")) {
         raise KernelUnavailable(
@@ -146,6 +186,7 @@ def kernel_options -> CompileOptions {
         na_debug=False,
         default_codespace="native",
         native_unit=True,
+        kernel_build=True,
         skip_native_engine=True,
         native_target="",
         na_gc_mode="cycles",
@@ -274,6 +315,7 @@ def _unit_sources_match(
     of a file outside the running package fingerprints its project, so the
     key a kit's build folded is never the one a checkout computes.""";
     import from jaclang.compiler.driver.jir {
+        native_producer_digest,
         running_compiler_digest,
         unit_source_digest
     }
@@ -286,7 +328,8 @@ def _unit_sources_match(
         if not stage0_sidecar_matches(sidecar) {
             return False;
         }
-    } elif str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
+    } elif str(sidecar.get("compiler_digest", ""))
+        not in (running_compiler_digest(), native_producer_digest(options.kernel_build))
         or str(sidecar.get("codegen_identity", ""))
             != options.base_codegen_identity() {
         return False;

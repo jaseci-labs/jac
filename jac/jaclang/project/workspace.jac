@@ -53,6 +53,7 @@ def _pins_of(raw: any) -> dict[str, str];
 def _npm_names_of(raw: any) -> set[str];
 def _chain_stamp(root_dir: str) -> tuple[float, ...];
 def _implicit_kind(root_dir: str, project: dict[str, any]) -> str;
+def persistence_namespace(raw: any, project_name: str) -> str;
 def _build_workspace(
     root_dir: str, toml_path: str, doc: dict[str, any]
 ) -> WorkspaceSpec;

@@ -55,10 +55,12 @@ obj WiringSpec {
         _rule_rows: list[str] = [],
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
-        _mentioned: (set[str] | None) = None;
+        _mentioned: (set[str] | None) = None,
+        package_prefix: str = "";
 
     def postinit -> None;
     def module_name(path: str) -> (str | None);
+    def _local_name(name: str) -> (str | None);
     def module_file(name: str) -> (str | None);
     def is_package_dir(name: str) -> bool;
     def project_modules -> list[str];
@@ -114,3 +116,4 @@ def wiring_annex_for(file_path: str) -> (WovenAnnex | None);
 def wiring_digest_for(file_path: str) -> str;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def _closed_patterns_for(root_dir: str) -> list[str];
+def local_module_name(root_dir: str, path: str) -> (str | None);
