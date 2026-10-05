@@ -1,0 +1,35 @@
+name: Main build-kit alert
+
+# Opens an issue when build-kit fails on a push to main, comments on it while it
+# stays red, and closes it on the next green build-kit.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  issues: write
+
+concurrency:
+  group: main-build-kit-alert
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    if: github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/main_build_kit_alert.sh
+          sparse-checkout-cone-mode: false
+      - run: scripts/main_build_kit_alert.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
