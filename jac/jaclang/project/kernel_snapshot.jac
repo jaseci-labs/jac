@@ -58,6 +58,7 @@ obj ClosureScan {
 
     def run {
         owner = self.learner.project_root(self.entry_path);
+        self.learner.project_root("");
         top = owner or os.path.dirname(os.path.abspath(self.entry_path));
         self.scope.append(os.path.join(os.path.realpath(top), ""));
         self.queue.append(self.entry_path);
@@ -242,6 +243,7 @@ obj ClosureScan {
             learner.project_facts(owner_root);
             learner.project_root(owner_root);
         }
+        learner.project_root(os.path.dirname(path));
         learner.workspace(path);
         learner.app_for_path(path);
         learner.lint_settings(path);

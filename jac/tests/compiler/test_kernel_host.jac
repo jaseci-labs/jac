@@ -127,6 +127,8 @@ test "kernel inputs round-trip through JSON with their types intact" {
         assert kernel.resolve_module("util", entry_file)
             == (targets["util"].path, targets["util"].language);
         assert kernel.project_facts(entry_file) is not None;
+        assert kernel.project_root(td) == kernel.project_root(entry_file);
+        kernel.project_root("");
         assert kernel.annex_files(str(base / 'util.jac'))
             == [str(Path(os.path.realpath(td)) / 'util.impl.jac')];
         try {
