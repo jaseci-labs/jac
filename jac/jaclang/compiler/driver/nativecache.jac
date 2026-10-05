@@ -173,8 +173,8 @@ obj NativeUnitRegistry {
     }
 
     def _options -> CompileOptions {
-        opts = self.prog.options;
-        return opts if opts is not None else CompileOptions();
+        configured = self.prog.options;
+        return configured if configured is not None else CompileOptions();
     }
 
     def stamp_for(

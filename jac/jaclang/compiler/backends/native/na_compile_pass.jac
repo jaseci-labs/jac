@@ -12,7 +12,7 @@ glob NATIVE_RELOC_MODEL: str = "pic",
      NATIVE_CODE_MODEL: str = "small";
 
 def module_bitcode(mod: ModuleRef) -> bytes;
-def emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes;
+def emit_unit_object(code: bytes, options: CompileOptions) -> bytes;
 def object_emit_jobs -> int;
 def emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes];
 def module_functions(mod: ModuleRef) -> list[any];

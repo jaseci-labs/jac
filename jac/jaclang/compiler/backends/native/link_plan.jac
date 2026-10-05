@@ -640,7 +640,7 @@ def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
 
     """Heap accounting reads the allocation header, which only a headerless
     (nogc-enforced, `gc=none`) unit lacks.""";
-    managed = not any(unit.iface.headerless for unit in plan.units);
+    has_header = not any(unit.iface.headerless for unit in plan.units);
     registry = plan.prog.native_units();
     for unit in plan.units {
         bitcode = registry.bitcode_for(unit.path, plan.options);
@@ -668,7 +668,7 @@ def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
         return ("", []);
     }
     text = 'target triple = "' + plan.triple + '"\n' + text;
-    return inject_heap_accounting(text, managed);
+    return inject_heap_accounting(text, has_header);
 }
 
 def _glue_module(
