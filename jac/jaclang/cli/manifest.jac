@@ -1,11 +1,13 @@
-comptime VERB_BUDGET: int = 26,
+comptime import from jaclang.cli.commands.arch { SPEC_ARCH }
+
+comptime VERB_BUDGET: int = 27,
      TOMBSTONED_VERBS: dict[str, str] = {
          "add": "jac install <pkg>",
          "format": "jac fmt",
          "lint": "jac check --lint",
          "deps": "jac install --plan",
          "script": "jac x <name>",
-         "jacpack": "jac create --pack <dir>",
+         "jacpack": "jac build --as jab (a project with a [jacpack] table builds a template package)",
          "enter": "jac run --entry <name> <file>",
          "debug": "jac run --debug <file>",
          "start": "jac run --serve [--port N] <file>",
@@ -81,6 +83,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_MODEL),
          _route(SPEC_PRECOMMIT),
          _route(SPEC_PRECOMPILE),
+         _route(SPEC_PUBLISH),
          _route(SPEC_REMOVE),
          _route(SPEC_RETHEME),
          _route(SPEC_RUN),

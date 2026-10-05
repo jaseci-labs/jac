@@ -426,6 +426,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     if nd.expr is not None {
         val = self._codegen_required(nd.expr);
         if val is not None {
+            if self._str_desc_ty is not None
+                and val.type == self._str_desc_ty
+                and func_ret_type != self._str_desc_ty
+                and not self._nogc_headerless() {
+                val = self._str_materialize(val);
+            }
             val = self._coerce_type(val, func_ret_type);
             _ret_root_local = False;
             if isinstance(nd.expr, uni.AtomTrailer)
@@ -2076,7 +2082,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         );
                                     }
                                     self._codegen_index_set(
-                                        target_val, idx_val, store_val, elem_type_name
+                                        target_val,
+                                        idx_val,
+                                        self._variadic_elem_coerce(
+                                            store_val, target_expr.target
+                                        ),
+                                        elem_type_name
                                     );
                                     _idx_stored = True;
                                 }

@@ -1090,6 +1090,18 @@ obj KubernetesTarget(KubernetesTargetBase) {
         config_revision: str = "";
         user_secret = bundle.get("user_secret");
         if user_secret {
+            if resolve_signing_secret(
+                core_v1,
+                namespace,
+                user_secret["metadata"]["name"],
+                user_secret["stringData"]
+            )
+                and self.logger {
+                self.logger.info(
+                    "Minted a JWT signing secret, kept across redeploys. Set "
+                    "[scale.secrets] JAC_SERVE_AUTH_SECRET to control it yourself."
+                );
+            }
             config_revision = create_k8s_secret(
                 core_v1,
                 namespace,

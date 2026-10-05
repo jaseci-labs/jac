@@ -436,9 +436,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
 
-            p_type = self._resolve_jac_type(p)
-                if p?.type_tag and p.type_tag is not None
-                else ir.IntType(64);
+            p_type = self._resolve_jac_type(p);
             param_types.append(p_type);
             param_names.append(p_name);
         }
@@ -2673,7 +2671,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             } else {
-                target_val = self._codegen_expr(nd.target);
+                target_val = self._opt_unwrap_subscript(self._codegen_expr(nd.target));
                 if target_val is not None
                     and self._str_desc_ty is not None
                     and target_val.type == self._str_desc_ty {
@@ -2709,6 +2707,14 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="slice",
+            name=self._get_name(nd.target) or "<expr>",
+            help_text="Only lists, strings and bytes slice natively; a slice of any other receiver (a tuple, an untyped value, an object) has no native lowering. Convert the receiver to a list first, or move this code to a @sv/Python context."
+        );
+        return None;
     }
 
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) and nd.right.slices {

@@ -2145,6 +2145,13 @@ test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
     );
 }
 
+test "assignment narrowing preserves contextual container element types" {
+    program = compile_and_check("checker_contextual_container_assignment.jac");
+    errors = [e.pretty_print() for e in program.errors_had];
+    assert len(errors) == 1 , '\n'.join(errors);
+    assert 'not a Base' in errors[0] , errors[0];
+}
+
 test "bug_protoovl1_overloaded_protocol_member_picks_fitting_overload" {
     program = compile_and_check("checker_protocol_overloaded_member.jac");
     by_line = {

@@ -14,3 +14,9 @@ zlib
 _bz2
 syslog
 resource
+_md5
+_sha1
+_sha2
+_sha3
+_blake2
+_hmac

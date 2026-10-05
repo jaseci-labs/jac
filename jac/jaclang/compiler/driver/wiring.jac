@@ -68,10 +68,12 @@ obj WiringSpec {
         _owned_dirs: dict[str, bool] = {},
         _indexed: bool = False,
         _scopes: dict[tuple[str, int], list[str]] = {},
-        _wire_lines: dict[int, ImportWire] = {};
+        _wire_lines: dict[int, ImportWire] = {},
+        package_prefix: str = "";
 
     def postinit -> None;
     def module_name(path: str) -> (str | None);
+    def _local_name(name: str) -> (str | None);
     def import_prefix -> str;
     def import_name(name: str) -> str;
     def module_file(name: str) -> (str | None);
@@ -134,3 +136,4 @@ def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def scope_path_of(nd: UniNode) -> (list[str] | None);
 def scope_owners(mod: Module) -> dict[str, (Ability | ImplDef)];
 def inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None;
+def local_module_name(root_dir: str, path: str) -> (str | None);

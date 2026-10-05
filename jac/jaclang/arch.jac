@@ -549,6 +549,10 @@ graph import cache {
     registry --> toolchains.android { bucket }
     registry --> toolchains.store { bucket, maybe_sweep }
     policy --> cache.registry { KeepMatch }
+    registry --> packages.index.Registry._cache_file | packages.sources._mirror_dir | packages.store.materialize | project.package_scope.store_root {
+        bucket
+    }
+    registry --> packages.index.fetch_verified { bucket }
 }
 
 graph import cli {
@@ -876,6 +880,9 @@ graph import cli {
         pool_available,
         resolve_jobs
     }
+    console --> packages.commands | packages.install | packages.publish | packages.verify {
+        console
+    }
 }
 
 graph import cli.commands {
@@ -920,6 +927,8 @@ graph import cli.commands {
         SPEC_UPDATE
     }
     comptime tools --> cli.manifest { SPEC_COMPLETIONS, SPEC_DOT, SPEC_LSP, SPEC_TOOL }
+    analysis --> packages.publish.check_gate { check }
+    comptime project --> cli.manifest { SPEC_PUBLISH }
 }
 
 graph import cli.mcp {
@@ -1383,6 +1392,9 @@ graph import client {
         make_client_bundle_builder
     }
     vite_client_bundle --> compiler.driver.build_services.CompilerBuildServices.client_builder {
+        make_client_bundle_builder
+    }
+    vite_client_bundle --> compiler.driver.application._prepare_revision {
         make_client_bundle_builder
     }
 }
@@ -2117,6 +2129,7 @@ graph import compiler {
         KERNEL_ABI_CONTRACT_REL
     }
     c_interop --> compiler.passes.ownership_check_pass { is_ptr_type }
+    kernel_target --> compiler.driver.jir.native_producer_digest { target_pkg_root }
 }
 
 graph import compiler.backends {
@@ -2768,6 +2781,14 @@ graph import compiler.backends.native {
         PR_KIT_EVENT,
         seal_link_mode
     }
+    na_compile_pass --> compiler.driver.nativecache.NativeUnitRegistry.emit_objects {
+        emit_unit_objects
+    }
+    na_constants --> compiler.backends.native.na_ir_gen_pass {
+        RC_CYCLE_PACE,
+        RC_UNTRACED_BIT
+    }
+    stage0_pin --> compiler.driver.jir.native_producer_digest { abi_contract_digest }
 }
 
 graph import compiler.backends.native.llvm {
@@ -2968,6 +2989,10 @@ graph import compiler.backends.py {
         JcirGenPass
     }
     codegen_shim --> compiler.tools.lang_tools.AstTool.ir { generated_python }
+    artifact_imports --> compiler.driver.application._prepare_revision {
+        package_sources,
+        runtime_sources
+    }
 }
 
 graph import compiler.driver {
@@ -3215,7 +3240,6 @@ graph import compiler.driver {
     compilation_context --> compiler.driver.ifacecache.IfaceRegistry.ensure {
         program_for
     }
-    compilation_context --> compiler.driver.jir._owner_projection { active_options }
     compilation_context --> compiler.driver.jir.compute_precompile_module_key {
         cache_scope
     }
@@ -3428,20 +3452,11 @@ graph import compiler.driver {
         sidecar_unit_paths,
         unit_source_digest
     }
-    jir --> compiler.backends.native.link_plan.LinkPlan.plan_digest {
-        running_compiler_digest
-    }
     jir --> compiler.backends.native.link_plan._build_link_plan.walk_unit {
         module_cache_key
     }
     jir --> compiler.backends.native.link_plan._reuse_artifact { cache_mode }
-    jir --> compiler.backends.native.link_plan._write_sidecar {
-        running_compiler_digest
-    }
-    jir --> compiler.backends.native.link_plan.units_source_key {
-        module_cache_key,
-        running_compiler_digest
-    }
+    jir --> compiler.backends.native.link_plan.units_source_key { module_cache_key }
     jir --> compiler.backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
         get_native_debug_dir
     }
@@ -3502,7 +3517,6 @@ graph import compiler.driver {
     }
     jir --> compiler.driver.compiler.JacCompiler._persist_module_cache {
         SEC_CTDEPS,
-        ct_deps_section,
         get_module_cache_path,
         is_module_cache_valid,
         write_module_cache
@@ -3526,7 +3540,6 @@ graph import compiler.driver {
         SEC_PATH_ROOT,
         SEC_PLACEMENT,
         cache_mode,
-        ct_deps_section,
         deps_section,
         get_module_cache_path,
         is_compiler_tree_path,
@@ -3560,7 +3573,6 @@ graph import compiler.driver {
         SEC_PLACEMENT,
         cache_mode,
         ct_dep_text_fresh,
-        ct_deps_section,
         current_native_stamp,
         get_module_cache_path,
         is_module_cache_valid,
@@ -4315,6 +4327,80 @@ graph import compiler.driver {
     wiring --> compiler.tools.jac_auto_lint_pass.JacAutoLintPass._strip_wired_imports {
         is_kernel_abi_contract
     }
+    application --> cli.commands.execution._load_executable { prepare_application }
+    application --> compiler.driver.build_services.CompilerBuildServices.prepare_dynamic_module {
+        prepare_dynamic_module
+    }
+    bccache --> compiler.driver.nativecache._module_files_and_imports {
+        discover_annex_files
+    }
+    bccache --> testing.cl_test_runner.module_entry_for { discover_base_file }
+    boundary_classify --> compiler.driver.program.JacProgram.anchors_native_under_default {
+        module_own_native_anchor
+    }
+    boundary_classify --> compiler.driver.program.JacProgram.stamp_native_import_facts {
+        import_bound_names,
+        python_side_name_refs
+    }
+    compilation_context --> compiler.driver.application._prepare_revision {
+        cache_scope,
+        program_for
+    }
+    compilation_context --> compiler.driver.jir._module_projection { active_options }
+    compilation_context --> packages.api.package_surface { compilation_scope }
+    compile_options --> compiler.driver.nativecache.NativeUnitRegistry._miss {
+        env_na_debug
+    }
+    compile_options --> compiler.driver.nativecache.NativeUnitRegistry.record_module {
+        env_na_debug
+    }
+    compile_options --> packages.api.package_surface { CompileOptions }
+    jir --> compiler.backends.native.kernel_resolve._unit_sources_match | compiler.backends.native.link_plan.LinkPlan.plan_digest {
+        native_producer_digest
+    }
+    jir --> compiler.backends.native.link_plan._write_sidecar { native_producer_digest }
+    jir --> compiler.backends.native.link_plan.units_source_key {
+        native_producer_digest
+    }
+    jir --> compiler.driver.application._capture_input { ct_dep_digest }
+    jir --> compiler.driver.application._prepare_revision { cache_mode, ct_dep_digest }
+    jir --> compiler.driver.compiler { FLAG_CARRIED, carried_module_bytecode }
+    jir --> compiler.driver.compiler.JacCompiler._get_bytecode {
+        SEC_CTDEPS as _CARRY_CTDEPS
+    }
+    jir --> compiler.driver.compiler.JacCompiler._persist_module_cache | compiler.driver.ifacecache {
+        module_ct_deps_section
+    }
+    jir --> compiler.driver.nativecache {
+        PRECOMPILE_SENTINEL,
+        carried_native_sections,
+        compute_content_sha256,
+        module_cache_invalid_reason,
+        module_ct_deps_section,
+        native_producer_digest,
+        stale_ct_dep_rows,
+        write_module_cache
+    }
+    jir --> compiler.driver.nativecache.NativeUnitRegistry.emit_objects {
+        write_module_cache
+    }
+    jir --> dist.precompile_bytecode { require_exact_compiler_products }
+    jir --> packages.artifact.package_manifest | packages.resolve.resolve_graph {
+        jaclang_version
+    }
+    jir --> packages.resolve.running_jac_version { jaclang_version }
+    pass_driver --> compiler.driver.application._prepare { compile_progress }
+    pipeline_runner --> compiler.driver.application._prepare_revision {
+        compile_application
+    }
+    program --> compiler.driver.jir._definition_texts | compiler.driver.nativecache._module_files_and_imports | packages.api.package_surface {
+        JacProgram
+    }
+    source_failures --> compiler.driver.application._prepare_revision {
+        bootstrap_tier_failure_details,
+        module_scoped_failure_details
+    }
+    wiring --> compiler.passes.package_boundary_pass { local_module_name }
 }
 
 graph import compiler.frontend {
@@ -7836,6 +7922,24 @@ graph import compiler.frontend {
         active_host
     }
     codeinfo --> compiler.types.stubcat.build._cached_catalog { jaclang_pkg_root }
+    codeinfo --> compiler.driver.jir | compiler.passes.package_boundary_pass.PackageBoundaryPass.run_walk {
+        is_compiler_source_path
+    }
+    codeinfo --> compiler.driver.jir.native_producer_digest { NATIVE_ABI_VERSION }
+    constant --> packages.api { SymbolAccess, SymbolType }
+    diagnostics --> compiler.passes.package_boundary_pass { E2095, E2096 }
+    host --> compiler.passes.package_boundary_pass { ProjectFacts, active_host }
+    host --> compiler.types.ct_eval.CtEvaluator._embed { active_host }
+    module_facts --> compiler.driver.boundary_classify.python_side_name_refs | compiler.passes.package_boundary_pass {
+        ModuleFacts
+    }
+    unitree as uni --> compiler.driver.jir._definition_texts;
+    unitree --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._record_generic_definition | compiler.driver.jir._definition_texts | compiler.types.ct_eval {
+        definition_qualname
+    }
+    unitree --> compiler.passes.layout_pass { GlobalVars, ParamVar }
+    unitree --> compiler.passes.package_boundary_pass { Import, Module, ModulePath }
+    unitree --> packages.api { HasVar, Module, Symbol }
 }
 
 graph import compiler.frontend.parser {
@@ -7916,6 +8020,9 @@ graph import compiler.frontend.parser {
     frontend --> project.compiler_host.ProjectHost.woven_module {
         annex_sources,
         parse_woven
+    }
+    frontend --> compiler.driver.nativecache._module_files_and_imports {
+        parse as rd_parse
     }
 }
 
@@ -8384,6 +8491,8 @@ graph import compiler.passes {
         class_type_native_name
     }
     osp_analysis --> compiler.backends.native.na_ir_gen_pass { OSP_ANY_TAGS }
+    context --> compiler.passes.package_boundary_pass { CompilerPass }
+    package_boundary_pass --> compiler.driver.pipeline { PackageBoundaryPass }
 }
 
 graph import compiler.placement {
@@ -8603,6 +8712,12 @@ graph import compiler.placement {
         invalidate_importers_es
     }
     type placement_work --> compiler.driver.progstate { PlacementWork }
+    placement --> compiler.driver.nativecache._module_files_and_imports {
+        jac_import_targets
+    }
+    placement_pins --> compiler.driver.program.JacProgram.stamp_app_facts {
+        module_dot_path
+    }
 }
 
 graph import compiler.tests {
@@ -9783,6 +9898,10 @@ graph import compiler.types {
         TypeBase
     }
     type types --> compiler.backends.native.primitives_native { TypeBase }
+    types --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable {
+        UnknownType
+    }
+    types --> packages.api { ClassType, FunctionType, ParamKind }
 }
 
 graph import compiler.types.stubcat {
@@ -10135,6 +10254,27 @@ graph import data {
     store --> server.outbox { OUTBOX_SCHEMA_SQL, PgStore, Store, TxnIsolation }
     store --> server.session { AnchorRow, ConnInfo, PgStore, Store, TxnIsolation }
     store --> server.shared_store.shared_store { PgStore }
+    dbcatalog --> data.pgembed.PgRuntime._warn_superseded { list_databases }
+    type_identity --> data.serializer {
+        TypeResolutionError,
+        UnavailableType,
+        class_facts,
+        register_type,
+        resolution_required,
+        resolve_type,
+        storage_type,
+        type_module
+    }
+    type_identity --> data.serializer.Serializer.fingerprint { schema_type }
+    type_identity --> data.sqlcompile.compile_query | server.session._ancestry_of {
+        storage_type
+    }
+    type_identity --> runtime.prepared.publish { index_application }
+    type_identity --> server.session.Session._materialize {
+        ForeignType,
+        resolution_scope
+    }
+    type_identity --> server.session.Session._serialize { storage_type, type_module }
 }
 
 graph import data.storage {
@@ -10161,7 +10301,6 @@ graph import dist {
     jab --> cli.cli_boot._run_bundled_app { materialize_jab_bytes }
     jab --> cli.commands.execution._run_jab { materialize_jab }
     jab --> cli.commands.execution.run_jab_image { jab_app_meta }
-    jab --> cli.commands.project._bundle_binary { jab_app_meta }
     jab --> client.targets.desktop.native.host_boot.resolve_program {
         jab_app_meta,
         materialize_jab
@@ -10195,16 +10334,26 @@ graph import dist {
         placement_facts_map,
         sealable_sources
     }
-    seal --> cli.commands.project {
-        build_jab,
-        make_sealed_image as _make_sealed_image,
-        run_precompiler as _run_precompiler,
-        tar_gz_dir as _tar_gz_dir,
-        vendor_jab_deps as _vendor_jab_deps
-    }
+    seal --> cli.commands.project { build_jab, make_sealed_image as _make_sealed_image }
     seal --> client.targets.desktop.desktop_build.stage_program { build_jab }
     fused_binary --> compiler.backends.native.static_link.resolve_floor_dir {
         bundled_floor_roots
+    }
+    archive --> dist.seal.build_jab | packages.artifact { tar_gz_dir }
+    archive --> packages.store | packages.templates | packages.verify { extract_tar_gz }
+    archive --> scale.injector.binary.pack_binary_bytes | scale.tests.microservices.test_bundle_jacignore {
+        open_det_tar
+    }
+    archive --> scale.injector.bundle { det_tar_member, open_det_tar }
+    jab --> dist.seal.build_jab { jab_app_meta }
+    sanitize --> dist.seal.make_sealed_image | packages.artifact {
+        sanitize_shipped_tree
+    }
+    sanitize --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle | scale.injector.bundle | scale.tests.microservices.test_app_precompile | scale.tests.microservices.test_bundle_jacignore | scale.tests.microservices.test_pvc_injector {
+        sanitized_jac_toml
+    }
+    sanitize --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._check_pod_config_resolves {
+        sanitized_jac_toml
     }
 }
 
@@ -10406,7 +10555,6 @@ graph import jac0core {
     ext_registry --> testing.test_runner._suite_source { is_test }
     ext_registry --> testing.test_runner.discover { is_jac }
     ext_registry --> testing.test_runner.run_file { base_stem }
-    sealed --> cli.commands.project._bundle_binary { MANIFEST_NAME }
     sealed --> compiler.backends.native.kernel_resolve._bundled_kernel { load_image }
     sealed --> compiler.driver.application._prepare_sealed {
         image_for_bundle_dir,
@@ -10426,7 +10574,6 @@ graph import jac0core {
         SEC_NOBJ as SEALED_SEC_NOBJ
     }
     sealed --> dist.seal.vendor_jab_deps { python_tag }
-    sealed --> runtime.prepared.load_prepared_module { image_for_bundle_dir }
     sealed --> scale.utils.vendor_wheels { python_tag }
     sealed --> server.sealed_serve { MANIFEST_NAME }
     stubcat_hook --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog {
@@ -10461,6 +10608,8 @@ graph import jac0core {
         active
     }
     cache_paths --> dist.precompile_bytecode.seal_stage0_kernel { FileLock }
+    cache_paths --> packages.sources.checkout | packages.store.materialize { FileLock }
+    ext_registry --> testing.cl_test_runner.module_entry_for { is_annex }
 }
 
 graph import lib {
@@ -11027,20 +11176,13 @@ graph import project {
     template_loader --> cli.commands.fix._ensure_workspace { migrate_implicit_app }
     template_loader --> cli.commands.project._create_app { scaffold_app }
     template_loader --> cli.commands.project._create_body {
-        load_template_from_directory,
-        load_template_from_json
+        load_template_from_directory
     }
     template_loader --> cli.commands.project._resolve_bundled_template {
         load_template_from_directory
     }
     template_loader --> cli.commands.project._resolve_template {
-        load_template_from_directory,
-        load_template_from_json
-    }
-    template_loader --> cli.commands.project.jacpack {
-        bundle_template,
-        load_template_from_directory,
-        load_template_from_json
+        load_template_from_directory
     }
     template_loader --> cli.shadcn.cli._build_shadcn_template_info {
         load_template_from_directory
@@ -11056,17 +11198,12 @@ graph import project {
         TemplateRegistry,
         get_template_registry
     }
-    template_registry --> cli.commands.project.jacpack {
-        TemplateRegistry,
-        get_template_registry
-    }
     template_registry --> cli.mcp.compiler_bridge.CompilerBridge.list_templates._do_list_templates {
         get_template_registry
     }
     template_registry --> project.template_loader { ProjectTemplate, template_kind_for }
     tomlio --> cli.commands.config { read_toml_with_encoding }
     tomlio --> cli.commands.project._toml_apps_and_default { read_toml_with_encoding }
-    tomlio --> cli.commands.project.jacpack { read_toml_with_encoding }
     tomlio --> cli.dispatch._discover_project_config { MalformedJacTomlError }
     tomlio --> project.config.JacConfig.load { read_toml_with_encoding }
     tomlio --> project.config.JacConfig.merge_from_toml_file { read_toml_with_encoding }
@@ -11185,6 +11322,78 @@ graph import project {
         WorkspaceSpec
     }
     type workspace_model --> project.compiler_host { AppSpec, WorkspaceSpec }
+    config --> cli.commands.execution._load_executable { get_config_for_path }
+    config --> cli.commands.project._resolve_template { get_config }
+    config --> cli.commands.project.publish { get_config }
+    config --> packages.commands | packages.install | packages.provider | packages.publish | packages.resolve | packages.verify._verify_library {
+        JacConfig
+    }
+    config --> packages.lock { toml_value }
+    config --> packages.migrate { serialize_toml, toml_minimal_update }
+    config --> project.package_scope.declared_package_name { get_config_for_dir }
+    config --> project.package_scope.package_exports { get_config_for_dir }
+    dependencies --> packages.commands | packages.resolve | project.config {
+        PackageDep
+    }
+    dependencies --> packages.migrate { migrate_dependency_table }
+    dependencies --> project.config.JacConfig.merge_dependency_tables {
+        split_dependency_table
+    }
+    jac_version --> packages.resolve | packages.templates { satisfies as jac_satisfies }
+    jac_version --> scale.injector.binary {
+        exact_pin,
+        is_plain_version,
+        satisfies,
+        split_clause,
+        version_key
+    }
+    jac_version --> scale.tests.deploy.test_memory_trigger_guard { version_key }
+    jac_version --> scale.tests.deploy.test_version_pin { exact_pin, version_key }
+    modresolver --> compiler.backends.py.artifact_imports.runtime_sources | dist.precompile_bytecode.image_mount_prefix {
+        project_mounts
+    }
+    modresolver --> project.compiler_host.ProjectHost.project_facts {
+        project_mounts_dir
+    }
+    modresolver --> project.compiler_host.package_name_of { is_scoped_package_name }
+    modresolver --> project.package_scope {
+        MOUNTS_DIR_NAME,
+        is_scoped_package_name,
+        module_name_in
+    }
+    modresolver --> project.package_scope.package_root_of { find_jac_project_root }
+    package_scope --> compiler.driver.jir._module_cache_root { in_store }
+    package_scope --> compiler.driver.jir._module_projection { is_dependency_module }
+    package_scope --> dist.seal.vendor_packages | packages.mounts { mounts_dir }
+    package_scope --> packages.artifact.project_role | packages.commands | packages.index | packages.install | packages.publish | packages.resolve | packages.templates | packages.verify | project.dependencies {
+        is_package_name
+    }
+    package_scope --> packages.store { store_root }
+    persistence --> project.config { PersistenceConfig }
+    persistence --> project.config._parse_toml_data { parse_persistence }
+    providers --> cli.commands.project._rewrite_compatible_pins { get_python_provider }
+    providers --> cli.commands.project._update_pypi { get_python_provider }
+    providers --> packages.commands {
+        InstallContext,
+        get_provider_registry,
+        get_python_provider,
+        resolve_plan
+    }
+    providers --> packages.provider {
+        EcosystemProvider,
+        InstallContext,
+        ResolvedDependency
+    }
+    type providers --> cli.commands.project { InstallContext }
+    pyvenv --> cli.commands.project._update_pypi { make_git_spec }
+    pyvenv --> packages.commands._org_collisions { get_venv_site_packages }
+    textio --> compiler.driver.nativecache._module_files_and_imports {
+        read_file_with_encoding
+    }
+    workspace --> cli.commands.execution._load_executable | server.session.project_database {
+        workspace_for_path
+    }
+    workspace --> project.persistence { persistence_namespace }
 }
 
 graph import runtime {
@@ -11415,7 +11624,6 @@ graph import runtime {
     graph_query --> lib.jaclib { GraphQuery, QHop, QOrder, QPred }
     graph_query --> runtime.graph_walk { GraphQuery, QHop, QPred }
     graph_query --> runtime.runtime { GraphQuery, QHop, QPred, filter_query_nodes }
-    graph_utils --> cli.commands.db._project_target { get_name }
     graph_utils --> compiler.backends.native.static_link.musl_lib_dir { triple_arch }
     graph_utils --> runtime.builtin._jac_graph_json { collect_node_connections }
     graph_utils --> runtime.runtime.JacBuiltin.printgraph { traverse_graph }
@@ -11877,6 +12085,33 @@ graph import runtime {
     semantic --> byllm.schema { TypeForm }
     semantic --> byllm.tests.test_mtir_integration { TypeForm, mk_form, type_to_str }
     semantic --> compiler.passes.mtir_gen_pass { TypeForm, mk_form }
+    build_services --> runtime.prepared_loader.PreparedFinder.find_spec {
+        build_services
+    }
+    context --> server.sv_client._local_call { ExecutionContext }
+    graph_utils --> server.session.project_database { get_name }
+    prepared --> cli.commands.execution._load_executable | data.type_identity.resolve_type {
+        load_prepared_module
+    }
+    prepared --> compiler.driver.application._prepare_revision {
+        PreparedApplication,
+        publish
+    }
+    prepared --> runtime.context.ExecutionContext.for_target {
+        application_for,
+        application_of
+    }
+    prepared --> runtime.runtime.JacModule.update_walker {
+        application_for,
+        module_builtins
+    }
+    prepared --> server.session.Session._materialize { application_for }
+    prepared --> server.sv_client._local_call { application_of }
+    type prepared --> data.type_identity { PreparedApplication }
+    runtime --> cli.commands.execution._load_executable { JacRuntime as Jac }
+    runtime --> runtime.context.ExecutionContext.bind_stream | runtime.prepared_loader.PreparedFinder.find_spec | server.sv_client._local_call {
+        JacRuntime
+    }
 }
 
 graph import scale {
@@ -12814,6 +13049,9 @@ graph import scale.deploy.target.kubernetes.utils {
         default_pss_labels,
         privileged_pss_labels
     }
+    kubernetes_utils --> scale.deploy.target.kubernetes.target | scale.tests.deploy.test_pod_env {
+        resolve_signing_secret
+    }
 }
 
 graph import scale.emailer {
@@ -12930,10 +13168,7 @@ graph import scale.injector {
     binary as binary_mod --> scale.tests.deploy.test_memory_trigger_guard;
     binary as binary_mod --> scale.tests.deploy.test_pod_env;
     binary as binary_mod --> scale.tests.deploy.test_version_pin;
-    binary --> scale.tests.deploy.test_version_pin {
-        _exact_of,
-        _resolve_target_version
-    }
+    binary --> scale.tests.deploy.test_version_pin { _resolve_target_version }
     binary --> scale.tests.microservices.test_admin_console_source {
         admin_dist_source,
         resolve_console_version,
@@ -12968,7 +13203,6 @@ graph import scale.injector {
         _stage_app,
         release_binary_env,
         remove_stage_root,
-        sanitized_jac_toml,
         source_filter_for
     }
     bundle --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_pod_spec {
@@ -12979,7 +13213,6 @@ graph import scale.injector {
     }
     bundle --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._check_pod_config_resolves {
         nested_sanitized_tomls,
-        sanitized_jac_toml,
         source_filter_for,
         unresolved_toml_references
     }
@@ -12996,7 +13229,6 @@ graph import scale.injector {
         TOOLCHAIN_SUBDIR
     }
     bundle --> scale.injector.binary { TOOLCHAIN_SUBDIR }
-    bundle --> scale.injector.binary.pack_binary_bytes { open_det_tar }
     bundle --> scale.injector.binary_injector { bundle_object_key, content_address }
     bundle --> scale.injector.pvc_injector {
         APP_MOUNT_PATH,
@@ -13022,7 +13254,6 @@ graph import scale.injector {
         nested_sanitized_tomls,
         pack_jab,
         reap_stale_stage_roots,
-        sanitized_jac_toml,
         seal_step_env,
         seal_timeout_setting,
         stage_roots_in_use
@@ -13034,10 +13265,8 @@ graph import scale.injector {
         bundle_source_files,
         content_address,
         nested_sanitized_tomls,
-        open_det_tar,
         pack_jab,
-        partition_bundle_sources,
-        sanitized_jac_toml
+        partition_bundle_sources
     }
     bundle as bundle --> scale.tests.microservices.test_fat_bundle;
     bundle --> scale.tests.microservices.test_fat_bundle {
@@ -13048,10 +13277,7 @@ graph import scale.injector {
         pack_jab,
         staged_venv_files
     }
-    bundle --> scale.tests.microservices.test_pvc_injector {
-        pack_jab,
-        sanitized_jac_toml
-    }
+    bundle --> scale.tests.microservices.test_pvc_injector { pack_jab }
     bundle --> scale.tests.microservices.test_seed_determinism {
         content_address,
         pack_jab
@@ -14670,6 +14896,11 @@ graph import server {
     }
     watcher --> scale.tests.server.test_build_status_endpoint { JacFileWatcher }
     type watcher --> server.hmr { ChangeType, FileChangeEvent, JacFileWatcher }
+    session --> cli.commands.db._project_target { project_db_name }
+    task_scheduler --> scale.tests.server.test_scheduler_multipod {
+        ScheduleSpec,
+        Scheduler
+    }
 }
 
 graph import server.endpoints {
@@ -15321,6 +15552,10 @@ graph import server.serving {
     ws --> scale.websocket.websocket { WebSocket }
     ws --> server.serving.client { WebSocket, compute_accept_key }
     ws --> server.serving.server { WebSocket, compute_accept_key }
+    authcrypt --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._signing_secret | scale.deploy.target.kubernetes.utils.kubernetes_utils.resolve_signing_secret | scale.tests.deploy.test_pod_env {
+        PLACEHOLDER_JWT_SECRET
+    }
+    drain --> server.task_scheduler { DrainState }
 }
 
 graph import testing {
@@ -15495,6 +15730,9 @@ graph import toolchains {
     store --> toolchains.system.ensure_patchelf { install }
     system --> client.targets.desktop.desktop_build._patchelf_rpath { ensure_patchelf }
     system --> toolchains.desktop { ensure_desktop_host, webkit_module }
+    store --> packages.index.Registry._read { allowed_url, offline }
+    store --> packages.index.fetch_verified { Artifact, fetch }
+    store --> packages.sources.checkout { offline }
 }
 
 graph import compiler.backends.py.jacpython {
@@ -19329,8 +19567,6 @@ graph import runtime.python {
         PyLong_AsLong,
         PyLong_AsLongLong,
         PyLong_AsSsize_t,
-        PyLong_AsUnsignedLong,
-        PyLong_AsUnsignedLongLong,
         PyLong_AsUnsignedLongLongMask,
         PyLong_AsUnsignedLongMask,
         PyLong_FromLong,
@@ -20742,6 +20978,176 @@ graph import runtime.python {
         opcode_is_valid,
         stack_effect
     }
+    capi --> runtime.python.modules.atexit | runtime.python.modules.blake2 | runtime.python.modules.hashlib | runtime.python.modules.sha3 {
+        object_error
+    }
+    capi --> runtime.python.modules.hmac { object_error, text_value }
+    cpython_api --> runtime.python.bindings.atexit { PyObject }
+    cpython_api --> runtime.python.bindings.blake2 {
+        PyDict_SetItemString,
+        PyLong_FromLong,
+        PyModule_AddIntConstant,
+        PyObject,
+        PyType_GetDict,
+        Py_TYPE,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.clinic.blake2 | runtime.python.bindings.clinic.sha3 {
+        NULL,
+        PyObject
+    }
+    cpython_api --> runtime.python.bindings.clinic.hmac | runtime.python.bindings.clinic.md5 | runtime.python.bindings.clinic.sha1 | runtime.python.bindings.clinic.sha2 {
+        NULL,
+        PyObject,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.bindings.converters { jacpy_unsigned_converter }
+    cpython_api --> runtime.python.bindings.hmac { PyModule_AddIntConstant, PyObject }
+    cpython_api --> runtime.python.bindings.md5 | runtime.python.bindings.sha1 {
+        PyLong_FromLong,
+        PyModule_AddIntConstant,
+        PyObject,
+        PyUnicode_FromString
+    }
+    cpython_api --> runtime.python.bindings.sha2 {
+        NULL,
+        PyLong_FromLong,
+        PyModule_AddIntConstant,
+        PyObject,
+        PyUnicode_FromString,
+        Py_TYPE
+    }
+    cpython_api --> runtime.python.bindings.sha3 {
+        PyModule_AddIntConstant,
+        PyModule_AddStringConstant,
+        PyObject,
+        Py_TYPE
+    }
+    cpython_api --> runtime.python.modules.atexit {
+        NULL,
+        PyCallable_Check,
+        PyInterpreterState,
+        PyInterpreterState_Get,
+        PyList_Clear,
+        PyList_GetItem,
+        PyList_GetSlice,
+        PyList_Insert,
+        PyList_SetSlice,
+        PyList_Size,
+        PyLong_FromSsize_t,
+        PyObject,
+        PyObject_Call,
+        PyObject_RichCompareBool,
+        PyTuple_GetItem,
+        PyTuple_GetSlice,
+        PyTuple_New,
+        PyTuple_Size,
+        Py_NewRef,
+        jacpy_atexit_call,
+        jacpy_atexit_callbacks,
+        jacpy_atexit_detach,
+        jacpy_atexit_push,
+        jacpy_atexit_release_callbacks,
+        jacpy_is_none,
+        jacpy_release,
+        jacpy_tuple_set_owned,
+        jacpy_unraisable
+    }
+    cpython_api --> runtime.python.modules.blake2 {
+        NULL,
+        PyErr_NoMemory,
+        PyLong_FromLong,
+        PyMem_Free,
+        PyMem_Malloc,
+        PyObject,
+        PyUnicode_FromString,
+        Py_TYPE,
+        jacpy_hacl_simd_features,
+        jacpy_memory_copy,
+        jacpy_memory_zero,
+        jacpy_offset,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.hashlib {
+        NULL,
+        PyErr_NoMemory,
+        PyEval_RestoreThread,
+        PyEval_SaveThread,
+        PyMem_Free,
+        PyMem_Malloc,
+        PyObject,
+        PyObject_CheckBuffer,
+        PyThread_acquire_lock,
+        PyThread_allocate_lock,
+        PyThread_free_lock,
+        PyThread_release_lock,
+        Py_NewRef,
+        Py_TYPE,
+        _Py_strhex,
+        jacpy_bytes_from_memory,
+        jacpy_is_unicode,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.hmac {
+        NULL,
+        PyErr_NoMemory,
+        PyErr_SetObject,
+        PyLong_FromLong,
+        PyLong_FromVoidPtr,
+        PyMem_Free,
+        PyMem_Malloc,
+        PyNumber_ToBase,
+        PyObject,
+        PyObject_CallNoArgs,
+        PyObject_GetAttrString,
+        PyObject_Repr,
+        PyUnicode_AsUTF8,
+        PyUnicode_Concat,
+        PyUnicode_FromString,
+        Py_TYPE,
+        _Py_strhex,
+        jacpy_bytes_from_memory,
+        jacpy_hacl_simd_features,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_offset,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.md5 | runtime.python.modules.sha1 | runtime.python.modules.sha2 {
+        NULL,
+        PyErr_NoMemory,
+        PyObject,
+        Py_TYPE,
+        jacpy_offset,
+        jacpy_release
+    }
+    cpython_api --> runtime.python.modules.numeric {
+        jacpy_libm_cos,
+        jacpy_libm_exp,
+        jacpy_libm_exp2,
+        jacpy_libm_fma,
+        jacpy_libm_log,
+        jacpy_libm_log10,
+        jacpy_libm_log2,
+        jacpy_libm_sin,
+        jacpy_libm_tan
+    }
+    cpython_api --> runtime.python.modules.sha3 {
+        NULL,
+        PyBytes_FromStringAndSize,
+        PyErr_NoMemory,
+        PyLong_FromLong,
+        PyMem_Free,
+        PyMem_Malloc,
+        PyObject,
+        PyType_GetModule,
+        PyUnicode_FromString,
+        Py_TYPE,
+        _Py_strhex,
+        jacpy_bytes_from_memory,
+        jacpy_offset,
+        jacpy_release
+    }
 }
 
 graph import runtime.python.bindings {
@@ -21587,6 +21993,109 @@ graph import runtime.python.bindings {
     typing --> compiler.backends.py.jacpython.native_api { PyInit__typing }
     weakref --> compiler.backends.py.jacpython.native_api { PyInit__weakref }
     zlib --> compiler.backends.py.jacpython.native_api { PyInit_zlib }
+    arguments --> runtime.python.bindings.clinic.blake2 | runtime.python.bindings.clinic.hmac | runtime.python.bindings.clinic.md5 | runtime.python.bindings.clinic.sha1 | runtime.python.bindings.clinic.sha2 | runtime.python.bindings.clinic.sha3 {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    atexit --> compiler.backends.py.jacpython.native_api { PyInit_atexit }
+    blake2 --> compiler.backends.py.jacpython.native_api { PyInit__blake2 }
+    buffer --> runtime.python.bindings.clinic.blake2 | runtime.python.bindings.clinic.hmac | runtime.python.bindings.clinic.md5 | runtime.python.bindings.clinic.sha1 | runtime.python.bindings.clinic.sha2 | runtime.python.bindings.clinic.sha3 | runtime.python.modules.blake2 | runtime.python.modules.hashlib | runtime.python.modules.hmac {
+        BufferArgument
+    }
+    converters --> runtime.python.bindings.clinic.blake2 {
+        argument_label,
+        convert_bool,
+        convert_buffer,
+        convert_int,
+        convert_unsigned_long,
+        convert_unsigned_long_long
+    }
+    converters --> runtime.python.bindings.clinic.hmac {
+        argument_label,
+        defining_class
+    }
+    converters --> runtime.python.bindings.clinic.md5 | runtime.python.bindings.clinic.sha1 | runtime.python.bindings.clinic.sha2 {
+        argument_label,
+        convert_bool,
+        defining_class
+    }
+    converters --> runtime.python.bindings.clinic.sha3 {
+        argument_label,
+        convert_bool,
+        convert_unsigned_long
+    }
+    converters --> runtime.python.bindings.sha2 | runtime.python.modules.blake2 | runtime.python.modules.hmac | runtime.python.modules.md5 | runtime.python.modules.sha1 | runtime.python.modules.sha2 | runtime.python.modules.sha3 {
+        ClassToken
+    }
+    converters --> runtime.python.modules.atexit { borrowed_none }
+    converters --> runtime.python.modules.hashlib { ClassToken, borrowed_none }
+    hmac --> compiler.backends.py.jacpython.native_api { PyInit__hmac }
+    md5 --> compiler.backends.py.jacpython.native_api { PyInit__md5 }
+    module --> runtime.python.bindings.atexit {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition
+    }
+    module --> runtime.python.bindings.blake2 {
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_state_get
+    }
+    module --> runtime.python.bindings.clinic.blake2 | runtime.python.bindings.clinic.hmac | runtime.python.bindings.clinic.md5 | runtime.python.bindings.clinic.sha1 | runtime.python.bindings.clinic.sha2 | runtime.python.bindings.clinic.sha3 {
+        MethodCallbacks,
+        MethodDefinition
+    }
+    module --> runtime.python.bindings.hmac {
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_exception
+    }
+    module --> runtime.python.bindings.md5 | runtime.python.bindings.sha1 | runtime.python.bindings.sha2 {
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned
+    }
+    module --> runtime.python.bindings.sha3 {
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned
+    }
+    module --> runtime.python.modules.hmac | runtime.python.modules.md5 | runtime.python.modules.sha1 | runtime.python.modules.sha2 | runtime.python.modules.sha3 {
+        jacpy_binding_state_get
+    }
+    payload --> runtime.python.bindings.blake2 | runtime.python.bindings.hmac | runtime.python.bindings.md5 | runtime.python.bindings.sha1 | runtime.python.bindings.sha2 | runtime.python.bindings.sha3 {
+        dispose_payload,
+        traverse_payload
+    }
+    payload --> runtime.python.modules.hashlib {
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set
+    }
+    sha1 --> compiler.backends.py.jacpython.native_api { PyInit__sha1 }
+    sha2 --> compiler.backends.py.jacpython.native_api { PyInit__sha2 }
+    sha3 --> compiler.backends.py.jacpython.native_api { PyInit__sha3 }
+    state --> runtime.python.modules.blake2 | runtime.python.modules.hashlib | runtime.python.modules.hmac | runtime.python.modules.md5 | runtime.python.modules.sha1 | runtime.python.modules.sha2 | runtime.python.modules.sha3 {
+        NativeState
+    }
+    type --> runtime.python.bindings.blake2 | runtime.python.bindings.md5 | runtime.python.bindings.sha1 | runtime.python.bindings.sha2 | runtime.python.bindings.sha3 {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks
+    }
+    type --> runtime.python.bindings.clinic.blake2 | runtime.python.bindings.clinic.hmac | runtime.python.bindings.clinic.md5 | runtime.python.bindings.clinic.sha1 | runtime.python.bindings.clinic.sha2 | runtime.python.bindings.clinic.sha3 {
+        PropertyCallbacks,
+        PropertyDefinition
+    }
+    type --> runtime.python.bindings.converters { jacpy_binding_type_matches }
+    type --> runtime.python.bindings.hmac { TypeDefinition, TypeFlags, TypeHooks }
+    type --> runtime.python.modules.hashlib { jacpy_binding_allocate }
 }
 
 graph import runtime.python.modules {
@@ -21822,7 +22331,6 @@ graph import runtime.python.modules {
         isfinite,
         isinf,
         isnan,
-        lgamma,
         log,
         log10,
         log1p,
@@ -21836,8 +22344,7 @@ graph import runtime.python.modules {
         sinh,
         sqrt,
         tan,
-        tanh,
-        tgamma
+        tanh
     }
     numeric --> runtime.python.modules.statistics { fabs, log, sqrt }
     object_ring --> runtime.python.modules.collections { object_ring }
@@ -22215,6 +22722,169 @@ graph import runtime.python.modules {
         runtime_version,
         zlib_decompressor_new
     }
+    atexit --> runtime.python.bindings.atexit {
+        atexit_clear,
+        atexit_ncallbacks,
+        atexit_register,
+        atexit_run_exitfuncs,
+        atexit_unregister
+    }
+    blake2 --> runtime.python.bindings.blake2 {
+        Blake2_token,
+        HACL_HASH_BLAKE2B_KEY_BYTES,
+        HACL_HASH_BLAKE2B_OUT_BYTES,
+        HACL_HASH_BLAKE2B_PERSONAL_BYTES,
+        HACL_HASH_BLAKE2B_SALT_BYTES,
+        HACL_HASH_BLAKE2S_KEY_BYTES,
+        HACL_HASH_BLAKE2S_OUT_BYTES,
+        HACL_HASH_BLAKE2S_PERSONAL_BYTES,
+        HACL_HASH_BLAKE2S_SALT_BYTES,
+        get_block_size,
+        get_digest_size,
+        get_name
+    }
+    blake2 --> runtime.python.bindings.clinic.blake2 {
+        HACL_HASH_BLAKE2B_OUT_BYTES,
+        HACL_HASH_BLAKE2S_OUT_BYTES,
+        _blake2_blake2b_copy_impl,
+        _blake2_blake2b_digest_impl,
+        _blake2_blake2b_hexdigest_impl,
+        _blake2_blake2b_update_impl,
+        py_blake2b_new_impl,
+        py_blake2s_new_impl
+    }
+    blake2_simd --> runtime.python.modules.blake2 {
+        Hacl_Hash_Blake2b_blake2_params,
+        simd128_copy,
+        simd128_digest,
+        simd128_free,
+        simd128_malloc,
+        simd128_update,
+        simd256_copy,
+        simd256_digest,
+        simd256_free,
+        simd256_malloc,
+        simd256_update
+    }
+    hashlib --> runtime.python.bindings.blake2 | runtime.python.bindings.hmac | runtime.python.bindings.md5 | runtime.python.bindings.sha1 | runtime.python.bindings.sha2 | runtime.python.bindings.sha3 {
+        HASHLIB_GIL_MINSIZE
+    }
+    hashlib --> runtime.python.modules.blake2 | runtime.python.modules.md5 | runtime.python.modules.sha1 | runtime.python.modules.sha2 | runtime.python.modules.sha3 {
+        HashLock,
+        UINT32_MAX,
+        data_argument,
+        hash_digest,
+        hash_initial_data,
+        hash_object_new,
+        hash_state_of,
+        hash_update
+    }
+    hashlib --> runtime.python.modules.hmac {
+        HashLock,
+        UINT32_MAX,
+        hash_buffer,
+        hash_initial_data,
+        hash_object_new,
+        hash_state_of,
+        hash_update
+    }
+    hmac --> runtime.python.bindings.clinic.hmac {
+        HMAC_token,
+        _hmac_HMAC_block_size_get_impl,
+        _hmac_HMAC_copy_impl,
+        _hmac_HMAC_digest_impl,
+        _hmac_HMAC_digest_size_get_impl,
+        _hmac_HMAC_hexdigest_impl,
+        _hmac_HMAC_name_get_impl,
+        _hmac_HMAC_update_impl,
+        _hmac_compute_blake2b_32_impl,
+        _hmac_compute_blake2s_32_impl,
+        _hmac_compute_digest_impl,
+        _hmac_compute_md5_impl,
+        _hmac_compute_sha1_impl,
+        _hmac_compute_sha2_224_impl,
+        _hmac_compute_sha2_256_impl,
+        _hmac_compute_sha2_384_impl,
+        _hmac_compute_sha2_512_impl,
+        _hmac_compute_sha3_224_impl,
+        _hmac_compute_sha3_256_impl,
+        _hmac_compute_sha3_384_impl,
+        _hmac_compute_sha3_512_impl,
+        _hmac_new_impl
+    }
+    hmac --> runtime.python.bindings.hmac {
+        HMAC_TYPE,
+        HMAC_token,
+        UNKNOWN_HASH_ERROR,
+        hmac_repr
+    }
+    md5 --> runtime.python.bindings.clinic.md5 {
+        MD5Type_copy_impl,
+        MD5Type_digest_impl,
+        MD5Type_hexdigest_impl,
+        MD5Type_token,
+        MD5Type_update_impl,
+        _md5_md5_impl
+    }
+    md5 --> runtime.python.bindings.md5 { MD5Type_token, MD5_BLOCKSIZE, MD5_DIGESTSIZE }
+    numeric --> runtime.python.modules.math { round }
+    sha1 --> runtime.python.bindings.clinic.sha1 {
+        SHA1Type_copy_impl,
+        SHA1Type_digest_impl,
+        SHA1Type_hexdigest_impl,
+        SHA1Type_token,
+        SHA1Type_update_impl,
+        _sha1_sha1_impl
+    }
+    sha1 --> runtime.python.bindings.sha1 {
+        SHA1Type_token,
+        SHA1_BLOCKSIZE,
+        SHA1_DIGESTSIZE
+    }
+    sha2 --> runtime.python.bindings.clinic.sha2 {
+        SHA256Type_copy_impl,
+        SHA256Type_digest_impl,
+        SHA256Type_hexdigest_impl,
+        SHA256Type_token,
+        SHA256Type_update_impl,
+        SHA512Type_copy_impl,
+        SHA512Type_digest_impl,
+        SHA512Type_hexdigest_impl,
+        SHA512Type_token,
+        SHA512Type_update_impl,
+        _sha2_sha224_impl,
+        _sha2_sha256_impl,
+        _sha2_sha384_impl,
+        _sha2_sha512_impl
+    }
+    sha2 --> runtime.python.bindings.sha2 {
+        SHA256Type_token,
+        SHA256_BLOCKSIZE,
+        SHA512Type_token,
+        SHA512_BLOCKSIZE,
+        sha2_of
+    }
+    sha3 --> runtime.python.bindings.clinic.sha3 {
+        _sha3_sha3_224_copy_impl,
+        _sha3_sha3_224_digest_impl,
+        _sha3_sha3_224_hexdigest_impl,
+        _sha3_sha3_224_update_impl,
+        _sha3_shake_128_digest_impl,
+        _sha3_shake_128_hexdigest_impl,
+        py_sha3_new_impl
+    }
+    sha3 --> runtime.python.bindings.sha3 {
+        SHA3_TYPES,
+        SHA3_token,
+        get_block_size,
+        get_capacity_bits,
+        get_digest_size,
+        get_name,
+        get_rate_bits,
+        get_shake_digest_size,
+        get_shake_suffix,
+        get_suffix
+    }
 }
 
 graph import runtime.python.bindings.clinic {
@@ -22242,4 +22912,158 @@ graph import runtime.python.bindings.clinic {
         ZlibDecompressor_methods,
         module_methods
     }
+    blake2 --> runtime.python.bindings.blake2 {
+        blake2b_doc,
+        blake2b_methods,
+        blake2s_doc,
+        py_blake2b_new_new,
+        py_blake2s_new_new
+    }
+    hmac --> runtime.python.bindings.hmac { HMAC_getset, HMAC_methods, module_methods }
+    md5 --> runtime.python.bindings.md5 { MD5Type_methods, module_methods }
+    sha1 --> runtime.python.bindings.sha1 { SHA1Type_methods, module_methods }
+    sha2 --> runtime.python.bindings.sha2 {
+        SHA256Type_methods,
+        SHA512Type_methods,
+        module_methods
+    }
+    sha3 --> runtime.python.bindings.sha3 {
+        py_sha3_new_new,
+        sha3_224_methods,
+        shake_128_methods
+    }
+}
+
+graph import packages {
+    api --> packages.artifact.build_package { package_surface }
+    api --> packages.artifact.package_manifest { surface_digest }
+    api --> packages.verify._verify_library { package_surface, surface_digest }
+    apidiff --> packages.publish { ApiChange, check_bump, diff_surfaces, minimum_next }
+    apidiff --> packages.verify { check_bump, diff_surfaces }
+    artifact --> cli.commands.project._bundle_jab {
+        ArtifactError,
+        ROLE_APP,
+        build_package,
+        project_role
+    }
+    artifact --> dist.seal.vendor_packages { stage_source_tree }
+    artifact --> packages.commands._dep_from_source { read_identity }
+    artifact --> packages.publish {
+        API_FILE,
+        ArtifactError,
+        BuiltPackage,
+        MANIFEST_DIR,
+        ROLE_LIB,
+        ROLE_TEMPLATE,
+        build_package,
+        package_identity,
+        project_role
+    }
+    artifact --> packages.sources { pack_source_tree }
+    artifact --> packages.store { ArtifactError, expect_identity }
+    artifact --> packages.templates {
+        MANIFEST_DIR,
+        ROLE_TEMPLATE,
+        read_package_manifest
+    }
+    artifact --> packages.verify { API_FILE, MANIFEST_DIR, read_package_manifest }
+    commands --> cli.commands.project.install { add_packages, install_project }
+    commands --> cli.commands.project.remove { remove_packages }
+    commands --> cli.commands.project.update {
+        PYPI_HINT,
+        install_project,
+        split_package_specs
+    }
+    github --> packages.index._github_tree { find_token }
+    github --> packages.publish.open_index_pull { GitHub }
+    index --> packages.install { RegistryError, registry_named }
+    index --> packages.install._registry_for_source { Registry, registry_urls }
+    index --> packages.publish {
+        IndexEntry,
+        Registry,
+        RegistryError,
+        api_rel_path,
+        index_rel_path,
+        parse_index_lines,
+        registry_named
+    }
+    index --> packages.resolve {
+        IndexEntry,
+        Registry,
+        RegistryError,
+        registry_named,
+        registry_urls
+    }
+    index --> packages.templates { IndexEntry, RegistryError, registry_named }
+    index --> packages.verify {
+        API_DIR,
+        IndexEntry,
+        Registry,
+        RegistryError,
+        api_rel_path,
+        fetch_verified,
+        parse_index_lines
+    }
+    install --> client.config_loader._package_npm_deps {
+        InstallError,
+        load_lock,
+        package_npm_requirements
+    }
+    install --> dist.seal.vendor_packages { has_packages, sync }
+    install --> packages.commands {
+        InstallError,
+        SyncResult,
+        describe_sync,
+        has_packages,
+        load_lock,
+        project_dir,
+        sync,
+        write_lock
+    }
+    install --> packages.provider {
+        InstallError,
+        load_lock,
+        package_npm_requirements,
+        package_pip_requirements
+    }
+    install --> packages.verify._verify_library { InstallError, sync }
+    lock --> packages.commands { Lockfile, digest_of }
+    lock --> packages.install { LockError, LockedPackage, Lockfile }
+    lock --> packages.resolve { LockedPackage, Lockfile, digest_of }
+    migrate --> cli.commands.fix._fix_dependencies { find_manifests, migrate_manifest }
+    mounts --> packages.install { link_mounts }
+    provider --> project.providers.initialize_provider_registry { JacPackageProvider }
+    pubgrub --> packages.resolve { PackageSource, SolveFailure, solve }
+    publish --> cli.commands.project.publish { publish_project, yank_version }
+    publish --> packages.verify { previous_release, previous_surface }
+    resolve --> packages.artifact.package_manifest { manifest_npm, manifest_pypi }
+    resolve --> packages.commands { manifest_inputs }
+    resolve --> packages.install {
+        ResolveError,
+        manifest_inputs,
+        pip_requirement,
+        resolve_graph
+    }
+    resolve --> packages.templates { running_jac_version }
+    semver --> packages.apidiff { Version }
+    semver --> packages.commands { SemverError, Version, caret_for }
+    semver --> packages.commands.add_packages { Requirement }
+    semver --> packages.pubgrub { Requirement, Version, VersionSet }
+    semver --> packages.publish | packages.verify { SemverError, Version }
+    semver --> packages.resolve | packages.templates {
+        Requirement,
+        SemverError,
+        Version
+    }
+    sources --> packages.commands._dep_from_source { checkout, resolve_path }
+    sources --> packages.install { GitError, checkout, pack_checkout }
+    sources --> packages.resolve { GitError, checkout, pack_checkout, resolve_path }
+    store --> packages.install { StoreError, cached, materialize }
+    templates --> cli.commands.project._resolve_template {
+        TemplateError,
+        fetch_template,
+        is_template_spec,
+        load_template_jab
+    }
+    verify --> cli.commands.project.publish { run_verify }
 }

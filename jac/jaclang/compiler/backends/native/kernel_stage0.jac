@@ -46,6 +46,7 @@ def link_kernel(
                 f"{events.get('native_unit_lower', 0)}/"
                 f"{events.get('native_unit_codegen', 0)}"
             );
+            log(plan.prog.native_units().phase_summary());
         }
         return result;
     }

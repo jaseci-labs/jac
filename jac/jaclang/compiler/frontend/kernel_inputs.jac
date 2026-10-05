@@ -16,6 +16,7 @@ obj RequestOptions {
         resolve_annex_parent: bool = False,
         aot_mode: bool = False,
         native_unit: bool = False,
+        kernel_build: bool = False,
         force_codespace: str = "",
         memory_profile: str = "managed",
         nogc_enforce_all: bool = False,
@@ -45,6 +46,7 @@ obj RequestOptions {
             resolve_annex_parent=self.resolve_annex_parent,
             aot_mode=self.aot_mode,
             native_unit=self.native_unit,
+            kernel_build=self.kernel_build,
             force_codespace=self.force_codespace,
             memory_profile=self.memory_profile,
             nogc_enforce_all=self.nogc_enforce_all,
@@ -239,6 +241,7 @@ def request_of(options: CompileOptions) -> RequestOptions {
         resolve_annex_parent=options.resolve_annex_parent,
         aot_mode=options.aot_mode,
         native_unit=options.native_unit,
+        kernel_build=options.kernel_build,
         force_codespace=options.force_codespace,
         memory_profile=options.memory_profile or "managed",
         nogc_enforce_all=bool(options.nogc_enforce_all),
@@ -270,6 +273,7 @@ def request_to_dict(request: RequestOptions) -> dict[str, any] {
         "resolve_annex_parent": request.resolve_annex_parent,
         "aot_mode": request.aot_mode,
         "native_unit": request.native_unit,
+        "kernel_build": request.kernel_build,
         "force_codespace": request.force_codespace,
         "memory_profile": request.memory_profile,
         "nogc_enforce_all": request.nogc_enforce_all,
@@ -302,6 +306,7 @@ def request_from_dict(raw: dict[str, any]) -> RequestOptions {
         resolve_annex_parent=bool(raw.get("resolve_annex_parent", False)),
         aot_mode=bool(raw.get("aot_mode", False)),
         native_unit=bool(raw.get("native_unit", False)),
+        kernel_build=bool(raw.get("kernel_build", False)),
         force_codespace=str(raw.get("force_codespace", "")),
         memory_profile=str(raw.get("memory_profile", "managed")),
         nogc_enforce_all=bool(raw.get("nogc_enforce_all", False)),
@@ -386,7 +391,10 @@ def facts_to_dict(facts: ProjectFacts) -> dict[str, any] {
     return {
         "project_root": facts.project_root,
         "check": check_to_dict(facts.check),
-        "client_framework": facts.client_framework
+        "client_framework": facts.client_framework,
+        "package_name": facts.package_name,
+        "package_exports": list(facts.package_exports),
+        "package_mounts": facts.package_mounts
     };
 }
 
@@ -394,7 +402,10 @@ def facts_from_dict(raw: dict[str, any]) -> ProjectFacts {
     return ProjectFacts(
         project_root=str(raw.get("project_root", "")),
         check=check_from_dict(json_map(raw.get("check"))),
-        client_framework=str(raw.get("client_framework", "react"))
+        client_framework=str(raw.get("client_framework", "react")),
+        package_name=str(raw.get("package_name", "")),
+        package_exports=json_str_list(raw.get("package_exports")),
+        package_mounts=str(raw.get("package_mounts", ""))
     );
 }
 
@@ -458,6 +469,7 @@ def workspace_to_dict(ws: WorkspaceSpec) -> dict[str, any] {
         "default_app": ws.default_app,
         "explicit": ws.explicit,
         "digest": ws.digest,
+        "persistence_namespace": ws.persistence_namespace,
         "base_pins": dict(ws.base_pins),
         "base_npm_names": sorted(ws.base_npm_names)
     };
@@ -476,6 +488,7 @@ def workspace_from_dict(raw: dict[str, any]) -> WorkspaceSpec {
         default_app=str(raw.get("default_app", "")),
         explicit=bool(raw.get("explicit", False)),
         digest=str(raw.get("digest", "")),
+        persistence_namespace=str(raw.get("persistence_namespace", "main")),
         base_pins=json_str_map(raw.get("base_pins")),
         base_npm_names=set(json_str_list(raw.get("base_npm_names")))
     );
@@ -485,14 +498,20 @@ def verdict_to_dict(verdict: (NativeVerdict | None)) -> (dict[str, any] | None) 
     if verdict is None {
         return None;
     }
-    return {"demoted": verdict.demoted, "code": verdict.code, "detail": verdict.detail};
+    return {
+        "demoted": verdict.demoted,
+        "code": verdict.code,
+        "detail": verdict.detail,
+        "deps": [list(row) for row in verdict.deps]
+    };
 }
 
 def verdict_from_dict(raw: dict[str, any]) -> NativeVerdict {
     return NativeVerdict(
         demoted=bool(raw.get("demoted", False)),
         code=str(raw.get("code", "")),
-        detail=str(raw.get("detail", ""))
+        detail=str(raw.get("detail", "")),
+        deps=json_str_pairs(raw.get("deps"))
     );
 }
 
@@ -561,6 +580,19 @@ def json_str_list(value: object) -> list[str] {
     if isinstance(value, list) {
         for item in value {
             out.append(str(item));
+        }
+    }
+    return out;
+}
+
+def json_str_pairs(value: object) -> list[list[str]] {
+    out: list[list[str]] = [];
+    if isinstance(value, list) {
+        for item in value {
+            pair = json_str_list(item);
+            if len(pair) == 2 {
+                out.append(pair);
+            }
         }
     }
     return out;

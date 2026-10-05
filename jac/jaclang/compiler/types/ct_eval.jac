@@ -155,6 +155,30 @@ obj CtEvaluator(CtCaller) {
         } except OSError {}
     }
 
+    def _note_definition(nd: UniNode) {
+        home = nd.find_parent_of_type(Module);
+        evaluated = self._ct_root;
+        if home is None or evaluated is None or home is evaluated {
+            return;
+        }
+        path = _norm_path(home.loc.mod_path if home.loc else "");
+        if not path.endswith(".jac") {
+            return;
+        }
+        owner: (UniNode | None) = nd;
+        while owner is not None and not isinstance(owner, (Ability, Archetype, Enum)) {
+            owner = owner.parent;
+        }
+        qualname = definition_qualname(owner) if owner is not None else "";
+        try {
+            if qualname {
+                evaluated.record_comptime_definition(os.path.realpath(path), qualname);
+            } else {
+                self._note_ct_path(os.path.realpath(path), body=True);
+            }
+        } except OSError {}
+    }
+
     def try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
         self.last_error = None;
         key = ("node", id(nd));
@@ -1054,7 +1078,7 @@ obj CtEvaluator(CtCaller) {
     }
 
     def _enum_members(nd: Enum) -> list[CtEnumMember] {
-        self._note_producer(nd.find_parent_of_type(Module), body=True);
+        self._note_definition(nd);
         key = id(nd);
         if key in self._enum_cache {
             return self._enum_cache[key];
@@ -1862,7 +1886,7 @@ obj CtEvaluator(CtCaller) {
             for hv in self._has_vars_of(ct)
             if not hv.accessors
         ];
-        self._note_producer(node_.find_parent_of_type(Module), body=True);
+        self._note_definition(node_);
         fields: dict[str, CtValue] = {};
         init_ab = self._user_method(ct, "init") or self._user_method(ct, "__init__");
         if init_ab is not None {
@@ -1962,7 +1986,7 @@ obj CtEvaluator(CtCaller) {
         }
         params = ability.signature.get_parameters();
         kw: dict[str, CtValue] = `dict(kwargs);
-        self._note_producer(ability.find_parent_of_type(Module), body=True);
+        self._note_definition(ability);
         self.push_frame(barrier=True);
         self.call_stack.append(name);
         try {
@@ -2037,6 +2061,18 @@ obj CtEvaluator(CtCaller) {
         base = os.path.dirname(mod.loc.mod_path) if mod is not None and mod.loc else "";
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
+        pkg_root = (active_host().project_root(base) or base) if base else "";
+        if pkg_root {
+            real_root = os.path.realpath(pkg_root);
+            real_path = os.path.realpath(path);
+            if real_path != real_root
+                and not real_path.startswith(real_root + os.sep) {
+                raise CtError(
+                    f"embed_file: '{rel}' resolves outside the package root "
+                    f"{real_root}; compile-time embeds must stay inside the package"
+                );
+            }
+        }
         try {
             data = ct_read_host_file(path);
         } except OSError as e {
@@ -2403,7 +2439,7 @@ obj CtEvaluator(CtCaller) {
             }
             rec_asn = self._class_binding(base.class_type, name);
             if rec_asn is not None and rec_asn.value is not None {
-                self._note_producer(rec_asn.find_parent_of_type(Module), body=True);
+                self._note_definition(rec_asn);
                 return self.eval_with_bindings(rec_asn.value, base.ct_args or {});
             }
             m = self._find_method(base.class_type, name);
@@ -2437,7 +2473,7 @@ obj CtEvaluator(CtCaller) {
             }
             bound_asn = self._class_binding(self._class_type_of(base), name);
             if bound_asn is not None and bound_asn.value is not None {
-                self._note_producer(bound_asn.find_parent_of_type(Module), body=True);
+                self._note_definition(bound_asn);
                 return self.eval_with_bindings(bound_asn.value, base.ct_args or {});
             }
             meth = self._find_method(self._class_type_of(base), name);

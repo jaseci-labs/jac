@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 58 C files / 111,789 lines; 38 headers / 14,455 lines.
-#   Total: 96 files / 126,244 source lines.
+#   Excluded: 65 C files / 117,547 lines; 44 headers / 16,784 lines.
+#   Total: 109 files / 134,331 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -482,9 +482,9 @@ Modules/_zstd/zstddict.c
 Modules/_zstd/zstddict.h
 Modules/addrinfo.h
 # Modules/arraymodule.c  # removed: 3,359 source lines
-Modules/atexitmodule.c
+# Modules/atexitmodule.c  # removed: 361 source lines
 # Modules/binascii.c  # removed: 1,337 source lines
-Modules/blake2module.c
+# Modules/blake2module.c  # removed: 1,074 source lines
 Modules/cjkcodecs/_codecs_cn.c
 Modules/cjkcodecs/_codecs_hk.c
 Modules/cjkcodecs/_codecs_iso2022.c
@@ -537,24 +537,24 @@ Modules/clinic/_threadmodule.c.h
 Modules/clinic/_zoneinfo.c.h
 # Modules/clinic/arraymodule.c.h  # removed: 777 source lines
 # Modules/clinic/binascii.c.h  # removed: 791 source lines
-Modules/clinic/blake2module.c.h
+# Modules/clinic/blake2module.c.h  # removed: 505 source lines
 # Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
 Modules/clinic/fcntlmodule.c.h
 Modules/clinic/gcmodule.c.h
 # Modules/clinic/grpmodule.c.h  # removed: 155 source lines
-Modules/clinic/hmacmodule.c.h
+# Modules/clinic/hmacmodule.c.h  # removed: 673 source lines
 # Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
 # Modules/clinic/mathmodule.c.h  # removed: 1,114 source lines
-Modules/clinic/md5module.c.h
+# Modules/clinic/md5module.c.h  # removed: 175 source lines
 Modules/clinic/mmapmodule.c.h
 Modules/clinic/posixmodule.c.h
 # Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
 Modules/clinic/pyexpat.c.h
 # Modules/clinic/resource.c.h  # removed: 177 source lines
 Modules/clinic/selectmodule.c.h
-Modules/clinic/sha1module.c.h
-Modules/clinic/sha2module.c.h
-Modules/clinic/sha3module.c.h
+# Modules/clinic/sha1module.c.h  # removed: 175 source lines
+# Modules/clinic/sha2module.c.h  # removed: 510 source lines
+# Modules/clinic/sha3module.c.h  # removed: 291 source lines
 Modules/clinic/signalmodule.c.h
 Modules/clinic/socketmodule.c.h
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
@@ -577,13 +577,13 @@ Modules/getpath.py
 Modules/getpath_noop.c
 # Modules/grpmodule.c  # removed: 409 source lines
 Modules/hashlib.h
-Modules/hmacmodule.c
+# Modules/hmacmodule.c  # removed: 1,865 source lines
 # Modules/itertoolsmodule.c  # removed: 4,103 source lines
 Modules/ld_so_aix.in
 Modules/main.c
 Modules/makesetup
 # Modules/mathmodule.c  # removed: 4,202 source lines
-Modules/md5module.c
+# Modules/md5module.c  # removed: 413 source lines
 Modules/mmapmodule.c
 Modules/posixmodule.c
 Modules/posixmodule.h
@@ -593,9 +593,9 @@ Modules/pyexpat.c
 Modules/rotatingtree.c
 Modules/rotatingtree.h
 Modules/selectmodule.c
-Modules/sha1module.c
-Modules/sha2module.c
-Modules/sha3module.c
+# Modules/sha1module.c  # removed: 411 source lines
+# Modules/sha2module.c  # removed: 954 source lines
+# Modules/sha3module.c  # removed: 680 source lines
 Modules/signalmodule.c
 Modules/socketmodule.c
 Modules/socketmodule.h

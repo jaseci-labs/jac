@@ -370,6 +370,7 @@ max_jobs_per_user = 25
 ## Behavior Notes
 
 - Cron fields, dynamic job triggers, and stored timestamps are all UTC. The one exception is a bare `date` string on `@schedule`, which is read in the server's local timezone; pin an offset there.
-- A job never overlaps itself. If a run is still going when the next fire time arrives, the new run waits (`max_instances=1`).
+- Within one worker process, a static task does not overlap itself: if its run is still going when the next fire time arrives, that tick is skipped there, logged once, and left unclaimed, so another worker or replica may run it alongside the first. A dynamic job is skipped by APScheduler (`max_instances=1`), also per process.
+- When a server shuts down it stops starting static runs as soon as it begins draining, and waits for the runs already going within what is left of `[serve.timeouts] drain` after in-flight requests. A run still going when that budget is spent is cut off, and the log names it. Dynamic jobs are waited on for `shutdown_timeout`.
 - Every fire missed within `misfire_grace_time` runs on recovery, each claiming its own tick, so a replica that stalls makes up to `misfire_grace_time / interval` runs back to back before it catches up. Misses older than the grace window are dropped. Lower `misfire_grace_time` if a burst is worse for your job than a gap.
 - Keep scheduled work idempotent where possible. Interval and cron jobs will run many times, and a restart near a fire time can produce a make-up run.

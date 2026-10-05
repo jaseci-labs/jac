@@ -267,6 +267,23 @@ impl JacCompiler._get_bytecode(
         } except Exception {}
         return marshal.loads(precompiled_bc);
     }
+    carried = None if rebuild else carried_module_bytecode(full_target);
+    if carried is not None {
+        (carried_bc, carried_ctdeps) = carried;
+        try {
+            import from jaclang.compiler.driver.jir { SEC_CTDEPS as _CARRY_CTDEPS }
+            write_module_cache(
+                full_target,
+                carried_bc,
+                flags=FLAG_CARRIED,
+                extra_sections=(
+                    {_CARRY_CTDEPS: carried_ctdeps} if carried_ctdeps else {}
+                )
+            );
+        } except Exception {}
+        setup_progress.on_internal_reuse(full_target);
+        return marshal.loads(carried_bc);
+    }
 
     is_internal = actual_program.internal;
     if is_internal {
@@ -871,13 +888,12 @@ impl JacCompiler._persist_module_cache(
         } except Exception {}
         import from jaclang.compiler.driver.jir {
             SEC_CTDEPS,
-            ct_deps_section,
+            module_ct_deps_section,
             write_module_cache
         }
-        if result.ct_file_deps {
-            sections[SEC_CTDEPS] = ct_deps_section(
-                result.ct_file_deps, result.ct_body_deps
-            );
+        ct_rows = module_ct_deps_section(result);
+        if ct_rows is not None {
+            sections[SEC_CTDEPS] = ct_rows;
         }
         write_module_cache(full_target, cache_bc, extra_sections=sections);
     } except Exception {}

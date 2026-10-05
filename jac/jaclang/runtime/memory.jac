@@ -34,6 +34,10 @@ obj Memory {
         self._on_commit = [];
     }
 
+    def new_session(target_path: str) -> Memory {
+        return self;
+    }
+
     def is_available -> bool {
         return True;
     }
@@ -151,7 +155,7 @@ obj Memory {
         self.__mem__.pop(stub.ensure_id(), None);
     }
 
-    def is_recoverable_quarantine(id: UUID) -> bool {
+    def preserve_unresolved_ref(id: UUID) -> bool {
         return False;
     }
 

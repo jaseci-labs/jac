@@ -158,7 +158,7 @@ obj LinkPlan {
         h.update(self.triple.encode());
         h.update(self.options.codegen_identity().encode());
 
-        h.update(running_compiler_digest().encode());
+        h.update(native_producer_digest(self.options.kernel_build).encode());
 
         for u in self.units {
             h.update(native_unit_identity(u.path).encode());
@@ -674,6 +674,7 @@ def unit_objects(
     registry = plan.prog.native_units();
     objs: list[bytes] = [];
     ordered = plan.units;
+    registry.emit_objects([u.path for u in ordered], plan.options);
     for u in ordered {
         object_bytes = registry.object_for(u.path, plan.options);
         if object_bytes is None {
@@ -803,7 +804,7 @@ def plan_objects(
 
 def units_source_key(paths: list[str], options: CompileOptions) -> str {
     h = hashlib.sha256();
-    h.update(running_compiler_digest().encode("utf-8"));
+    h.update(native_producer_digest(options.kernel_build).encode("utf-8"));
     h.update(options.codegen_identity().encode("utf-8"));
     h.update(options.effective_triple().encode("utf-8"));
 
@@ -839,7 +840,7 @@ def _write_sidecar(
         "units": unit_paths,
         "unit_ids": [native_unit_identity(p) for p in unit_paths],
         "source_key": units_source_key(unit_paths, plan.options),
-        "compiler_digest": running_compiler_digest(),
+        "compiler_digest": native_producer_digest(plan.options.kernel_build),
         "codegen_identity": plan.options.base_codegen_identity(),
         "triple": plan.triple,
         "link_mode": plan.mode,
@@ -976,6 +977,9 @@ def link_artifact(
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
+    if plan.mode != NATIVE_LINK_MODE_BITCODE {
+        registry.emit_objects([unit.path for unit in plan.units], plan.options);
+    }
     for unit in plan.units {
         product = (
             registry.bitcode_for(unit.path, plan.options)

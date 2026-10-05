@@ -245,8 +245,7 @@ obj ManifestBuilder {
         client_entry: (str | None) = None,
         dry_run: bool = False,
         _bundle_files_cache: (dict[str, str] | None) = None,
-        _serve_settings_cache: (ServeSettings | None) = None,
-        _minted_secret: str = "";
+        _serve_settings_cache: (ServeSettings | None) = None;
 
     def _gateway_cfg -> dict[str, any] {
         if self.gateway_config is not None {
@@ -870,7 +869,6 @@ obj ManifestBuilder {
     }
 
     def _signing_secret -> str {
-        import secrets;
         configured = str(self.secrets.get("JAC_SERVE_AUTH_SECRET") or "").strip();
         if configured {
             return configured;
@@ -879,10 +877,7 @@ obj ManifestBuilder {
         if from_project {
             return from_project;
         }
-        if not self._minted_secret {
-            self._minted_secret = secrets.token_urlsafe(48);
-        }
-        return self._minted_secret;
+        return PLACEHOLDER_JWT_SECRET;
     }
 
     def _serve_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]] {

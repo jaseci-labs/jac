@@ -5,6 +5,7 @@ import from pathlib { Path }
 
 def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
     sources: set[str] = `set();
+    mounts = project_mounts(`root);
     pending = [code];
     while pending {
         unit = pending.pop();
@@ -39,6 +40,9 @@ def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
                 roots = [base];
             } else {
                 roots = `list(`dict.fromkeys([base, Path(`root)]));
+                if mounts {
+                    roots.append(Path(mounts));
+                }
             }
             for search_root in roots {
                 target = search_root.joinpath(*name.split('.'))

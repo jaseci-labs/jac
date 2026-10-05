@@ -50,7 +50,7 @@ obj RunPlan {
 }
 
 def _has_client(config: JacConfig) -> bool {
-    if "jac-client" in config.dependencies {
+    if "jac-client" in config.pypi_dependencies {
         return True;
     }
 

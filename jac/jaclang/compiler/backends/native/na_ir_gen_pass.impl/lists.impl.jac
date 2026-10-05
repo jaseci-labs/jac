@@ -399,6 +399,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             and first_val.type != _decl_elem {
             first_val = self._coerce_type(first_val, _decl_elem);
         }
+        first_val = self._variadic_elem_coerce(first_val, nd);
     }
     _lit_spec = self._elem_spec_of(nd);
     _aos_lit = self._aos_elem_of(nd);
@@ -555,6 +556,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             and val.type != _decl_elem {
             val = self._coerce_type(val, _decl_elem);
         }
+        val = self._variadic_elem_coerce(val, nd);
         val = self._nogc_elem_prep(nd.values[i], val);
         if val is None {
             return None;
@@ -661,7 +663,9 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
 impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
-    _normed = self._str_norm(value);
+    _normed = self._str_materialize(value)
+        if self._elem_kind(value.type) == "str" and self._is_owned(value)
+        else self._str_norm(value);
     value = self._wrap_fn_as_closure_value(_normed);
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {

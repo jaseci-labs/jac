@@ -338,7 +338,7 @@ def restamp_stage0_sidecar(
     return stamped;
 }
 
-def _fall_back(reason: str) -> bool {
+def _fall_back(reason: str, elapsed: float = -1.0) -> bool {
     if stage0_strict() {
         import from jaclang.compiler.backends.native.kernel_resolve {
             KernelUnavailable
@@ -348,13 +348,14 @@ def _fall_back(reason: str) -> bool {
             "the self build; fix the sources or pin stage 0 to \"self\""
         );
     }
+    spent = f" after {elapsed:.1f}s" if elapsed >= 0 else "";
     sys.stderr.write(
-        f"jac: stage-0 kernel build unavailable ({reason}); building the kernel "
-        "with this compiler.\n"
+        f"jac: stage-0 kernel build unavailable{spent} ({reason}); building the "
+        "kernel with this compiler, which is the full self build.\n"
     );
     if os.environ.get("GITHUB_ACTIONS") == "true" {
         sys.stdout.write(
-            f"::notice title=stage 0::{reason}; the kernel was built by this compiler\n"
+            f"::warning title=stage 0 fell back to the self build{spent}::{reason}\n"
         );
         sys.stdout.flush();
     }
@@ -395,7 +396,7 @@ def build_kernel_by_pin(
         trips = native_tree_trips(pin, repo, prefix)
             + file_guard_trips(pin, snapshot_pkg, spec.`root);
         if trips {
-            return _fall_back("; ".join(trips));
+            return _fall_back("; ".join(trips), time.monotonic() - started);
         }
         write_kernel_target(spec, spec_path);
         before = unit_sources_before(spec);
@@ -403,7 +404,7 @@ def build_kernel_by_pin(
         code = run_stage0_child(snapshot_pkg, spec_path, dst);
         built = time.monotonic();
         if code != 0 {
-            return _fall_back(_child_failure(code));
+            return _fall_back(_child_failure(code), built - started);
         }
         restamp_stage0_sidecar(dst, pin, spec.`root, before);
         sys.stderr.write(
@@ -412,7 +413,7 @@ def build_kernel_by_pin(
         );
         return True;
     } except (Stage0Unavailable, OSError, tarfile.TarError) as e {
-        return _fall_back(str(e));
+        return _fall_back(str(e), time.monotonic() - started);
     } finally {
         try {
             os.remove(spec_path);

@@ -1864,6 +1864,23 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " (`pkg.mod.Class.method`) lands its import in that body, so the import"
          " stays lazy. {fix} An inline suppression does not silence this."
      ),
+     E2095 = _err(
+         "E2095",
+         Category.IMPORT,
+         "Import '{module}' names a module of this package by a bare path; import it as '{qualified}'",
+         help="A package's modules load under the package's qualified name, so"
+         " a bare path would load the same file as a second, separate module."
+         " Import it by its qualified name or with a relative import (from the"
+         " same directory: 'import from .name { ... }')."
+     ),
+     E2096 = _err(
+         "E2096",
+         Category.IMPORT,
+         "'{module}' is not exported by the package '{package}'",
+         help="A package lists the modules other code may import under [project]"
+         " exports in its jac.toml ({exports}). Import one of those modules, or"
+         " ask the package to export this one."
+     ),
      W3001 = _warn(
          "W3001",
          Category.LINT,

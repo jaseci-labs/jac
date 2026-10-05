@@ -548,6 +548,8 @@ An app's walkers and `def:pub` functions form its public boundary. Other declara
 | `E2092` | Edge rule '{name}' is declared more than once |
 | `E2093` | arch.jac has syntax errors, so the wiring for '{consumer}' may be incomplete |
 | `E2094` | Import of '{module}' inside '{scope}' is not declared by arch.jac for '{consumer}' |
+| `E2095` | Import '{module}' names a module of this package by a bare path; import it as '{qualified}' |
+| `E2096` | '{module}' is not exported by the package '{package}' |
 | `W2083` | Edge rule '{name}': {what} matches no module |
 | `W2084` | '{name}' is not a module under this arch.jac, so {what} is inert |
 
