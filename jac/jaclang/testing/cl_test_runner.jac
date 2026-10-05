@@ -122,6 +122,8 @@ def _run_harness(
 
 def _parse_results(stdout: str, tests: list[any]) -> (list[ClTestResult] | None);
 
+def module_entry_for(filepath: str) -> str;
+
 def module_is_client(filepath: str) -> bool;
 def is_cl_test_file(filepath: str) -> bool;
 

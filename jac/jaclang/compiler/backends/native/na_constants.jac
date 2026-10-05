@@ -57,8 +57,10 @@ glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_GRAY: int = 2,
      RC_COLOR_PURPLE: int = 3,
      RC_BUFFERED_BIT: int = 4,
+     RC_UNTRACED_BIT: int = 8,
      RC_COLOR_SHIFT: int = 48,
-     RC_CYCLE_THRESHOLD: int = 1000;
+     RC_CYCLE_THRESHOLD: int = 1000,
+     RC_CYCLE_PACE: int = 4;
 
 glob JACVAL_ELLIPSIS_TAG: int = 9,
      JACVAL_STRUCT_TAG: int = 6;

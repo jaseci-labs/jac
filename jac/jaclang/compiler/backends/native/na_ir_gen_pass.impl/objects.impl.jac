@@ -1027,9 +1027,7 @@ impl NaIRGenPass._forward_declare_method(
 
     param_types: list[ir.Type] = [] if _is_static else [receiver_type];
     for p in _m_params {
-        param_types.append(
-            self._resolve_sig_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_sig_type(p));
     }
 
     ret_type = self._resolve_sig_type(sig.return_type)
@@ -1707,6 +1705,15 @@ impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._event_from_walker(method: uni.Ability) -> bool {
+    owner = method.find_parent_of_type(uni.Archetype);
+    if owner is not None {
+        return owner.arch_kind == "walker";
+    }
+    sig = method.signature;
+    return isinstance(sig, uni.EventSignature) and sig.from_walker;
+}
+
 impl NaIRGenPass._forward_declare_event_method(
     arch_name: str, method: uni.Ability
 ) -> None {
@@ -1738,7 +1745,7 @@ impl NaIRGenPass._forward_declare_event_method(
         name=self._symbol_for(full_name, _owner if _imported else None)
     );
     func.args[0].name = "self";
-    func.args[1].name = "here" if sig.from_walker else "visitor";
+    func.args[1].name = "here" if self._event_from_walker(method) else "visitor";
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
     if not _imported {
@@ -1778,10 +1785,11 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
         }
         self._bind_function_parameter("self", func.args[0]);
 
-        loc_name = "here" if sig.from_walker else "visitor";
+        from_walker = self._event_from_walker(method);
+        loc_name = "here" if from_walker else "visitor";
         loc_arg = func.args[1];
         self._bind_function_parameter(loc_name, loc_arg);
-        _grow_anchor = loc_arg if sig.from_walker else func.args[0];
+        _grow_anchor = loc_arg if from_walker else func.args[0];
         self._region_enter(self._region_of_value(_grow_anchor));
         self.region_open_stack.append(len(self.loop_stack));
         if sig.arch_tag_info is not None {
