@@ -1,4 +1,4 @@
-name: CI
+Kernel buildname: CI
 
 # One kit, one precompile, one consumer shape. `build-kit` builds the binary
 # from this checkout and publishes two artifacts: `jac-kit` (the binary and its
