@@ -7,6 +7,7 @@ import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
 import from jaclang.compiler.frontend.codeinfo {
+    is_compiler_source_path,
     is_package_keyed_path,
     native_unit_identity
 }
@@ -45,8 +46,10 @@ glob MAGIC = b"JIR\x00",
      SEC_NDEPS: int = 0x13,
      SEC_NCTDEPS: int = 0x14,
      SEC_PATH_ROOT: int = 0x15,
+     SEC_EMITKEY: int = 0x16,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
+     FLAG_CARRIED: int = 0x08,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
      CT_PKG_PREFIX: str = "@jaclang/",
      CT_DEF_FLAG: str = "d:",
@@ -131,9 +134,11 @@ obj NativeStamp {
     }
 }
 
-def current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
+def current_native_stamp(
+    codegen_identity: str, triple: str, producer: str = ""
+) -> NativeStamp {
     return NativeStamp(
-        compiler_digest=running_compiler_digest(),
+        compiler_digest=producer or running_compiler_digest(),
         codegen_identity=codegen_identity,
         triple=triple
     );
@@ -551,7 +556,15 @@ def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str {
     return digest;
 }
 
-glob _COMPILER_DIGEST_CACHE: list[str] = [];
+glob _COMPILER_DIGEST_CACHE: list[str] = [],
+     _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
+     _PY_EMITTER_DIGESTS: dict[str, str] = {},
+     _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
+
+glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
+     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
+     DEV_EXACT_ENV: str = "JAC_DEV_EXACT",
+     DEV_NATIVE_PRODUCER: str = "abi:";
 
 def _digest_manifest_path(pkg_dir: str) -> Path {
     tag = hashlib.sha256(str(Path(pkg_dir).resolve()).encode()).hexdigest()[:8];
@@ -613,6 +626,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
         changed = True;
     }
     digest = fold_compiler_digest(rows);
+    _COMPILER_INPUT_ROWS[digest] = rows;
     try {
         import from jaclang.cache.registry { bucket, maybe_sweep }
         if changed or digest != stored_digest {
@@ -633,6 +647,78 @@ def running_compiler_digest -> str {
         _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
     }
     return _COMPILER_DIGEST_CACHE[0];
+}
+
+def _rel_under(rel: str, roots: tuple[str, ...]) -> bool {
+    return any(rel == r or rel.startswith(r + "/") for r in roots);
+}
+
+def py_emitter_digest -> str {
+    current = running_compiler_digest();
+    known = _PY_EMITTER_DIGESTS.get(current);
+    if known is not None {
+        return known;
+    }
+    rows = _COMPILER_INPUT_ROWS.get(current);
+    if rows is None {
+        _manifest_compiler_digest(_jaclang_pkg_dir);
+        rows = _COMPILER_INPUT_ROWS.get(current, []);
+    }
+    h = hashlib.sha256();
+    for (rel, sha) in rows {
+        if _rel_under(rel, PY_EMITTER_ROOTS)
+            and not _rel_under(rel, PY_EMITTER_EXCLUDED) {
+            h.update(rel.encode());
+            h.update(b"\x00");
+            h.update(sha.encode());
+            h.update(b"\n");
+        }
+    }
+    _PY_EMITTER_DIGESTS[current] = h.hexdigest();
+    return _PY_EMITTER_DIGESTS[current];
+}
+
+def require_exact_compiler_products {
+    os.environ[DEV_EXACT_ENV] = "1";
+}
+
+def dev_carry_enabled -> bool {
+    if os.environ.get(DEV_EXACT_ENV, "") in ENV_TRUTHY or precompile_required() {
+        return False;
+    }
+    dev = os.environ.get("JAC_DEV_SOURCE", "").strip();
+    if not dev {
+        return False;
+    }
+    try {
+        return os.path.realpath(os.path.join(dev, "jaclang"))
+            == os.path.realpath(_jaclang_pkg_dir);
+    } except OSError {
+        return False;
+    }
+}
+
+def native_producer_digest(kernel_build: bool = False) -> str {
+    current = running_compiler_digest();
+    if not kernel_build or not dev_carry_enabled() {
+        return current;
+    }
+    known = _NATIVE_PRODUCER_DIGESTS.get(current);
+    if known is None {
+        import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
+        import from jaclang.compiler.kernel_target { target_pkg_root }
+        import from jaclang.compiler.backends.native.stage0_pin { abi_contract_digest }
+        known = DEV_NATIVE_PRODUCER
+            + str(NATIVE_ABI_VERSION)
+            + ":"
+            + abi_contract_digest(target_pkg_root());
+        _NATIVE_PRODUCER_DIGESTS[current] = known;
+    }
+    return known;
+}
+
+def _producer_kind(digest: str) -> str {
+    return DEV_NATIVE_PRODUCER if digest.startswith(DEV_NATIVE_PRODUCER) else "";
 }
 
 glob _COMPILER_GENERATION_CACHE: list[str] = [];
@@ -1263,10 +1349,14 @@ def module_cache_key(source_path: str) -> str {
 }
 
 def module_jir_key_sections(source_path: str) -> dict[int, bytes] {
-    return {
+    keys = {
         SEC_MODKEY: module_cache_key(source_path).encode('utf-8'),
         SEC_ENVKEY: module_env_fingerprint(source_path).encode('utf-8')
     };
+    if is_compiler_source_path(source_path) {
+        keys[SEC_EMITKEY] = py_emitter_digest().encode('utf-8');
+    }
+    return keys;
 }
 
 def jir_env_matches(jir_data: bytes, source_path: str) -> bool {
@@ -1597,6 +1687,9 @@ def module_cache_invalid_reason(source_path: str, cache_path: Path) -> str {
         if not jir_env_matches(data, source_path) {
             return "compiler or environment key changed";
         }
+        if header.flags & FLAG_CARRIED and not dev_carry_enabled() {
+            return "bytecode carried from an earlier compiler";
+        }
         stale = _stale_ct_rows(read_ct_deps(data), "", first_only=True);
         if stale {
             return "comptime dependency changed: " + stale[0];
@@ -1714,10 +1807,12 @@ def merge_native_sections(
             }
         }
         if digests {
+            kinds = {_producer_kind(d) for d in digests};
             variants = {
                 key: value
                 for (key, value) in variants.items()
                 if key.split("\x1f")[0] in digests
+                    or _producer_kind(key.split("\x1f")[0]) not in kinds
             };
         }
         if tag in incoming {
@@ -1740,6 +1835,94 @@ def _module_lock_path(cache_path: Path) -> Path {
     pool.mkdir(parents=True, exist_ok=True);
     slot = int(hashlib.sha256(cache_path.name.encode("utf-8")).hexdigest()[:8], 16);
     return pool / f"{slot % LOCK_POOL_SIZE:02d}.lock";
+}
+
+def carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None) {
+    if not dev_carry_enabled() or not is_compiler_source_path(source_path) {
+        return None;
+    }
+    try {
+        current = get_module_cache_path(source_path);
+        emitter = py_emitter_digest();
+        candidates: list[tuple[float, str]] = [];
+        for generation in current.parent.parent.iterdir() {
+            candidate = generation / current.name;
+            if generation == current.parent or not candidate.is_file() {
+                continue;
+            }
+            candidates.append((candidate.stat().st_mtime, str(candidate)));
+        }
+        candidates.sort(reverse=True);
+        for (_mtime, candidate_path) in candidates {
+            data = Path(candidate_path).read_bytes();
+            header = parse_header(data[:HEADER_SIZE]);
+            if header is None or not header.is_compatible() {
+                continue;
+            }
+            stored = read_section_bytes(data, SEC_EMITKEY);
+            if stored is None or stored.decode('utf-8') != emitter {
+                continue;
+            }
+            if not jir_matches_source(data, source_path) or not ct_deps_fresh(data) {
+                continue;
+            }
+            bytecode = read_bytecode_only(data);
+            if bytecode is not None {
+                return (bytecode, read_section_bytes(data, SEC_CTDEPS) or b"");
+            }
+        }
+    } except Exception {
+        return None;
+    }
+    return None;
+}
+
+def carried_native_sections(source_path: str, producer: str) -> dict[int, bytes] {
+    if not producer.startswith(DEV_NATIVE_PRODUCER) or not dev_carry_enabled() {
+        return {};
+    }
+    prefix = producer + "\x1f";
+    try {
+        current = get_module_cache_path(source_path);
+        candidates: list[tuple[float, str]] = [];
+        for generation in current.parent.parent.iterdir() {
+            candidate = generation / current.name;
+            if generation == current.parent or not candidate.is_file() {
+                continue;
+            }
+            candidates.append((candidate.stat().st_mtime, str(candidate)));
+        }
+        candidates.sort(reverse=True);
+        for (_mtime, candidate_path) in candidates {
+            data = Path(candidate_path).read_bytes();
+            header = parse_header(data[:HEADER_SIZE]);
+            if header is None or not header.is_compatible() {
+                continue;
+            }
+            if not jir_matches_source(data, source_path) {
+                continue;
+            }
+            found: dict[int, bytes] = {};
+            for tag in NATIVE_SECTIONS {
+                kept = {
+                    key: value
+                    for (key, value) in native_section_variants(
+                        read_section_bytes(data, tag)
+                    ).items()
+                    if key.startswith(prefix)
+                };
+                if kept {
+                    found[tag] = pack_native_variants(kept);
+                }
+            }
+            if SEC_NIFACE in found {
+                return found;
+            }
+        }
+    } except Exception {
+        return {};
+    }
+    return {};
 }
 
 def write_module_cache(
@@ -1793,6 +1976,9 @@ def write_module_cache(
                 if native_write {
                     sections.update(merge_native_sections(existing, extra_sections));
                 }
+            }
+            if bytecode is not None and not (flags & FLAG_CARRIED) {
+                existing_flags &= ~FLAG_CARRIED;
             }
             merged_flags = flags | existing_flags;
             if existing and sections == existing and merged_flags == existing_flags {

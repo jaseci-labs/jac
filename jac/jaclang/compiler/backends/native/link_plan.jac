@@ -202,8 +202,8 @@ obj LinkPlan {
         h.update(self.mode.encode());
         h.update(self.triple.encode());
         h.update(self.options.codegen_identity().encode());
-        import from jaclang.compiler.driver.jir { running_compiler_digest }
-        h.update(running_compiler_digest().encode());
+        import from jaclang.compiler.driver.jir { native_producer_digest }
+        h.update(native_producer_digest(self.options.kernel_build).encode());
         import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
         for u in self.units {
             h.update(native_unit_identity(u.path).encode());
@@ -884,13 +884,10 @@ def plan_objects(
 }
 
 def units_source_key(paths: list[str], options: CompileOptions) -> str {
-    import from jaclang.compiler.driver.jir {
-        module_cache_key,
-        running_compiler_digest
-    }
+    import from jaclang.compiler.driver.jir { module_cache_key, native_producer_digest }
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
     h = hashlib.sha256();
-    h.update(running_compiler_digest().encode("utf-8"));
+    h.update(native_producer_digest(options.kernel_build).encode("utf-8"));
     h.update(options.codegen_identity().encode("utf-8"));
     h.update(options.effective_triple().encode("utf-8"));
     import from jaclang.compiler.driver.compilation_context { cache_scope }
@@ -919,7 +916,7 @@ def _write_sidecar(
     classes = plan.merged_layout();
     ldigest = layout_digest_of(classes);
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
-    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    import from jaclang.compiler.driver.jir { native_producer_digest }
     unit_paths = [u.path for u in plan.units];
     sidecar = {
         "classes": classes,
@@ -928,7 +925,7 @@ def _write_sidecar(
         "units": unit_paths,
         "unit_ids": [native_unit_identity(p) for p in unit_paths],
         "source_key": units_source_key(unit_paths, plan.options),
-        "compiler_digest": running_compiler_digest(),
+        "compiler_digest": native_producer_digest(plan.options.kernel_build),
         "codegen_identity": plan.options.base_codegen_identity(),
         "triple": plan.triple,
         "link_mode": plan.mode,

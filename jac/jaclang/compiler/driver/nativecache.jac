@@ -19,7 +19,10 @@ import from jaclang.compiler.driver.jir {
     SEC_NOBJ,
     SEC_PLACEMENT,
     cache_mode,
+    carried_native_sections,
     current_native_stamp,
+    native_producer_digest,
+    write_module_cache,
     get_module_cache_path,
     is_module_cache_valid,
     module_cache_invalid_reason,
@@ -237,16 +240,38 @@ obj NativeUnitRegistry {
     ) -> NativeStamp {
         opts = options if options is not None else self._options();
         return current_native_stamp(
-            opts.unit_codegen_identity(path), opts.effective_triple()
+            opts.unit_codegen_identity(path),
+            opts.effective_triple(),
+            native_producer_digest(opts.kernel_build)
         );
     }
 
-    def _module_jir(resolved: str) -> (tuple[bytes, str] | None) {
+    def _carry(resolved: str, stamp: NativeStamp) -> bool {
+        carried = carried_native_sections(resolved, stamp.compiler_digest);
+        if not carried {
+            return False;
+        }
+        write_module_cache(resolved, None, extra_sections=carried);
+        self._event("native_carry");
+        return True;
+    }
+
+    def _module_jir(
+        resolved: str, stamp: (NativeStamp | None) = None
+    ) -> (tuple[bytes, str] | None) {
         try {
             cache_path = get_module_cache_path(resolved);
             why = module_cache_invalid_reason(resolved, cache_path);
+            data = b"" if why else cache_path.read_bytes();
+            if stamp is not None
+                and native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
+                    is None
+                and self._carry(resolved, stamp) {
+                why = module_cache_invalid_reason(resolved, cache_path);
+                data = b"" if why else cache_path.read_bytes();
+            }
             if not why {
-                return (cache_path.read_bytes(), "", );
+                return (data, "", );
             }
             self._miss(resolved, why);
         } except Exception {}
@@ -371,7 +396,7 @@ obj NativeUnitRegistry {
         if live is not None and live.stamp.matches(stamp) {
             return sorted(live.dep_digests.items());
         }
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, stamp);
         if found is None {
             return [];
         }
@@ -409,7 +434,7 @@ obj NativeUnitRegistry {
         check_deps: bool,
         options: (CompileOptions | None) = None
     ) -> (NativeUnitEntry | None) {
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, stamp);
         if found is None {
             return None;
         }
@@ -518,7 +543,7 @@ obj NativeUnitRegistry {
         if ent is not None and ent.stamp.matches(stamp) {
             return sorted(os.path.realpath(d) for d in ent.iface.deps);
         }
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, stamp);
         if found is None {
             return [];
         }
@@ -637,7 +662,8 @@ obj NativeUnitRegistry {
         if ent is not None {
             return ent.digest;
         }
-        found = self._module_jir(resolved);
+        stamp = self.stamp_for(None, resolved);
+        found = self._module_jir(resolved, stamp);
         import from jaclang.compiler.driver.compile_options { env_na_debug }
         if found is None {
             if env_na_debug() {
@@ -649,7 +675,6 @@ obj NativeUnitRegistry {
             return "";
         }
         raw = read_section_bytes(found[0], SEC_NIFACE);
-        stamp = self.stamp_for(None, resolved);
         payload = native_section_payload(raw, stamp);
         if payload is None and env_na_debug() {
             import sys;
