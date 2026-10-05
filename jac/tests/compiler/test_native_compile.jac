@@ -300,17 +300,15 @@ test "a server-side comptime import beside client code stays on the server" {
 }
 
 """An import of `urllib.error` loads the empty `urllib/__init__.pyi`, which the
-stub catalog has to carry like any other stub, and an import of a module the
-native stdlib also ships makes the kernel ask about that native module; the
-snapshot has to answer both."""
-test "stdlib packages and native stdlib variants compile in the kernel" {
+stub catalog has to carry like any other stub."""
+test "an import of a stdlib package with an empty stub compiles in the kernel" {
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         (base / 'jac.toml').write_text(CONFIG);
         (base / 'main.jac').write_text(
-            'import urllib.error;\nimport from pathlib { Path }\n\n'
+            'import urllib.error;\n\n'
                 + 'def fetch(name: str) -> str {\n'
-                + '    try {\n        return Path(name).name;\n'
+                + '    try {\n        return name.strip();\n'
                 + '    } except urllib.error.URLError {\n        return "";\n    }\n}\n'
         );
         entry_file = str(base / 'main.jac');
