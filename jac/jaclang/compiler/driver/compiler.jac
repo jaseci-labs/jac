@@ -225,7 +225,7 @@ obj JacCompiler(SessionHooks) {
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
     def _adopt_kernel_compile(
         full_target: str, program: JacProgram, options: CompileOptions
-    ) -> (bytes | None);
+    ) -> tuple[bool, (bytes | None)];
 
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def _load_native_from_cache(

@@ -295,9 +295,11 @@ impl JacCompiler._get_bytecode(
         skip_analysis=skip_analysis
     );
     if not is_internal {
-        adopted = self._adopt_kernel_compile(full_target, actual_program, options);
-        if adopted is not None {
-            return marshal.loads(adopted);
+        (handled, adopted) = self._adopt_kernel_compile(
+            full_target, actual_program, options
+        );
+        if handled {
+            return marshal.loads(adopted) if adopted is not None else None;
         }
     }
     result: (uni.Module | None) = None;
@@ -338,24 +340,26 @@ impl JacCompiler._get_bytecode(
 
 impl JacCompiler._adopt_kernel_compile(
     full_target: str, program: JacProgram, options: CompileOptions
-) -> (bytes | None) {
+) -> tuple[bool, (bytes | None)] {
     import from jaclang.compiler.frontend.host { active_host }
     compiled = active_host().kernel_compile(program, full_target, options);
     if compiled is None {
-        return None;
+        return (False, None);
     }
     target = compiled.unit(full_target);
     if target is None {
-        return None;
+        return (True, None);
     }
     adopted: (bytes | None) = None;
     for unit in compiled.units {
         bytecode = assemble_jcir(unit.jcir);
         if bytecode is None {
-            if unit is target {
-                return None;
+            if not unit.jcir and unit is not target {
+                continue;
             }
-            continue;
+            raise RuntimeError(
+                f"the native compiler kernel emitted no assemblable JCIR for {unit.path}"
+            );
         }
         sections = unit_sections(unit, bytecode);
         try {
@@ -366,7 +370,7 @@ impl JacCompiler._adopt_kernel_compile(
             adopted = bytecode;
         }
     }
-    return adopted;
+    return (True, adopted);
 }
 
 impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> bool {

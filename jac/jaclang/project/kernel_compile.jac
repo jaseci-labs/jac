@@ -19,17 +19,11 @@ import from jaclang.project.kernel_snapshot {
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE";
 
-enum KernelCompileMode { OFF, ON, IN_PROCESS }
+class KernelCompileError(RuntimeError) {}
 
-def kernel_compile_mode -> KernelCompileMode {
+def kernel_compile_in_process -> bool {
     raw = os.environ.get(KERNEL_COMPILE_ENV, "").strip().lower();
-    if raw in ("1", "on", "true", "yes") {
-        return KernelCompileMode.ON;
-    }
-    if raw in ("inprocess", "in-process") {
-        return KernelCompileMode.IN_PROCESS;
-    }
-    return KernelCompileMode.OFF;
+    return raw in ("inprocess", "in-process");
 }
 
 def kernel_compile(
@@ -67,29 +61,34 @@ def kernel_compile(
 def host_kernel_compile(
     host: HostServices, program: JacProgram, path: str, options: CompileOptions
 ) -> (CompileReport | None) {
-    mode = kernel_compile_mode();
-    if mode == KernelCompileMode.OFF {
-        return None;
-    }
     import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if program.internal or is_compiler_source_path(path) {
         return None;
     }
+    in_process = kernel_compile_in_process();
+    if not in_process {
+        import from jaclang.compiler.native_compiler { ensure_loaded }
+        if ensure_loaded() is None {
+            return None;
+        }
+    }
     try {
-        compiled = kernel_compile(
-            host,
-            program,
-            path,
-            options,
-            in_process=mode == KernelCompileMode.IN_PROCESS
-        );
-    } except Exception as err {
-        kernel_trace(f"host compiles {path}: {type(err).__name__}: {err}");
-        return None;
+        compiled = kernel_compile(host, program, path, options, in_process=in_process);
+    } except KernelAnalysisError as err {
+        raise KernelCompileError(
+            f"the native compiler kernel could not compile {path}: {err}"
+        ) from err;
     }
     kernel_trace(
         f"kernel compiled {path}: {len(compiled.units)} unit(s), "
         f"{len(compiled.analysis.errors)} error(s)"
     );
+    import from jaclang.project.kernel_check { alert_of }
+    for diag in compiled.analysis.errors {
+        program.errors_had.append(alert_of(diag));
+    }
+    for diag in compiled.analysis.warnings {
+        program.warnings_had.append(alert_of(diag));
+    }
     return compiled;
 }

@@ -22,21 +22,14 @@ obj KernelCheck {
         failure: str = "";
 }
 
+class KernelCheckError(RuntimeError) {}
+
 def kernel_analyze_mode -> str {
     raw = os.environ.get(KERNEL_ANALYZE_ENV, "").strip().lower();
-    if raw in ("0", "off", "false", "no") {
-        return "off";
-    }
-    if raw == "parity" {
-        return "parity";
-    }
-    return "on";
+    return "parity" if raw == "parity" else "on";
 }
 
 def analysis_kernel -> any {
-    if kernel_analyze_mode() == "off" {
-        return None;
-    }
     import from jaclang.compiler.native_compiler { ensure_loaded }
     kernel = ensure_loaded();
     if kernel is None or not hasattr(kernel.lib, "jc_analyze") {
@@ -121,19 +114,30 @@ def kernel_check(
     try {
         outcome = kernel_analysis(active_host(), program, path, options, isolated=True);
     } except Exception as err {
-        return KernelCheck(
-            parity=mode == "parity", failure=f"{type(err).__name__}: {err}"
-        );
+        if mode != "parity" {
+            raise KernelCheckError(
+                f"the native compiler kernel could not analyze {path}: "
+                f"{type(err).__name__}: {err}"
+            ) from err;
+        }
+        return KernelCheck(parity=True, failure=f"{type(err).__name__}: {err}");
     }
     if outcome.misses {
-        return KernelCheck(
-            outcome=outcome,
-            parity=mode == "parity",
-            failure=f"the kernel lacked host answers ({outcome.misses[0]})"
-        );
+        failure = f"the kernel lacked host answers ({outcome.misses[0]})";
+        if mode != "parity" {
+            raise KernelCheckError(
+                f"the native compiler kernel could not analyze {path}: {failure}"
+            );
+        }
+        return KernelCheck(outcome=outcome, parity=True, failure=failure);
     }
     entry_module = outcome.module(path);
-    if entry_module is None or entry_module.native {
+    if entry_module is None {
+        raise KernelCheckError(
+            f"the native compiler kernel analyzed {path} but reported no module for it"
+        );
+    }
+    if entry_module.native {
         return KernelCheck(outcome=outcome);
     }
     if mode == "parity" {
