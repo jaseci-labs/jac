@@ -225,6 +225,11 @@ test "runtime logs and toolchain directories do not become application inputs" {
                 is None;
             assert containing_application(str(base / 'node_modules' / 'package.jac'))
                 is None;
+            assert containing_application(
+                str(base / 'vendor' / 'jac' / 'jaclang' / 'runtime' / 'graph_walk.jac'),
+                'jaclang.runtime.graph_walk'
+            )
+                is None , "the compiler's own modules are not application code";
         } finally {
             forget(str(path));
         }
