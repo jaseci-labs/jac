@@ -405,7 +405,7 @@ class NativeCompiler {
                     and name not in seen
                 ) {
                     seen.add(name);
-                    self.lib.jc_reg_edge(stable_osp_tag(name), self._hold(cls));
+                    self.lib.jc_reg_edge(self._class_tag(name), self._hold(cls));
                 }
             }
         }
