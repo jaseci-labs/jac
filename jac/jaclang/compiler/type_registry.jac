@@ -378,6 +378,10 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              "ReferenceError": "Exception",
              "KeyboardInterrupt": "BaseException",
              "SystemExit": "BaseException",
-             "GeneratorExit": "BaseException"
+             "GeneratorExit": "BaseException",
+             "UnicodeError": "ValueError",
+             "UnicodeDecodeError": "UnicodeError",
+             "UnicodeEncodeError": "UnicodeError",
+             "UnicodeTranslateError": "UnicodeError"
          }
      );

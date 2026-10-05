@@ -665,3 +665,172 @@ test "a tick whose claim cannot be checked is skipped, and logged once" {
     assert len(warnings) == 1 , records.messages;
     assert len(recovered) == 1 , records.messages;
 }
+
+
+obj _Probe {
+    has started: int = 0,
+        finished: int = 0,
+        running: int = 0,
+        peak: int = 0,
+        lock: threading.Lock = threading.Lock();
+
+    def slow(seconds: float) {
+        with self.lock {
+            self.started += 1;
+            self.running += 1;
+            self.peak = max(self.peak, self.running);
+        }
+        time.sleep(seconds);
+        with self.lock {
+            self.running -= 1;
+            self.finished += 1;
+        }
+    }
+}
+
+
+test "a static task never runs alongside an earlier run of itself" {
+    # #9029: every tick started a new thread whatever was still running, so
+    # a task slower than its interval piled up concurrent copies.
+    probe = _Probe();
+    claims: list[str] = [];
+    def claim(key: str, tick: int) -> bool {
+        claims.append(key);
+        return True;
+    }
+    sched = fresh_scheduler();
+    sched.claim = claim;
+    sched.register(
+        "slow_fn", lambda { probe.slow(0.7); }, ScheduleSpec(interval=0.2), False
+    );
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    sched.start();
+    try {
+        time.sleep(2.0);
+    } finally {
+        sched.stop(timeout=2.0);
+        log.removeHandler(records);
+    }
+    assert probe.started >= 2 , probe.started;
+    assert probe.peak == 1 , f"{probe.peak} runs overlapped";
+    # A tick this worker skips while busy is left unclaimed, not spent.
+    assert len(claims) == probe.started , (len(claims), probe.started);
+    overlaps = [
+        m
+        for m in records.messages
+        if "still running" in m
+    ];
+    assert 1 <= len(overlaps) <= probe.started , records.messages;
+}
+
+
+test "stopping past its budget returns on time and names the runs it abandons" {
+    for (name, budget, limit) in [("stuck_fn", 0.3, 1.0), ("late_fn", 0.0, 0.5)] {
+        probe = _Probe();
+        sched = fresh_scheduler();
+        sched.register(
+            name, lambda { probe.slow(2.0); }, ScheduleSpec(interval=0.2), False
+        );
+        records = _Records();
+        log = logging.getLogger("jaclang.server.task_scheduler");
+        log.addHandler(records);
+        sched.start();
+        try {
+            deadline = time.monotonic() + 3.0;
+            while probe.started == 0 and time.monotonic() < deadline {
+                time.sleep(0.02);
+            }
+            began = time.monotonic();
+            sched.stop(timeout=budget);
+            waited = time.monotonic() - began;
+        } finally {
+            log.removeHandler(records);
+        }
+        assert waited < limit , f"{name}: {waited}";
+        assert probe.finished == 0 , name;
+        assert any(name in m and "still running" in m for m in records.messages) , records.messages;
+    }
+}
+
+
+test "stopping keeps one deadline even when the loop is slow to stop" {
+    # The loop was joined for up to 5 s and the runs then got the full budget
+    # again, so a loop held in a slow claim pushed shutdown past its drain.
+    probe = _Probe();
+    claiming = threading.Event();
+    def claim(key: str, tick: int) -> bool {
+        if "slow_claim" in key {
+            claiming.set();
+            time.sleep(1.5);
+        }
+        return True;
+    }
+    sched = fresh_scheduler();
+    sched.claim = claim;
+    sched.register(
+        "long_run", lambda { probe.slow(3.0); }, ScheduleSpec(interval=0.2), False
+    );
+    sched.register("slow_claim", lambda { None; }, ScheduleSpec(interval=0.2), False);
+    sched.start();
+    deadline = time.monotonic() + 5.0;
+    while (probe.started == 0 or not claiming.is_set())
+        and time.monotonic() < deadline {
+        time.sleep(0.02);
+    }
+    claiming.clear();
+    while not claiming.is_set() and time.monotonic() < deadline {
+        time.sleep(0.02);
+    }
+    assert probe.started == 1 and claiming.is_set() , "the loop never reached a slow claim";
+    began = time.monotonic();
+    sched.stop(timeout=1.0);
+    waited = time.monotonic() - began;
+    assert waited < 2.0 , f"stop took {waited:.2f}s against a 1.0s budget";
+}
+
+
+test "a served worker starts no runs once draining, and stops after its run in flight" {
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.server.settings { ServeSettings }
+    import from jaclang.testing.testing { JacTestClient }
+    long_run = _Probe();
+    quick = _Probe();
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            str(Path(FIXTURES) / "scheduled_tasks.jac"), base_path=tmpdir
+        );
+        server: any = client.server;
+        server.settings = ServeSettings.load(tmpdir, {"host": "127.0.0.1", "port": 0});
+        server.scheduler._tasks.clear();
+        server.scheduler.register(
+            "long_run",
+            lambda { long_run.slow(1.5); },
+            ScheduleSpec(interval=0.2),
+            False
+        );
+        server.scheduler.register(
+            "quick", lambda { quick.slow(0.0); }, ScheduleSpec(interval=0.2), False
+        );
+        stop = server.serve_background(no_client=True);
+        try {
+            deadline = time.monotonic() + 5.0;
+            while (long_run.started == 0 or quick.finished == 0)
+                and time.monotonic() < deadline {
+                time.sleep(0.02);
+            }
+            server.drain.start("test");
+            before = quick.started;
+            time.sleep(0.6);
+            assert quick.started == before , f"{quick.started
+                - before} run(s) started while draining";
+            assert long_run.finished < long_run.started , "no run was in flight at stop";
+        } finally {
+            stop();
+            server.scheduler._tasks.clear();
+            client.close();
+        }
+    }
+    assert long_run.finished == long_run.started , "the run in flight was abandoned";
+}

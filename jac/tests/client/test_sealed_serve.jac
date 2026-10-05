@@ -231,6 +231,32 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
                 assert response.status_code == 200;
                 assert response.body.decode() == html;
             }
+            index = dist / "index.html";
+            os.utime(index, (0, 0));
+            old_etag = routes["/"](request).headers.get("ETag");
+            redeployed = html.replace("HOSTHASH", "NEWHASH1");
+            staged = dist / "index.html.new";
+            staged.write_text(redeployed);
+            os.utime(staged, (0, 0));
+            os.replace(staged, index);
+            new_etag = routes["/"](request).headers.get("ETag");
+            assert new_etag != old_etag;
+            for (route, args) in [("/", []), ("/{file_path:path}", ["wait-wuuut"])] {
+                for (headers, status) in [
+                    ({"If-None-Match": old_etag}, 200),
+                    ({"If-None-Match": new_etag}, 304),
+                    ({"If-Modified-Since": "Tue, 01 Sep 2026 00:00:00 GMT"}, 200)
+                ] {
+                    response = routes[route](
+                        SimpleNamespace(method="GET", headers=headers), *args
+                    );
+                    assert response.status_code == status , (route, headers);
+                    assert response.headers.get("Last-Modified") is None;
+                    if status == 200 {
+                        assert response.body.decode() == redeployed;
+                    }
+                }
+            }
             response = routes["/static/{file_path:path}"](
                 request, "client.HOSTHASH.css"
             );

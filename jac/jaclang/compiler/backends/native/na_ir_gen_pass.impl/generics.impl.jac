@@ -445,10 +445,21 @@ impl NaIRGenPass._instantiate_generic(
     return fn;
 }
 
+impl NaIRGenPass._record_generic_definition(ability: uni.Ability) -> None {
+    import from jaclang.compiler.frontend.unitree { definition_qualname }
+    path = ability.loc.mod_path;
+    qualname = definition_qualname(ability);
+    if qualname {
+        self.module.record_comptime_definition(path, qualname);
+    } else {
+        self.module.record_comptime_dependency(path, body=True);
+    }
+}
+
 impl NaIRGenPass._stamp_mono_fn(
     ability: uni.Ability, spec_name: str, memo_key: str
 ) -> (ir.Function | None) {
-    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
+    self._record_generic_definition(ability);
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
     if not isinstance(sig, uni.FuncSignature) {
@@ -456,9 +467,7 @@ impl NaIRGenPass._stamp_mono_fn(
     }
     param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {
-        param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_jac_type(p));
     }
     ret_type = self._resolve_jac_type(sig.return_type);
     fnty = ir.FunctionType(ret_type, param_types);
@@ -606,7 +615,7 @@ impl NaIRGenPass._stamp_mono_method(
     spec_name: str,
     memo_key: str
 ) -> (ir.Function | None) {
-    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
+    self._record_generic_definition(ability);
     full_name = f"{arch_name}.{method_name}";
     if full_name in self._native_skipped_methods {
         return None;
@@ -622,9 +631,7 @@ impl NaIRGenPass._stamp_mono_method(
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
-        param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_jac_type(p));
     }
     ret_type = self._resolve_jac_type(sig.return_type);
     fnty = ir.FunctionType(ret_type, param_types);
