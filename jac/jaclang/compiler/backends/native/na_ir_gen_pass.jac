@@ -1377,6 +1377,10 @@ walker NaIRGenPass(CompilerPass) {
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
     def _unbox_any_container(jv: ir.Value, target_type: ir.Type) -> (ir.Value | None);
+    def _adopt_any_view(
+        view: ir.Value, payload: ir.Value, target_type: ir.Type
+    ) -> ir.Value;
+
     def _binding_function_active -> bool;
     def _heap_ref_jacval_tag_fn -> ir.Function;
     def _any_view_fn(target_type: ir.Type) -> (ir.Function | None);
