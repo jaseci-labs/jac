@@ -1608,6 +1608,9 @@ export default function jacClientEvents() {
 }
 
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
+    # The staleness check hashes the generated manifest, so regenerate it from
+    # jac.toml first: a manifest left by an earlier run hides dependency edits.
+    self.create_package_json();
     self.install_packages(install_dir=build_dir);
 }
 
