@@ -96,9 +96,6 @@ def forget(`entry: str) {
 def containing_application(
     path: str, module_name: str = ""
 ) -> (PreparedApplication | None) {
-    # The compiler's own modules are never application code, even when its
-    # source tree sits under the application root (a vendored or submoduled
-    # checkout run through JAC_DEV_SOURCE).
     if module_name == 'jaclang' or module_name.startswith('jaclang.') {
         return None;
     }
