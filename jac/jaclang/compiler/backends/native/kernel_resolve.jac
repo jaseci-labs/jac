@@ -25,6 +25,7 @@ glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
 
 obj ResolvedKernel {
     has lib_path: str,
+        layout: dict[str, any],
         source: str,
         plan_digest: str = "";
 }
@@ -71,6 +72,7 @@ def _from_explicit(path: str) -> ResolvedKernel {
     }
     return ResolvedKernel(
         lib_path=path,
+        layout=sidecar["classes"],
         source="explicit",
         plan_digest=str(sidecar.get("plan_digest", ""))
     );
@@ -157,6 +159,7 @@ def _from_sealed_image -> (ResolvedKernel | None) {
     }
     return ResolvedKernel(
         lib_path=lib_path,
+        layout=sidecar["classes"],
         source="sealed",
         plan_digest=str(record.get("plan_digest", ""))
     );
@@ -259,7 +262,7 @@ def _from_source_tree -> (ResolvedKernel | None) {
     } except Exception as e {
         sys.stderr.write(
             f"jac: the native compiler kernel could not be derived "
-            f"({type(e).__name__}: {e}); the host compiles and checks without it. "
+            f"({type(e).__name__}: {e}); parsing with the store parser. "
             "Run `jac precompile ./jac --seal` to see the full diagnostics.\n"
         );
         return None;
@@ -373,6 +376,7 @@ def _accept_in_tree(lib_path: str) -> (ResolvedKernel | None) {
     }
     return ResolvedKernel(
         lib_path=lib_path,
+        layout=sidecar["classes"],
         source="tree",
         plan_digest=str(sidecar.get("plan_digest", ""))
     );
@@ -514,6 +518,7 @@ def _derive_in_tree(lib_path: str) -> (ResolvedKernel | None) {
         }
         return ResolvedKernel(
             lib_path=lib_path,
+            layout=sidecar["classes"],
             source="tree",
             plan_digest=str(sidecar.get("plan_digest", ""))
         );

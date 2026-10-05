@@ -31,3 +31,4 @@ client/impl/route_scanner.impl.jac
 # meaning. `!` keeps them in the digest by path, not by content.
 !runtime/na_stdlib
 !compiler/jc_unit.jac
+!compiler/jc_materialize.jac

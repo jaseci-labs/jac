@@ -4,7 +4,8 @@ import from jaclang.compiler.passes.context {
     Alert,
     CompileContext,
     CompilerPass,
-    DiagnosticPolicy
+    DiagnosticPolicy,
+    PassResult
 }
 import from jaclang.compiler.driver.compile_options { CancelToken }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -53,7 +54,8 @@ def run_walker[W: CompilerPass](
     cancel_requested: bool = False,
     policy: (DiagnosticPolicy | None) = None,
     errors_had: (list[Alert] | None) = None,
-    warnings_had: (list[Alert] | None) = None
+    warnings_had: (list[Alert] | None) = None,
+    completed: (PassResult | None) = None
 ) -> W {
     ctx = new_context(
         walker_type,
@@ -71,6 +73,12 @@ def run_walker[W: CompilerPass](
         ledger.running = ctx;
     }
     walk = walker_type(module=module, ctx=ctx);
+    if completed is not None {
+        ctx.errors_had.extend(completed.errors_had);
+        ctx.warnings_had.extend(completed.warnings_had);
+        ctx.time_taken = completed.time_taken;
+        return walk;
+    }
     walk_pass(walk);
     if ledger is not None {
         ledger.running = outer;

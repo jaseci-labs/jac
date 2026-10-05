@@ -550,7 +550,11 @@ impl JacProgram.parse_source(
         codespace = self.declared_codespace(file_path);
         infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
-            source_str, file_path, self, annex_sources(file_path)
+            source_str,
+            file_path,
+            self,
+            annex_sources(file_path),
+            early_context=codespace or ('' if infer_native else 'server')
         );
         if (codespace == 'client') {
             _coerce_client_module(parsed);

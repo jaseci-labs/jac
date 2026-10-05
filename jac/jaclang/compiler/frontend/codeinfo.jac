@@ -1122,6 +1122,7 @@ obj CodeGenTarget {
         osp_model: (OspModel | None) = None,
         native_osp_model: (OspModel | None) = None,
         component_call_abi: str = "",
+        jc_layout: (str | None) = None,
         has_root_access: (bool | None) = None,
         nogc_enforced: bool = False,
         nogc_provenance: str = '',

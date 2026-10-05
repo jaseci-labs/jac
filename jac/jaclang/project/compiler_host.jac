@@ -14,6 +14,7 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import type from jaclang.compiler.types.ct_value { CtEnvironment }
 import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
@@ -84,6 +85,14 @@ obj ProjectHost(HostServices) {
     def package_init(directory: str) -> (str | None);
     def wiring_file(path: str) -> (str | None);
     def is_seed_source(rel_path: str) -> bool;
+    def native_parse(
+        source_str: str,
+        file_path: str,
+        program: (JacProgram | None),
+        annexes: list[WovenAnnex],
+        early_context: str = ""
+    ) -> (tuple[Module, bool] | None);
+
     def drop_python_lane_products(path: str, program: JacProgram);
     def compiler_for(program: JacProgram) -> JacCompiler;
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
