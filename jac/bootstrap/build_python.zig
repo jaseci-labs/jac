@@ -19,6 +19,7 @@ const inputs = [_][]const u8{
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { host, jacpython };
 const native_toolchain_inputs = [_][]const u8{ "build.zig", "build.zig.zon", "bootstrap/pins.json" };
+const lowering_trees = [_][]const u8{ "jaclang/compiler/backends/native", "jaclang/runtime/na_stdlib" };
 
 fn parseMode(args: []const []const u8) !Mode {
     if (args.len == 5) return .jacpython;
@@ -186,11 +187,12 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-// A PR build may reuse the runtime main last built when the sources JacPython
-// was lowered from are unchanged, even though the compiler that lowered them
-// has moved on. The key is the same recipe, the host build, and the recorded
-// sources (paths and contents) in place of the whole compiler tree. Main keeps
-// the full key, so a runtime is never more than one main build behind.
+// A CI build may reuse the last runtime main built when the sources JacPython
+// was lowered from, and the native backend that lowered them, are unchanged,
+// even though the rest of the compiler has moved on. The key is the same
+// recipe, the host build, the recorded sources (paths and contents) and the
+// lowering trees in place of the whole compiler tree. Release builds keep the
+// full key.
 fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, host_dest: []const u8, dest: []const u8) !?[64]u8 {
     const record_path = try std.fs.path.join(a, &.{ dest, "python/build/jacpython-native-sources" });
     const record = Io.Dir.cwd().readFileAlloc(io, record_path, a, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
@@ -217,6 +219,7 @@ fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         hash.update(content);
     }
     if (count == 0) return null;
+    for (lowering_trees) |tree| try hashJacTree(io, a, root, tree, &hash);
     hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)));
     var digest: [32]u8 = undefined;
     hash.final(&digest);
@@ -315,6 +318,39 @@ fn hashNativeSources(io: Io, a: std.mem.Allocator, root: []const u8, hash: *std.
     }.less);
     for (paths.items) |path| {
         hash.update("native/");
+        hash.update(path);
+        hash.update(try dir.readFileAlloc(io, path, a, .unlimited));
+    }
+}
+
+fn hashJacTree(io: Io, a: std.mem.Allocator, root: []const u8, tree: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
+    hash.update(tree);
+    var dir = Io.Dir.cwd().openDir(io, try std.fs.path.join(a, &.{ root, tree }), .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => {
+            hash.update("\x00missing");
+            return;
+        },
+        else => return err,
+    };
+    defer dir.close(io);
+    var walker = try dir.walkSelectively(a);
+    defer walker.deinit();
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (try walker.next(io)) |entry| {
+        if (entry.kind == .directory) {
+            if (!std.mem.startsWith(u8, entry.basename, ".") and
+                !std.mem.eql(u8, entry.basename, "__pycache__") and
+                !std.mem.eql(u8, entry.basename, "tests")) try walker.enter(io, entry);
+        } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".jac") or std.mem.endsWith(u8, entry.path, ".py"))) {
+            try paths.append(a, try a.dupe(u8, entry.path));
+        }
+    }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn less(_: void, left: []const u8, right: []const u8) bool {
+            return std.mem.lessThan(u8, left, right);
+        }
+    }.less);
+    for (paths.items) |path| {
         hash.update(path);
         hash.update(try dir.readFileAlloc(io, path, a, .unlimited));
     }
@@ -620,7 +656,7 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
 }
 
-test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
+test "CI may reuse a runtime whose recorded lowered sources and lowering backend are unchanged" {
     const io = std.testing.io;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -657,12 +693,19 @@ test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
     // A compiler edit outside what the runtime was lowered from keeps it...
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     try std.testing.expectEqual(lowered, (try sourcesKey(io, a, hostPlatform(), root, host, built)).?);
-    // ...while the full key, which main uses, still moves.
+    // ...while the full key, which releases use, still moves.
     try std.testing.expect(!std.mem.eql(u8, &lowered, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    // An edit to the native backend that lowered the runtime does not reuse it.
+    try tmp.dir.createDirPath(io, "jaclang/compiler/backends/native/tests");
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler/backends/native/na_ir_gen_pass.jac", .data = "changed lowering" });
+    const relowered = (try sourcesKey(io, a, hostPlatform(), root, host, built)).?;
+    try std.testing.expect(!std.mem.eql(u8, &lowered, &relowered));
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler/backends/native/tests/test_x.jac", .data = "test" });
+    try std.testing.expectEqual(relowered, (try sourcesKey(io, a, hostPlatform(), root, host, built)).?);
     // An edit to a recorded source does not reuse it.
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "edited" });
     const edited = (try sourcesKey(io, a, hostPlatform(), root, host, built)).?;
-    try std.testing.expect(!std.mem.eql(u8, &lowered, &edited));
+    try std.testing.expect(!std.mem.eql(u8, &relowered, &edited));
     // Nor does a recipe or toolchain change.
     try tmp.dir.writeFile(io, .{ .sub_path = native_toolchain_inputs[0], .data = "new toolchain" });
     try std.testing.expect(!std.mem.eql(u8, &edited, &(try sourcesKey(io, a, hostPlatform(), root, host, built)).?));
