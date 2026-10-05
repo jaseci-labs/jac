@@ -77,22 +77,22 @@ test "the plan holds every unit of the diamond, dependencies first" {
         for u in plan.units
         if is_kernel_unit_path(u.path)
     ];
-    names = [
+    planned = [
         os.path.basename(u.path)
         for u in plan.units
         if not is_kernel_unit_path(u.path)
     ];
-    assert sorted(names) == sorted(UNITS) , names;
+    assert sorted(planned) == sorted(UNITS) , planned;
     assert toolchain;
     for u in plan.units {
         for dep in u.iface.deps {
             assert plan.units.index(plan.unit(dep)) < plan.units.index(u) , f"{dep} must precede its consumer {u.path}";
         }
     }
-    assert names[-1] == "top.jac" , "the root_dir comes last";
-    assert names.index("base.jac") < names.index("left.jac");
-    assert names.index("base.jac") < names.index("right.jac");
-    assert names.index("base.jac") < names.index("extra.jac");
+    assert planned[-1] == "top.jac" , "the root_dir comes last";
+    assert planned.index("base.jac") < planned.index("left.jac");
+    assert planned.index("base.jac") < planned.index("right.jac");
+    assert planned.index("base.jac") < planned.index("extra.jac");
     assert plan.root_unit().path == os.path.realpath(os.path.join(root_dir, "top.jac"));
     inits = plan.init_symbols();
     assert native_glob_init_name(os.path.join(root_dir, "base.jac")) in inits;

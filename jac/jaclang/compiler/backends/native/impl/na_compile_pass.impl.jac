@@ -10,12 +10,12 @@ impl module_bitcode(mod: ModuleRef) -> bytes {
     return bitcode;
 }
 
-impl emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes {
-    mod = llvm.parse_bitcode(bitcode, llvm.create_context());
+impl emit_unit_object(unit_code: bytes, options: CompileOptions) -> bytes {
+    mod = llvm.parse_bitcode(unit_code, llvm.create_context());
     tm = create_unit_target_machine(options);
-    result = tm.emit_object(mod);
-    assert isinstance(result, bytes);
-    return result;
+    object_out = tm.emit_object(mod);
+    assert isinstance(object_out, bytes);
+    return object_out;
 }
 
 impl object_emit_jobs -> int {

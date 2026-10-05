@@ -1431,8 +1431,8 @@ def seal_native(
 def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
     import shutil;
     import from jaclang.compiler.driver.jir { get_jir_cache_dir }
-    work = get_jir_cache_dir() / "stage0-kernel";
-    target = work / "target" / pkg_path.name;
+    kernel_work = get_jir_cache_dir() / "stage0-kernel";
+    target = kernel_work / "target" / pkg_path.name;
     if target.exists() {
         shutil.rmtree(target);
     }
@@ -1451,7 +1451,7 @@ def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Pa
             ".jac"
         )
     );
-    out = work / "out" / artifact_name;
+    out = kernel_work / "out" / artifact_name;
     out.parent.mkdir(parents=True, exist_ok=True);
     return (target, out);
 }
