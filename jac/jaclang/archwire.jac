@@ -3873,6 +3873,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces
             | scale.admin.workloads
             | scale.runtime.gateway.microservice_gateway
@@ -4033,6 +4034,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces { JSONResponse, Request },
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
@@ -4064,6 +4066,7 @@ graph import {
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
+            | scale.tests.microservices.test_schedules_agg
             | scale.tests.server.test_serve { Headers, Request, URL },
         scale.tests.microservices.test_sse_framing { Headers, Request, Response },
         scale.tests.server.test_bodiless_status { Response, StreamingResponse },
@@ -4131,6 +4134,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.server.extensions
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_stream_ws._spawn_upstream {
@@ -4347,6 +4351,7 @@ graph import {
     ]
     server.task_scheduler ++> [
         runtime.builtin.schedule { ScheduleSpec },
+        scale.admin.schedules { Scheduler },
         scale.scheduler.scheduler { Scheduler, schedule_namespace, tick_of },
         scale.server.extensions { RunOutcome },
         scale.tests.server.test_scheduler_multipod { ScheduleSpec, Scheduler, tick_of },
@@ -44977,6 +44982,7 @@ graph import scale {
             redact_entry
         },
     ]
+    admin.schedules ++> server.extensions { JacAPIServerSchedules }
     admin.service_urls ++> tests.misc.test_service_urls { service_base_url }
     admin.traces ++> [
         runtime.gateway.microservice_gateway | server.extensions { JacAPIServerTraces },
@@ -45953,6 +45959,7 @@ graph import scale {
         | tests.microservices.test_gateway_docs_precedence
         | tests.microservices.test_gateway_webapp
         | tests.microservices.test_k8s_health_probe
+        | tests.microservices.test_schedules_agg
         | tests.server.test_static_fallback { MicroserviceGateway }
     runtime.gateway.microservice_gateway --> tests.server.test_stream_ws {
         MicroserviceGateway
@@ -45984,7 +45991,8 @@ graph import scale {
             | tests.microservices.test_gateway_webapp
             | tests.microservices.test_k8s_health_probe
             | tests.microservices.test_microservices_registry
-            | tests.microservices.test_openapi_agg {
+            | tests.microservices.test_openapi_agg
+            | tests.microservices.test_schedules_agg {
             ServiceEntry,
             ServiceRegistry,
             ServiceStatus
@@ -46629,6 +46637,9 @@ graph import scale.runtime {
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
         },
+        gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+            http_forward_timeout
+        },
         gateway.microservice_gateway.MicroserviceGateway.forward_to {
             http_forward_timeout
         },
@@ -46721,9 +46732,10 @@ graph import scale.runtime {
         transport.transport.HttpTransport.call_walker { walker_call },
     ]
     transport.http_forward ++> [
-        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
+        gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules
+            | gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
             | gateway.openapi_agg.fetch_service_spec { raw_forward },
+        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },
