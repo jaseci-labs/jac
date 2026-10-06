@@ -1348,8 +1348,16 @@ def setup_dev_mode_server -> subprocess.Popen {
         str(dm_test_file)
     ];
 
+    import os;
+    # A server that never comes up is killed mid-preparation and says nothing
+    # about where it was. With this set, a preparation that runs long writes
+    # its stack to stderr, which the failure below prints.
     server_process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={** os.environ, "JAC_KERNEL_TIMING": "1"}
     );
 
     max_attempts = 60;

@@ -8,6 +8,7 @@ import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
 glob _FORMAT: int = 8,
+     SLOW_PREPARE_SECONDS: int = 45,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
@@ -526,6 +527,13 @@ def prepare_application(
     }
     previous = get_effective_default_codespace_override();
     set_effective_default_codespace('server');
+    watched = bool(os.environ.get('JAC_KERNEL_TIMING'));
+    if watched {
+        import faulthandler;
+        faulthandler.dump_traceback_later(
+            SLOW_PREPARE_SECONDS, repeat=True, file=sys.stderr
+        );
+    }
     try {
         with console.status('Preparing application...', file=sys.stderr) as status {
             status.update(progress);
@@ -582,6 +590,10 @@ def prepare_application(
             }
         }
     } finally {
+        if watched {
+            import faulthandler;
+            faulthandler.cancel_dump_traceback_later();
+        }
         set_effective_default_codespace(previous);
     }
 }
