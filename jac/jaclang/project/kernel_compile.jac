@@ -131,7 +131,7 @@ def host_kernel_compile(
     host: HostServices, program: JacProgram, path: str, options: CompileOptions
 ) -> (CompileReport | None) {
     (routed, in_process) = kernel_route(program, path);
-    if not routed {
+    if not routed or options.skip_analysis {
         return None;
     }
     ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);

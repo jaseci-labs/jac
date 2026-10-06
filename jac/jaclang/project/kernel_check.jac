@@ -38,11 +38,7 @@ def analysis_kernel -> any {
     return kernel;
 }
 
-def pass_type_named(name: str) -> type {
-    found = _PASS_TYPES.get(name);
-    if found is not None {
-        return found;
-    }
+def loaded_pass_type(name: str) -> (type | None) {
     import from jaclang.compiler.passes.context { CompilerPass }
     for (mod_name, mod) in list(sys.modules.items()) {
         if mod is None or not mod_name.startswith("jaclang.compiler.") {
@@ -50,13 +46,39 @@ def pass_type_named(name: str) -> type {
         }
         candidate = getattr(mod, name, None);
         if isinstance(candidate, type) and issubclass(candidate, CompilerPass) {
-            _PASS_TYPES[name] = candidate;
             return candidate;
         }
     }
-    placeholder = type(name or "KernelPass", (CompilerPass, ), {});
-    _PASS_TYPES[name] = placeholder;
-    return placeholder;
+    return None;
+}
+
+def pass_type_named(name: str) -> type {
+    found = _PASS_TYPES.get(name);
+    if found is not None {
+        return found;
+    }
+    found = loaded_pass_type(name);
+    if found is None {
+        import from jaclang.compiler.driver.pipeline {
+            get_analysis_sched,
+            get_boundary_analysis_sched,
+            get_ir_gen_sched,
+            get_symtab_ir_sched
+        }
+        try {
+            get_symtab_ir_sched();
+            get_analysis_sched();
+            get_boundary_analysis_sched();
+            get_ir_gen_sched();
+        } except Exception {}
+        found = loaded_pass_type(name);
+    }
+    if found is not None {
+        _PASS_TYPES[name] = found;
+        return found;
+    }
+    import from jaclang.compiler.passes.context { CompilerPass }
+    return type(name or "KernelPass", (CompilerPass, ), {});
 }
 
 def span_of(record: DiagSpan) -> Span {

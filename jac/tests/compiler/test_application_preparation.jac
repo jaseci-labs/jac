@@ -597,7 +597,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
     with tempfile.TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';
         path.write_text('def hello -> int { return 1; }\n');
-        original = preparation._manifest;
+        original = preparation.build_manifest;
         def changing_manifest(*args: any, **kwargs: any) -> dict[str, any] {
             path.write_text('def hello -> int { return 2; }\n');
             return original(*args, **kwargs);
@@ -605,7 +605,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
         failed = False;
         try {
             with patch.object(
-                preparation, '_manifest', side_effect=changing_manifest
+                preparation, 'build_manifest', side_effect=changing_manifest
             ) {
                 prepare_application(str(path), JacProgram(), tmp);
             }

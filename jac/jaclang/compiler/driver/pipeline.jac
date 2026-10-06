@@ -135,6 +135,12 @@ def product_pipeline(product: CompilationProduct) -> PassSchedule {
     if registered is not None {
         return registered();
     }
+    if product == CompilationProduct.CLIENT {
+        """The client schedule is registered when the module-compile driver
+        is first run, and the native kernel runs no module entry.""";
+        import from jaclang.compiler.driver.module_compile { client_product_schedule }
+        return client_product_schedule();
+    }
     raise ValueError(f"Product {product.value} requires an entry compilation");
 }
 

@@ -286,8 +286,42 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     );
 }
 
+glob _CASE_BLIND_FS: list[bool] = [];
+
+def case_blind_filesystem -> bool {
+    if not _CASE_BLIND_FS {
+        probe = os.path.realpath(str(__file__));
+        folder = os.path.dirname(probe);
+        swapped = os.path.join(folder, os.path.basename(probe).swapcase());
+        _CASE_BLIND_FS.append(swapped != probe and os.path.exists(swapped));
+    }
+    return _CASE_BLIND_FS[0];
+}
+
+def named_exactly_any(candidate: str) -> bool {
+    if not case_blind_filesystem() {
+        return True;
+    }
+    folder = os.path.dirname(candidate) or ".";
+    wanted = os.path.basename(candidate);
+    try {
+        names = os.listdir(folder);
+    } except OSError {
+        return True;
+    }
+    for name in names {
+        if name == wanted or name.startswith(wanted + ".") {
+            return True;
+        }
+    }
+    return False;
+}
+
 def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     candidate = os.path.join(base, *parts);
+    if parts and not named_exactly_any(candidate) {
+        return None;
+    }
     if os.path.isdir(candidate) {
         if os.path.isfile(os.path.join(candidate, '__init__.jac')) {
             return (os.path.join(candidate, '__init__.jac'), 'jac');

@@ -78,8 +78,16 @@ def _w_varint(buf: bytearray, v: int) -> None {
 }
 
 def _w_svarint(buf: bytearray, v: int) {
-    u = (v << 1) if v >= 0 else (((-v) << 1) - 1);
-    _w_varint(buf, u);
+    sign = 0 if v >= 0 else 1;
+    half = v if v >= 0 else -(v + 1);
+    first = ((half & 63) << 1) | sign;
+    rest = half >> 6;
+    if rest {
+        buf.append(first | 128);
+        _w_varint(buf, rest);
+    } else {
+        buf.append(first);
+    }
 }
 
 def _r_varint(data: bytes, pos: int, what: str) -> tuple[int, int] {
