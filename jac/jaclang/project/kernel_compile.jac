@@ -17,12 +17,14 @@ import from jaclang.project.kernel_snapshot {
     call_kernel,
     call_kernel_isolated,
     host_deferred,
+    _IFACE_BUILT,
     kernel_snapshot,
     loaded_kernel
 }
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
      KERNEL_TIMING_ENV: str = "JAC_KERNEL_TIMING",
+     SLOW_COMPILE_SECONDS: float = 20.0,
      _APPLICATION_UNITS: dict[str, UnitProducts] = {},
      _HOST_PREPARING: list[str] = [];
 
@@ -94,15 +96,17 @@ def kernel_compile(
         }
     }
     sink = os.environ.get(KERNEL_TIMING_ENV, "");
-    if sink {
+    total = time.monotonic() - started;
+    if sink or total > SLOW_COMPILE_SECONDS {
         import sys;
-        total = time.monotonic() - started;
         inputs = snapshot.inputs();
         line = f"jac: kernel compile {path}: {total:.2f}s "
         f"(snapshot {snapped - started:.2f}s over {inputs.scanned_modules} modules "
         f"and {len(inputs.python_ifaces)} interfaces, kernel {in_kernel:.2f}s, "
         f"answers {total - (snapped - started) - in_kernel:.2f}s in "
-        f"{snapshot.rounds} round(s), deferred={host_deferred(analysis)})\n";
+        f"{snapshot.rounds} round(s), deferred={host_deferred(analysis)}; "
+        f"this process has built {int(_IFACE_BUILT[0])} interfaces in "
+        f"{_IFACE_BUILT[1]:.2f}s)\n";
         if os.sep in sink {
             with open(sink, "a", encoding="utf-8") as log {
                 log.write(line);

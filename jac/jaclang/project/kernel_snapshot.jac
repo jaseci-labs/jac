@@ -1,5 +1,6 @@
 import os;
 import sys;
+import time;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.host {
     HostServices,
@@ -38,6 +39,7 @@ glob SCAN_LIMIT: int = 4000,
      INTERFACE_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _IFACE_REFUSED: dict[str, str] = {},
+     _IFACE_BUILT: list[float] = [0.0, 0.0],
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
      MISS_ROUNDS: int = 12,
@@ -780,7 +782,10 @@ def python_interfaces(
             if scratch is None {
                 scratch = JacProgram();
             }
+            began = time.monotonic();
             iface = python_interface(path, options, scratch);
+            _IFACE_BUILT[0] += 1.0;
+            _IFACE_BUILT[1] += time.monotonic() - began;
             if iface is None {
                 _IFACE_REFUSED[path] = stamp;
                 continue;
