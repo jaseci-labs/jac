@@ -1,5 +1,5 @@
 impl NaIRGenPass._build_vtable(arch_name: str) -> None {
-    lay = self._arch_layout(arch_name);
+    lay = self.lower._arch_layout(arch_name);
     if lay is None or not lay.has_vtable {
         self.vtable_layouts[arch_name] = [];
         self.vtable_method_indices[arch_name] = {};
@@ -35,7 +35,7 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     vtable_global = self.vtable_globals.get(arch_name);
     if vtable_global is None {
         vtable_global = ir.GlobalVariable(
-            self.llvm_module, vtable_type, name=self._vtable_symbol(arch_name)
+            self.llvm_module, vtable_type, name=self.lower._vtable_symbol(arch_name)
         );
         self.vtable_globals[arch_name] = vtable_global;
     }
@@ -43,20 +43,7 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 
     vtable_global.linkage = "";
     vtable_global.initializer = vtable_init;
-    self._record_export(f"{arch_name}.__vtable", vtable_global.name, "vtable");
-}
-
-impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
-    import from jaclang.compiler.frontend.codeinfo {
-        native_symbol_name,
-        native_unit_spelling
-    }
-    src = self.lower._struct_source_mod.get(arch_name, "");
-    prefix = self._prefix_of_path(src) if src else self._own_prefix();
-    owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
-    return native_symbol_name(
-        prefix, native_unit_spelling(f"{arch_name}.__vtable", owner_path)
-    );
+    self.lower._record_export(f"{arch_name}.__vtable", vtable_global.name, "vtable");
 }
 
 impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None) {
@@ -64,7 +51,7 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
     if existing is not None {
         return existing;
     }
-    lay = self._arch_layout(arch_name);
+    lay = self.lower._arch_layout(arch_name);
     if lay is None or not lay.has_vtable or arch_name not in self.struct_types {
         return None;
     }
@@ -72,7 +59,7 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
     i8_ptr = ir.IntType(8).as_pointer();
     vtable_type = ir.ArrayType(i8_ptr, len(lay.methods) + VTABLE_HEADER_SLOTS);
     vtable_ref = ir.GlobalVariable(
-        self.llvm_module, vtable_type, name=self._vtable_symbol(arch_name)
+        self.llvm_module, vtable_type, name=self.lower._vtable_symbol(arch_name)
     );
     vtable_ref.global_constant = True;
     vtable_ref.linkage = "external";
@@ -86,7 +73,7 @@ impl NaIRGenPass._vtable_candidates(names: list[str]) -> list[ir.GlobalVariable]
     reg = get_layout_registry(self.module, self.prog);
     out: list[ir.GlobalVariable] = [];
     for cand in reg.mro_order {
-        cand_mro = self._mro_of(cand);
+        cand_mro = self.lower._mro_of(cand);
         for name in names {
             if name in cand_mro {
                 vt = self._vtable_global_for(cand);
@@ -124,7 +111,7 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
             if self._arch_has_vtable(cand) {
                 continue;
             }
-            for step in self._mro_of(cand) {
+            for step in self.lower._mro_of(cand) {
                 _reach.add(step);
             }
         }
@@ -136,80 +123,6 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
         }
     }
     return False;
-}
-
-impl NaIRGenPass._isinstance_unprovable_class(
-    names: list[str], operand_arch: (str | None)
-) -> (str | None) {
-    """A class this operand could be whose MRO is too short to decide these names.
-
-    A class that subclasses an imported one is linearized by its own module,
-    which reaches the base's name but not the base's own bases -- those live in
-    a registry that is only merged in later. The recorded MRO then stops one
-    link short, and every ancestor past that link silently drops out of the
-    hierarchy. Answering from those facts is how `isinstance` came to report
-    `False` for a base a class genuinely derives from, so a site whose targets
-    fall in the missing span refuses instead.
-
-    A short chain elsewhere in the program is only this site's problem if the
-    operand could actually hold one: a statically typed operand narrows the
-    candidates to itself and its subclasses, and only an erased one has to
-    answer for every class. That narrowing walks the candidate's chain link by
-    link rather than reading its recorded MRO, because the recorded MRO is the
-    very thing that is short -- reading it would drop a candidate precisely
-    when the ancestor it omits is the operand's declared type, which is the
-    case that most needs the refusal. Returns the class whose MRO is short, or
-    `None` when every chain this operand could take is whole.
-    """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-
-    _missing = self.lower._short_mro_reach;
-    if _missing is None {
-        reg = get_layout_registry(self.module, self.prog);
-        _missing = {};
-        for cand in reg.mro_order {
-            recorded = self._mro_of(cand);
-            _cand_lay = reg.layouts.get(cand);
-            _parents = list(_cand_lay.parents or []) if _cand_lay is not None else [];
-            _pmods = list(_cand_lay.parent_mods or []) if _cand_lay is not None else [];
-            for step in recorded {
-                if step != cand and step in _parents {
-                    _pi = _parents.index(step);
-                    _want = _pmods[_pi] if _pi < len(_pmods) else "";
-                    _step_lay = reg.layouts.get(step);
-                    _decl = _step_lay.decl_mod if _step_lay is not None else "";
-                    if _want != _decl {
-                        continue;
-                    }
-                }
-                for anc in self._mro_of(step) {
-                    if anc in recorded {
-                        continue;
-                    }
-                    _short_of = _missing.get(anc);
-                    if _short_of is None {
-                        _missing[anc] = [cand];
-                    } elif cand not in _short_of {
-                        _short_of.append(cand);
-                    }
-                }
-            }
-        }
-        self.lower._short_mro_reach = _missing;
-    }
-    for name in names {
-        for cand in (_missing.get(name) or []) {
-            if operand_arch is None {
-                return cand;
-            }
-            for step in self._mro_of(cand) {
-                if operand_arch in self._mro_of(step) {
-                    return cand;
-                }
-            }
-        }
-    }
-    return None;
 }
 
 impl NaIRGenPass._isinstance_class_name_hit(
@@ -314,7 +227,7 @@ impl NaIRGenPass._codegen_virtual_call(
     import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
     _vd_reg = _vd_glr(self.module, self.prog);
     for _vd_cls in _vd_reg.mro_order {
-        if obj_type_name not in self._mro_of(_vd_cls) {
+        if obj_type_name not in self.lower._mro_of(_vd_cls) {
             continue;
         }
         _vd_lay = _vd_reg.get_layout(_vd_cls);
@@ -430,7 +343,7 @@ impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
     text = (arch_name + "\0").encode("utf8");
     (struct_type, struct_val) = self._static_str_struct_const(text);
     text_field = 2;
-    if self._arch_display(arch_name) != arch_name {
+    if self.lower._arch_display(arch_name) != arch_name {
         i64 = ir.IntType(64);
         text_type = ir.ArrayType(ir.IntType(8), len(text));
         struct_type = ir.LiteralStructType(
@@ -464,7 +377,7 @@ impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
 
 impl NaIRGenPass._emit_class_display_const(arch_name: str) -> ir.Constant {
     """The source-level name of an archetype, as a static string.""";
-    display = self._arch_display(arch_name);
+    display = self.lower._arch_display(arch_name);
     if display == arch_name {
         return self._emit_class_name_const(arch_name);
     }
@@ -539,7 +452,7 @@ impl NaIRGenPass._emit_class_display_fn -> ir.Function {
 }
 
 impl NaIRGenPass._emit_runtime_class_name_fn -> (ir.Function | None) {
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         return None;
     }
     _cached = self?._runtime_class_name_fn;
@@ -624,7 +537,7 @@ impl NaIRGenPass._emit_runtime_class_name_fn -> (ir.Function | None) {
 
 impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None) {
     i8_ptr = ir.IntType(8).as_pointer();
-    _headerless = self._nogc_headerless();
+    _headerless = self.lower._nogc_headerless();
     if self._opt_payload_of(obj_val.type) is not None {
         if _headerless or self._opt_ptr_payload_of(obj_val.type) is None {
             return None;
@@ -661,7 +574,7 @@ impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | N
 }
 
 impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
-    if not (nd.is_attr and self._get_name(nd.right) == "__name__") {
+    if not (nd.is_attr and self.lower._get_name(nd.right) == "__name__") {
         return None;
     }
     inner = nd.target;
@@ -669,10 +582,10 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
 
     if isinstance(inner, uni.AtomTrailer)
         and inner.is_attr
-        and self._get_name(inner.right) == "__class__" {
+        and self.lower._get_name(inner.right) == "__class__" {
         receiver = inner.target;
     } elif isinstance(inner, uni.FuncCall)
-        and self._get_name(inner.target) == "type"
+        and self.lower._get_name(inner.target) == "type"
         and inner.params
         and len(inner.params) == 1 {
         receiver = inner.params[0];
@@ -687,7 +600,7 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
             name="clsval.display"
         );
     } else {
-        static_class = self._class_expr_bound(inner);
+        static_class = self.lower._class_expr_bound(inner);
         if static_class is not None
             and static_class in self.struct_types
             and not self._is_enum_arch(static_class) {
@@ -713,28 +626,11 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_type_of(receiver: uni.UniNode) -> (ir.Value | None) {
-    scalar = self._scalar_shape(receiver);
+    scalar = self.lower._scalar_shape(receiver);
     if scalar is not None {
         return self._codegen_type_name_str(scalar.name);
     }
     return self._codegen_class_id(receiver);
-}
-
-impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
-    while isinstance(expr, uni.AtomUnit) {
-        expr = expr.value;
-    }
-    if not isinstance(expr, uni.AtomTrailer)
-        or not expr.is_attr
-        or not isinstance(expr.target, uni.Expr)
-        or not isinstance(expr.target.type, ModuleType)
-        or not isinstance(expr.type, ClassType) {
-        return None;
-    }
-    if not expr.type.is_instantiable() or expr.type.is_instance() {
-        return None;
-    }
-    return expr.type.shared.class_name;
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {
@@ -792,9 +688,9 @@ impl NaIRGenPass._codegen_class_ref(
     if _np?.collection is nd {
         return None;
     }
-    _arch = self._module_class_name(nd)
+    _arch = self.lower._module_class_name(nd)
         if isinstance(nd, uni.AtomTrailer)
-        else (self._arch_alias_target(nd) or nd.value);
+        else (self.lower._arch_alias_target(nd) or nd.value);
     if _arch is None or _arch not in self.struct_types or self._is_enum_arch(_arch) {
         return None;
     }
@@ -881,7 +777,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     spans: dict[str, tuple[int, int]] = {};
     for cls in classes {
         first = len(ancestors);
-        for anc in self._mro_of(cls) {
+        for anc in self.lower._mro_of(cls) {
             if anc != cls {
                 ancestors.append(
                     ir.Constant(
@@ -1095,7 +991,7 @@ impl NaIRGenPass._emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable {
     i64 = ir.IntType(64);
     rec_ty = ir.LiteralStructType([i64, i8_ptr]);
     records: list[ir.Constant] = [];
-    for anc in (self._mro_of(arch_name) or [arch_name]) {
+    for anc in (self.lower._mro_of(arch_name) or [arch_name]) {
         records.append(
             ir.Constant(
                 rec_ty,
@@ -1343,7 +1239,7 @@ impl NaIRGenPass._runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value |
     if _nm in self.struct_types or _nm in self.enum_types {
         return None;
     }
-    _mk = self._mangled_of(expr.type);
+    _mk = self.lower._mangled_of(expr.type);
     if _mk is None or not (_mk == "type" or _mk.startswith("type[")) {
         return None;
     }
@@ -1352,42 +1248,6 @@ impl NaIRGenPass._runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value |
         return None;
     }
     return val;
-}
-
-impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
-    """Is this the type of a tuple whose every arm is a class handle?
-
-    That is the shape `isinstance(x, types)` needs: the arms arrive as values,
-    and each one has to be a `type[...]` so the compare has a class id to walk.
-    An arity-less arm (the `UnknownType` a variadic tuple parks) is skipped, so
-    both `tuple[type[T], type[T]]` and `tuple[type[T], ...]` qualify.
-    """;
-    try {
-        import from jaclang.compiler.types.types { ClassType as _SeqClassType }
-    } except ImportError {
-        return False;
-    }
-    if not isinstance(t, _SeqClassType) or t._shared is None {
-        return False;
-    }
-    if t.shared.class_name != "tuple" {
-        return False;
-    }
-    saw_class = False;
-    for a in (t.private.type_args or []) {
-        am = self._mangled_of(a);
-        if am is None {
-            return False;
-        }
-        if am == "<unknown>" {
-            continue;
-        }
-        if am != "type" and not am.startswith("type[") {
-            return False;
-        }
-        saw_class = True;
-    }
-    return saw_class;
 }
 
 impl NaIRGenPass._runtime_class_arms(
@@ -1407,7 +1267,7 @@ impl NaIRGenPass._runtime_class_arms(
     if one is not None {
         return ([one], None, );
     }
-    if not isinstance(expr, uni.Expr) or not self._is_runtime_class_tuple(expr.type) {
+    if not isinstance(expr, uni.Expr) or not self.lower._is_runtime_class_tuple(expr.type) {
         return none_pair;
     }
     val = self._codegen_expr(expr);
@@ -1546,7 +1406,7 @@ impl NaIRGenPass._emit_isinstance_runtime(
             hit = one if hit is None else self.builder.or_(hit, one, name="isa.or");
         }
         if self._vtable_slot_certain(
-            self._flow_narrowed_type_of(nd.params[0] if nd.params else None)
+            self.lower._flow_narrowed_type_of(nd.params[0] if nd.params else None)
         ) {
             i8p = ir.IntType(8).as_pointer();
             vptr = self.builder.load(
@@ -1578,7 +1438,7 @@ impl NaIRGenPass._emit_isinstance_runtime(
 
 impl NaIRGenPass._generate_inherited_method_wrappers -> None {
     for child_name in self.lower.arch_ast_map {
-        mro = self._mro_of(child_name);
+        mro = self.lower._mro_of(child_name);
         child_struct = self.struct_types.get(child_name);
         if child_struct is None or len(mro) < 2 {
             continue;
@@ -1634,9 +1494,9 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                     orig_fn_type.return_type, new_param_types
                 );
                 wrapper_fn = ir.Function(
-                    self.llvm_module, wrapper_fn_type, name=self._symbol_for(child_full)
+                    self.llvm_module, wrapper_fn_type, name=self.lower._symbol_for(child_full)
                 );
-                self._record_export(child_full, wrapper_fn.name, "method");
+                self.lower._record_export(child_full, wrapper_fn.name, "method");
 
                 wrapper_fn.args[0].name = "self";
                 for i in range(1, len(impl_func.args)) {

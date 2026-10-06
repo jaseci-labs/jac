@@ -1,54 +1,16 @@
-impl NaIRGenPass._copy_call_kind(nd: uni.FuncCall) -> (str | None) {
-    if "copy" not in self.lower._native_stdlib_modules {
-        return None;
-    }
-    target = nd.target;
-    if isinstance(target, uni.AtomTrailer) and target.is_attr {
-        import from jaclang.compiler.symbol_utils { imported_module_name }
-        if imported_module_name(target.target) != "copy" {
-            return None;
-        }
-        name = self._get_name(target.right);
-        return name if name in NATIVE_COPY_FUNCS else None;
-    }
-    if not isinstance(target, uni.Name) or target.sym is None {
-        return None;
-    }
-    scope = target.sym.parent_tab;
-    if isinstance(scope, uni.Module)
-        and scope.stub_only
-        and scope.name == "copy"
-        and target.sym.name in NATIVE_COPY_FUNCS {
-        return target.sym.name;
-    }
-    return None;
-}
 
-impl NaIRGenPass._emit_copy_refusal(nd: uni.UniNode, kind: str, why: str) -> None {
-    self.emit(
-        E5092,
-        node_override=nd,
-        kind="copy call",
-        name=f"copy.{kind} of {why}",
-        help_text=(
-            f"`copy.{kind}` lowers natively for scalars, strings, bytes, tuples, "
-            "lists, dicts, sets and obj/class archetypes composed of them. Copy "
-            f"the value explicitly, or call `copy.{kind}` from a @sv/Python context."
-        )
-    );
-}
 
 impl NaIRGenPass._emit_copy_call(kind: str, nd: uni.FuncCall) -> (ir.Value | None) {
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     deep = kind == "deepcopy";
     if len(params) != 1 or isinstance(params[0], uni.KWPair) {
-        self._emit_copy_refusal(
+        self.lower._emit_copy_refusal(
             nd, kind, "a call with other than one positional argument (a `memo` dict)"
         );
         return None;
     }
-    if self._nogc_headerless() {
-        self._emit_copy_refusal(
+    if self.lower._nogc_headerless() {
+        self.lower._emit_copy_refusal(
             nd,
             kind,
             "a module under the nogc memory profile, whose headerless objects carry no runtime class"
@@ -63,7 +25,7 @@ impl NaIRGenPass._emit_copy_call(kind: str, nd: uni.FuncCall) -> (ir.Value | Non
     hint = arg.type if isinstance(arg, uni.Expr) else None;
     why = self._copy_refusal(val.type, hint, deep, set(), True);
     if why is not None {
-        self._emit_copy_refusal(nd, kind, why);
+        self.lower._emit_copy_refusal(nd, kind, why);
         return None;
     }
     if self._copy_is_atomic(val.type, hint, deep) {
@@ -93,13 +55,6 @@ impl NaIRGenPass._copy_memo_helpers -> dict[str, any] {
     i64 = ir.IntType(64);
     self._emit_dict_helpers("i64", "i64", i64, i64);
     return self.dict_helpers["i64:i64"];
-}
-
-impl NaIRGenPass._copy_hint_name(hint: (TypeBase | None)) -> str {
-    if isinstance(hint, ClassType) and hint._shared is not None {
-        return hint.shared.class_name;
-    }
-    return "";
 }
 
 impl NaIRGenPass._copy_concrete(ty: ir.Type, hint: (TypeBase | None)) -> ir.Type {
@@ -146,7 +101,7 @@ impl NaIRGenPass._copy_shape(ty: ir.Type, hint: (TypeBase | None)) -> tuple[str,
     if isinstance(_pointee, ir.LiteralStructType) {
         return ("tuple", _pointee);
     }
-    if self._copy_hint_name(hint) == "frozenset" {
+    if self.lower._copy_hint_name(hint) == "frozenset" {
         return ("atomic", None);
     }
     for (spec, lt) in self.list_types.items() {
@@ -172,7 +127,7 @@ impl NaIRGenPass._copy_shape(ty: ir.Type, hint: (TypeBase | None)) -> tuple[str,
         }
         return ("arch", _pointee.name);
     }
-    if self._copy_hint_name(hint) in ("str", "bytes") {
+    if self.lower._copy_hint_name(hint) in ("str", "bytes") {
         return ("atomic", None);
     }
     return ("unknown", None);
@@ -194,7 +149,7 @@ impl NaIRGenPass._copy_is_atomic(
     if not deep {
         return True;
     }
-    _args = self._container_type_args(hint);
+    _args = self.lower._container_type_args(hint);
     for (i, elem) in enumerate(info.elements) {
         if not self._copy_is_atomic(elem, _args[i] if i < len(_args) else None, True) {
             return False;
@@ -246,7 +201,7 @@ impl NaIRGenPass._copy_refusal(
     if not deep {
         return None;
     }
-    _args = self._container_type_args(hint);
+    _args = self.lower._container_type_args(hint);
     if shape == "list" {
         _elem = self.list_helpers[info]["elem_type"];
         _why = self._copy_refusal(
@@ -280,22 +235,9 @@ impl NaIRGenPass._copy_candidates(arch: str) -> list[str] {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     out: list[str] = [arch];
     for cand in get_layout_registry(self.module, self.prog).mro_order {
-        if cand != arch and cand in self.struct_types and arch in self._mro_of(cand) {
+        if cand != arch and cand in self.struct_types and arch in self.lower._mro_of(cand) {
             out.append(cand);
         }
-    }
-    return out;
-}
-
-impl NaIRGenPass._copy_field_hints(arch: str) -> dict[str, (TypeBase | None)] {
-    out: dict[str, (TypeBase | None)] = {};
-    lay = self._arch_layout(arch);
-    if lay is None {
-        return out;
-    }
-    for finfo in lay.fields {
-        var = finfo.decl_node;
-        out[finfo.name] = var.type if isinstance(var, uni.HasVar) else None;
     }
     return out;
 }
@@ -309,15 +251,15 @@ impl NaIRGenPass._copy_class_refusal(
     seen.add(arch);
     _dunder = "__deepcopy__" if deep else "__copy__";
     for cand in self._copy_candidates(arch) {
-        _label = f"`{self._arch_display(cand)}`"
+        _label = f"`{self.lower._arch_display(cand)}`"
             if cand == arch
-            else f"`{self._arch_display(cand)}` (a subclass of `{self._arch_display(
+            else f"`{self.lower._arch_display(cand)}` (a subclass of `{self.lower._arch_display(
                 arch
             )}`)";
         if cand not in self.struct_field_types {
             return f"{_label}, whose field layout is not visible to this module";
         }
-        _lay = self._arch_layout(cand);
+        _lay = self.lower._arch_layout(cand);
         if _lay is not None and _lay.is_osp {
             _what = _lay.arch_type;
             return (
@@ -327,20 +269,20 @@ impl NaIRGenPass._copy_class_refusal(
                 f"{_what} explicitly"
             );
         }
-        if self._pyb_base_of(cand) is not None {
+        if self.lower._pyb_base_of(cand) is not None {
             return f"{_label}, which extends a Python-side base";
         }
         if cand in self.lower.clib_struct_names or cand in self.clib_vtable_structs {
             return f"{_label}, a C-library struct";
         }
         if self._resolve_method(cand, _dunder) is not None
-            or self._resolve_method_owner(cand, _dunder) is not None {
+            or self.lower._resolve_method_owner(cand, _dunder) is not None {
             return f"{_label}, which defines its own `{_dunder}`";
         }
         _foreign = self.struct_field_foreign.get(cand, set());
-        _hints = self._copy_field_hints(cand);
+        _hints = self.lower._copy_field_hints(cand);
         for finfo in (_lay.fields if _lay is not None else []) {
-            if finfo.decl_node is not None and self._hasvar_is_own(finfo.decl_node) {
+            if finfo.decl_node is not None and self.lower._hasvar_is_own(finfo.decl_node) {
                 return f"{_label}, whose field `{finfo.name}` is `own`: a copy would alias the uniquely-owned value";
             }
             if finfo.name in _foreign {
@@ -516,7 +458,7 @@ impl NaIRGenPass._emit_copy_dispatch(
     self._emit_runtime_raise(
         ir.Constant(ir.IntType(1), 1),
         "TypeError",
-        f"copy.{kind}: this native unit has no copy for the runtime class of a '{self._arch_display(
+        f"copy.{kind}: this native unit has no copy for the runtime class of a '{self.lower._arch_display(
             arch
         )}' value (a subclass defined in a module it does not import)"
     );
@@ -563,7 +505,7 @@ impl NaIRGenPass._copy_body_fn(arch: str, deep: bool, nd: uni.UniNode) -> ir.Fun
             [raw, self.builder.bitcast(src, i8p), size]
         );
         dst = self.builder.bitcast(raw, sptr, name="copy.dst");
-        _hints = self._copy_field_hints(arch);
+        _hints = self.lower._copy_field_hints(arch);
         _indices = self.lower.struct_field_indices.get(arch, {});
         _deferred: list[tuple[str, ir.Type, int, ir.Value]] = [];
         for (fname, ftype) in self.struct_field_types[arch].items() {
@@ -688,7 +630,7 @@ impl NaIRGenPass._deepcopy_fn(
                 self._emit_copy_dispatch(src, info, True, memo, nd, "deepcopy")
             );
         } else {
-            _args = self._container_type_args(hint);
+            _args = self.lower._container_type_args(hint);
             self.builder.ret(
                 self._deepcopy_container(shape, info, src, memo, _args, nd)
             );

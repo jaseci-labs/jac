@@ -9,15 +9,6 @@ import from jaclang.compiler.c_interop {
     is_ptr_view_type
 }
 
-impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
-    arch = foreign_struct_of_type(t);
-    if arch is None or arch.name is None {
-        return None;
-    }
-    name = arch.name.value;
-    return name if name in self.lower.clib_struct_names else None;
-}
-
 impl NaIRGenPass._lower_c_interop_type(t: any) -> (ir.Type | None) {
     kind = c_builtin_kind(t);
     if kind == "ptr" {
@@ -28,7 +19,7 @@ impl NaIRGenPass._lower_c_interop_type(t: any) -> (ir.Type | None) {
     }
     if kind == "Pinned" {
         elem = c_type_arg(t);
-        sname = self._foreign_struct_name_of_type(elem);
+        sname = self.lower._foreign_struct_name_of_type(elem);
         if sname is None {
             sname = self._pinned_scalar_box(elem);
         }
@@ -139,7 +130,7 @@ impl NaIRGenPass._foreign_copy_box(src_ptr: ir.Value, name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._c_elem_info(elem: any) -> (tuple[ir.Type, (str | None)] | None) {
-    sname = self._foreign_struct_name_of_type(elem);
+    sname = self.lower._foreign_struct_name_of_type(elem);
     if sname is not None {
         return (self.struct_types[sname], sname);
     }
@@ -222,13 +213,13 @@ impl NaIRGenPass._codegen_c_interop_trailer(
     }
     if nd.is_attr
         and is_pinned_type(target_type)
-        and self._get_name(nd.right) == "value" {
+        and self.lower._get_name(nd.right) == "value" {
         box = self._codegen_expr(nd.target);
         if box is None {
             return (True, None);
         }
         elem = c_type_arg(target_type);
-        if self._foreign_struct_name_of_type(elem) is not None {
+        if self.lower._foreign_struct_name_of_type(elem) is not None {
             return (True, box);
         }
         return (
@@ -254,13 +245,13 @@ impl NaIRGenPass._c_interop_store(
         (slot, elem, _llt, sname) = got;
     } elif target.is_attr
         and is_pinned_type(target_type)
-        and self._get_name(target.right) == "value" {
+        and self.lower._get_name(target.right) == "value" {
         box = self._codegen_expr(target.target);
         if box is None {
             return True;
         }
         elem = c_type_arg(target_type);
-        sname = self._foreign_struct_name_of_type(elem);
+        sname = self.lower._foreign_struct_name_of_type(elem);
         slot = box if sname is not None else self._pinned_value_slot(box);
     } else {
         return False;
@@ -285,8 +276,8 @@ impl NaIRGenPass._c_interop_store(
             value,
             nd.aug_op.value,
             nd.value,
-            unsigned=self._is_unsigned_node(target),
-            checked=self._is_sized_node(target) or self._is_sized_node(nd.value)
+            unsigned=self.lower._is_unsigned_node(target),
+            checked=self.lower._is_sized_node(target) or self.lower._is_sized_node(nd.value)
         );
         if updated is None {
             self.ctx.emit(
@@ -322,7 +313,7 @@ impl NaIRGenPass._c_release_temp(val: ir.Value) -> None {
     if not self._is_owned(val) or not isinstance(val.type, ir.PointerType) {
         return;
     }
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         self._nogc_emit_drop(val, op="c_temp");
     } else {
         self._release_owned_args([val], op="c_temp");
@@ -386,7 +377,7 @@ impl NaIRGenPass._codegen_c_interop_call(
         return (False, None);
     }
     recv = nd.target.target;
-    method = self._get_name(nd.target.right);
+    method = self.lower._get_name(nd.target.right);
     if not is_ptr_type(recv?.type) {
         return (False, None);
     }
@@ -432,7 +423,7 @@ impl NaIRGenPass._codegen_c_interop_call(
 
 impl NaIRGenPass._codegen_pin(arg: uni.Expr) -> (ir.Value | None) {
     elem = arg?.type;
-    sname = self._foreign_struct_name_of_type(elem);
+    sname = self.lower._foreign_struct_name_of_type(elem);
     val = self._codegen_expr(arg);
     if val is None {
         return None;
@@ -483,7 +474,7 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
     if not borrowed {
         return {};
     }
-    if self._foreign_struct_name_of_type(ptype) is not None {
+    if self.lower._foreign_struct_name_of_type(ptype) is not None {
         return {"borrow": "struct", "optional": optional};
     }
     llt = self._c_scalar_llvm(ptype);
@@ -491,19 +482,6 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
         return {};
     }
     return {"borrow": "scalar", "elem": ptype, "llt": llt};
-}
-
-impl NaIRGenPass._clib_ret_is_cptr(sig: uni.FuncSignature) -> bool {
-    ret = sig.return_type;
-    return ret is not None and is_ptr_type(self._c_decl_type_of(ret));
-}
-
-impl NaIRGenPass._c_decl_type_of(type_expr: uni.UniNode) -> any {
-    t = type_expr?.type;
-    if isinstance(t, ClassType) and not t.is_instance() {
-        return t.clone_as_instance();
-    }
-    return t;
 }
 
 impl NaIRGenPass._clib_place_ptr(expr: uni.Expr) -> (ir.Value | None) {
@@ -528,7 +506,7 @@ impl NaIRGenPass._clib_place_ptr(expr: uni.Expr) -> (ir.Value | None) {
         }
         if expr.is_attr
             and is_pinned_type(expr.target?.type)
-            and self._get_name(expr.right) == "value" {
+            and self.lower._get_name(expr.right) == "value" {
             box = self._codegen_expr(expr.target);
             return self._pinned_value_slot(box) if box is not None else None;
         }

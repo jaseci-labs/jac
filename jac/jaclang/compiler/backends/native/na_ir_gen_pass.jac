@@ -556,7 +556,6 @@ walker NaIRGenPass(CompilerPass) {
     def _region_partition(hdl: ir.Value) -> ir.Value;
     def _region_owns(ptr: ir.Value) -> ir.Value;
     def _emit_region_handle_drop(alloca: ir.Value, var_name: str) -> None;
-    def _register_region_handle_var(nd: uni.Assignment, var_name: str) -> None;
     def _lower_partition_unpack(nd: uni.Assignment) -> bool;
     def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _get_or_declare_extern(
@@ -574,8 +573,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
-    def _fstring_spec_text(spec: uni.Expr) -> (str | None);
-    def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
     def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
     def _emit_value_repr(
@@ -689,7 +686,6 @@ walker NaIRGenPass(CompilerPass) {
         target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
     ) -> (ir.Value | None);
 
-    def _decode_literal(arg_node: (uni.UniNode | None)) -> (str | None);
     def _private_cstr(data: bytes, name: str) -> ir.Value;
     def _name_lookup_fn -> ir.Function;
     def _codec_lookup_fn -> ir.Function;
@@ -729,10 +725,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_intrinsic(
         nd: uni.FuncCall, intr: IntrinsicEntry
     ) -> (ir.Value | None);
-
-    def _emit_intrinsic_misuse(
-        nd: uni.FuncCall, intr: IntrinsicEntry, reason: str
-    ) -> None;
 
     def _intrinsic_operand(
         nd: uni.FuncCall, intr: IntrinsicEntry, arg: uni.Expr, spec: str
@@ -774,17 +766,10 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
-    def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
-    def _stdlib_intercept_covers(module_name: str, func_name: str) -> bool;
     def _emit_stdlib_intercept(
         module_name: str, func_name: str, nd: uni.FuncCall
     ) -> (ir.Value | None);
 
-    def _from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] | None;
-    def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
-    def _empty_ctor_args_of(nd: uni.FuncCall) -> list[TypeBase];
-    def _container_type_args(t: any) -> list[TypeBase];
-    def _unwrap_cfg_expr(e: any) -> any;
     def _spec_from_container_ptr(t: (ir.Type | None)) -> (str | None);
     def _call_args_lowered(
         nd: uni.UniNode, func: ir.Function, func_name: str, coerced: list[ir.Value]
@@ -797,9 +782,7 @@ walker NaIRGenPass(CompilerPass) {
         tag: ir.Value, payload: ir.Value, names: list[str]
     ) -> (ir.Value | None);
 
-    def _source_may_hold_bytes(source_type: (TypeBase | None)) -> bool;
     def _emit_isinstance_ptr_tags(operand: ir.Value, tags: list[int]) -> ir.Value;
-    def _isinstance_type_name(nd: uni.UniNode) -> (str | None);
     def _isinstance_target_names(
         nd: uni.FuncCall, operand: ir.Value, type_arg: uni.UniNode
     ) -> (list[str] | None);
@@ -810,11 +793,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (list[str] | None);
 
     def _isinstance_static_verdict(name: str, operand: ir.Value) -> (bool | None);
-    def _enum_union_tags(
-        operand_expr: uni.UniNode, names: list[str]
-    ) -> tuple[list[int], list[str]];
 
-    def _arch_alias_target(nd: (uni.UniNode | None)) -> (str | None);
     def _emit_isinstance_user(
         nd: uni.FuncCall, operand: ir.Value, names: list[str]
     ) -> (ir.Value | None);
@@ -827,14 +806,12 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, operand: ir.Value, tags: list[int], names: list[str]
     ) -> (ir.Value | None);
 
-    def _jacval_tags_for_type(name: str) -> list[int];
     def _erased_generic_ctor(nd: uni.FuncCall) -> (str | None);
     def _linked_callee_decl(func: (ir.Function | None)) -> (uni.Ability | None);
     def _callee_sig_of(
         nd: uni.FuncCall, func: (ir.Function | None) = None
     ) -> (uni.FuncSignature | None);
 
-    def _arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None);
     def _arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | None);
     def _codegen_call_args(nd: uni.FuncCall) -> list[ir.Value];
     def _coerce_narrowed_arg(
@@ -847,7 +824,6 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
     ) -> list[ir.Value];
 
-    def _emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None;
     def _codegen_varargs_list(
         nd: uni.FuncCall,
         extras: list[uni.Expr | NativeSpreadArg],
@@ -880,7 +856,6 @@ walker NaIRGenPass(CompilerPass) {
         required_kind: (str | None)
     ) -> dict[str, any];
 
-    def _emit_kw_spread_refusal(nd: uni.FuncCall) -> None;
     def _str_dict_helpers_of(value: ir.Value) -> (dict[str, any] | None);
     def _bind_kw_spread(
         spread: ir.Value,
@@ -898,10 +873,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None);
-    def _flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | None);
-    def _clib_struct_layout(name: str) -> tuple[int, int, list[tuple[int, bool, int]]];
-    def _foreign_model -> dict[str, list[tuple[str, str | None]]];
-    def _foreign_fns -> dict[str, dict[str, any]];
     def _clib_c_type(name: str) -> ir.Type;
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;
     def _clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value;
@@ -914,7 +885,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _clib_reinterpret(val: ir.Value, want: ir.Type, name: str) -> ir.Value;
-    def _foreign_struct_name_of_type(t: any) -> (str | None);
     def _lower_c_interop_type(t: any) -> (ir.Type | None);
     def _ptr_view_type -> ir.Type;
     def _c_scalar_llvm(t: any) -> (ir.Type | None);
@@ -945,8 +915,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_pin(arg: uni.Expr) -> (ir.Value | None);
     def _c_release_temp(val: ir.Value) -> None;
     def _clib_param_info(p: uni.ParamVar) -> dict[str, any];
-    def _clib_ret_is_cptr(sig: uni.FuncSignature) -> bool;
-    def _c_decl_type_of(type_expr: uni.UniNode) -> any;
     def _clib_place_ptr(expr: uni.Expr) -> (ir.Value | None);
     def _codegen_clib_args(
         nd: uni.FuncCall,
@@ -966,7 +934,6 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_clib_function_type(arch_name: str, fname: str, t: any) -> ir.Type;
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
     def _clib_fnptr_ret(arch_name: str, fname: str, result: ir.Value) -> ir.Value;
-    def _scan_closure_escapes(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
     def _closure_sig_struct(
         fnty: ir.FunctionType
     ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
@@ -991,13 +958,11 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_closure_value(var_name: str, nd: uni.UniNode) -> (ir.Value | None);
-    def _emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> None;
     def _codegen_closure_call(
         nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
     ) -> (ir.Value | None);
 
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
-    def _is_boolean_result_expr(nd: (uni.UniNode | None)) -> bool;
     def _codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None);
     def _codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None);
     def _emit_compr_element(compr: NativeComprehension) -> None;
@@ -1033,7 +998,6 @@ walker NaIRGenPass(CompilerPass) {
         nd: (uni.UniNode | None), value: ir.Value, elem_type: ir.Type, what: str
     ) -> bool;
 
-    def _spread_operand(nd: (uni.UniNode | None)) -> (uni.Expr | None);
     def _container_src_info(val: (ir.Value | None)) -> (dict[str, any] | None);
     def _spread_elem_storage(
         src_info: dict[str, any], operand: (uni.Expr | None)
@@ -1141,7 +1105,6 @@ walker NaIRGenPass(CompilerPass) {
         exprs: Sequence[uni.ExprAsItem], idx: int, body: Sequence[uni.CodeBlockStmt]
     ) -> None;
 
-    def _ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | None);
     def _codegen_with_ctxmgr(
         exprs: Sequence[uni.ExprAsItem],
         idx: int,
@@ -1159,41 +1122,17 @@ walker NaIRGenPass(CompilerPass) {
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
     def _register_imported_struct_types -> None;
-    def _permuted_walk_order(
-        mods: list[tuple[str, uni.Module]]
-    ) -> list[tuple[str, uni.Module]];
 
-    def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
     def _walk_imported_module_abilities(
         imported_mod: uni.Module, with_fn_verdicts: bool = True
     ) -> None;
 
-    def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
-    def _own_prefix -> str;
-    def _prefix_of_module(mod: (uni.Module | None)) -> str;
-    def _prefix_of_path(path: str) -> str;
-    def _symbol_for(
-        name: str, owner: (uni.Module | None) = None, is_pub: bool = False
-    ) -> str;
-
-    def _record_export(
-        name: str, symbol: str, kind: str, is_pub: bool = False
-    ) -> None;
-
-    def _note_native_dep(path: str) -> None;
-    def _is_catalog_module(mod: uni.Module) -> bool;
-    def _full_ast_of(full_path: str) -> (uni.Module | None);
-    def _dep_iface(imported_mod: uni.Module) -> (NativeIface | None);
-    def _dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool;
-    def _load_native_unit_module(path: str) -> (uni.Module | None);
-    def _is_kernel_unit -> bool;
     def _record_lowering_issue(issue: NativeLoweringIssue) -> None;
     def _export_native_iface -> None;
     def _build_class_layouts -> dict[str, any];
     def _osp_kernel_init_fns -> list[ir.Function];
-    def _vtable_symbol(arch_name: str) -> str;
     def emit(
         diag: DiagnosticInfo,
         node_override: (uni.UniNode | None) = None,
@@ -1210,8 +1149,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
-    def _ensure_dep_inference(dep_mod: uni.Module) -> None;
-    def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
     def _predemote_capability_unit(
         full_name: str,
         func: ir.Function,
@@ -1232,7 +1169,6 @@ walker NaIRGenPass(CompilerPass) {
     def _ret_tuple_hints(fname: str, ret_tuple: any) -> (list[str | None] | None);
     def _ensure_emitters -> dict[str, object];
     def _primitive_method_names(type_name: str) -> set[str];
-    def _primitive_method_takes_kwargs(type_name: str, method_name: str) -> bool;
     def _dispatch_primitive_method(
         type_name: str,
         method_name: str,
@@ -1252,8 +1188,6 @@ walker NaIRGenPass(CompilerPass) {
         arg_nodes: (list[uni.UniNode] | None) = None
     ) -> (ir.Value | None);
 
-    def _split_call_kwargs(nd: uni.FuncCall) -> dict[str, uni.UniNode];
-    def _ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniNode]];
     def _emit_rc_roots_globals -> None;
     def _emit_rc_collect_cycles -> None;
     def _emit_rc_color_load(
@@ -1305,7 +1239,6 @@ walker NaIRGenPass(CompilerPass) {
         mark_gray_fn: ir.Function, scan_fn: ir.Function, collect_white_fn: ir.Function
     ) -> None;
 
-    def _na_debug_on -> bool;
     def _attach_di_subprogram(func: ir.Function, name: str, line: int) -> None;
     def _finalize_di_locations(func: ir.Function, fallback_line: int) -> None;
     can finish with exit;
@@ -1370,14 +1303,10 @@ walker NaIRGenPass(CompilerPass) {
     def _dict_key_reconcile(dk: (str | None), val: (ir.Value | None)) -> (str | None);
     def _ensure_enum_lowered(t: any) -> (ir.Type | None);
     def _method_receiver_type(arch_name: str) -> ir.Type | None;
-    def _enum_methods(nd: uni.Enum) -> list[uni.Ability];
     def _register_enum_methods(module: uni.Module, declare: bool) -> None;
     def _codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None);
     def _codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None;
     def _codegen_enum_layout(enum_name: str, owner: (uni.Module | None)) -> None;
-    def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
-    def _enum_ctor_target(nd: uni.FuncCall) -> (str | None);
-    def _emit_enum_ctor_refusal(nd: uni.FuncCall, enum_name: str, why: str) -> None;
     def _codegen_enum_ctor(nd: uni.FuncCall, enum_name: str) -> (ir.Value | None);
     def _build_enum_string_table(
         enum_name: str, entries: list[tuple[str, str, int]], with_values: bool = True
@@ -1388,7 +1317,6 @@ walker NaIRGenPass(CompilerPass) {
         enum_name: str, ordinal_val: ir.Value, use_name: bool = False
     ) -> (ir.Value | None);
 
-    def _enum_is_string_valued(enum_name: str) -> bool;
     def _enum_ordinal_fn(enum_name: str) -> (ir.Function | None);
     def _codegen_enum_ordinal_of(
         enum_name: str, runtime_val: ir.Value
@@ -1414,10 +1342,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_raise_value(exc_type_name: str, msg_val: ir.Value) -> None;
-    def _get_or_register_exc_type(exc_name: str) -> int;
-    def _get_exc_descendants(type_name: str) -> list[str];
-    def _exception_member_name(member: uni.UniNode) -> (str | None);
-    def _exception_handler_targets(ex: uni.Expr | None) -> (list[str] | None);
     def _emit_exception_match(
         type_val: ir.Value,
         obj_val: ir.Value,
@@ -1428,7 +1352,6 @@ walker NaIRGenPass(CompilerPass) {
         on_miss: ir.Block
     ) -> None;
 
-    def _exc_message_slot(type_name: str) -> (int | None);
     def _ctor_arg_value(
         arg: uni.UniNode, pre: dict[int, ir.Value]
     ) -> (ir.Value | None);
@@ -1459,7 +1382,6 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_exc_lineage_match(type_val: ir.Value, bases: list[int]) -> ir.Value;
     def _register_exc_lineage(cause: (uni.Expr | None), type_id: int) -> None;
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
-    def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
@@ -1468,7 +1390,6 @@ walker NaIRGenPass(CompilerPass) {
     def _mark_targets_unlowered(targets: list[uni.UniNode]) -> None;
     def _reads_unlowered_local(nd: uni.UniNode) -> bool;
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
-    def _ct_type_param_owner(nd: uni.Name) -> (str | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
@@ -1510,8 +1431,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
-    def _is_root_walker_operand(nd: uni.UniNode) -> bool;
-    def _is_walker_arch(name: str) -> bool;
     def _infer_dict_type(val: ir.Value) -> (tuple[str, str] | None);
     def _get_file_struct_type -> ir.Type;
     def _get_binary_file_struct_type -> ir.Type;
@@ -1545,7 +1464,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_test(nd: uni.Test) -> None;
     def _demote_native_test(nd: uni.Test, func: ir.Function, local_mark: int) -> None;
     def _apply_static_decorators -> None;
-    def _ability_is_generator(nd: uni.Ability) -> bool;
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
     def _codegen_generator(
         nd: uni.Ability, func: ir.Function, self_arch: (str | None) = None
@@ -1558,14 +1476,6 @@ walker NaIRGenPass(CompilerPass) {
     def _define_function(name: str, fnty: ir.FunctionType) -> ir.Function;
     def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     def _declare_clib_ability(nd: uni.Ability) -> None;
-    def _normalize_type_key(key: str) -> str;
-    def _elem_keys_of_annotation(
-        ann: (uni.UniNode | None)
-    ) -> (list[str | None] | None);
-
-    def _record_ret_facts(
-        name: str, sig: uni.FuncSignature, imported: (NativeFuncLayout | None) = None
-    ) -> None;
 
     def _emit_glob_init_func -> None;
     def _set_rc_ctx(op: str, loc: str) -> None;
@@ -1629,32 +1539,10 @@ walker NaIRGenPass(CompilerPass) {
         tag: ir.Value
     ) -> None;
 
-    def _ct_eval -> CtEvaluator;
-    def _ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, (CtValue | None)];
     def _ct_native_const(v: CtValue, nd: uni.Expr) -> (ir.Value | None);
     def _ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None);
-    def _ct_origin(nd: uni.Expr) -> bool;
-    def _ct_only_name(nd: uni.Name) -> bool;
-    def _ability_has_ct_params(ability: uni.Ability) -> bool;
-    def _solve_ct_args(
-        ability: uni.Ability, nd: uni.FuncCall
-    ) -> (dict[str, CtValue] | None);
-
-    def _bind_ct_target(tgt: uni.UniNode, v: CtValue) -> None;
-    def _mangled_of(t: any) -> (str | None);
-    def _syntactic_bind_type_params(
-        tag_node: (uni.UniNode | None),
-        actual: any,
-        tp_names: list[str],
-        solution: dict[str, TypeBase]
-    ) -> None;
-
-    def _solve_generic_call(
-        ability: uni.Ability, nd: uni.FuncCall
-    ) -> (dict[str, TypeBase] | None);
 
     def _instantiate_generic(nd: uni.FuncCall, func_name: str) -> (ir.Function | None);
-    def _record_generic_definition(ability: uni.Ability) -> None;
     def _stamp_mono_fn(
         ability: uni.Ability, spec_name: str, memo_key: str
     ) -> (ir.Function | None);
@@ -1675,11 +1563,9 @@ walker NaIRGenPass(CompilerPass) {
         memo_key: str
     ) -> (ir.Function | None);
 
-    def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
     def _register_enums(module: uni.Module) -> None;
     def _register_globals(module: uni.Module) -> None;
     def _quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type | None);
-    def _glob_native_use_exists(target: uni.UniNode) -> bool;
     def _register_entry_globals(module: uni.Module) -> None;
     def _codegen_global_vars(nd: uni.GlobalVars) -> None;
     def _infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None);
@@ -1779,7 +1665,6 @@ walker NaIRGenPass(CompilerPass) {
         up_a: tuple[ir.Value, str, ir.Type], up_b: tuple[ir.Value, str, ir.Type]
     ) -> (tuple[ir.Value, str, ir.Type] | None);
 
-    def _resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
     def _resolve_method(arch_name: str, method_name: str) -> (ir.Function | None);
     def _arch_implements_iter(arch_name: str) -> bool;
     def _user_iter_next_fn(
@@ -1835,9 +1720,6 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_make_complex(v: ir.Value) -> (ir.Value | None);
     def _emit_complex_value(re: ir.Value, im: ir.Value) -> ir.Value;
     def _load_complex_parts(ptr: ir.Value) -> tuple[(ir.Value, ir.Value)];
-    def _skip_is_other_module(
-        nd: uni.FuncCall, func_name: str, mod_qual: (str | None)
-    ) -> bool;
 
     def _target_fuses_fp -> bool;
     def _emit_fmadd(a: ir.Value, b: ir.Value, c: ir.Value) -> ir.Value;
@@ -1863,7 +1745,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _codegen_complex_pow(base: ir.Value, exp: ir.Value) -> (ir.Value | None);
-    def _complex_aug_token(aug_op: str) -> (str | None);
     def _codegen_pow(
         base: ir.Value,
         exp: ir.Value,
@@ -1878,9 +1759,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]];
     def _reject_scalar_type_args(nd: uni.UniNode, type_name: str) -> bool;
-    def _emit_scalar_type_arg_refusal(
-        nd: uni.UniNode, type_name: str, fname: str, tv_name: str, arg: any
-    ) -> bool;
 
     def _empty_container_for_field(
         ftype: (ir.Type | None), label: str
@@ -1894,10 +1772,6 @@ walker NaIRGenPass(CompilerPass) {
     def _opt_unwrap_iterable(coll_val: (ir.Value | None)) -> (ir.Value | None);
     def _opt_unwrap_subscript(val: (ir.Value | None)) -> (ir.Value | None);
     def _forward_declare_archetype_names(module: uni.Module) -> None;
-    def _arch_key(arch: uni.Archetype) -> str;
-    def _arch_ref_key(nd: (uni.UniNode | None)) -> (str | None);
-    def _arch_display(arch_name: str) -> str;
-    def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype, imported: bool = False) -> None;
     def _register_static_fields(
@@ -1939,7 +1813,6 @@ walker NaIRGenPass(CompilerPass) {
         field: (uni.HasVar | None) = None
     ) -> None;
 
-    def _method_slot_name(method: uni.Ability, field: (uni.HasVar | None)) -> str;
     def _accessor_slot_of(type_name: str, field_name: str, kind: str) -> (str | None);
     def _mark_reference_owned(result: ir.Value) -> ir.Value;
     def _codegen_accessor_call(
@@ -1978,7 +1851,6 @@ walker NaIRGenPass(CompilerPass) {
         obj_val: ir.Value, type_name: str, field_name: str
     ) -> (ir.Value | None);
 
-    def _class_const_declarer(arch_name: str, field_name: str) -> (str | None);
     def _emit_class_routed_call(
         nd: uni.FuncCall,
         _sfull: str,
@@ -1999,22 +1871,14 @@ walker NaIRGenPass(CompilerPass) {
         stub_body: bool = True
     ) -> bool;
 
-    def _seam_warnings_on -> bool;
     def _opaque_field_if_unlowerable(
         arch_name: str, fname: str, local_mark: int
     ) -> (ir.Type | None);
 
-    def _refuse_opaque_field(
-        nd: (uni.UniNode | None), type_name: (str | None), fname: str
-    ) -> bool;
-
-    def _constructor_slots -> tuple[str, ...];
-    def _constructor_ability_for(cls: str, slot: str) -> (uni.Ability | None);
     def _predemote_capability_constructors -> None;
     def _codegen_constructors_first(archetypes: list[uni.Archetype]) -> None;
     def _demoted_init_of(type_name: str) -> (str | None);
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
-    def _event_from_walker(method: uni.Ability) -> bool;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
     def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
@@ -2068,16 +1932,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.UniNode, obj_val: ir.Value, field_name: str, arch_name: str
     ) -> (ir.Value | None);
 
-    def _unadopted_field_owner(arch_name: str, field_name: str) -> (str | None);
-    def _emit_field_access_refusal(
-        nd: uni.UniNode, arch_name: str, field_name: str
-    ) -> None;
-
-    def _mro_of(arch_name: str) -> list[str];
-    def _arch_layout(arch_name: str) -> (ArchetypeLayout | None);
     def _arch_has_vtable(arch_name: str) -> bool;
-    def _devirt_closed_world(arch_name: str) -> bool;
-    def _hasvar_is_own(var: uni.UniNode) -> bool;
     def _store_inline_field(
         type_name: str,
         fname: str,
@@ -2086,15 +1941,12 @@ walker NaIRGenPass(CompilerPass) {
         drop_old: bool
     ) -> None;
 
-    def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
     def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_os_const(name: str) -> (ir.Value | None);
     def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
-    def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
     def _osp_static_edge_name(expr: uni.UniNode) -> (str | None);
-    def _osp_edge_class_name(expr: uni.UniNode) -> (str | None);
     def _osp_edge_descriptor(expr: uni.UniNode, nd: uni.UniNode) -> (ir.Value | None);
     def _osp_edge_tag(
         expr: (uni.UniNode | None),
@@ -2104,12 +1956,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _osp_edge_factory(name: str) -> ir.Function;
     def _emit_osp_edge_factories -> None;
-    def _derived_field_decls(nd: uni.Archetype) -> dict[str, uni.HasVar];
-    def _class_expr_bound(
-        expr: (uni.UniNode | None), unbounded: (str | None) = None
-    ) -> (str | None);
 
-    def _class_ancestors(type_name: str) -> list[str];
     def _class_init_owner(type_name: str) -> (str | None);
     def _class_takes_no_ctor_args(type_name: str) -> bool;
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
@@ -2157,7 +2004,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _emit_class_ctor_registrations -> None;
     def _osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value;
-    def _osp_pins_refs -> bool;
     def _osp_handle_ptr(value: ir.Value, i8p: ir.Type) -> ir.Value;
     def _osp_own_handles(typed: ir.Value) -> None;
     def _osp_handle_loop(b: ir.IRBuilder, lst: ir.Value, retain: bool) -> None;
@@ -2166,8 +2012,6 @@ walker NaIRGenPass(CompilerPass) {
     def _finish_osp_reclaim_hook -> None;
     def _fill_osp_reclaim_hook -> None;
     def _emit_osp_sync_fn -> (ir.Function | None);
-    def _osp_active -> bool;
-    def _xmod_osp_help(names: list[str | None]) -> (str | None);
     def _register_osp_kernel_module -> None;
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
     def _emit_osp_setup -> None;
@@ -2201,13 +2045,9 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None);
-    def _osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool;
     def _codegen_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> (ir.Value | None);
-    def _elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _osp_visit_targets(target: uni.UniNode) -> (ir.Value | None);
     def _osp_generic_edge -> (ir.Value | None);
-    def _pyb_base_of(arch_name: str) -> (tuple[str, str] | None);
-    def _pyb_shadow_postinit_owner(arch_name: str) -> (str | None);
     def _pyb_native_override_owner(arch_name: str, meth: str) -> (str | None);
     def _pyb_shadowed_dispatch(
         arch_name: str, method_name: str
@@ -2227,7 +2067,6 @@ walker NaIRGenPass(CompilerPass) {
     def _pyb_owner_addr(obj_val: ir.Value) -> ir.Value;
     def _pyb_shadow_of_val(obj_val: ir.Value) -> ir.Value;
     def _pyb_to_py(nd: (uni.UniNode | None), val: ir.Value) -> (ir.Value | None);
-    def _pyb_ret_key(nd: uni.FuncCall) -> (str | None);
     def _pyb_from_py(handle: ir.Value, type_key: (str | None)) -> (ir.Value | None);
     def _pyb_build_args(
         params: Sequence[uni.Expr | uni.KWPair], skip_kwargs: bool = False
@@ -2260,11 +2099,8 @@ walker NaIRGenPass(CompilerPass) {
 
     def _mt_ensure -> None;
     def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _copy_call_kind(nd: uni.FuncCall) -> (str | None);
-    def _emit_copy_refusal(nd: uni.UniNode, kind: str, why: str) -> None;
     def _emit_copy_call(kind: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _copy_memo_helpers -> dict[str, any];
-    def _copy_hint_name(hint: (TypeBase | None)) -> str;
     def _copy_concrete(ty: ir.Type, hint: (TypeBase | None)) -> ir.Type;
     def _copy_shape(ty: ir.Type, hint: (TypeBase | None)) -> tuple[str, any];
     def _copy_is_atomic(ty: ir.Type, hint: (TypeBase | None), deep: bool) -> bool;
@@ -2274,7 +2110,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (str | None);
 
     def _copy_candidates(arch: str) -> list[str];
-    def _copy_field_hints(arch: str) -> dict[str, (TypeBase | None)];
     def _copy_class_refusal(arch: str, deep: bool, seen: set[str]) -> (str | None);
     def _copy_retain(ty: ir.Type, val: ir.Value) -> None;
     def _copy_release(ty: ir.Type, val: ir.Value) -> None;
@@ -2324,8 +2159,6 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | None);
     def _drop_fn_for(mangle: str) -> (ir.Function | None);
     def _drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | None);
-    def _nogc_type_arg_mangles_of_str(m: str) -> list[str];
-    def _gc_mode -> str;
     def _emit_rc_helpers -> None;
     def _emit_str_len_helpers -> None;
     def _emit_str_stamp_and_new -> None;
@@ -2359,7 +2192,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _str_desc_type -> ir.IdentifiedStructType;
-    def _str_desc_kind -> str;
     def _str_norm(val: ir.Value) -> ir.Value;
     def _str_view(val: ir.Value) -> ir.Value;
     def _str_borrow(val: ir.Value) -> ir.Value;
@@ -2376,11 +2208,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
-    def _arch_is_acyclic(arch_name: str) -> bool;
     def _nogc_osp_skip(val: ir.Value) -> bool;
-    def _nogc_headerless -> bool;
-    def _arch_is_osp_name(arch_name: str) -> bool;
-    def _arch_is_walker_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
     def _emit_nogc_field_drops(
         b: ir.IRBuilder, type_name: str, _dobj: ir.Value
@@ -2393,7 +2221,6 @@ walker NaIRGenPass(CompilerPass) {
         expr: uni.UniNode | None, val: ir.Value | None
     ) -> (ir.Value | None);
 
-    def _nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str];
     def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
     def _nogc_str_free_owned(val: ir.Value) -> None;
     def _nogc_free_scratch(val: ir.Value, op: str) -> None;
@@ -2405,7 +2232,6 @@ walker NaIRGenPass(CompilerPass) {
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
     def _is_null_ptr_const(val: ir.Value) -> bool;
-    def _print_stream_name(value: uni.Expr) -> (str | None);
     def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
@@ -2480,7 +2306,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _repr_elem_spec_of_key(elem_key: str) -> (tuple[str, ir.Type] | None);
     def _repr_field_llvm_of_key(field_key: str) -> (ir.Type | None);
-    def _split_type_args(s: str, sep: str = ",") -> list[str];
     def _repr_const_str(text: str) -> ir.Value;
     def _repr_acc_concat(acc_slot: ir.Value, piece: ir.Value, own_piece: bool) -> None;
     def _repr_maybe_sep(
@@ -2494,11 +2319,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _codegen_set_val(nd: uni.SetVal) -> (ir.Value | None);
     def _int_width_of(val: ir.Value) -> int;
-    def _scalar_shape(nd: (uni.UniNode | None)) -> (ScalarShape | None);
-    def _scalar_shape_named(name: (str | None)) -> (ScalarShape | None);
-    def _is_unsigned_node(nd: (uni.UniNode | None)) -> bool;
-    def _is_sized_node(nd: (uni.UniNode | None)) -> bool;
-    def _is_signed_sized_node(nd: (uni.UniNode | None)) -> bool;
     def _scalar_llvm(shape: ScalarShape) -> ir.Type;
     def _lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value;
     def _convert_scalar(val: ir.Value, src: ScalarShape, dst: ScalarShape) -> ir.Value;
@@ -2547,7 +2367,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_return(nd: uni.ReturnStmt) -> None;
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -> None;
-    def _del_target_holds_graph(target: uni.Expr) -> bool;
     def _codegen_delete_list_slice(
         target: uni.AtomTrailer, slice_node: uni.Slice, nd: uni.DeleteStmt
     ) -> None;
@@ -2599,23 +2418,10 @@ walker NaIRGenPass(CompilerPass) {
         pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
     ) -> (ir.Value | None);
 
-    def _match_seq_parts(
-        pat: uni.MatchSequence
-    ) -> tuple[list[uni.MatchPattern], uni.MatchStar | None, list[uni.MatchPattern]];
-
-    def _match_subj_ty(expr: (uni.UniNode | None)) -> (TypeBase | None);
-    def _match_elem_ty_of(
-        subj_ty: (TypeBase | None), prefix: str, idx: int
-    ) -> (TypeBase | None);
-
     def _match_cast_elem(elem: ir.Value, elem_ty: (TypeBase | None)) -> ir.Value;
     def _match_map_key(
         kv: uni.MatchKVPair, helpers: dict[str, any]
     ) -> (ir.Value | None);
-
-    def _match_arch_fields(
-        pat: uni.MatchArch, arch_name: str
-    ) -> (list[tuple[str, uni.MatchPattern]] | None);
 
     def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
     def _bind_match_pattern(
@@ -2645,7 +2451,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _try_flow_for_parallel(nd: uni.InForStmt) -> bool;
-    def _na_chunks_shape(expr: object) -> (tuple[uni.Expr, uni.Expr] | None);
     def _try_chunked_for(nd: uni.InForStmt) -> bool;
     def _emit_chunk_header(
         coll: ir.Value,
@@ -2692,7 +2497,6 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_trace_fn(arch_name: str) -> None;
     def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
     def _finalize_trace_lookup -> None;
-    def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
     def _struct_has_ref_fields(arch_name: str) -> bool;
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(
@@ -2739,17 +2543,6 @@ walker NaIRGenPass(CompilerPass) {
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
     def _opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None);
-    def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
-    def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
-    def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
-    def _narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool;
-    def _loop_rebinds_name(loop: uni.UniNode, name: str) -> bool;
-    def _target_bound_names(target: uni.UniNode) -> list[uni.Name];
-    def _body_assigns_before(
-        loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
-        child: (uni.UniNode | None),
-        name: str
-    ) -> bool;
 
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
@@ -2777,12 +2570,9 @@ walker NaIRGenPass(CompilerPass) {
     def _typevar_optional_field(tb: any) -> bool;
     def _erased_typevar_names(tb: any) -> list[str];
     def _erased_seq_type(tb: any) -> (ir.Type | None);
-    def _erased_decl(tb: any) -> bool;
-    def _erased_field(type_name: str, fname: str) -> bool;
     def _erased_boxable(t: (ir.Type | None)) -> bool;
     def _erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value;
     def _erased_want(tv_names: list[str], owner: any) -> (ir.Type | None);
-    def _erased_decl_names(tb: any) -> list[str];
     def _erased_unbox(
         ptr: ir.Value, want: (ir.Type | None), owned: bool = False
     ) -> (ir.Value | None);
@@ -2791,14 +2581,11 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, func: ir.Function, result: ir.Value
     ) -> ir.Value;
 
-    def _type_base_is_unknown(tb: any) -> bool;
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list[ir.Type | None]) -> (ir.Type | None);
     def _lower_class_type(t: ClassType) -> (ir.Type | None);
     def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
-    def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
-    def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _set_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
@@ -2819,7 +2606,6 @@ walker NaIRGenPass(CompilerPass) {
     def _declares_member(type_name: str, member: str) -> bool;
     def _struct_owning_member(expr: (uni.UniNode | None), member: str) -> (str | None);
     def _erased_arch_base(tk: str) -> (str | None);
-    def _split_union_key(tk: str) -> list[str];
     def _ptr_box_kind(rt: any) -> int;
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
@@ -2841,7 +2627,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _static_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
-    def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _consume_bool(val: ir.Value) -> ir.Value;
     def _finish_borrowed_read(
@@ -2907,15 +2692,7 @@ walker NaIRGenPass(CompilerPass) {
     def _is_jacval_boxable(t: ir.Type) -> bool;
     def _sort_key_supported(ty: ir.Type) -> bool;
     def _sort_key_supported_d(ty: ir.Type, depth: int) -> bool;
-    def _sort_key_return_type(nd: (uni.UniNode | None)) -> (TypeBase | None);
-    def _sort_key_orderable(ty: (TypeBase | None)) -> (bool | None);
-    def _sort_key_unsigned(nd: (uni.UniNode | None)) -> bool;
-    def _agg_key_args(
-        key_ret: (TypeBase | None), agg_name: str
-    ) -> (list[TypeBase] | None);
 
-    def _key_elem_unsigned(et: (TypeBase | None)) -> bool;
-    def _container_class_name(ty: (TypeBase | None)) -> (str | None);
     def _emit_jacval_ordering(
         op: str, jv: ir.Value, peer: ir.Value, jv_on_left: bool
     ) -> (ir.Value | None);
@@ -2943,10 +2720,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value;
-    def _is_graph_type(ty: (TypeBase | None)) -> bool;
-    def _cmp_static_type(
-        left_node: uni.UniNode, right_node: uni.UniNode
-    ) -> (TypeBase | None);
 
     def _restore_erased_cmp_operands(
         left: ir.Value, right: ir.Value, ty: (TypeBase | None)
@@ -2987,8 +2760,6 @@ walker NaIRGenPass(CompilerPass) {
 
     def _codegen_float_floor_div(left: ir.Value, right: ir.Value) -> ir.Value;
     def _codegen_float_floor_mod(left: ir.Value, right: ir.Value) -> ir.Value;
-    def _spec_name_match(tk: str, names: tuple[str, ...]) -> bool;
-    def _opt_sole_member(t: any) -> (TypeBase | None);
     def _spec_union_agreement(t: any, names: tuple[str, ...]) -> (any | None);
     def _is_object_union_key(t: any, key_llvm: ir.Type) -> bool;
     def _elem_storage_llvm(t: any) -> (ir.Type | None);
@@ -3002,9 +2773,6 @@ walker NaIRGenPass(CompilerPass) {
     def _vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None);
     def _vtable_candidates(names: list[str]) -> list[ir.GlobalVariable];
     def _isinstance_needs_class_name(names: list[str]) -> bool;
-    def _isinstance_unprovable_class(
-        names: list[str], operand_arch: (str | None)
-    ) -> (str | None);
 
     def _isinstance_class_name_hit(
         obj_ptr: ir.Value, names: list[str]
@@ -3017,7 +2785,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None);
     def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_type_of(receiver: uni.UniNode) -> (ir.Value | None);
-    def _module_class_name(expr: uni.UniNode) -> (str | None);
     def _codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None);
     def _class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Value;
     def _codegen_class_ref(nd: uni.Name | uni.AtomTrailer) -> (ir.Value | None);
@@ -3045,7 +2812,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_cstr_hash_fn -> ir.Function;
-    def _is_runtime_class_tuple(t: any) -> bool;
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(
         expr: (uni.UniNode | None)
@@ -3067,7 +2833,6 @@ walker NaIRGenPass(CompilerPass) {
     def _generate_inherited_method_wrappers -> None;
     def _emit_take(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_swap(nd: uni.FuncCall) -> (ir.Value | None);
-    def _callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None);
     def _transfer_own_args(
         nd: uni.FuncCall,
         func: (ir.Function | None),
@@ -3100,10 +2865,8 @@ walker NaIRGenPass(CompilerPass) {
     ) -> tuple[ir.Value, ir.Value];
 
     def _exception_values(state: ir.Value) -> tuple[ir.Value, ir.Value, ir.Value];
-    def _nogc_owned_param(p: uni.ParamVar) -> bool;
     def _emit_rc_gc_env_off_fn -> ir.Function;
     def _aos_elem_struct(type_key: str) -> (ir.Type | None);
-    def _container_is_view(nd: uni.UniNode) -> bool;
     def _codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | None);
     def _field_slot_ptr(
         obj_val: ir.Value, field_name: str, type_name: str
@@ -3113,21 +2876,15 @@ walker NaIRGenPass(CompilerPass) {
         expr: uni.Expr, allow_inline: bool = False
     ) -> (ir.Value | None);
 
-    def _nogc_owned_world -> bool;
-    def _nogc_opt_slots_owned -> bool;
     def _nogc_drop_op_active(op: str) -> bool;
     def _rc_unwrap_optional(val: ir.Value) -> ir.Value;
-    def _is_move_site(expr: uni.UniNode | None) -> bool;
     def _nogc_consume_local(expr: uni.UniNode | None) -> bool;
     def _drop_hook_for(type_name: str) -> (ir.Function | None);
-    def _drop_member_of(owner: str) -> (uni.Ability | None);
     def _nogc_drop_fn_for(
         ptr_ty: ir.PointerType, self_type: str = ""
     ) -> (ir.Function | None);
 
-    def _nogc_borrow_local_assign(nd: object) -> bool;
     def _aos_elem_name(t: any) -> (str | None);
     def _decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] | None);
     def _lower_view_container(t: any) -> (ir.Type | None);
-    def _program_has_subclasses(arch_name: str) -> bool;
 }

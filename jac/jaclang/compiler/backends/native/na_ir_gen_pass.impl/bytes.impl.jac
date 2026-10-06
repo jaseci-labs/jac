@@ -715,22 +715,6 @@ impl NaIRGenPass._bytes_search_fn -> ir.Function {
     return fn;
 }
 
-impl NaIRGenPass._decode_literal(arg_node: (uni.UniNode | None)) -> (str | None) {
-    if isinstance(arg_node, uni.MultiString) and len(arg_node.strings) == 1 {
-        arg_node = arg_node.strings[0];
-    }
-    if not isinstance(arg_node, uni.String) {
-        return None;
-    }
-    value: any = None;
-    try {
-        value = arg_node.lit_value;
-    } except Exception {
-        return None;
-    }
-    return value if isinstance(value, str) else None;
-}
-
 impl NaIRGenPass._private_cstr(data: bytes, name: str) -> ir.Value {
     i8 = ir.IntType(8);
     cdata = ir.Constant(ir.ArrayType(i8, len(data)), bytearray(data));
@@ -1327,9 +1311,9 @@ impl NaIRGenPass._emit_bytes_decode(
     ) {
         if idx < len(args) {
             arg_node = positional[idx] if len(positional) == len(args) else None;
-            specs.append((self._decode_literal(arg_node), args[idx]));
+            specs.append((self.lower._decode_literal(arg_node), args[idx]));
         } elif key in kwargs {
-            literal = self._decode_literal(kwargs[key]);
+            literal = self.lower._decode_literal(kwargs[key]);
             value: (ir.Value | None) = None;
             if literal is None {
                 raw = self._codegen_expr(kwargs[key]);

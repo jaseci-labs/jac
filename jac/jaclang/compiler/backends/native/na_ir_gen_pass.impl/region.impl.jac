@@ -14,8 +14,8 @@ impl NaIRGenPass._register_region_kernel -> None {
         REGION_KERNEL_REL,
         kernel_unit_path
     }
-    if not self._is_kernel_unit() {
-        self._note_native_dep(kernel_unit_path(REGION_KERNEL_REL));
+    if not self.lower._is_kernel_unit() {
+        self.lower._note_native_dep(kernel_unit_path(REGION_KERNEL_REL));
     }
     self._emit_region_tls_slot();
 }
@@ -191,24 +191,6 @@ impl NaIRGenPass._emit_region_handle_drop(alloca: ir.Value, var_name: str) -> No
     self.builder.store(ir.Constant(slot_ty.pointee, None), alloca);
 }
 
-impl NaIRGenPass._register_region_handle_var(
-    nd: uni.Assignment, var_name: str
-) -> None {
-    _tgt = nd.target[0]
-        if (len(nd.target) == 1 and isinstance(nd.target[0], uni.Name))
-        else None;
-    if _tgt is None or _tgt.sym is None or not _tgt.sym.na_region_handle {
-        return;
-    }
-    self.lower.region_handle_vars.add(var_name);
-    if isinstance(nd.value, uni.Name)
-        and nd.value.sym is not None
-        and nd.value.sym.na_region_handle
-        and nd.value.sym_name != var_name {
-        self.lower.region_handle_vars.discard(nd.value.sym_name);
-    }
-}
-
 impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
     import from jaclang.compiler.types.type_utils { is_builtin_region_type }
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.TupleVal) {
@@ -271,7 +253,7 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
     if _hook is None and not _ptr_fields {
         return None;
     }
-    _headerless = self._nogc_headerless();
+    _headerless = self.lower._nogc_headerless();
     if not _headerless and self.rc_release_simple_fn is None {
         self._emit_rc_helpers();
     }

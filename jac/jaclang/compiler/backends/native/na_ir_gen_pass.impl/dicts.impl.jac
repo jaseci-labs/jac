@@ -84,7 +84,7 @@ impl NaIRGenPass._emit_dict_helpers(
 
     _rel_fn_decl = None;
     _rel_fn_name = f"__rc_release_dict_{_safe}";
-    if not self._nogc_headerless() {
+    if not self.lower._nogc_headerless() {
         _rel_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
         try {
             _found = self.llvm_module.get_global(_rel_fn_name);
@@ -112,7 +112,7 @@ impl NaIRGenPass._emit_dict_helpers(
 
     len_fn = self._emit_container_len_fn(f"__dict_len_{_safe}", dict_ptr_type);
 
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         self._emit_container_drop_fn(_struct_name);
     } else {
         release_fn = self._emit_container_release_fn(
@@ -312,7 +312,7 @@ impl NaIRGenPass._unbox_any_container(
     if self._any_view_target(target_type) is None {
         return None;
     }
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         self.emit(
             E5092,
             kind="expression",
@@ -686,7 +686,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         _helpers = self.dict_helpers.get(_dk) if _dk is not None else None;
         if _helpers is not None {
             _empty_dv = self.builder.call(_helpers["new"], [], name="dict.empty");
-            self._nogc_stamp_elem_drops(_empty_dv, self._nogc_type_arg_mangles(nd));
+            self._nogc_stamp_elem_drops(_empty_dv, self.lower._nogc_type_arg_mangles(nd));
             return _empty_dv;
         }
         return None;
@@ -760,7 +760,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dict_new_loc, name="dict.new"
     );
-    self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd));
+    self._nogc_stamp_elem_drops(dict_val, self.lower._nogc_type_arg_mangles(nd));
     _dinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
@@ -831,7 +831,7 @@ impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
     }
     ctx = NativeEmitCtx(pass_ref=self, type_key=dict_key);
     result = self._rc_call_with_ctx(helpers["new"], [], op="new", name="dict.unpack");
-    self._nogc_stamp_elem_drops(result, self._nogc_type_arg_mangles(nd));
+    self._nogc_stamp_elem_drops(result, self.lower._nogc_type_arg_mangles(nd));
     args = nd.type.private.type_args
         if isinstance(nd.type, ClassType) and nd.type.private is not None
         else [];
@@ -991,7 +991,7 @@ impl NaIRGenPass._dict_eq_fn(
     if helpers is None or dict_struct is None {
         return None;
     }
-    cache_key = f"dict[{dict_key}]:{self._mangled_of(val_ty) or ''}";
+    cache_key = f"dict[{dict_key}]:{self.lower._mangled_of(val_ty) or ''}";
     cached = self._eq_fns.get(cache_key);
     if cached is not None {
         return cached;

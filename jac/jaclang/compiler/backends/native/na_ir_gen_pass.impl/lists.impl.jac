@@ -29,7 +29,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     i32 = ir.IntType(32);
 
     _rel_fn_decl = None;
-    if not self._nogc_headerless() {
+    if not self.lower._nogc_headerless() {
         _rel_fn_name = f"__rc_release_list_{elem_type_name}";
         _rel_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type]);
         try {
@@ -108,7 +108,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     d2 = b.load(dp2, name="data");
     ep2 = b.gep(d2, [set_fn.args[1]], name="elem.ptr");
 
-    if self._elem_kind(elem_type) != "raw" and not self._nogc_headerless() {
+    if self._elem_kind(elem_type) != "raw" and not self.lower._nogc_headerless() {
         self._emit_elem_retain(b, elem_type, set_fn.args[2]);
         _old_v_s = b.load(ep2, name="lset_old_val");
         b.store(set_fn.args[2], ep2);
@@ -120,7 +120,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 
     len_fn = self._emit_container_len_fn(f"__list_len_{elem_type_name}", list_ptr_type);
 
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         self._emit_container_drop_fn(f"List.{elem_type_name}");
     } else {
         release_fn = self._emit_container_release_fn(
@@ -210,7 +210,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
     }
     if isinstance(_dp, uni.HasVar) and _dp.value is _child {
         _hv_spec = self._spec_from_list_slot_type(self._resolve_field_type(_dp));
-        if self._na_debug_on() {
+        if self.lower._na_debug_on() {
             import sys;
             _hv_nm = _dp.name.value if _dp.name else "?";
             sys.stderr.write(
@@ -229,7 +229,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
             }
             if isinstance(_tgt, uni.AtomTrailer) and _tgt.is_attr {
                 _cls = self._struct_name_of(_tgt.target);
-                _fld = self._get_name(_tgt.right);
+                _fld = self.lower._get_name(_tgt.right);
                 if _cls is not None and _fld is not None {
                     _spec = self._spec_from_list_slot_type(
                         self.struct_field_types.get(_cls, {}).get(_fld)
@@ -240,7 +240,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
                 }
             }
 
-            _tn = self._get_name(_tgt)
+            _tn = self.lower._get_name(_tgt)
                 if not isinstance(_tgt, uni.AtomTrailer)
                 else None;
             if _tn is not None {
@@ -257,7 +257,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
     if isinstance(_dp, uni.KWPair) and _dp.value is _child {
         _fc = _dp.parent;
         if isinstance(_fc, uni.FuncCall) {
-            _cn = self._arch_ref_key(_fc.target) or self._get_name(_fc.target);
+            _cn = self.lower._arch_ref_key(_fc.target) or self.lower._get_name(_fc.target);
             if _cn is None or _cn not in self.struct_types {
                 _cn = self._struct_name_of(_fc);
             }
@@ -351,9 +351,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             _empty_new = self._rc_call_with_ctx(
                 helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
             );
-            if not self._container_is_view(nd) {
+            if not self.lower._container_is_view(nd) {
                 self._nogc_stamp_elem_drops(
-                    _empty_new, self._nogc_type_arg_mangles(nd)
+                    _empty_new, self.lower._nogc_type_arg_mangles(nd)
                 );
             }
             return _empty_new;
@@ -366,7 +366,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if _decl_elem is not None
         else None;
 
-    _first_spread = self._spread_operand(nd.values[0]);
+    _first_spread = self.lower._spread_operand(nd.values[0]);
     first_val: (ir.Value | None) = None;
     _first_src_info: (dict[str, any] | None) = None;
     if _first_spread is not None {
@@ -450,8 +450,8 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_list_new_loc, name="list.new"
     );
-    if not self._container_is_view(nd) {
-        self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
+    if not self.lower._container_is_view(nd) {
+        self._nogc_stamp_elem_drops(list_val, self.lower._nogc_type_arg_mangles(nd));
     }
 
     _linit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
@@ -497,7 +497,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     }
 
     for i in range(1, len(nd.values)) {
-        _spread_op = self._spread_operand(nd.values[i]);
+        _spread_op = self.lower._spread_operand(nd.values[i]);
         if _spread_op is not None {
             _src_info = self._container_src_info(
                 self._str_norm_optional(self._codegen_expr(_spread_op))
@@ -949,13 +949,3 @@ impl NaIRGenPass._aos_elem_struct(type_key: str) -> (ir.Type | None) {
     return _h["elem_struct"] if _h is not None else None;
 }
 
-impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
-    _p = nd.parent;
-    while isinstance(_p, (uni.CfgExpr, uni.IfElseExpr)) {
-        _p = _p.parent;
-    }
-    if isinstance(_p, (uni.Assignment, uni.HasVar)) and _p.type_tag is not None {
-        return type_tag_borrows(_p.type_tag);
-    }
-    return False;
-}

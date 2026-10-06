@@ -1,27 +1,7 @@
-impl NaIRGenPass._split_type_args(s: str, sep: str = ",") -> list[str] {
-    parts: list[str] = [];
-    depth = 0;
-    cur = "";
-    for ch in s {
-        if ch == "[" {
-            depth += 1;
-        } elif ch == "]" {
-            depth -= 1;
-        }
-        if ch == sep and depth == 0 {
-            parts.append(cur);
-            cur = "";
-        } else {
-            cur += ch;
-        }
-    }
-    parts.append(cur);
-    return parts;
-}
 
 impl NaIRGenPass._repr_const_str(text: str) -> ir.Value {
     g = self._make_global_string(text, name_prefix=".repr.c");
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         return self._call_str_dup(self.builder, g, name="rp.c.dup");
     }
     return g;
@@ -65,7 +45,7 @@ impl NaIRGenPass._repr_call_elem_fn(elem_fn: ir.Function, elem: ir.Value) -> ir.
 impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple[str, ir.Type] | None) {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    _parts = self._split_type_args(elem_key, "|");
+    _parts = self.lower._split_type_args(elem_key, "|");
     if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
         return ("jacval", self.jacval_type) if self?.jacval_type else None;
     }
@@ -111,7 +91,7 @@ impl NaIRGenPass._repr_fn_for_type_key(type_key: str) -> (ir.Function | None) {
         return _cached;
     }
     fn: (ir.Function | None) = None;
-    _parts = self._split_type_args(type_key, "|");
+    _parts = self.lower._split_type_args(type_key, "|");
     if len(_parts) > 1 {
         if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
             _other = _parts[0] if _parts[1] in ("NoneType", "None") else _parts[1];
@@ -178,7 +158,7 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
     if kind == "bool" {
         nz = b.icmp_signed("!=", v, ir.Constant(i64, 0), name="rp.b.nz");
         sel: any = self._bool_text(b, nz, "rp.b.sel");
-        if self._nogc_headerless() {
+        if self.lower._nogc_headerless() {
             sel = self._call_str_dup(b, sel, name="rp.b.dup");
         }
         b.ret(sel);
@@ -537,7 +517,7 @@ impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
 
 impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-    _args = self._split_type_args(type_key[5:-1]);
+    _args = self.lower._split_type_args(type_key[5:-1]);
     if len(_args) != 2 {
         return None;
     }
@@ -626,7 +606,7 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
 
 impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
     import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-    _fkeys = self._split_type_args(type_key[6:-1]);
+    _fkeys = self.lower._split_type_args(type_key[6:-1]);
     if not _fkeys or _fkeys == [""] {
         return None;
     }
@@ -730,7 +710,7 @@ impl NaIRGenPass._emit_container_repr(
         type_key = _rt_key;
     }
     base = type_key;
-    _parts = self._split_type_args(type_key, "|");
+    _parts = self.lower._split_type_args(type_key, "|");
     if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
         base = _parts[0] if _parts[1] in ("NoneType", "None") else _parts[1];
     } elif len(_parts) > 1 {
@@ -834,7 +814,7 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
         _prev = self._builder;
         self._builder = bl;
         _g: any = self._make_global_string(text, name_prefix=f".repr.jv.{label}");
-        if self._nogc_headerless() {
+        if self.lower._nogc_headerless() {
             _g = bl.call(_strdup, [_g], name=f"rp.jv.{label}.dup");
         }
         self._builder = _prev;
@@ -930,7 +910,7 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
         _prev = self._builder;
         self._builder = bl;
         _g: any = self._make_global_string(text, name_prefix=f".str.jv.{label}");
-        if self._nogc_headerless() {
+        if self.lower._nogc_headerless() {
             _g = bl.call(_strdup, [_g], name=f"sj.{label}.dup");
         }
         self._builder = _prev;

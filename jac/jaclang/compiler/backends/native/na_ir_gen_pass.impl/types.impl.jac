@@ -29,7 +29,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         }
         return None;
     }
-    mangled = self._mangled_of(t);
+    mangled = self.lower._mangled_of(t);
 
     key = (t, mangled) if isinstance(t, TypeBase) and mangled is not None else None;
     if key is not None and key in self._lowered_type_cache {
@@ -184,52 +184,11 @@ impl NaIRGenPass._ptr_box_kind(rt: any) -> int {
     return 2;
 }
 
-impl NaIRGenPass._type_key_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    return self._mangled_of(expr.type);
-}
-
-impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) {
-        return None;
-    }
-    import from jaclang.compiler.types.types {
-        ClassType as EnumClassType,
-        EnumMemberType,
-        TypeBase,
-        UnionType
-    }
-    t = self._flow_narrowed_type_of(expr);
-    if not isinstance(t, TypeBase) {
-        return None;
-    }
-    pending: list[TypeBase] = [t];
-    enum_class: EnumClassType | None = None;
-    while pending {
-        member = pending.pop();
-        if isinstance(member, UnionType) {
-            pending.extend(member.types);
-            continue;
-        }
-        candidate = member.enum_class if isinstance(member, EnumMemberType) else member;
-        if not isinstance(candidate, EnumClassType) or not candidate.is_enum_class() {
-            return None;
-        }
-        if enum_class is not None and candidate.shared is not enum_class.shared {
-            return None;
-        }
-        enum_class = candidate;
-    }
-    return enum_class.shared.class_name if enum_class is not None else None;
-}
-
 impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    tk = self._mangled_of(expr.type);
+    tk = self.lower._mangled_of(expr.type);
     if tk is None or not tk.startswith("tuple[") {
         return None;
     }
@@ -264,21 +223,21 @@ impl NaIRGenPass._spec_of(
         return None;
     }
     _t = expr.type;
-    tk = self._mangled_of(_t);
-    matched = self._spec_name_match(tk or "", names);
+    tk = self.lower._mangled_of(_t);
+    matched = self.lower._spec_name_match(tk or "", names);
     if not matched {
-        _sole = self._opt_sole_member(_t);
+        _sole = self.lower._opt_sole_member(_t);
         if _sole is not None {
             _t = _sole;
-            tk = self._mangled_of(_t);
-            matched = self._spec_name_match(tk or "", names);
+            tk = self.lower._mangled_of(_t);
+            matched = self.lower._spec_name_match(tk or "", names);
         }
     }
     if not matched {
         _agreed = self._spec_union_agreement(_t, names);
         if _agreed is not None {
             _t = _agreed;
-            tk = self._mangled_of(_t);
+            tk = self.lower._mangled_of(_t);
             matched = True;
         }
     }
@@ -295,46 +254,6 @@ impl NaIRGenPass._spec_of(
         }
     }
     return None;
-}
-
-impl NaIRGenPass._spec_name_match(tk: str, names: tuple[str, ...]) -> bool {
-    if tk in names {
-        return True;
-    }
-    for nm in names {
-        if tk.startswith(nm + "[") {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl NaIRGenPass._opt_sole_member(t: any) -> (TypeBase | None) {
-    try {
-        import from jaclang.compiler.types.types {
-            ClassType as _OsClassType,
-            UnionType as _OsUnionType
-        }
-    } except ImportError {
-        return None;
-    }
-    if not isinstance(t, _OsUnionType) {
-        return None;
-    }
-    _all: list[TypeBase] = t.types or [];
-    _members = [
-        m
-        for m in _all
-        if not (
-            isinstance(m, _OsClassType)
-            and m._shared is not None
-            and m.shared.class_name in ("NoneType", "None")
-        )
-    ];
-    if len(_members) != 1 or len(_members) == len(_all) {
-        return None;
-    }
-    return _members[0];
 }
 
 impl NaIRGenPass._spec_union_agreement(t: any, names: tuple[str, ...]) -> (any | None) {
@@ -363,7 +282,7 @@ impl NaIRGenPass._spec_union_agreement(t: any, names: tuple[str, ...]) -> (any |
     }
     _low: any = None;
     for m in _members {
-        if not self._spec_name_match(self._mangled_of(m) or "", names) {
+        if not self.lower._spec_name_match(self.lower._mangled_of(m) or "", names) {
             return None;
         }
         _ml = self._lower_type(m);
@@ -394,7 +313,7 @@ impl NaIRGenPass._typevar_bound_struct(t: (TypeBase | None)) -> (str | None) {
         t = members[0] if len(members) == 1 else None;
     }
     if isinstance(t, TypeVarType) and isinstance(t.bound, ClassType) {
-        return self._struct_name_for_key(self._mangled_of(t.bound));
+        return self._struct_name_for_key(self.lower._mangled_of(t.bound));
     }
     return None;
 }
@@ -411,8 +330,8 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     built for -- a narrow that produces `SubTag[Token]` still has to land on
     `SubTag`.
     """;
-    _flow_type = self._flow_narrowed_type_of(expr);
-    _narrowed = self._struct_name_for_key(self._mangled_of(_flow_type))
+    _flow_type = self.lower._flow_narrowed_type_of(expr);
+    _narrowed = self._struct_name_for_key(self.lower._mangled_of(_flow_type))
         or self._typevar_bound_struct(_flow_type);
     if (
         isinstance(expr, uni.Name)
@@ -421,7 +340,7 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     ) {
         if _narrowed is not None
             and _narrowed != self._self_arch
-            and self._self_arch in self._mro_of(_narrowed) {
+            and self._self_arch in self.lower._mro_of(_narrowed) {
             return _narrowed;
         }
         return self._self_arch;
@@ -438,7 +357,7 @@ impl NaIRGenPass._struct_name_for_key(tk: (str | None)) -> (str | None) {
     }
     _arch_parts = [
         part
-        for part in self._split_union_key(tk)
+        for part in self.lower._split_union_key(tk)
         if part in self.struct_types
     ];
     if len(_arch_parts) == 1 {
@@ -447,7 +366,7 @@ impl NaIRGenPass._struct_name_for_key(tk: (str | None)) -> (str | None) {
     if _arch_parts {
         return self._common_struct_ancestor(_arch_parts);
     }
-    for part in self._split_union_key(tk) {
+    for part in self.lower._split_union_key(tk) {
         _base = self._erased_arch_base(part);
         if _base is not None {
             return _base;
@@ -459,9 +378,9 @@ impl NaIRGenPass._struct_name_for_key(tk: (str | None)) -> (str | None) {
 impl NaIRGenPass._common_struct_ancestor(
     parts: list[str], member: (str | None) = None
 ) -> (str | None) {
-    for _anc in self._mro_of(parts[0]) {
+    for _anc in self.lower._mro_of(parts[0]) {
         if _anc not in self.struct_types
-            or any(_anc not in self._mro_of(_other) for _other in parts[1:]) {
+            or any(_anc not in self.lower._mro_of(_other) for _other in parts[1:]) {
             continue;
         }
         if member is None or self._declares_member(_anc, member) {
@@ -480,13 +399,13 @@ impl NaIRGenPass._declares_member(type_name: str, member: str) -> bool {
 impl NaIRGenPass._struct_owning_member(
     expr: (uni.UniNode | None), member: str
 ) -> (str | None) {
-    _tk = self._mangled_of(self._flow_narrowed_type_of(expr));
+    _tk = self.lower._mangled_of(self.lower._flow_narrowed_type_of(expr));
     if _tk is None {
         return None;
     }
     _parts = [
         part
-        for part in self._split_union_key(_tk)
+        for part in self.lower._split_union_key(_tk)
         if part in self.struct_types
     ];
     return self._common_struct_ancestor(_parts, member) if _parts else None;
@@ -499,48 +418,6 @@ impl NaIRGenPass._erased_arch_base(tk: str) -> (str | None) {
     }
     _base = tk[:_open];
     return _base if _base in self.struct_types else None;
-}
-
-impl NaIRGenPass._split_union_key(tk: str) -> list[str] {
-    if "|" not in tk {
-        return [tk];
-    }
-    out: list[str] = [];
-    depth = 0;
-    start = 0;
-    for i in range(len(tk)) {
-        ch = tk[i];
-        if ch == "[" {
-            depth += 1;
-        } elif ch == "]" {
-            depth -= 1;
-        } elif ch == "|" and depth == 0 {
-            out.append(tk[start:i]);
-            start = i + 1;
-        }
-    }
-    out.append(tk[start:]);
-    return out;
-}
-
-impl NaIRGenPass._flow_narrowed_type_of(
-    expr: (uni.UniNode | None)
-) -> (TypeBase | None) {
-    """The narrow the analysis pipeline stamped on this occurrence.
-
-    `Expr.type` records what the evaluator computed for the expression, and
-    for a `Name` that is already the narrowed view -- the symbol's narrow is
-    folded into the type that gets stored. A member or subscript reference is
-    different: the evaluator stores the *member's* type there and hands the
-    narrow to its caller, so `Expr.narrowed_type` is where that answer is
-    kept. Reading it is a consumption of a central fact; the backend never
-    asks analysis to compute one.
-    """;
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    _nt = expr.narrowed_type;
-    return _nt if _nt is not None else expr.type;
 }
 
 impl NaIRGenPass._struct_ptr_pointee_name(val: ir.Value) -> (str | None) {
@@ -659,14 +536,14 @@ impl NaIRGenPass._typed_elem_llvm_of(
     layout for. `_opt_sole_member` is the same unwrap `_list_spec_of` uses
     to recognise the container itself, so the two answers stay congruent.
     """;
-    _ty = self._flow_narrowed_type_of(expr);
+    _ty = self.lower._flow_narrowed_type_of(expr);
     if _ty is None {
         return None;
     }
-    _mg = self._mangled_of(_ty);
+    _mg = self.lower._mangled_of(_ty);
     if _mg is None or not _mg.startswith(prefix) {
-        _sole = self._opt_sole_member(_ty);
-        _sole_mg = self._mangled_of(_sole) if _sole is not None else None;
+        _sole = self.lower._opt_sole_member(_ty);
+        _sole_mg = self.lower._mangled_of(_sole) if _sole is not None else None;
         if _sole_mg is None or not _sole_mg.startswith(prefix) {
             return None;
         }
@@ -794,10 +671,10 @@ impl NaIRGenPass._static_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | 
         return None;
     }
     _names = ("list", "set", "frozenset", "Sequence");
-    if not self._spec_name_match(self._mangled_of(_t) or "", _names) {
-        _sole = self._opt_sole_member(_t);
+    if not self.lower._spec_name_match(self.lower._mangled_of(_t) or "", _names) {
+        _sole = self.lower._opt_sole_member(_t);
         if _sole is None
-            or not self._spec_name_match(self._mangled_of(_sole) or "", _names) {
+            or not self.lower._spec_name_match(self.lower._mangled_of(_sole) or "", _names) {
             return None;
         }
         _t = _sole;
@@ -1050,7 +927,7 @@ impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.Functi
 }
 
 impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
-    if not self._nogc_headerless() {
+    if not self.lower._nogc_headerless() {
         return None;
     }
     nd = type_expr;
@@ -1067,7 +944,7 @@ impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
     if _t is None {
         return None;
     }
-    _sole = self._opt_sole_member(_t);
+    _sole = self.lower._opt_sole_member(_t);
     if _sole is not None {
         _t = _sole;
     }
@@ -1082,7 +959,7 @@ impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
-    if t is None or not self._nogc_owned_world() {
+    if t is None or not self.lower._nogc_owned_world() {
         return None;
     }
     try {
@@ -1108,11 +985,11 @@ impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
     if _tn is None or _tn not in self.struct_types {
         return None;
     }
-    _lay = self._arch_layout(_tn);
+    _lay = self.lower._arch_layout(_tn);
     if _lay is None or _lay.is_osp or _lay.arch_type == "walker" {
         return None;
     }
-    if self._program_has_subclasses(_tn) {
+    if self.lower._program_has_subclasses(_tn) {
         return None;
     }
     _fields = self.struct_field_types.get(_tn);
@@ -1134,7 +1011,7 @@ impl NaIRGenPass._decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] |
     if arch_name in self._aos_deciding {
         return None;
     }
-    _lay = self._arch_layout(arch_name);
+    _lay = self.lower._arch_layout(arch_name);
     if _lay is None {
         return None;
     }
@@ -1152,28 +1029,6 @@ impl NaIRGenPass._decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] |
         self._aos_deciding.discard(arch_name);
     }
     return out;
-}
-
-impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
-    if self.lower._subclassed_arch_names is None {
-        _names: set[str] = set();
-        _mods: list[uni.Module] = list(self.prog.mod.hub.values());
-        if self.module not in _mods {
-            _mods.append(self.module);
-        }
-        for _mod in _mods {
-            for _arch in _mod.get_all_sub_nodes(uni.Archetype) {
-                for _base in (_arch.base_classes or []) {
-                    _bn = self._arch_ref_key(_base) or self._get_name(_base);
-                    if _bn is not None {
-                        _names.add(_bn);
-                    }
-                }
-            }
-        }
-        self.lower._subclassed_arch_names = _names;
-    }
-    return arch_name in self.lower._subclassed_arch_names;
 }
 
 impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
@@ -1196,7 +1051,7 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if _sig_seq is not None {
             return _sig_seq;
         }
-        if not self._type_base_is_unknown(_ptb) {
+        if not self.lower._type_base_is_unknown(_ptb) {
             _sig_cn = _ptb.shared.class_name if isinstance(_ptb, ClassType) else None;
             if _sig_cn in ("tuple", "list", "dict", "set", "type") {
                 _sig_lmark = len(self.ctx.errors_had);
@@ -1341,7 +1196,7 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
                 return ir.IntType(8).as_pointer();
             }
         } except ImportError {}
-        if not self._type_base_is_unknown(_ptb) {
+        if not self.lower._type_base_is_unknown(_ptb) {
             return self._emit_unlowerable_type(var, _ptb);
         }
     }
@@ -1505,48 +1360,6 @@ impl NaIRGenPass._typevar_optional_field(tb: any) -> bool {
     return _saw_tv and (_saw_ref or len(_non_none) < len(_members));
 }
 
-impl NaIRGenPass._erased_decl(tb: any) -> bool {
-    """Whether a declared slot type is spelled by a type parameter.
-
-    This reads the declaration, not the instantiation: `T`, `T | None`, or a
-    union of `T` with reference types. Such a slot is a pointer in the one
-    layout every instantiation shares, so a by-value argument has to be boxed
-    on the way in and unboxed on the way out; whether that happens is then
-    decided by the physical slot and the access site's own type.
-    """;
-    try {
-        import from jaclang.compiler.types.types {
-            ClassType as _EdClassType,
-            UnionType as _EdUnionType,
-            TypeVarType as _EdTypeVarType
-        }
-    } except ImportError {
-        return False;
-    }
-    if isinstance(tb, _EdTypeVarType) {
-        return True;
-    }
-    if isinstance(tb, _EdUnionType) {
-        for m in (tb.types or []) {
-            if isinstance(m, _EdTypeVarType) {
-                return True;
-            }
-        }
-        return False;
-    }
-    if isinstance(tb, _EdClassType)
-        and tb._shared is not None
-        and tb.shared.class_name == "type" {
-        _eargs: list[TypeBase] = tb.private.type_args or [];
-        return len(_eargs) == 1 and self._erased_decl(_eargs[0]);
-    }
-    return False;
-}
-
-impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
-    return fname in (self.lower.struct_field_erased_tv.get(type_name) or {});
-}
-
 impl NaIRGenPass._erased_boxable(t: (ir.Type | None)) -> bool {
     """A by-value representation an erased pointer slot can carry boxed.""";
     if t is None {
@@ -1566,29 +1379,6 @@ impl NaIRGenPass._erased_boxable(t: (ir.Type | None)) -> bool {
         return self._erased_boxable(_payload);
     }
     return False;
-}
-
-impl NaIRGenPass._erased_decl_names(tb: any) -> list[str] {
-    try {
-        import from jaclang.compiler.types.types {
-            UnionType as _EnUnionType,
-            TypeVarType as _EnTypeVarType
-        }
-    } except ImportError {
-        return [];
-    }
-    if isinstance(tb, _EnTypeVarType) {
-        return [tb.name];
-    }
-    out: list[str] = [];
-    if isinstance(tb, _EnUnionType) {
-        for m in (tb.types or []) {
-            if isinstance(m, _EnTypeVarType) and m.name not in out {
-                out.append(m.name);
-            }
-        }
-    }
-    return out;
 }
 
 impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | None) {
@@ -1799,7 +1589,7 @@ impl NaIRGenPass._erased_call_result(
     }
     _sig = self._callee_sig_of(nd, func);
     _rt = _sig.return_type if _sig is not None else None;
-    if not isinstance(_rt, uni.Expr) or not self._erased_decl(_rt.type) {
+    if not isinstance(_rt, uni.Expr) or not self.lower._erased_decl(_rt.type) {
         return result;
     }
     _ub = self._erased_unbox(result, self._lower_type(nd.type), owned=True);
@@ -1834,22 +1624,13 @@ impl NaIRGenPass._erased_seq_type(tb: any) -> (ir.Type | None) {
     return self.list_types["ptr"].as_pointer();
 }
 
-impl NaIRGenPass._type_base_is_unknown(tb: any) -> bool {
-    try {
-        import from jaclang.compiler.types.types { UnknownType as _UnknownType }
-        return isinstance(tb, _UnknownType);
-    } except ImportError {
-        return True;
-    }
-}
-
 impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
     if isinstance(type_expr, uni.Expr) {
         import from jaclang.compiler.frontend.unparse { unparse_node }
         _label = unparse_node(type_expr);
     } else {
         _tag = type_expr?.type_tag;
-        _label = self._get_name(_tag?.tag) or str(tb);
+        _label = self.lower._get_name(_tag?.tag) or str(tb);
     }
     self.emit(
         E5092, node_override=type_expr, kind=self._sig_decl_kind or "type", name=_label
@@ -1898,22 +1679,6 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
     }
 
     return self._resolve_jac_type(type_expr);
-}
-
-impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
-    if nd is None {
-        return None;
-    }
-    if isinstance(nd, uni.Name) {
-        return nd.value;
-    }
-    if isinstance(nd, (uni.NameAtom, uni.AstSymbolNode)) {
-        return nd.sym_name or None;
-    }
-    if isinstance(nd, uni.Token) {
-        return nd.value or None;
-    }
-    return None;
 }
 
 impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
@@ -2241,155 +2006,6 @@ impl NaIRGenPass._opt_payload_of(t: ir.Type) -> (ir.Type | None) {
     return None;
 }
 
-impl NaIRGenPass._narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None) {
-    return nd.type if isinstance(nd, uni.Expr) else None;
-}
-
-impl NaIRGenPass._narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool {
-    _p = nd.parent;
-    while isinstance(_p, (uni.AtomUnit, uni.CfgExpr)) {
-        _p = _p.parent;
-    }
-    if not isinstance(_p, uni.CompareExpr) {
-        return False;
-    }
-    _has_id_op = False;
-    for _op in (_p.ops or []) {
-        if isinstance(_op, uni.Token)
-            and _op.name in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE) {
-            _has_id_op = True;
-            break;
-        }
-    }
-    if not _has_id_op {
-        return False;
-    }
-    for _side in [_p.left, *(_p.rights or [])] {
-        _s: uni.UniNode = _side.expr if isinstance(_side, uni.CfgExpr) else _side;
-        if isinstance(_s, uni.AtomUnit) {
-            _s = _s.value;
-        }
-        if isinstance(_s, uni.Null) {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl NaIRGenPass._narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool {
-    _cur: (uni.UniNode | None) = nd;
-    _child: (uni.UniNode | None) = None;
-    while _cur is not None {
-        if isinstance(_cur, (uni.Ability, uni.Module, uni.LambdaExpr)) {
-            return True;
-        }
-        if isinstance(
-            _cur, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
-        )
-            and self._loop_rebinds_name(_cur, name)
-            and not self._body_assigns_before(_cur, _child, name) {
-            return False;
-        }
-        _child = _cur;
-        _cur = _cur.parent;
-    }
-    return True;
-}
-
-impl NaIRGenPass._loop_rebinds_name(loop: uni.UniNode, name: str) -> bool {
-    _key = (id(loop), name);
-    _hit = self.lower._loop_rebind_memo.get(_key);
-    if _hit is not None {
-        return _hit;
-    }
-    _found = False;
-    for _asn in loop.get_all_sub_nodes(uni.Assignment) {
-        for _t in (_asn.target or []) {
-            for _tn in self._target_bound_names(_t) {
-                if _tn.value == name {
-                    _found = True;
-                    break;
-                }
-            }
-            if _found {
-                break;
-            }
-        }
-        if _found {
-            break;
-        }
-    }
-    if not _found {
-        for _b in loop.get_all_sub_nodes(uni.BinaryExpr) {
-            if isinstance(_b.op, uni.Token)
-                and _b.op.name == Tok.WALRUS_EQ
-                and isinstance(_b.left, uni.Name)
-                and _b.left.value == name {
-                _found = True;
-                break;
-            }
-        }
-    }
-    self.lower._loop_rebind_memo[_key] = _found;
-    return _found;
-}
-
-impl NaIRGenPass._target_bound_names(target: uni.UniNode) -> list[uni.Name] {
-    if isinstance(target, uni.Name) {
-        return [target];
-    }
-    if isinstance(target, uni.UnaryExpr) {
-        return self._target_bound_names(target.operand);
-    }
-    if isinstance(target, (uni.TupleVal, uni.ListVal)) {
-        _bound: list[uni.Name] = [];
-        for _item in (target.values or []) {
-            _bound.extend(self._target_bound_names(_item));
-        }
-        return _bound;
-    }
-    return [];
-}
-
-impl NaIRGenPass._body_assigns_before(
-    loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
-    child: (uni.UniNode | None),
-    name: str
-) -> bool {
-    if isinstance(loop, uni.InForStmt) {
-        for _tn in self._target_bound_names(loop.target) {
-            if _tn.value == name {
-                return True;
-            }
-        }
-    }
-    _body = loop.body;
-    if child is None {
-        return False;
-    }
-    _idx = -1;
-    for (_i, _stmt) in enumerate(_body) {
-        if _stmt is child {
-            _idx = _i;
-            break;
-        }
-    }
-    if _idx < 0 {
-        return False;
-    }
-    for _stmt in _body[:_idx] {
-        if not isinstance(_stmt, uni.Assignment) {
-            continue;
-        }
-        for _t in (_stmt.target or []) {
-            if any(_tn.value == name for _tn in self._target_bound_names(_t)) {
-                return True;
-            }
-        }
-    }
-    return False;
-}
-
 impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value {
     """Retype a read to what the checker narrowed this occurrence to.
 
@@ -2425,13 +2041,13 @@ impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Val
     if _nm not in self.local_vars or _nm in self.lower.closure_cell_vars {
         return val;
     }
-    if not self._narrowing_stable_in_loops(nd, _nm) {
+    if not self.lower._narrowing_stable_in_loops(nd, _nm) {
         return val;
     }
-    if self._narrowing_blocked_by_none_test(nd) {
+    if self.lower._narrowing_blocked_by_none_test(nd) {
         return val;
     }
-    _nt = self._narrowed_flow_type(nd);
+    _nt = self.lower._narrowed_flow_type(nd);
     if _nt is None {
         return val;
     }
@@ -2507,7 +2123,7 @@ impl NaIRGenPass._unbox_narrowed_member(
     if not isinstance(nd, uni.Expr) or nd.narrowed_type is None {
         return val;
     }
-    if self._narrowing_blocked_by_none_test(nd) {
+    if self.lower._narrowing_blocked_by_none_test(nd) {
         return val;
     }
     _nt = nd.narrowed_type;
@@ -2593,7 +2209,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         _src_nm = getattr(val.type.pointee, "name", "") or "";
         _tgt_nm = getattr(target_type.pointee, "name", "") or "";
         if _src_nm in self.struct_types and _tgt_nm in self.struct_types {
-            if _tgt_nm in self._mro_of(_src_nm) or _src_nm in self._mro_of(_tgt_nm) {
+            if _tgt_nm in self.lower._mro_of(_src_nm) or _src_nm in self.lower._mro_of(_tgt_nm) {
                 return self.builder.bitcast(val, target_type, name="hier.cast");
             }
         }
@@ -4126,7 +3742,7 @@ impl NaIRGenPass._emit_comparison(
     right = self._str_view(right);
 
     if op in (Tok.EE, Tok.NE)
-        and self._is_graph_type(key_ret)
+        and self.lower._is_graph_type(key_ret)
         and isinstance(left.type, ir.PointerType)
         and isinstance(right.type, ir.PointerType) {
         _gi8p = ir.IntType(8).as_pointer();
@@ -4168,7 +3784,7 @@ impl NaIRGenPass._emit_comparison(
             n = len(tcmp_struct.elements);
             i1_t = ir.IntType(1);
             if op == Tok.EE or op == Tok.NE {
-                _tup_eq_args: list[TypeBase] = self._agg_key_args(key_ret, "tuple")
+                _tup_eq_args: list[TypeBase] = self.lower._agg_key_args(key_ret, "tuple")
                     or [];
                 tuple_equal: ir.Value = ir.Constant(i1_t, 1);
                 for i in range(n) {
@@ -4215,7 +3831,7 @@ impl NaIRGenPass._emit_comparison(
                 return tuple_equal;
             }
             if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) and n > 0 {
-                _tup_args: list[TypeBase] = self._agg_key_args(key_ret, "tuple") or [];
+                _tup_args: list[TypeBase] = self.lower._agg_key_args(key_ret, "tuple") or [];
                 func = self.builder.basic_block.function;
                 tcmp_true_bb = func.append_basic_block(name="tcmp.lex.true");
                 tcmp_false_bb = func.append_basic_block(name="tcmp.lex.false");
@@ -4228,7 +3844,7 @@ impl NaIRGenPass._emit_comparison(
                         tcmp_right_val, i, name=f"tcmp.lex.eb.{i}"
                     );
                     _elem_unsigned = (
-                        self._key_elem_unsigned(_tup_args[i])
+                        self.lower._key_elem_unsigned(_tup_args[i])
                             if i < len(_tup_args)
                             else False
                     );
@@ -4393,7 +4009,7 @@ impl NaIRGenPass._emit_comparison(
                             self._emit_jacval_eq(lcmp_ea, lcmp_eb), name="lcmp.ene"
                         );
                     } else {
-                        _leq_args: list[TypeBase] = self._agg_key_args(key_ret, "list")
+                        _leq_args: list[TypeBase] = self.lower._agg_key_args(key_ret, "list")
                             or [];
                         _lsub_eq: (ir.Value | None) = self._emit_comparison(
                             Tok.EE,
@@ -4472,9 +4088,9 @@ impl NaIRGenPass._emit_comparison(
                     lcmp_leb = self.builder.call(
                         lcmp_h["get"], [right, lcmp_li], name="lcmp.lex.eb"
                     );
-                    _largs: list[TypeBase] = self._agg_key_args(key_ret, "list") or [];
+                    _largs: list[TypeBase] = self.lower._agg_key_args(key_ret, "list") or [];
                     _lelem_unsigned = (
-                        self._key_elem_unsigned(_largs[0]) if _largs else False
+                        self.lower._key_elem_unsigned(_largs[0]) if _largs else False
                     );
                     if isinstance(lcmp_et, ir.IntType) {
                         (lcmp_lea, lcmp_leb) = self._unify_int_widths(
@@ -4675,7 +4291,7 @@ impl NaIRGenPass._emit_comparison(
             for (dcmp_key, dcmp_type) in self.dict_types.items() {
                 if left.type == dcmp_type.as_pointer()
                     and right.type == dcmp_type.as_pointer() {
-                    _dcmp_args: list[TypeBase] = self._agg_key_args(key_ret, "dict")
+                    _dcmp_args: list[TypeBase] = self.lower._agg_key_args(key_ret, "dict")
                         or [];
                     _dict_eq = self._emit_dict_eq(
                         left,
@@ -4817,51 +4433,6 @@ impl NaIRGenPass._emit_comparison(
         }
     }
     return None;
-}
-
-impl NaIRGenPass._cmp_static_type(
-    left_node: uni.UniNode, right_node: uni.UniNode
-) -> (TypeBase | None) {
-    """The checked type both operands of a comparison share, or `None`.
-
-    Containers keep nested containers, archetypes and tuples in erased pointer
-    slots, so a value read out of one no longer says what it points at. The
-    checked type does: it tells the comparison how to walk an element instead
-    of comparing its address or its header bytes. Only a type the two sides
-    agree on is returned; a comparison across types keeps its own lowering.
-    """;
-    _l = left_node.expr if isinstance(left_node, uni.CfgExpr) else left_node;
-    _r = right_node.expr if isinstance(right_node, uni.CfgExpr) else right_node;
-    if not isinstance(_l, uni.Expr) or not isinstance(_r, uni.Expr) {
-        return None;
-    }
-    if _l.type is None or _r.type is None {
-        return None;
-    }
-    _lt: TypeBase = self._opt_sole_member(_l.type) or _l.type;
-    _rt: TypeBase = self._opt_sole_member(_r.type) or _r.type;
-    _lk = self._mangled_of(_lt);
-    if _lk is None or _lk != self._mangled_of(_rt) {
-        return None;
-    }
-    return _lt;
-}
-
-impl NaIRGenPass._is_graph_type(ty: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.types.types { ClassType as _GtClassType }
-    if ty is None or not isinstance(ty, _GtClassType) {
-        return False;
-    }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
-    _tn = class_type_native_name(ty);
-    if _tn is None {
-        return False;
-    }
-    _lay = self._arch_layout(_tn);
-    if _lay is not None {
-        return _lay.is_osp;
-    }
-    return _tn in ("Node", "Edge", "Walker", "Root", "GenericEdge");
 }
 
 impl NaIRGenPass._restore_erased_cmp_operands(
@@ -5021,7 +4592,7 @@ impl NaIRGenPass._emit_arch_eq(
     b.position_at_end(ask_bb);
     _arms: list[tuple[ir.Value, ir.Block]] = [];
     if not (self._arch_has_vtable(larch) and self._arch_has_vtable(rarch)) {
-        _swap = rarch != larch and larch in self._mro_of(rarch);
+        _swap = rarch != larch and larch in self.lower._mro_of(rarch);
         _ans = _ask(self, right, left, is_ne)
             if _swap
             else _ask(self, left, right, is_ne);
@@ -5141,8 +4712,8 @@ impl NaIRGenPass._emit_view_eq(
     _r = right_node.expr if isinstance(right_node, uni.CfgExpr) else right_node;
     _lt = _l.type if isinstance(_l, uni.Expr) else None;
     _rt = _r.type if isinstance(_r, uni.Expr) else None;
-    _lk = self._container_class_name(_lt);
-    _rk = self._container_class_name(_rt);
+    _lk = self.lower._container_class_name(_lt);
+    _rk = self.lower._container_class_name(_rt);
     _views = ("dict_keys", "dict_values", "dict_items");
     if _lk not in _views and _rk not in _views {
         return None;
@@ -5163,7 +4734,7 @@ impl NaIRGenPass._emit_view_eq(
         and _lk in _setlike
         and _rk in _setlike
         and (
-            _other_k not in _views or _other_k == self._container_class_name(_view_ty)
+            _other_k not in _views or _other_k == self.lower._container_class_name(_view_ty)
         ) {
         fn = self._setlike_eq_fn(left.type, right.type, _view_ty);
         if fn is not None {
@@ -5195,11 +4766,11 @@ impl NaIRGenPass._setlike_elem_eq(
     view's checked arguments name the dictionary, so the pair is read back
     through that layout and compared field by field.
     """;
-    _args = self._agg_key_args(view_ty, "dict_items");
+    _args = self.lower._agg_key_args(view_ty, "dict_items");
     if _args is None {
-        _kargs = self._agg_key_args(view_ty, "dict_keys")
-            or self._agg_key_args(view_ty, "set")
-            or self._agg_key_args(view_ty, "frozenset")
+        _kargs = self.lower._agg_key_args(view_ty, "dict_keys")
+            or self.lower._agg_key_args(view_ty, "set")
+            or self.lower._agg_key_args(view_ty, "frozenset")
             or [];
         _kty = _kargs[0] if _kargs else None;
         return self._emit_comparison(
@@ -5243,7 +4814,7 @@ impl NaIRGenPass._view_item_pair(view_ty: TypeBase) -> (ir.LiteralStructType | N
     `items()` boxes each pair with the dictionary's own key and value slot
     types, so the layout is the one the dictionary registered for `K` and `V`.
     """;
-    _args = self._agg_key_args(view_ty, "dict_items");
+    _args = self.lower._agg_key_args(view_ty, "dict_items");
     if _args is None or len(_args) != 2 {
         return None;
     }
@@ -5295,11 +4866,11 @@ impl NaIRGenPass._setlike_eq_fn(
     if _lf is None or _rf is None {
         return None;
     }
-    if self._agg_key_args(view_ty, "dict_items") is not None
+    if self.lower._agg_key_args(view_ty, "dict_items") is not None
         and self._view_item_pair(view_ty) is None {
         return None;
     }
-    cache_key = f"setlike[{left_ty}|{right_ty}]:{self._mangled_of(view_ty) or ''}";
+    cache_key = f"setlike[{left_ty}|{right_ty}]:{self.lower._mangled_of(view_ty) or ''}";
     cached = self._eq_fns.get(cache_key);
     if cached is not None {
         return cached;
@@ -5458,133 +5029,6 @@ impl NaIRGenPass._sort_key_supported_d(ty: ir.Type, depth: int) -> bool {
     return self._sort_key_supported_d(ty.pointee, depth + 1);
 }
 
-impl NaIRGenPass._sort_key_return_type(nd: (uni.UniNode | None)) -> (TypeBase | None) {
-    import from jaclang.compiler.types.types { FunctionType }
-    while isinstance(nd, uni.CfgExpr) {
-        nd = nd.expr;
-    }
-    if isinstance(nd, uni.LambdaExpr) {
-        _ret = nd.tail_return_expr();
-        return _ret.type if _ret is not None else None;
-    }
-    if isinstance(nd, uni.Expr) and isinstance(nd.type, FunctionType) {
-        return nd.type.return_type;
-    }
-    return None;
-}
-
-impl NaIRGenPass._sort_key_orderable(ty: (TypeBase | None)) -> (bool | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    if ty is None {
-        return None;
-    }
-    _name = primitive_type_name_of(ty);
-    if _name == "str" or _name == "bytes" {
-        return True;
-    }
-    if self._scalar_shape_named(_name) is not None {
-        return True;
-    }
-    if not isinstance(ty, ClassType) {
-        return None;
-    }
-    if _name is None {
-        return False;
-    }
-    if _name not in ("list", "set", "frozenset", "tuple") {
-        return False;
-    }
-    _args = ty.private.type_args or [];
-    if _name == "tuple" {
-        import from jaclang.compiler.types.types { UnknownType }
-        _known = [
-            a
-            for a in _args
-            if not isinstance(a, UnknownType)
-        ];
-        if _known and len(_known) < len(_args) {
-            _args = _known;
-        }
-    }
-    if not _args {
-        return None;
-    }
-    _orderable: (bool | None) = True;
-    for _arg in _args {
-        _sub = self._sort_key_orderable(_arg);
-        if _sub is False {
-            return False;
-        }
-        if _sub is None {
-            _orderable = None;
-        }
-    }
-    return _orderable;
-}
-
-impl NaIRGenPass._sort_key_unsigned(nd: (uni.UniNode | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    while isinstance(nd, uni.CfgExpr) {
-        nd = nd.expr;
-    }
-    if isinstance(nd, uni.LambdaExpr) {
-        return self._is_unsigned_node(nd.tail_return_expr());
-    }
-    _shape = self._scalar_shape_named(
-        primitive_type_name_of(self._sort_key_return_type(nd))
-    );
-    return _shape is not None
-        and _shape.sized
-        and not _shape.is_float
-        and not _shape.signed;
-}
-
-impl NaIRGenPass._agg_key_args(
-    key_ret: (TypeBase | None), agg_name: str
-) -> (list[TypeBase] | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    if not isinstance(key_ret, ClassType) {
-        return None;
-    }
-    if self._container_class_name(key_ret) != agg_name {
-        return None;
-    }
-    return list(key_ret.private.type_args or []);
-}
-
-impl NaIRGenPass._container_class_name(ty: (TypeBase | None)) -> (str | None) {
-    """The builtin class a checked type instantiates: `list`, `dict`, `dict_keys`...
-
-    `primitive_type_name_of` names the primitives; the dictionary views are
-    plain builtin classes it does not cover, so their class name answers.
-    """;
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    if ty is None {
-        return None;
-    }
-    _name = primitive_type_name_of(ty);
-    if _name is not None {
-        return _name;
-    }
-    if isinstance(ty, ClassType)
-        and ty.shared.class_name in ("dict_keys", "dict_values", "dict_items") {
-        return ty.shared.class_name;
-    }
-    return None;
-}
-
-impl NaIRGenPass._key_elem_unsigned(et: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    _shape = self._scalar_shape_named(primitive_type_name_of(et));
-    return _shape is not None
-        and _shape.sized
-        and not _shape.is_float
-        and not _shape.signed;
-}
-
 impl NaIRGenPass._infer_type_name(val: ir.Value) -> (str | None) {
     if not isinstance(val.type, ir.PointerType) {
         return None;
@@ -5610,7 +5054,7 @@ impl NaIRGenPass._infer_list_elem_type(val: ir.Value) -> (str | None) {
 }
 
 impl NaIRGenPass._infer_compr_elem_struct(compr: uni.InnerCompr) -> (str | None) {
-    _coll_tk = self._type_key_of(compr.collection);
+    _coll_tk = self.lower._type_key_of(compr.collection);
     if _coll_tk is not None
         and _coll_tk.startswith("list[")
         and _coll_tk.endswith("]") {
@@ -5706,7 +5150,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
         return _ulow;
     }
     if isinstance(nd, uni.AtomTrailer) and isinstance(nd.right, uni.IndexSlice) {
-        _base = self._get_name(nd.target);
+        _base = self.lower._get_name(nd.target);
         if _base in ("list", "Sequence") {
             _elem_ty: ir.Type = ir.IntType(64);
             _slices = nd.right.slices;
@@ -5850,9 +5294,9 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
         }
         return self._lower_untyped_annotation(nd.target);
     }
-    _nm = self._get_name(nd);
+    _nm = self.lower._get_name(nd);
 
-    _ref_key = self._arch_ref_key(nd);
+    _ref_key = self.lower._arch_ref_key(nd);
     if _ref_key is not None and _ref_key in self.struct_types {
         return self.struct_types[_ref_key].as_pointer();
     }

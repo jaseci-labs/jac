@@ -27,7 +27,7 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
         }
     }
 
-    if _own_spec is None and self._is_boolean_result_expr(nd.out_expr) {
+    if _own_spec is None and self.lower._is_boolean_result_expr(nd.out_expr) {
         _own_spec = "i64";
     }
     if _own_spec is not None {
@@ -42,8 +42,8 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
             elem_type_name = "ptr";
         }
         if elem_type_name == "i64" and isinstance(nd.out_expr, uni.FuncCall) {
-            call_name = self._arch_ref_key(nd.out_expr.target)
-                or self._get_name(nd.out_expr.target);
+            call_name = self.lower._arch_ref_key(nd.out_expr.target)
+                or self.lower._get_name(nd.out_expr.target);
             if call_name is not None and call_name in self.struct_types {
                 elem_type_name = "ptr";
             }
@@ -61,7 +61,7 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
             out_name = nd.out_expr.value;
 
             for compr in nd.compr {
-                target_name = self._get_name(compr.target);
+                target_name = self.lower._get_name(compr.target);
                 if target_name == out_name {
                     hint = self._elem_spec_of(compr.collection);
                     if hint is not None {
@@ -93,7 +93,7 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_lcompr_loc, name="compr.list"
     );
-    self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
+    self._nogc_stamp_elem_drops(list_val, self.lower._nogc_type_arg_mangles(nd));
 
     self._codegen_compr_walk(
         NativeComprehension(
@@ -107,34 +107,6 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     );
 
     return list_val;
-}
-
-impl NaIRGenPass._is_boolean_result_expr(nd: (uni.UniNode | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    while isinstance(nd, (uni.CfgExpr, uni.AtomUnit)) {
-        nd = nd.expr if isinstance(nd, uni.CfgExpr) else nd.value;
-    }
-    if isinstance(nd, (uni.CompareExpr, uni.Bool)) {
-        return True;
-    }
-    if isinstance(nd, uni.UnaryExpr) {
-        return nd.op.name == Tok.NOT;
-    }
-    if isinstance(nd, uni.BoolExpr) {
-        if not nd.values {
-            return False;
-        }
-        for _operand in nd.values {
-            if not self._is_boolean_result_expr(_operand) {
-                return False;
-            }
-        }
-        return True;
-    }
-    if isinstance(nd, uni.Expr) {
-        return primitive_type_name_of(nd.type) == "bool";
-    }
-    return False;
 }
 
 impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
@@ -178,8 +150,8 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         val_type_name = "ptr";
         val_type = ir.IntType(8).as_pointer();
     } elif isinstance(val_expr, uni.FuncCall) {
-        call_name = self._arch_ref_key(val_expr.target)
-            or self._get_name(val_expr.target);
+        call_name = self.lower._arch_ref_key(val_expr.target)
+            or self.lower._get_name(val_expr.target);
         if call_name is not None and call_name in self.struct_types {
             val_type_name = "ptr";
             val_type = ir.IntType(8).as_pointer();
@@ -230,7 +202,7 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dcompr_loc, name="dcompr.dict"
     );
-    self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd));
+    self._nogc_stamp_elem_drops(dict_val, self.lower._nogc_type_arg_mangles(nd));
 
     self._codegen_compr_walk(
         NativeComprehension(
@@ -263,17 +235,17 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
         elem_type_name = f"tuple{elem_size}";
         elem_type = ir.IntType(8).as_pointer();
     } elif isinstance(out_expr, uni.FuncCall) {
-        call_name = self._arch_ref_key(out_expr.target)
-            or self._get_name(out_expr.target);
+        call_name = self.lower._arch_ref_key(out_expr.target)
+            or self.lower._get_name(out_expr.target);
         if call_name is not None and call_name in self.struct_types {
             elem_type_name = "ptr";
             elem_type = ir.IntType(8).as_pointer();
         }
     } elif isinstance(out_expr, uni.AtomTrailer) and out_expr.is_attr {
-        field_name = self._get_name(out_expr.right);
-        target_name = self._get_name(out_expr.target);
+        field_name = self.lower._get_name(out_expr.right);
+        target_name = self.lower._get_name(out_expr.target);
         if field_name is not None and target_name is not None and nd.compr {
-            loop_var = self._get_name(nd.compr[0].target);
+            loop_var = self.lower._get_name(nd.compr[0].target);
             if loop_var == target_name {
                 loop_struct = self._infer_compr_elem_struct(nd.compr[0]);
                 if loop_struct is not None and loop_struct in self.struct_field_types {
@@ -328,7 +300,7 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_scompr_loc, name="scompr.set"
     );
-    self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd));
+    self._nogc_stamp_elem_drops(set_val, self.lower._nogc_type_arg_mangles(nd));
 
     self._codegen_compr_walk(
         NativeComprehension(
@@ -490,7 +462,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
     collection = inner.collection;
 
     if isinstance(collection, uni.FuncCall)
-        and self._get_name(collection.target) == "range"
+        and self.lower._get_name(collection.target) == "range"
         and collection.call_kind == "builtin"
         and len(collection.params or []) <= 2 {
         self._codegen_compr_range_walk(compr, idx);
@@ -542,14 +514,14 @@ impl NaIRGenPass._codegen_compr_walk_body(
         actual_elem_type = coll_helpers["elem_type"];
     }
     unpack_target = loop_target if isinstance(loop_target, uni.TupleVal) else None;
-    loop_var_name = self._get_name(loop_target);
+    loop_var_name = self.lower._get_name(loop_target);
     if loop_var_name is None and unpack_target is None {
         return;
     }
     targets = unpack_target.values if unpack_target is not None else [loop_target];
     names: list[str] = [];
     for target in targets {
-        name = self._get_name(target);
+        name = self.lower._get_name(target);
         if name is not None {
             names.append(name);
         }
@@ -565,7 +537,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
         inner_type = self._list_elem_llvm_of(collection);
         if inner_type is None {
             inner_type = self._elem_storage_llvm(
-                self._flow_narrowed_type_of(loop_target)
+                self.lower._flow_narrowed_type_of(loop_target)
             );
         }
         if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
@@ -657,7 +629,7 @@ impl NaIRGenPass._codegen_compr_iter_walk(
         else [inner.target];
     names: list[str] = [];
     for target in targets {
-        name = self._get_name(target);
+        name = self.lower._get_name(target);
         if name is not None {
             names.append(name);
         }
@@ -709,7 +681,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     inner = compr.comprs[idx];
     collection = inner.collection;
     loop_target = inner.target;
-    loop_var_name = self._get_name(loop_target);
+    loop_var_name = self.lower._get_name(loop_target);
     if loop_var_name is None {
         return;
     }

@@ -345,7 +345,8 @@ test "native type identity never reads walk-time registration maps" {
     # -- that a touch really does refuse and demote -- is in
     # `test_native_walk_order.jac`.
     opaque_ok = [
-        "na_ir_gen_pass.jac",
+        "na_lower_analysis_pass.jac",
+        os.path.join("na_lower_analysis_pass.impl", "objects.impl.jac"),
         os.path.join("na_ir_gen_pass.impl", "objects.impl.jac")
     ];
     offenders: list[str] = [];
@@ -383,11 +384,13 @@ test "native type identity never reads walk-time registration maps" {
         "is only honest where it is refused):\n"
         + "\n".join(offenders)
     );
-    objects_impl = os.path.join(impl_dir, "objects.impl.jac");
+    objects_impl = os.path.join(
+        native_dir, "na_lower_analysis_pass.impl", "objects.impl.jac"
+    );
     with open(objects_impl, "r", encoding="utf-8") as f {
         objects_src = f.read();
     }
-    refuse_marker = "impl NaIRGenPass._refuse_opaque_field(";
+    refuse_marker = "impl NativeLowering._refuse_opaque_field(";
     r_start = objects_src.find(refuse_marker);
     assert r_start >= 0 , (
         "_refuse_opaque_field impl not found; the erased-field table has no "

@@ -959,7 +959,7 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
             );
         }
 
-        if p._elem_kind(helpers["elem_type"]) != "raw" and not p._nogc_headerless() {
+        if p._elem_kind(helpers["elem_type"]) != "raw" and not p.lower._nogc_headerless() {
             _da_elem = b.call(helpers["get"], [target, del_idx], name="delat_rel_elem");
             p._emit_elem_release(b, helpers["elem_type"], _da_elem);
         }

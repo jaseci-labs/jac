@@ -115,7 +115,7 @@ impl NaIRGenPass._emit_elem_retain(
     b: ir.IRBuilder, elem_type: ir.Type, val: ir.Value
 ) -> None {
     _kind = self._elem_kind(elem_type);
-    if _kind == "raw" or self._nogc_headerless() {
+    if _kind == "raw" or self.lower._nogc_headerless() {
         return;
     }
     if _kind == "jacval" {
@@ -138,7 +138,7 @@ impl NaIRGenPass._emit_elem_release(
     b: ir.IRBuilder, elem_type: ir.Type, val: ir.Value
 ) -> None {
     _kind = self._elem_kind(elem_type);
-    if _kind == "raw" or self._nogc_headerless() {
+    if _kind == "raw" or self.lower._nogc_headerless() {
         return;
     }
     if _kind == "jacval" {
@@ -246,15 +246,6 @@ impl NaIRGenPass._reject_ptr_into_raw_slot(
         self.emit(E5092, kind="expression", name=what);
     }
     return True;
-}
-
-impl NaIRGenPass._spread_operand(nd: (uni.UniNode | None)) -> (uni.Expr | None) {
-    if isinstance(nd, uni.UnaryExpr)
-        and isinstance(nd.op, uni.Token)
-        and nd.op.name == Tok.STAR_MUL {
-        return nd.operand;
-    }
-    return None;
 }
 
 impl NaIRGenPass._container_src_info(
@@ -396,7 +387,7 @@ impl NaIRGenPass._emit_spread_copy(
     self._builder = ir.IRBuilder(_done_bb);
     if isinstance(src.type, ir.PointerType)
         and self._is_owned(src)
-        and self._gc_mode() != "none" {
+        and self.lower._gc_mode() != "none" {
         self._emit_rc_release_simple(src, op="spread", loc=loc);
     }
 }
@@ -423,7 +414,7 @@ impl NaIRGenPass._container_struct_fields(layout: dict[str, any]) -> list[ir.Typ
         _fields.append(i64);
         _fields.append(i64.as_pointer());
     }
-    if self._gc_mode() == "none" {
+    if self.lower._gc_mode() == "none" {
         for _ in range(len(layout["data_fields"])) {
             _fields.append(self._nogc_elem_drop_slot_ty());
         }
@@ -541,7 +532,7 @@ impl NaIRGenPass._emit_container_new_fn(
     result = self._emit_rc_alloc_container(b, container_ptr_type, layout);
     container_ptr = result[0];
 
-    if self._gc_mode() == "none" {
+    if self.lower._gc_mode() == "none" {
         _i32_nz = ir.IntType(32);
         _slot_ty_nz = self._nogc_elem_drop_slot_ty();
         for _j in range(len(layout["data_fields"])) {
@@ -557,7 +548,7 @@ impl NaIRGenPass._emit_container_new_fn(
         }
     }
 
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         dtor_fn = None;
     }
     if dtor_fn is not None and self.rc_set_type_fn is not None {
@@ -587,13 +578,13 @@ impl NaIRGenPass._emit_container_new_fn(
     _managed_fields = self._container_managed_fields(layout);
     _cont_type_name = self._container_type_name(dtor_fn);
     _cont_has_trace = False;
-    if _managed_fields and self._gc_mode() == "cycles" {
+    if _managed_fields and self.lower._gc_mode() == "cycles" {
         _cont_trace_fn = self._emit_container_trace_fn(
             f"__rc_trace_{_cont_type_name}", container_ptr_type, layout
         );
         _cont_has_trace = self._register_trace_pair(dtor_fn, _cont_trace_fn);
     }
-    self._require_trace_fn(_cont_type_name, bool(_managed_fields), _cont_has_trace);
+    self.lower._require_trace_fn(_cont_type_name, bool(_managed_fields), _cont_has_trace);
     b.ret(container_ptr);
     return new_fn;
 }
@@ -702,7 +693,7 @@ impl NaIRGenPass._emit_container_release_fn(
     _managed = self._container_managed_fields(layout);
     _fields = [(fi, dt) for (fi, dt, _k) in _managed];
     if _managed {
-        _cycles_on = self._gc_mode() == "cycles";
+        _cycles_on = self.lower._gc_mode() == "cycles";
         if _cycles_on and self.rc_collecting_gv is None {
             self._emit_rc_helpers();
         }
@@ -951,7 +942,7 @@ impl NaIRGenPass._emit_rc_alloc_container(
     null_ptr = ir.Constant(container_ptr_type, None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
     struct_size = b.ptrtoint(size_gep, i64, name="size");
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         raw = b.call(malloc_fn, [struct_size], name="raw");
     } else {
         raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
@@ -1050,7 +1041,7 @@ impl NaIRGenPass._emit_grow_array(
     old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
     new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
     b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
         b.call(_free_fn, [old_i8]);
     } else {
@@ -1113,7 +1104,7 @@ impl NaIRGenPass._tuple_box_release_fn(
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
     fields = self._tuple_managed_fields(struct_type);
     if fields {
-        _cycles_on = self._gc_mode() == "cycles";
+        _cycles_on = self.lower._gc_mode() == "cycles";
         if _cycles_on and self.rc_collecting_gv is None {
             self._emit_rc_helpers();
         }
@@ -1164,7 +1155,7 @@ impl NaIRGenPass._tuple_box_release_fn(
 impl NaIRGenPass._tuple_box_trace_fn(
     struct_type: ir.LiteralStructType
 ) -> (ir.Function | None) {
-    if self._gc_mode() != "cycles" {
+    if self.lower._gc_mode() != "cycles" {
         return None;
     }
     key = str(struct_type);
@@ -1231,7 +1222,7 @@ impl NaIRGenPass._emit_tuple_box_lifecycle(
     if trace_fn is not None {
         has_trace = self._register_trace_pair(rel_fn, trace_fn);
     }
-    self._require_trace_fn("tuple", True, has_trace);
+    self.lower._require_trace_fn("tuple", True, has_trace);
 }
 
 impl NaIRGenPass._coerce_container_element(
@@ -1240,7 +1231,7 @@ impl NaIRGenPass._coerce_container_element(
     if self._str_desc_ty is not None
         and value.type == self._str_desc_ty
         and element_type != value.type
-        and self._gc_mode() != "none" {
+        and self.lower._gc_mode() != "none" {
         value = self._str_materialize(value);
     }
     payload_type = self._opt_ptr_payload_of(value.type);

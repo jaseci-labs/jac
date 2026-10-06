@@ -67,18 +67,6 @@ impl NaIRGenPass._codegen_int_pow(
     return self.builder.load(result_alloca, name="pow.final");
 }
 
-impl NaIRGenPass._complex_aug_token(aug_op: str) -> (str | None) {
-    return {
-        "+=": Tok.PLUS,
-        "-=": Tok.MINUS,
-        "*=": Tok.STAR_MUL,
-        "/=": Tok.DIV,
-        "**=": Tok.STAR_POW
-    }.get(
-        aug_op
-    );
-}
-
 impl NaIRGenPass._emit_complex_value(re: ir.Value, im: ir.Value) -> ir.Value {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);

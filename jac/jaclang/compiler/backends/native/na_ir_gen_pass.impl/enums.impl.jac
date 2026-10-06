@@ -1,23 +1,8 @@
-impl NaIRGenPass._enum_methods(nd: uni.Enum) -> list[uni.Ability] {
-    methods: list[uni.Ability] = [];
-    for stmt in ModuleFacts.unwrap_body(nd) or [] {
-        if isinstance(stmt, uni.Ability) {
-            methods.append(stmt);
-        } elif isinstance(stmt, uni.ModuleCode) {
-            for member in stmt.body {
-                if isinstance(member, uni.Ability) {
-                    methods.append(member);
-                }
-            }
-        }
-    }
-    return methods;
-}
 
 impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if isinstance(stmt, uni.Enum) {
-            for method in self._enum_methods(stmt) {
+            for method in self.lower._enum_methods(stmt) {
                 if declare {
                     self._forward_declare_method(stmt.name.value, method);
                 } else {
@@ -226,10 +211,6 @@ impl NaIRGenPass._wrap_enum_str(raw: (ir.Value | None)) -> (ir.Value | None) {
     return self.builder.call(self.str_wrap_raw_fn, [raw], name="enum.s.desc");
 }
 
-impl NaIRGenPass._enum_is_string_valued(enum_name: str) -> bool {
-    return enum_name in self.lower.enum_string_values;
-}
-
 impl NaIRGenPass._enum_ordinal_fn(enum_name: str) -> (ir.Function | None) {
     _cached = self.enum_ordinal_fns.get(enum_name);
     if _cached is not None {
@@ -270,7 +251,7 @@ impl NaIRGenPass._enum_ordinal_fn(enum_name: str) -> (ir.Function | None) {
 impl NaIRGenPass._codegen_enum_ordinal_of(
     enum_name: str, runtime_val: ir.Value
 ) -> (ir.Value | None) {
-    if self._enum_is_string_valued(enum_name) {
+    if self.lower._enum_is_string_valued(enum_name) {
         return runtime_val;
     }
     _fn = self._enum_ordinal_fn(enum_name);
@@ -288,7 +269,7 @@ impl NaIRGenPass._codegen_enum_ordinal_of(
 impl NaIRGenPass._codegen_enum_attr_runtime(
     enum_name: str, runtime_val: ir.Value, use_name: bool
 ) -> (ir.Value | None) {
-    if not use_name and not self._enum_is_string_valued(enum_name) {
+    if not use_name and not self.lower._enum_is_string_valued(enum_name) {
         return runtime_val;
     }
     _ord = self._codegen_enum_ordinal_of(enum_name, runtime_val);
@@ -298,79 +279,22 @@ impl NaIRGenPass._codegen_enum_attr_runtime(
     return self._codegen_enum_value_lookup(enum_name, _ord, use_name=use_name);
 }
 
-impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    candidates: list[uni.Module] = [];
-    _arch = self.lower.arch_ast_map.get(enum_name);
-    if _arch is not None {
-        _own = _arch.find_parent_of_type(uni.Module);
-        if _own is not None {
-            candidates.append(_own);
-        }
-    }
-    candidates.append(self.module);
-    for _fm in (self.lower._foreign_modules or []) {
-        candidates.append(_fm);
-    }
-    for _cand in candidates {
-        lay = get_layout_registry(_cand, self.prog).get_enum_layout(enum_name);
-        if lay is not None and lay.members {
-            return lay;
-        }
-    }
-    return None;
-}
-
-impl NaIRGenPass._enum_ctor_target(nd: uni.FuncCall) -> (str | None) {
-    _key = self._type_key_of(nd.target);
-    if _key is None {
-        return None;
-    }
-    _key = _key.replace(" ", "");
-    if not _key.startswith("type[") or not _key.endswith("]") {
-        return None;
-    }
-    _name = _key[5:-1];
-    if not _name or not _name.isidentifier() {
-        return None;
-    }
-    return _name if self._enum_ctor_layout(_name) is not None else None;
-}
-
-impl NaIRGenPass._emit_enum_ctor_refusal(
-    nd: uni.FuncCall, enum_name: str, why: str
-) -> None {
-    self.emit(
-        E5092,
-        node_override=nd,
-        kind="enum constructor",
-        name=enum_name,
-        help_text=(
-            f"Invoking '{enum_name}' as a constructor is a value-to-member "
-            f"lookup: the emitter checks the value against the declared "
-            f"member table and raises ValueError when it misses. {why} Read "
-            f"the member off the class, or move this call to a @sv/Python "
-            f"context."
-        )
-    );
-}
-
 impl NaIRGenPass._codegen_enum_ctor(
     nd: uni.FuncCall, enum_name: str
 ) -> (ir.Value | None) {
-    lay = self._enum_ctor_layout(enum_name);
+    lay = self.lower._enum_ctor_layout(enum_name);
     if lay is None {
         return None;
     }
     _params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if len(_params) != 1 or isinstance(_params[0], uni.KWPair) {
-        self._emit_enum_ctor_refusal(
+        self.lower._emit_enum_ctor_refusal(
             nd, enum_name, "It takes exactly one positional value."
         );
         return None;
     }
     if not lay.all_values_known {
-        self._emit_enum_ctor_refusal(
+        self.lower._emit_enum_ctor_refusal(
             nd,
             enum_name,
             "At least one member's value is not compile-time known, so the "
@@ -380,16 +304,16 @@ impl NaIRGenPass._codegen_enum_ctor(
     }
     _arg = self._codegen_expr(_params[0]);
     if _arg is None {
-        self._emit_enum_ctor_refusal(nd, enum_name, "Its argument did not lower.");
+        self.lower._emit_enum_ctor_refusal(nd, enum_name, "Its argument did not lower.");
         return None;
     }
     if lay.is_string_enum {
-        arg_key = self._type_key_of(_params[0]);
+        arg_key = self.lower._type_key_of(_params[0]);
         if arg_key == enum_name {
             return _arg;
         }
         if arg_key != "str" {
-            self._emit_enum_ctor_refusal(
+            self.lower._emit_enum_ctor_refusal(
                 nd, enum_name, "Its argument must be a string or a member of this enum."
             );
             return None;
@@ -419,7 +343,7 @@ impl NaIRGenPass._codegen_enum_ctor(
         return ordinal;
     }
     if not isinstance(_arg.type, ir.IntType) {
-        self._emit_enum_ctor_refusal(
+        self.lower._emit_enum_ctor_refusal(
             nd,
             enum_name,
             "Its argument is not already an integer value, and coercing one "
