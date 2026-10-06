@@ -118,7 +118,7 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         _result.jac_loc = _jac_loc;
         if isinstance(_result.type, ir.IntType)
             and 1 < _result.type.width < 64
-            and self._is_signed_sized_node(nd) {
+            and self.lower._is_signed_sized_node(nd) {
             _result.jac_signed = True;
         }
 
@@ -215,7 +215,7 @@ impl NaIRGenPass._reads_unlowered_local(nd: uni.UniNode) -> bool {
     if not _names {
         return False;
     }
-    _reads = [nd] if isinstance(nd, uni.Name) else nd.get_all_sub_nodes(uni.Name);
+    _reads = self.lower._reads_unlowered_local_names(nd);
     for _sub in _reads {
         if _sub.value in _names
             and _sub.value not in self.local_vars
@@ -442,8 +442,9 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
     ret_type: ir.Type = ir.IntType(64);
-    if isinstance(nd.type, SemanticFunctionType) and nd.type.return_type is not None {
-        inferred = self._lower_type(nd.type.return_type);
+    _inferred_ret = self.lower._lambda_inferred_return(nd);
+    if _inferred_ret is not None {
+        inferred = self._lower_type(_inferred_ret);
         if inferred is not None {
             ret_type = inferred;
         }
@@ -453,12 +454,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     }
 
     captures: list[tuple[str, ir.Value, ir.Type]] = [];
-    free_var_names: list[str] = [];
-    for cap_sym in nd.captures {
-        if cap_sym.sym_name not in free_var_names {
-            free_var_names.append(cap_sym.sym_name);
-        }
-    }
+    free_var_names: list[str] = self.lower._lambda_free_var_names(nd);
     for fv_name in free_var_names {
         if fv_name in self.local_vars {
             alloca = self.local_vars[fv_name];
@@ -569,7 +565,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
 impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     var_name = nd.value;
-    _ct_owner = self._ct_type_param_owner(nd);
+    _ct_owner = self.lower._ct_type_param_owner(nd);
     if _ct_owner is not None {
         _self_val: (ir.Value | None) = None;
         if "self" in self.local_vars {
@@ -590,7 +586,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             if _clos_val is not None {
                 return _clos_val;
             }
-            self._emit_closure_escape_error(var_name, nd);
+            self.lower._emit_closure_escape_error(var_name, nd);
             return None;
         }
     }
@@ -598,7 +594,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         alloca = self.local_vars[var_name];
         value = self.builder.load(alloca, name=var_name);
 
-        if self._type_key_of(nd) == "str"
+        if self.lower._type_key_of(nd) == "str"
             and isinstance(value.type, ir.PointerType)
             and value.type != ir.IntType(8).as_pointer() {
             return self.builder.bitcast(
@@ -623,10 +619,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         import os;
         return self._make_global_string(os.path.realpath(self.module.loc.mod_path));
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    _np = nd.parent;
-    _is_call_target = isinstance(_np, uni.FuncCall) and _np.target is nd;
-    if JAC_TYPE_REGISTRY.is_sized(var_name) and not _is_call_target {
+    if self.lower._name_sized_type_ref(nd, var_name) {
         return self._codegen_type_name_str(var_name);
     }
     return self._codegen_class_ref(nd);
@@ -646,9 +639,8 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if not isinstance(nd.left, uni.Name) {
         return self._codegen_expr(nd.right);
     }
-    var_name = self._get_name(nd.left);
+    var_name = self.lower._walrus_target_name(nd);
     if var_name is None {
-        self.emit(E5092, node_override=nd, kind="binary operator", name="WALRUS_EQ");
         return None;
     }
     value = self._codegen_expr(nd.right);
@@ -715,11 +707,11 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return None;
     }
     result: (ir.Value | None);
-    _unsigned = self._is_unsigned_node(nd) or self._is_unsigned_node(nd.left);
+    _unsigned = self.lower._is_unsigned_node(nd) or self.lower._is_unsigned_node(nd.left);
     _checked = (
-        self._is_sized_node(nd)
-        or self._is_sized_node(nd.left)
-        or self._is_sized_node(nd.right)
+        self.lower._is_sized_node(nd)
+        or self.lower._is_sized_node(nd.left)
+        or self.lower._is_sized_node(nd.right)
     );
     if op == Tok.STAR_POW {
         result = self._codegen_pow(
@@ -781,18 +773,16 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
 
     left_name = self._spawn_operand_name(nd.left);
     right_name = self._spawn_operand_name(nd.right);
-    left_is_walker = left_name is not None and self._is_walker_arch(left_name);
-    right_is_walker = right_name is not None and self._is_walker_arch(right_name);
+    _side = self.lower._spawn_walker_side(nd, left_name, right_name);
     walker_name: str;
     walker_val: ir.Value;
     loc_val: ir.Value;
-    if left_name is not None and left_is_walker {
+    if _side == "left" {
         (walker_name, walker_val, loc_val) = (left_name, left_val, right_val);
-    } elif right_name is not None and right_is_walker {
+    } elif _side == "right" {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
-    } elif self._is_root_walker_operand(nd.right)
-        or self._is_root_walker_operand(nd.left) {
-        _root_right = self._is_root_walker_operand(nd.right);
+    } elif _side == "root_right" or _side == "root_left" {
+        _root_right = _side == "root_right";
         walker_val = right_val if _root_right else left_val;
         loc_val = left_val if _root_right else right_val;
         _osp_ready = self._osp_rt_global is not None
@@ -809,13 +799,13 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
             node_override=nd,
             kind="binary operator",
             name="KW_SPAWN",
-            help_text=self._xmod_osp_help([left_name, right_name])
+            help_text=self.lower._xmod_osp_help([left_name, right_name])
         );
         return left_val;
     }
 
-    _loc_name = right_name if left_is_walker else left_name;
-    _xhelp = self._xmod_osp_help([_loc_name]);
+    _loc_name = right_name if _side == "left" else left_name;
+    _xhelp = self.lower._xmod_osp_help([_loc_name]);
     if _xhelp is not None {
         self.emit(
             E5092,
@@ -827,9 +817,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return walker_val;
     }
 
-    _spawn_model = self.module.gen.native_osp_model;
-    if (_spawn_model is not None)
-        and (walker_name in _spawn_model.tags)
+    if self.lower._spawn_walker_in_model(walker_name)
         and (self._osp_rt_global is not None)
         and ("osp_spawn" in self.func_symtab) {
         return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
@@ -919,25 +907,13 @@ impl NaIRGenPass._codegen_kernel_spawn(
 impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
     if isinstance(nd, uni.FuncCall) {
         return self._class_value_ctor_bound(nd.target)
-            or self._arch_ref_key(nd.target)
-            or self._get_name(nd.target);
+            or self.lower._arch_ref_key(nd.target)
+            or self.lower._get_name(nd.target);
     }
     if isinstance(nd, uni.Name) {
         return self._struct_name_of(nd);
     }
     return None;
-}
-
-impl NaIRGenPass._is_root_walker_operand(nd: uni.UniNode) -> bool {
-    typ = nd.type if isinstance(nd, uni.Expr) else None;
-    return isinstance(typ, ClassType)
-        and typ.is_instance()
-        and typ.shared.class_name == "Walker";
-}
-
-impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    _model = self.module.gen.native_osp_model;
-    return (_model is not None) and (_model.arch_kind.get(name) == "walker");
 }
 
 impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
@@ -1096,19 +1072,8 @@ impl NaIRGenPass._codegen_compare_link(
         left = self._str_view(left);
         right = self._str_view(right);
         right = self._unwrap_opt_container(right);
-        _in_key_nd = left_node.expr
-            if isinstance(left_node, uni.CfgExpr)
-            else left_node;
-        _in_hay_nd = right_node.expr
-            if isinstance(right_node, uni.CfgExpr)
-            else right_node;
-        _in_hay_tk = self._type_key_of(_in_hay_nd) or "";
-        _in_hay_cont = (
-            _in_hay_tk.startswith("list[")
-            or _in_hay_tk.startswith("dict[")
-            or _in_hay_tk.startswith("set[")
-            or _in_hay_tk.startswith("frozenset[")
-            or _in_hay_tk.startswith("tuple[")
+        (_in_key_nd, _in_hay_nd, _in_hay_tk, _in_hay_cont) = self.lower._compare_link_membership_shape(
+            left_node, right_node
         );
 
         for (dict_key, helpers) in self.dict_helpers.items() {
@@ -1223,12 +1188,8 @@ impl NaIRGenPass._codegen_compare_link(
                 elem: ir.Value = self.builder.call(
                     helpers["get"], [right, idx], name="list.in.elem"
                 );
-                _lin_left_tk = self._type_key_of(left_node);
-                _lin_coll_tk = self._type_key_of(right_node) or "";
-
                 _lin_str_elems = (
-                    _lin_left_tk == "str"
-                    or _lin_coll_tk.startswith("list[str")
+                    self.lower._compare_link_list_str_elems(left_node, right_node)
                     or left.type == ir.IntType(8).as_pointer()
                 );
                 if (
@@ -1259,17 +1220,7 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                 } else {
                     _lin_eq: (ir.Value | None) = None;
-                    _lin_args = self._agg_key_args(_in_hay_nd.type, "list")
-                        if isinstance(_in_hay_nd, uni.Expr)
-                        else None;
-                    _lin_key = _lin_args[0] if _lin_args else None;
-                    if _lin_key is not None
-                        and _lin_key.is_any_type()
-                        and isinstance(left_node, uni.Expr)
-                        and left_node.type is not None
-                        and not left_node.type.is_any_type() {
-                        _lin_key = left_node.type;
-                    }
+                    _lin_key = self.lower._compare_link_list_key(_in_hay_nd, left_node);
                     if isinstance(elem.type, ir.PointerType) and _lin_key is not None {
                         _lin_eq = self._emit_comparison(
                             Tok.EE, left_coerced, elem, False, key_ret=_lin_key
@@ -1332,12 +1283,9 @@ impl NaIRGenPass._codegen_compare_link(
                 i64 = ir.IntType(64);
                 i1_t = ir.IntType(1);
                 found: ir.Value = ir.Constant(i1_t, 0);
-                _tin_args: list[TypeBase] = (
-                    self._agg_key_args(_in_hay_nd.type, "tuple")
-                        if isinstance(_in_hay_nd, uni.Expr)
-                        else None
-                )
-                    or [];
+                _tin_args: list[TypeBase] = self.lower._compare_link_tuple_args(
+                    _in_hay_nd
+                );
                 for i in range(n) {
                     elem = self.builder.extract_value(tin_val, i, name=f"tuple.in.{i}");
                     left_c = self._coerce_type(left, elem.type);
@@ -1353,7 +1301,7 @@ impl NaIRGenPass._codegen_compare_link(
                     } elif elem.type != ir.IntType(8).as_pointer()
                         or (
                             _tin_fty is not None
-                            and self._container_class_name(_tin_fty) != "str"
+                            and self.lower._container_class_name(_tin_fty) != "str"
                         ) {
                         _tin_eq = self._emit_comparison(
                             Tok.EE, left_c, elem, False, key_ret=_tin_fty
@@ -1653,8 +1601,8 @@ impl NaIRGenPass._codegen_compare_link(
     }
     is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
         or isinstance(right.type, (ir.DoubleType, ir.FloatType));
-    _cmp_unsigned = self._is_unsigned_node(left_node)
-        or self._is_unsigned_node(right_node);
+    _cmp_unsigned = self.lower._is_unsigned_node(left_node)
+        or self.lower._is_unsigned_node(right_node);
     if is_float {
         (left, right) = self._promote_to_float(left, right, unsigned=_cmp_unsigned);
     }
@@ -1670,7 +1618,7 @@ impl NaIRGenPass._codegen_compare_link(
         right,
         is_float,
         unsigned=_cmp_unsigned,
-        key_ret=self._cmp_static_type(left_node, right_node)
+        key_ret=self.lower._cmp_static_type(left_node, right_node)
     );
     if release_operands {
         self._release_owned_operands(_cmp_left_orig, _cmp_right_orig, op="cmp_op");
@@ -1949,7 +1897,7 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
         } elif isinstance(operand.type, ir.IntType) {
-            if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
+            if self.lower._is_sized_node(nd) or self.lower._is_sized_node(nd.operand) {
                 return self._emit_checked_neg(operand);
             }
             return self.builder.neg(operand, name="neg");
@@ -2275,8 +2223,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         return _c_val;
     }
     if nd.is_attr {
-        target_name = self._get_name(nd.target);
-        right_name = self._get_name(nd.right);
+        target_name = self.lower._get_name(nd.target);
+        right_name = self.lower._get_name(nd.right);
 
         if target_name is not None
             and right_name is not None
@@ -2297,7 +2245,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 return _cls_of;
             }
         }
-        if self._module_class_name(nd) is not None {
+        if self.lower._module_class_name(nd) is not None {
             _cls_ref = self._codegen_class_ref(nd);
             if _cls_ref is not None {
                 return _cls_ref;
@@ -2309,53 +2257,34 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             return _cf_member;
         }
 
-        if right_name == "value" or right_name == "name" {
-            import from jaclang.compiler.passes.layout_pass {
-                class_form_enum_member,
-                class_form_enum_scalar
-            }
-            _cf_owner = class_form_enum_member(
-                nd.target.type if isinstance(nd.target, uni.Expr) else None
-            );
-            if _cf_owner is not None {
-                if right_name == "value" {
-                    return self._codegen_class_form_enum_member(nd.target);
-                }
-                return self._make_global_string(
-                    _cf_owner[2], name_prefix=".cfenum.name"
-                );
-            }
-            if right_name == "value"
-                and isinstance(nd.target, uni.Expr)
-                and class_form_enum_scalar(nd.target.type) is not None {
-                return self._codegen_expr(nd.target);
-            }
+        (_cf_kind, _cf_name) = self.lower._atom_trailer_class_form_enum(nd, right_name);
+        if _cf_kind == "member" {
+            return self._codegen_class_form_enum_member(nd.target);
+        }
+        if _cf_kind == "name" {
+            _cf_text: any = _cf_name;
+            return self._make_global_string(_cf_text, name_prefix=".cfenum.name");
+        }
+        if _cf_kind == "scalar" {
+            return self._codegen_expr(nd.target);
         }
 
         if (right_name == "value" or right_name == "name")
             and isinstance(nd.target, uni.AtomTrailer)
             and nd.target.is_attr {
-            mem_enum = self._get_name(nd.target.target);
-            mem_name = self._get_name(nd.target.right);
+            mem_enum = self.lower._get_name(nd.target.target);
+            mem_name = self.lower._get_name(nd.target.right);
 
             if mem_enum is not None
                 and mem_name is not None
                 and f"{mem_enum}.{mem_name}" not in self.enum_values {
-                _al_nd = nd.target.target;
-                if isinstance(_al_nd, uni.Name)
-                    and _al_nd.sym is not None
-                    and _al_nd.sym.decl is not None {
-                    _al_of = _al_nd.sym.decl.name_of;
-                    if _al_of is not None
-                        and isinstance(_al_of.parent, uni.ModuleItem)
-                        and isinstance(_al_of.parent.name, uni.Name) {
-                        _al_orig = _al_of.parent.name.value;
-                        if f"{_al_orig}.{mem_name}" not in self.enum_values {
-                            self._codegen_enum_layout(_al_orig, None);
-                        }
-                        if f"{_al_orig}.{mem_name}" in self.enum_values {
-                            mem_enum = _al_orig;
-                        }
+                _al_orig = self.lower._atom_trailer_alias_origin(nd.target.target);
+                if _al_orig is not None {
+                    if f"{_al_orig}.{mem_name}" not in self.enum_values {
+                        self._codegen_enum_layout(_al_orig, None);
+                    }
+                    if f"{_al_orig}.{mem_name}" in self.enum_values {
+                        mem_enum = _al_orig;
                     }
                 }
             }
@@ -2365,7 +2294,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 member_val: ir.Value | None = self.enum_values[
                     f"{mem_enum}.{mem_name}"
                 ];
-                if mem_enum in self.enum_string_values {
+                if mem_enum in self.lower.enum_string_values {
                     return self._wrap_enum_str(
                         self._codegen_enum_value_lookup(
                             mem_enum, member_val, use_name=(right_name == "name")
@@ -2390,10 +2319,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         }
         if right_name is not None and (right_name == "value" or right_name == "name") {
-            _re_tk = self._type_key_of(nd.target);
+            _re_tk = self.lower._atom_trailer_enum_key(nd);
             if _re_tk is not None {
-                _re_tk = _re_tk.replace(" ", "").split(".")[-1];
-                if _re_tk in self.enum_string_values {
+                if _re_tk in self.lower.enum_string_values {
                     _re_ord = self._codegen_expr(nd.target);
                     if _re_ord is not None {
                         return self._wrap_enum_str(
@@ -2407,30 +2335,15 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
-        if right_name is not None and (right_name == "value" or right_name == "name") {
-            _mt_tk = self._type_key_of(nd.target);
-            if _mt_tk is not None {
-                _mt_tk = _mt_tk.replace(" ", "");
-            }
-            if _mt_tk is not None and _mt_tk.startswith("type[") and "]." in _mt_tk {
-                _mt_cls = _mt_tk[5:_mt_tk.index("]")];
-                _mt_mem = _mt_tk.split("].", 1)[1];
-                if right_name == "name" {
-                    return self._make_global_string(_mt_mem);
-                }
-            }
+        _mt_mem = self.lower._atom_trailer_type_member_name(nd, right_name);
+        if _mt_mem is not None {
+            return self._make_global_string(_mt_mem);
         }
-        import from jaclang.compiler.symbol_utils { imported_module_name }
-        module_name = imported_module_name(nd.target);
-        if module_name is not None {
-            target_name = module_name;
-        }
+        (module_name, target_name) = self.lower._atom_trailer_imported_module(
+            nd, target_name
+        );
         if target_name is not None and right_name is not None {
-            if (
-                module_name == "sys"
-                and self._native_stdlib_modules
-                and "sys" in self._native_stdlib_modules
-            ) {
+            if self.lower._atom_trailer_native_stdlib_is(module_name, "sys") {
                 if right_name == "argv" {
                     return self._emit_sys_argv();
                 }
@@ -2450,11 +2363,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
 
-            if (
-                module_name == "os"
-                and self._native_stdlib_modules
-                and "os" in self._native_stdlib_modules
-            ) {
+            if self.lower._atom_trailer_native_stdlib_is(module_name, "os") {
                 _oc = self._emit_os_const(right_name);
                 if _oc is not None {
                     return _oc;
@@ -2463,7 +2372,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
 
             if (
                 module_name is not None
-                and module_name in self._native_module_imports
+                and module_name in self.lower._native_module_imports
                 and right_name in self.global_vars
             ) {
                 return self.builder.load(
@@ -2475,31 +2384,18 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
             }
-            if isinstance(nd.target, uni.Name)
-                and nd.target.sym is not None
-                and nd.target.sym.decl is not None {
-                _mv_of = nd.target.sym.decl.name_of;
-                if _mv_of is not None
-                    and isinstance(_mv_of.parent, uni.ModuleItem)
-                    and isinstance(_mv_of.parent.name, uni.Name) {
-                    _mv_orig = _mv_of.parent.name.value;
-                    _mv_full = f"{_mv_orig}.{right_name}";
-                    if _mv_full not in self.enum_values {
-                        self._codegen_enum_layout(_mv_orig, None);
-                    }
-                    if _mv_full in self.enum_values {
-                        return self.enum_values[_mv_full];
-                    }
+            _mv_orig = self.lower._atom_trailer_alias_origin(nd.target);
+            if _mv_orig is not None {
+                _mv_full = f"{_mv_orig}.{right_name}";
+                if _mv_full not in self.enum_values {
+                    self._codegen_enum_layout(_mv_orig, None);
+                }
+                if _mv_full in self.enum_values {
+                    return self.enum_values[_mv_full];
                 }
             }
-            _tk_alias = self._type_key_of(nd.target);
-            if _tk_alias is not None {
-                _tk_alias = _tk_alias.replace(" ", "");
-            }
-            if _tk_alias is not None
-                and _tk_alias.startswith("type[")
-                and _tk_alias.endswith("]") {
-                _real_cls = _tk_alias[5:-1];
+            _real_cls = self.lower._atom_trailer_type_alias_class(nd);
+            if _real_cls is not None {
                 _real_full = f"{_real_cls}.{right_name}";
                 if _real_full not in self.enum_values {
                     self._codegen_enum_layout(_real_cls, None);
@@ -2509,7 +2405,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
                 if _real_cls in self.struct_types
                     and _real_cls not in self.local_vars {
-                    for _rcn in self._mro_of(_real_cls) {
+                    for _rcn in self.lower._mro_of(_real_cls) {
                         _rsf = f"{_rcn}.{right_name}";
                         if _rsf in self.static_fields {
                             return self.builder.load(
@@ -2520,9 +2416,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
 
-            _sf_cls = self._arch_ref_key(nd.target) or target_name;
+            _sf_cls = self.lower._arch_ref_key(nd.target) or target_name;
             if (_sf_cls in self.struct_types and target_name not in self.local_vars) {
-                for _cn in self._mro_of(_sf_cls) {
+                for _cn in self.lower._mro_of(_sf_cls) {
                     _sf = f"{_cn}.{right_name}";
                     if _sf in self.static_fields {
                         return self.builder.load(
@@ -2533,7 +2429,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
 
             if (right_name == "value" or right_name == "name") {
-                enum_name = self._enum_name_of(nd.target);
+                enum_name = self.lower._enum_name_of(nd.target);
                 if enum_name is not None and enum_name in self.enum_types {
                     member_val = self._codegen_expr(nd.target);
                     if member_val is not None {
@@ -2568,7 +2464,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 )
                 and all(
                     self._accessor_slot_of(part, right_name, "property") is not None
-                        or right_name in self.struct_field_indices.get(part, {})
+                        or right_name in self.lower.struct_field_indices.get(part, {})
                     for part in _property_parts
                 ) {
                 return self._codegen_union_member(
@@ -2578,12 +2474,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             _fa_type_name = self._struct_name_of(nd.target);
             if _fa_type_name is not None {
                 type_name: str | None = _fa_type_name;
-                _fa_idx = self.struct_field_indices.get(type_name);
+                _fa_idx = self.lower.struct_field_indices.get(type_name);
                 _fa_get = self._accessor_slot_of(type_name, right_name, "property");
                 if (
                     _fa_get is None
                     and (_fa_idx is None or right_name not in _fa_idx)
-                    and self._pyb_base_of(type_name) is not None
+                    and self.lower._pyb_base_of(type_name) is not None
                 ) {
                     return self._codegen_pyb_field_load(
                         nd, self._opt_unwrap_attr(obj_val), right_name
@@ -2593,7 +2489,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 type_name = self._infer_type_name(obj_val);
             }
             if type_name is not None
-                and right_name not in self.struct_field_indices.get(type_name, {})
+                and right_name not in self.lower.struct_field_indices.get(type_name, {})
                 and self._accessor_slot_of(type_name, right_name, "property") is None
                 and self._resolve_method(type_name, right_name) is not None {
                 bound = self._emit_bound_method_value(
@@ -2617,7 +2513,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr and target_name is not None and right_name is not None {
         _slice_field_map: dict[(str, int)] = {"start": 0, "stop": 1, "step": 2};
         if (
-            self._type_key_of(nd.target) == "slice" and right_name in _slice_field_map
+            self.lower._type_key_of(nd.target) == "slice" and right_name in _slice_field_map
         ) {
             obj_val = self._codegen_expr(nd.target);
             if obj_val is not None {
@@ -2636,7 +2532,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         and isinstance(nd.right, uni.IndexSlice)
         and nd.right.slices
         and nd.right.is_range {
-        target_name = self._get_name(nd.target);
+        target_name = self.lower._get_name(nd.target);
         slices: list[uni.Slice] = nd.right.slices or [];
         if slices {
             s = slices[0];
@@ -2698,14 +2594,14 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             E5092,
             node_override=nd,
             kind="slice",
-            name=self._get_name(nd.target) or "<expr>",
+            name=self.lower._get_name(nd.target) or "<expr>",
             help_text="Only lists, strings and bytes slice natively; a slice of any other receiver (a tuple, an untyped value, an object) has no native lowering. Convert the receiver to a list first, or move this code to a @sv/Python context."
         );
         return None;
     }
 
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) and nd.right.slices {
-        target_name = self._get_name(nd.target);
+        target_name = self.lower._get_name(nd.target);
 
         _idx_list_spec = self._list_spec_of(nd.target)
             if target_name is not None
@@ -2750,12 +2646,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     if _didx_val is not None {
                         _ddata = self.builder.extract_value(
                             target_val,
-                            0 if self._nogc_headerless() else 1,
+                            0 if self.lower._nogc_headerless() else 1,
                             name="chr.data"
                         );
                         _dlen = self.builder.extract_value(
                             target_val,
-                            1 if self._nogc_headerless() else 2,
+                            1 if self.lower._nogc_headerless() else 2,
                             name="chr.len"
                         );
                         result = self._codegen_string_index(
@@ -2824,7 +2720,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 );
                             }
                             if idx_val is not None {
-                                _sub_tk = self._type_key_of(nd.target) or "unknown";
+                                _sub_tk = self.lower._type_key_of(nd.target) or "unknown";
                                 self.emit(
                                     E5092,
                                     node_override=nd.target,
@@ -2969,9 +2865,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         E5092,
         node_override=nd,
         kind="attribute access" if nd.is_attr else "subscript/index access",
-        name=(self._get_name(nd.right) or "<expr>")
+        name=(self.lower._get_name(nd.right) or "<expr>")
             if nd.is_attr
-            else (self._get_name(nd.target) or "<expr>"),
+            else (self.lower._get_name(nd.target) or "<expr>"),
         help_text="The receiver's type could not be resolved to a native struct/container layout, so the access lowered to no code. Give the value a concrete native type, or move this code to a @sv/Python context."
     );
     return None;
@@ -2992,15 +2888,3 @@ impl NaIRGenPass._infer_dict_type(val: ir.Value) -> (tuple[str, str] | None) {
     return None;
 }
 
-impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
-    sym = nd.sym;
-    if sym is None {
-        return None;
-    }
-    owner = sym.decl.name_of;
-    if not (isinstance(owner, uni.TypeParam) and owner.is_comptime) {
-        return None;
-    }
-    arch = owner.find_parent_of_type(uni.Archetype);
-    return self._arch_key(arch) if arch is not None else None;
-}

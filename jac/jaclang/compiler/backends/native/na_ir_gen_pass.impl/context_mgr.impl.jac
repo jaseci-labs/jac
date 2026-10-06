@@ -24,7 +24,7 @@ impl NaIRGenPass._codegen_with_recursive(
     i32 = ir.IntType(32);
     func = self.builder.function;
 
-    _cm_callee = self._ctxmgr_callee(expr_item.expr);
+    _cm_callee = self.lower._ctxmgr_callee(expr_item.expr);
     if _cm_callee is not None {
         self._codegen_with_ctxmgr(exprs, idx, body, _cm_callee);
         return;
@@ -66,7 +66,7 @@ impl NaIRGenPass._codegen_with_recursive(
     self._emit_slot_rebind(owner, cm_val, owned=self._is_owned(cm_val), op="ctx_owner");
     self.builder.store(cm_val, owner);
     self.local_vars[owner_name] = owner;
-    if self._nogc_headerless() and not self._is_owned(cm_val) {
+    if self.lower._nogc_headerless() and not self._is_owned(cm_val) {
         self.borrowed_vars.add(owner_name);
     }
 
@@ -77,7 +77,7 @@ impl NaIRGenPass._codegen_with_recursive(
     }
     enter_owned = type_name not in ("File", "BinaryFile");
     linked = self._linked_fn_decls.get(id(enter_fn));
-    if self._nogc_headerless() and linked is not None {
+    if self.lower._nogc_headerless() and linked is not None {
         signature = linked[1].signature;
         if isinstance(signature, uni.FuncSignature) {
             enter_owned = not type_tag_borrows(signature.return_type);
@@ -88,7 +88,7 @@ impl NaIRGenPass._codegen_with_recursive(
         self._mark_reference_owned(enter_result);
     }
     self._emit_pending_error_check();
-    alias_name = self._get_name(expr_item.alias)
+    alias_name = self.lower._get_name(expr_item.alias)
         if expr_item.alias is not None
         else None;
     if alias_name is not None {
@@ -100,7 +100,7 @@ impl NaIRGenPass._codegen_with_recursive(
         }
         self.builder.store(enter_result, alloca);
         self.local_vars[alias_name] = alloca;
-        if self._nogc_headerless() and not enter_owned {
+        if self.lower._nogc_headerless() and not enter_owned {
             self.borrowed_vars.add(alias_name);
         }
     } else {
@@ -218,16 +218,6 @@ impl NaIRGenPass._emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Va
     return truthy;
 }
 
-impl NaIRGenPass._ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | None) {
-    """The `@contextmanager` ability a `with` item calls, if it calls one.""";
-    if not isinstance(expr, uni.FuncCall) {
-        return None;
-    }
-    import from jaclang.compiler.erased_imports { contextmanager_ability }
-    _callee = self._callee_ability_of(expr);
-    return _callee if contextmanager_ability(_callee) else None;
-}
-
 impl NaIRGenPass._codegen_with_ctxmgr(
     exprs: Sequence[uni.ExprAsItem],
     idx: int,
@@ -307,7 +297,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
         "RuntimeError",
         "generator didn't yield"
     );
-    alias_name = self._get_name(expr_item.alias)
+    alias_name = self.lower._get_name(expr_item.alias)
         if expr_item.alias is not None
         else None;
     if alias_name is not None {

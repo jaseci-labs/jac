@@ -254,9 +254,35 @@ test "no positional intrinsic name matching inside _codegen_call" {
     assert start >= 0 , "_codegen_call impl not found";
     nxt = source.find("\nimpl ", start + len(marker));
     block = source[start:nxt] if nxt >= 0 else source[start:];
-    assert block.count("INTRINSIC_REGISTRY.get(") == 1 , (
+    assert block.count("self.lower._call_intrinsic_entry(") == 1 , (
         "_codegen_call must consult the intrinsic registry through exactly "
         "one lookup"
+    );
+    assert "INTRINSIC_REGISTRY" not in block , (
+        "_codegen_call reaches the intrinsic registry only through the "
+        "lowering analysis"
+    );
+    lower_impl = os.path.join(
+        os.path.dirname(os.path.dirname(calls_impl)),
+        "na_lower_analysis_pass.impl",
+        "calls.impl.jac"
+    );
+    with open(lower_impl, "r", encoding="utf-8") as f {
+        lower_source = f.read();
+    }
+    assert "RC_INTRINSIC_NAMES" not in lower_source , (
+        "the RC intrinsic pre-classification name set must stay deleted; "
+        "INTRINSIC_REGISTRY is the sole authority"
+    );
+    entry_marker = "impl NativeLowering._call_intrinsic_entry(";
+    entry_start = lower_source.find(entry_marker);
+    assert entry_start >= 0 , "_call_intrinsic_entry impl not found";
+    entry_nxt = lower_source.find("\nimpl ", entry_start + len(entry_marker));
+    entry_block = lower_source[entry_start:entry_nxt]
+        if entry_nxt >= 0
+        else lower_source[entry_start:];
+    assert entry_block.count("INTRINSIC_REGISTRY.get(") == 1 , (
+        "the lookup _codegen_call relies on must be a single registry get"
     );
     cmp_pats = [
         re.compile(r"(==|!=|\bnot\s+in\b|\bin\b)\s*\(?\s*[\"']__"),
@@ -345,7 +371,8 @@ test "native type identity never reads walk-time registration maps" {
     # -- that a touch really does refuse and demote -- is in
     # `test_native_walk_order.jac`.
     opaque_ok = [
-        "na_ir_gen_pass.jac",
+        "na_lower_analysis_pass.jac",
+        os.path.join("na_lower_analysis_pass.impl", "objects.impl.jac"),
         os.path.join("na_ir_gen_pass.impl", "objects.impl.jac")
     ];
     offenders: list[str] = [];
@@ -383,11 +410,13 @@ test "native type identity never reads walk-time registration maps" {
         "is only honest where it is refused):\n"
         + "\n".join(offenders)
     );
-    objects_impl = os.path.join(impl_dir, "objects.impl.jac");
+    objects_impl = os.path.join(
+        native_dir, "na_lower_analysis_pass.impl", "objects.impl.jac"
+    );
     with open(objects_impl, "r", encoding="utf-8") as f {
         objects_src = f.read();
     }
-    refuse_marker = "impl NaIRGenPass._refuse_opaque_field(";
+    refuse_marker = "impl NativeLowering._refuse_opaque_field(";
     r_start = objects_src.find(refuse_marker);
     assert r_start >= 0 , (
         "_refuse_opaque_field impl not found; the erased-field table has no "

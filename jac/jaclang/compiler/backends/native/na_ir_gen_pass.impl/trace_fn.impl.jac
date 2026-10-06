@@ -1,29 +1,9 @@
 import from jaclang.compiler.backends.native.llvm { ir }
 import from jaclang.compiler.frontend.diagnostics { E9002 }
 
-impl NaIRGenPass._require_trace_fn(
-    type_name: str, participates: bool, has_trace: bool
-) -> None {
-    if self._gc_mode() != "cycles" {
-        return;
-    }
-    if participates and not has_trace {
-        self.emit(
-            E9002,
-            node_override=self.module,
-            details=(
-                f"type '{type_name}' has managed reference fields but no cycle "
-                f"trace function; it cannot safely participate in cycle "
-                f"collection (a cycle through it would leak). This is a native "
-                f"code-generation invariant violation."
-            )
-        );
-    }
-}
-
 impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
     field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
+    field_indices = self.lower.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
     for (fname, ftype) in field_types.items() {
         if self._is_reference_type(ftype)
@@ -36,14 +16,14 @@ impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
 }
 
 impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
-    if self._gc_mode() != "cycles" {
+    if self.lower._gc_mode() != "cycles" {
         return;
     }
     if arch_name in self.struct_trace_fns {
         return;
     }
 
-    if self._arch_is_acyclic(arch_name) {
+    if self.lower._arch_is_acyclic(arch_name) {
         return;
     }
     struct_type = self.struct_types.get(arch_name);
@@ -51,7 +31,7 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
         return;
     }
     field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
+    field_indices = self.lower.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
 
     ptr_fields = [];

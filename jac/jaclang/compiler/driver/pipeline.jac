@@ -60,6 +60,17 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              ),
              ()
          ),
+         'NaLowerAnalysisPass': PassContract(
+             (
+                 AnalysisFact.TYPE_OF,
+                 AnalysisFact.CFG_SUCC,
+                 AnalysisFact.OWNERSHIP,
+                 AnalysisFact.CAPABILITY,
+                 AnalysisFact.RC_FACTS,
+
+             ),
+             (AnalysisFact.NATIVE_LOWERING, )
+         ),
          'NativeCapabilityCheckPass': PassContract((), (AnalysisFact.CAPABILITY, )),
          'OwnershipCheckPass': PassContract(
              (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ), (AnalysisFact.OWNERSHIP, )

@@ -16,38 +16,16 @@ impl NaIRGenPass._quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type |
     }
 }
 
-impl NaIRGenPass._glob_native_use_exists(target: uni.UniNode) -> bool {
-    sym = target.sym if isinstance(target, uni.NameAtom) else None;
-    if sym is None {
-        return True;
-    }
-    for use in sym.uses {
-        _m = use.find_parent_of_type(uni.Module);
-        if _m is None {
-            continue;
-        }
-        if _m is self.module or _m.decided_codespace == 'native' {
-            return True;
-        }
-    }
-    return False;
-}
-
 impl NaIRGenPass._register_globals(module: uni.Module) -> None {
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if isinstance(stmt, uni.GlobalVars) {
-            self._codegen_global_vars(stmt);
-        }
+    for stmt in self.lower._register_globals_decls(module) {
+        self._codegen_global_vars(stmt);
     }
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
     candidates: dict[str, ir.Type] = {};
     dropped: set = set();
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if not isinstance(stmt, uni.ModuleCode) {
-            continue;
-        }
+    for stmt in self.lower._register_entry_globals_code(module) {
         for assign in stmt.get_all_sub_nodes(typ=uni.Assignment) {
             if assign.aug_op is not None {
                 continue;
@@ -56,14 +34,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
                 if isinstance(assign.target, (list, tuple))
                 else [(assign.target)];
             for target in targets {
-                if (
-                    not isinstance(target, uni.NameAtom)
-                    or target.sym is None
-                    or target.sym.storage != uni.SymbolStorage.MODULE_GLOBAL
-                ) {
-                    continue;
-                }
-                var_name = self._get_name(target);
+                var_name = self.lower._register_entry_globals_name(target);
                 if (
                     var_name is None
                     or var_name in self.global_vars
@@ -119,14 +90,14 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
 
 impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     for assign in nd.assignments {
-        if ModuleFacts.is_erased_type_decl(assign) {
+        if self.lower._global_vars_erased(assign) {
             continue;
         }
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
             else [(assign.target)];
         for target in targets {
-            var_name = self._get_name(target);
+            var_name = self.lower._get_name(target);
             if var_name is None {
                 continue;
             }
@@ -137,7 +108,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 if (
                     _widened is None
                     and self._quiet_glob_type(assign.type_tag) is None
-                    and not self._glob_native_use_exists(target)
+                    and not self.lower._glob_native_use_exists(target)
                 ) {
                     continue;
                 }
@@ -151,7 +122,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
 
             _is_priv = bool(nd.access and nd.access.tag.name == Tok.KW_PRIV);
             _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
-            _symbol = self._symbol_for(var_name, None, _is_pub);
+            _symbol = self.lower._symbol_for(var_name, None, _is_pub);
             try {
                 global_var = ir.GlobalVariable(
                     self.llvm_module, var_type, name=_symbol
@@ -171,7 +142,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 global_var.linkage = "internal";
             } else {
                 global_var.linkage = "";
-                self._record_export(var_name, _symbol, "global", _is_pub);
+                self.lower._record_export(var_name, _symbol, "global", _is_pub);
             }
 
             if _is_pub and self.module?.gen and _symbol.isidentifier() {
@@ -212,21 +183,21 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
     }
 
     if isinstance(value_node, uni.FuncCall) {
-        call_name = self._arch_ref_key(value_node.target)
-            or self._get_name(value_node.target);
+        call_name = self.lower._arch_ref_key(value_node.target)
+            or self.lower._get_name(value_node.target);
         if call_name is not None and call_name in self.struct_types {
             return self.struct_types[call_name].as_pointer();
         }
     }
 
     if isinstance(value_node, uni.AtomTrailer) {
-        target_name = self._arch_ref_key(value_node.target)
-            or self._get_name(value_node.target);
+        target_name = self.lower._arch_ref_key(value_node.target)
+            or self.lower._get_name(value_node.target);
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
         }
 
-        right_name = self._get_name(value_node.right);
+        right_name = self.lower._get_name(value_node.right);
         if target_name == "sys" and right_name == "argv" {
             i8p = ir.IntType(8).as_pointer();
             self._emit_list_helpers("ptr", i8p);
@@ -281,9 +252,7 @@ impl NaIRGenPass._codegen_const_expr(
 }
 
 impl NaIRGenPass._register_enums(module: uni.Module) -> None {
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if isinstance(stmt, uni.Enum) {
-            self._codegen_enum(stmt);
-        }
+    for stmt in self.lower._register_enums_decls(module) {
+        self._codegen_enum(stmt);
     }
 }

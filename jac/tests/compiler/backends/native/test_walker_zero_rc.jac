@@ -22,9 +22,11 @@ glob FIXTURE = os.path.join(
 
 test "uncached walker builds preserve the kernel string ABI" {
     import from jaclang.cli.commands.native_build { native_build }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.na_lower_analysis_pass {
+        NativeLowering
+    }
     import from unittest.mock { patch }
-    load_kernel: any = NaIRGenPass._load_native_unit_module;
+    load_kernel: any = NativeLowering._load_native_unit_module;
 
     def without_cached_layout(lowering: any, path: str) -> any {
         unit = load_kernel(lowering, path);
@@ -45,7 +47,7 @@ test "uncached walker builds preserve the kernel string ABI" {
     with tempfile.TemporaryDirectory() as tmp {
         output = os.path.join(tmp, 'uncached_walker');
         with patch.object(
-            NaIRGenPass, '_load_native_unit_module', without_cached_layout
+            NativeLowering, '_load_native_unit_module', without_cached_layout
         ) {
             assert native_build(FIXTURE, output=output, memory='nogc', no_ir_cache=True)
                 == 0;

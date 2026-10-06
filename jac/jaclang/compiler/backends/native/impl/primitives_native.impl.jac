@@ -3069,7 +3069,7 @@ impl NativeListEmitter.emit_clear(
 
     if helpers is not None
         and p._elem_kind(helpers["elem_type"]) != "raw"
-        and not p._nogc_headerless() {
+        and not p.lower._nogc_headerless() {
         _cur_len_c = b.load(len_ptr, name="clr_len");
         _data_pp_c = b.gep(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr_data_pp"
@@ -3355,15 +3355,15 @@ impl NativeListEmitter.emit_sort(
 
     cj = p._cast_to_list_elem(b, cj, cmp_type, "sort.cj");
     cj1 = p._cast_to_list_elem(b, cj1, cmp_type, "sort.cj1");
-    _key_ret = p._sort_key_return_type(_key_node) if key_fn is not None else None;
-    _key_orderable = p._sort_key_orderable(_key_ret);
+    _key_ret = p.lower._sort_key_return_type(_key_node) if key_fn is not None else None;
+    _key_orderable = p.lower._sort_key_orderable(_key_ret);
     if _key_orderable is False
         or (_key_orderable is None and not p._sort_key_supported(cmp_type)) {
         p.ctx.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
         return None;
     }
     _cmp_float = isinstance(cmp_type, (ir.DoubleType, ir.FloatType));
-    _cmp_unsigned = key_fn is not None and p._sort_key_unsigned(_key_node);
+    _cmp_unsigned = key_fn is not None and p.lower._sort_key_unsigned(_key_node);
     if _cmp_float {
         (cj, cj1) = p._promote_to_float(cj, cj1, unsigned=_cmp_unsigned);
     }
@@ -3450,7 +3450,7 @@ impl NativeListEmitter._emit_value_sort(
     checked_elem: (TypeBase | None) = None;
     for source_node in (ctx.receiver_node, ctx.call_node) {
         elem_args = (
-            p._agg_key_args(p._flow_narrowed_type_of(source_node), "list")
+            p.lower._agg_key_args(p.lower._flow_narrowed_type_of(source_node), "list")
                 if source_node is not None
                 else None
         );
@@ -3459,9 +3459,9 @@ impl NativeListEmitter._emit_value_sort(
             break;
         }
     }
-    orderable = p._sort_key_orderable(checked_elem);
+    orderable = p.lower._sort_key_orderable(checked_elem);
     compare_as_str = isinstance(elem_type, ir.PointerType)
-        and (orderable is None or p._container_class_name(checked_elem) == "str");
+        and (orderable is None or p.lower._container_class_name(checked_elem) == "str");
     if isinstance(elem_type, ir.PointerType) and orderable is False {
         p.ctx.emit(
             E5092,
@@ -3585,8 +3585,8 @@ impl NativeListEmitter._emit_value_sort(
         if collection is None and ctx.arg_nodes {
             collection = ctx.arg_nodes[0];
         }
-        elements = p._nogc_type_arg_mangles(collection);
-        shape = p._scalar_shape_named(elements[0] if elements else ctx.type_key);
+        elements = p.lower._nogc_type_arg_mangles(collection);
+        shape = p.lower._scalar_shape_named(elements[0] if elements else ctx.type_key);
         unsigned = (elements and elements[0] == "bool")
             or (shape is not None and not shape.signed);
         before = b.icmp_unsigned("<", c, a) if unsigned else b.icmp_signed("<", c, a);
@@ -4039,7 +4039,7 @@ impl NativeDictEmitter.emit_popitem(
     last_key_out: ir.Value = last_key;
     if isinstance(key_type, ir.PointerType) {
         _i8p_pi = ir.IntType(8).as_pointer();
-        if p._nogc_headerless() {
+        if p.lower._nogc_headerless() {
             if (
                 isinstance(key_type.pointee, ir.IntType) and key_type.pointee.width == 8
             ) {
@@ -4248,7 +4248,7 @@ impl NativeSetEmitter.emit_add(
 
     if isinstance(val.type, ir.PointerType)
         and p._is_owned(val)
-        and not p._nogc_headerless() {
+        and not p.lower._nogc_headerless() {
         _b_sa = get_builder(p);
         _i8p_sa = ir.IntType(8).as_pointer();
         _rc_sa = _b_sa.bitcast(val, _i8p_sa, name="sadd_own_rel_cast");
@@ -4369,7 +4369,7 @@ impl NativeSetEmitter.emit_pop(
     last_val = b.call(helpers["get"], [target, last_idx], name="spop.val");
     out_val: ir.Value = last_val;
     if isinstance(elem_type, ir.PointerType) {
-        if p._nogc_headerless() {
+        if p.lower._nogc_headerless() {
             if isinstance(elem_type.pointee, ir.IntType)
                 and elem_type.pointee.width == 8 {
                 _sdup = p._get_or_declare_extern("strdup", i8p, [i8p]);
@@ -5044,7 +5044,7 @@ impl NativeBuiltinEmitter.emit_abs(
         if arg_val.type.width == 1 {
             return b.zext(arg_val, ir.IntType(64), name="abs.bool");
         }
-        if ctx.arg_nodes and ctx.pass_ref._is_sized_node(ctx.arg_nodes[0]) {
+        if ctx.arg_nodes and ctx.pass_ref.lower._is_sized_node(ctx.arg_nodes[0]) {
             return ctx.pass_ref._emit_checked_abs(arg_val);
         }
         _zero = ir.Constant(arg_val.type, 0);
@@ -5206,10 +5206,10 @@ impl NativeBuiltinEmitter._emit_extreme(
     unsigned = ty == ir.IntType(1);
     if ctx.arg_nodes {
         if helpers is not None {
-            elements = p._nogc_type_arg_mangles(ctx.arg_nodes[0]);
+            elements = p.lower._nogc_type_arg_mangles(ctx.arg_nodes[0]);
             unsigned = unsigned or bool(elements and elements[0].startswith("u"));
         } else {
-            signs = [p._is_unsigned_node(nd) for nd in ctx.arg_nodes];
+            signs = [p.lower._is_unsigned_node(nd) for nd in ctx.arg_nodes];
             if any(signs) and not all(signs) {
                 return None;
             }
@@ -5805,7 +5805,7 @@ impl NativeBuiltinEmitter.emit_str(
         "snprintf", ir.IntType(32), [i8p, ir.IntType(64), i8p], var_arg=True
     );
 
-    unsigned = bool(ctx.arg_nodes) and p._is_unsigned_node(ctx.arg_nodes[0]);
+    unsigned = bool(ctx.arg_nodes) and p.lower._is_unsigned_node(ctx.arg_nodes[0]);
     if isinstance(arg_val.type, ir.IntType) and arg_val.type.width < 64 {
         arg_val = b.zext(arg_val, ir.IntType(64))
             if unsigned
@@ -5838,7 +5838,7 @@ impl NativeBuiltinEmitter.emit_int(
             return arg_val;
         }
         _src_node = ctx.arg_nodes[0] if ctx.arg_nodes else None;
-        if arg_val.type.width > 1 and not p._is_unsigned_node(_src_node) {
+        if arg_val.type.width > 1 and not p.lower._is_unsigned_node(_src_node) {
             return b.sext(arg_val, i64, name="int.from.int");
         }
         return b.zext(arg_val, i64, name="int.from.int");
@@ -5971,7 +5971,7 @@ impl NativeBuiltinEmitter.emit_float(
 
     if isinstance(arg_val.type, ir.IntType) {
         _src_node = ctx.arg_nodes[0] if ctx.arg_nodes else None;
-        if arg_val.type.width == 1 or p._is_unsigned_node(_src_node) {
+        if arg_val.type.width == 1 or p.lower._is_unsigned_node(_src_node) {
             return b.uitofp(arg_val, ir.DoubleType(), name="float.from.uint");
         }
         return b.sitofp(arg_val, ir.DoubleType(), name="float.from.int");
@@ -6052,8 +6052,8 @@ impl NativeBuiltinEmitter.emit_list(
             return None;
         }
         result = sequence[0];
-        if ctx.call_node is not None and not p._container_is_view(ctx.call_node) {
-            p._nogc_stamp_elem_drops(result, p._nogc_type_arg_mangles(ctx.call_node));
+        if ctx.call_node is not None and not p.lower._container_is_view(ctx.call_node) {
+            p._nogc_stamp_elem_drops(result, p.lower._nogc_type_arg_mangles(ctx.call_node));
         }
         return result;
     }

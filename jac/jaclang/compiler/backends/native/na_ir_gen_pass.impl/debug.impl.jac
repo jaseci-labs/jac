@@ -3,11 +3,6 @@ import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import os;
 import sys;
 
-impl NaIRGenPass._na_debug_on -> bool {
-    _opts = self.prog.options;
-    return _opts is not None and bool(_opts.na_debug);
-}
-
 impl NaIRGenPass._attach_di_subprogram(
     func: ir.Function, name: str, line: int
 ) -> None {

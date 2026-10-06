@@ -9,7 +9,7 @@ impl NaIRGenPass._clib_struct_has_fn_ptr(name: str) -> bool {
 }
 
 impl NaIRGenPass._clib_detect_vtable_structs -> None {
-    for name in self.clib_struct_names {
+    for name in self.lower.clib_struct_names {
         if name not in self.clib_vtable_structs
             and self._clib_struct_has_fn_ptr(name) {
             self.clib_vtable_structs.add(name);

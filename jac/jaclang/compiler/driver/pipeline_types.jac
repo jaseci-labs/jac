@@ -18,6 +18,7 @@ enum AnalysisFact(StrEnum) {
     CODESPACE_PULL = 'codespace-pull',
     COMPTIME = 'comptime',
     FROZEN = 'frozen',
+    NATIVE_LOWERING = 'native-lowering',
     OWNERSHIP = 'ownership',
     PORTABILITY = 'portability',
     RC_FACTS = 'rc-facts',

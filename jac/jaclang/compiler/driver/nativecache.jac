@@ -830,8 +830,12 @@ obj NativeBuildSession {
             set_effective_default_codespace("native");
             import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
             import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+            import from jaclang.compiler.backends.native.na_lower_analysis_pass {
+                NaLowerAnalysisPass
+            }
             completed = self.prog.analysis.completed_passes.get(id(mod));
             if completed is not None {
+                completed.discard("NaLowerAnalysisPass");
                 completed.discard("NaIRGenPass");
                 completed.discard("NativeCompilePass");
             }
@@ -845,7 +849,9 @@ obj NativeBuildSession {
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;
             started = time.perf_counter();
-            self.prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
+            self.prog.run_schedule(
+                mod, [RcFactsPass, NaLowerAnalysisPass, NaIRGenPass]
+            );
             self.registry._timed("NATIVE_LOWER", started);
             self.registry._event("native_unit_lower");
             if len(self.prog.errors_had) > errors_before

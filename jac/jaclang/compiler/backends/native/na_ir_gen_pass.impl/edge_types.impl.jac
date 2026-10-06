@@ -7,13 +7,9 @@ impl NaIRGenPass._osp_static_edge_name(expr: uni.UniNode) -> (str | None) {
         or expr.value in self.global_vars {
         return None;
     }
-    name = self._arch_ref_key(expr) or expr.value;
+    name = self.lower._arch_ref_key(expr) or expr.value;
     model = self.module.gen.native_osp_model;
     return name if model is not None and model.arch_kind.get(name) == "edge" else None;
-}
-
-impl NaIRGenPass._osp_edge_class_name(expr: uni.UniNode) -> (str | None) {
-    return self._class_expr_bound(expr, unbounded="Edge");
 }
 
 impl NaIRGenPass._osp_edge_tag(
@@ -46,10 +42,7 @@ impl NaIRGenPass._osp_edge_tag(
 impl NaIRGenPass._osp_edge_descriptor(
     expr: uni.UniNode, nd: uni.UniNode
 ) -> (ir.Value | None) {
-    if self._osp_edge_class_name(expr) is None {
-        self.emit(
-            E5092, node_override=nd, kind="edge type", name="non-class expression"
-        );
+    if not self.lower._osp_edge_descriptor_is_class(expr, nd) {
         return None;
     }
     lookup = self.func_symtab.get("osp_edge_type");
@@ -59,7 +52,7 @@ impl NaIRGenPass._osp_edge_descriptor(
             E5092,
             node_override=nd,
             kind="edge type",
-            name=self._get_name(expr) or "expression"
+            name=self.lower._get_name(expr) or "expression"
         );
         return None;
     }
@@ -102,7 +95,7 @@ impl NaIRGenPass._emit_osp_edge_factories -> None {
         }
         state = self._enter_function(fn);
         try {
-            arch = self.arch_ast_map.get(name);
+            arch = self.lower.arch_ast_map.get(name);
             constructible = arch is not None and self._demoted_init_of(name) is None;
             init_params = self._arch_init_params_of(name);
             if init_params is not None {

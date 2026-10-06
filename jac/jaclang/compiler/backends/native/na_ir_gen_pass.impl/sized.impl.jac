@@ -18,48 +18,6 @@ def _signed_repr(width: int, value: int) -> int {
     return out;
 }
 
-impl NaIRGenPass._scalar_shape_named(name: (str | None)) -> (ScalarShape | None) {
-    if name is None {
-        return None;
-    }
-    return shape_of(name);
-}
-
-impl NaIRGenPass._scalar_shape(nd: (uni.UniNode | None)) -> (ScalarShape | None) {
-    while isinstance(nd, uni.CfgExpr) {
-        nd = nd.expr;
-    }
-    if not isinstance(nd, uni.Expr) {
-        return None;
-    }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    if nd.coerce_to is not None {
-        coerced = self._scalar_shape_named(nd.coerce_to);
-        if coerced is not None {
-            return coerced;
-        }
-    }
-    return self._scalar_shape_named(primitive_type_name_of(nd.type));
-}
-
-impl NaIRGenPass._is_signed_sized_node(nd: (uni.UniNode | None)) -> bool {
-    shape = self._scalar_shape(nd);
-    return shape is not None and shape.sized and not shape.is_float and shape.signed;
-}
-
-impl NaIRGenPass._is_unsigned_node(nd: (uni.UniNode | None)) -> bool {
-    shape = self._scalar_shape(nd);
-    return shape is not None
-        and shape.sized
-        and not shape.is_float
-        and not shape.signed;
-}
-
-impl NaIRGenPass._is_sized_node(nd: (uni.UniNode | None)) -> bool {
-    shape = self._scalar_shape(nd);
-    return shape is not None and shape.sized;
-}
-
 impl NaIRGenPass._scalar_llvm(shape: ScalarShape) -> ir.Type {
     if shape.is_float {
         return ir.FloatType() if shape.width == 32 else ir.DoubleType();
@@ -104,7 +62,7 @@ impl NaIRGenPass._convert_scalar(
 
 impl NaIRGenPass._lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value {
     import from jaclang.compiler.types.type_utils { primitive_type_name_of }
-    dst = self._scalar_shape_named(nd.coerce_to);
+    dst = self.lower._scalar_shape_named(nd.coerce_to);
     if dst is None {
         return val;
     }
@@ -115,7 +73,7 @@ impl NaIRGenPass._lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value {
         }
         return ir.Constant(dst_ty, float(val.constant));
     }
-    src = self._scalar_shape_named(primitive_type_name_of(nd.type));
+    src = self.lower._scalar_shape_named(primitive_type_name_of(nd.type));
     if src is None {
         if isinstance(val.type, ir.IntType) {
             src = shape_of("bool" if self._int_width_of(val) == 1 else "int");
@@ -215,18 +173,16 @@ impl NaIRGenPass._emit_wrap_to(
 }
 
 impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    dst = self._scalar_shape_named(name);
-    params: Sequence[any] = nd.params or [];
-    if dst is None or len(params) != 1 {
-        self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
+    _operand = self.lower._sized_cast_operand(nd, name);
+    if _operand is None {
         return None;
     }
-    arg = params[0];
+    (dst, arg) = _operand;
     val = self._coerce_narrowed_arg(arg, self._codegen_expr(arg));
     if val is None {
         return None;
     }
-    src = self._scalar_shape(arg);
+    src = self.lower._scalar_shape(arg);
     if src is None {
         if isinstance(val.type, ir.IntType) {
             src = shape_of("bool" if self._int_width_of(val) == 1 else "int");
@@ -249,18 +205,16 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
 }
 
 impl NaIRGenPass._codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    dst = self._scalar_shape_named(name);
-    params: Sequence[any] = nd.params or [];
-    if dst is None or dst.is_float or len(params) != 1 {
-        self.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
+    _operand = self.lower._sized_wrap_operand(nd, name);
+    if _operand is None {
         return None;
     }
-    arg = params[0];
+    (dst, arg) = _operand;
     val = self._codegen_expr(arg);
     if val is None {
         return None;
     }
-    src = self._scalar_shape(arg);
+    src = self.lower._scalar_shape(arg);
     if src is None {
         if isinstance(val.type, ir.IntType) {
             src = shape_of("bool" if self._int_width_of(val) == 1 else "int");
@@ -275,7 +229,7 @@ impl NaIRGenPass._codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value |
 }
 
 impl NaIRGenPass._codegen_sized_bound(name: str, attr: str) -> (ir.Value | None) {
-    shape = self._scalar_shape_named(name);
+    shape = self.lower._scalar_shape_named(name);
     if shape is None or shape.is_float or attr not in ("MIN", "MAX") {
         return None;
     }

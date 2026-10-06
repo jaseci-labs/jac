@@ -3,14 +3,14 @@ impl NaIRGenPass._ensure_fmt_kernel -> bool {
         return True;
     }
     import from jaclang.compiler.frontend.codeinfo { FMT_KERNEL_REL, kernel_unit_path }
-    kernel_mod = self._load_native_unit_module(kernel_unit_path(FMT_KERNEL_REL));
+    kernel_mod = self.lower._load_native_unit_module(kernel_unit_path(FMT_KERNEL_REL));
     if kernel_mod is None {
         return False;
     }
     self._walk_imported_module_abilities(kernel_mod, with_fn_verdicts=False);
     self._fmt_kernel_mod = kernel_mod;
     if kernel_mod?.loc and kernel_mod.loc.mod_path {
-        self._note_native_dep(kernel_mod.loc.mod_path);
+        self.lower._note_native_dep(kernel_mod.loc.mod_path);
     }
     return True;
 }

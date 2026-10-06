@@ -27,7 +27,9 @@ import jaclang;
 
 import from jaclang.runtime.runtime { JacRuntime }
 
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+import from jaclang.compiler.backends.native.na_lower_analysis_pass {
+    NativeLowering
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -270,14 +272,14 @@ test "the narrowed in-loop use keeps its tag check elided" {
 test "narrowing removes the tag check from the proven use" {
     # optional_scalar.jac lowers with and without narrowing, so the checked
     # unwrap the guard makes unnecessary is directly measurable as an A/B.
-    orig = NaIRGenPass._narrowed_flow_type;
-    _napatch: any = NaIRGenPass;
+    orig = NativeLowering._narrowed_flow_type;
+    _napatch: any = NativeLowering;
     _napatch._narrowed_flow_type = _no_narrowing;
     try {
         base_ir = compile_native_ir("optional_scalar.jac");
         base = str(base_ir.gen.llvm_ir);
     } finally {
-        NaIRGenPass._narrowed_flow_type = orig;
+        NativeLowering._narrowed_flow_type = orig;
     }
     narrowed_ir = compile_native_ir("optional_scalar.jac");
     narrowed = str(narrowed_ir.gen.llvm_ir);

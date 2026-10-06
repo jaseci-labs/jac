@@ -103,18 +103,18 @@ impl NaIRGenPass._codegen_tuple_unpack(
     }
 
     for target in targets {
-        if self._get_name(target) is None {
+        if self.lower._get_name(target) is None {
             return False;
         }
     }
 
-    rc_ok = (not is_value) or not self._nogc_headerless();
+    rc_ok = (not is_value) or not self.lower._nogc_headerless();
     pending_old: list[ir.Value] = [];
     for (i, target) in enumerate(targets) {
         if i >= len(struct_type.elements) {
             break;
         }
-        var_name = self._get_name(target);
+        var_name = self.lower._get_name(target);
         if var_name is None {
             return False;
         }
@@ -149,7 +149,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
         }
         if rc_ok
             and self._is_reference_type(alloca.pointee_type)
-            and self._gc_mode() != "none" {
+            and self.lower._gc_mode() != "none" {
             if moved or self._is_owned(stored) {
                 self.rc_ops_elided += 1;
             } else {
@@ -206,13 +206,13 @@ impl NaIRGenPass._tuple_slot_owns(
 ) -> bool {
     if not isinstance(slot_ty, ir.LiteralStructType)
         or not self._tuple_managed_fields(slot_ty)
-        or self._nogc_headerless()
-        or self._gc_mode() == "none"
+        or self.lower._nogc_headerless()
+        or self.lower._gc_mode() == "none"
         or var_name in self.param_vars
         or var_name in self.borrowed_vars
-        or var_name in self.closure_cell_vars
+        or var_name in self.lower.closure_cell_vars
         or var_name in self.closure_cell_handles
-        or var_name in self.region_handle_vars
+        or var_name in self.lower.region_handle_vars
         or (
             self._gen_ctx is not None
             and self.builder.function is self._gen_ctx.resume_fn
@@ -220,20 +220,7 @@ impl NaIRGenPass._tuple_slot_owns(
         or len(nd.target) != 1 {
         return False;
     }
-    target = nd.target[0];
-    if not isinstance(target, uni.Name) or target.sym is None {
-        return False;
-    }
-    for site in target.sym.defn {
-        binder = site.parent;
-        if not isinstance(binder, uni.Assignment)
-            or binder.aug_op is not None
-            or len(binder.target) != 1
-            or binder.target[0] is not site {
-            return False;
-        }
-    }
-    return True;
+    return self.lower._tuple_slot_owns_sole_binder(nd);
 }
 
 impl NaIRGenPass._bind_owned_tuple_slot(
@@ -284,7 +271,7 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
 
     _managed = self._tuple_managed_fields(val.type);
     _rc_box = (
-        bool(_managed) and not self._nogc_headerless() and self._gc_mode() != "none"
+        bool(_managed) and not self.lower._nogc_headerless() and self.lower._gc_mode() != "none"
     );
     if _rc_box {
         _owned = val?.na_tuple_owned;
@@ -626,7 +613,7 @@ impl NaIRGenPass._tuple_iter_seq(
             );
             elem = self.builder.load(_slot, name=f"tseq.{i}");
         }
-        if own_elements and self._gc_mode() == "none" {
+        if own_elements and self.lower._gc_mode() == "none" {
             prepared = self._nogc_elem_prep(None, elem);
             if prepared is None {
                 return None;
@@ -642,10 +629,10 @@ impl NaIRGenPass._tuple_iter_seq(
             helpers["append"], [seq, elem], op="tuple_seq", loc=_loc
         );
     }
-    if consume_source and val is not None and self._gc_mode() != "none" {
+    if consume_source and val is not None and self.lower._gc_mode() != "none" {
         self._release_owned_args([val], op="tuple_seq");
     }
-    if own_elements and self._nogc_headerless() and not is_value and val is not None {
+    if own_elements and self.lower._nogc_headerless() and not is_value and val is not None {
         moved_local = self._nogc_consume_local(expr);
         if moved_local or self._is_owned(val) {
             self._nogc_free_scratch(val, "tuple_move_box");

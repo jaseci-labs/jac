@@ -436,7 +436,7 @@ impl NaIRGenPass._emit_struct_free_log(
 }
 
 impl NaIRGenPass._set_rc_ctx(op: str, loc: str) -> None {
-    if not self._rc_debug_codegen or self._nogc_headerless() {
+    if not self._rc_debug_codegen or self.lower._nogc_headerless() {
         return;
     }
     if self.rc_ctx_op_gv is None {
@@ -461,7 +461,7 @@ impl NaIRGenPass._set_rc_ctx(op: str, loc: str) -> None {
 
 impl NaIRGenPass._clear_rc_ctx -> None {
     if not self._rc_debug_codegen
-        or self._nogc_headerless()
+        or self.lower._nogc_headerless()
         or self.rc_ctx_op_gv is None {
         return;
     }

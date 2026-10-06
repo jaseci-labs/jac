@@ -75,7 +75,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     if self.rc_safe_free_fn is None or self.rc_retain_fn is None {
         self._emit_rc_helpers();
     }
-    _hl = self._nogc_headerless();
+    _hl = self.lower._nogc_headerless();
     _free_hl = self._get_or_declare_extern("free", ir.VoidType(), [i8p])
         if _hl
         else None;
@@ -1102,7 +1102,6 @@ impl NaIRGenPass._static_key_op(
     return (ph, ir.Constant(ir.IntType(64), h));
 }
 
-
 impl NaIRGenPass._str_fnv_fn -> ir.Function {
     if self.str_fnv_fn is not None {
         return self.str_fnv_fn;
@@ -1179,14 +1178,14 @@ impl NaIRGenPass._tuple_key_field_val(
     if isinstance(key_ptr.type, ir.LiteralStructType) {
         field = b.extract_value(key_ptr, idx, name=f"tk.f{idx}");
         if kind == "jacstr" {
-            data_idx = JACSTR_DESC_FIELDS[self._str_desc_kind()].index("data");
+            data_idx = JACSTR_DESC_FIELDS[self.lower._str_desc_kind()].index("data");
             return b.extract_value(field, data_idx, name=f"tk.data{idx}");
         }
         return field;
     }
     path = [ir.Constant(i32, 0), ir.Constant(i32, idx)];
     if kind == "jacstr" {
-        data_idx = JACSTR_DESC_FIELDS[self._str_desc_kind()].index("data");
+        data_idx = JACSTR_DESC_FIELDS[self.lower._str_desc_kind()].index("data");
         path.append(ir.Constant(i32, data_idx));
     }
     fp = b.gep(key_ptr, path, name=f"tk.fp{idx}");
@@ -1220,7 +1219,6 @@ impl NaIRGenPass._emit_tuple_key_hash(b: ir.IRBuilder, value: ir.Value) -> ir.Va
     }
     return result;
 }
-
 
 impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
     size = self._get_struct_size(struct_type);

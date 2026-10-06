@@ -13,89 +13,30 @@ glob CLASS_CTOR_BUCKETS: int = 256,
          SymbolType.MODULE
      );
 
-impl NaIRGenPass._class_expr_bound(
-    expr: (uni.UniNode | None), unbounded: (str | None) = None
-) -> (str | None) {
-    while isinstance(expr, uni.AtomUnit) {
-        expr = expr.value;
-    }
-    if not isinstance(expr, uni.Expr) or not isinstance(expr.type, ClassType) {
-        return None;
-    }
-    typ = expr.type;
-    if typ.is_builtin("type") {
-        import from jaclang.compiler.types.types { TypeVarType }
-        args = typ.private.type_args or [];
-        arg = args[0] if args else None;
-        if isinstance(arg, TypeVarType) {
-            arg = arg.bound;
-        }
-        if not isinstance(arg, ClassType) {
-            return unbounded;
-        }
-        typ = arg;
-    } elif not typ.is_instantiable() or typ.is_instance() {
-        return None;
-    }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
-    return class_type_native_name(typ);
-}
-
 impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
     while isinstance(target, uni.AtomUnit) {
         target = target.value;
     }
-    if isinstance(target, uni.Name) {
-        if target.value not in self.local_vars
-            and target.value not in self.global_vars {
-            return False;
-        }
-        if self._arch_alias_target(target) is not None {
-            return False;
-        }
-    } elif isinstance(target, uni.AtomTrailer) {
-        if target.is_attr {
-            attr = target.right;
-            sym = attr.sym if isinstance(attr, uni.AstSymbolNode) else None;
-            if sym is None or sym.sym_type in CLASS_REFERENCE_SYMBOLS {
-                return False;
-            }
-        } elif self._class_expr_bound(target.target) is not None {
-            return False;
-        }
-    } elif not isinstance(target, uni.FuncCall) {
-        return False;
-    }
-    return self._class_expr_bound(target, unbounded="type") is not None;
+    _in_scope = isinstance(target, uni.Name)
+        and (target.value in self.local_vars or target.value in self.global_vars);
+    return self.lower._is_runtime_class_value_shape(
+        target, _in_scope, CLASS_REFERENCE_SYMBOLS
+    );
 }
 
 impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None) {
     if not self._is_runtime_class_value(target) {
         return None;
     }
-    bound = self._class_expr_bound(target);
+    bound = self.lower._class_expr_bound(target);
     if bound is None or bound not in self.struct_types or self._is_enum_arch(bound) {
         return None;
     }
     return bound;
 }
 
-impl NaIRGenPass._class_ancestors(type_name: str) -> list[str] {
-    ancestors: list[str] = [type_name];
-    index = 0;
-    while index < len(ancestors) {
-        for step in self._mro_of(ancestors[index]) {
-            if step not in ancestors {
-                ancestors.append(step);
-            }
-        }
-        index += 1;
-    }
-    return ancestors;
-}
-
 impl NaIRGenPass._class_init_owner(type_name: str) -> (str | None) {
-    for cls in self._mro_of(type_name) {
+    for cls in self.lower._mro_of(type_name) {
         for slot in ("init", "__init__") {
             if f"{cls}.{slot}" in self.method_funcs {
                 return cls;
@@ -107,12 +48,12 @@ impl NaIRGenPass._class_init_owner(type_name: str) -> (str | None) {
 
 impl NaIRGenPass._class_takes_no_ctor_args(type_name: str) -> bool {
     if self._class_init_owner(type_name) is not None
-        or self._pyb_base_of(type_name) is not None
+        or self.lower._pyb_base_of(type_name) is not None
         or self._is_enum_arch(type_name) {
         return False;
     }
-    for cls in self._class_ancestors(type_name) {
-        arch = self.arch_ast_map.get(cls);
+    for cls in self.lower._class_ancestors(type_name) {
+        arch = self.lower.arch_ast_map.get(cls);
         if not isinstance(arch, uni.Archetype) or arch.arch_type.name != Tok.KW_CLASS {
             return False;
         }
@@ -125,14 +66,14 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
         or self._is_enum_arch(type_name)
         or type_name in self.clib_vtable_structs
         or self.arch_type_params.get(type_name)
-        or self._pyb_base_of(type_name) is not None {
+        or self.lower._pyb_base_of(type_name) is not None {
         return None;
     }
     owner = self._class_init_owner(type_name);
     if owner is not None {
         init_fn = self.method_funcs.get(f"{owner}.init")
             or self.method_funcs.get(f"{owner}.__init__");
-        sig = self._arch_init_sig_of(owner);
+        sig = self.lower._arch_init_sig_of(owner);
         declared = self._arch_init_params_of(owner);
         if init_fn is None
             or sig is None
@@ -155,7 +96,7 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
     if self._class_takes_no_ctor_args(type_name) {
         return [];
     }
-    layout = self._arch_layout(type_name);
+    layout = self.lower._arch_layout(type_name);
     if layout is None {
         return None;
     }
@@ -201,99 +142,9 @@ impl NaIRGenPass._bind_class_ctor_args(
     params: list[NativeCtorParam],
     bound: str
 ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None) {
-    positional = [
-        i
-        for (i, p) in enumerate(params)
-        if p.positional
-    ];
-    bound_args: list[tuple[int, uni.Expr]] = [];
-    spread: (uni.Expr | None) = None;
-    taken: set[int] = set();
-    next_positional = 0;
-    problem: (str | None) = None;
-    for arg in args {
-        index = -1;
-        value: (uni.Expr | None) = None;
-        if isinstance(arg, uni.KWPair) {
-            key = arg.key.sym_name if arg.key is not None else None;
-            if key is None {
-                if spread is not None {
-                    problem = "only one `**` mapping can be unpacked into a class-value constructor";
-                    break;
-                }
-                spread = arg.value;
-                continue;
-            }
-            for (i, p) in enumerate(params) {
-                if p.name == key {
-                    index = i;
-                }
-            }
-            if index < 0 {
-                problem = f"'{self._arch_display(
-                    bound
-                )}' has no constructor parameter named '{key}'";
-                break;
-            }
-            value = arg.value;
-        } elif isinstance(arg, uni.UnaryExpr)
-            and isinstance(arg.op, uni.Token)
-            and arg.op.name == Tok.STAR_POW {
-            if spread is not None {
-                problem = "only one `**` mapping can be unpacked into a class-value constructor";
-                break;
-            }
-            spread = arg.operand;
-            continue;
-        } elif isinstance(arg, uni.UnaryExpr)
-            and isinstance(arg.op, uni.Token)
-            and arg.op.name == Tok.STAR_MUL {
-            problem = "`*` unpacking into a class-value constructor is not lowered natively; pass the arguments explicitly";
-            break;
-        } else {
-            if next_positional >= len(positional) {
-                problem = f"too many positional arguments for the '{self._arch_display(
-                    bound
-                )}' constructor";
-                break;
-            }
-            index = positional[next_positional];
-            next_positional += 1;
-            value = arg;
-        }
-        if value is None {
-            continue;
-        }
-        if index in taken {
-            problem = f"constructor parameter '{params[index].name}' is given twice";
-            break;
-        }
-        taken.add(index);
-        bound_args.append((index, value));
-    }
-    if problem is None and spread is None {
-        for (i, p) in enumerate(params) {
-            if p.fallback is None and i not in taken {
-                problem = f"missing required '{self._arch_display(
-                    bound
-                )}' constructor argument '{p.name}'";
-                break;
-            }
-        }
-    }
-    if problem is not None {
-        self.ctx.emit(
-            E5092,
-            node_override=nd,
-            kind="class value construction",
-            name=f"type[{self._arch_display(bound)}]",
-            help_text=f"Construction through a class value binds its arguments against the '{self._arch_display(
-                bound
-            )}' constructor signature: {problem}."
-        );
-        return None;
-    }
-    return (bound_args, spread);
+    return self.lower._bind_class_ctor_args_plan(
+        nd, args, [(p.name, p.positional, p.fallback is None) for p in params], bound
+    );
 }
 
 impl NaIRGenPass._codegen_class_value_call(
@@ -305,8 +156,8 @@ impl NaIRGenPass._codegen_class_value_call(
             E5092,
             node_override=nd,
             kind="class value construction",
-            name=f"type[{self._arch_display(bound)}]",
-            help_text=f"Construction through a class value needs a native constructor signature for '{self._arch_display(
+            name=f"type[{self.lower._arch_display(bound)}]",
+            help_text=f"Construction through a class value needs a native constructor signature for '{self.lower._arch_display(
                 bound
             )}': its layout must be visible, its initializer must not take *args or **kwargs, and it must not be generic or derive from a Python-side base."
         );
@@ -365,7 +216,7 @@ impl NaIRGenPass._codegen_class_value_call(
             "==", ctor_entry, ir.Constant(i8p, None), name="class.ctor.none"
         ),
         "TypeError",
-        f"class is not constructible with the {self._arch_display(
+        f"class is not constructible with the {self.lower._arch_display(
             bound
         )} constructor arguments",
         release_on_error=owned
@@ -414,7 +265,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             node_override=nd,
             kind="class value construction",
             name="**",
-            help_text=f"A `**` mapping unpacked into a type[{self._arch_display(
+            help_text=f"A `**` mapping unpacked into a type[{self.lower._arch_display(
                 bound
             )}] constructor must lower to a native str-keyed dict."
         );
@@ -431,7 +282,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             "kw" if i in values else None,
             None
         );
-        rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";
+        rec["dup_msg"] = f"{self.lower._arch_display(bound)}() {rec['dup_msg']}";
         records.append((i, rec));
     }
     matched = self._bind_kw_spread(mapping, helpers, [r for (_, r) in records], "");
@@ -462,7 +313,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             name="kwargs.extra"
         ),
         "TypeError",
-        f"{self._arch_display(bound)}() got an unexpected keyword argument"
+        f"{self.lower._arch_display(bound)}() got an unexpected keyword argument"
     );
     return mask;
 }
@@ -714,7 +565,7 @@ impl NaIRGenPass._class_tagless_record -> ir.GlobalVariable {
 impl NaIRGenPass._emit_class_ctor(
     arch: uni.Archetype, params: list[NativeCtorParam]
 ) -> (ir.Function | None) {
-    name = self._arch_key(arch);
+    name = self.lower._arch_key(arch);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     fn = self._define_function(f"{name}.__ctor", self._class_ctor_fn_type(params));
@@ -839,7 +690,7 @@ impl NaIRGenPass._emit_class_ctor_bridge(
     }
     i64 = ir.IntType(64);
     bridge = self._define_function(
-        f"{name}.__ctor.{self._arch_display(bound)}", self._class_ctor_fn_type(params)
+        f"{name}.__ctor.{self.lower._arch_display(bound)}", self._class_ctor_fn_type(params)
     );
     bridge.linkage = "internal";
     state = self._enter_function(bridge);
@@ -890,7 +741,7 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
         if arch.name is None {
             continue;
         }
-        name = self._arch_key(arch);
+        name = self.lower._arch_key(arch);
         if name not in self.struct_types or self._is_enum_arch(name) {
             continue;
         }
@@ -900,7 +751,7 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
             if signature is not None and len(signature) <= CLASS_CTOR_MAX_PARAMS
             else None;
         if signature is not None and fn is not None {
-            for bound in self._class_ancestors(name) {
+            for bound in self.lower._class_ancestors(name) {
                 target = fn
                     if bound == name
                     else self._emit_class_ctor_bridge(name, bound, signature, fn);

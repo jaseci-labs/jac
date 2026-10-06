@@ -17,7 +17,7 @@ impl NaIRGenPass._emit_set_helpers(
 
     _rel_fn_decl_s = None;
     _rel_fn_name_s = f"__rc_release_set_{elem_type_name}";
-    if not self._nogc_headerless() {
+    if not self.lower._nogc_headerless() {
         _rel_fnty_s = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
         try {
             _found_s = self.llvm_module.get_global(_rel_fn_name_s);
@@ -47,7 +47,7 @@ impl NaIRGenPass._emit_set_helpers(
 
     len_fn = self._emit_container_len_fn(f"__set_len_{elem_type_name}", set_ptr_type);
 
-    if self._nogc_headerless() {
+    if self.lower._nogc_headerless() {
         self._emit_container_drop_fn(_struct_name);
     } else {
         release_fn = self._emit_container_release_fn(
@@ -83,13 +83,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         return None;
     }
 
-    _decl_args = nd.type.private.type_args
-        if (
-            isinstance(nd, uni.Expr)
-            and isinstance(nd.type, ClassType)
-            and nd.type.private is not None
-        )
-        else [];
+    _decl_args = self.lower._set_val_decl_args(nd);
     _decl_elem = self._elem_storage_llvm(_decl_args[0]) if _decl_args else None;
     if _decl_elem is not None
         and self?.jacval_type
@@ -104,7 +98,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         return None;
     }
 
-    _first_spread = self._spread_operand(nd.values[0]);
+    _first_spread = self.lower._spread_operand(nd.values[0]);
     first_val: (ir.Value | None) = None;
     _first_src_info: (dict[str, any] | None) = None;
     if _first_spread is not None {
@@ -173,7 +167,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_set_new_loc, name="set.new"
     );
-    self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd));
+    self._nogc_stamp_elem_drops(set_val, self.lower._nogc_type_arg_mangles(nd));
     _sinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
@@ -212,7 +206,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     }
 
     for i in range(1, len(nd.values)) {
-        _spread_op = self._spread_operand(nd.values[i]);
+        _spread_op = self.lower._spread_operand(nd.values[i]);
         if _spread_op is not None {
             _src_info = self._container_src_info(
                 self._str_norm_optional(self._codegen_expr(_spread_op))
