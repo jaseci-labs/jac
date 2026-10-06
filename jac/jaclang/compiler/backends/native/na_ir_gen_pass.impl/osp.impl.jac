@@ -1001,9 +1001,10 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     _many_fn = self.func_symtab.get("osp_refs_many");
     _cur: (ir.Value | None) = None;
     while (_idx < len(chain)) and isinstance(chain[_idx], uni.EdgeOpRef) {
-        (step, _step_filter, _idx, _is_last_hop) = self.lower._edge_ref_trailer_hop(
+        (_step_node, _step_filter, _idx, _is_last_hop) = self.lower._edge_ref_trailer_hop(
             chain, _idx
         );
+        step: any = _step_node;
 
         _dir = int(step.edge_dir.value);
         _fcond = step.filter_cond;

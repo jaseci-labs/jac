@@ -1743,7 +1743,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
 
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
             if self.lower._assignment_environ_store(nd, target_expr) {
-                _env_slices: list[uni.Slice] = target_expr.right.slices or [];
+                _env_index: any = target_expr.right;
+                _env_slices: list[uni.Slice] = _env_index.slices or [];
                 _env_key: (ir.Value | None) = None;
                 if _env_slices {
                     _env_key = self._codegen_expr(_env_slices[0]);
@@ -3186,9 +3187,11 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         else self.lower._get_name(nd.target);
 
     if self.lower._for_dict_items_unpack(nd) {
-        items_source = nd.collection.target.target;
+        _items_call: any = nd.collection;
+        _items_target: any = nd.target;
+        items_source: uni.Expr = _items_call.target.target;
         items_dict_key = self._dict_key_of(items_source);
-        unpack_targets: list[uni.Expr | uni.KWPair] = list(nd.target.values or []);
+        unpack_targets: list[uni.Expr | uni.KWPair] = list(_items_target.values or []);
         if items_dict_key is not None and len(unpack_targets) == 2 {
             key_var_name = self.lower._get_name(unpack_targets[0]);
             val_var_name = self.lower._get_name(unpack_targets[1]);
@@ -3233,7 +3236,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
 
     if self.lower._for_builtin_range(nd) {
-        params: list[uni.Expr | uni.KWPair] = list(nd.collection.params or []);
+        _range_call: any = nd.collection;
+        params: list[uni.Expr | uni.KWPair] = list(_range_call.params or []);
         start_val: (ir.Value | None) = None;
         stop_val: (ir.Value | None) = None;
         step_val: (ir.Value | None) = None;

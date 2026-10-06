@@ -776,7 +776,7 @@ impl NativeLowering._sized_builtin_call_kind(func_name: str) -> (str | None) {
     return None;
 }
 
-impl NativeLowering._take_place(nd: uni.FuncCall) -> (uni.Expr | uni.KWPair | None) {
+impl NativeLowering._take_place(nd: uni.FuncCall) -> (uni.Expr | None) {
     params_l = list(nd.params or []);
     if len(params_l) != 1 or isinstance(params_l[0], uni.KWPair) {
         self.emit(E5092, node_override=nd, kind="take() call", name="take");

@@ -684,7 +684,7 @@ obj NativeLowering {
 
     def _sized_builtin_call_kind(func_name: str) -> (str | None);
 
-    def _take_place(nd: uni.FuncCall) -> (uni.Expr | uni.KWPair | None);
+    def _take_place(nd: uni.FuncCall) -> (uni.Expr | None);
 
     def _swap_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
 
@@ -858,7 +858,7 @@ obj NativeLowering {
 
     def _aos_elem_of_list_arg(type_expr: (uni.UniNode | None)) -> (TypeBase | None);
 
-    def _resolve_sig_type_is_container(ptb: TypeBase) -> bool;
+    def _resolve_sig_type_is_container(ptb: (TypeBase | None)) -> bool;
 
     def _unlowerable_type_refuse(
         type_expr: uni.UniNode, tb: any, decl_kind: str
@@ -1177,7 +1177,7 @@ obj NativeLowering {
 
     def _widened_tuple_decl_type_bare(type_expr: uni.UniNode) -> bool;
 
-    def _resolve_field_type_is_typevar(ptb: TypeBase) -> bool;
+    def _resolve_field_type_is_typevar(ptb: (TypeBase | None)) -> bool;
 
     def _resolve_field_type_tag_optional(tag: uni.UniNode) -> bool;
 

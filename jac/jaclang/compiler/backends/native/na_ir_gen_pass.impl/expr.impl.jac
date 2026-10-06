@@ -2262,7 +2262,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             return self._codegen_class_form_enum_member(nd.target);
         }
         if _cf_kind == "name" {
-            return self._make_global_string(_cf_name, name_prefix=".cfenum.name");
+            _cf_text: any = _cf_name;
+            return self._make_global_string(_cf_text, name_prefix=".cfenum.name");
         }
         if _cf_kind == "scalar" {
             return self._codegen_expr(nd.target);

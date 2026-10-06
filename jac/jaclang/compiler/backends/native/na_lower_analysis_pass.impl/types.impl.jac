@@ -694,7 +694,9 @@ impl NativeLowering._aos_elem_of_list_arg(
     return _args[0];
 }
 
-impl NativeLowering._resolve_sig_type_is_container(ptb: TypeBase) -> bool {
+impl NativeLowering._resolve_sig_type_is_container(
+    ptb: (TypeBase | None)
+) -> bool {
     _sig_cn = ptb.shared.class_name if isinstance(ptb, ClassType) else None;
     return _sig_cn in ("tuple", "list", "dict", "set", "type");
 }
@@ -1022,7 +1024,9 @@ impl NativeLowering._widened_tuple_decl_type_bare(type_expr: uni.UniNode) -> boo
     return True;
 }
 
-impl NativeLowering._resolve_field_type_is_typevar(ptb: TypeBase) -> bool {
+impl NativeLowering._resolve_field_type_is_typevar(
+    ptb: (TypeBase | None)
+) -> bool {
     try {
         import from jaclang.compiler.types.types { TypeVarType as _RfTypeVarType }
         if isinstance(ptb, _RfTypeVarType) {

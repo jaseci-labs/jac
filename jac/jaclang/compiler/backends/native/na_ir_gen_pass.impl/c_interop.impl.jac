@@ -305,7 +305,8 @@ impl NaIRGenPass._codegen_c_interop_call(
         return (True, None);
     }
     if _ckind == "pin" {
-        return (True, self._codegen_pin(_carg));
+        _pin_arg: any = _carg;
+        return (True, self._codegen_pin(_pin_arg));
     }
     if _ckind == "ptr_zero" {
         return (True, ir.Constant(i64, 0));

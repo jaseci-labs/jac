@@ -4167,7 +4167,7 @@ impl NaIRGenPass._emit_arch_eq(
             or pass_ref._is_jacval_ty(_pty) {
             return (arch, mfn);
         }
-        for _base in pass_ref._mro_of(arg_arch) {
+        for _base in pass_ref.lower._mro_of(arg_arch) {
             _bst = pass_ref.struct_types.get(_base);
             if _bst is not None and _bst.as_pointer() == _pty {
                 return (arch, mfn);

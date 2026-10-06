@@ -135,19 +135,6 @@ glob FORBIDDEN: dict[str, str] = {
              "field type-name map for the spawn argument payload - the "
              "declared annotation is the consumed fact, not a resolved type"
          ),
-         ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
-             2,
-             "generic-template declared-annotation reads where the "
-             "declaration IS the fact: (1) the _solve_generic_call fallback "
-             "(a bundled/imported template compiled symtab_ir_only has no "
-             "stamped FunctionType, and an uninstantiated template has no "
-             "per-callsite resolved type to consume); (2)+(3) "
-             "_instantiate_generic_for_target (#7626 A5) matches the "
-             "template's declared TypeVar param annotations against the "
-             "binding's concrete Callable annotation to derive the "
-             "monomorphization solution - the template is uninstantiated, "
-             "so the declared annotations are the only TypeVar surface"
-         ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              1,
              "imported_module_name reads the stamped ModuleType and import "
@@ -284,7 +271,7 @@ glob FORBIDDEN: dict[str, str] = {
              "stamped Expr.ct_value"
          ),
          ("native/na_lower_analysis_pass.impl/generics.impl.jac", "type_tag.tag"): (
-             3,
+             5,
              "Moved unchanged from na_ir_gen_pass.impl/generics.impl.jac with the "
              "functions that read it, when lowering analysis left the "
              "emitter; the count there fell by the same amount. "
