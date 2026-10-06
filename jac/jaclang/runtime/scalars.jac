@@ -83,8 +83,8 @@ def shape_range(shape: ScalarShape) -> tuple[int, int] {
         raise ValueError(f"{shape.name} is not a sized integer type");
     }
     if shape.signed {
-        half = 1 << (shape.width - 1);
-        return (-half, half - 1);
+        top = ((1 << (shape.width - 2)) - 1) * 2 + 1;
+        return (-top - 1, top);
     }
     return (0, (1 << shape.width) - 1);
 }

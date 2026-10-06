@@ -2318,13 +2318,17 @@ impl NaIRGenPass._object_meet_type(nd: uni.Expr) -> (ir.Type | None) {
     class reads as that class's struct pointer, while an element of a list
     of a union reads as an untyped pointer. Boxing the pair into an `any`
     would tag the untyped one as a string, and a later `isinstance` on the
-    result would never match; they meet as the pointer they both are.
+    result would never match; they meet as the pointer they both are. The
+    type is an object when it lowers to a named struct that is not a
+    container or a closure, whether or not this unit registered the class.
     """;
     if nd.type is None {
         return None;
     }
     _lowered = self._lower_type(nd.type);
-    if _lowered is None or self._ptr_box_kind(_lowered) != 6 {
+    if not isinstance(_lowered, ir.PointerType)
+        or not isinstance(_lowered.pointee, ir.IdentifiedStructType)
+        or self._ptr_box_kind(_lowered) not in (2, 6) {
         return None;
     }
     return _lowered;
