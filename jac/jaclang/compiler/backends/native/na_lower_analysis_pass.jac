@@ -688,6 +688,116 @@ obj NativeLowering {
 
     def _swap_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
 
+    def _register_archetypes_topo_order(archetypes: list[uni.Archetype]) -> list[str];
+
+    def _register_archetypes_method_shape(stmt: uni.Ability) -> str;
+
+    def _register_archetypes_unsupported_name(arch_name: str, stmt: uni.Ability) -> str;
+
+    def _register_archetypes_non_overridden(
+        vtable_layouts: dict[str, list[str]]
+    ) -> dict[str, set[str]];
+
+    def _visit_nonprimary_ancestor_methods_provided(
+        arch: uni.Archetype
+    ) -> (tuple[str, list[str], set[str]] | None);
+
+    def _visit_nonprimary_ancestor_methods_ancestor(
+        arch_name: str, ancestor_name: str
+    ) -> (uni.Archetype | None);
+
+    def _archetype_layout(nd: uni.Archetype, arch_name: str) -> (ArchetypeLayout | None);
+
+    def _archetype_field_order(layout: ArchetypeLayout) -> list[str];
+
+    def _archetype_constructor_order(layout: ArchetypeLayout) -> list[str];
+
+    def _reject_scalar_type_args_none_arg(arg: TypeBase) -> bool;
+
+    def _register_class_consts_owns(nd: uni.Archetype) -> (bool | None);
+
+    def _register_one_class_const_symbol(
+        full_name: str, assign: uni.Assignment, owns: bool
+    ) -> str;
+
+    def _forward_declare_method_params(
+        method: uni.Ability
+    ) -> tuple[bool, list[uni.ParamVar]];
+
+    def _forward_declare_method_symbol(
+        full_name: str, method: uni.Ability, imported: bool
+    ) -> str;
+
+    def _method_scan_closure_escapes(method: uni.Ability) -> None;
+
+    def _method_self_param(method: uni.Ability) -> tuple[bool, list[uni.ParamVar], bool];
+
+    def _method_bound_params(
+        method: uni.Ability, body_params: list[uni.ParamVar]
+    ) -> list[tuple[str, bool]];
+
+    def _forward_declare_event_method_symbol(
+        full_name: str, method: uni.Ability
+    ) -> tuple[str, bool];
+
+    def _instantiation_type_name(
+        nd: (uni.FuncCall | uni.Name), type_name_override: (str | None)
+    ) -> (str | None);
+
+    def _instantiation_stack_target(nd: (uni.FuncCall | uni.Name)) -> (uni.Name | None);
+
+    def _instantiation_erased_ctor_type(
+        nd: (uni.FuncCall | uni.Name)
+    ) -> (TypeBase | None);
+
+    def _instantiation_init_owner_primary(type_name: str, init_owner: str) -> bool;
+
+    def _instantiation_postinit_auto(type_name: str, no_init: bool) -> bool;
+
+    def _unregistered_class_target_foreign(target: uni.UniNode, name: str) -> (str | None);
+
+    def _method_call_inner_names(
+        trailer: uni.AtomTrailer
+    ) -> tuple[str | None, str | None, str | None];
+
+    def _method_call_inner_ctor_aliases(method_name: str) -> list[str];
+
+    def _method_call_inner_region_partition(
+        trailer: uni.AtomTrailer, method_name: str
+    ) -> bool;
+
+    def _method_call_inner_any_dict_receiver(
+        trailer: uni.AtomTrailer, method_name: str
+    ) -> bool;
+
+    def _method_call_inner_sys_exit(target_name: (str | None), method_name: str) -> bool;
+
+    def _method_call_inner_ospath(
+        trailer: uni.AtomTrailer, module_name: (str | None)
+    ) -> bool;
+
+    def _method_call_inner_os_environ(trailer: uni.AtomTrailer) -> bool;
+
+    def _subclass_str_candidates -> dict[str, list[str]];
+
+    def _subclass_str_is_descendant(cls: str, type_name: str) -> bool;
+
+    def _field_assign_static_target(target: uni.AtomTrailer) -> (str | None);
+
+    def _receiver_routed_method_fn_primary(recv_cls: str, owner_cls: str) -> bool;
+
+    def _receiver_routed_method_fn_ancestor_method(
+        owner_cls: str, mnames: list[str]
+    ) -> (uni.Ability | None);
+
+    def _class_routed_call_defaults(
+        sfull: str, mnames: list[str]
+    ) -> dict[str, uni.UniNode];
+
+    def _jc_reference_schema_semantic(
+        semantic: (TypeBase | None)
+    ) -> tuple[list[TypeBase], str];
+
 }
 
 glob _READY: dict[int, NativeLowering] = {};
