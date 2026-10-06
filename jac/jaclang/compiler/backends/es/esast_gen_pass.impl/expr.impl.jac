@@ -135,6 +135,10 @@ impl EsastGenPass._primitive_type_ref(
 }
 
 impl EsastGenPass.exit_builtin_type with uni.BuiltinType exit {
+    if here.sym is not None and here.sym.sym_type != SymbolType.TYPE {
+        self._exit_name_impl(here);
+        return;
+    }
     type_name = here.sym_name;
     prim_ref = None
         if self._in_type_slot(here)

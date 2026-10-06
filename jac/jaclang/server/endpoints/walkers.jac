@@ -1,4 +1,5 @@
 import from jaclang.server.endpoint_contract { check_endpoint_contract }
+import from jaclang.server.exchange { refusal_status, settle_envelope }
 import json;
 import logging;
 import from inspect { isgenerator }
@@ -96,7 +97,11 @@ def _failure(result: dict[str, any], fallback: str) -> TransportResponse {
     return TransportResponse.fail(
         code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
         message=result.get('error', fallback),
-        meta=Meta(extra={'http_status': int(result.get('http_status') or 500)})
+        meta=Meta(
+            extra={
+                'http_status': int(result.get('http_status') or refusal_status() or 500)
+            }
+        )
     );
 }
 
@@ -242,7 +247,7 @@ def walker_callback(
     requires_auth = server.introspector.is_auth_required_for_walker(walker_name);
 
     async def callback(
-        request: Request, nd: (str | None) = None, **kwargs: JsonValue
+        request: Request, /, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
         username = request_caller(server, request);
         if requires_auth and not username {
@@ -279,9 +284,12 @@ def walker_callback(
         }
         return remember_response(
             idem,
-            TransportResponse.success(
-                data=result, meta=Meta(extra={'http_status': 200})
-            )
+            settle_envelope(
+                TransportResponse.success(
+                    data=result, meta=Meta(extra={'http_status': 200})
+                )
+            ),
+            committed=True
         );
     }
     return callback;
@@ -390,7 +398,7 @@ def function_callback(
         else 'text/plain';
 
     async def callback(
-        request: Request, **kwargs: JsonValue
+        request: Request, /, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
         username = request_caller(server, request);
         if requires_auth and not username {
@@ -428,9 +436,12 @@ def function_callback(
         }
         return remember_response(
             idem,
-            TransportResponse.success(
-                data=result, meta=Meta(extra={'http_status': 200})
-            )
+            settle_envelope(
+                TransportResponse.success(
+                    data=result, meta=Meta(extra={'http_status': 200})
+                )
+            ),
+            committed=True
         );
     }
     return callback;

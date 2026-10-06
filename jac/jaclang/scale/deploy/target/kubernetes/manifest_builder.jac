@@ -1,6 +1,7 @@
 import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 import from jaclang.server { sv_client }
-import from jaclang.server.settings { ServeSettings }
+import from jaclang.project.config { JacConfig, ServeConfig }
+import from jaclang.server.settings { resolve_count }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.config.config_loader {
     GATEWAY_POD_KEYS,
@@ -264,7 +265,7 @@ obj ManifestBuilder {
         client_entry: (str | None) = None,
         dry_run: bool = False,
         _bundle_files_cache: (dict[str, str] | None) = None,
-        _serve_settings_cache: (ServeSettings | None) = None;
+        _serve_config_cache: (ServeConfig | None) = None;
 
     def _gateway_cfg -> dict[str, any] {
         if self.gateway_config is not None {
@@ -889,18 +890,30 @@ obj ManifestBuilder {
         return specs;
     }
 
-    def _serve_settings -> ServeSettings {
-        if self._serve_settings_cache is None {
-            project = get_scale_config().get_jac_config();
-            self._serve_settings_cache = ServeSettings.load(
-                str(project.project_root or self.project_dir or '.'), config=project
-            );
+    def _serve_config -> ServeConfig {
+        cached = self._serve_config_cache;
+        if cached is not None {
+            return cached;
         }
-        return self._serve_settings_cache;
+        project = self._shipped_config()
+            if self.project_dir
+            else get_scale_config().get_jac_config();
+        serve: ServeConfig = project.serve if project is not None else ServeConfig();
+        self._serve_config_cache = serve;
+        return serve;
+    }
+
+    def _shipped_config -> (JacConfig | None) {
+        import from pathlib { Path }
+        app_dir = Path(self.project_dir);
+        if not (app_dir / "jac.toml").is_file() {
+            return None;
+        }
+        return JacConfig.resolve(start_path=app_dir);
     }
 
     def _drain_timeout -> int {
-        return int(self._serve_settings().timeouts.drain);
+        return int(self._serve_config().timeouts.drain);
     }
 
     def _signing_secret -> str {
@@ -909,18 +922,23 @@ obj ManifestBuilder {
         if configured {
             return configured;
         }
-        from_project = self._serve_settings().auth.secret.strip();
+        from_project = self._serve_config().auth.secret.strip();
         if from_project {
             return from_project;
         }
         return PLACEHOLDER_JWT_SECRET;
     }
 
+    def _worker_count_env(svc_cfg: dict[str, any]) -> str {
+        raw = str(svc_cfg.get("workers") or self._serve_config().workers.count).strip();
+        resolve_count(raw, 1, '[serve.workers] count');
+        return raw;
+    }
+
     def _serve_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]] {
-        settings = self._serve_settings();
-        workers = str(svc_cfg.get("workers") or settings.workers.count);
+        serve = self._serve_config();
         env: list[dict[str, any]] = [
-            {"name": "JAC_SERVE_WORKERS", "value": workers},
+            {"name": "JAC_SERVE_WORKERS", "value": self._worker_count_env(svc_cfg)},
             {"name": "JAC_SERVE_ACCESS_LOG_FORMAT", "value": "json"},
             {"name": "JAC_SERVE_ACCESS_LOG_SUPPRESS_HEALTH", "value": "1"},
             {"name": "JAC_SERVE_DRAIN_TIMEOUT", "value": str(self._drain_timeout())}
@@ -929,7 +947,7 @@ obj ManifestBuilder {
         if threads is not None {
             env.append({"name": "JAC_SERVE_THREADS", "value": str(threads)});
         }
-        trusted = list(settings.proxy.trusted);
+        trusted = list(serve.proxy.trusted);
         if svc_name != GATEWAY_NAME {
             trusted = trusted or ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
         }

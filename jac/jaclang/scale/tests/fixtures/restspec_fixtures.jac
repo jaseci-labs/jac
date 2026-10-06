@@ -1,6 +1,7 @@
 """Test API fixture for restspec decorator tests."""
 
 import from jaclang.runtime.builtin { restspec }
+import from jaclang.server.exchange { current_request, respond }
 import from jaclang.server.serving.datatypes {
     FileResponse,
     RedirectResponse,
@@ -184,6 +185,47 @@ page fallback must not shadow on GET."""
 )
 def:pub board_file(board_id: str, file_path: str) -> str {
     return board_id + ":" + file_path;
+}
+
+"""A walker field named `request`, the name the server uses for its own
+request object."""
+@restspec(method=HTTPMethod.POST, path="/orders/save")
+walker:pub SaveOrder {
+    has request: dict[str, any] = {},
+        status: str = "";
+
+    can save with Root entry {
+        report {"request": self.request, "status": self.status};
+    }
+}
+
+"""A function parameter named `request`."""
+@restspec(method=HTTPMethod.POST, path="/orders/echo")
+def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] {
+    return {"request": request, "status": status};
+}
+
+"""One field of each scalar type, plus an optional one and a list, to send
+JSON null to."""
+@restspec(method=HTTPMethod.POST, path="/nulls")
+walker:pub NullFields {
+    has title: str = "seed",
+        note: str | None = "seed",
+        count: int = -1,
+        ratio: float = 0.5,
+        flag: bool = True,
+        tags: list[str] = [];
+
+    can echo with Root entry {
+        report {
+            "title": self.title,
+            "note": self.note,
+            "count": self.count,
+            "ratio": self.ratio,
+            "flag": self.flag,
+            "tags": self.tags
+        };
+    }
 }
 
 node UserProfile {
@@ -479,4 +521,121 @@ POST and register a live route instead of an unroutable "" method."""
 @restspec(path="/custom/no-method-func")
 def:protect no_method_func -> dict[str, any] {
     return {"message": "no_method_func executed"};
+}
+
+
+# ============================================================================
+# Request and response channel: a served unit reads the request it is serving
+# and chooses the status and headers of its own enveloped response.
+# ============================================================================
+node AuditMark {
+    has label: str = "";
+}
+
+"""A refusal that keeps its write: the report stays the body, the status is 403."""
+walker:pub RefuseAfterWrite {
+    has label: str;
+
+    can refuse with Root entry {
+        here ++> AuditMark(label=self.label);
+        respond(status=403);
+        report {"error": "Forbidden", "label": self.label};
+    }
+}
+
+"""A refusal that raises: the unit rolls back and the chosen status is kept."""
+walker:pub RefuseAndRollBack {
+    has label: str;
+
+    can refuse with Root entry {
+        here ++> AuditMark(label=self.label);
+        respond(status=409);
+        raise ValueError("Already exists");
+    }
+}
+
+"""A crash after choosing a success status is still a server fault."""
+walker:pub CrashAfterCreated {
+    can crash with Root entry {
+        respond(status=201);
+        raise RuntimeError("boom");
+    }
+}
+
+walker:pub CountAuditMarks {
+    has label: str;
+
+    can count with Root entry {
+        marks = [
+            m
+            for m in [-->[?:AuditMark]]
+            if m.label == self.label
+        ];
+        report {"count": len(marks)};
+    }
+}
+
+"""A walker answering 201 with a header of its own on the envelope."""
+walker:pub CreatedWithHeader {
+    can create with Root entry {
+        respond(status=201, headers={"X-Resource-Id": "r-7"});
+        report {"id": "r-7"};
+    }
+}
+
+def:pub find_thing(thing_id: str) -> dict[str, any] {
+    if thing_id != "known" {
+        respond(status=404);
+        return {"error": "Not found", "thing_id": thing_id};
+    }
+    return {"thing_id": thing_id};
+}
+
+def _request_facts -> dict[str, any] {
+    seen = current_request();
+    if seen is None {
+        return {"request": None};
+    }
+    return {
+        "method": seen.method,
+        "path": seen.path,
+        "origin": seen.origin,
+        "public_origin": seen.public_origin,
+        "link": seen.link("/invite/abc"),
+        "probe": seen.header("X-Probe"),
+        "authorization": seen.header("Authorization"),
+        "query": seen.query,
+        "query_string": seen.query_string
+    };
+}
+
+"""A sync walker runs on a worker thread; it must still see the request."""
+@restspec(method=HTTPMethod.GET, path="/channel/walker-request")
+walker:pub WalkerReadsRequest {
+    can read with Root entry {
+        report _request_facts();
+    }
+}
+
+"""An async walker runs on the event loop task itself."""
+async walker:pub AsyncWalkerReadsRequest {
+    async can read with Root entry {
+        respond(status=202);
+        report _request_facts();
+    }
+}
+
+@restspec(method=HTTPMethod.GET, path="/channel/func-request")
+def:pub func_reads_request(tag: str = "") -> dict[str, any] {
+    return _request_facts();
+}
+
+"""A raw-body function reads the request too; its body is still its return."""
+@restspec(method=HTTPMethod.GET, path="/raw/origin", envelope=False)
+def:pub raw_origin -> str {
+    seen = current_request();
+    if seen is None {
+        return "none";
+    }
+    return seen.origin;
 }
