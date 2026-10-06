@@ -16,6 +16,10 @@ import from jaclang.compiler.backends.native.lowering {
     NativeLoweringIssue,
     NativeLoweringKind
 }
+import from jaclang.compiler.backends.native.na_lower_analysis_pass {
+    NativeLowering,
+    take_native_lowering
+}
 import from jaclang.runtime.scalars { ScalarShape }
 
 import from jaclang.compiler.frontend.codeinfo {
@@ -542,6 +546,7 @@ walker NaIRGenPass(CompilerPass) {
         _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
         _loop_rebind_memo: dict[tuple[int, str], bool] = {};
 
+    has lower: NativeLowering postinit;
     has builder: ir.IRBuilder { getter; }
     has llvm_module: ir.Module { getter; }
     has type_map: dict[str, ir.Type] { getter; }

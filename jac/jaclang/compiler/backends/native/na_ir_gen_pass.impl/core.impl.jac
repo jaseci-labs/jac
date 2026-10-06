@@ -18,6 +18,8 @@ def _source_param_names(func: ir.Function) -> list[str] {
 impl NaIRGenPass.postinit -> None {
     import os as _ni_os;
 
+    self.lower = take_native_lowering(self.module, self.prog, self.ctx);
+
     _ni_opts = self.prog.options;
     self._rc_debug_codegen = bool(_ni_opts.rc_debug_codegen);
     _ni_src: str = self.module.loc.mod_path if self.module.loc else "";

@@ -565,9 +565,10 @@ def get_py_code_gen(
             active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
             import from jaclang.compiler.backends.native {
                 NaIRGenPass,
+                NaLowerAnalysisPass,
                 NativeCompilePass
             }
-            passes.extend([NaIRGenPass, NativeCompilePass]);
+            passes.extend([NaLowerAnalysisPass, NaIRGenPass, NativeCompilePass]);
             _note_native_schedule_failure(None);
         }
         passes.extend(_py_codegen_tail());
@@ -718,8 +719,8 @@ def client_product_schedule -> PassSchedule {
 
 def native_ir_product_schedule -> PassSchedule {
     import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
-    import from jaclang.compiler.backends.native { NaIRGenPass }
-    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
+    import from jaclang.compiler.backends.native { NaIRGenPass, NaLowerAnalysisPass }
+    return [NativeImportFactsPass, RcFactsPass, NaLowerAnalysisPass, NaIRGenPass];
 }
 
 with entry {
