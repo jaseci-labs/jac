@@ -22,6 +22,7 @@ import from jaclang.project.kernel_snapshot {
 }
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
+     KERNEL_TIMING_ENV: str = "JAC_KERNEL_TIMING",
      _APPLICATION_UNITS: dict[str, UnitProducts] = {},
      _HOST_PREPARING: list[str] = [];
 
@@ -65,11 +66,16 @@ def kernel_compile(
     isolated: bool = True,
     emit_closure: bool = False
 ) -> CompileReport {
+    import time;
+    started = time.monotonic();
     snapshot = kernel_snapshot(
         host, program, path, options, source, emit_closure=emit_closure
     );
+    snapped = time.monotonic();
+    in_kernel = 0.0;
     while True {
         inputs_json = snapshot.text();
+        called = time.monotonic();
         if in_process {
             outcome = run_kernel_compile(inputs_json, path, source);
         } else {
@@ -79,11 +85,30 @@ def kernel_compile(
                 call(kernel, COMPILE_ENTRY, inputs_json, path, source)
             );
         }
+        in_kernel += time.monotonic() - called;
         analysis = outcome.analysis;
         if not analysis.misses
             or host_deferred(analysis)
             or not snapshot.answer(analysis.misses) {
             break;
+        }
+    }
+    sink = os.environ.get(KERNEL_TIMING_ENV, "");
+    if sink {
+        import sys;
+        total = time.monotonic() - started;
+        inputs = snapshot.inputs();
+        line = f"jac: kernel compile {path}: {total:.2f}s "
+        f"(snapshot {snapped - started:.2f}s over {inputs.scanned_modules} modules "
+        f"and {len(inputs.python_ifaces)} interfaces, kernel {in_kernel:.2f}s, "
+        f"answers {total - (snapped - started) - in_kernel:.2f}s in "
+        f"{snapshot.rounds} round(s), deferred={host_deferred(analysis)})\n";
+        if os.sep in sink {
+            with open(sink, "a", encoding="utf-8") as log {
+                log.write(line);
+            }
+        } else {
+            sys.stderr.write(line);
         }
     }
     if host_deferred(analysis) {

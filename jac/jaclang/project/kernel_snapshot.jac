@@ -37,9 +37,11 @@ glob SCAN_LIMIT: int = 4000,
      PACKAGE_CHAIN_DEPTH: int = 8,
      INTERFACE_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
+     _IFACE_REFUSED: dict[str, str] = {},
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
-     MISS_ROUNDS: int = 8,
+     MISS_ROUNDS: int = 12,
+     INTERFACE_MISSES: tuple[str, ...] = ("compile_module", "parse_python"),
      DIRECT_MISS_ROUNDS: int = 2,
      PATH_MISSES: tuple[str, ...] = (
          "workspace",
@@ -721,11 +723,12 @@ def remember_interface(iface: PythonInterface, deps: list[str]) {
 }
 
 def python_interfaces(
-    paths: list[str], options: CompileOptions
+    paths: list[str], options: CompileOptions, lazy: bool = False
 ) -> list[PythonInterface] {
     out: list[PythonInterface] = [];
     queue: list[str] = sorted(os.path.realpath(p) for p in paths);
     queue.reverse();
+    asked: set[str] = set(queue);
     done: set[str] = set();
     scratch: (JacProgram | None) = None;
     while queue {
@@ -743,11 +746,19 @@ def python_interfaces(
         iface = cached_interface(path);
         deps: list[str] = [];
         if iface is None {
+            if lazy and path not in asked and is_compiler_source_path(path) {
+                continue;
+            }
+            stamp = file_stamp(path);
+            if _IFACE_REFUSED.get(path) == stamp {
+                continue;
+            }
             if scratch is None {
                 scratch = JacProgram();
             }
             iface = python_interface(path, options, scratch);
             if iface is None {
+                _IFACE_REFUSED[path] = stamp;
                 continue;
             }
             deps = interface_dependencies(iface);
@@ -864,6 +875,7 @@ obj KernelSnapshot {
         options: CompileOptions,
         emit_closure: bool = False,
         answered: set[str] = set(),
+        wanted_interfaces: set[str] = set(),
         rounds: int = 0;
 
     def inputs -> KernelInputs {
@@ -896,8 +908,8 @@ obj KernelSnapshot {
             for (p, untyped) in inputs.untyped.items()
             if not untyped and not is_compiler_source_path(p)
         ];
-        wanted = local + sorted(scan.package_edges);
-        inputs.python_ifaces = python_interfaces(wanted, self.options);
+        wanted = local + sorted(scan.package_edges) + sorted(self.wanted_interfaces);
+        inputs.python_ifaces = python_interfaces(wanted, self.options, lazy=True);
         served = {iface.path for iface in inputs.python_ifaces};
         learn_facts(scan, sorted(served - set(wanted)));
     }
@@ -965,6 +977,9 @@ obj KernelSnapshot {
     def answer_one(miss: str) -> bool {
         scan = self.scan;
         learner = scan.learner;
+        if host_only_miss(miss) {
+            return False;
+        }
         (kind, _, key) = miss.partition(": ");
         fields = key.split(" | ");
         if kind == "resolve_module" and len(fields) == 3 {
@@ -990,6 +1005,15 @@ obj KernelSnapshot {
         if kind in PATH_MISSES and key {
             scan.learned.discard(key);
             scan.learn_path(key);
+            return True;
+        }
+        if kind in INTERFACE_MISSES and key {
+            module_file = os.path.realpath(key);
+            if module_file in self.wanted_interfaces
+                or not interface_wanted(module_file) {
+                return False;
+            }
+            self.wanted_interfaces.add(module_file);
             return True;
         }
         if kind == "check_settings" {
