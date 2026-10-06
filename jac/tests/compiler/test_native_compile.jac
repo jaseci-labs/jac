@@ -811,3 +811,54 @@ test "the services of a client application prepare on the host with it" {
         }
     }
 }
+
+"""A module outside the entry's project is not scanned up front, so the first
+kernel run misses its imports. Each miss names the module asking; the answer
+scans that module's own tree, and the compile finishes without the host."""
+test "a dependency outside the project is scanned when the kernel asks about it" {
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        app = base / 'app';
+        lib = base / 'shared' / 'lib';
+        app.mkdir();
+        lib.mkdir(parents=True);
+        (app / 'jac.toml').write_text(CONFIG);
+        (base / 'shared' / 'jac.toml').write_text('[project]\nname="shared"\n');
+        (lib / 'deep.jac').write_text('def twice(x: int) -> int { return x * 2; }\n');
+        (lib / 'util.jac').write_text(
+            'import json;\nimport from lib.deep { twice }\n'
+                + 'def helper(x: int) -> int { return twice(x) + len(json.dumps({})); }\n'
+        );
+        (app / 'main.jac').write_text(
+            'import from lib.util { helper }\nnode Item { has label: str = ""; }\n'
+                + 'with entry { root ++> Item(label="a"); print(helper(2)); }\n'
+        );
+        entry_file = str(app / 'main.jac');
+        runs: list[str] = [];
+        run_compile = kernel_compile_mod.run_kernel_compile;
+        def counted(*args: any, **kwargs: any) -> any {
+            runs.append(str(args[1]));
+            return run_compile(*args, **kwargs);
+        }
+        with patch.dict(os.environ, {"JACPATH": str(base / 'shared')}) {
+            expected = host_products(entry_file);
+            with patch.object(kernel_compile_mod, "run_kernel_compile", counted) {
+                outcome = kernel_compile_mod.kernel_compile(
+                    active_host(),
+                    JacProgram(),
+                    entry_file,
+                    compile_options(),
+                    in_process=True
+                );
+            }
+        }
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+        assert 1 <= len(runs) <= 3 , runs;
+    }
+}

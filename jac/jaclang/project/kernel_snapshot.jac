@@ -42,6 +42,11 @@ glob SCAN_LIMIT: int = 4000,
      NATIVE_INT_OVERFLOW: str = "integer overflow",
      MISS_ROUNDS: int = 12,
      INTERFACE_MISSES: tuple[str, ...] = ("compile_module", "parse_python"),
+     NPM_MISSES: tuple[str, ...] = (
+         "has_npm_package",
+         "resolve_npm_package",
+         "npm_declarations"
+     ),
      DIRECT_MISS_ROUNDS: int = 2,
      PATH_MISSES: tuple[str, ...] = (
          "workspace",
@@ -993,6 +998,34 @@ obj KernelSnapshot {
         return acted;
     }
 
+    def widen(base: str) {
+        scan = self.scan;
+        if not base or not os.path.isfile(base) {
+            return;
+        }
+        real = os.path.realpath(base);
+        if is_compiler_source_path(real) {
+            if self.rounds > DIRECT_MISS_ROUNDS {
+                scan.learn_package_closure(real);
+            } else {
+                scan.merged_packages.discard(real);
+                scan.learn_package(real);
+            }
+            return;
+        }
+        if not base.endswith((".jac", ".py")) {
+            return;
+        }
+        owner = scan.learner.project_root(base) or os.path.dirname(real);
+        top = os.path.join(os.path.realpath(owner), "");
+        if top not in scan.scope {
+            scan.scope.append(top);
+        }
+        if base not in scan.seen {
+            scan.queue.append(base);
+        }
+    }
+
     def answer_one(miss: str) -> bool {
         scan = self.scan;
         learner = scan.learner;
@@ -1002,19 +1035,11 @@ obj KernelSnapshot {
         (kind, _, key) = miss.partition(": ");
         fields = key.split(" | ");
         if kind == "resolve_module" and len(fields) == 3 {
-            base = fields[2];
             (found, _) = learner.resolve_module(
-                fields[1], base, string_spec=fields[0] == "1"
+                fields[1], fields[2], string_spec=fields[0] == "1"
             );
             scan.follow(found);
-            if os.path.isfile(base) and is_compiler_source_path(base) {
-                if self.rounds > DIRECT_MISS_ROUNDS {
-                    scan.learn_package_closure(os.path.realpath(base));
-                } else {
-                    scan.merged_packages.discard(os.path.realpath(base));
-                    scan.learn_package(os.path.realpath(base));
-                }
-            }
+            self.widen(fields[2]);
             return True;
         }
         if kind == "resolve_local_module" and len(fields) == 2 {
@@ -1024,6 +1049,7 @@ obj KernelSnapshot {
         if kind in PATH_MISSES and key {
             scan.learned.discard(key);
             scan.learn_path(key);
+            self.widen(key);
             return True;
         }
         if kind in INTERFACE_MISSES and key {
@@ -1035,12 +1061,33 @@ obj KernelSnapshot {
             self.wanted_interfaces.add(module_file);
             return True;
         }
-        if kind == "check_settings" {
-            learner.check_settings(key);
+        if kind in NPM_MISSES and len(fields) == 2 {
+            if learner.has_npm_package(fields[0], fields[1]) {
+                learner.resolve_npm_package(fields[0], fields[1]);
+                learner.npm_declarations(fields[0], fields[1]);
+            }
+            self.widen(fields[1]);
             return True;
         }
-        if kind == "npm_declarations" and len(fields) == 2 {
-            scan.learn_npm(fields[0], fields[1]);
+        if kind == "is_path_alias" and len(fields) == 2 {
+            learner.is_path_alias(fields[0], fields[1]);
+            self.widen(fields[1]);
+            return True;
+        }
+        if kind == "declared_dependencies" and len(fields) == 2 {
+            learner.declared_dependencies(fields[0], fields[1]);
+            self.widen(fields[0]);
+            return True;
+        }
+        if kind == "jac_virtual_module_path" and key {
+            virtual_path = learner.jac_virtual_module_path(key);
+            if virtual_path {
+                learner.sibling_declaration(virtual_path);
+            }
+            return True;
+        }
+        if kind == "check_settings" {
+            learner.check_settings(key);
             return True;
         }
         return False;
