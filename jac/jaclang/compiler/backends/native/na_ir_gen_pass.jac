@@ -2754,6 +2754,7 @@ walker NaIRGenPass(CompilerPass) {
         val: ir.Value, container: (uni.UniNode | None)
     ) -> ir.Value;
 
+    def _list_get_of_value(value: ir.Value) -> (ir.Function | None);
     def _tuple_struct_of_value(
         val: (ir.Value | None)
     ) -> (ir.LiteralStructType | None);
