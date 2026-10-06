@@ -321,3 +321,118 @@ test "an import of a stdlib package with an empty stub compiles in the kernel" {
         assert_same_products(emitted, expected);
     }
 }
+
+def write_application(base: Path) {
+    (base / 'jac.toml').write_text(CONFIG);
+    (base / 'util.jac').write_text(
+        'def helper(x: int) -> int { return x + 1; }\n'
+            + 'walker:pub Ping { can go with Root entry { report helper(1); } }\n'
+    );
+    (base / 'deep.jac').write_text('def:pub twice(x: int) -> int { return x * 2; }\n');
+    (base / 'main.jac').write_text(
+        'import from util { helper }\ninclude deep;\n'
+            + 'node Item { has label: str = ""; }\n'
+            + 'def:pub go(n: int) -> int { return helper(n) + twice(n); }\n'
+            + 'def quiet(n: int) -> int { return n; }\n'
+            + 'with entry { print(go(3)); }\n'
+    );
+}
+
+"""What a prepared application exposes, with its directory normalized away:
+each manifest and the names every module's code binds."""
+def prepared_view(base: Path, in_kernel: bool) -> dict[str, any] {
+    import json;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    write_application(base);
+    entry_file = str(base / 'main.jac');
+    def host_only(program: JacProgram, path: str) -> tuple[bool, bool] {
+        return (False, False);
+    }
+    def in_process(program: JacProgram, path: str) -> tuple[bool, bool] {
+        return (not program.internal, True);
+    }
+    route = in_process if in_kernel else host_only;
+    sessions: list[str] = [];
+    compile_reported = kernel_compile_mod.kernel_compile_reported;
+    def counted(*args: any, **kwargs: any) -> any {
+        sessions.append(str(args[2]));
+        return compile_reported(*args, **kwargs);
+    }
+    with patch.object(kernel_compile_mod, "kernel_route", route) {
+        with patch.object(kernel_compile_mod, "kernel_compile_reported", counted) {
+            prepared = prepare_application(entry_file, JacProgram(), str(base));
+        }
+    }
+    prefix = str(base);
+    return {
+        "sessions": len(sessions),
+        "manifests": json.loads(
+            json.dumps(prepared.manifests, sort_keys=True, `default=str).replace(
+                prefix, "<app>"
+            )
+        ),
+        "code": {
+            path.replace(prefix, "<app>"): sorted(code.co_names)
+            for (path, code) in prepared.code.items()
+        }
+    };
+}
+
+"""`jac run` and `serve` prepare an application: every project module's code
+and the manifest of what it serves. One kernel session emits a unit per
+module, and the manifest is built from those units as it is from the host's
+trees."""
+test "an application prepares from one kernel session as it does on the host" {
+    with TemporaryDirectory() as host_dir {
+        with TemporaryDirectory() as kernel_dir {
+            expected = prepared_view(Path(os.path.realpath(host_dir)), False);
+            observed = prepared_view(Path(os.path.realpath(kernel_dir)), True);
+            assert expected["sessions"] == 0 and observed["sessions"] == 1 , (
+                expected["sessions"],
+                observed["sessions"]
+            );
+            assert len(expected["code"]) == 3 , sorted(expected["code"]);
+            assert observed["code"] == expected["code"];
+            surface = expected["manifests"]["<app>/main.jac"]["surface"];
+            assert "go" in surface and "twice" in surface and "Ping" in surface , sorted(
+                surface
+            );
+            assert observed["manifests"] == expected["manifests"];
+        }
+    }
+}
+
+"""A module that names a Jac builtin gets `from jaclang.runtime.builtin import`
+in its bytecode. The generator finds builtins by set membership, and in the
+native kernel a set declared without an element type compares strings by
+identity, so the import was dropped and the name failed at run time."""
+test "a module using Jac builtins compiles in the kernel with their import" {
+    kernel = loaded_kernel();
+    if kernel is None {
+        return;
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'main.jac').write_text(
+            'def boom { raise RuntimeError("x"); }\n\n'
+                + 'def probe -> str {\n'
+                + '    with testraises(RuntimeError) as caught {\n        boom();\n    }\n'
+                + '    return str(caught);\n}\n\n'
+                + 'with entry { printgraph(root); }\n'
+        );
+        entry_file = str(base / 'main.jac');
+        expected = host_products(entry_file);
+        outcome = CompileReport.from_json(
+            call_kernel(
+                kernel, COMPILE_ENTRY, kernel_json(entry_file), entry_file, None
+            )
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+    }
+}

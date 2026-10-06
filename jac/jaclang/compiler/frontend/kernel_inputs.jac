@@ -201,6 +201,7 @@ obj KernelInputs {
         search_paths: list[str] = [],
         native_session_active: bool = False,
         scanned_modules: int = 0,
+        emit_paths: list[str] = [],
         manifest: ManifestSets = ManifestSets(),
         layout: LayoutTables = LayoutTables(),
         project_facts: dict[str, ProjectFacts] = {},
@@ -706,6 +707,7 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "search_paths": list(inputs.search_paths),
         "native_session_active": inputs.native_session_active,
         "scanned_modules": inputs.scanned_modules,
+        "emit_paths": list(inputs.emit_paths),
         "manifest": manifest_to_dict(inputs.manifest),
         "layout": layout_to_dict(inputs.layout),
         "project_facts": {
@@ -829,6 +831,7 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         search_paths=json_str_list(raw.get("search_paths")),
         native_session_active=bool(raw.get("native_session_active", False)),
         scanned_modules=json_int(raw.get("scanned_modules"), 0),
+        emit_paths=json_str_list(raw.get("emit_paths")),
         manifest=manifest_from_dict(json_map(raw.get("manifest"))),
         layout=layout_from_dict(json_map(raw.get("layout"))),
         facts_of=json_str_map(raw.get("facts_of")),

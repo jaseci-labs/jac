@@ -25,7 +25,50 @@ obj UnitProducts {
         placement: str = "",
         ct_file_deps: list[str] = [],
         ct_body_deps: list[str] = [],
-        ct_def_deps: list[str] = [];
+        ct_def_deps: list[str] = [],
+        app: str = "",
+        persistence: list[str] = [],
+        import_edges: list[str] = [],
+        client_manifest: str = "";
+}
+
+def import_edge_rows(module: uni.Module) -> list[str] {
+    rows: list[str] = [];
+    for item in module.body {
+        if not isinstance(item, uni.Import) or not item.is_jac {
+            continue;
+        }
+        module_path = item.from_loc;
+        if item.is_absorb and item.items {
+            first = item.items[0];
+            if isinstance(first, uni.ModulePath) {
+                module_path = first;
+            }
+        }
+        if module_path is None {
+            continue;
+        }
+        source = module_path.resolve_relative_path();
+        if not source {
+            continue;
+        }
+        names: list[str] = [];
+        if not item.is_absorb {
+            for taken in item.items {
+                if isinstance(taken, uni.ModuleItem) {
+                    names.append(taken.name.value);
+                }
+            }
+        }
+        rows.append(
+            ("1" if item.is_absorb else "0")
+                + DEF_DEP_SEP
+                + source
+                + DEF_DEP_SEP
+                + ",".join(names)
+        );
+    }
+    return rows;
 }
 
 def interop_record(module: uni.Module) -> dict[str, any] {
@@ -358,6 +401,14 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
         products.client = client_artifact_json(artifact);
     }
     products.placement = placement_record(module, program);
+    products.app = module.app or "";
+    products.persistence = list(module.persistence);
+    products.import_edges = import_edge_rows(module);
+    if module.gen.client_manifest is not None {
+        products.client_manifest = json.dumps(
+            manifest_record(module.gen.client_manifest)
+        );
+    }
     return products;
 }
 
@@ -371,7 +422,11 @@ def products_record(products: UnitProducts) -> dict[str, any] {
         "placement": products.placement,
         "ct_file_deps": list(products.ct_file_deps),
         "ct_body_deps": list(products.ct_body_deps),
-        "ct_def_deps": list(products.ct_def_deps)
+        "ct_def_deps": list(products.ct_def_deps),
+        "app": products.app,
+        "persistence": list(products.persistence),
+        "import_edges": list(products.import_edges),
+        "client_manifest": products.client_manifest
     };
 }
 
@@ -386,7 +441,11 @@ def products_from_record(raw: dict[str, any]) -> UnitProducts {
         placement=str(raw.get("placement", "")),
         ct_file_deps=json_str_list(raw.get("ct_file_deps")),
         ct_body_deps=json_str_list(raw.get("ct_body_deps")),
-        ct_def_deps=json_str_list(raw.get("ct_def_deps"))
+        ct_def_deps=json_str_list(raw.get("ct_def_deps")),
+        app=str(raw.get("app", "")),
+        persistence=json_str_list(raw.get("persistence")),
+        import_edges=json_str_list(raw.get("import_edges")),
+        client_manifest=str(raw.get("client_manifest", ""))
     );
 }
 

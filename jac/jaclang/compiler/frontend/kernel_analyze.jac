@@ -337,6 +337,13 @@ def run_kernel_session(
             host.close_over(options);
         }
         host.compile_module(run.program, path, source, options);
+        if with_codegen {
+            for emit_path in inputs.emit_paths {
+                if os.path.realpath(emit_path) not in host.units {
+                    host.compile_module(run.program, emit_path, None, options);
+                }
+            }
+        }
     } except Exception as err {
         run.status = ANALYSIS_CRASHED;
         run.message = f"{type(err).__name__}: {err}";

@@ -595,10 +595,22 @@ def kernel_analysis_inputs(
     program: JacProgram,
     path: str,
     options: CompileOptions,
-    source: (str | None) = None
+    source: (str | None) = None,
+    emit_closure: bool = False
 ) -> KernelInputs {
+    import from jaclang.jac0core.ext_registry { is_annex }
     scan = snapshot_closure(host, program, path, options, source);
     inputs = scan.learner.inputs;
+    if emit_closure {
+        entry_real = os.path.realpath(path);
+        inputs.emit_paths = sorted(
+            seen
+            for seen in scan.seen
+            if seen.endswith(".jac")
+                and not is_annex(seen)
+                and os.path.realpath(seen) != entry_real
+        );
+    }
     for ws in list(inputs.workspaces.values()) {
         for name in ws.apps {
             if name not in inputs.check_settings {
@@ -719,9 +731,12 @@ def kernel_inputs_json(
     program: JacProgram,
     path: str,
     options: CompileOptions,
-    source: (str | None) = None
+    source: (str | None) = None,
+    emit_closure: bool = False
 ) -> str {
-    inputs = kernel_analysis_inputs(host, program, path, options, source);
+    inputs = kernel_analysis_inputs(
+        host, program, path, options, source, emit_closure=emit_closure
+    );
     if not options.no_cgen {
         import from jaclang.client.client_surface { injected_virtual_modules }
         import from jaclang.compiler.backends.es.backends.registry {

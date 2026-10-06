@@ -2,8 +2,10 @@ import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { HostServices }
+import from jaclang.compiler.driver.unit_products { UnitProducts }
 import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_CRASHED,
+    AnalysisReport,
     CompileReport,
     kernel_trace,
     run_kernel_compile
@@ -17,7 +19,8 @@ import from jaclang.project.kernel_snapshot {
     loaded_kernel
 }
 
-glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE";
+glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
+     _APPLICATION_UNITS: dict[str, UnitProducts] = {};
 
 class KernelCompileError(RuntimeError) {}
 
@@ -33,9 +36,12 @@ def kernel_compile(
     options: CompileOptions,
     source: (str | None) = None,
     in_process: bool = False,
-    isolated: bool = True
+    isolated: bool = True,
+    emit_closure: bool = False
 ) -> CompileReport {
-    inputs_json = kernel_inputs_json(host, program, path, options, source);
+    inputs_json = kernel_inputs_json(
+        host, program, path, options, source, emit_closure=emit_closure
+    );
     if in_process {
         outcome = run_kernel_compile(inputs_json, path, source);
     } else {
@@ -58,22 +64,35 @@ def kernel_compile(
     return outcome;
 }
 
-def host_kernel_compile(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
+def kernel_route(program: JacProgram, path: str) -> tuple[bool, bool] {
     import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if program.internal or is_compiler_source_path(path) {
-        return None;
+        return (False, False);
     }
-    in_process = kernel_compile_in_process();
-    if not in_process {
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        if ensure_loaded() is None {
-            return None;
-        }
+    if kernel_compile_in_process() {
+        return (True, True);
     }
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    return (ensure_loaded() is not None, False);
+}
+
+def kernel_compile_reported(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    in_process: bool,
+    emit_closure: bool
+) -> CompileReport {
     try {
-        compiled = kernel_compile(host, program, path, options, in_process=in_process);
+        compiled = kernel_compile(
+            host,
+            program,
+            path,
+            options,
+            in_process=in_process,
+            emit_closure=emit_closure
+        );
     } except KernelAnalysisError as err {
         raise KernelCompileError(
             f"the native compiler kernel could not compile {path}: {err}"
@@ -91,4 +110,36 @@ def host_kernel_compile(
         program.warnings_had.append(alert_of(diag));
     }
     return compiled;
+}
+
+def host_kernel_compile(
+    host: HostServices, program: JacProgram, path: str, options: CompileOptions
+) -> (CompileReport | None) {
+    (routed, in_process) = kernel_route(program, path);
+    if not routed {
+        return None;
+    }
+    ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
+    if ready is not None {
+        return CompileReport(analysis=AnalysisReport(entry_path=path), units=[ready]);
+    }
+    return kernel_compile_reported(host, program, path, options, in_process, False);
+}
+
+def kernel_compile_application(
+    host: HostServices, program: JacProgram, path: str, options: CompileOptions
+) -> (CompileReport | None) {
+    (routed, in_process) = kernel_route(program, path);
+    if not routed {
+        return None;
+    }
+    compiled = kernel_compile_reported(host, program, path, options, in_process, True);
+    for unit in compiled.units {
+        _APPLICATION_UNITS[os.path.realpath(unit.path)] = unit;
+    }
+    return compiled;
+}
+
+def forget_application_units {
+    _APPLICATION_UNITS.clear();
 }
