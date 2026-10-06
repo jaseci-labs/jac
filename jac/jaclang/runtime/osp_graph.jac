@@ -100,7 +100,8 @@ obj OspGraph {
         tags_out: dict[int, dict[int, list[int]]] = {},
         tags_in: dict[int, dict[int, list[int]]] = {},
         holes_out: dict[int, int] = {},
-        holes_in: dict[int, int] = {};
+        holes_in: dict[int, int] = {},
+        any_undirected: bool = False;
 
     def adj_of(h: int) -> OspAdj {
         if h in self.adj {
@@ -296,6 +297,9 @@ obj OspGraph {
         unpinned: list[int] = [];
 
     def _row_alloc(src: int, tgt: int, tag: int, eobj: int, undirected: bool) -> int {
+        if undirected {
+            self.any_undirected = True;
+        }
         if self.free_rows {
             rid: int = self.free_rows.pop();
             row: OspEdgeRow = self.rows[rid];
@@ -615,34 +619,39 @@ obj OspGraph {
         a: OspAdj = self.adj[origin];
         out_ok = dir == 2 or dir == 3;
         in_ok = dir == 1 or dir == 3;
-        nar = self._narrowed(origin, True, edge_tag);
-        for rid in self._rows_for(origin, a, True, edge_tag) {
-            if rid < 0 {
-                continue;
-            }
-            row: OspEdgeRow = self.rows[rid];
-            if not row.live {
-                continue;
-            }
-            if (out_ok or row.undirected)
-                and (nar or self._tag_matches(row.tag, edge_tag)) {
-                o: int = row.handle if edges_only else row.tgt;
-                out.append(o);
+        mixed = self.any_undirected;
+        if out_ok or mixed {
+            nar = self._narrowed(origin, True, edge_tag);
+            for rid in self._rows_for(origin, a, True, edge_tag) {
+                if rid < 0 {
+                    continue;
+                }
+                row: OspEdgeRow = self.rows[rid];
+                if not row.live {
+                    continue;
+                }
+                if (out_ok or row.undirected)
+                    and (nar or self._tag_matches(row.tag, edge_tag)) {
+                    o: int = row.handle if edges_only else row.tgt;
+                    out.append(o);
+                }
             }
         }
-        nar = self._narrowed(origin, False, edge_tag);
-        for rid in self._rows_for(origin, a, False, edge_tag) {
-            if rid < 0 {
-                continue;
-            }
-            row: OspEdgeRow = self.rows[rid];
-            if not row.live {
-                continue;
-            }
-            if (in_ok or row.undirected)
-                and (nar or self._tag_matches(row.tag, edge_tag)) {
-                o: int = row.handle if edges_only else row.src;
-                out.append(o);
+        if in_ok or mixed {
+            nar = self._narrowed(origin, False, edge_tag);
+            for rid in self._rows_for(origin, a, False, edge_tag) {
+                if rid < 0 {
+                    continue;
+                }
+                row: OspEdgeRow = self.rows[rid];
+                if not row.live {
+                    continue;
+                }
+                if (in_ok or row.undirected)
+                    and (nar or self._tag_matches(row.tag, edge_tag)) {
+                    o: int = row.handle if edges_only else row.src;
+                    out.append(o);
+                }
             }
         }
         if edges_only {

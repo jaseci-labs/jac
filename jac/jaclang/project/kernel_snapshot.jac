@@ -567,7 +567,11 @@ obj ClosureScan {
         }
         learner.app_for_path(path);
         learner.lint_settings(path);
-        learner.native_verdict(path, self.program);
+        if path.endswith(".jac") {
+            learner.native_verdict(path, self.program);
+        } else {
+            learner.inputs.verdicts.setdefault(path, None);
+        }
         learner.is_untyped_third_party(path);
         learner.declared_dependencies(path, self.options.target_app or "");
         if path.endswith((".js", ".py")) {
