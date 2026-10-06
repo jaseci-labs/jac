@@ -26,12 +26,7 @@ impl Scheduler.register(
     }
     self._tasks.append(
         ScheduledTask(
-            name=name,
-            target=target,
-            spec=spec,
-            is_walker=is_walker,
-            next_run=next_run,
-            last_run=None
+            name=name, target=target, spec=spec, is_walker=is_walker, next_run=next_run
         )
     );
 }
@@ -411,11 +406,11 @@ impl Scheduler._launch(task: ScheduledTask, due: datetime.datetime) -> None {
         refused = not self._running;
         if not refused {
             self._in_flight[id(task)] = (task.name, thread);
-            task.last_run = datetime.datetime.now(datetime.timezone.utc);
         }
     }
     if refused {
         self._release_run(task);
+        self._skip(task, due, "stopping");
         return;
     }
     thread.start();

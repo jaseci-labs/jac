@@ -65,8 +65,7 @@ obj ScheduledTask {
         target: Callable,
         spec: ScheduleSpec,
         is_walker: bool,
-        next_run: (datetime.datetime | None) = None,
-        last_run: (datetime.datetime | None) = None;
+        next_run: (datetime.datetime | None) = None;
 }
 
 obj RunOutcome {

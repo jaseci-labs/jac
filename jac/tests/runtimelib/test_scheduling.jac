@@ -195,8 +195,7 @@ test "compute next run and schedule decorator" {
         target=bad_fn,
         spec=ScheduleSpec(interval=60),
         is_walker=False,
-        next_run=datetime.datetime.now(),
-        last_run=None
+        next_run=datetime.datetime.now()
     );
     assert sched._execute(task) == "RuntimeError: boom";
 }
@@ -535,12 +534,13 @@ test "a worker recomputes inherited fire times when it starts" {
     sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
     stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1);
     sched._tasks[0].next_run = stale;
+    outcomes: list[RunOutcome] = [];
+    sched.on_run("probe", outcomes.append);
     sched.start();
     try {
-        # last_run is stamped when this worker starts a run, so a run of the
-        # inherited past fire time shows here whichever thread gets there first.
+        # A run of the inherited past fire time would report an outcome.
         task = sched._tasks[0];
-        assert task.last_run is None , task.last_run;
+        assert outcomes == [] , outcomes;
         assert task.next_run is not None;
         assert task.next_run > datetime.datetime.now(datetime.timezone.utc) , task.next_run;
     } finally {
@@ -857,10 +857,6 @@ test "each tick reports one outcome naming its task, tick and worker" {
             got = outcomes[0];
             assert (got.task, got.tick, got.worker) == (name, tick, worker) , got;
             assert (got.status, got.reason, got.error) == (status, reason, error) , got;
-            assert (task.last_run is None) == (status == "skipped") , (
-                name,
-                task.last_run
-            );
             if line {
                 assert any(
                     m.startswith(line) and worker in m for m in records.messages
@@ -872,6 +868,27 @@ test "each tick reports one outcome naming its task, tick and worker" {
         log.setLevel(level);
         log.disabled = disabled;
     }
+}
+
+
+test "a tick stop() refuses is reported as a skip, not spent in silence" {
+    # The tick is claimed before the launch, so without this every other
+    # replica logs claimed_elsewhere for a tick nobody ran and nobody named.
+    (claim_fn, claims) = _shared_claims();
+    outcomes: list[RunOutcome] = [];
+    sched = fresh_scheduler();
+    sched.claim = claim_fn;
+    sched.namespace = "orders";
+    sched.on_run("probe", outcomes.append);
+    sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
+    sched.start();
+    sched.stop(timeout=2.0);
+    tick = datetime.datetime(2026, 5, 1, 9, 0, tzinfo=datetime.timezone.utc);
+    sched._tick(sched._tasks[0], tick);
+    assert len(outcomes) == 1 , outcomes;
+    got = outcomes[0];
+    assert (got.status, got.reason) == ("skipped", "stopping") , got;
+    assert claims["sched:orders:beat"] == tick_of(tick) , claims;
 }
 
 

@@ -349,7 +349,7 @@ INFO  scheduled heartbeat ok in 1.8 ms (tick 2026-10-01T09:00:05+00:00, worker w
 ERROR scheduled send_digest failed in 3.2 ms (tick 2026-10-01T09:00:00+00:00, worker web-7f9c:4121): smtp unreachable
 ```
 
-A worker that does not run a tick logs that at `DEBUG` with the reason: `claimed_elsewhere` (another replica took the tick), `running_elsewhere` (a run is still going on another replica), `still_running` (an earlier run is still going on this worker), `claim_failed` or `hold_failed` (the database could not be reached), or `draining` (the server is shutting down). With structured logs on, these lines also carry `task`, `tick`, `worker`, `status`, `duration_ms`, `reason` and `error` under `extras`.
+A worker that does not run a tick logs that at `DEBUG` with the reason: `claimed_elsewhere` (another replica took the tick), `running_elsewhere` (a run is still going on another replica), `still_running` (an earlier run is still going on this worker), `claim_failed` or `hold_failed` (the database could not be reached), `draining` (the server is shutting down) or `stopping` (the scheduler stopped between the claim and the run). Every tick a worker claims ends in one of these or in a run. With structured logs on, these lines also carry `task`, `tick`, `worker`, `status`, `duration_ms`, `reason` and `error` under `extras`.
 
 With `[scale.monitoring] enabled = true`, `/metrics` exposes the same outcomes per task, merged across workers:
 
