@@ -706,3 +706,108 @@ test "an application being prepared on the host keeps its module compiles there"
         }
     }
 }
+
+"""The host's snapshot is a guess at what the kernel will ask. When the kernel
+reports an answer it lacked, the host answers that question and the kernel
+runs again, so a gap in the guess costs a second run instead of the compile."""
+test "a kernel compile that lacked an answer asks the host and runs again" {
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.frontend.kernel_inputs { resolution_key }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        entry_file = str(base / 'main.jac');
+        take_snapshot = kernel_compile_mod.kernel_snapshot;
+        def forgetful(*args: any, **kwargs: any) -> any {
+            snapshot = take_snapshot(*args, **kwargs);
+            learner = snapshot.scan.learner;
+            inputs = snapshot.inputs();
+            dropped = [
+                row
+                for row in inputs.imports
+                if row.target == "util"
+            ];
+            assert dropped , "the snapshot never resolved util";
+            for row in dropped {
+                inputs.imports.remove(row);
+                learner._imports.pop(
+                    resolution_key(row.target, row.base_path, row.string_spec), None
+                );
+            }
+            return snapshot;
+        }
+        runs: list[str] = [];
+        run_compile = kernel_compile_mod.run_kernel_compile;
+        def counted(*args: any, **kwargs: any) -> any {
+            runs.append(str(args[1]));
+            return run_compile(*args, **kwargs);
+        }
+        with patch.object(kernel_compile_mod, "kernel_snapshot", forgetful) {
+            with patch.object(kernel_compile_mod, "run_kernel_compile", counted) {
+                outcome = kernel_compile_mod.kernel_compile(
+                    active_host(),
+                    JacProgram(),
+                    entry_file,
+                    compile_options(),
+                    in_process=True
+                );
+            }
+        }
+        assert len(runs) == 2 , runs;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, host_products(entry_file));
+    }
+}
+
+"""An application with a client prepares on the host, and its service apps
+are part of that application. Preparing each service through its own kernel
+session paid a full snapshot per service for modules the host had already
+compiled."""
+test "the services of a client application prepare on the host with it" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    def in_process(program: JacProgram, path: str) -> tuple[bool, bool] {
+        return (not program.internal, True);
+    }
+    def sessions_for(base: Path, client: bool) -> int {
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'main.jac').write_text('def:pub home -> int { return 1; }\n');
+        (base / 'svc.jac').write_text('def:pub ping -> int { return 2; }\n');
+        sessions: list[str] = [];
+        compile_reported = kernel_compile_mod.kernel_compile_reported;
+        def counted(*args: any, **kwargs: any) -> any {
+            sessions.append(str(args[2]));
+            return compile_reported(*args, **kwargs);
+        }
+        route = kernel_compile_mod.kernel_route;
+        def routed(program: JacProgram, path: str) -> tuple[bool, bool] {
+            return in_process(program, path)
+                if route(program, path)[0]
+                else (False, False);
+        }
+        with patch.object(kernel_compile_mod, "kernel_route", routed) {
+            with patch.object(kernel_compile_mod, "kernel_compile_reported", counted) {
+                prepared = prepare_application(
+                    str(base / 'main.jac'),
+                    JacProgram(),
+                    str(base),
+                    [str(base / 'svc.jac')],
+                    client
+                );
+            }
+        }
+        assert len(prepared.applications) == 1 , prepared.applications;
+        return len(sessions);
+    }
+    with TemporaryDirectory() as server_dir {
+        with TemporaryDirectory() as client_dir {
+            assert sessions_for(Path(os.path.realpath(server_dir)), False) == 2;
+            assert sessions_for(Path(os.path.realpath(client_dir)), True) == 0;
+        }
+    }
+}

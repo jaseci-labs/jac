@@ -17,7 +17,7 @@ import from jaclang.project.kernel_snapshot {
     call_kernel,
     call_kernel_isolated,
     host_deferred,
-    kernel_inputs_json,
+    kernel_snapshot,
     loaded_kernel
 }
 
@@ -65,19 +65,27 @@ def kernel_compile(
     isolated: bool = True,
     emit_closure: bool = False
 ) -> CompileReport {
-    inputs_json = kernel_inputs_json(
+    snapshot = kernel_snapshot(
         host, program, path, options, source, emit_closure=emit_closure
     );
-    if in_process {
-        outcome = run_kernel_compile(inputs_json, path, source);
-    } else {
-        kernel = loaded_kernel(COMPILE_ENTRY);
-        call = call_kernel_isolated if isolated else call_kernel;
-        outcome = CompileReport.from_json(
-            call(kernel, COMPILE_ENTRY, inputs_json, path, source)
-        );
+    while True {
+        inputs_json = snapshot.text();
+        if in_process {
+            outcome = run_kernel_compile(inputs_json, path, source);
+        } else {
+            kernel = loaded_kernel(COMPILE_ENTRY);
+            call = call_kernel_isolated if isolated else call_kernel;
+            outcome = CompileReport.from_json(
+                call(kernel, COMPILE_ENTRY, inputs_json, path, source)
+            );
+        }
+        analysis = outcome.analysis;
+        if not analysis.misses
+            or host_deferred(analysis)
+            or not snapshot.answer(analysis.misses) {
+            break;
+        }
     }
-    analysis = outcome.analysis;
     if host_deferred(analysis) {
         return CompileReport(
             analysis=AnalysisReport(

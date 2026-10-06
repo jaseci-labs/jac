@@ -39,6 +39,18 @@ glob SCAN_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
+     MISS_ROUNDS: int = 8,
+     DIRECT_MISS_ROUNDS: int = 2,
+     PATH_MISSES: tuple[str, ...] = (
+         "workspace",
+         "app_for_path",
+         "project_root",
+         "project_facts",
+         "lint_settings",
+         "native_verdict",
+         "is_untyped_third_party",
+         "sibling_declaration"
+     ),
      PRELUDE_STUBS: tuple[str, ...] = (
          "builtins.pyi",
          "typing.pyi",
@@ -201,6 +213,7 @@ obj ClosureScan {
         package_edges: set[str] = set(),
         learned: set[str] = set(),
         merged_packages: set[str] = set(),
+        closed_packages: set[str] = set(),
         string_specs: set[tuple[str, str]] = set(),
         queue: list[str] = [];
 
@@ -213,6 +226,10 @@ obj ClosureScan {
         top = owner or os.path.dirname(os.path.abspath(self.entry_path));
         self.scope.append(os.path.join(os.path.realpath(top), ""));
         self.queue.append(self.entry_path);
+        self.settle();
+    }
+
+    def settle {
         while self.queue and len(self.seen) < SCAN_LIMIT {
             path = self.queue.pop();
             if path in self.seen {
@@ -223,6 +240,24 @@ obj ClosureScan {
         }
         for package_path in sorted(self.package_edges) {
             self.learn_package(package_path);
+        }
+    }
+
+    def learn_package_closure(path: str) {
+        host = self.learner.fallback;
+        if host is None {
+            return;
+        }
+        pending = [path];
+        while pending {
+            current = pending.pop();
+            if current in self.closed_packages {
+                continue;
+            }
+            self.closed_packages.add(current);
+            self.learn_package(current);
+            found = package_scan(host, self.program, self.options, current);
+            pending.extend(found.edges);
         }
     }
 
@@ -809,11 +844,182 @@ def snapshot_closure(
                 }
             }
         }
+        for prelude in PRELUDE_STUBS {
+            (stub, _) = learner.resolve_module(prelude[:-len(".pyi")], path);
+            if stub and os.path.isfile(stub) {
+                scan.learn_path(stub);
+                scan.learn_path(os.path.realpath(stub));
+            }
+        }
     } finally {
         install_host(previous);
     }
     inputs.scanned_modules = len(scan.seen);
     return scan;
+}
+
+obj KernelSnapshot {
+    has scan: ClosureScan,
+        host: HostServices,
+        options: CompileOptions,
+        emit_closure: bool = False,
+        answered: set[str] = set(),
+        rounds: int = 0;
+
+    def inputs -> KernelInputs {
+        return self.scan.learner.inputs;
+    }
+
+    def refresh {
+        import from jaclang.jac0core.ext_registry { is_annex }
+        scan = self.scan;
+        inputs = scan.learner.inputs;
+        if self.emit_closure {
+            entry_real = os.path.realpath(scan.entry_path);
+            inputs.emit_paths = sorted(
+                seen
+                for seen in scan.seen
+                if seen.endswith(".jac")
+                    and not is_annex(seen)
+                    and os.path.realpath(seen) != entry_real
+            );
+        }
+        for ws in list(inputs.workspaces.values()) {
+            for name in ws.apps {
+                if name not in inputs.check_settings {
+                    inputs.check_settings[name] = self.host.check_settings(name);
+                }
+            }
+        }
+        local = [
+            p
+            for (p, untyped) in inputs.untyped.items()
+            if not untyped and not is_compiler_source_path(p)
+        ];
+        wanted = local + sorted(scan.package_edges);
+        inputs.python_ifaces = python_interfaces(wanted, self.options);
+        served = {iface.path for iface in inputs.python_ifaces};
+        learn_facts(scan, sorted(served - set(wanted)));
+    }
+
+    def text -> str {
+        inputs = self.scan.learner.inputs;
+        host = self.host;
+        if not self.options.no_cgen {
+            import from jaclang.client.client_surface { injected_virtual_modules }
+            import from jaclang.compiler.backends.es.backends.registry {
+                resolve_active_backend
+            }
+            inputs.osp_core_js = host.client_osp_core_js();
+            inputs.client_stub_globals = host.client_stub_globals();
+            inputs.client_stub_globals_known = True;
+            for module_id in injected_virtual_modules(resolve_active_backend()) {
+                if module_id in inputs.virtual_modules {
+                    continue;
+                }
+                virtual_path = host.jac_virtual_module_path(module_id) or "";
+                inputs.virtual_modules[module_id] = virtual_path;
+                if virtual_path and virtual_path not in inputs.siblings {
+                    inputs.siblings[virtual_path] = host.sibling_declaration(
+                        virtual_path
+                    )
+                        or "";
+                }
+            }
+        }
+        return inputs.to_json();
+    }
+
+    def answer(misses: list[str]) -> bool {
+        fresh = [
+            miss
+            for miss in misses
+            if miss not in self.answered
+        ];
+        if not fresh or self.rounds >= MISS_ROUNDS {
+            return False;
+        }
+        self.rounds += 1;
+        scan = self.scan;
+        learner = scan.learner;
+        acted = False;
+        previous = active_host();
+        install_host(learner);
+        try {
+            for miss in fresh {
+                self.answered.add(miss);
+                if self.answer_one(miss) {
+                    acted = True;
+                }
+            }
+            scan.settle();
+        } finally {
+            install_host(previous);
+        }
+        if acted {
+            self.refresh();
+        }
+        return acted;
+    }
+
+    def answer_one(miss: str) -> bool {
+        scan = self.scan;
+        learner = scan.learner;
+        (kind, _, key) = miss.partition(": ");
+        fields = key.split(" | ");
+        if kind == "resolve_module" and len(fields) == 3 {
+            base = fields[2];
+            (found, _) = learner.resolve_module(
+                fields[1], base, string_spec=fields[0] == "1"
+            );
+            scan.follow(found);
+            if os.path.isfile(base) and is_compiler_source_path(base) {
+                if self.rounds > DIRECT_MISS_ROUNDS {
+                    scan.learn_package_closure(os.path.realpath(base));
+                } else {
+                    scan.merged_packages.discard(os.path.realpath(base));
+                    scan.learn_package(os.path.realpath(base));
+                }
+            }
+            return True;
+        }
+        if kind == "resolve_local_module" and len(fields) == 2 {
+            learner.resolve_local_module(fields[0], fields[1].split("/"));
+            return True;
+        }
+        if kind in PATH_MISSES and key {
+            scan.learned.discard(key);
+            scan.learn_path(key);
+            return True;
+        }
+        if kind == "check_settings" {
+            learner.check_settings(key);
+            return True;
+        }
+        if kind == "npm_declarations" and len(fields) == 2 {
+            scan.learn_npm(fields[0], fields[1]);
+            return True;
+        }
+        return False;
+    }
+}
+
+def kernel_snapshot(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None,
+    emit_closure: bool = False
+) -> KernelSnapshot {
+    snapshot = KernelSnapshot(
+        scan=snapshot_closure(host, program, path, options, source),
+        host=host,
+        options=options,
+        emit_closure=emit_closure
+    );
+    snapshot.refresh();
+    return snapshot;
 }
 
 def kernel_analysis_inputs(
@@ -824,36 +1030,9 @@ def kernel_analysis_inputs(
     source: (str | None) = None,
     emit_closure: bool = False
 ) -> KernelInputs {
-    import from jaclang.jac0core.ext_registry { is_annex }
-    scan = snapshot_closure(host, program, path, options, source);
-    inputs = scan.learner.inputs;
-    if emit_closure {
-        entry_real = os.path.realpath(path);
-        inputs.emit_paths = sorted(
-            seen
-            for seen in scan.seen
-            if seen.endswith(".jac")
-                and not is_annex(seen)
-                and os.path.realpath(seen) != entry_real
-        );
-    }
-    for ws in list(inputs.workspaces.values()) {
-        for name in ws.apps {
-            if name not in inputs.check_settings {
-                inputs.check_settings[name] = host.check_settings(name);
-            }
-        }
-    }
-    local = [
-        p
-        for (p, untyped) in inputs.untyped.items()
-        if not untyped and not is_compiler_source_path(p)
-    ];
-    wanted = local + sorted(scan.package_edges);
-    inputs.python_ifaces = python_interfaces(wanted, options);
-    served = {iface.path for iface in inputs.python_ifaces};
-    learn_facts(scan, sorted(served - set(wanted)));
-    return inputs;
+    return kernel_snapshot(
+        host, program, path, options, source, emit_closure=emit_closure
+    ).inputs();
 }
 
 def learn_facts(scan: ClosureScan, paths: list[str]) {
@@ -949,30 +1128,9 @@ def kernel_inputs_json(
     source: (str | None) = None,
     emit_closure: bool = False
 ) -> str {
-    inputs = kernel_analysis_inputs(
+    return kernel_snapshot(
         host, program, path, options, source, emit_closure=emit_closure
-    );
-    if not options.no_cgen {
-        import from jaclang.client.client_surface { injected_virtual_modules }
-        import from jaclang.compiler.backends.es.backends.registry {
-            resolve_active_backend
-        }
-        inputs.osp_core_js = host.client_osp_core_js();
-        inputs.client_stub_globals = host.client_stub_globals();
-        inputs.client_stub_globals_known = True;
-        for module_id in injected_virtual_modules(resolve_active_backend()) {
-            if module_id in inputs.virtual_modules {
-                continue;
-            }
-            virtual_path = host.jac_virtual_module_path(module_id) or "";
-            inputs.virtual_modules[module_id] = virtual_path;
-            if virtual_path and virtual_path not in inputs.siblings {
-                inputs.siblings[virtual_path] = host.sibling_declaration(virtual_path)
-                    or "";
-            }
-        }
-    }
-    return inputs.to_json();
+    ).text();
 }
 
 obj KernelEntry {
@@ -1122,15 +1280,23 @@ def kernel_analysis(
     in_process: bool = False,
     isolated: bool = False
 ) -> AnalysisReport {
-    inputs_json = kernel_inputs_json(host, program, path, options, source);
-    if in_process {
-        outcome = run_kernel_analysis(inputs_json, path, source);
-    } else {
-        kernel = loaded_kernel(ANALYZE_ENTRY);
-        call = call_kernel_isolated if isolated else call_kernel;
-        outcome = AnalysisReport.from_json(
-            call(kernel, ANALYZE_ENTRY, inputs_json, path, source)
-        );
+    snapshot = kernel_snapshot(host, program, path, options, source);
+    while True {
+        inputs_json = snapshot.text();
+        if in_process {
+            outcome = run_kernel_analysis(inputs_json, path, source);
+        } else {
+            kernel = loaded_kernel(ANALYZE_ENTRY);
+            call = call_kernel_isolated if isolated else call_kernel;
+            outcome = AnalysisReport.from_json(
+                call(kernel, ANALYZE_ENTRY, inputs_json, path, source)
+            );
+        }
+        if not outcome.misses
+            or host_deferred(outcome)
+            or not snapshot.answer(outcome.misses) {
+            break;
+        }
     }
     if outcome.status == ANALYSIS_CRASHED and not host_deferred(outcome) {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";

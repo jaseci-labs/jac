@@ -538,6 +538,10 @@ def prepare_application(
                 import from jaclang.runtime.prepared { publish }
                 applications: list[PreparedApplication] = [];
                 for path in entries {
+                    if client {
+                        import from jaclang.project.kernel_compile { host_preparing }
+                        host_preparing(`entry);
+                    }
                     options = bind_options(
                         path,
                         program,
