@@ -345,3 +345,18 @@ test "sized scalar names are a subset of primitive_names" {
     sized = set(JAC_TYPE_REGISTRY.sized_scalar_names());
     assert sized.issubset(JAC_TYPE_REGISTRY.primitive_names());
 }
+
+"""The kernel runs this with a native 64-bit `int`, which cannot hold the
+`u64` maximum, so the unsigned 64-bit fit is decided from the value's sign
+and magnitude instead of from the range."""
+test "a u64 literal fits by sign and magnitude" {
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 0);
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 2305843009213693952);
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 9223372036854775807);
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 18446744073709551615);
+    assert not JAC_TYPE_REGISTRY.literal_fits("u64", -1);
+    assert not JAC_TYPE_REGISTRY.literal_fits("u64", 18446744073709551616);
+    assert JAC_TYPE_REGISTRY.range_of("u64") == (0, 18446744073709551615);
+    assert JAC_TYPE_REGISTRY.range_of("i64")
+        == (-9223372036854775808, 9223372036854775807);
+}

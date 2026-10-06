@@ -463,14 +463,16 @@ test "a jaclang import in an impl folder annex compiles in the kernel" {
     }
 }
 
-"""Outside a project the default codespace is native, and the kernel emits no
-Python unit for a module it places there: generating native code for a
-program is still the host's work. A kernel compile that reports the entry
-native and emits no unit hands the module to the host; one that emits no
-unit for any other reason has compiled it, and the host must not."""
-test "a kernel compile with no unit defers only a native-codespace module" {
+"""A kernel compile can come back with no unit for the entry. If the kernel
+reported errors, the module is compiled and failed, and the host must not
+compile it again. Otherwise the kernel emitted nothing because the module is
+not its to emit (one placed in the native codespace, whose code the host
+generates) or has nothing to emit (an empty package `__init__`), and the
+host compiles it."""
+test "a kernel compile with no unit is final only when it reported errors" {
     import from unittest.mock { patch }
     import from jaclang.compiler.frontend.kernel_analyze {
+        AnalysisDiag,
         AnalysisReport,
         ModuleReport
     }
@@ -481,11 +483,18 @@ test "a kernel compile with no unit defers only a native-codespace module" {
         Path(entry_file).write_text('test "arithmetic" { assert 6 * 7 == 42; }\n');
         program = JacProgram();
         compiler = program._get_compiler();
-        for (placed_native, expect_handled) in [(True, False), (False, True)] {
+        failed = [AnalysisDiag(code="E1001", message="x", path=entry_file, line=1)];
+        for (placed_native, errors, expect_handled) in [
+            (True, [], False),
+            (False, [], False),
+            (False, failed, True),
+            (True, failed, False)
+        ] {
             canned = CompileReport(
                 analysis=AnalysisReport(
                     entry_path=entry_file,
-                    modules=[ModuleReport(path=entry_file, native=placed_native)]
+                    modules=[ModuleReport(path=entry_file, native=placed_native)],
+                    errors=list(errors)
                 )
             );
             def answer(*args: any, **kwargs: any) -> CompileReport {
@@ -496,7 +505,7 @@ test "a kernel compile with no unit defers only a native-codespace module" {
                     entry_file, program, compile_options()
                 );
             }
-            assert handled == expect_handled , (placed_native, handled);
+            assert handled == expect_handled , (placed_native, len(errors), handled);
             assert code is None;
         }
     }
@@ -648,5 +657,30 @@ test "a module with a graph expression compiles in the kernel" {
         outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
+    }
+}
+
+"""An application with client code or pages prepares on the host, with the
+program's context. Its module compiles stay there too: the kernel, asked
+for one module of such an application without that context, cannot build
+the module's client product."""
+test "an application being prepared on the host keeps its module compiles there" {
+    import from unittest.mock { patch }
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    with TemporaryDirectory() as td {
+        entry_file = str(Path(os.path.realpath(td)) / 'main.jac');
+        with patch.dict(os.environ, {"JAC_KERNEL_COMPILE": "inprocess"}) {
+            assert kernel_compile_mod.kernel_route(JacProgram(), entry_file)
+                == (True, True);
+            kernel_compile_mod.host_preparing(entry_file);
+            try {
+                assert kernel_compile_mod.kernel_route(JacProgram(), entry_file)
+                    == (False, False);
+            } finally {
+                kernel_compile_mod.host_prepared();
+            }
+            assert kernel_compile_mod.kernel_route(JacProgram(), entry_file)
+                == (True, True);
+        }
     }
 }

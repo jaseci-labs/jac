@@ -82,11 +82,11 @@ def shape_range(shape: ScalarShape) -> tuple[int, int] {
     if not shape.sized or shape.is_float {
         raise ValueError(f"{shape.name} is not a sized integer type");
     }
+    top = ((1 << (shape.width - 2)) - 1) * 2 + 1;
     if shape.signed {
-        top = ((1 << (shape.width - 2)) - 1) * 2 + 1;
         return (-top - 1, top);
     }
-    return (0, (1 << shape.width) - 1);
+    return (0, top * 2 + 1);
 }
 
 def range_of(name: str) -> tuple[int, int] {
@@ -136,6 +136,10 @@ def shape_literal_fits(shape: ScalarShape, value: int | float) -> bool {
     }
     if isinstance(value, float) {
         return False;
+    }
+    if not shape.signed and shape.width >= 64 {
+        whole = int(value);
+        return whole >= 0 and (whole >> 63) < 2;
     }
     (lo, hi) = shape_range(shape);
     return lo <= int(value) <= hi;

@@ -22,7 +22,8 @@ import from jaclang.project.kernel_snapshot {
 }
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
-     _APPLICATION_UNITS: dict[str, UnitProducts] = {};
+     _APPLICATION_UNITS: dict[str, UnitProducts] = {},
+     _HOST_PREPARING: list[str] = [];
 
 class KernelCompileError(RuntimeError) {}
 
@@ -76,7 +77,7 @@ def kernel_compile(
 
 def kernel_route(program: JacProgram, path: str) -> tuple[bool, bool] {
     import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
-    if program.internal or is_compiler_source_path(path) {
+    if program.internal or is_compiler_source_path(path) or _HOST_PREPARING {
         return (False, False);
     }
     if kernel_compile_in_process() {
@@ -156,4 +157,12 @@ def kernel_compile_application(
 
 def forget_application_units {
     _APPLICATION_UNITS.clear();
+}
+
+def host_preparing(entry_path: str) {
+    _HOST_PREPARING.append(entry_path);
+}
+
+def host_prepared {
+    _HOST_PREPARING.clear();
 }

@@ -456,7 +456,7 @@ obj ClosureScan {
         learner.native_verdict(path, self.program);
         learner.is_untyped_third_party(path);
         learner.declared_dependencies(path, self.options.target_app or "");
-        if path.endswith(".js") {
+        if path.endswith((".js", ".py")) {
             learner.sibling_declaration(path);
         }
         real = os.path.realpath(path);

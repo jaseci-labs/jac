@@ -614,10 +614,15 @@ def _prepare(
     for path in entries {
         capture(path);
     }
+    import from jaclang.project.kernel_compile { host_prepared }
     with compile_progress.listen(capture) {
-        return _prepare_revision(
-            `entry, program, `root, entries, client, dev, console, inputs
-        );
+        try {
+            return _prepare_revision(
+                `entry, program, `root, entries, client, dev, console, inputs
+            );
+        } finally {
+            host_prepared();
+        }
     }
 }
 
@@ -770,6 +775,8 @@ def _prepare_revision(
     }
     if units is None {
         import from jaclang.compiler.driver.pipeline_runner { compile_application }
+        import from jaclang.project.kernel_compile { host_preparing }
+        host_preparing(`entry);
         for path in entries {
             options = copy.copy(program.options);
             options.project_root = `root;
