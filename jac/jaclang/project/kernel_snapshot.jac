@@ -39,6 +39,12 @@ glob SCAN_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
+     PRELUDE_STUBS: tuple[str, ...] = (
+         "builtins.pyi",
+         "typing.pyi",
+         "types.pyi",
+         "enum.pyi"
+     ),
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
@@ -200,7 +206,10 @@ obj ClosureScan {
 
     def run {
         owner = self.learner.project_root(self.entry_path);
-        self.learner.project_root("");
+        cwd_owner = self.learner.project_root("");
+        if cwd_owner {
+            self.learner.project_facts(cwd_owner);
+        }
         top = owner or os.path.dirname(os.path.abspath(self.entry_path));
         self.scope.append(os.path.join(os.path.realpath(top), ""));
         self.queue.append(self.entry_path);
@@ -276,6 +285,24 @@ obj ClosureScan {
                 self.scan_imports(tree, path);
             }
         } except Exception {}
+    }
+
+    def learn_package_bases(found: str, spec: str) {
+        if not found or not spec or spec.startswith(".") {
+            return;
+        }
+        base = found;
+        for _ in range(spec.count(".") + 2) {
+            base = os.path.dirname(base);
+            if not base or base in self.learned {
+                continue;
+            }
+            self.learned.add(base);
+            owner = self.learner.project_root(base);
+            if owner {
+                self.learner.project_facts(owner);
+            }
+        }
     }
 
     def learn_runtime_imports(tree: uni.Module, path: str) {
@@ -355,7 +382,9 @@ obj ClosureScan {
             } else {
                 spec = mod_path.dot_path_str;
             }
-            self.follow(self.resolved(mod_path, None));
+            found = self.resolved(mod_path, None);
+            self.follow(found);
+            self.learn_package_bases(found, spec);
             self.learn_npm(spec, owner);
             if spec.startswith("@jac/") {
                 virtual_path = learner.jac_virtual_module_path(spec);
@@ -411,6 +440,10 @@ obj ClosureScan {
     }
 
     def follow(path: str) {
+        if path and os.path.isdir(path) {
+            self.learn_path(path);
+            return;
+        }
         if not path or not os.path.isfile(path) {
             return;
         }
@@ -449,8 +482,15 @@ obj ClosureScan {
             learner.project_facts(owner_root);
             learner.project_root(owner_root);
         }
-        learner.project_root(os.path.dirname(path));
-        learner.workspace(path);
+        dir_owner = learner.project_root(os.path.dirname(path));
+        if dir_owner {
+            learner.project_facts(dir_owner);
+        }
+        owning = learner.workspace(path);
+        if owning is not None and owning.project_root {
+            learner.project_facts(owning.project_root);
+            learner.project_root(owning.project_root);
+        }
         learner.app_for_path(path);
         learner.lint_settings(path);
         learner.native_verdict(path, self.program);
@@ -761,6 +801,14 @@ def snapshot_closure(
     );
     try {
         scan.run();
+        for stub_root in inputs.typeshed_roots {
+            for prelude in PRELUDE_STUBS {
+                stub = os.path.join(stub_root, prelude);
+                if os.path.isfile(stub) {
+                    scan.learn_path(stub);
+                }
+            }
+        }
     } finally {
         install_host(previous);
     }

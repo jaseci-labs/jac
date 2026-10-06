@@ -233,13 +233,11 @@ def build_kernel(
 
 class _StoreParserSpan {
     def init(self: _StoreParserSpan) {
-        self.prev = None;
+        self.prev: dict[str, (str | None)] = {};
     }
 
     def __enter__(self: _StoreParserSpan) -> _StoreParserSpan {
-        self.prev: dict[str, (str | None)] = {
-            key: os.environ.get(key) for key in kernel_build_env()
-        };
+        self.prev = {key: os.environ.get(key) for key in kernel_build_env()};
         os.environ.update(kernel_build_env());
         return self;
     }
