@@ -752,6 +752,61 @@ obj NativeLowering {
         bound: str
     ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
 
+    def _run_impl_capability_demotions -> (
+        dict[int, list[tuple[uni.UniNode, str, str, str | None]]] | None
+    );
+
+    def _run_impl_native_stmts -> list[uni.ElementStmt];
+
+    def _predemote_capability_unit_report(
+        viols: list[tuple[uni.UniNode, str, str, str | None]]
+    ) -> int;
+
+    def _register_imported_struct_types_discover -> tuple[
+        list[tuple[str, uni.Module]], dict[str | None, list[str]], dict[str, bool]
+    ];
+
+    def _register_imported_struct_types_note_deps(
+        dep_edges: dict[str | None, list[str]], typed_only: dict[str, bool]
+    ) -> None;
+
+    def _walk_imported_module_stmts(imported_mod: uni.Module) -> list[uni.ElementStmt];
+
+    def _walk_imported_module_skips(stmt: uni.UniNode) -> bool;
+
+    def _walk_imported_module_types_note_osp(
+        stmt: uni.Archetype, imported_mod: uni.Module
+    ) -> None;
+
+    def _walk_imported_module_abilities_verdicts(
+        imported_mod: uni.Module, with_fn_verdicts: bool
+    ) -> tuple[any, bool, (set | None)];
+
+    def _walk_imported_module_abilities_skipped(
+        imported_mod: uni.Module,
+        _imp_layout: any,
+        _wl_internal: bool,
+        _imp_fn_unavail: (set | None)
+    ) -> list[str];
+
+    def _register_imported_globals_symbol(nd: uni.GlobalVars, var_name: str) -> str;
+
+    def _forward_declare_imported_ability_demoted(
+        nd: uni.Ability, name: str, unavailable: (set | None), imp_layout: any
+    ) -> (bool | None);
+
+    def _process_clib_imports_stmts(module: uni.Module) -> list[uni.Import];
+
+    def _process_clib_imports_note_modules(stmt: uni.Import, module: uni.Module) -> None;
+
+    def _process_clib_imports_lib_parts(stmt: uni.Import) -> tuple[list[str], list[str]];
+
+    def _process_clib_imports_has_body(decl: uni.Ability) -> bool;
+
+    def _ensure_emitters_items -> list[tuple[str, str]];
+
+    def _dispatch_builtin_takes_kwargs(func_name: str) -> bool;
+
     def _register_archetypes_topo_order(archetypes: list[uni.Archetype]) -> list[str];
 
     def _register_archetypes_method_shape(stmt: uni.Ability) -> str;
@@ -861,6 +916,66 @@ obj NativeLowering {
     def _jc_reference_schema_semantic(
         semantic: (TypeBase | None)
     ) -> tuple[list[TypeBase], str];
+
+    def _forward_declare_functions_stmts(module: uni.Module) -> list[uni.ElementStmt];
+
+    def _maybe_declare_ability_decorable(nd: uni.Ability) -> bool;
+
+    def _maybe_declare_ability_decorator_names(nd: uni.Ability) -> list[str];
+
+    def _maybe_declare_ability_symbol(nd: uni.Ability, name: str) -> str;
+
+    def _ability_skipped(nd: uni.Ability) -> bool;
+
+    def _ability_body_empty(nd: uni.Ability) -> bool;
+
+    def _ability_generic_generator(nd: uni.Ability) -> bool;
+
+    def _ability_scanned_body(nd: uni.Ability) -> (Sequence[uni.UniNode] | None);
+
+    def _nested_ability_refused(nd: uni.Ability, name: str) -> bool;
+
+    def _nested_ability_capture_names(nd: uni.Ability) -> list[str];
+
+    def _nested_ability_rebound(nd: uni.Ability) -> set[str];
+
+    def _nested_ability_name_refs(nd: uni.Ability) -> list[str];
+
+    def _predeclare_nested_siblings_frame(
+        nd: uni.Ability
+    ) -> (tuple[uni.UniNode, list[tuple[uni.Ability, str]]] | None);
+
+    def _predeclare_nested_siblings_captures(
+        nd: uni.Ability,
+        _frame: uni.UniNode,
+        named: list[tuple[uni.Ability, str]],
+        local_names: set[str]
+    ) -> (
+        tuple[
+            list[uni.Ability],
+            dict[uni.Ability, str],
+            dict[uni.Ability, list[str]],
+            dict[uni.Ability, dict[str, str]],
+            dict[str, uni.Symbol]
+        ]
+        | None
+    );
+
+    def _predeclare_nested_siblings_cap_type(csym: (uni.Symbol | None)) -> (TypeBase | None);
+
+    def _generator_elem_type_args(nd: uni.Ability) -> (list[TypeBase] | None);
+
+    def _generator_param_names(nd: uni.Ability, self_arch: (str | None)) -> list[str];
+
+    def _register_globals_decls(module: uni.Module) -> list[uni.GlobalVars];
+
+    def _register_entry_globals_code(module: uni.Module) -> list[uni.ModuleCode];
+
+    def _register_entry_globals_name(target: uni.UniNode) -> (str | None);
+
+    def _global_vars_erased(assign: uni.Assignment) -> bool;
+
+    def _register_enums_decls(module: uni.Module) -> list[uni.Enum];
 
     def _layout_mro_order -> list[str];
 

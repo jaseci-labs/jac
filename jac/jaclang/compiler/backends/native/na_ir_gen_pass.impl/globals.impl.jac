@@ -17,20 +17,15 @@ impl NaIRGenPass._quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type |
 }
 
 impl NaIRGenPass._register_globals(module: uni.Module) -> None {
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if isinstance(stmt, uni.GlobalVars) {
-            self._codegen_global_vars(stmt);
-        }
+    for stmt in self.lower._register_globals_decls(module) {
+        self._codegen_global_vars(stmt);
     }
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
     candidates: dict[str, ir.Type] = {};
     dropped: set = set();
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if not isinstance(stmt, uni.ModuleCode) {
-            continue;
-        }
+    for stmt in self.lower._register_entry_globals_code(module) {
         for assign in stmt.get_all_sub_nodes(typ=uni.Assignment) {
             if assign.aug_op is not None {
                 continue;
@@ -39,14 +34,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
                 if isinstance(assign.target, (list, tuple))
                 else [(assign.target)];
             for target in targets {
-                if (
-                    not isinstance(target, uni.NameAtom)
-                    or target.sym is None
-                    or target.sym.storage != uni.SymbolStorage.MODULE_GLOBAL
-                ) {
-                    continue;
-                }
-                var_name = self.lower._get_name(target);
+                var_name = self.lower._register_entry_globals_name(target);
                 if (
                     var_name is None
                     or var_name in self.global_vars
@@ -102,7 +90,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
 
 impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     for assign in nd.assignments {
-        if ModuleFacts.is_erased_type_decl(assign) {
+        if self.lower._global_vars_erased(assign) {
             continue;
         }
         targets = assign.target
@@ -264,9 +252,7 @@ impl NaIRGenPass._codegen_const_expr(
 }
 
 impl NaIRGenPass._register_enums(module: uni.Module) -> None {
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if isinstance(stmt, uni.Enum) {
-            self._codegen_enum(stmt);
-        }
+    for stmt in self.lower._register_enums_decls(module) {
+        self._codegen_enum(stmt);
     }
 }
