@@ -104,7 +104,7 @@ obj ClosureScan {
             } except Exception {
                 continue;
             }
-            self.scan_imports(tree);
+            self.scan_imports(tree, path);
             self.learn_arch(tree, source_path);
         }
         try {
@@ -116,7 +116,7 @@ obj ClosureScan {
             annex = wiring_annex_for(path);
             if annex is not None {
                 (tree, _) = parse(annex.source, annex.path);
-                self.scan_imports(tree);
+                self.scan_imports(tree, path);
             }
         } except Exception {}
     }
@@ -169,7 +169,7 @@ obj ClosureScan {
         return self.learner.read_source(path);
     }
 
-    def scan_imports(tree: uni.Module) {
+    def scan_imports(tree: uni.Module, base: str = "") {
         learner = self.learner;
         for mod_path in tree.get_all_sub_nodes(uni.ModulePath) {
             owner = mod_path.loc.mod_path if mod_path.loc else "";
@@ -192,6 +192,11 @@ obj ClosureScan {
             }
             if spec.startswith("jaclang.") {
                 learner.resolve_module(spec, os.path.join(os.path.dirname(owner), ""));
+                if base and os.path.dirname(base) != os.path.dirname(owner) {
+                    learner.resolve_module(
+                        spec, os.path.join(os.path.dirname(base), "")
+                    );
+                }
             }
         }
         for item in tree.get_all_sub_nodes(uni.ModuleItem) {

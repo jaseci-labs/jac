@@ -436,3 +436,28 @@ test "a module using Jac builtins compiles in the kernel with their import" {
         assert_same_products(emitted, expected);
     }
 }
+
+"""An annex in an `impl/` folder resolves its imports from the folder of the
+module it belongs to, so the snapshot has to learn a jaclang import there as
+well as beside the annex file."""
+test "a jaclang import in an impl folder annex compiles in the kernel" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'ver.jac').write_text('def newer(a: str, b: str) -> bool;\n');
+        (base / 'impl').mkdir();
+        (base / 'impl' / 'ver.impl.jac').write_text(
+            'import from jaclang.packages.semver { Version }\n\n'
+                + 'impl newer(a: str, b: str) -> bool {\n'
+                + '    return Version.parse(a) > Version.parse(b);\n}\n'
+        );
+        entry_file = str(base / 'ver.jac');
+        expected = host_products(entry_file);
+        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None;
+        assert_same_products(emitted, expected);
+    }
+}
