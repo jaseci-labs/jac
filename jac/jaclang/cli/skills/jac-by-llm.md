@@ -73,8 +73,11 @@ Method-level `by llm` automatically includes the object's `has` fields as contex
 | Google | `gemini/gemini-2.0-flash` | `GOOGLE_API_KEY` |
 | Ollama | `ollama/llama3:70b` | none - local daemon |
 | Built-in local | `local:gemma-4-e4b` | none - `jac install 'byllm[local]'`, then `jac model pull gemma-4-e4b` |
+| System One (decision model) | `systemone:typesafe/jev-latest` | `TYPESAFE_API_KEY` - closed-set returns only (enum, bool, `list[E]`, obj of enums/bools); set `config={"fallback": "<chat model>"}` for everything else |
 
 Env vars take precedence over `api_key` in `jac.toml`; `BYLLM_DEFAULT_MODEL=...` overrides the project default for one shell. The glob name needn't be `llm` - any module-level glob holding a `Model` works: `glob fast = Model(model_name="gpt-4o-mini"); def quick_label(text: str) -> str by fast();`.
+
+A `systemone:` model answers from a probability distribution, not text: per-member `sem` becomes each label's description, so annotate enum members. `-> Decision[T]` returns `.value`, `.confidence`, `.probabilities`; `config={"min_confidence": 0.7}` re-asks the fallback below that. See the byLLM reference, System One Models.
 
 ## Multi-turn chat & streaming
 
@@ -113,6 +116,8 @@ test "mock outputs consumed in order" {
     assert "Hello" in str(llm.sent("messages")[0]);
 }
 ```
+
+For a `systemone:` model, `MockSystemOne(answers=[...])` is the counterpart: each entry is the answers for one call, keyed by question (`"value"` for a single enum or bool; the member name for `list[E]`; the field name for an obj); read what was sent from `so1.seen`.
 
 See `jac-testing` for `jac test` mechanics.
 

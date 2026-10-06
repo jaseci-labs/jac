@@ -9,17 +9,32 @@ import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.config.config_loader { JacScaleConfig }
+import from jaclang.scale.config.config_loader {
+    JacScaleConfig,
+    get_scale_config,
+    reset_scale_config
+}
 import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler, AutoscalerSpec }
 import from jaclang.scale.runtime.fleet { fleet_of }
+import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
+import from jaclang.server.settings { ServeConfigError }
 
 
-def _builder(services: dict[str, any]) -> ManifestBuilder {
+def _builder(services: dict[str, any], project_dir: str = "") -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
+        project_dir=project_dir,
         fleet=fleet_of({}, overrides=services),
         dry_run=True
     );
+}
+
+
+def _project_with(serve_toml: str) -> str {
+    import tempfile;
+    tmp = tempfile.mkdtemp();
+    Path(tmp, "jac.toml").write_text('[project]\nname = "t"\n' + serve_toml);
+    return tmp;
 }
 
 
@@ -321,6 +336,93 @@ test "embedder-supplied overrides reach the builder with gateway defaults" {
     assert b._drain_timeout() == 10;
     assert b._service_config("svc_a") == {"replicas": 2};
     assert b._service_config("svc_b") == {};
+
+    deployer = _project_with(
+        '[serve.timeouts]\ndrain = 900.0\n[serve.auth]\nsecret = "deployer-toml"\n'
+    );
+    leaked_env = {
+        "JAC_SERVE_DRAIN_TIMEOUT": "900",
+        "JAC_SERVE_AUTH_SECRET": "deployer-env",
+        "JAC_SERVE_WORKERS": "7",
+        "JAC_SERVE_PROXY_TRUSTED": "1.2.3.4/32"
+    };
+    saved = {name: os.environ.get(name) for name in leaked_env};
+    os.environ.update(leaked_env);
+    reset_scale_config();
+    get_scale_config(project_dir=Path(deployer));
+    try {
+        for (serve_toml, drain, secret, workers, trusted) in [
+            (
+                "",
+                "10",
+                PLACEHOLDER_JWT_SECRET,
+                "1",
+                "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            ),
+            (
+                '[serve.timeouts]\ndrain = 30.0\n[serve.auth]\nsecret = "app"\n'
+                    + '[serve.workers]\ncount = "3"\n'
+                    + '[serve.proxy]\ntrusted = ["10.1.0.0/16"]\n',
+                "30",
+                "app",
+                "3",
+                "10.1.0.0/16"
+            ),
+            (
+                None,
+                "10",
+                PLACEHOLDER_JWT_SECRET,
+                "1",
+                "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            ),
+            (
+                '[serve.workers]\ncount = "auto"\n',
+                "10",
+                PLACEHOLDER_JWT_SECRET,
+                "auto",
+                "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            )
+        ] {
+            app_dir = _project_with(serve_toml)
+                if serve_toml is not None
+                else str(Path(deployer, "bare"));
+            Path(app_dir).mkdir(exist_ok=True);
+            app = _builder({"svc_a": {}}, project_dir=app_dir);
+            env = {e["name"]: e["value"] for e in app._serve_env("svc_a", {})};
+            assert env["JAC_SERVE_DRAIN_TIMEOUT"] == drain , app_dir;
+            assert env["JAC_SERVE_WORKERS"] == workers , app_dir;
+            assert env["JAC_SERVE_PROXY_TRUSTED"] == trusted , app_dir;
+            assert app._signing_secret() == secret , app_dir;
+        }
+        app = _builder({"svc_a": {}}, project_dir=str(Path(deployer, "bare")));
+        for (svc_workers, expected) in [
+            ("2", "2"),
+            (" auto ", "auto"),
+            ("0", None),
+            ("many", None)
+        ] {
+            raised = False;
+            try {
+                env = {
+                    e["name"]: e["value"]
+                    for e in app._serve_env("svc_a", {"workers": svc_workers})
+                };
+                assert env["JAC_SERVE_WORKERS"] == expected , svc_workers;
+            } except ServeConfigError {
+                raised = True;
+            }
+            assert raised == (expected is None) , svc_workers;
+        }
+    } finally {
+        reset_scale_config();
+        for (name, value) in saved.items() {
+            if value is None {
+                os.environ.pop(name, None);
+            } else {
+                os.environ[name] = value;
+            }
+        }
+    }
 }
 
 

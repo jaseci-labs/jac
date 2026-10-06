@@ -5,7 +5,7 @@ import from inspect { isgenerator }
 import from typing { AsyncGenerator }
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.runtime.builtin { APIProtocol }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
+import from jaclang.server.server { JacAPIServer, ServerExtension, target_protocol }
 import from jaclang.server.serving.datatypes { WebSocketDisconnect }
 import from jaclang.server.serving.ws { WebSocket }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -182,12 +182,12 @@ obj WebSocketExtension(ServerExtension) {
             return [];
         }
         has_ws = any(
-            server.introspector.walker_protocol(n) == APIProtocol.WEBSOCKET
-            for n in server.get_walkers()
+            target_protocol(cls) == APIProtocol.WEBSOCKET
+            for cls in server.get_walkers().values()
         )
             or any(
-                server.introspector.function_protocol(n) == APIProtocol.WEBSOCKET
-                for n in server.get_functions()
+                target_protocol(fn) == APIProtocol.WEBSOCKET
+                for fn in server.get_functions().values()
             );
         if not has_ws {
             return [];
@@ -268,32 +268,32 @@ obj WebSocketExtension(ServerExtension) {
     }
 
     def register(server: JacAPIServer) {
-        for walker_name in list(server.get_walkers()) {
-            if server.introspector.walker_protocol(walker_name)
-                != APIProtocol.WEBSOCKET {
+        walkers = server.get_walkers();
+        for walker_name in list(walkers) {
+            if target_protocol(walkers[walker_name]) != APIProtocol.WEBSOCKET {
                 continue;
             }
             handler = self.target_handler(
                 server,
                 'walker',
                 walker_name,
-                server.get_walkers()[walker_name],
+                walkers[walker_name],
                 server.introspector.is_auth_required_for_walker(walker_name),
                 server.execution_manager.spawn_walker
             );
             server.add_ws_endpoint(f"/ws/walker/{walker_name}", handler);
             server.add_ws_endpoint(f"/ws/{walker_name}", handler);
         }
-        for func_name in list(server.get_functions()) {
-            if server.introspector.function_protocol(func_name)
-                != APIProtocol.WEBSOCKET {
+        functions = server.get_functions();
+        for func_name in list(functions) {
+            if target_protocol(functions[func_name]) != APIProtocol.WEBSOCKET {
                 continue;
             }
             handler = self.target_handler(
                 server,
                 'function',
                 func_name,
-                server.get_functions()[func_name],
+                functions[func_name],
                 server.introspector.is_auth_required_for_function(func_name),
                 server.execution_manager.execute_function
             );

@@ -102,6 +102,11 @@ impl ModelPool._get_ctx_window(call_params: dict[str, any]) -> int {
 }
 
 
+impl ModelPool._resolve_timeout(mt_run: MTRuntime) -> float | None {
+    return None;
+}
+
+
 impl ModelPool.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     assert self._router is not None;
     if self.strategy == "cost-based-routing" {

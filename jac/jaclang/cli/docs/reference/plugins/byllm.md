@@ -473,6 +473,88 @@ Constructor arguments always take precedence over `jac.toml` values.
 
 ---
 
+## System One Models
+
+A System One model answers typed questions against a state and returns a calibrated probability distribution instead of generating text. TypeSafe's Jev was the first; open implementations (OpenJev, Laya) speak the same `/v1/systemone` wire format. For a call site whose return type is a closed set, byLLM can send the call to one of these instead of a chat model, with no change to the function. It is typically an order of magnitude faster and far cheaper per call, and it returns a confidence a chat model cannot.
+
+```jac
+glob llm = Model(model_name="systemone:typesafe/jev-latest");
+
+enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
+
+sem Category.OTHER = "Household chores and errands that fit no other category";
+
+def categorize(title: str) -> Category by llm();
+sem categorize = "Categorize a task based on its title";
+```
+
+The question is built from what the compiler recorded, not from a prompt: the function's `sem` is the instruction and each member's `sem` is that label's description. Annotating members matters more here than for a chat model, since a small decision model cannot infer what an undescribed label like `OTHER` means.
+
+### What can be answered
+
+| Return type | Asked as |
+|---|---|
+| `enum E` | one choice over its members |
+| `bool` | one yes/no |
+| `list[E]` | one yes/no per member; members above 0.5, most probable first |
+| `obj` whose fields are all enums or bools | one question per field, in a single request, rebuilt into the object |
+| `Decision[T]` for any of the above | as `T`, with the confidence attached (below) |
+
+Anything else (a `str` or number return, an object with an open-ended field, a call with `tools=` or `stream=True`, or media arguments) cannot be answered by a decision model. It goes to the `fallback`.
+
+### Model names and providers
+
+`systemone:<provider>/<model>`. With no provider, `typesafe` is assumed.
+
+| Provider | Endpoint | Key |
+|---|---|---|
+| `typesafe` | `https://api.typesafe.ai/v1/systemone` | `TYPESAFE_API_KEY` or `JEV_API_KEY` |
+| `litellm` | `http://localhost:4000/typesafe/v1/systemone` (a LiteLLM proxy) | `LITELLM_API_KEY` |
+| `openjev` | `http://localhost:8000/v1/systemone` | none |
+| `laya` | `http://localhost:8000/v1/systemone` | none |
+
+Each provider also carries capability limits. A call that exceeds them, such as an enum with more members than the model can reliably choose among, goes to the fallback rather than being truncated. `config={"max_choice_options": ..., "max_state_chars": ..., "api_base": ...}` overrides them.
+
+### Fallback and escalation
+
+```jac
+glob llm = Model(
+    model_name="systemone:typesafe/jev-latest",
+    config={"fallback": "claude-sonnet-4-6", "min_confidence": 0.7}
+);
+```
+
+- A call that cannot be answered is handed to `fallback` unchanged; the fallback sees the same prompt it would have without the System One model. Besides the return types above, this covers calls that pass `conversation=` or a per-call `system_prompt=`, which a System One state cannot express.
+- An answer whose confidence is below `min_confidence` is discarded and the call is re-asked of `fallback`.
+- If the endpoint is unreachable, overloaded or rejects the request, the call goes to `fallback`. A rejected API key (401) is raised instead, since it is a configuration error.
+- With no `fallback`, a call that cannot be answered raises `ConfigurationError`.
+
+The state sent to the endpoint holds the call's arguments, any `incl_info`, and, for a method, the receiver as `self`. The API key comes from the provider's environment variable or an `api_key=` passed to this `Model`; the project-wide `[byllm.model] api_key` belongs to your chat provider and is never sent.
+
+`SystemOneModel(fallback=..., min_confidence=...)` takes the same settings as constructor arguments.
+
+### Reading the confidence
+
+```jac
+def categorize(title: str) -> Decision[Category] by llm();
+
+with entry {
+    d = categorize("Water the plants");
+    # d.value: Category.OTHER, d.confidence: 0.0 to 1.0,
+    # d.probabilities: the distribution per question
+}
+```
+
+When the fallback answered, `d.answered_by` is `"fallback"`, `d.probabilities` is empty, and `d.confidence` is the System One confidence that caused the escalation (0 if the call was never answered by it).
+
+For a single choice, confidence is `(n * p_max - 1) / (n - 1)` over its `n` options; for a yes/no it is `|2p - 1|`; for a list or object it is that of the least certain question. Every call also records its tokens, confidence and distribution in telemetry under `call_kind: "systemone"`.
+
+### `visit ... by llm()`
+
+Routing asks over the live frontier of the current node. `select=1` is one choice; any other `select` is one yes/no per candidate. An exact `select=N` returns the `N` most probable candidates, or all of them if fewer exist; `select=(lo, hi)` returns those above 0.5 up to `hi`, filled by rank to at least `lo`. When a pick below 0.5 is used to fill the count, the confidence is 0, so `min_confidence` escalates it.
+
+---
+
 ## Project Configuration
 
 ### Default Model Configuration
@@ -491,6 +573,7 @@ verbose = false                   # Log LLM calls to stderr
 temperature = 0.7                 # Optional; omit to use the provider default (0.0-2.0)
 max_tokens = 0                    # Max response tokens (0 = no limit)
 max_output_retries = 3            # Retries for structured output (0 = disabled)
+timeout = 600.0                   # Non-streaming request timeout, seconds (0 = no limit)
 
 [byllm.litellm]
 local_cost_map = true             # Use local cost map
@@ -534,6 +617,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 | `temperature` | float | *unset* | Creativity/randomness (0.0-2.0, lower is more deterministic). Omitted from the request when unset, so the provider applies its own default |
 | `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
 | `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
+| `timeout` | float | `600.0` | Seconds one non-streaming request may take before raising `LLMTimeout` (`0` = no limit). See [Request Timeout](#request-timeout) |
 
 **`[byllm.litellm]` options:**
 
@@ -811,6 +895,18 @@ The original rejected text remains available on `raw_output` (see [`OutputConver
 
 ---
 
+## Request Timeout
+
+`[byllm.call_params] timeout` limits one non-streaming request, in seconds. Override it with `Model(timeout=...)` or `by llm(timeout=...)`; `0` removes the limit. When it expires the call raises `LLMTimeout`, which byLLM retries like other transient errors (`[byllm.streaming] num_retries`).
+
+| Path | Setting | Default |
+|------|---------|---------|
+| non-streaming | `[byllm.call_params] timeout` | `600.0` |
+| streaming | `[byllm.streaming] read_timeout` | `90.0` between chunks |
+| `ModelPool` | `[byllm.fallback] timeout` | `60.0` |
+
+---
+
 ## Invocation Parameters
 
 Parameters passed to `by llm()` at call time:
@@ -820,6 +916,7 @@ Parameters passed to `by llm()` at call time:
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Omitted when unset, so the provider default applies |
 | `max_tokens` | int | Maximum tokens in response |
 | `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
+| `timeout` | float | Seconds one non-streaming request may take before raising `LLMTimeout` (`0` = no limit). Default: `600.0` |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
@@ -1984,6 +2081,7 @@ ByLLMError (base)
 ├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
+├── LLMTimeout                   - A non-streaming request outlived its timeout
 └── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
 ```
 
@@ -1999,6 +2097,7 @@ All exceptions are importable from `byllm.lib`.
 | `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+| `LLMTimeout` | A non-streaming request outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
 | `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
@@ -2012,6 +2111,7 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         ConfigurationError,
+        LLMTimeout,
         CompactionNotEffectiveError
     }
     ```
@@ -2025,6 +2125,7 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         ConfigurationError,
+        LLMTimeout,
         CompactionNotEffectiveError,
     )
     ```
