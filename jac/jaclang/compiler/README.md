@@ -44,11 +44,13 @@ Nothing tree-shaped crosses. The host sends a `KernelInputs` snapshot of the
 closure the request needs (`project/kernel_snapshot.jac`: sources, interfaces,
 settings and the answers to the host questions the pipeline will ask), and the
 kernel's `KernelHost` answers `HostServices` from it. A question the snapshot
-cannot answer raises `HostOnlyError`, the request reports a miss, and the host
-compiles that module itself. Results come back as JSON records; the host
-assembles JCIR into bytecode, restores the other products through the same path
-a JIR cache hit takes, and writes the module JIR. `JAC_KERNEL_COMPILE` selects
-whether bytecode builds adopt kernel products (`off`, `on`, `inprocess`).
+cannot answer raises `HostOnlyError`, the request reports a miss, and the
+compile fails: with a kernel present the host never compiles a program module
+in its place. Results come back as JSON records; the host assembles JCIR into
+bytecode, restores the other products through the same path a JIR cache hit
+takes, and writes the module JIR. An application prepares from one kernel
+session that emits a unit per project module (`kernel_compile_application`).
+`JAC_KERNEL_COMPILE=inprocess` runs the kernel's code under Python for tests.
 
 Keep pass and generator algorithms in `passes/` and `backends/`. To move a
 module into the kernel, add it to `native_scope.jac` and make it lower: a walker

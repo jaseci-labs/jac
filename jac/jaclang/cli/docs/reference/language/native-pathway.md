@@ -1155,8 +1155,9 @@ Whether a compile treats the scope as native is `CompileOptions.native_unit`,
 set by the link plan for the compiles it requests; there is no process-global
 mode flag. The kernel comes from one lookup, `resolve_kernel()`
 (`compiler/backends/native/kernel_resolve.jac`), with a fixed precedence:
-`JAC_COMPILER_LIB` as a path (must carry its sidecar) or `off` (the store
-parser), then a sealed image's `native` record (artifact, sha256, layout
+`JAC_COMPILER_LIB` as a path (must carry its sidecar) or, only in a process
+building the kernel (`JAC_KERNEL_BUILDING`), `off` (the store parser), then
+a sealed image's `native` record (artifact, sha256, layout
 and plan digests; missing or mismatched is a startup error), then the
 kernel beside `native_compiler.jac` when the source key its sidecar records
 (the compiler digest plus the module key of every unit it was linked from)

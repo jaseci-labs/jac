@@ -28,8 +28,10 @@ in the stub catalog), and class patterns, which the type checker now types.
 Known limits: helpers on less common paths (C-library bindings, sv-to-sv
 stubs, some React/Solid entry scripts) still demote, and a call to a
 method a subclass inherits from a generic base does not lower natively
-yet. `JAC_KERNEL_COMPILE` stays off by default until kernel products match
-host products across the product parity tests.
+yet. Kernel compiles are not optional: when a kernel is present, a module
+compile, `jac check` and the preparation of an application without client
+code go through it, and a compile the kernel cannot finish is an error.
+Applications with client code or pages still prepare on the host.
 
 ## Implemented foundations
 
