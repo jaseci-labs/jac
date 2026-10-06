@@ -24,8 +24,8 @@ def from_imports_py -> dict[str, any] {
     packed: bytes = pack("<ih", 7, -2);
     (a, b) = unpack("<ih", packed);
     size: int = calcsize("<ih");
-    pid_ok: bool = getpid() > 0;
-    cwd_ok: bool = len(getcwd()) > 0;
+    pid: int = getpid();
+    cwd: str = getcwd();
     shadowed: float = _shadowed_py();
     return {
         "r": r,
@@ -35,8 +35,9 @@ def from_imports_py -> dict[str, any] {
         "b": b,
         "size": size,
         "packed_len": len(packed),
-        "pid_ok": pid_ok,
-        "cwd_ok": cwd_ok,
+        "pid": pid,
+        "cwd": cwd,
+        "cwd_len": len(cwd),
         "shadowed": shadowed
     };
 }
@@ -58,8 +59,8 @@ def from_imports_na -> dict[str, any] {
     packed: bytes = pack("<ih", 7, -2);
     (a, b) = unpack("<ih", packed);
     size: int = calcsize("<ih");
-    pid_ok: bool = getpid() > 0;
-    cwd_ok: bool = len(getcwd()) > 0;
+    pid: int = getpid();
+    cwd: str = getcwd();
     shadowed: float = _shadowed_na();
     return {
         "r": r,
@@ -69,8 +70,9 @@ def from_imports_na -> dict[str, any] {
         "b": b,
         "size": size,
         "packed_len": len(packed),
-        "pid_ok": pid_ok,
-        "cwd_ok": cwd_ok,
+        "pid": pid,
+        "cwd": cwd,
+        "cwd_len": len(cwd),
         "shadowed": shadowed
     };
 }

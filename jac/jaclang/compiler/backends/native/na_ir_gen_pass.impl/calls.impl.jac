@@ -1286,7 +1286,10 @@ impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] |
     """The intercepted (module, function) a bare call names when the name was bound
     by `import from <module> { function }`: `randint(1, 6)` lowers exactly like
     `random.randint(1, 6)`. The callee symbol lives in the module's stub, so a
-    local or module definition that shadows the name never matches.""";
+    local or module definition that shadows the name never matches. The stub is
+    named by its place in the stdlib tree, not its file stem: `os` is a package
+    whose stub is `os/__init__.pyi`.""";
+    import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
     if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
         return None;
     }
@@ -1294,10 +1297,12 @@ impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] |
     if not isinstance(scope, uni.Module) or not scope.stub_only {
         return None;
     }
-    if not self._stdlib_intercept_covers(scope.name, nd.target.sym.name) {
+    module_name = bundled_stdlib_module_of(scope.loc.mod_path);
+    if module_name is None
+        or not self._stdlib_intercept_covers(module_name, nd.target.sym.name) {
         return None;
     }
-    return (scope.name, nd.target.sym.name);
+    return (module_name, nd.target.sym.name);
 }
 
 impl NaIRGenPass._codegen_intrinsic(
