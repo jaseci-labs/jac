@@ -30,3 +30,24 @@ test "bound endpoints keep edges by their far end in the hop direction" {
     assert g.keep_toward(edges, [1], 3, True, [2, 3]) == [201, 202];
     assert g.keep_toward(edges, [1], 2, True, [1]) == [] , "the origin itself is never the far end of a directed out-edge";
 }
+
+test "a forgotten handle gets a fresh jid, and forgetting an unknown one is a no-op" {
+    g = OspGraph(adj={}, rows=[], free_rows=[], row_of={}, dead={}, regions={});
+    a = g.jid_of(101);
+    g.forget_jid(555);
+    assert g.jid_of(101) == a;
+    g.forget_jid(101);
+    assert g.jid_of(101) != a , "a freed object's address must not keep its jid";
+}
+
+test "a jid taken inside a region goes when the region dies" {
+    g = OspGraph(adj={}, rows=[], free_rows=[], row_of={}, dead={}, regions={});
+    loose = g.jid_of(101, 9);
+    edge_id = g.jid_of(202, 9);
+    outside = g.jid_of(303);
+    assert g.jid_of(101, 9) == loose;
+    g.region_died(9);
+    assert g.jid_of(101) != loose , "a never-connected region node keeps no jid";
+    assert g.jid_of(202) != edge_id , "a region edge keeps no jid";
+    assert g.jid_of(303) == outside;
+}

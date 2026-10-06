@@ -883,7 +883,7 @@ obj OspGraph {
         return out;
     }
 
-    def jid_of(h: int) -> str {
+    def jid_of(h: int, rgn: int = 0) -> str {
         if h in self.jids {
             found: str = self.jids[h];
             return found;
@@ -891,7 +891,16 @@ obj OspGraph {
         self.jid_next += 1;
         made = _hex16(id(self)) + _hex16(self.jid_next);
         self.jids[h] = made;
+        if rgn != 0 {
+            self.region_reg(h, rgn);
+        }
         return made;
+    }
+
+    def forget_jid(h: int) {
+        if h in self.jids {
+            self.jids.pop(h);
+        }
     }
 
     def edge_peer(eobj: int, origin: int) -> int {
@@ -1149,9 +1158,7 @@ obj OspGraph {
         if h in self.dead {
             self.dead.pop(h);
         }
-        if h in self.jids {
-            self.jids.pop(h);
-        }
+        self.forget_jid(h);
         return n;
     }
 
@@ -1175,9 +1182,7 @@ obj OspGraph {
             if h in self.dead {
                 self.dead.pop(h);
             }
-            if h in self.jids {
-                self.jids.pop(h);
-            }
+            self.forget_jid(h);
         }
         n = 0;
         for a in stash {
@@ -1380,8 +1385,8 @@ def osp_keep_toward(
     return DEFAULT_GRAPH.keep_toward(hs, origins, dir, edges_only != 0, wanted);
 }
 
-def osp_jid(h: int) -> str {
-    return DEFAULT_GRAPH.jid_of(h);
+def osp_jid(h: int, rgn: int) -> str {
+    return DEFAULT_GRAPH.jid_of(h, rgn);
 }
 
 def osp_edge_peer(edge_handle: int, origin: int) -> int {
@@ -1422,6 +1427,11 @@ def osp_forget_node(h: int) {
     } elif h in DEFAULT_GRAPH.dead {
         DEFAULT_GRAPH.dead.pop(h);
     }
+    DEFAULT_GRAPH.forget_jid(h);
+}
+
+def osp_forget_edge(h: int) {
+    DEFAULT_GRAPH.forget_jid(h);
 }
 
 def osp_pin_refs {

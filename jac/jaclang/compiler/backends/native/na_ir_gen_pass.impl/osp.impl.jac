@@ -89,7 +89,7 @@ impl NaIRGenPass._osp_active -> bool {
     if self._osp_pins_refs() {
         for _name in _model.tags {
             _lay = self._arch_layout(_name);
-            if _lay is not None and _lay.arch_type == "node" {
+            if _lay is not None and _lay.arch_type in ("node", "edge") {
                 return True;
             }
         }
@@ -1297,8 +1297,11 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         }
         if _step_only is not None {
             _keep_fn = self.func_symtab.get("osp_keep_toward");
-            _wanted = self._osp_endpoint_handles(_step_only, nd);
-            if (_keep_fn is None) or (_wanted is None) {
+            _endpoint = self._codegen_expr(_step_only);
+            _wanted = self._osp_endpoint_handles(_step_only, _endpoint, nd)
+                if _endpoint is not None
+                else None;
+            if (_keep_fn is None) or (_endpoint is None) or (_wanted is None) {
                 if _keep_fn is None {
                     self.emit(
                         E5092,
@@ -1327,9 +1330,10 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             );
             self._mark_owned(_result);
             self._emit_rc_release_simple(_unbound, op="osp_refs_only", loc="");
-            if self._is_owned(_wanted) {
+            if _wanted is not _endpoint {
                 self._emit_rc_release_simple(_wanted, op="osp_only_wanted", loc="");
             }
+            self._release_owned_args([_endpoint], op="osp_only_endpoint");
             if _only_origins is not None {
                 self._emit_rc_release_simple(
                     _only_origins, op="osp_only_origins", loc=""
@@ -1392,25 +1396,31 @@ impl NaIRGenPass._emit_jid(nd: uni.FuncCall) -> (ir.Value | None) {
     if self._osp_ensure_fn is not None {
         self.builder.call(self._osp_ensure_fn, []);
     }
-    value = self._codegen_expr(arg);
-    if value is None {
+    operand = self._codegen_expr(arg);
+    if operand is None {
         return None;
     }
+    value = operand;
     if self._opt_ptr_payload_of(value.type) is not None {
         value = self.builder.extract_value(value, 1, name="jid.narrowed");
     }
-    if not isinstance(value.type, ir.PointerType) {
+    _jargs = jid_fn.function_type.args;
+    if not isinstance(value.type, ir.PointerType) or len(_jargs) != 2 {
         self.emit(E5092, node_override=nd, kind="builtin call", name="jid");
         return None;
     }
-    _handle = self.builder.ptrtoint(value, ir.IntType(64), name="jid.handle");
-    return self._mark_reference_owned(
-        self.builder.call(
-            jid_fn,
-            [self._coerce_type(_handle, jid_fn.function_type.args[0])],
-            name="jid"
-        )
+    i64 = ir.IntType(64);
+    _handle = self.builder.ptrtoint(value, i64, name="jid.handle");
+    _rgn = self.builder.call(
+        self._region_kernel_fn("__jac_region_of"), [_handle], name="jid.rgn"
     );
+    _id = self.builder.call(
+        jid_fn,
+        [self._coerce_type(_handle, _jargs[0]), self._coerce_type(_rgn, _jargs[1])],
+        name="jid"
+    );
+    self._release_owned_args([operand], op="jid_operand");
+    return self._mark_reference_owned(_id);
 }
 
 impl NaIRGenPass._osp_handle_list(value: ir.Value, nd: uni.Expr) -> (ir.Value | None) {
@@ -1429,19 +1439,22 @@ impl NaIRGenPass._osp_handle_list(value: ir.Value, nd: uni.Expr) -> (ir.Value | 
 }
 
 impl NaIRGenPass._osp_endpoint_handles(
-    endpoint: uni.Expr, nd: uni.Expr
+    endpoint: uni.Expr, value: ir.Value, nd: uni.Expr
 ) -> (ir.Value | None) {
-    """The handles a bound endpoint (`[a -->:E:-> b]`) names: one node, or a
-    list/tuple/set of nodes. Ownership follows the value: a one-node list
-    built here is owned, a list read from a variable is borrowed.""";
-    value = self._codegen_expr(endpoint);
-    if value is None {
-        return None;
-    }
-    if self._osp_disc_list_operand(endpoint) {
+    """The handles a bound endpoint (`[a -->:E:-> b]`) names, given its
+    evaluated `value`: a list of nodes is its own handle list, and one node
+    is wrapped in a one-element list the caller releases. Neither holds the
+    nodes; the caller releases `value` itself when it is a temporary. A
+    tuple or set is not laid out as a handle list, so it is refused.""";
+    _many = self._osp_disc_list_operand(endpoint);
+    if _many
+        and (
+            isinstance(endpoint, uni.EdgeRefTrailer)
+            or self._list_spec_of(endpoint) is not None
+        ) {
         return value;
     }
-    if not isinstance(value.type, ir.PointerType) {
+    if _many or not isinstance(value.type, ir.PointerType) {
         self.emit(
             E5092,
             node_override=nd,
@@ -1549,6 +1562,22 @@ impl NaIRGenPass._osp_reclaim_hook -> ir.Function {
     return self._osp_reclaim_fn;
 }
 
+impl NaIRGenPass._osp_edge_reclaim_hook -> ir.Function {
+    if self._osp_edge_reclaim_fn is None {
+        fn = ir.Function(
+            self.llvm_module,
+            ir.FunctionType(ir.VoidType(), [ir.IntType(64)]),
+            name="__osp_edge_reclaimed"
+        );
+        fn.linkage = "internal";
+        self._osp_edge_reclaim_fn = fn;
+        if self._osp_reclaim_done {
+            self._fill_osp_reclaim_hook();
+        }
+    }
+    return self._osp_edge_reclaim_fn;
+}
+
 impl NaIRGenPass._finish_osp_reclaim_hook -> None {
     self._osp_reclaim_done = True;
     self._fill_osp_reclaim_hook();
@@ -1557,22 +1586,31 @@ impl NaIRGenPass._finish_osp_reclaim_hook -> None {
 
 impl NaIRGenPass._fill_osp_reclaim_hook -> None {
     fn = self._osp_reclaim_fn;
-    if fn is None or fn.blocks {
-        return;
-    }
-    b = ir.IRBuilder(fn.append_basic_block("entry"));
-    _forget = self.func_symtab.get("osp_forget_node");
-    if _forget is not None and _forget.function_type.args[0] == ir.IntType(64) {
-        b.call(_forget, [fn.args[0]]);
-    }
+    if fn is not None and not fn.blocks {
+        b = ir.IRBuilder(fn.append_basic_block("entry"));
+        _forget = self.func_symtab.get("osp_forget_node");
+        if _forget is not None and _forget.function_type.args[0] == ir.IntType(64) {
+            b.call(_forget, [fn.args[0]]);
+        }
 
-    if self._osp_sync_fn is None {
-        self._osp_sync_fn = self._emit_osp_sync_fn();
+        if self._osp_sync_fn is None {
+            self._osp_sync_fn = self._emit_osp_sync_fn();
+        }
+        if self._osp_sync_fn is not None {
+            b.call(self._osp_sync_fn, []);
+        }
+        b.ret_void();
     }
-    if self._osp_sync_fn is not None {
-        b.call(self._osp_sync_fn, []);
+    edge_fn = self._osp_edge_reclaim_fn;
+    if edge_fn is not None and not edge_fn.blocks {
+        eb = ir.IRBuilder(edge_fn.append_basic_block("entry"));
+        _forget_edge = self.func_symtab.get("osp_forget_edge");
+        if _forget_edge is not None
+            and _forget_edge.function_type.args[0] == ir.IntType(64) {
+            eb.call(_forget_edge, [edge_fn.args[0]]);
+        }
+        eb.ret_void();
     }
-    b.ret_void();
 }
 
 impl NaIRGenPass._osp_sync -> None {
