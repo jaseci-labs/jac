@@ -1703,8 +1703,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 for item in stmt.items {
                     import os;
                     import from jaclang.compiler.passes.capability_check_pass {
-                        classify_native_import,
-                        import_bound_name
+                        classify_native_import
                     }
                     import from jaclang.compiler.frontend.codeinfo {
                         is_bundled_native_module,
@@ -1713,7 +1712,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported and mod_name is not None {
                         self._native_stdlib_modules.add(mod_name);
-                        self._record_stdlib_bare_name(mod_name, item);
                         if is_bundled_native_module(mod_name) {
                             self._native_module_imports.add(mod_name);
                         }
@@ -2089,46 +2087,4 @@ impl NaIRGenPass.run_walk with uni.Module entry {
         self.prog.native_units().failures[os.path.realpath(here.loc.mod_path)] = "Native module lowering failed:\n"
             + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had);
     }
-}
-
-
-impl NaIRGenPass._record_stdlib_bare_name(mod_name: str, item: uni.UniNode) -> None {
-    """Remember a stdlib function imported under a bare name.
-
-    The native stdlib intercepts key off the `module.func(...)` shape, so
-    `from os import getcwd` leaves `getcwd()` invisible to them and demotes
-    the whole caller. Record the binding here so the call emitter can route
-    the bare name back to the module's emitter.
-    """;
-    import from jaclang.compiler.passes.capability_check_pass { import_bound_name }
-    _fns = NATIVE_STDLIB_FUNC_TABLES.get(mod_name);
-    if _fns is None or not isinstance(item, uni.ModuleItem) {
-        return;
-    }
-    _orig = item.name;
-    if not isinstance(_orig, uni.Name) or _orig.value not in _fns {
-        return;
-    }
-    _bound = import_bound_name(item);
-    if _bound is not None {
-        self._native_stdlib_bare_names[_bound] = (mod_name, _orig.value);
-    }
-}
-
-
-impl NaIRGenPass._stdlib_call_emitter(mod_name: str) -> (Callable | None) {
-    """The `mod.func(...)` emitter for a natively-lowered stdlib module.
-
-    Qualified calls and bare `from`-imported names share this table so adding a
-    stdlib module means one row here and one in `NATIVE_STDLIB_FUNC_TABLES`.
-    """;
-    if not self._stdlib_call_emitters {
-        self._stdlib_call_emitters = {
-            "os": self._emit_os_call,
-            "os.path": self._emit_ospath_call,
-            "random": self._emit_random_call,
-            "struct": self._emit_struct_call
-        };
-    }
-    return self._stdlib_call_emitters.get(mod_name);
 }

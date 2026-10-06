@@ -1698,15 +1698,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if _ec_name is not None {
             return self._codegen_enum_ctor(nd, _ec_name);
         }
-
-        _bare_stdlib = self._native_stdlib_bare_names.get(func_name);
-        if _bare_stdlib is not None {
-            (_bare_mod, _bare_orig) = _bare_stdlib;
-            _bare_emit = self._stdlib_call_emitter(_bare_mod);
-            if _bare_emit is not None {
-                return _bare_emit(_bare_orig, nd);
-            }
-        }
     }
 
     import from jaclang.compiler.types { types as jtypes }

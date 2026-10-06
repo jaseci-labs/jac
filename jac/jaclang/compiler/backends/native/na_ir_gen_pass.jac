@@ -105,7 +105,6 @@ import from jaclang.compiler.backends.native.na_constants {
     NATIVE_COPY_FUNCS,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
-    NATIVE_STDLIB_FUNC_TABLES,
     RC_BUFFERED_BIT,
     RC_COLOR_BLACK,
     RC_COLOR_GRAY,
@@ -491,8 +490,6 @@ walker NaIRGenPass(CompilerPass) {
         set_release_fns: dict[str, ir.Function] = {},
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
-        _native_stdlib_bare_names: dict[str, tuple[(str, str)]] = {},
-        _stdlib_call_emitters: dict[str, Callable] = {},
         _native_module_imports: set[str] = set(),
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
@@ -1256,8 +1253,6 @@ walker NaIRGenPass(CompilerPass) {
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
     def _process_clib_imports(module: uni.Module) -> None;
-    def _record_stdlib_bare_name(mod_name: str, item: uni.UniNode) -> None;
-    def _stdlib_call_emitter(mod_name: str) -> (Callable | None);
     def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type, pointee_names: dict[(ir.Type, str)]) -> str;

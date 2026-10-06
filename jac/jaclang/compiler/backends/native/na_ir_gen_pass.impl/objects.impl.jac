@@ -2956,13 +2956,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
 
-    _stdlib_emit = self._stdlib_call_emitter(module_name or "");
-    if (
-        _stdlib_emit is not None
-        and module_name in self._native_stdlib_modules
-        and method_name in NATIVE_STDLIB_FUNC_TABLES.get(module_name or "", set())
-    ) {
-        return _stdlib_emit(method_name, nd);
+    if module_name is not None
+        and self._stdlib_intercept_covers(module_name, method_name) {
+        return self._emit_stdlib_intercept(module_name, method_name, nd);
     }
 
     if target_name == "int" and method_name == "from_bytes" {
