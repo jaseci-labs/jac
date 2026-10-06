@@ -653,6 +653,11 @@ def _kernel_units(
             units.setdefault(os.path.realpath(unit.path), _unit_source(unit));
         }
         if os.path.realpath(path) not in units {
+            entry_report = compiled.analysis.module(path);
+            if entry_report is not None and entry_report.native {
+                forget_application_units();
+                return None;
+            }
             raise RuntimeError(f'Preparation did not produce metadata for {path}');
         }
     }

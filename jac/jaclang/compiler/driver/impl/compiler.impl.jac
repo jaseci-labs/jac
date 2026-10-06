@@ -348,7 +348,8 @@ impl JacCompiler._adopt_kernel_compile(
     }
     target = compiled.unit(full_target);
     if target is None {
-        return (True, None);
+        entry_report = compiled.analysis.module(full_target);
+        return (entry_report is None or not entry_report.native, None);
     }
     adopted: (bytes | None) = None;
     for unit in compiled.units {

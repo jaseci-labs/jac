@@ -461,3 +461,42 @@ test "a jaclang import in an impl folder annex compiles in the kernel" {
         assert_same_products(emitted, expected);
     }
 }
+
+"""Outside a project the default codespace is native, and the kernel emits no
+Python unit for a module it places there: generating native code for a
+program is still the host's work. A kernel compile that reports the entry
+native and emits no unit hands the module to the host; one that emits no
+unit for any other reason has compiled it, and the host must not."""
+test "a kernel compile with no unit defers only a native-codespace module" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.frontend.kernel_analyze {
+        AnalysisReport,
+        ModuleReport
+    }
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        entry_file = str(base / 'test_smoke.jac');
+        Path(entry_file).write_text('test "arithmetic" { assert 6 * 7 == 42; }\n');
+        program = JacProgram();
+        compiler = program._get_compiler();
+        for (placed_native, expect_handled) in [(True, False), (False, True)] {
+            canned = CompileReport(
+                analysis=AnalysisReport(
+                    entry_path=entry_file,
+                    modules=[ModuleReport(path=entry_file, native=placed_native)]
+                )
+            );
+            def answer(*args: any, **kwargs: any) -> CompileReport {
+                return canned;
+            }
+            with patch.object(kernel_compile_mod, "host_kernel_compile", answer) {
+                (handled, code) = compiler._adopt_kernel_compile(
+                    entry_file, program, compile_options()
+                );
+            }
+            assert handled == expect_handled , (placed_native, handled);
+            assert code is None;
+        }
+    }
+}

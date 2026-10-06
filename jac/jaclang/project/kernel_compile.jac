@@ -102,6 +102,10 @@ def kernel_compile_reported(
         f"kernel compiled {path}: {len(compiled.units)} unit(s), "
         f"{len(compiled.analysis.errors)} error(s)"
     );
+    entry_report = compiled.analysis.module(path);
+    if entry_report is not None and entry_report.native {
+        return compiled;
+    }
     import from jaclang.project.kernel_check { alert_of }
     for diag in compiled.analysis.errors {
         program.errors_had.append(alert_of(diag));
