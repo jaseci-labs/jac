@@ -3879,6 +3879,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces
             | scale.admin.workloads
             | scale.runtime.gateway.microservice_gateway
@@ -4032,6 +4033,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces { JSONResponse, Request },
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
@@ -4063,6 +4065,7 @@ graph import {
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
+            | scale.tests.microservices.test_schedules_agg
             | scale.tests.server.test_serve { Headers, Request, URL },
         scale.tests.server.test_bodiless_status { Response, StreamingResponse },
         scale.tests.server.test_oauth_providers._callback_request { QueryParams, URL },
@@ -4121,6 +4124,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.server.extensions
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_stream_ws._spawn_upstream {
@@ -4318,6 +4322,7 @@ graph import {
     ]
     server.task_scheduler ++> [
         runtime.builtin.schedule { ScheduleSpec },
+        scale.admin.schedules { Scheduler },
         scale.scheduler.scheduler { Scheduler, schedule_namespace, tick_of },
         scale.server.extensions { RunOutcome },
         scale.tests.server.test_scheduler_multipod { ScheduleSpec, Scheduler, tick_of },
@@ -30648,6 +30653,7 @@ graph import scale {
             redact_entry
         },
     ]
+    admin.schedules ++> server.extensions { JacAPIServerSchedules }
     admin.service_urls ++> tests.misc.test_service_urls { service_base_url }
     admin.traces ++> [
         runtime.gateway.microservice_gateway | server.extensions { JacAPIServerTraces },
@@ -31596,6 +31602,7 @@ graph import scale {
         | tests.microservices.test_gateway_docs_precedence
         | tests.microservices.test_gateway_webapp
         | tests.microservices.test_k8s_health_probe
+        | tests.microservices.test_schedules_agg
         | tests.server.test_static_fallback { MicroserviceGateway }
     runtime.gateway.microservice_gateway --> tests.server.test_stream_ws {
         MicroserviceGateway
@@ -31627,7 +31634,8 @@ graph import scale {
             | tests.microservices.test_gateway_webapp
             | tests.microservices.test_k8s_health_probe
             | tests.microservices.test_microservices_registry
-            | tests.microservices.test_openapi_agg {
+            | tests.microservices.test_openapi_agg
+            | tests.microservices.test_schedules_agg {
             ServiceEntry,
             ServiceRegistry,
             ServiceStatus
@@ -32245,6 +32253,9 @@ graph import scale.runtime {
         gateway.microservice_gateway.MicroserviceGateway.aggregate_graph_data {
             http_forward_timeout
         },
+        gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+            http_forward_timeout
+        },
         gateway.microservice_gateway.MicroserviceGateway.forward_to {
             http_forward_timeout
         },
@@ -32338,6 +32349,9 @@ graph import scale.runtime {
             raw_forward
         },
         gateway.microservice_gateway.MicroserviceGateway.aggregate_graph_data {
+            raw_forward
+        },
+        gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
             raw_forward
         },
         gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
