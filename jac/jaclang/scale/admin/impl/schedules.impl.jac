@@ -1,8 +1,5 @@
 import asyncio;
 import logging;
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse }
-import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
 
 glob logger = logging.getLogger(__name__);
 
