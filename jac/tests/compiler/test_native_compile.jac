@@ -539,6 +539,16 @@ test "a kernel compile that misses only native stdlib answers defers to the host
         AnalysisReport(status=ANALYSIS_CRASHED, message="KeyError: 'code'")
     );
     assert not host_deferred(AnalysisReport());
+    third_party = "parse_python: /opt/py/lib/python3.14/site-packages/litellm/__init__.py";
+    assert host_deferred(
+        AnalysisReport(
+            status=ANALYSIS_CRASHED, message="HostOnlyError", misses=[third_party]
+        )
+    ) , "third-party Python source is the host's to parse";
+    assert host_deferred(AnalysisReport(misses=[inside, third_party]));
+    assert not host_deferred(
+        AnalysisReport(misses=["parse_python: /srv/app/local_helper.py"])
+    );
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         entry_file = str(base / 'clock.jac');

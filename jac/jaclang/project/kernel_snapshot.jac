@@ -1087,8 +1087,18 @@ def native_stdlib_misses(misses: list[str]) -> bool {
     return True;
 }
 
+def host_only_miss(miss: str) -> bool {
+    (kind, _, asked) = miss.partition(": ");
+    if native_stdlib_misses([miss]) {
+        return True;
+    }
+    normalized = asked.replace("\\", "/");
+    return kind == "parse_python"
+        and any(marker in normalized for marker in THIRD_PARTY_DIRS);
+}
+
 def host_deferred(outcome: AnalysisReport) -> bool {
-    if native_stdlib_misses(outcome.misses) {
+    if outcome.misses and all(host_only_miss(miss) for miss in outcome.misses) {
         return True;
     }
     return outcome.status == ANALYSIS_CRASHED
