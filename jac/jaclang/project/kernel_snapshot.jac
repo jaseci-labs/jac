@@ -40,7 +40,6 @@ glob SCAN_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _IFACE_REFUSED: dict[str, str] = {},
      _IFACE_BUILT: list[float] = [0.0, 0.0],
-     _IFACE_SCRATCH: list[JacProgram] = [],
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
      MISS_ROUNDS: int = 12,
@@ -781,10 +780,7 @@ def python_interfaces(
                 continue;
             }
             if scratch is None {
-                if not _IFACE_SCRATCH {
-                    _IFACE_SCRATCH.append(JacProgram());
-                }
-                scratch = _IFACE_SCRATCH[0];
+                scratch = JacProgram();
             }
             began = time.monotonic();
             iface = python_interface(path, options, scratch);
