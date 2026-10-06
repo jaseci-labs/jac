@@ -4,8 +4,10 @@ raise since #7947 removed Mongo, so every storage failure fell through to the
 generic 500 SCHEDULER_ERROR and the 503 path was unreachable.
 """
 
+import os;
 import shutil;
 import tempfile;
+import time;
 import from pathlib { Path }
 import from jaclang.data.pgwire { PgWireError }
 import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
@@ -220,7 +222,33 @@ test "GET /admin/schedules lists the static tasks, to admins only" {
             assert row["next_run"] is not None , row;
         }
         assert "DynamicScheduledWalker" not in rows , sorted(rows);
+
+        scheduler: any = server.scheduler;
+        assert listed.json()["data"]["namespace"] == scheduler.namespace , listed.text;
+        assert scheduler.namespace , "the listing must name the claim namespace";
+        scheduler.start();
+        ran: dict[str, any] = {};
+        deadline = time.monotonic() + 30.0;
+        while time.monotonic() < deadline {
+            answer = client.get(
+                "/admin/schedules", headers={"Authorization": f"Bearer {admin}"}
+            );
+            assert answer.status_code == 200 , answer.text;
+            row = {r["name"]: r for r in answer.json()["data"]["schedules"]}[
+                "static_interval_func"
+            ];
+            if row["last_run"] is not None {
+                ran = row["last_run"];
+                break;
+            }
+            time.sleep(0.2);
+        }
+        assert ran , "static_interval_func ran but the listing never showed it";
+        assert ran["status"] == "ok" , ran;
+        assert ran["worker"].endswith(f":{os.getpid()}") , ran;
+        assert ran["tick"] and ran["duration_ms"] >= 0.0 , ran;
     } finally {
+        server.scheduler.stop(timeout=5.0);
         server.scheduler._tasks.clear();
         client.close();
         reset_scale_config();

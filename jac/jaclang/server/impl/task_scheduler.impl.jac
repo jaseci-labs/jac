@@ -731,16 +731,26 @@ impl Scheduler._remember(outcome: RunOutcome) -> None {
 }
 
 impl Scheduler.last_run_of(name: str) -> (dict[str, any] | None) {
-    if self.recall is not None {
+    key = self._last_key(name);
+    if self.recall is not None and key not in self._failing_claims {
         recall_fn: any = self.recall;
+        read_key = f"{key}#read";
         try {
-            raw = recall_fn(self._last_key(name));
-            return json.loads(raw) if raw else None;
+            raw = recall_fn(key);
+            answer = json.loads(raw) if raw else None;
+            if read_key in self._failing_claims {
+                self._failing_claims.discard(read_key);
+                logger.info(f"last-run reads for '{name}' are succeeding again");
+            }
+            return answer;
         } except Exception as e {
-            logger.warning(
-                f"could not read the last run of '{name}': {e}; "
-                "showing this worker's own last run"
-            );
+            if read_key not in self._failing_claims {
+                self._failing_claims.add(read_key);
+                logger.warning(
+                    f"could not read the last run of '{name}': {e}; "
+                    "showing this worker's own last run until a read succeeds"
+                );
+            }
         }
     }
     return self._last.get(name);

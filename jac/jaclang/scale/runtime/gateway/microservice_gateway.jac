@@ -67,6 +67,7 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
     async def aggregate_graph_data(request: Request) -> Response | None;
+    async def aggregate_schedules(request: Request) -> Response | None;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;

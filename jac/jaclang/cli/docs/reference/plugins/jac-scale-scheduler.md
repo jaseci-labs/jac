@@ -365,6 +365,8 @@ Admins can list the static tasks a service runs with `GET /admin/schedules`. Eac
 curl -s http://localhost:8000/admin/schedules -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
+Behind the fleet gateway, the same request answers for the whole fleet: the gateway asks every service it serves and returns `{"ok": true, "data": {"services": [...], "schedules": [...]}}`, where each entry also carries the `service` that runs it and that service's `namespace`. A service answers for itself, with its own `namespace` at the top level.
+
 ## Configuration Reference
 
 All keys live under `[scale.scheduler]` in `jac.toml`:

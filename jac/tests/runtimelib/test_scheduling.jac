@@ -886,6 +886,84 @@ test "each tick reports one outcome naming its task, tick and worker" {
 }
 
 
+test "a listing stays on this worker's runs while its record is failing" {
+    # The warning _remember logs is only true if the read stops using the row
+    # the write could not update, and a read that fails warns once too.
+    writes: list[str] = [];
+    def broken_record(key: str, value: str) {
+        writes.append(key);
+        raise ConnectionError("standby is read only");
+    }
+    def shared_recall(key: str) -> (str | None) {
+        return '{"tick": "old", "worker": "pod-b:2", "status": "ok", "error": ""}';
+    }
+    sched = fresh_scheduler();
+    sched.namespace = "orders";
+    sched.record = broken_record;
+    sched.recall = shared_recall;
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    try {
+        for n in [0, 60] {
+            sched._report(
+                RunOutcome(
+                    task="mailer",
+                    tick=tick + datetime.timedelta(seconds=n),
+                    worker="pod-a:1",
+                    status="ok"
+                )
+            );
+        }
+        mine = sched.last_run_of("mailer");
+    } finally {
+        log.removeHandler(records);
+    }
+    assert len(writes) == 2 , writes;
+    assert mine is not None and mine["worker"] == "pod-a:1" , mine;
+    assert len(
+        [
+            m
+            for m in records.messages
+            if m.startswith("WARNING")
+        ]
+    )
+        == 1 , (records.messages);
+
+    attempts: list[str] = [];
+    def flaky_recall(key: str) -> (str | None) {
+        attempts.append(key);
+        if len(attempts) <= 2 {
+            raise ConnectionError("database is restarting");
+        }
+        return '{"tick": "old", "worker": "pod-b:2", "status": "ok", "error": ""}';
+    }
+    reader = fresh_scheduler();
+    reader.namespace = "orders";
+    reader.recall = flaky_recall;
+    records.messages.clear();
+    log.addHandler(records);
+    try {
+        assert reader.last_run_of("mailer") is None;
+        assert reader.last_run_of("mailer") is None;
+        healed = reader.last_run_of("mailer");
+    } finally {
+        log.removeHandler(records);
+    }
+    assert healed is not None and healed["worker"] == "pod-b:2" , healed;
+    assert len(
+        [
+            m
+            for m in records.messages
+            if m.startswith("WARNING")
+        ]
+    )
+        == 1 , (records.messages);
+    assert any("succeeding again" in m for m in records.messages) , records.messages;
+}
+
+
 test "a tick stop() refuses is reported as a skip, not spent in silence" {
     # The tick is claimed before the launch, so without this every other
     # replica logs claimed_elsewhere for a tick nobody ran and nobody named.
