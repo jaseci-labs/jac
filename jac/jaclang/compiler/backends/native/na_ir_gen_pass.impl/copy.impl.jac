@@ -1,23 +1,11 @@
 
 
 impl NaIRGenPass._emit_copy_call(kind: str, nd: uni.FuncCall) -> (ir.Value | None) {
-    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     deep = kind == "deepcopy";
-    if len(params) != 1 or isinstance(params[0], uni.KWPair) {
-        self.lower._emit_copy_refusal(
-            nd, kind, "a call with other than one positional argument (a `memo` dict)"
-        );
+    arg = self.lower._copy_call_arg(kind, nd);
+    if arg is None {
         return None;
     }
-    if self.lower._nogc_headerless() {
-        self.lower._emit_copy_refusal(
-            nd,
-            kind,
-            "a module under the nogc memory profile, whose headerless objects carry no runtime class"
-        );
-        return None;
-    }
-    arg = params[0];
     val = self._codegen_expr(arg);
     if val is None {
         return None;

@@ -57,3 +57,24 @@ impl NativeLowering._copy_field_hints(arch: str) -> dict[str, (TypeBase | None)]
     }
     return out;
 }
+
+impl NativeLowering._copy_call_arg(
+    kind: str, nd: uni.FuncCall
+) -> (uni.Expr | uni.KWPair | None) {
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+    if len(params) != 1 or isinstance(params[0], uni.KWPair) {
+        self._emit_copy_refusal(
+            nd, kind, "a call with other than one positional argument (a `memo` dict)"
+        );
+        return None;
+    }
+    if self._nogc_headerless() {
+        self._emit_copy_refusal(
+            nd,
+            kind,
+            "a module under the nogc memory profile, whose headerless objects carry no runtime class"
+        );
+        return None;
+    }
+    return params[0];
+}

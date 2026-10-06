@@ -568,6 +568,8 @@ obj NativeLowering {
     def _nogc_borrow_local_assign(nd: object) -> bool;
 
     def _program_has_subclasses(arch_name: str) -> bool;
+
+    def _copy_call_arg(kind: str, nd: uni.FuncCall) -> (uni.Expr | uni.KWPair | None);
 }
 
 glob _READY: dict[int, NativeLowering] = {};
