@@ -10,3 +10,32 @@ impl NativeLowering._container_is_view(nd: uni.UniNode) -> bool {
     }
     return False;
 }
+
+impl NativeLowering._list_val_dest_type_tag(
+    nd: uni.ListVal
+) -> (uni.SubTag[uni.Expr] | None) {
+    destination = nd.parent;
+    tag = destination.type_tag
+        if isinstance(destination, (uni.Assignment, uni.HasVar))
+            and destination.value is nd
+        else None;
+    return tag;
+}
+
+impl NativeLowering._list_val_bare_list_decl(nd: uni.ListVal) -> bool {
+    _decl_par = nd.parent;
+    _bare_list_decl = False;
+    if isinstance(_decl_par, (uni.Assignment, uni.HasVar))
+        and _decl_par.value is nd
+        and _decl_par.type_tag is not None {
+        _lt_tag = _decl_par.type_tag.tag;
+        _lt_name: (str | None) = None;
+        if isinstance(_lt_tag, uni.Name) {
+            _lt_name = _lt_tag.value;
+        } elif uni?.BuiltinType and isinstance(_lt_tag, uni.BuiltinType) {
+            _lt_name = _lt_tag.value;
+        }
+        _bare_list_decl = _lt_name == "list";
+    }
+    return _bare_list_decl;
+}

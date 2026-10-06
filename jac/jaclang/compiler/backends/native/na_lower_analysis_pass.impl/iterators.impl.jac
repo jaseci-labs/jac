@@ -19,3 +19,9 @@ impl NativeLowering._resolve_method_owner(
     }
     return None;
 }
+
+impl NativeLowering._resolve_method_class_parents -> dict[str, list[str]] {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    _reg = get_layout_registry(self.module, self.prog);
+    return _reg.class_parents;
+}

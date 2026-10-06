@@ -688,6 +688,90 @@ obj NativeLowering {
 
     def _swap_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
 
+    def _reads_unlowered_local_names(nd: uni.UniNode) -> list[uni.Name];
+
+    def _lambda_inferred_return(nd: uni.LambdaExpr) -> (TypeBase | None);
+
+    def _lambda_free_var_names(nd: uni.LambdaExpr) -> list[str];
+
+    def _name_sized_type_ref(nd: uni.Name, var_name: str) -> bool;
+
+    def _walrus_target_name(nd: uni.BinaryExpr) -> (str | None);
+
+    def _spawn_walker_side(
+        nd: uni.BinaryExpr, left_name: (str | None), right_name: (str | None)
+    ) -> str;
+
+    def _spawn_walker_in_model(walker_name: str) -> bool;
+
+    def _compare_link_membership_shape(
+        left_node: uni.UniNode, right_node: uni.UniNode
+    ) -> tuple[uni.UniNode, uni.UniNode, str, bool];
+
+    def _compare_link_list_str_elems(
+        left_node: uni.UniNode, right_node: uni.UniNode
+    ) -> bool;
+
+    def _compare_link_list_key(
+        hay_nd: uni.UniNode, left_node: uni.UniNode
+    ) -> (TypeBase | None);
+
+    def _compare_link_tuple_args(hay_nd: uni.UniNode) -> list[TypeBase];
+
+    def _atom_trailer_class_form_enum(
+        nd: uni.AtomTrailer, right_name: (str | None)
+    ) -> tuple[str, (str | None)];
+
+    def _atom_trailer_alias_origin(nd: uni.UniNode) -> (str | None);
+
+    def _atom_trailer_enum_key(nd: uni.AtomTrailer) -> (str | None);
+
+    def _atom_trailer_type_member_name(
+        nd: uni.AtomTrailer, right_name: (str | None)
+    ) -> (str | None);
+
+    def _atom_trailer_type_alias_class(nd: uni.AtomTrailer) -> (str | None);
+
+    def _print_params(
+        nd: uni.FuncCall
+    ) -> tuple[list[any], str, (uni.KWPair | None), (str | None)];
+
+    def _fstring_conversion_unsupported(conv: int) -> bool;
+
+    def _hl_view_base_licensed_root(base_node: object) -> bool;
+
+    def _compr_walk_body_is_range(collection: uni.Expr) -> bool;
+
+    def _compr_walk_body_targets(
+        loop_target: uni.Expr
+    ) -> (tuple[(uni.TupleVal | None), (str | None), list[str]] | None);
+
+    def _compr_iter_walk_targets(
+        loop_target: uni.Expr
+    ) -> tuple[(uni.TupleVal | None), list[uni.Expr], list[str]];
+
+    def _resolve_method_class_parents -> dict[str, list[str]];
+
+    def _sized_cast_operand(
+        nd: uni.FuncCall, name: str
+    ) -> (tuple[ScalarShape, any] | None);
+
+    def _sized_wrap_operand(
+        nd: uni.FuncCall, name: str
+    ) -> (tuple[ScalarShape, any] | None);
+
+    def _list_val_dest_type_tag(nd: uni.ListVal) -> (uni.SubTag[uni.Expr] | None);
+
+    def _list_val_bare_list_decl(nd: uni.ListVal) -> bool;
+
+    def _tuple_slot_owns_sole_binder(nd: uni.Assignment) -> bool;
+
+    def _set_val_decl_args(nd: uni.SetVal) -> list[TypeBase];
+
+    def _dict_val_type_args(nd: uni.DictVal) -> list[TypeBase];
+
+    def _dict_unpack_type_args(nd: uni.DictVal) -> list[TypeBase];
+
     def _lower_type_union_members(t: UnionType) -> tuple[list[TypeBase], bool];
 
     def _typevar_bound_struct_class(t: (TypeBase | None)) -> (ClassType | None);
@@ -966,6 +1050,14 @@ obj NativeLowering {
     def _generator_elem_type_args(nd: uni.Ability) -> (list[TypeBase] | None);
 
     def _generator_param_names(nd: uni.Ability, self_arch: (str | None)) -> list[str];
+
+    def _atom_trailer_imported_module(
+        nd: uni.AtomTrailer, target_name: (str | None)
+    ) -> tuple[(str | None), (str | None)];
+
+    def _atom_trailer_native_stdlib_is(
+        module_name: (str | None), wanted: str
+    ) -> bool;
 
     def _register_globals_decls(module: uni.Module) -> list[uni.GlobalVars];
 

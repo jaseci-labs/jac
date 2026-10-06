@@ -692,13 +692,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         return None;
     }
 
-    _dk_args = nd.type.private.type_args
-        if (
-            isinstance(nd, uni.Expr)
-            and isinstance(nd.type, ClassType)
-            and nd.type.private is not None
-        )
-        else [];
+    _dk_args = self.lower._dict_val_type_args(nd);
     _k_store = self._elem_storage_llvm(_dk_args[0])
         if (_dk_args is not None and len(_dk_args) >= 2)
         else None;
@@ -832,9 +826,7 @@ impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
     ctx = NativeEmitCtx(pass_ref=self, type_key=dict_key);
     result = self._rc_call_with_ctx(helpers["new"], [], op="new", name="dict.unpack");
     self._nogc_stamp_elem_drops(result, self.lower._nogc_type_arg_mangles(nd));
-    args = nd.type.private.type_args
-        if isinstance(nd.type, ClassType) and nd.type.private is not None
-        else [];
+    args = self.lower._dict_unpack_type_args(nd);
     semantic_value = self._lower_type(args[1]) if args and len(args) >= 2 else None;
     tuple_type = semantic_value.pointee
         if isinstance(semantic_value, ir.PointerType)

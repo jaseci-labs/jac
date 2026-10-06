@@ -83,13 +83,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         return None;
     }
 
-    _decl_args = nd.type.private.type_args
-        if (
-            isinstance(nd, uni.Expr)
-            and isinstance(nd.type, ClassType)
-            and nd.type.private is not None
-        )
-        else [];
+    _decl_args = self.lower._set_val_decl_args(nd);
     _decl_elem = self._elem_storage_llvm(_decl_args[0]) if _decl_args else None;
     if _decl_elem is not None
         and self?.jacval_type

@@ -173,13 +173,11 @@ impl NaIRGenPass._emit_wrap_to(
 }
 
 impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    dst = self.lower._scalar_shape_named(name);
-    params: Sequence[any] = nd.params or [];
-    if dst is None or len(params) != 1 {
-        self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
+    _operand = self.lower._sized_cast_operand(nd, name);
+    if _operand is None {
         return None;
     }
-    arg = params[0];
+    (dst, arg) = _operand;
     val = self._coerce_narrowed_arg(arg, self._codegen_expr(arg));
     if val is None {
         return None;
@@ -207,13 +205,11 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
 }
 
 impl NaIRGenPass._codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    dst = self.lower._scalar_shape_named(name);
-    params: Sequence[any] = nd.params or [];
-    if dst is None or dst.is_float or len(params) != 1 {
-        self.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
+    _operand = self.lower._sized_wrap_operand(nd, name);
+    if _operand is None {
         return None;
     }
-    arg = params[0];
+    (dst, arg) = _operand;
     val = self._codegen_expr(arg);
     if val is None {
         return None;

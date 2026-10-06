@@ -132,3 +132,49 @@ impl NativeLowering._fstring_spec_to_printf(
     }
     return None;
 }
+
+impl NativeLowering._print_params(
+    nd: uni.FuncCall
+) -> tuple[list[any], str, (uni.KWPair | None), (str | None)] {
+    raw: Sequence[any] = nd.params or [];
+    params: list[any] = [];
+    stream = "stdout";
+    for param in raw {
+        if not isinstance(param, uni.KWPair) {
+            params.append(param);
+            continue;
+        }
+        key = param.key.sym_name if param.key is not None else None;
+        named = self._print_stream_name(param.value) if key == "file" else None;
+        if named is None {
+            return (params, stream, param, key);
+        }
+        stream = named;
+    }
+    return (params, stream, None, None);
+}
+
+impl NativeLowering._fstring_conversion_unsupported(conv: int) -> bool {
+    return conv not in (-1, 115);
+}
+
+impl NativeLowering._hl_view_base_licensed_root(base_node: object) -> bool {
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    _x = base_node;
+    while isinstance(_x, uni.AtomTrailer) {
+        _x = _x.target;
+    }
+    if not isinstance(_x, uni.Name) or _x.sym is None {
+        return False;
+    }
+    return (
+        _x.sym_name == "self"
+        or _x.sym.ownership
+            in (
+                OwnershipKind.OWN,
+                OwnershipKind.BORROW,
+                OwnershipKind.MUT_BORROW,
+                OwnershipKind.IMM
+            )
+    );
+}

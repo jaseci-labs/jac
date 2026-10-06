@@ -275,11 +275,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
 impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     self._pending_list_elem_struct = None;
     if not nd.values {
-        destination = nd.parent;
-        tag = destination.type_tag
-            if isinstance(destination, (uni.Assignment, uni.HasVar))
-                and destination.value is nd
-            else None;
+        tag = self.lower._list_val_dest_type_tag(nd);
         aos_type = self._aos_elem_of(tag or nd);
         if aos_type is not None {
             self._emit_aos_list_helpers(aos_type);
@@ -288,20 +284,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             );
         }
         elem_type_name = "";
-        _decl_par = nd.parent;
-        _bare_list_decl = False;
-        if isinstance(_decl_par, (uni.Assignment, uni.HasVar))
-            and _decl_par.value is nd
-            and _decl_par.type_tag is not None {
-            _lt_tag = _decl_par.type_tag.tag;
-            _lt_name: (str | None) = None;
-            if isinstance(_lt_tag, uni.Name) {
-                _lt_name = _lt_tag.value;
-            } elif uni?.BuiltinType and isinstance(_lt_tag, uni.BuiltinType) {
-                _lt_name = _lt_tag.value;
-            }
-            _bare_list_decl = _lt_name == "list";
-        }
+        _bare_list_decl = self.lower._list_val_bare_list_decl(nd);
         _own_spec = self._elem_spec_of(nd);
         _dest_spec = self._empty_list_dest_spec(nd);
         if _dest_spec is None {

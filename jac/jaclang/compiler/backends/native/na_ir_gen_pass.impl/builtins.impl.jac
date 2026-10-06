@@ -98,26 +98,15 @@ impl NaIRGenPass._get_printf -> ir.Function {
 
 impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     printf = self._get_printf();
-    raw: Sequence[any] = nd.params or [];
-    params: list[any] = [];
-    stream = "stdout";
-    for param in raw {
-        if not isinstance(param, uni.KWPair) {
-            params.append(param);
-            continue;
-        }
-        key = param.key.sym_name if param.key is not None else None;
-        named = self.lower._print_stream_name(param.value) if key == "file" else None;
-        if named is None {
-            self.ctx.emit(
-                E5092,
-                node_override=param,
-                kind="print keyword",
-                name=f"{key or '**'}=..."
-            );
-            return None;
-        }
-        stream = named;
+    (params, stream, _bad_kw, _bad_key) = self.lower._print_params(nd);
+    if _bad_kw is not None {
+        self.ctx.emit(
+            E5092,
+            node_override=_bad_kw,
+            kind="print keyword",
+            name=f"{_bad_key or '**'}=..."
+        );
+        return None;
     }
     if not params {
         fmt = self._get_fmt_string("");
@@ -527,7 +516,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 if self._is_owned(val) {
                     obj_strs.append(val);
                 }
-            } elif _conv not in (-1, 115) {
+            } elif self.lower._fstring_conversion_unsupported(_conv) {
                 self.emit(
                     E5092, node_override=part, kind="f-string conversion", name="!a"
                 );
@@ -1052,24 +1041,7 @@ impl NaIRGenPass._codegen_string_slice(
 }
 
 impl NaIRGenPass._hl_view_base_licensed(base_node: object) -> bool {
-    import from jaclang.compiler.frontend.constant { OwnershipKind }
-    _x = base_node;
-    while isinstance(_x, uni.AtomTrailer) {
-        _x = _x.target;
-    }
-    if not isinstance(_x, uni.Name) or _x.sym is None {
-        return False;
-    }
-    return (
-        _x.sym_name == "self"
-        or _x.sym.ownership
-            in (
-                OwnershipKind.OWN,
-                OwnershipKind.BORROW,
-                OwnershipKind.MUT_BORROW,
-                OwnershipKind.IMM
-            )
-    );
+    return self.lower._hl_view_base_licensed_root(base_node);
 }
 
 impl NaIRGenPass._emit_is_strip_char(

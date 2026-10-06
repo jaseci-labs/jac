@@ -461,10 +461,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
     loop_target = inner.target;
     collection = inner.collection;
 
-    if isinstance(collection, uni.FuncCall)
-        and self.lower._get_name(collection.target) == "range"
-        and collection.call_kind == "builtin"
-        and len(collection.params or []) <= 2 {
+    if self.lower._compr_walk_body_is_range(collection) {
         self._codegen_compr_range_walk(compr, idx);
         return;
     }
@@ -513,19 +510,11 @@ impl NaIRGenPass._codegen_compr_walk_body(
         coll_get = coll_helpers["get"];
         actual_elem_type = coll_helpers["elem_type"];
     }
-    unpack_target = loop_target if isinstance(loop_target, uni.TupleVal) else None;
-    loop_var_name = self.lower._get_name(loop_target);
-    if loop_var_name is None and unpack_target is None {
+    _walk_targets = self.lower._compr_walk_body_targets(loop_target);
+    if _walk_targets is None {
         return;
     }
-    targets = unpack_target.values if unpack_target is not None else [loop_target];
-    names: list[str] = [];
-    for target in targets {
-        name = self.lower._get_name(target);
-        if name is not None {
-            names.append(name);
-        }
-    }
+    (unpack_target, loop_var_name, names) = _walk_targets;
     self._shadow_bindings(names);
     i64 = ir.IntType(64);
     len_val = self.builder.call(coll_helpers["len"], [coll_val], name="compr.len");
@@ -623,17 +612,7 @@ impl NaIRGenPass._codegen_compr_iter_walk(
 ) -> None {
     inner = compr.comprs[idx];
     (iter_val, elem_type, owns_iter) = source;
-    unpack_target = inner.target if isinstance(inner.target, uni.TupleVal) else None;
-    targets: list[uni.Expr] = list(unpack_target.values or [])
-        if unpack_target is not None
-        else [inner.target];
-    names: list[str] = [];
-    for target in targets {
-        name = self.lower._get_name(target);
-        if name is not None {
-            names.append(name);
-        }
-    }
+    (unpack_target, targets, names) = self.lower._compr_iter_walk_targets(inner.target);
     self._shadow_bindings(names);
     i8p = ir.IntType(8).as_pointer();
     elem_slot = self._entry_alloca(elem_type, "compr.iter.elem");

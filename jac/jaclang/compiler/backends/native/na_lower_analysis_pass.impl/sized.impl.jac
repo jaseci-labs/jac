@@ -41,3 +41,27 @@ impl NativeLowering._is_sized_node(nd: (uni.UniNode | None)) -> bool {
     shape = self._scalar_shape(nd);
     return shape is not None and shape.sized;
 }
+
+impl NativeLowering._sized_cast_operand(
+    nd: uni.FuncCall, name: str
+) -> (tuple[ScalarShape, any] | None) {
+    dst = self._scalar_shape_named(name);
+    params: Sequence[any] = nd.params or [];
+    if dst is None or len(params) != 1 {
+        self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
+        return None;
+    }
+    return (dst, params[0]);
+}
+
+impl NativeLowering._sized_wrap_operand(
+    nd: uni.FuncCall, name: str
+) -> (tuple[ScalarShape, any] | None) {
+    dst = self._scalar_shape_named(name);
+    params: Sequence[any] = nd.params or [];
+    if dst is None or dst.is_float or len(params) != 1 {
+        self.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
+        return None;
+    }
+    return (dst, params[0]);
+}

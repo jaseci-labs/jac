@@ -1073,8 +1073,7 @@ impl NaIRGenPass._make_zip_iter(
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    _reg = get_layout_registry(self.module, self.prog);
+    _class_parents = self.lower._resolve_method_class_parents();
     cur: (str | None) = arch_name;
     _guard = 0;
     while cur is not None and _guard < 64 {
@@ -1082,7 +1081,7 @@ impl NaIRGenPass._resolve_method(
         if fn is not None {
             return fn;
         }
-        _parents = _reg.class_parents.get(cur, []);
+        _parents = _class_parents.get(cur, []);
         cur = _parents[0] if _parents else None;
         _guard += 1;
     }
