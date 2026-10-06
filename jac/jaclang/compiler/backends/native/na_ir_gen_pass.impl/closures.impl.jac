@@ -400,11 +400,19 @@ impl NaIRGenPass._emit_bound_method_value(
         return None;
     }
     if self._is_static_method_func(func) {
+        self._release_owned_args([receiver], op="bound_static_recv");
         return self._wrap_fn_as_closure_value(func);
     }
     if not isinstance(receiver.type, ir.PointerType) {
         return None;
     }
+    self._emit_runtime_raise(
+        self.builder.icmp_unsigned(
+            "==", receiver, ir.Constant(receiver.type, None), name="bound.recv.null"
+        ),
+        "AttributeError",
+        f"'NoneType' object has no attribute '{method_name}'"
+    );
     if self.rc_alloc_fn is None {
         self._emit_rc_helpers();
     }
@@ -455,7 +463,7 @@ impl NaIRGenPass._emit_bound_method_value(
     env_slot = self.builder.gep(
         clos, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bound.env.slot"
     );
-    self._emit_rc_retain(receiver, op="bound_method", loc="");
+    self._emit_take_ref(receiver, op="bound_method");
     self.builder.store(self.builder.bitcast(receiver, i8p, name="bound.env"), env_slot);
     self._mark_owned(clos);
     return clos;

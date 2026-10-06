@@ -2609,9 +2609,11 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 and right_name not in self.struct_field_indices.get(type_name, {})
                 and self._accessor_slot_of(type_name, right_name, "property") is None
                 and self._resolve_method(type_name, right_name) is not None {
-                bound = self._emit_bound_method_value(
-                    self._opt_unwrap_attr(obj_val), type_name, right_name
-                );
+                _recv = self._opt_unwrap_attr(obj_val);
+                if self._is_owned(obj_val) {
+                    self._mark_owned(_recv);
+                }
+                bound = self._emit_bound_method_value(_recv, type_name, right_name);
                 if bound is not None {
                     return bound;
                 }
