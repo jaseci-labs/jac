@@ -1214,6 +1214,11 @@ obj CatalogWriter {
                 }
             }
         } except Exception {}
+        import from jaclang.compiler.types.stubcat.reader { CatProvider }
+        catalog_origin = sym.provider;
+        if isinstance(catalog_origin, CatProvider) {
+            symbits |= catalog_origin.symbits & (SYMF_HAS_DEFAULT | SYMF_DEFER);
+        }
         put_uvar(out, symbits);
         return bytes(out);
     }
