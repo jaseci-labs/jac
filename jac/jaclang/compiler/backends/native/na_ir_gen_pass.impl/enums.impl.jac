@@ -90,7 +90,7 @@ impl NaIRGenPass._codegen_enum_layout(
         candidates.append(owner);
     }
     candidates.append(self.module);
-    for _fm in (self?._foreign_modules or []) {
+    for _fm in (self.lower._foreign_modules or []) {
         candidates.append(_fm);
     }
     lay: EnumLayout | None = None;
@@ -119,7 +119,7 @@ impl NaIRGenPass._codegen_enum_layout(
             self.enum_member_ordinal[full_name] = m.ordinal;
             entries.append((m.name, m.str_value or "", m.ordinal));
         }
-        self.enum_string_values[enum_name] = entries;
+        self.lower.enum_string_values[enum_name] = entries;
         self._build_enum_string_table(enum_name, entries);
     } else {
         name_entries: list[tuple[str, str, int]] = [];
@@ -227,7 +227,7 @@ impl NaIRGenPass._wrap_enum_str(raw: (ir.Value | None)) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._enum_is_string_valued(enum_name: str) -> bool {
-    return enum_name in self.enum_string_values;
+    return enum_name in self.lower.enum_string_values;
 }
 
 impl NaIRGenPass._enum_ordinal_fn(enum_name: str) -> (ir.Function | None) {
@@ -301,7 +301,7 @@ impl NaIRGenPass._codegen_enum_attr_runtime(
 impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     candidates: list[uni.Module] = [];
-    _arch = self.arch_ast_map.get(enum_name);
+    _arch = self.lower.arch_ast_map.get(enum_name);
     if _arch is not None {
         _own = _arch.find_parent_of_type(uni.Module);
         if _own is not None {
@@ -309,7 +309,7 @@ impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
         }
     }
     candidates.append(self.module);
-    for _fm in (self?._foreign_modules or []) {
+    for _fm in (self.lower._foreign_modules or []) {
         candidates.append(_fm);
     }
     for _cand in candidates {

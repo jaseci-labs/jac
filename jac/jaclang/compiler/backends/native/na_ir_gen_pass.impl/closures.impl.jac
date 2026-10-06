@@ -54,7 +54,7 @@ impl NaIRGenPass._scan_closure_escapes(
         }
         for cap_sym in sub.get_enclosing_captures() {
             if uni.same_lexical_scope(cap_sym.parent_tab, nd) {
-                self.closure_cell_vars.add(cap_sym.sym_name);
+                self.lower.closure_cell_vars.add(cap_sym.sym_name);
             }
         }
     }
@@ -64,7 +64,7 @@ impl NaIRGenPass._scan_closure_escapes(
         }
         for cap_sym in lam.captures {
             if uni.same_lexical_scope(cap_sym.parent_tab, nd) {
-                self.closure_cell_vars.add(cap_sym.sym_name);
+                self.lower.closure_cell_vars.add(cap_sym.sym_name);
             }
         }
     }

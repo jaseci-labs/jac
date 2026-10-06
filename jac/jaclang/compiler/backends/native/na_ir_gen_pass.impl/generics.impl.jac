@@ -5,7 +5,7 @@ impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
     }
     import from jaclang.compiler.passes.layout_pass { native_type_key }
     m = native_type_key(t);
-    _map = self._mono_mangle_map;
+    _map = self.lower._mono_mangle_map;
     if _map {
         import re;
         for (tv, repl) in _map.items() {
@@ -98,7 +98,7 @@ impl NaIRGenPass._solve_generic_call(
         if decl is None or actual is None {
             return;
         }
-        _outer = self._mono_solution;
+        _outer = self.lower._mono_solution;
         if isinstance(actual, _TVT) and _outer is not None and actual.name in _outer {
             actual = _outer[actual.name];
         }
@@ -212,11 +212,11 @@ impl NaIRGenPass._ct_value_with_bindings(
     if not cv.is_deferred {
         return (True, cv);
     }
-    if not self._ct_bindings {
+    if not self.lower._ct_bindings {
         return (False, None);
     }
     try {
-        return (True, self._ct_eval().eval_with_bindings(nd, self._ct_bindings));
+        return (True, self._ct_eval().eval_with_bindings(nd, self.lower._ct_bindings));
     } except Exception {
         return (False, None);
     }
@@ -289,7 +289,7 @@ impl NaIRGenPass._ct_origin(nd: uni.Expr) -> bool {
     if not isinstance(nd, uni.Name) {
         return False;
     }
-    if nd.sym_name in self._ct_bindings {
+    if nd.sym_name in self.lower._ct_bindings {
         return True;
     }
     sym = nd.sym;
@@ -381,7 +381,7 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: CtValue) -> None {
         return;
     }
     if isinstance(tgt, uni.Name) {
-        self._ct_bindings[tgt.value] = v;
+        self.lower._ct_bindings[tgt.value] = v;
         return;
     }
     if isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
@@ -429,18 +429,18 @@ impl NaIRGenPass._instantiate_generic(
     safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
-    saved_sol = self._mono_solution;
-    saved_map = self._mono_mangle_map;
-    saved_ct = self._ct_bindings;
-    self._mono_solution = solution;
-    self._mono_mangle_map = _mangles;
-    self._ct_bindings = dict(ct_bind);
+    saved_sol = self.lower._mono_solution;
+    saved_map = self.lower._mono_mangle_map;
+    saved_ct = self.lower._ct_bindings;
+    self.lower._mono_solution = solution;
+    self.lower._mono_mangle_map = _mangles;
+    self.lower._ct_bindings = dict(ct_bind);
     try {
         fn = self._stamp_mono_fn(ability, spec_name, key);
     } finally {
-        self._mono_solution = saved_sol;
-        self._mono_mangle_map = saved_map;
-        self._ct_bindings = saved_ct;
+        self.lower._mono_solution = saved_sol;
+        self.lower._mono_mangle_map = saved_map;
+        self.lower._ct_bindings = saved_ct;
     }
     return fn;
 }
@@ -552,15 +552,15 @@ impl NaIRGenPass._instantiate_generic_for_target(
     safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
-    saved_sol = self._mono_solution;
-    saved_map = self._mono_mangle_map;
-    self._mono_solution = solution;
-    self._mono_mangle_map = _mangles;
+    saved_sol = self.lower._mono_solution;
+    saved_map = self.lower._mono_mangle_map;
+    self.lower._mono_solution = solution;
+    self.lower._mono_mangle_map = _mangles;
     try {
         fn = self._stamp_mono_fn(ability, spec_name, key);
     } finally {
-        self._mono_solution = saved_sol;
-        self._mono_mangle_map = saved_map;
+        self.lower._mono_solution = saved_sol;
+        self.lower._mono_mangle_map = saved_map;
     }
     return fn;
 }
@@ -595,15 +595,15 @@ impl NaIRGenPass._instantiate_generic_method(
     safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{owner_arch}_{method_name}_{safe}_{_kd}";
-    saved_sol = self._mono_solution;
-    saved_map = self._mono_mangle_map;
-    self._mono_solution = solution;
-    self._mono_mangle_map = _mangles;
+    saved_sol = self.lower._mono_solution;
+    saved_map = self.lower._mono_mangle_map;
+    self.lower._mono_solution = solution;
+    self.lower._mono_mangle_map = _mangles;
     try {
         fn = self._stamp_mono_method(ability, owner_arch, method_name, spec_name, key);
     } finally {
-        self._mono_solution = saved_sol;
-        self._mono_mangle_map = saved_map;
+        self.lower._mono_solution = saved_sol;
+        self.lower._mono_mangle_map = saved_map;
     }
     return fn;
 }

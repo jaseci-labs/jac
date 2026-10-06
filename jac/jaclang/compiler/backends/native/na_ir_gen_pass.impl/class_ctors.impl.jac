@@ -112,7 +112,7 @@ impl NaIRGenPass._class_takes_no_ctor_args(type_name: str) -> bool {
         return False;
     }
     for cls in self._class_ancestors(type_name) {
-        arch = self.arch_ast_map.get(cls);
+        arch = self.lower.arch_ast_map.get(cls);
         if not isinstance(arch, uni.Archetype) or arch.arch_type.name != Tok.KW_CLASS {
             return False;
         }

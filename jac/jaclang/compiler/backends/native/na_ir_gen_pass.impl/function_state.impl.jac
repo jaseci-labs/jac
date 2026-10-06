@@ -5,9 +5,9 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
         borrowed_vars=self.borrowed_vars,
         owned_tuple_vars=self.owned_tuple_vars,
         nogc_owned_str_vars=self.nogc_owned_str_vars,
-        region_handle_vars=self.region_handle_vars,
+        region_handle_vars=self.lower.region_handle_vars,
         var_list_elem_struct=self.var_list_elem_struct,
-        closure_cell_vars=self.closure_cell_vars,
+        closure_cell_vars=self.lower.closure_cell_vars,
         closure_cell_handles=self.closure_cell_handles
     );
     self.local_vars = self.local_vars.copy() if inherit else {};
@@ -15,9 +15,9 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
     self.borrowed_vars = self.borrowed_vars.copy() if inherit else set();
     self.owned_tuple_vars = self.owned_tuple_vars.copy() if inherit else set();
     self.nogc_owned_str_vars = self.nogc_owned_str_vars.copy() if inherit else set();
-    self.region_handle_vars = self.region_handle_vars.copy() if inherit else set();
+    self.lower.region_handle_vars = self.lower.region_handle_vars.copy() if inherit else set();
     self.var_list_elem_struct = self.var_list_elem_struct.copy() if inherit else {};
-    self.closure_cell_vars = self.closure_cell_vars.copy() if inherit else set();
+    self.lower.closure_cell_vars = self.lower.closure_cell_vars.copy() if inherit else set();
     self.closure_cell_handles = self.closure_cell_handles.copy() if inherit else {};
     return state;
 }
@@ -38,9 +38,9 @@ impl NaIRGenPass._leave_bindings(
     self.borrowed_vars = state.borrowed_vars;
     self.owned_tuple_vars = state.owned_tuple_vars;
     self.nogc_owned_str_vars = state.nogc_owned_str_vars;
-    self.region_handle_vars = state.region_handle_vars;
+    self.lower.region_handle_vars = state.region_handle_vars;
     self.var_list_elem_struct = state.var_list_elem_struct;
-    self.closure_cell_vars = state.closure_cell_vars;
+    self.lower.closure_cell_vars = state.closure_cell_vars;
     self.closure_cell_handles = state.closure_cell_handles;
 }
 
@@ -51,9 +51,9 @@ impl NaIRGenPass._shadow_bindings(names: list[str]) -> None {
         self.borrowed_vars.discard(name);
         self.owned_tuple_vars.discard(name);
         self.nogc_owned_str_vars.discard(name);
-        self.region_handle_vars.discard(name);
+        self.lower.region_handle_vars.discard(name);
         self.var_list_elem_struct.pop(name, None);
-        self.closure_cell_vars.discard(name);
+        self.lower.closure_cell_vars.discard(name);
         self.closure_cell_handles.pop(name, None);
     }
 }
@@ -95,7 +95,7 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
 impl NaIRGenPass._bind_function_parameter(
     name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False
 ) -> None {
-    if name in self.closure_cell_vars {
+    if name in self.lower.closure_cell_vars {
         slot = self._emit_closure_cell(name, value.type);
         self.builder.store(value, slot);
         self.local_vars[name] = slot;

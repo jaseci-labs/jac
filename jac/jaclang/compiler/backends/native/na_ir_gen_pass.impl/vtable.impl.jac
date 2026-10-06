@@ -51,7 +51,7 @@ impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
         native_symbol_name,
         native_unit_spelling
     }
-    src = self._struct_source_mod.get(arch_name, "");
+    src = self.lower._struct_source_mod.get(arch_name, "");
     prefix = self._prefix_of_path(src) if src else self._own_prefix();
     owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
     return native_symbol_name(
@@ -163,7 +163,7 @@ impl NaIRGenPass._isinstance_unprovable_class(
     """;
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
-    _missing = self._short_mro_reach;
+    _missing = self.lower._short_mro_reach;
     if _missing is None {
         reg = get_layout_registry(self.module, self.prog);
         _missing = {};
@@ -195,7 +195,7 @@ impl NaIRGenPass._isinstance_unprovable_class(
                 }
             }
         }
-        self._short_mro_reach = _missing;
+        self.lower._short_mro_reach = _missing;
     }
     for name in names {
         for cand in (_missing.get(name) or []) {
@@ -807,7 +807,7 @@ impl NaIRGenPass._is_enum_arch(name: str) -> bool {
         return True;
     }
     _cands: list[uni.Module] = [self.module];
-    for _fm in (self?._foreign_modules or []) {
+    for _fm in (self.lower._foreign_modules or []) {
         _cands.append(_fm);
     }
     for _cand in _cands {
@@ -1577,7 +1577,7 @@ impl NaIRGenPass._emit_isinstance_runtime(
 }
 
 impl NaIRGenPass._generate_inherited_method_wrappers -> None {
-    for child_name in self.arch_ast_map {
+    for child_name in self.lower.arch_ast_map {
         mro = self._mro_of(child_name);
         child_struct = self.struct_types.get(child_name);
         if child_struct is None or len(mro) < 2 {

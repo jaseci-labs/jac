@@ -210,9 +210,9 @@ impl NaIRGenPass._tuple_slot_owns(
         or self._gc_mode() == "none"
         or var_name in self.param_vars
         or var_name in self.borrowed_vars
-        or var_name in self.closure_cell_vars
+        or var_name in self.lower.closure_cell_vars
         or var_name in self.closure_cell_handles
-        or var_name in self.region_handle_vars
+        or var_name in self.lower.region_handle_vars
         or (
             self._gen_ctx is not None
             and self.builder.function is self._gen_ctx.resume_fn

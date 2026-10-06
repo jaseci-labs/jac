@@ -15,7 +15,7 @@ impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
         return None;
     }
     name = arch.name.value;
-    return name if name in self.clib_struct_names else None;
+    return name if name in self.lower.clib_struct_names else None;
 }
 
 impl NaIRGenPass._lower_c_interop_type(t: any) -> (ir.Type | None) {
@@ -109,12 +109,12 @@ impl NaIRGenPass._pinned_scalar_box(elem: any) -> (str | None) {
             box.set_body(llt);
         }
         self.struct_types[name] = box;
-        self.struct_field_indices[name] = {"value": 0};
-        self.struct_field_order[name] = ["value"];
+        self.lower.struct_field_indices[name] = {"value": 0};
+        self.lower.struct_field_order[name] = ["value"];
         self.struct_field_types[name] = {"value": llt};
         self.struct_field_defaults[name] = {};
         self.struct_field_foreign[name] = set();
-        self.clib_struct_names.add(name);
+        self.lower.clib_struct_names.add(name);
     }
     return name;
 }

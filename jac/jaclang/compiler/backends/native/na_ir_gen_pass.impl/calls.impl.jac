@@ -93,8 +93,8 @@ impl NaIRGenPass._transfer_own_args(
     }
     _is_ctor = isinstance(nd.target, uni.Name)
         and (
-            nd.target.sym_name in self.arch_ast_map
-            or self._arch_alias_target(nd.target) in self.arch_ast_map
+            nd.target.sym_name in self.lower.arch_ast_map
+            or self._arch_alias_target(nd.target) in self.lower.arch_ast_map
         );
     if _is_ctor and not _hl {
         return release_args;
@@ -196,7 +196,7 @@ impl NaIRGenPass._callee_sig_of(
 
 impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None) {
     for cls in self._mro_of(type_name) {
-        arch = self.arch_ast_map.get(cls);
+        arch = self.lower.arch_ast_map.get(cls);
         if not isinstance(arch, uni.Archetype) or arch.body is None {
             continue;
         }
@@ -1198,7 +1198,7 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
 impl NaIRGenPass._skip_is_other_module(
     nd: uni.FuncCall, func_name: str, mod_qual: (str | None)
 ) -> bool {
-    origins = self._native_skipped_import_origin.get(func_name);
+    origins = self.lower._native_skipped_import_origin.get(func_name);
     if origins is None {
         return False;
     }
@@ -1249,11 +1249,11 @@ impl NaIRGenPass._native_module_call_target(
         return None;
     }
 
-    if mod_name == "os.path" and "os" in self._native_module_imports {
+    if mod_name == "os.path" and "os" in self.lower._native_module_imports {
         return (mod_name, method_name);
     }
 
-    if mod_name in self._native_module_imports {
+    if mod_name in self.lower._native_module_imports {
         return (mod_name, method_name);
     }
     return None;
@@ -1262,7 +1262,7 @@ impl NaIRGenPass._native_module_call_target(
 impl NaIRGenPass._stdlib_intercept_covers(module_name: str, func_name: str) -> bool {
     """Whether `module_name.func_name` lowers through a compiler intercept for an
     imported stdlib module (`os`, `random`, `struct`).""";
-    if module_name not in self._native_stdlib_modules {
+    if module_name not in self.lower._native_stdlib_modules {
         return False;
     }
     return (module_name == "os" and func_name in NATIVE_OS_FUNCS)
@@ -2535,7 +2535,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _clib_managed_ret = _clib_ret_name.split("[")[0] in ("list", "dict", "set")
                 or (
                     _clib_ret_name in self.struct_types
-                    and _clib_ret_name not in self.clib_struct_names
+                    and _clib_ret_name not in self.lower.clib_struct_names
                 );
         }
     }
@@ -2621,7 +2621,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if _is_foreign {
         foreign_decl = self._foreign_fns().get(func_name);
         result_name = foreign_decl["ret"] if foreign_decl is not None else None;
-        if isinstance(result_name, str) and result_name in self.clib_struct_names {
+        if isinstance(result_name, str) and result_name in self.lower.clib_struct_names {
             result_struct = self.struct_types.get(result_name);
             abi_type = self.clib_struct_abi_types.get(result_name);
             if result_struct is not None
@@ -2831,7 +2831,7 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
     while isinstance(_mn_nd, uni.AtomUnit) and _mn_nd.value is not None {
         _mn_nd = _mn_nd.value;
     }
-    if self._mono_mangle_map
+    if self.lower._mono_mangle_map
         and isinstance(_mn_nd, uni.Name)
         and _mn_nd.sym is not None {
         nd = _mn_nd;
@@ -2852,8 +2852,8 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
             ) {
                 _mn_inner = _mn_tag.right.slices[0].start;
                 if isinstance(_mn_inner, uni.Name)
-                    and _mn_inner.value in self._mono_mangle_map {
-                    return self._mono_mangle_map[_mn_inner.value];
+                    and _mn_inner.value in self.lower._mono_mangle_map {
+                    return self.lower._mono_mangle_map[_mn_inner.value];
                 }
             }
         }

@@ -27,12 +27,12 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
     """;
     import os;
     import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_BASES }
-    if arch_name in self._pyb_base_memo {
-        cached = self._pyb_base_memo[arch_name];
+    if arch_name in self.lower._pyb_base_memo {
+        cached = self.lower._pyb_base_memo[arch_name];
         return cached;
     }
-    self._pyb_base_memo[arch_name] = None;
-    arch = self.arch_ast_map.get(arch_name);
+    self.lower._pyb_base_memo[arch_name] = None;
+    arch = self.lower.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
@@ -53,10 +53,10 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
             continue;
         }
         bkey = self._arch_ref_key(base_expr) or bname;
-        if bkey in self.arch_ast_map {
+        if bkey in self.lower.arch_ast_map {
             sub = self._pyb_base_of(bkey);
             if sub is not None {
-                self._pyb_base_memo[arch_name] = sub;
+                self.lower._pyb_base_memo[arch_name] = sub;
                 return sub;
             }
             continue;
@@ -82,7 +82,7 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
             continue;
         }
         found = (bname, os.path.abspath(path), );
-        self._pyb_base_memo[arch_name] = found;
+        self.lower._pyb_base_memo[arch_name] = found;
         return found;
     }
     return None;
@@ -103,7 +103,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
     not a shadow-side initializer. A subscripted base is unwrapped the
     same way `_pyb_base_of` unwraps it.
     """;
-    arch = self.arch_ast_map.get(arch_name);
+    arch = self.lower.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
@@ -131,7 +131,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
         if base_arch is None {
             continue;
         }
-        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
+        if (self._arch_ref_key(base_expr) or bname) not in self.lower.arch_ast_map {
             for stmt in (base_arch.body or []) {
                 if isinstance(stmt, uni.Ability)
                     and stmt.name_ref is not None
@@ -183,7 +183,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
     Python-resident helper are all invisible here and stay unreported --
     this closes the shapes the tree can prove, not every shape that exists.
     """;
-    arch = self.arch_ast_map.get(arch_name);
+    arch = self.lower.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
@@ -212,7 +212,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
             continue;
         }
 
-        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
+        if (self._arch_ref_key(base_expr) or bname) not in self.lower.arch_ast_map {
             for stmt in (base_arch.body or []) {
                 if not isinstance(stmt, uni.Ability) {
                     continue;

@@ -57,20 +57,20 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
     for arch in archetypes {
         _n = self._arch_key(arch) if arch.name else None;
         if (_n is not None) and (arch.arch_kind is not None) {
-            self.arch_ast_map[_n] = arch;
+            self.lower.arch_ast_map[_n] = arch;
         }
     }
     import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _model = get_osp_model(
         self.module,
-        archetypes=(list(archetypes) + list(self.arch_ast_map.values())),
+        archetypes=(list(archetypes) + list(self.lower.arch_ast_map.values())),
         context=CodeContext.NATIVE,
         native_names=True
     );
     for (_name, _other) in _model.collisions {
         self.emit(
             E5092,
-            node_override=self.arch_ast_map.get(_name),
+            node_override=self.lower.arch_ast_map.get(_name),
             kind="archetype",
             name=f"{_name} (OSP type-tag hash collides with '{_other}')"
         );
@@ -102,9 +102,9 @@ impl NaIRGenPass._xmod_osp_help(names: list[str | None]) -> (str | None) {
     _tags = _model.tags if (_model is not None) else {};
     for _n in names {
         if (
-            (_n is not None) and (_n not in _tags) and (_n in self.imported_osp_archs)
+            (_n is not None) and (_n not in _tags) and (_n in self.lower.imported_osp_archs)
         ) {
-            (_kind, _mod) = self.imported_osp_archs[_n];
+            (_kind, _mod) = self.lower.imported_osp_archs[_n];
             return (
                 f"the {_kind} archetype '{self._arch_display(
                     _n
@@ -134,7 +134,7 @@ impl NaIRGenPass._emit_osp_thunk(arch_name: str, method: uni.Ability) -> None {
     jv = self.jacval_type;
 
     _thunk_name = self._symbol_for(f"{full}.__ospthunk");
-    _imported = arch_name in self.imported_osp_archs;
+    _imported = arch_name in self.lower.imported_osp_archs;
     if _imported {
         _thunk_name = f"{_thunk_name}.x{self._osp_thunk_uid}";
         self._osp_thunk_uid += 1;
@@ -185,7 +185,7 @@ impl NaIRGenPass._osp_rc_new(struct_name: str) -> (ir.Value | None) {
     struct_ptr = self.builder.bitcast(_raw, sptr, name=f"osp.{struct_name}");
 
     _ftypes = self.struct_field_types.get(struct_name, {});
-    for (_fname, _fidx) in self.struct_field_indices.get(struct_name, {}).items() {
+    for (_fname, _fidx) in self.lower.struct_field_indices.get(struct_name, {}).items() {
         _ftype = _ftypes.get(_fname);
         if _ftype is None {
             continue;
@@ -257,7 +257,7 @@ impl NaIRGenPass._osp_build_slot(
     }
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    _idx = self.struct_field_indices.get("OspSlot", {});
+    _idx = self.lower.struct_field_indices.get("OspSlot", {});
     self.builder.store(
         ir.Constant(i64, trig_tag),
         self.builder.gep(
@@ -309,7 +309,7 @@ impl NaIRGenPass._osp_build_descriptor(
     }
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    _idx = self.struct_field_indices.get(struct_name, {});
+    _idx = self.lower.struct_field_indices.get(struct_name, {});
     self.builder.store(
         ir.Constant(i64, type_tag),
         self.builder.gep(
@@ -368,7 +368,7 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
     _ocf = ir.Function(self.llvm_module, complete_signature, name="__osp_on_complete");
     _ocf.linkage = "internal";
     self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
-    _ws_idx = self.struct_field_indices.get("OspWalkScope", {});
+    _ws_idx = self.lower.struct_field_indices.get("OspWalkScope", {});
     if _ws_idx {
         _deliver = _ocf.append_basic_block("deliver");
         _oc_done = _ocf.append_basic_block("done");
@@ -557,7 +557,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
     _rt = self._osp_rc_new("OspRuntime");
     if _rt is not None {
         _rf = self.struct_field_types.get("OspRuntime", {});
-        _ridx = self.struct_field_indices.get("OspRuntime", {});
+        _ridx = self.lower.struct_field_indices.get("OspRuntime", {});
         for _fname in ["tag_of", "is_a", "node_desc", "on_complete"] {
             _cb = self._coerce_type(_cbs[_fname], _rf[_fname]);
             self.builder.store(
@@ -856,7 +856,7 @@ impl NaIRGenPass._osp_connect_assign(
         if edge_arch is None
             or field_name is None
             or (
-                field_name not in self.struct_field_indices.get(edge_arch, {})
+                field_name not in self.lower.struct_field_indices.get(edge_arch, {})
                 and self._accessor_slot_of(edge_arch, field_name, "setter") is None
             ) {
             self.ctx.emit(
@@ -1649,7 +1649,7 @@ impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) 
 impl NaIRGenPass._osp_pred_pair(
     arch_name: str, compares: list[uni.CompareExpr], nd: uni.UniNode
 ) -> (ir.Value | None) {
-    _fields = self.struct_field_indices.get(arch_name);
+    _fields = self.lower.struct_field_indices.get(arch_name);
     if _fields is None {
         self.emit(
             E5092,

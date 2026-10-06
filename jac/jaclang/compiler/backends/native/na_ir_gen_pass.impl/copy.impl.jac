@@ -1,5 +1,5 @@
 impl NaIRGenPass._copy_call_kind(nd: uni.FuncCall) -> (str | None) {
-    if "copy" not in self._native_stdlib_modules {
+    if "copy" not in self.lower._native_stdlib_modules {
         return None;
     }
     target = nd.target;
@@ -330,7 +330,7 @@ impl NaIRGenPass._copy_class_refusal(
         if self._pyb_base_of(cand) is not None {
             return f"{_label}, which extends a Python-side base";
         }
-        if cand in self.clib_struct_names or cand in self.clib_vtable_structs {
+        if cand in self.lower.clib_struct_names or cand in self.clib_vtable_structs {
             return f"{_label}, a C-library struct";
         }
         if self._resolve_method(cand, _dunder) is not None
@@ -564,7 +564,7 @@ impl NaIRGenPass._copy_body_fn(arch: str, deep: bool, nd: uni.UniNode) -> ir.Fun
         );
         dst = self.builder.bitcast(raw, sptr, name="copy.dst");
         _hints = self._copy_field_hints(arch);
-        _indices = self.struct_field_indices.get(arch, {});
+        _indices = self.lower.struct_field_indices.get(arch, {});
         _deferred: list[tuple[str, ir.Type, int, ir.Value]] = [];
         for (fname, ftype) in self.struct_field_types[arch].items() {
             idx = _indices.get(fname, -1);

@@ -759,7 +759,7 @@ impl NaIRGenPass._bind_borrowed(
 ) -> bool {
     if id(nd) not in self.module.managed_borrow_binds
         or self._gc_mode() == "none"
-        or var_name in self.region_handle_vars
+        or var_name in self.lower.region_handle_vars
         or not (
             self._elem_kind(slot_ty) == "rc_ptr"
             or self._opt_ptr_payload_of(slot_ty) is not None
@@ -1808,7 +1808,7 @@ impl NaIRGenPass._emit_nogc_field_drops(
         b.call(_hook, [b.bitcast(_dobj, _hook.args[0].type)]);
     }
     field_types = self.struct_field_types.get(type_name, {});
-    field_indices = self.struct_field_indices.get(type_name, {});
+    field_indices = self.lower.struct_field_indices.get(type_name, {});
     foreign_fields = self.struct_field_foreign.get(type_name, set());
     borrow_fields = self.struct_field_borrow.get(type_name, set());
     i32 = ir.IntType(32);
@@ -1887,7 +1887,7 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._drop_member_of(owner: str) -> (uni.Ability | None) {
-    arch = self.arch_ast_map.get(owner);
+    arch = self.lower.arch_ast_map.get(owner);
     if arch is None or arch.body is None {
         return None;
     }
@@ -2587,7 +2587,7 @@ impl NaIRGenPass._emit_scope_cleanup(
             }
             continue;
         }
-        if var_name in self.region_handle_vars
+        if var_name in self.lower.region_handle_vars
             and isinstance(alloca.type, ir.PointerType)
             and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
             if var_name != skip_var {
@@ -2610,7 +2610,7 @@ impl NaIRGenPass._emit_scope_cleanup(
         }
         if isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.pointee_type, ir.PointerType) {
-            if var_name in self.region_handle_vars {
+            if var_name in self.lower.region_handle_vars {
                 if var_name != skip_var {
                     _region_handles.append((var_name, alloca));
                 }
@@ -2680,7 +2680,7 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
             }
             continue;
         }
-        if var_name in self.region_handle_vars
+        if var_name in self.lower.region_handle_vars
             and isinstance(alloca.type, ir.PointerType)
             and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
             _region_handles.append((var_name, alloca));
@@ -2701,7 +2701,7 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
             isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.pointee_type, ir.PointerType)
         ) {
-            if var_name in self.region_handle_vars {
+            if var_name in self.lower.region_handle_vars {
                 _region_handles.append((var_name, alloca));
                 continue;
             }
@@ -2778,7 +2778,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         return;
     }
     field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
+    field_indices = self.lower.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
     struct_ptr_type = struct_type.as_pointer();
     i8_ptr = ir.IntType(8).as_pointer();

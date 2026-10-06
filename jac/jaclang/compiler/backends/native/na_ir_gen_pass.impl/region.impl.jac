@@ -200,12 +200,12 @@ impl NaIRGenPass._register_region_handle_var(
     if _tgt is None or _tgt.sym is None or not _tgt.sym.na_region_handle {
         return;
     }
-    self.region_handle_vars.add(var_name);
+    self.lower.region_handle_vars.add(var_name);
     if isinstance(nd.value, uni.Name)
         and nd.value.sym is not None
         and nd.value.sym.na_region_handle
         and nd.value.sym_name != var_name {
-        self.region_handle_vars.discard(nd.value.sym_name);
+        self.lower.region_handle_vars.discard(nd.value.sym_name);
     }
 }
 
@@ -244,7 +244,7 @@ impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
             self.local_vars[tgt.sym_name] = _slot;
         }
         self.builder.store(_child, _slot);
-        self.region_handle_vars.add(tgt.sym_name);
+        self.lower.region_handle_vars.add(tgt.sym_name);
     }
     return True;
 }
@@ -259,7 +259,7 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
     }
     _hook = self._drop_hook_for(type_name);
     field_types = self.struct_field_types.get(type_name, {});
-    field_indices = self.struct_field_indices.get(type_name, {});
+    field_indices = self.lower.struct_field_indices.get(type_name, {});
     foreign_fields = self.struct_field_foreign.get(type_name, set());
     _ptr_fields = [
         (fname, ftype)

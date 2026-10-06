@@ -90,7 +90,7 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             ) {
             continue;
         }
-        if name in self.region_handle_vars {
+        if name in self.lower.region_handle_vars {
             continue;
         }
         if name in self.closure_cell_handles {
@@ -783,7 +783,7 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
         _slot = self._entry_alloca(_i8p, _synth);
         self.builder.store(_hdl, _slot);
         self.local_vars[_synth] = _slot;
-        self.region_handle_vars.add(_synth);
+        self.lower.region_handle_vars.add(_synth);
     }
     self._region_enter(_hdl);
     self.region_open_stack.append(len(self.loop_stack));
@@ -1294,7 +1294,7 @@ impl NaIRGenPass._match_arch_fields(
     out: list[tuple[str, uni.MatchPattern]] = [];
     args = list(pat.arg_patterns) if pat.arg_patterns else [];
     if args {
-        order = self.struct_field_order.get(arch_name);
+        order = self.lower.struct_field_order.get(arch_name);
         if order is None or len(args) > len(order) {
             return None;
         }
@@ -1884,8 +1884,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and _env_sub_t.is_attr
                 and self._get_name(_env_sub_t.target) == "os"
                 and self._get_name(_env_sub_t.right) == "environ"
-                and self?._native_stdlib_modules
-                and "os" in self._native_stdlib_modules
+                and self.lower._native_stdlib_modules
+                and "os" in self.lower._native_stdlib_modules
                 and nd.aug_op is None
                 and isinstance(target_expr.right, uni.IndexSlice)
                 and target_expr.right.slices
@@ -2538,7 +2538,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 )
             )
                 and not is_inplace_set_op {
-                if var_name in self.region_handle_vars {
+                if var_name in self.lower.region_handle_vars {
                     _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
                     self.builder.call(
                         self._region_kernel_fn("__jac_region_drop"),
@@ -2653,7 +2653,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if nd.loc
                         else 0}"
                 );
-            } elif var_name in self.region_handle_vars
+            } elif var_name in self.lower.region_handle_vars
                 and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
                 _old_opt_hdl = self.builder.load(alloca, name=f"{var_name}.old");
                 self.builder.call(
@@ -3052,7 +3052,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 return;
             }
             _mk_cell = (
-                var_name in self.closure_cell_vars
+                var_name in self.lower.closure_cell_vars
                 and var_name not in self.closure_cell_handles
             );
             if _mk_cell {
@@ -3096,7 +3096,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and not _in_gen_frame
                 and self._bind_borrowed(nd, var_name, var_type)
             );
-            if var_name in self.region_handle_vars or _borrowed_slot {} elif isinstance(
+            if var_name in self.lower.region_handle_vars or _borrowed_slot {} elif isinstance(
                 var_type, ir.PointerType
             )
                 or (self._str_desc_ty is not None and var_type == self._str_desc_ty) {
@@ -3336,8 +3336,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             );
             return;
         }
-        saved_ct = self._ct_bindings;
-        self._ct_bindings = dict(saved_ct);
+        saved_ct = self.lower._ct_bindings;
+        self.lower._ct_bindings = dict(saved_ct);
         try {
             for item in ct_iter(items) {
                 self._bind_ct_target(nd.target, item);
@@ -3349,7 +3349,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 }
             }
         } finally {
-            self._ct_bindings = saved_ct;
+            self.lower._ct_bindings = saved_ct;
         }
         if isinstance(nd.else_body, uni.ElseStmt)
             and isinstance(nd.else_body.body, (list, tuple))

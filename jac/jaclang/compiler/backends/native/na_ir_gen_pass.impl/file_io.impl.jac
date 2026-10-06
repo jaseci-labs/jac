@@ -72,7 +72,7 @@ impl NaIRGenPass._register_file_like_struct(name: str) -> ir.Type {
     st = self.llvm_module.context.get_identified_type(name);
     st.set_body(i8p, i8p, i8p, i1);
     self.struct_types[name] = st;
-    self.struct_field_indices[name] = {"handle": 0, "path": 1, "mode": 2, "closed": 3};
+    self.lower.struct_field_indices[name] = {"handle": 0, "path": 1, "mode": 2, "closed": 3};
     self.struct_field_types[name] = {
         "handle": i8p,
         "path": i8p,

@@ -23,7 +23,7 @@ impl NaIRGenPass._require_trace_fn(
 
 impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
     field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
+    field_indices = self.lower.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
     for (fname, ftype) in field_types.items() {
         if self._is_reference_type(ftype)
@@ -51,7 +51,7 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
         return;
     }
     field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
+    field_indices = self.lower.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
 
     ptr_fields = [];

@@ -41,7 +41,7 @@ impl NaIRGenPass.postinit -> None {
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
     import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
-    self._unit_prefix = native_unit_prefix(_ni_src) if _ni_src else "jac_native";
+    self.lower._unit_prefix = native_unit_prefix(_ni_src) if _ni_src else "jac_native";
 
     if _ni_src and _ni_opts.native_debug {
         _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
@@ -194,7 +194,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._emit_glob_init_func();
         }
         self.module.gen.llvm_ir = self.llvm_module;
-        self.module.gen.native_deps = list(self._native_dep_paths);
+        self.module.gen.native_deps = list(self.lower._native_dep_paths);
 
         import os;
         if self.prog.options.rc_stats {
@@ -257,7 +257,7 @@ impl NaIRGenPass._export_native_iface -> None {
     );
     layout = self.module.gen.native_layout;
     iface.layout = layout;
-    for (name, ex) in self._unit_exports.items() {
+    for (name, ex) in self.lower._unit_exports.items() {
         sig: any = None;
         if layout is not None {
             sig = layout.functions.get(name) or layout.methods.get(name);
@@ -310,7 +310,7 @@ impl NaIRGenPass._export_native_iface -> None {
             is_node=bool(body.get("is_node", False))
         );
     }
-    for (ename, members) in self.enum_string_values.items() {
+    for (ename, members) in self.lower.enum_string_values.items() {
         if self._enum_source_name.get(ename, self.module.name) == self.module.name {
             iface.enums[ename] = [str(m) for m in members];
         }
@@ -330,7 +330,7 @@ impl NaIRGenPass._export_native_iface -> None {
         binding.name for binding in self.module.gen.interop_manifest.native_imports
     ];
     iface.clib_symbol_lib = dict(self.module.gen._clib_symbol_lib or {});
-    iface.deps = list(self._native_dep_paths);
+    iface.deps = list(self.lower._native_dep_paths);
     try {
         import from jaclang.compiler.driver.na_coverage { na_coverage_capture }
         iface.coverage = na_coverage_capture(mod_path) if mod_path else {};
@@ -338,7 +338,7 @@ impl NaIRGenPass._export_native_iface -> None {
         iface.coverage = {};
     }
     self.module.gen.native_iface = iface;
-    self.module.gen.native_deps = list(self._native_dep_paths);
+    self.module.gen.native_deps = list(self.lower._native_dep_paths);
 }
 
 impl NaIRGenPass._build_class_layouts -> dict[str, any] {
@@ -346,16 +346,16 @@ impl NaIRGenPass._build_class_layouts -> dict[str, any] {
 }
 
 impl NaIRGenPass._own_prefix -> str {
-    return self._unit_prefix;
+    return self.lower._unit_prefix;
 }
 
 impl NaIRGenPass._prefix_of_path(path: str) -> str {
-    found = self._unit_prefixes.get(path);
+    found = self.lower._unit_prefixes.get(path);
     if found is None {
         import os as _pp_os;
         import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
         found = native_unit_prefix(_pp_os.path.realpath(path));
-        self._unit_prefixes[path] = found;
+        self.lower._unit_prefixes[path] = found;
     }
     return found;
 }
@@ -390,11 +390,11 @@ impl NaIRGenPass._symbol_for(
 impl NaIRGenPass._record_export(
     name: str, symbol: str, kind: str, is_pub: bool = False
 ) -> None {
-    self._unit_exports[name] = NativeExport(
+    self.lower._unit_exports[name] = NativeExport(
         name=name, symbol=symbol, kind=kind, is_pub=is_pub
     );
     if is_pub {
-        self._pub_symbols.add(symbol);
+        self.lower._pub_symbols.add(symbol);
     }
 }
 
@@ -404,10 +404,10 @@ impl NaIRGenPass._note_native_dep(path: str) -> None {
     own_path = _nd_os.path.realpath(self.module.loc.mod_path)
         if self.module?.loc
         else "";
-    if real == own_path or real in self._native_dep_paths {
+    if real == own_path or real in self.lower._native_dep_paths {
         return;
     }
-    self._native_dep_paths.append(real);
+    self.lower._native_dep_paths.append(real);
 }
 
 impl NaIRGenPass._is_catalog_module(mod: uni.Module) -> bool {
@@ -417,7 +417,7 @@ impl NaIRGenPass._is_catalog_module(mod: uni.Module) -> bool {
 impl NaIRGenPass._full_ast_of(full_path: str) -> (uni.Module | None) {
     import os as _fa_os;
     key = _fa_os.path.realpath(full_path);
-    found = self._full_ast_cache.get(key);
+    found = self.lower._full_ast_cache.get(key);
     if found is not None {
         return found;
     }
@@ -443,7 +443,7 @@ impl NaIRGenPass._full_ast_of(full_path: str) -> (uni.Module | None) {
         }
         return None;
     }
-    self._full_ast_cache[key] = mod;
+    self.lower._full_ast_cache[key] = mod;
     return mod;
 }
 
@@ -536,7 +536,7 @@ impl NaIRGenPass._predemote_capability_unit(
 
 impl NaIRGenPass._rename_demoted_symbol(name: str, func: ir.Function) -> None {
     self._demoted_names.add(name);
-    self._unit_exports.pop(name, None);
+    self.lower._unit_exports.pop(name, None);
     try {
         self.llvm_module.globals.pop(func.name, None);
         func.name = f"{func.name}.__jac_demoted";
@@ -724,7 +724,7 @@ impl NaIRGenPass._export_native_layout -> None {
         tuple_keys.setdefault(ttype, tkey);
     }
 
-    for (arch_name, field_indices) in self.struct_field_indices.items() {
+    for (arch_name, field_indices) in self.lower.struct_field_indices.items() {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         field_enums = self.struct_field_enum_type.get(arch_name, {});
@@ -774,7 +774,7 @@ impl NaIRGenPass._export_native_layout -> None {
         );
     }
 
-    for (enum_name, entries) in self.enum_string_values.items() {
+    for (enum_name, entries) in self.lower.enum_string_values.items() {
         layout.enums[enum_name] = NativeEnumLayout(
             name=enum_name, is_string_valued=True, members=list(entries)
         );
@@ -831,7 +831,7 @@ impl NaIRGenPass._export_native_layout -> None {
 
         ret_enum: (str | None) = None;
         if ret_type in ("i64", "opt.i64") {
-            _rkey = self.func_ret_type_key.get(fname);
+            _rkey = self.lower.func_ret_type_key.get(fname);
             if _rkey is not None {
                 if _rkey in self.enum_types {
                     ret_enum = _rkey;
@@ -854,7 +854,7 @@ impl NaIRGenPass._export_native_layout -> None {
             or ret_type.startswith("Dict.")
             or ret_type.startswith("Set.")
         ) {
-            ret_elem = self.func_ret_elem_keys.get(fname);
+            ret_elem = self.lower.func_ret_elem_keys.get(fname);
         }
         layout.functions[fname] = NativeFuncLayout(
             name=func.name,
@@ -928,7 +928,7 @@ impl NaIRGenPass._exported_accessors(arch_name: str) -> dict[(str, dict[(str, st
 impl NaIRGenPass._ret_tuple_hints(
     fname: str, ret_tuple: any
 ) -> (list[str | None] | None) {
-    keys = self.func_ret_elem_keys.get(fname);
+    keys = self.lower.func_ret_elem_keys.get(fname);
     if not keys or len(keys) != len(ret_tuple.element_types) {
         return None;
     }
@@ -1100,7 +1100,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
-    self._foreign_modules = [m for (_s, m) in imported_mods];
+    self.lower._foreign_modules = [m for (_s, m) in imported_mods];
     self._typed_only_imports = {
         k
         for (k, v) in typed_only.items()
@@ -1263,7 +1263,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
 
             _aname = self._arch_key(stmt) if stmt.name else None;
             if (_aname is not None) and (stmt.arch_kind is not None) {
-                self.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
+                self.lower.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
             }
         } elif isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);
@@ -1461,8 +1461,8 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
         }
         if isinstance(stmt, uni.Archetype) {
             _aname = self._arch_key(stmt) if stmt.name else None;
-            if (_aname is not None) and (_aname not in self.arch_ast_map) {
-                self.arch_ast_map[_aname] = stmt;
+            if (_aname is not None) and (_aname not in self.lower.arch_ast_map) {
+                self.lower.arch_ast_map[_aname] = stmt;
             }
         }
     }
@@ -1475,7 +1475,7 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     }
 
     _arch_src = os.path.realpath(arch.loc.mod_path) if arch.loc.mod_path else "";
-    _seen_src = self._struct_source_mod.get(aname);
+    _seen_src = self.lower._struct_source_mod.get(aname);
     if _seen_src is not None and _arch_src and _seen_src != _arch_src {
         import from jaclang.compiler.frontend.host { active_host }
         active_host().note(
@@ -1487,7 +1487,7 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
         return;
     }
     if _arch_src {
-        self._struct_source_mod[aname] = _arch_src;
+        self.lower._struct_source_mod[aname] = _arch_src;
     }
 
     if aname not in self.struct_types {
@@ -1502,10 +1502,10 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     for _anc in self._mro_of(aname) {
         if (
             _anc != aname
-            and _anc in self.arch_ast_map
+            and _anc in self.lower.arch_ast_map
             and _anc not in self._struct_bodies_done
         ) {
-            _anc_arch = self.arch_ast_map[_anc];
+            _anc_arch = self.lower.arch_ast_map[_anc];
             if isinstance(_anc_arch, uni.Archetype) {
                 self._register_imported_archetype(_anc_arch);
             }
@@ -1619,7 +1619,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
                 self._native_skipped_methods.add(name);
             }
             if _owner is not None {
-                self._native_skipped_import_origin.setdefault(name, set()).add(
+                self.lower._native_skipped_import_origin.setdefault(name, set()).add(
                     os.path.realpath(_owner.source.file_path)
                 );
             }
@@ -1709,13 +1709,13 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                     }
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported and mod_name is not None {
-                        self._native_stdlib_modules.add(mod_name);
+                        self.lower._native_stdlib_modules.add(mod_name);
                         if is_bundled_native_module(mod_name) {
-                            self._native_module_imports.add(mod_name);
+                            self.lower._native_module_imports.add(mod_name);
                         }
                     } elif mod_name is not None
                         and is_bundled_native_module(mod_name) {
-                        self._native_module_imports.add(mod_name);
+                        self.lower._native_module_imports.add(mod_name);
                     } elif (
                         mod_name is not None
                         and not stmt.is_absorb
@@ -1725,7 +1725,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                             if module?.loc
                             else '.';
                         if resolve_native_module(mod_name, _mb)[1] is not None {
-                            self._native_module_imports.add(mod_name);
+                            self.lower._native_module_imports.add(mod_name);
                         }
                     }
                 }
@@ -1768,7 +1768,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         arch_name
                     );
                     self.struct_types[arch_name] = struct_type;
-                    self.clib_struct_names.add(arch_name);
+                    self.lower.clib_struct_names.add(arch_name);
                     self.has_native_code = True;
                 }
             }

@@ -2365,7 +2365,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 member_val: ir.Value | None = self.enum_values[
                     f"{mem_enum}.{mem_name}"
                 ];
-                if mem_enum in self.enum_string_values {
+                if mem_enum in self.lower.enum_string_values {
                     return self._wrap_enum_str(
                         self._codegen_enum_value_lookup(
                             mem_enum, member_val, use_name=(right_name == "name")
@@ -2393,7 +2393,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             _re_tk = self._type_key_of(nd.target);
             if _re_tk is not None {
                 _re_tk = _re_tk.replace(" ", "").split(".")[-1];
-                if _re_tk in self.enum_string_values {
+                if _re_tk in self.lower.enum_string_values {
                     _re_ord = self._codegen_expr(nd.target);
                     if _re_ord is not None {
                         return self._wrap_enum_str(
@@ -2428,8 +2428,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         if target_name is not None and right_name is not None {
             if (
                 module_name == "sys"
-                and self._native_stdlib_modules
-                and "sys" in self._native_stdlib_modules
+                and self.lower._native_stdlib_modules
+                and "sys" in self.lower._native_stdlib_modules
             ) {
                 if right_name == "argv" {
                     return self._emit_sys_argv();
@@ -2452,8 +2452,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
 
             if (
                 module_name == "os"
-                and self._native_stdlib_modules
-                and "os" in self._native_stdlib_modules
+                and self.lower._native_stdlib_modules
+                and "os" in self.lower._native_stdlib_modules
             ) {
                 _oc = self._emit_os_const(right_name);
                 if _oc is not None {
@@ -2463,7 +2463,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
 
             if (
                 module_name is not None
-                and module_name in self._native_module_imports
+                and module_name in self.lower._native_module_imports
                 and right_name in self.global_vars
             ) {
                 return self.builder.load(
@@ -2568,7 +2568,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 )
                 and all(
                     self._accessor_slot_of(part, right_name, "property") is not None
-                        or right_name in self.struct_field_indices.get(part, {})
+                        or right_name in self.lower.struct_field_indices.get(part, {})
                     for part in _property_parts
                 ) {
                 return self._codegen_union_member(
@@ -2578,7 +2578,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             _fa_type_name = self._struct_name_of(nd.target);
             if _fa_type_name is not None {
                 type_name: str | None = _fa_type_name;
-                _fa_idx = self.struct_field_indices.get(type_name);
+                _fa_idx = self.lower.struct_field_indices.get(type_name);
                 _fa_get = self._accessor_slot_of(type_name, right_name, "property");
                 if (
                     _fa_get is None
@@ -2593,7 +2593,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 type_name = self._infer_type_name(obj_val);
             }
             if type_name is not None
-                and right_name not in self.struct_field_indices.get(type_name, {})
+                and right_name not in self.lower.struct_field_indices.get(type_name, {})
                 and self._accessor_slot_of(type_name, right_name, "property") is None
                 and self._resolve_method(type_name, right_name) is not None {
                 bound = self._emit_bound_method_value(

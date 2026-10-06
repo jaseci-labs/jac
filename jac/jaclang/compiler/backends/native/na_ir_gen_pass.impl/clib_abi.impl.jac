@@ -1,21 +1,21 @@
 impl NaIRGenPass._foreign_model -> dict[str, list[tuple[str, str | None]]] {
     import from jaclang.compiler.backends.native.foreign { collect_foreign_structs }
-    universe = [self.module] + self._foreign_modules;
-    if self._foreign_structs is None or self._foreign_model_nmods != len(universe) {
-        self._foreign_structs = collect_foreign_structs(universe);
-        self._foreign_model_nmods = len(universe);
+    universe = [self.module] + self.lower._foreign_modules;
+    if self.lower._foreign_structs is None or self.lower._foreign_model_nmods != len(universe) {
+        self.lower._foreign_structs = collect_foreign_structs(universe);
+        self.lower._foreign_model_nmods = len(universe);
     }
-    return self._foreign_structs;
+    return self.lower._foreign_structs;
 }
 
 impl NaIRGenPass._foreign_fns -> dict[str, dict[str, any]] {
     import from jaclang.compiler.backends.native.foreign { collect_foreign_fns }
-    universe = [self.module] + self._foreign_modules;
-    if self._foreign_fn_decls is None or self._foreign_fns_nmods != len(universe) {
-        self._foreign_fn_decls = collect_foreign_fns(universe);
-        self._foreign_fns_nmods = len(universe);
+    universe = [self.module] + self.lower._foreign_modules;
+    if self.lower._foreign_fn_decls is None or self.lower._foreign_fns_nmods != len(universe) {
+        self.lower._foreign_fn_decls = collect_foreign_fns(universe);
+        self.lower._foreign_fns_nmods = len(universe);
     }
-    return self._foreign_fn_decls;
+    return self.lower._foreign_fn_decls;
 }
 
 impl NaIRGenPass._clib_struct_layout(

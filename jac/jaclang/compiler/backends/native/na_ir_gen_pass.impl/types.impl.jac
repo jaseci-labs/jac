@@ -17,7 +17,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         return None;
     }
     if isinstance(t, _TypeVarType) {
-        _sol = self._mono_solution;
+        _sol = self.lower._mono_solution;
         if _sol is not None and t.name in _sol {
             return self._lower_type(_sol[t.name]);
         }
@@ -472,7 +472,7 @@ impl NaIRGenPass._common_struct_ancestor(
 }
 
 impl NaIRGenPass._declares_member(type_name: str, member: str) -> bool {
-    return member in self.struct_field_indices.get(type_name, {})
+    return member in self.lower.struct_field_indices.get(type_name, {})
         or self._accessor_slot_of(type_name, member, "setter") is not None
         or self._accessor_slot_of(type_name, member, "property") is not None;
 }
@@ -1094,7 +1094,7 @@ impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
         return None;
     }
     if isinstance(t, _AeTypeVarType) {
-        _sol = self._mono_solution;
+        _sol = self.lower._mono_solution;
         if _sol is None or t.name not in _sol {
             return None;
         }
@@ -1155,7 +1155,7 @@ impl NaIRGenPass._decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] |
 }
 
 impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
-    if self._subclassed_arch_names is None {
+    if self.lower._subclassed_arch_names is None {
         _names: set[str] = set();
         _mods: list[uni.Module] = list(self.prog.mod.hub.values());
         if self.module not in _mods {
@@ -1171,9 +1171,9 @@ impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
                 }
             }
         }
-        self._subclassed_arch_names = _names;
+        self.lower._subclassed_arch_names = _names;
     }
-    return arch_name in self._subclassed_arch_names;
+    return arch_name in self.lower._subclassed_arch_names;
 }
 
 impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
@@ -1544,7 +1544,7 @@ impl NaIRGenPass._erased_decl(tb: any) -> bool {
 }
 
 impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
-    return fname in (self.struct_field_erased_tv.get(type_name) or {});
+    return fname in (self.lower.struct_field_erased_tv.get(type_name) or {});
 }
 
 impl NaIRGenPass._erased_boxable(t: (ir.Type | None)) -> bool {
@@ -1879,7 +1879,7 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
     } elif isinstance(type_expr, uni.Token) {
         type_name = type_expr.value;
     }
-    if type_name is not None and type_name in self.clib_struct_names {
+    if type_name is not None and type_name in self.lower.clib_struct_names {
         if type_name in self.clib_struct_abi_types {
             return self.clib_struct_abi_types[type_name];
         }
@@ -2298,7 +2298,7 @@ impl NaIRGenPass._narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool 
 
 impl NaIRGenPass._loop_rebinds_name(loop: uni.UniNode, name: str) -> bool {
     _key = (id(loop), name);
-    _hit = self._loop_rebind_memo.get(_key);
+    _hit = self.lower._loop_rebind_memo.get(_key);
     if _hit is not None {
         return _hit;
     }
@@ -2330,7 +2330,7 @@ impl NaIRGenPass._loop_rebinds_name(loop: uni.UniNode, name: str) -> bool {
             }
         }
     }
-    self._loop_rebind_memo[_key] = _found;
+    self.lower._loop_rebind_memo[_key] = _found;
     return _found;
 }
 
@@ -2422,7 +2422,7 @@ impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Val
         return val;
     }
     _nm = nd.value;
-    if _nm not in self.local_vars or _nm in self.closure_cell_vars {
+    if _nm not in self.local_vars or _nm in self.lower.closure_cell_vars {
         return val;
     }
     if not self._narrowing_stable_in_loops(nd, _nm) {

@@ -275,12 +275,12 @@ impl NaIRGenPass._emit_raise_value(exc_type_name: str, msg_val: ir.Value) -> Non
 }
 
 impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
-    if exc_name in self._exc_type_registry {
-        return self._exc_type_registry[exc_name];
+    if exc_name in self.lower._exc_type_registry {
+        return self.lower._exc_type_registry[exc_name];
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     type_id = JAC_TYPE_REGISTRY.exception_type_id(exc_name);
-    self._exc_type_registry[exc_name] = type_id;
+    self.lower._exc_type_registry[exc_name] = type_id;
     return type_id;
 }
 
@@ -426,7 +426,7 @@ impl NaIRGenPass._emit_exception_match(
 
 impl NaIRGenPass._exc_message_slot(type_name: str) -> (int | None) {
     import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
-    return self.struct_field_indices.get(type_name, {}).get(EXC_MESSAGE_FIELD);
+    return self.lower.struct_field_indices.get(type_name, {}).get(EXC_MESSAGE_FIELD);
 }
 
 impl NaIRGenPass._ctor_arg_value(
@@ -477,7 +477,7 @@ impl NaIRGenPass._store_exc_message(
             [
                 ir.Constant(i32, 0),
                 ir.Constant(
-                    i32, self.struct_field_indices[type_name][EXC_MESSAGE_FIELD]
+                    i32, self.lower.struct_field_indices[type_name][EXC_MESSAGE_FIELD]
                 )
             ],
             name="field.exc.msg"
@@ -579,7 +579,7 @@ impl NaIRGenPass._exc_bound_struct(ex: (uni.Expr | None)) -> (str | None) {
         or self._exc_message_slot(key) is not None {
         return key;
     }
-    return key if self.struct_field_order.get(key) else None;
+    return key if self.lower.struct_field_order.get(key) else None;
 }
 
 impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None {
@@ -853,7 +853,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
             if f"{exc_type_name}.__init__" in self.method_funcs {
                 _exc_has_init = True;
             }
-            _exc_order = self.struct_field_order.get(exc_type_name);
+            _exc_order = self.lower.struct_field_order.get(exc_type_name);
             _exc_struct_ok = _exc_has_init
                 or self._exc_message_slot(exc_type_name) is not None;
             if (not _exc_struct_ok) and (_exc_order is not None) {

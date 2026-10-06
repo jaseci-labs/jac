@@ -43,7 +43,7 @@ impl NaIRGenPass._register_iter_struct(
         type_map[fname] = field_types[i];
         i = i + 1;
     }
-    self.struct_field_indices[name] = idx_map;
+    self.lower.struct_field_indices[name] = idx_map;
     self.struct_field_types[name] = type_map;
     self.struct_field_defaults[name] = {};
 }
@@ -1080,7 +1080,7 @@ impl NaIRGenPass._resolve_method_owner(
     if owner is not None {
         return owner;
     }
-    _arch = self.arch_ast_map.get(arch_name);
+    _arch = self.lower.arch_ast_map.get(arch_name);
     if isinstance(_arch, uni.Archetype) {
         _mod = _arch.find_parent_of_type(uni.Module);
         if _mod is not None and _mod is not self.module {

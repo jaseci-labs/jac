@@ -333,18 +333,18 @@ impl NaIRGenPass._record_ret_facts(
         try {
             mangled = self._mangled_of(_rtb);
             if mangled is not None {
-                self.func_ret_type_key[name] = self._normalize_type_key(mangled);
+                self.lower.func_ret_type_key[name] = self._normalize_type_key(mangled);
             }
         } except Exception {}
     }
     if imported is not None and imported.ret_enum_type {
-        self.func_ret_type_key.setdefault(name, imported.ret_enum_type);
+        self.lower.func_ret_type_key.setdefault(name, imported.ret_enum_type);
     }
     keys = imported.ret_elem_keys
         if imported is not None
         else self._elem_keys_of_annotation(_rt);
     if keys {
-        self.func_ret_elem_keys[name] = keys;
+        self.lower.func_ret_elem_keys[name] = keys;
     }
 }
 
@@ -523,7 +523,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         return;
     }
     if (nd.type_params or self._ability_has_ct_params(nd))
-        and self._mono_solution is None {
+        and self.lower._mono_solution is None {
         return;
     }
     func = self.func_symtab.get(name);
@@ -553,7 +553,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     if (name in self.generator_fns and self.generator_fns[name] is nd)
         or (
             nd.type_params
-            and self._mono_solution is not None
+            and self.lower._mono_solution is not None
             and self._ability_is_generator(nd)
         ) {
         self._codegen_generator(nd, func);
@@ -638,7 +638,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
     if _is_priv {
         func.linkage = "internal";
-        self._unit_exports.pop(name, None);
+        self.lower._unit_exports.pop(name, None);
     }
 
     _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
@@ -1031,7 +1031,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
                 );
                 continue;
             }
-            if _cn in self.closure_cell_vars {
+            if _cn in self.lower.closure_cell_vars {
                 _defer = True;
                 break;
             }
@@ -1221,7 +1221,7 @@ impl NaIRGenPass._codegen_generator(
         }
         for (i, pname) in enumerate(_names) {
             ptype = func.args[i].type;
-            if pname in self.closure_cell_vars {
+            if pname in self.lower.closure_cell_vars {
                 slot = self._emit_closure_cell(pname, ptype);
                 gc.cell_inits[-1].param_index = i;
             } else {
