@@ -168,7 +168,8 @@ def _is_transient_error(exc: object) -> bool {
             litellm.Timeout,
             litellm.APIConnectionError,
             litellm.InternalServerError,
-            litellm.ServiceUnavailableError
+            litellm.ServiceUnavailableError,
+            RateLimitError
         )
     );
 }
@@ -452,7 +453,7 @@ def _default_compact(
                     for p in content
                 );
             }
-            if str(role) == "assistant" and not content {
+            if str(role) == "assistant" {
                 tool_calls: any = msg.get("tool_calls") or [];
                 if tool_calls {
                     descs: list[str] = [];
@@ -472,7 +473,8 @@ def _default_compact(
                             or "";
                         descs.append(f"{name}({args})");
                     }
-                    content = "called: " + "; ".join(descs);
+                    called = "called: " + "; ".join(descs);
+                    content = f"{content}\n{called}" if content else called;
                 }
             }
             lines.append(f"[{role}] {content}");
@@ -747,6 +749,25 @@ impl BaseLLM._resolve_stream_retries(mt_run: MTRuntime) -> int {
         num_retries = 2;
     }
     return max(0, int(num_retries));
+}
+
+
+impl BaseLLM._resolve_timeout(mt_run: MTRuntime) -> float | None {
+    timeout: any = mt_run.call_params.get("timeout");
+    if timeout is None {
+        timeout = self.call_params.get("timeout");
+    }
+    if timeout is None {
+        timeout = self.timeout;
+    }
+    if timeout is None {
+        timeout = _call_params_config.get("timeout");
+    }
+    if timeout is None {
+        timeout = 600.0;
+    }
+    resolved = float(timeout);
+    return resolved if resolved > 0 else None;
 }
 
 
@@ -1294,6 +1315,11 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
             write=_streaming_config.get("write_timeout", 30.0),
             pool=_streaming_config.get("pool_timeout", 30.0)
         );
+    } else {
+        call_timeout = self._resolve_timeout(mt_run);
+        if call_timeout is not None {
+            params["timeout"] = call_timeout;
+        }
     }
     return params;
 }

@@ -62,6 +62,15 @@ def target_restspec(target: any) -> any {
 }
 
 
+def target_protocol(target: any) -> APIProtocol {
+    restspec: any = target_restspec(target);
+    if restspec?.protocol {
+        return APIProtocol(restspec.protocol);
+    }
+    return APIProtocol.HTTP;
+}
+
+
 def target_schedule_spec(target: any) -> any {
     return target.schedule_spec if target?.schedule_spec else None;
 }
@@ -129,6 +138,7 @@ obj ModuleIntrospector {
         _bundle_builder: any = None,
         _bundle_lock: threading.Lock postinit,
         _surface: dict[(str, any)] = {},
+        _served_walkers: int = 0,
         _manifest_root: str = "",
         _spa_routes_loaded: bool = False,
         discover_endpoints: bool = True,

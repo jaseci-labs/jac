@@ -19,7 +19,10 @@ import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
-    extract_data
+    extract_data,
+    fresh_totp_code,
+    totp_code,
+    wrong_totp_code
 }
 import from jaclang.scale.tests.support {
     cleanup_db_files,
@@ -2110,6 +2113,424 @@ test "jwt middleware: per-user isolation and token rejection" {
             assert r.status_code == 200 , f"{label} on pub function: expected 200 (guest), got {r.status_code}";
         }
         assert client.post("/function/public_status", json={}).status_code == 200 , "pub function broken for anonymous requests";
+    } finally {
+        client.close();
+    }
+}
+
+# =============================================================================
+# Second factor (TOTP): enroll, verify, sign-in challenge, assurance, recovery
+# =============================================================================
+def _bearer(token: str) -> dict[str, str] {
+    return {"Authorization": f"Bearer {token}"};
+}
+
+def _claims(token: str) -> dict[str, any] {
+    return _jwt_decode(token, jwt_secret(), algorithms=["HS256"]);
+}
+
+def _enrolled_user(client: any, prefix: str) -> dict[str, any] {
+    username = f"{prefix}_{uuid.uuid4().hex[:8]}";
+    password = "Mfa!Passw0rd";
+    token = register_and_get_token(client, username, password);
+    r = client.post(
+        "/user/mfa/enroll", json={"password": password}, headers=_bearer(token)
+    );
+    assert r.status_code == 201 , r.text;
+    enrolled = extract_data(r.json());
+    used: set[int] = set();
+    r = client.post(
+        "/user/mfa/verify",
+        json={
+            "factor_id": enrolled["factor_id"],
+            "code": fresh_totp_code(enrolled["secret"], used)
+        },
+        headers=_bearer(token)
+    );
+    assert r.status_code == 200 , r.text;
+    verified = extract_data(r.json());
+    return {
+        "username": username,
+        "password": password,
+        "password_token": token,
+        "factor_id": enrolled["factor_id"],
+        "secret": enrolled["secret"],
+        "used": used,
+        "token": verified["token"],
+        "recovery_codes": verified["recovery_codes"]
+    };
+}
+
+def _challenge(client: any, user: dict[str, any]) -> str {
+    r = client.post(
+        "/user/login", json=login_payload(user["username"], user["password"])
+    );
+    assert r.status_code == 200 , r.text;
+    data = extract_data(r.json());
+    assert data["mfa_required"] is True;
+    assert "token" not in data;
+    return data["challenge_token"];
+}
+
+test "second factor: the test's own TOTP matches the RFC 6238 vectors" {
+    secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    assert totp_code(secret, 59 // 30) == "287082";
+    assert totp_code(secret, 1111111109 // 30) == "081804";
+    assert totp_code(secret, 1234567890 // 30) == "005924";
+    assert totp_code(secret, 20000000000 // 30) == "353130";
+}
+
+test "second factor: enroll, verify, and sign-in then needs the code" {
+    client = make_client();
+    try {
+        username = f"mfa_{uuid.uuid4().hex[:8]}";
+        password = "Mfa!Passw0rd";
+        plain = do_register(client, username, password);
+        login = do_login(client, username, password);
+        password_token = login["token"];
+        assert "mfa_required" not in login;
+        assert "aal" not in _claims(password_token);
+
+        # An app reads the caller's level: a password session is aal1.
+        r = client.post(
+            "/function/session_assurance", json={}, headers=_bearer(password_token)
+        );
+        assert extract_data(r.json())["result"] == {"level": "aal1", "methods": []};
+
+        r = client.get("/user/mfa/factors", headers=_bearer(password_token));
+        assert r.status_code == 200 , r.text;
+        listing = extract_data(r.json());
+        assert listing["factors"] == [];
+        assert listing["current_level"] == "aal1";
+        assert listing["next_level"] == "aal1";
+
+        # Enrolling needs a session and the password again.
+        r = client.post("/user/mfa/enroll", json={"password": password});
+        assert r.status_code == 401;
+        r = client.post(
+            "/user/mfa/enroll",
+            json={"password": "not-the-password"},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_PASSWORD";
+
+        r = client.post(
+            "/user/mfa/enroll",
+            json={"password": password},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 201 , r.text;
+        enrolled = extract_data(r.json());
+        secret = enrolled["secret"];
+        factor_id = enrolled["factor_id"];
+        assert enrolled["status"] == "unverified";
+        assert enrolled["otpauth_uri"].startswith("otpauth://totp/");
+        assert f"secret={secret}" in enrolled["otpauth_uri"];
+        assert username in enrolled["otpauth_uri"];
+
+        # An unverified factor does not count: sign-in is unchanged.
+        assert "token" in do_login(client, username, password);
+
+        # A wrong code does not verify the factor.
+        r = client.post(
+            "/user/mfa/verify",
+            json={"factor_id": factor_id, "code": wrong_totp_code(secret)},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+        listing = extract_data(
+            client.get("/user/mfa/factors", headers=_bearer(password_token)).json()
+        );
+        assert [f["status"] for f in listing["factors"]] == ["unverified"];
+        assert listing["next_level"] == "aal1";
+
+        used: set[int] = set();
+        verify_step_code = fresh_totp_code(secret, used);
+        r = client.post(
+            "/user/mfa/verify",
+            json={"factor_id": factor_id, "code": verify_step_code},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 200 , r.text;
+        verified = extract_data(r.json());
+        assert verified["status"] == "verified";
+        assert len(verified["recovery_codes"]) == 10;
+        assert _claims(verified["token"])["aal"] == "aal2";
+
+        # The listing shows the factor and never the secret.
+        r = client.get("/user/mfa/factors", headers=_bearer(verified["token"]));
+        listing = extract_data(r.json());
+        assert len(listing["factors"]) == 1;
+        factor = listing["factors"][0];
+        assert factor["id"] == factor_id;
+        assert factor["status"] == "verified";
+        assert factor["created_at"];
+        assert "secret" not in factor;
+        assert secret not in r.text;
+        assert listing["current_level"] == "aal2";
+        assert listing["next_level"] == "aal2";
+
+        # The password alone no longer yields a session token.
+        r = client.post("/user/login", json=login_payload(username, password));
+        assert r.status_code == 200 , r.text;
+        challenge = extract_data(r.json());
+        assert challenge["mfa_required"] is True;
+        assert "token" not in challenge;
+        assert challenge["expires_in"] > 0;
+        assert challenge["factors"] == [{"id": factor_id, "type": "totp"}];
+        challenge_token = challenge["challenge_token"];
+
+        # The challenge token is not a session anywhere.
+        assert client.get("/user/me", headers=_bearer(challenge_token)).status_code
+            == 401;
+        assert client.get(
+            "/user/mfa/factors", headers=_bearer(challenge_token)
+        ).status_code
+            == 401;
+        assert client.post(
+            "/walker/CreateTask", json={"title": "x"}, headers=_bearer(challenge_token)
+        ).status_code
+            == 401;
+        assert client.post(
+            "/user/refresh-token", json={"token": challenge_token}
+        ).status_code
+            == 401;
+
+        # A wrong code is refused and the challenge survives for a retry.
+        r = client.post(
+            "/user/mfa/login",
+            json={"challenge_token": challenge_token, "code": wrong_totp_code(secret)}
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+
+        # The code that verified the factor was already used: replay refused.
+        r = client.post(
+            "/user/mfa/login",
+            json={"challenge_token": challenge_token, "code": verify_step_code}
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+
+        login_code = fresh_totp_code(secret, used);
+        r = client.post(
+            "/user/mfa/login",
+            json={"challenge_token": challenge_token, "code": login_code}
+        );
+        assert r.status_code == 200 , r.text;
+        session = extract_data(r.json());
+        assert session["user_id"] == plain["user_id"];
+        assert session["root_id"] == login["root_id"];
+        claims = _claims(session["token"]);
+        assert claims["aal"] == "aal2";
+        assert claims["amr"] == ["pwd", "otp"];
+        assert claims["auth_time"] > 0;
+        assert claims["sub"] == plain["user_id"];
+        assert client.get("/user/me", headers=_bearer(session["token"])).status_code
+            == 200;
+
+        # An app sees aal2 for this caller, from a function and from a walker.
+        r = client.post(
+            "/function/session_assurance", json={}, headers=_bearer(session["token"])
+        );
+        assert extract_data(r.json())["result"]
+            == {"level": "aal2", "methods": ["pwd", "otp"]};
+        r = client.post(
+            "/walker/SessionAssurance", json={}, headers=_bearer(session["token"])
+        );
+        assert extract_data(r.json())["reports"] == [{"level": "aal2"}];
+        r = client.post(
+            "/walker/SessionAssurance", json={}, headers=_bearer(password_token)
+        );
+        assert extract_data(r.json())["reports"] == [{"level": "aal1"}];
+
+        # The challenge is single-use, and a used code stays used.
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": challenge_token,
+                "code": fresh_totp_code(secret, used)
+            }
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CHALLENGE";
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": _challenge(
+                    client, {"username": username, "password": password}
+                ),
+                "code": login_code
+            }
+        );
+        assert r.status_code == 401 , r.text;
+
+        # Refresh keeps the level; a session without the factor cannot be extended.
+        r = client.post("/user/refresh-token", json={"token": session["token"]});
+        assert r.status_code == 200 , r.text;
+        refreshed = _claims(extract_data(r.json())["token"]);
+        assert refreshed["aal"] == "aal2";
+        assert refreshed["amr"] == ["pwd", "otp"];
+        assert refreshed["auth_time"] == claims["auth_time"];
+        r = client.post("/user/refresh-token", json={"token": password_token});
+        assert r.status_code == 401 , r.text;
+
+        # A token reissued by a rename keeps the level of the session that asked.
+        r = client.put(
+            "/user/username",
+            json={"new_username": f"{username}_renamed"},
+            headers=_bearer(session["token"])
+        );
+        assert r.status_code == 200 , r.text;
+        assert _claims(extract_data(r.json())["token"])["aal"] == "aal2";
+    } finally {
+        client.close();
+    }
+}
+
+test "second factor: recovery code signs in once, and deleting a factor needs proof" {
+    client = make_client();
+    try {
+        user = _enrolled_user(client, "mfa_rec");
+        recovery = user["recovery_codes"][0];
+
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": _challenge(client, user),
+                "recovery_code": recovery
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        claims = _claims(extract_data(r.json())["token"]);
+        assert claims["aal"] == "aal2";
+        assert claims["amr"] == ["pwd", "recovery"];
+
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": _challenge(client, user),
+                "recovery_code": recovery
+            }
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+
+        # Deleting a verified factor needs a current code, whatever the session.
+        r = client.post(
+            "/user/mfa/unenroll",
+            json={"factor_id": user["factor_id"]},
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 403 , r.text;
+        r = client.post(
+            "/user/mfa/unenroll",
+            json={
+                "factor_id": user["factor_id"],
+                "code": wrong_totp_code(user["secret"])
+            },
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+        # A second enrollment also needs proof of the existing factor.
+        r = client.post(
+            "/user/mfa/enroll",
+            json={"password": user["password"]},
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+        assert len(
+            extract_data(
+                client.get("/user/mfa/factors", headers=_bearer(user["token"])).json()
+            )["factors"]
+        )
+            == 1;
+
+        r = client.post(
+            "/user/mfa/unenroll",
+            json={
+                "factor_id": user["factor_id"],
+                "code": fresh_totp_code(user["secret"], user["used"])
+            },
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 200 , r.text;
+        listing = extract_data(
+            client.get("/user/mfa/factors", headers=_bearer(user["token"])).json()
+        );
+        assert listing["factors"] == [];
+        assert listing["next_level"] == "aal1";
+
+        # With no factor left the account signs in with the password alone,
+        # and the recovery codes died with the factor.
+        again = do_login(client, user["username"], user["password"]);
+        assert "token" in again;
+        assert "aal" not in _claims(again["token"]);
+    } finally {
+        client.close();
+    }
+}
+
+test "second factor: failed codes are counted and lock the account's second step" {
+    client = make_client();
+    try {
+        user = _enrolled_user(client, "mfa_lock");
+        other = f"mfa_other_{uuid.uuid4().hex[:8]}";
+
+        # A session that predates the factor steps up with a current code.
+        assert "aal" not in _claims(user["password_token"]);
+        r = client.post(
+            "/user/mfa/verify",
+            json={
+                "factor_id": user["factor_id"],
+                "code": fresh_totp_code(user["secret"], user["used"])
+            },
+            headers=_bearer(user["password_token"])
+        );
+        assert r.status_code == 200 , r.text;
+        stepped = extract_data(r.json());
+        assert _claims(stepped["token"])["aal"] == "aal2";
+        assert "recovery_codes" not in stepped;
+
+        challenge_token = _challenge(client, user);
+        for attempt in range(5) {
+            r = client.post(
+                "/user/mfa/login",
+                json={
+                    "challenge_token": challenge_token,
+                    "code": wrong_totp_code(user["secret"])
+                }
+            );
+            assert r.status_code == 401 , f"attempt {attempt}: {r.text}";
+        }
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": challenge_token,
+                "code": wrong_totp_code(user["secret"])
+            }
+        );
+        assert r.status_code == 429 , r.text;
+        assert r.json()["error"]["code"] == "RATE_LIMITED";
+        assert int(r.headers.get("Retry-After")) > 0;
+
+        # While locked, even the right code is refused.
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": challenge_token,
+                "code": fresh_totp_code(user["secret"], user["used"])
+            }
+        );
+        assert r.status_code == 429 , r.text;
+
+        # The lock is per account: another user signs in as before.
+        do_register(client, other, "otherpass1");
+        assert "token" in do_login(client, other, "otherpass1");
     } finally {
         client.close();
     }

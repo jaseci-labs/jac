@@ -263,6 +263,82 @@ obj ResetPasswordRequest(ApiModel) {
     }
 }
 
+def optional_str(data: dict[str, any], key: str) -> str {
+    value = data.get(key);
+    if value is None {
+        return '';
+    }
+    if not isinstance(value, str) {
+        raise ValueError(f"{key} must be a string");
+    }
+    return value;
+}
+
+obj EnrollFactorRequest(ApiModel) {
+    has password: str,
+        code: str = '',
+        recovery_code: str = '';
+
+    static def from_dict(data: any) -> EnrollFactorRequest {
+        if not isinstance(data, dict) {
+            raise ValueError('request body must be an object');
+        }
+        return EnrollFactorRequest(
+            password=require_str(data, 'password'),
+            code=optional_str(data, 'code'),
+            recovery_code=optional_str(data, 'recovery_code')
+        );
+    }
+}
+
+obj VerifyFactorRequest(ApiModel) {
+    has factor_id: str,
+        code: str;
+
+    static def from_dict(data: any) -> VerifyFactorRequest {
+        if not isinstance(data, dict) {
+            raise ValueError('request body must be an object');
+        }
+        return VerifyFactorRequest(
+            factor_id=require_str(data, 'factor_id'), code=require_str(data, 'code')
+        );
+    }
+}
+
+obj RemoveFactorRequest(ApiModel) {
+    has factor_id: str,
+        code: str = '',
+        recovery_code: str = '';
+
+    static def from_dict(data: any) -> RemoveFactorRequest {
+        if not isinstance(data, dict) {
+            raise ValueError('request body must be an object');
+        }
+        return RemoveFactorRequest(
+            factor_id=require_str(data, 'factor_id'),
+            code=optional_str(data, 'code'),
+            recovery_code=optional_str(data, 'recovery_code')
+        );
+    }
+}
+
+obj SecondFactorLoginRequest(ApiModel) {
+    has challenge_token: str,
+        code: str = '',
+        recovery_code: str = '';
+
+    static def from_dict(data: any) -> SecondFactorLoginRequest {
+        if not isinstance(data, dict) {
+            raise ValueError('request body must be an object');
+        }
+        return SecondFactorLoginRequest(
+            challenge_token=require_str(data, 'challenge_token'),
+            code=optional_str(data, 'code'),
+            recovery_code=optional_str(data, 'recovery_code')
+        );
+    }
+}
+
 obj UpdateProfileRequest(ApiModel) {
     has profile: dict[str, any];
 
