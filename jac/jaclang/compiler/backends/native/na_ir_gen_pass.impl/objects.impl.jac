@@ -353,13 +353,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
             ftype = self._resolve_jac_type(var.bound);
         } elif isinstance(var, uni.HasVar) and var.type_tag is not None {
             if finfo.owner in self.lower.clib_struct_names {
-                _cf_fnty = False;
-                try {
-                    import from jaclang.compiler.types.types {
-                        FunctionType as _ClibFnType
-                    }
-                    _cf_fnty = isinstance(var?.type, _ClibFnType);
-                } except ImportError {}
+                _cf_fnty = self.lower._archetype_clib_field_is_fn(var);
                 _nested = self.lower._foreign_struct_name_of_type(var?.type);
                 if _cf_fnty {
                     ftype = self._lower_clib_function_type(arch_name, fname, var.type);
@@ -3112,43 +3106,23 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
     ftype: (ir.Type | None),
     parts: (list[str] | None) = None
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _df_glr }
-    reg = _df_glr(self.module, self.prog);
-    _base_lay = reg.get_layout(type_name);
-    if _base_lay is None or not _base_lay.has_vtable {
-        return None;
-    }
-    _base_idx = _base_lay.field_index.get(field_name);
-    if _base_idx is None and ftype is not None {
+    (_df_ok, _base_idx) = self.lower._dispatched_field_ptr_base(
+        type_name, field_name, ftype is not None
+    );
+    if not _df_ok {
         return None;
     }
     _variants: list[tuple[str, ir.GlobalVariable | None, int, ir.Type]] = [];
     _uniform = True;
-    for _cls in reg.mro_order {
-        _cls_mro = self.lower._mro_of(_cls);
-        if parts {
-            _dom_ok = False;
-            for _pp in parts {
-                if _pp in _cls_mro {
-                    _dom_ok = True;
-                    break;
-                }
-            }
-            if not _dom_ok {
-                continue;
-            }
-        } elif type_name not in _cls_mro {
+    for _cls in self.lower._layout_mro_order() {
+        _slot = self.lower._dispatched_field_ptr_slot(
+            _cls, type_name, field_name, parts
+        );
+        if _slot is None or _cls not in self.struct_types {
             continue;
         }
-        _lay = reg.get_layout(_cls);
-        if _lay is None or _cls not in self.struct_types {
-            continue;
-        }
-        _ci = _lay.field_index.get(field_name);
-        if _ci is None {
-            continue;
-        }
-        _vt = self._vtable_global_for(_cls) if _lay.has_vtable else None;
+        (_ci, _has_vt) = _slot;
+        _vt = self._vtable_global_for(_cls) if _has_vt else None;
         if _vt is None {
             continue;
         }

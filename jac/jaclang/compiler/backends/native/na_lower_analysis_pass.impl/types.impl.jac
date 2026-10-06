@@ -883,3 +883,357 @@ impl NativeLowering._is_object_union_key_member_kind(member: TypeBase) -> str {
     }
     return "class";
 }
+
+impl NativeLowering._spec_union_agreement_members(t: any) -> (list[TypeBase] | None) {
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _SuClassType,
+            UnionType as _SuUnionType
+        }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(t, _SuUnionType) {
+        return None;
+    }
+    _members = [
+        m
+        for m in (t.types or [])
+        if not (
+            isinstance(m, _SuClassType)
+            and m._shared is not None
+            and m.shared.class_name in ("NoneType", "None")
+        )
+    ];
+    if len(_members) < 2 {
+        return None;
+    }
+    return _members;
+}
+
+impl NativeLowering._elem_storage_llvm_members(
+    t: any
+) -> (tuple[list[TypeBase], bool] | None) {
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _EsClassType,
+            UnionType as _EsUnionType
+        }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(t, _EsUnionType) {
+        return None;
+    }
+    _members = [
+        m
+        for m in (t.types or [])
+        if not (
+            isinstance(m, _EsClassType)
+            and m._shared is not None
+            and m.shared.class_name in ("NoneType", "None")
+        )
+    ];
+    _had_none = len(_members) < len(t.types or []);
+    if not _members {
+        return None;
+    }
+    return (_members, _had_none);
+}
+
+impl NativeLowering._lower_view_container_elem(t: any) -> (TypeBase | None) {
+    try {
+        import from jaclang.compiler.types.types { ClassType as _VcClassType }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(t, _VcClassType) or t._shared is None {
+        return None;
+    }
+    if t.shared.class_name not in ("list", "Sequence") {
+        return None;
+    }
+    _args: list[TypeBase] = t.private.type_args or [];
+    if not _args {
+        return None;
+    }
+    return _args[0];
+}
+
+impl NativeLowering._aos_elem_name_native(t: any) -> (str | None) {
+    if t is None or not self._nogc_owned_world() {
+        return None;
+    }
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _AeClassType,
+            TypeVarType as _AeTypeVarType
+        }
+    } except ImportError {
+        return None;
+    }
+    if isinstance(t, _AeTypeVarType) {
+        _sol = self._mono_solution;
+        if _sol is None or t.name not in _sol {
+            return None;
+        }
+        return self._aos_elem_name_native(_sol[t.name]);
+    }
+    if not isinstance(t, _AeClassType) or t._shared is None {
+        return None;
+    }
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    return class_type_native_name(t);
+}
+
+impl NativeLowering._aos_elem_name_inline_layout(tn: str) -> bool {
+    _lay = self._arch_layout(tn);
+    if _lay is None or _lay.is_osp or _lay.arch_type == "walker" {
+        return False;
+    }
+    if self._program_has_subclasses(tn) {
+        return False;
+    }
+    return True;
+}
+
+impl NativeLowering._widened_tuple_decl_type_bare(type_expr: uni.UniNode) -> bool {
+    nd = type_expr;
+    if isinstance(nd, uni.SubTag) {
+        nd = nd.tag;
+    }
+    _tb = nd?.type;
+    if _tb is None {
+        if not (isinstance(nd, uni.Name) and nd.value == "tuple") {
+            return False;
+        }
+    } else {
+        try {
+            import from jaclang.compiler.types.types { ClassType as _WdClassType }
+        } except ImportError {
+            return False;
+        }
+        if not isinstance(_tb, _WdClassType)
+            or _tb.shared.class_name != "tuple"
+            or (_tb.private.type_args or []) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl NativeLowering._resolve_field_type_is_typevar(ptb: TypeBase) -> bool {
+    try {
+        import from jaclang.compiler.types.types { TypeVarType as _RfTypeVarType }
+        if isinstance(ptb, _RfTypeVarType) {
+            return True;
+        }
+    } except ImportError {}
+    return False;
+}
+
+impl NativeLowering._resolve_field_type_tag_optional(tag: uni.UniNode) -> bool {
+    _hv_opt = False;
+    _hv_scan: list[uni.UniNode] = [tag];
+    while _hv_scan {
+        _hv_cur = _hv_scan.pop();
+        if isinstance(_hv_cur, uni.AtomUnit) and _hv_cur.value is not None {
+            _hv_cur = _hv_cur.value;
+        }
+        if isinstance(_hv_cur, uni.BinaryExpr)
+            and isinstance(_hv_cur.op, uni.Token)
+            and _hv_cur.op.value == "|" {
+            _hv_scan.append(_hv_cur.left);
+            _hv_scan.append(_hv_cur.right);
+        } elif isinstance(_hv_cur, uni.Null)
+            or (
+                isinstance(_hv_cur, uni.Name)
+                and _hv_cur.value in ("None", "NoneType")
+            ) {
+            _hv_opt = True;
+        }
+    }
+    return _hv_opt;
+}
+
+impl NativeLowering._foreign_optional_field_members(
+    tb: any
+) -> (list[tuple[str, TypeBase]] | None) {
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _FofClassType,
+            UnionType as _FofUnionType,
+            UnknownType as _FofUnknownType
+        }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(tb, _FofUnionType) {
+        return None;
+    }
+    _members: list[TypeBase] = tb.types or [];
+    _non_none = [
+        m
+        for m in _members
+        if not (
+            isinstance(m, _FofClassType)
+            and m._shared is not None
+            and m.shared.class_name in ("NoneType", "None")
+        )
+    ];
+    if len(_non_none) == len(_members) or not _non_none {
+        return None;
+    }
+    try {
+        import from jaclang.compiler.types.types { TypeVarType as _FofTypeVarType }
+    } except ImportError {
+        return None;
+    }
+    _kinds: list[tuple[str, TypeBase]] = [];
+    for m in _non_none {
+        if isinstance(m, _FofUnknownType) {
+            _kinds.append(("unknown", m));
+        } elif isinstance(m, _FofTypeVarType) {
+            _kinds.append(("typevar", m));
+        } elif isinstance(m, _FofClassType) {
+            _kinds.append(("class", m));
+        } else {
+            _kinds.append(("other", m));
+        }
+    }
+    return _kinds;
+}
+
+impl NativeLowering._erased_typevar_names_own(tb: any) -> (list[str] | None) {
+    try {
+        import from jaclang.compiler.types.types { TypeVarType as _EtvTypeVarType }
+    } except ImportError {
+        return None;
+    }
+    if isinstance(tb, _EtvTypeVarType) {
+        return [tb.name];
+    }
+    return None;
+}
+
+impl NativeLowering._erased_typevar_names_members(tb: any) -> list[str] {
+    try {
+        import from jaclang.compiler.types.types { TypeVarType as _EtvTypeVarType }
+    } except ImportError {
+        return [];
+    }
+    out: list[str] = [];
+    for m in (tb.types or []) {
+        if isinstance(m, _EtvTypeVarType) and m.name not in out {
+            out.append(m.name);
+        }
+    }
+    return out;
+}
+
+impl NativeLowering._typevar_optional_field_members(
+    tb: any
+) -> (tuple[list[tuple[bool, TypeBase]], bool] | None) {
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _TvoClassType,
+            UnionType as _TvoUnionType,
+            TypeVarType as _TvoTypeVarType
+        }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(tb, _TvoUnionType) {
+        return None;
+    }
+    _members: list[TypeBase] = tb.types or [];
+    _non_none = [
+        m
+        for m in _members
+        if not (
+            isinstance(m, _TvoClassType)
+            and m._shared is not None
+            and m.shared.class_name in ("NoneType", "None")
+        )
+    ];
+    if not _non_none {
+        return None;
+    }
+    _tagged: list[tuple[bool, TypeBase]] = [];
+    for m in _non_none {
+        _tagged.append((isinstance(m, _TvoTypeVarType), m));
+    }
+    return (_tagged, len(_non_none) < len(_members));
+}
+
+impl NativeLowering._erased_seq_type_arg(tb: any) -> (TypeBase | None) {
+    try {
+        import from jaclang.compiler.types.types { ClassType as _EsqClassType }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(tb, _EsqClassType) or tb._shared is None {
+        return None;
+    }
+    if tb.shared.class_name not in ("list", "Sequence") {
+        return None;
+    }
+    _args: list[TypeBase] = tb.private.type_args or [];
+    if len(_args) != 1 {
+        return None;
+    }
+    return _args[0];
+}
+
+impl NativeLowering._apply_flow_narrowing_class(
+    nd: uni.Name, nm: str
+) -> (ClassType | None) {
+    if not self._narrowing_stable_in_loops(nd, nm) {
+        return None;
+    }
+    if self._narrowing_blocked_by_none_test(nd) {
+        return None;
+    }
+    _nt = self._narrowed_flow_type(nd);
+    if _nt is None {
+        return None;
+    }
+    try {
+        import from jaclang.compiler.types.types { ClassType as _ClassType }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(_nt, _ClassType)
+        or _nt.shared.class_name in ("NoneType", "None") {
+        return None;
+    }
+    return _nt;
+}
+
+impl NativeLowering._apply_flow_narrowing_not_typed_container(nt: ClassType) -> bool {
+    return not (nt.private.type_args or [])
+        or nt.shared.class_name
+            not in ("list", "Sequence", "dict", "set", "frozenset", "tuple");
+}
+
+impl NativeLowering._unbox_narrowed_member_class(
+    nd: uni.AtomTrailer
+) -> (ClassType | None) {
+    if not isinstance(nd, uni.Expr) or nd.narrowed_type is None {
+        return None;
+    }
+    if self._narrowing_blocked_by_none_test(nd) {
+        return None;
+    }
+    _nt = nd.narrowed_type;
+    try {
+        import from jaclang.compiler.types.types { ClassType as _ClassType }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(_nt, _ClassType)
+        or _nt.shared.class_name in ("NoneType", "None") {
+        return None;
+    }
+    return _nt;
+}

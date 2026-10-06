@@ -173,18 +173,10 @@ impl NaIRGenPass._codegen_virtual_call(
     }
     indices = self.vtable_method_indices.get(obj_type_name);
     if indices is None or method_name not in indices {
-        import from jaclang.compiler.passes.layout_pass {
-            get_layout_registry as _vc_glr
-        }
-        _vc_lay = _vc_glr(self.module, self.prog).get_layout(obj_type_name);
-        if (
-            _vc_lay is None
-            or not _vc_lay.has_vtable
-            or method_name not in _vc_lay.method_index
-        ) {
+        indices = self.lower._virtual_call_layout_indices(obj_type_name, method_name);
+        if indices is None {
             return None;
         }
-        indices = _vc_lay.method_index;
     }
 
     func = self._resolve_method(obj_type_name, method_name);
@@ -216,17 +208,13 @@ impl NaIRGenPass._codegen_virtual_call(
 
     _vd_variants: list[tuple[str, ir.GlobalVariable, ir.Function]] = [];
     _vd_uniform = True;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
-    _vd_reg = _vd_glr(self.module, self.prog);
-    for _vd_cls in _vd_reg.mro_order {
-        if obj_type_name not in self.lower._mro_of(_vd_cls) {
+    for _vd_cls in self.lower._layout_mro_order() {
+        (_vd_cand, _vd_idx) = self.lower._virtual_call_descendant_slot(
+            _vd_cls, obj_type_name, method_name
+        );
+        if not _vd_cand {
             continue;
         }
-        _vd_lay = _vd_reg.get_layout(_vd_cls);
-        if _vd_lay is None or not _vd_lay.has_vtable {
-            continue;
-        }
-        _vd_idx = _vd_lay.method_index.get(method_name);
         _vd_fn = self._resolve_method(_vd_cls, method_name);
         _vd_vt = self._vtable_global_for(_vd_cls);
         if _vd_vt is None or _vd_fn is None {

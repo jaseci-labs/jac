@@ -1,3 +1,35 @@
+glob _NA_ABC_REDUCTIONS: dict[str, tuple[str, ...]] = {
+         "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
+         "MutableSequence": ("list", "bytearray"),
+         "Mapping": ("dict", ),
+         "MutableMapping": ("dict", ),
+         "Set": ("set", "frozenset"),
+         "AbstractSet": ("set", "frozenset"),
+         "MutableSet": ("set", ),
+         "ByteString": ("bytes", "bytearray")
+     },
+     _NA_ABC_OPAQUE: tuple[str, ...] = (
+         "Iterable",
+         "Iterator",
+         "Reversible",
+         "Generator",
+         "Container",
+         "Collection",
+         "Sized",
+         "Hashable",
+         "Callable",
+         "Awaitable",
+         "Coroutine",
+         "AsyncIterable",
+         "AsyncIterator",
+         "AsyncGenerator",
+         "MappingView",
+         "KeysView",
+         "ItemsView",
+         "ValuesView",
+         "Buffer"
+     );
+
 impl NativeLowering._arch_alias_target(nd: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(nd, uni.NameAtom) {
         return None;
@@ -762,4 +794,95 @@ impl NativeLowering._swap_params(
         return None;
     }
     return params_l;
+}
+
+impl NativeLowering._transfer_own_args_is_ctor(nd: uni.FuncCall) -> bool {
+    return isinstance(nd.target, uni.Name)
+        and (
+            nd.target.sym_name in self.arch_ast_map
+            or self._arch_alias_target(nd.target) in self.arch_ast_map
+        );
+}
+
+impl NativeLowering._transfer_own_args_owned(
+    is_ctor: bool, sig: (uni.FuncSignature | None), offset: int, n_release: int
+) -> (tuple[set, dict[str, int]] | None) {
+    _sig_params = sig.get_parameters() if sig is not None else [];
+    _own_idx: set = set();
+    if is_ctor {
+        for _oi in range(n_release) {
+            _own_idx.add(_oi);
+        }
+    } elif sig is not None and len(_sig_params) + offset == n_release {
+        for (_oi, _op) in enumerate(_sig_params) {
+            if _op.type_tag is not None
+                and _op.type_tag.ownership == OwnershipKind.OWN {
+                _own_idx.add(_oi + offset);
+            }
+        }
+    }
+    if not _own_idx {
+        return None;
+    }
+    _param_idx: dict[str, int] = {};
+    for (_pi2, _p2) in enumerate(_sig_params) {
+        _param_idx[_p2.name.sym_name] = _pi2 + offset;
+    }
+    return (_own_idx, _param_idx);
+}
+
+impl NativeLowering._transfer_own_args_moved(
+    nd: uni.FuncCall,
+    is_ctor: bool,
+    own_idx: set,
+    param_idx: dict[str, int],
+    offset: int
+) -> list[tuple[int, uni.Name]] {
+    _moved: list[tuple[int, uni.Name]] = [];
+    _pos = offset;
+    for _pa in (nd.params or []) {
+        _aidx = -1;
+        _anode: (uni.Expr | None) = None;
+        if isinstance(_pa, uni.KWPair) {
+            _anode = _pa.value;
+            _k = _pa.key.sym_name if _pa.key is not None else None;
+            if _k is not None and _k in param_idx {
+                _aidx = param_idx[_k];
+            }
+        } else {
+            _anode = _pa;
+            _aidx = _pos;
+            _pos += 1;
+        }
+        if not (is_ctor or _aidx in own_idx) or not isinstance(_anode, uni.Name) {
+            continue;
+        }
+        _moved.append((_aidx, _anode));
+    }
+    return _moved;
+}
+
+impl NativeLowering._isinstance_abc_reduction_shapes(
+    type_expr: uni.UniNode
+) -> (list[str] | None) {
+    try {
+        import from jaclang.compiler.types.types { ClassType as _AbcClassType }
+    } except ImportError {
+        return None;
+    }
+    t = type_expr.type if isinstance(type_expr, uni.Expr) else None;
+    if not isinstance(t, _AbcClassType) or t._shared is None {
+        return None;
+    }
+    if not t.shared.is_from_stdlib_stub {
+        return None;
+    }
+    cn = t.shared.class_name;
+    if cn in _NA_ABC_REDUCTIONS {
+        return list(_NA_ABC_REDUCTIONS[cn]);
+    }
+    if cn in _NA_ABC_OPAQUE {
+        return [];
+    }
+    return None;
 }

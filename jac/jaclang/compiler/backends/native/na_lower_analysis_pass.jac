@@ -1164,6 +1164,82 @@ obj NativeLowering {
     def _is_object_union_key_members(t: any) -> (list[TypeBase] | None);
 
     def _is_object_union_key_member_kind(member: TypeBase) -> str;
+
+    def _spec_union_agreement_members(t: any) -> (list[TypeBase] | None);
+
+    def _elem_storage_llvm_members(t: any) -> (tuple[list[TypeBase], bool] | None);
+
+    def _lower_view_container_elem(t: any) -> (TypeBase | None);
+
+    def _aos_elem_name_native(t: any) -> (str | None);
+
+    def _aos_elem_name_inline_layout(tn: str) -> bool;
+
+    def _widened_tuple_decl_type_bare(type_expr: uni.UniNode) -> bool;
+
+    def _resolve_field_type_is_typevar(ptb: TypeBase) -> bool;
+
+    def _resolve_field_type_tag_optional(tag: uni.UniNode) -> bool;
+
+    def _foreign_optional_field_members(tb: any) -> (list[tuple[str, TypeBase]] | None);
+
+    def _erased_typevar_names_own(tb: any) -> (list[str] | None);
+
+    def _erased_typevar_names_members(tb: any) -> list[str];
+
+    def _typevar_optional_field_members(
+        tb: any
+    ) -> (tuple[list[tuple[bool, TypeBase]], bool] | None);
+
+    def _erased_seq_type_arg(tb: any) -> (TypeBase | None);
+
+    def _apply_flow_narrowing_class(nd: uni.Name, nm: str) -> (ClassType | None);
+
+    def _apply_flow_narrowing_not_typed_container(nt: ClassType) -> bool;
+
+    def _unbox_narrowed_member_class(nd: uni.AtomTrailer) -> (ClassType | None);
+
+    def _transfer_own_args_is_ctor(nd: uni.FuncCall) -> bool;
+
+    def _transfer_own_args_owned(
+        is_ctor: bool, sig: (uni.FuncSignature | None), offset: int, n_release: int
+    ) -> (tuple[set, dict[str, int]] | None);
+
+    def _transfer_own_args_moved(
+        nd: uni.FuncCall,
+        is_ctor: bool,
+        own_idx: set,
+        param_idx: dict[str, int],
+        offset: int
+    ) -> list[tuple[int, uni.Name]];
+
+    def _isinstance_abc_reduction_shapes(type_expr: uni.UniNode) -> (list[str] | None);
+
+    def _instantiate_generic_for_target_fn_type(
+        tag_node: uni.UniNode
+    ) -> (SemanticFunctionType | None);
+
+    def _instantiate_generic_for_target_plan(
+        ability: uni.Ability, tag_t: SemanticFunctionType, func_name: str
+    ) -> (tuple[dict[str, TypeBase], dict[str, str], list[str], str] | None);
+
+    def _archetype_clib_field_is_fn(var: uni.HasVar) -> bool;
+
+    def _dispatched_field_ptr_base(
+        type_name: str, field_name: str, typed: bool
+    ) -> tuple[bool, int | None];
+
+    def _dispatched_field_ptr_slot(
+        cls: str, type_name: str, field_name: str, parts: (list[str] | None)
+    ) -> (tuple[int, bool] | None);
+
+    def _virtual_call_layout_indices(
+        obj_type_name: str, method_name: str
+    ) -> (dict[str, int] | None);
+
+    def _virtual_call_descendant_slot(
+        cls: str, obj_type_name: str, method_name: str
+    ) -> tuple[bool, int | None];
 }
 
 glob _READY: dict[int, NativeLowering] = {};

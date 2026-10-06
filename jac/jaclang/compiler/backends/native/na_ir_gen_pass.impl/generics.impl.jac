@@ -122,57 +122,19 @@ impl NaIRGenPass._stamp_mono_fn(
 impl NaIRGenPass._instantiate_generic_for_target(
     func_name: str, tag_node: uni.UniNode
 ) -> (ir.Function | None) {
-    try {
-        import from jaclang.compiler.types.types {
-            FunctionType as _A5FnType,
-            TypeVarType as _A5TypeVar
-        }
-    } except ImportError {
-        return None;
-    }
-    tag_t = tag_node.type if isinstance(tag_node, uni.Expr) else None;
-    if not isinstance(tag_t, _A5FnType) {
+    tag_t = self.lower._instantiate_generic_for_target_fn_type(tag_node);
+    if tag_t is None {
         return None;
     }
     ability = self.generic_fns.get(func_name);
     if ability is None {
         return None;
     }
-    sig = ability.signature;
-    if not isinstance(sig, uni.FuncSignature) {
+    _plan = self.lower._instantiate_generic_for_target_plan(ability, tag_t, func_name);
+    if _plan is None {
         return None;
     }
-    _tgt_params: list[Parameter] = tag_t.parameters or [];
-    solution: dict[str, TypeBase] = {};
-    for (i, p) in enumerate(sig.get_parameters()) {
-        _pt = None;
-        if p.type_tag and p.type_tag.tag and isinstance(p.type_tag.tag, uni.Expr) {
-            _pt = p.type_tag.tag.type;
-        }
-        if isinstance(_pt, _A5TypeVar) and i < len(_tgt_params) {
-            _sol_t = _tgt_params[i].param_type;
-            if _sol_t is not None and _pt.name not in solution {
-                solution[_pt.name] = _sol_t;
-            }
-        }
-    }
-    _rt = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
-    if (
-        isinstance(_rt, _A5TypeVar)
-        and _rt.name not in solution
-        and tag_t.return_type is not None
-    ) {
-        solution[_rt.name] = tag_t.return_type;
-    }
-    if not solution {
-        return None;
-    }
-    _mangles: dict[str, str] = {};
-    for (k, v) in solution.items() {
-        _mangles[k] = native_type_key(v) if v?.mangle else "any";
-    }
-    parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
-    key = func_name + "|" + ",".join(parts);
+    (solution, _mangles, parts, key) = _plan;
     _hit = self._mono_fns.get(key);
     if _hit is not None {
         return _hit;

@@ -195,3 +195,32 @@ impl NativeLowering._vtable_slot_certain_member_arch(
     }
     return (True, arch);
 }
+
+impl NativeLowering._virtual_call_layout_indices(
+    obj_type_name: str, method_name: str
+) -> (dict[str, int] | None) {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vc_glr }
+    _vc_lay = _vc_glr(self.module, self.prog).get_layout(obj_type_name);
+    if (
+        _vc_lay is None
+        or not _vc_lay.has_vtable
+        or method_name not in _vc_lay.method_index
+    ) {
+        return None;
+    }
+    return _vc_lay.method_index;
+}
+
+impl NativeLowering._virtual_call_descendant_slot(
+    cls: str, obj_type_name: str, method_name: str
+) -> tuple[bool, int | None] {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
+    if obj_type_name not in self._mro_of(cls) {
+        return (False, None);
+    }
+    _vd_lay = _vd_glr(self.module, self.prog).get_layout(cls);
+    if _vd_lay is None or not _vd_lay.has_vtable {
+        return (False, None);
+    }
+    return (True, _vd_lay.method_index.get(method_name));
+}

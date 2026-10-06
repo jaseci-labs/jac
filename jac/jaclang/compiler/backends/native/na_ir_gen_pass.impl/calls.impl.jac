@@ -1,37 +1,5 @@
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
-glob _NA_ABC_REDUCTIONS: dict[str, tuple[str, ...]] = {
-         "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
-         "MutableSequence": ("list", "bytearray"),
-         "Mapping": ("dict", ),
-         "MutableMapping": ("dict", ),
-         "Set": ("set", "frozenset"),
-         "AbstractSet": ("set", "frozenset"),
-         "MutableSet": ("set", ),
-         "ByteString": ("bytes", "bytearray")
-     },
-     _NA_ABC_OPAQUE: tuple[str, ...] = (
-         "Iterable",
-         "Iterator",
-         "Reversible",
-         "Generator",
-         "Container",
-         "Collection",
-         "Sized",
-         "Hashable",
-         "Callable",
-         "Awaitable",
-         "Coroutine",
-         "AsyncIterable",
-         "AsyncIterator",
-         "AsyncGenerator",
-         "MappingView",
-         "KeysView",
-         "ItemsView",
-         "ValuesView",
-         "Buffer"
-     );
-
 impl NaIRGenPass._erased_generic_ctor(nd: uni.FuncCall) -> (str | None) {
     _tgt = nd.target;
     if not isinstance(_tgt, uni.AtomTrailer)
@@ -64,54 +32,21 @@ impl NaIRGenPass._transfer_own_args(
     if _hl and not self.lower._nogc_owned_world() {
         return release_args;
     }
-    _is_ctor = isinstance(nd.target, uni.Name)
-        and (
-            nd.target.sym_name in self.lower.arch_ast_map
-            or self.lower._arch_alias_target(nd.target) in self.lower.arch_ast_map
-        );
+    _is_ctor = self.lower._transfer_own_args_is_ctor(nd);
     if _is_ctor and not _hl {
         return release_args;
     }
     _sig = None if _is_ctor else self._callee_sig_of(nd, func);
-    _sig_params = _sig.get_parameters() if _sig is not None else [];
-    _own_idx: set = set();
-    if _is_ctor {
-        for _oi in range(len(release_args)) {
-            _own_idx.add(_oi);
-        }
-    } elif _sig is not None and len(_sig_params) + offset == len(release_args) {
-        for (_oi, _op) in enumerate(_sig_params) {
-            if _op.type_tag is not None
-                and _op.type_tag.ownership == OwnershipKind.OWN {
-                _own_idx.add(_oi + offset);
-            }
-        }
-    }
-    if not _own_idx {
+    _owned = self.lower._transfer_own_args_owned(
+        _is_ctor, _sig, offset, len(release_args)
+    );
+    if _owned is None {
         return release_args;
     }
-    _param_idx: dict[str, int] = {};
-    for (_pi2, _p2) in enumerate(_sig_params) {
-        _param_idx[_p2.name.sym_name] = _pi2 + offset;
-    }
-    _pos = offset;
-    for _pa in (nd.params or []) {
-        _aidx = -1;
-        _anode: (uni.Expr | None) = None;
-        if isinstance(_pa, uni.KWPair) {
-            _anode = _pa.value;
-            _k = _pa.key.sym_name if _pa.key is not None else None;
-            if _k is not None and _k in _param_idx {
-                _aidx = _param_idx[_k];
-            }
-        } else {
-            _anode = _pa;
-            _aidx = _pos;
-            _pos += 1;
-        }
-        if not (_is_ctor or _aidx in _own_idx) or not isinstance(_anode, uni.Name) {
-            continue;
-        }
+    (_own_idx, _param_idx) = _owned;
+    for (_aidx, _anode) in self.lower._transfer_own_args_moved(
+        nd, _is_ctor, _own_idx, _param_idx, offset
+    ) {
         if (not _hl and not self.lower._is_move_site(_anode))
             or _anode.sym_name in self.borrowed_vars {
             continue;
@@ -2390,26 +2325,7 @@ impl NaIRGenPass._isinstance_abc_reduction(
     if name in self.struct_types or name in self.enum_types {
         return None;
     }
-    try {
-        import from jaclang.compiler.types.types { ClassType as _AbcClassType }
-    } except ImportError {
-        return None;
-    }
-    t = type_expr.type if isinstance(type_expr, uni.Expr) else None;
-    if not isinstance(t, _AbcClassType) or t._shared is None {
-        return None;
-    }
-    if not t.shared.is_from_stdlib_stub {
-        return None;
-    }
-    cn = t.shared.class_name;
-    if cn in _NA_ABC_REDUCTIONS {
-        return list(_NA_ABC_REDUCTIONS[cn]);
-    }
-    if cn in _NA_ABC_OPAQUE {
-        return [];
-    }
-    return None;
+    return self.lower._isinstance_abc_reduction_shapes(type_expr);
 }
 
 impl NaIRGenPass._isinstance_target_names(

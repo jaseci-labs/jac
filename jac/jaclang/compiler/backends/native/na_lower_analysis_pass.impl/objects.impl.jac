@@ -949,3 +949,58 @@ impl NativeLowering._jc_reference_schema_semantic(
         else "";
     return (args, semantic_name);
 }
+
+impl NativeLowering._archetype_clib_field_is_fn(var: uni.HasVar) -> bool {
+    _cf_fnty = False;
+    try {
+        import from jaclang.compiler.types.types { FunctionType as _ClibFnType }
+        _cf_fnty = isinstance(var?.type, _ClibFnType);
+    } except ImportError {}
+    return _cf_fnty;
+}
+
+impl NativeLowering._dispatched_field_ptr_base(
+    type_name: str, field_name: str, typed: bool
+) -> tuple[bool, int | None] {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _df_glr }
+    reg = _df_glr(self.module, self.prog);
+    _base_lay = reg.get_layout(type_name);
+    if _base_lay is None or not _base_lay.has_vtable {
+        return (False, None);
+    }
+    _base_idx = _base_lay.field_index.get(field_name);
+    if _base_idx is None and typed {
+        return (False, None);
+    }
+    return (True, _base_idx);
+}
+
+impl NativeLowering._dispatched_field_ptr_slot(
+    cls: str, type_name: str, field_name: str, parts: (list[str] | None)
+) -> (tuple[int, bool] | None) {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _df_glr }
+    _cls_mro = self._mro_of(cls);
+    if parts {
+        _dom_ok = False;
+        for _pp in parts {
+            if _pp in _cls_mro {
+                _dom_ok = True;
+                break;
+            }
+        }
+        if not _dom_ok {
+            return None;
+        }
+    } elif type_name not in _cls_mro {
+        return None;
+    }
+    _lay = _df_glr(self.module, self.prog).get_layout(cls);
+    if _lay is None {
+        return None;
+    }
+    _ci = _lay.field_index.get(field_name);
+    if _ci is None {
+        return None;
+    }
+    return (_ci, _lay.has_vtable);
+}
