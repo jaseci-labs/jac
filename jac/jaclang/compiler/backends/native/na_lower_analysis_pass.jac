@@ -624,6 +624,70 @@ obj NativeLowering {
 
     def _for_indexed_has_yield(nd: uni.InForStmt) -> bool;
 
+    def _bound_args_sig_shape(
+        callee_sig: uni.FuncSignature, self_offset: int
+    ) -> tuple[list[uni.ParamVar], int, bool];
+
+    def _bound_args_bind_path(
+        has_pack: bool, kw_spreads: list[uni.Expr], callee_sig: uni.FuncSignature
+    ) -> bool;
+
+    def _bound_args_fixed_params(
+        callee_sig: uni.FuncSignature, self_skip: int
+    ) -> tuple[list[uni.ParamVar], int];
+
+    def _bound_args_param_default(sp: uni.ParamVar) -> (uni.Expr | None);
+
+    def _new_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
+
+    def _intrinsic_positional(
+        nd: uni.FuncCall, intr: IntrinsicEntry
+    ) -> (list[uni.Expr] | None);
+
+    def _call_contextmanager_refusal_name(nd: uni.FuncCall) -> (str | None);
+
+    def _call_field_marker(
+        nd: uni.FuncCall
+    ) -> (tuple[uni.HasVar, uni.Expr | None, uni.Expr | None] | None);
+
+    def _call_intrinsic_entry(func_name: str) -> (IntrinsicEntry | None);
+
+    def _call_distinct_callee_type(nd: uni.FuncCall) -> (ClassType | None);
+
+    def _call_declared_fn_key(
+        declaration: (uni.Ability | None)
+    ) -> (tuple[str, str] | None);
+
+    def _call_declaration_body(
+        declaration: uni.Ability
+    ) -> (Sequence[uni.UniNode] | None);
+
+    def _call_module_fn_key(
+        nd: uni.FuncCall, mod_qual: str, func_name: str
+    ) -> (tuple[str, str] | None);
+
+    def _call_extern_symbol(
+        func_name: str, source_context: str, src_ab: (uni.Ability | None)
+    ) -> str;
+
+    def _call_clib_sig_strs(clib_sig: uni.FuncSignature) -> tuple[set[int], str];
+
+    def _call_foreign_struct_result(func_name: str) -> (str | None);
+
+    def _isinstance_core_known_string(source_type: (TypeBase | None)) -> bool;
+
+    def _try_flow_future_par_ok(nogc_enforced: bool, rc_debug: bool) -> bool;
+
+    def _consume_kw_spreads_callee(nd: uni.FuncCall) -> str;
+
+    def _sized_builtin_call_wrap_owner(target: uni.AtomTrailer) -> (str | None);
+
+    def _sized_builtin_call_kind(func_name: str) -> (str | None);
+
+    def _take_place(nd: uni.FuncCall) -> (uni.Expr | uni.KWPair | None);
+
+    def _swap_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
+
 }
 
 glob _READY: dict[int, NativeLowering] = {};
