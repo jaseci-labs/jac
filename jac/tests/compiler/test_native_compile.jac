@@ -500,3 +500,100 @@ test "a kernel compile with no unit defers only a native-codespace module" {
         }
     }
 }
+
+"""A module placed in the native codespace resolves `import time` to the
+module the native stdlib ships, so the kernel asks about that module and
+needs its interface; the snapshot has to carry it."""
+test "a native-placed module importing a native stdlib module compiles in the kernel" {
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    previous = get_effective_default_codespace_override();
+    set_effective_default_codespace('native');
+    try {
+        with TemporaryDirectory() as td {
+            base = Path(os.path.realpath(td));
+            entry_file = str(base / 'clock.jac');
+            Path(entry_file).write_text(
+                'import time;\n\ndef elapsed(since: float) -> float {\n'
+                    + '    return time.time() - since;\n}\n'
+            );
+            outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+            assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+            assert not outcome.analysis.misses , outcome.analysis.misses;
+        }
+    } finally {
+        set_effective_default_codespace(previous);
+    }
+}
+
+"""A sealed runtime serves jaclang's own modules as interfaces, so the
+snapshot builds a module's interface from one that was already decoded. A
+field's default is recorded on the symbol the catalog decoded, not on a
+syntax node, and the writer has to carry it over: without it every
+constructor call that relied on a default was reported as missing
+arguments (E1050)."""
+test "an interface rebuilt from a decoded interface keeps field defaults" {
+    import from unittest.mock { patch }
+    import jaclang;
+    import jaclang.project.kernel_snapshot as snapshot_mod;
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    import from jaclang.compiler.frontend.kernel_inputs { PythonInterface }
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
+    options_file = os.path.realpath(
+        os.path.join(
+            os.path.dirname(str(jaclang.__file__)),
+            "compiler",
+            "driver",
+            "compile_options.jac"
+        )
+    );
+    built = snapshot_mod.python_interface;
+    rebuilt: list[str] = [];
+    def through_decoded(
+        path: str, options: CompileOptions, scratch: (JacProgram | None) = None
+    ) -> (PythonInterface | None) {
+        iface = built(path, options, scratch);
+        if iface is None or os.path.realpath(path) != options_file {
+            return iface;
+        }
+        owner = program_for(options_file, scratch or JacProgram());
+        registry = owner.iface_registry();
+        cached = registry.ensure(options_file);
+        assert cached is not None , "compile_options has no cached interface";
+        with registry._compilation_scope() {
+            decoded = registry._materialize(cached);
+        }
+        rebuilt.append(type(decoded).__name__);
+        return PythonInterface(
+            path=iface.path,
+            pkg_dir=iface.pkg_dir,
+            data=build_module_iface(decoded, owner.get_type_evaluator(), iface.pkg_dir)
+        );
+    }
+    def uncached(path: str) -> (PythonInterface | None) {
+        return None;
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'main.jac').write_text(
+            'import from jaclang.compiler.driver.compile_options { CompileOptions }\n\n'
+                + 'def make -> CompileOptions {\n'
+                + '    return CompileOptions(skip_native_engine=True);\n}\n'
+        );
+        entry_file = str(base / 'main.jac');
+        with patch.object(snapshot_mod, "python_interface", through_decoded) {
+            with patch.object(snapshot_mod, "cached_interface", uncached) {
+                inputs = kernel_json(entry_file);
+            }
+        }
+        assert rebuilt == ["CatModule"] , rebuilt;
+        outcome = run_kernel_compile(inputs, entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.errors , [
+            e.message for e in outcome.analysis.errors
+        ];
+    }
+}

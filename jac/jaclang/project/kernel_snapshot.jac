@@ -183,6 +183,7 @@ obj ClosureScan {
                 spec = mod_path.dot_path_str;
             }
             self.follow(self.resolved(mod_path, None));
+            self.learn_native_variant(spec, owner);
             self.learn_npm(spec, owner);
             if spec.startswith("@jac/") {
                 virtual_path = learner.jac_virtual_module_path(spec);
@@ -222,6 +223,23 @@ obj ClosureScan {
             }
         } except Exception {}
         return "";
+    }
+
+    def learn_native_variant(spec: str, owner: str) {
+        import from jaclang.compiler.frontend.codeinfo {
+            NATIVE_STDLIB_EXTENSIONS,
+            is_bundled_native_module,
+            resolve_native_module
+        }
+        if not spec
+            or spec in NATIVE_STDLIB_EXTENSIONS
+            or not is_bundled_native_module(spec) {
+            return;
+        }
+        (_, full_path) = resolve_native_module(spec, os.path.dirname(owner));
+        if full_path {
+            self.follow(full_path);
+        }
     }
 
     def learn_npm(spec: str, owner: str) {
