@@ -216,6 +216,8 @@ obj ClosureScan {
         learned: set[str] = set(),
         merged_packages: set[str] = set(),
         closed_packages: set[str] = set(),
+        wiring_trees: dict[str, uni.Module] = {},
+        wired_dirs: set[tuple[str, str]] = set(),
         string_specs: set[tuple[str, str]] = set(),
         queue: list[str] = [];
 
@@ -300,11 +302,28 @@ obj ClosureScan {
         }
         for source_path in sources {
             self.learn_path(source_path);
-            try {
-                text = self.source_of(source_path);
-                (tree, _) = parse_woven(text, source_path, None, []);
-            } except Exception {
+            shared = source_path == arch;
+            wired = (source_path, os.path.dirname(path));
+            if shared and wired in self.wired_dirs {
                 continue;
+            }
+            held = self.wiring_trees.get(source_path) if shared else None;
+            tree: uni.Module;
+            if held is not None {
+                tree = held;
+            } else {
+                try {
+                    text = self.source_of(source_path);
+                    (tree, _) = parse_woven(text, source_path, None, []);
+                } except Exception {
+                    continue;
+                }
+                if shared {
+                    self.wiring_trees[source_path] = tree;
+                }
+            }
+            if shared {
+                self.wired_dirs.add(wired);
             }
             self.scan_imports(tree, path);
             self.learn_runtime_imports(tree, source_path);
