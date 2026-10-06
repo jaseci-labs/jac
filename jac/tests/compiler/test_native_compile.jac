@@ -330,6 +330,17 @@ def write_application(base: Path) {
             + 'walker:pub Ping { can go with Root entry { report helper(1); } }\n'
     );
     (base / 'deep.jac').write_text('def:pub twice(x: int) -> int { return x * 2; }\n');
+    (base / 'arch.jac').write_text(
+        'impl import {\n    edge SideInternal: side.* --> side.*;\n}\n\n'
+            + 'impl import side {\n    tool --> side.user { Wrench }\n}\n'
+    );
+    (base / 'side').mkdir();
+    (base / 'side' / 'tool.jac').write_text(
+        'obj Wrench {\n    has size: int = 0;\n}\n'
+    );
+    (base / 'side' / 'user.jac').write_text(
+        'def turn -> int {\n    return Wrench(size=1).size;\n}\n'
+    );
     (base / 'main.jac').write_text(
         'import from util { helper }\ninclude deep;\n'
             + 'node Item { has label: str = ""; }\n'
@@ -384,7 +395,8 @@ def prepared_view(base: Path, in_kernel: bool) -> dict[str, any] {
 """`jac run` and `serve` prepare an application: every project module's code
 and the manifest of what it serves. One kernel session emits a unit per
 module, and the manifest is built from those units as it is from the host's
-trees."""
+trees. The project's arch file wires modules the entry never imports; the
+host's scan sees them, and they are no part of this application."""
 test "an application prepares from one kernel session as it does on the host" {
     with TemporaryDirectory() as host_dir {
         with TemporaryDirectory() as kernel_dir {

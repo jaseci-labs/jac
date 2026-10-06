@@ -252,7 +252,7 @@ obj ClosureScan {
     }
 
     def scan_jac(path: str) {
-        import from jaclang.compiler.frontend.parser.frontend { parse }
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         learner = self.learner;
         sources = [path];
         sources.extend(learner.annex_files(path, ".impl.jac"));
@@ -265,7 +265,7 @@ obj ClosureScan {
             self.learn_path(source_path);
             try {
                 text = self.source_of(source_path);
-                (tree, _) = parse(text, source_path);
+                (tree, _) = parse_woven(text, source_path, None, []);
             } except Exception {
                 continue;
             }
@@ -281,7 +281,7 @@ obj ClosureScan {
             wiring_for_path(path);
             annex = wiring_annex_for(path);
             if annex is not None {
-                (tree, _) = parse(annex.source, annex.path);
+                (tree, _) = parse_woven(annex.source, annex.path, None, []);
                 self.scan_imports(tree, path);
             }
         } except Exception {}
@@ -864,11 +864,7 @@ def learn_facts(scan: ClosureScan, paths: list[str]) {
     install_host(scan.learner);
     try {
         for dep in paths {
-            if is_compiler_source_path(dep) and not dep.endswith(".pyi") {
-                scan.learn_package(dep);
-            } else {
-                scan.learn_path(dep);
-            }
+            scan.learn_path(dep);
         }
     } finally {
         install_host(previous);

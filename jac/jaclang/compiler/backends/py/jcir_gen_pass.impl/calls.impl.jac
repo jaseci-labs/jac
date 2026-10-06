@@ -60,7 +60,8 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
         if self._is_edge_ref_target(here.target) {
             target_py = self.val(here.target);
             narrow_kws = self._query_filter_kws(here.right, 'nd', 'preds');
-            target_py.items('args')[0] = self.call_node(
+            narrowed_args = target_py.items('args');
+            narrowed_args[0] = self.call_node(
                 self.nod(
                     'Attribute',
                     ['value', 'attr', 'ctx'],
@@ -69,6 +70,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
                 [],
                 narrow_kws
             );
+            target_py.setf('args', narrowed_args);
             self.set_out(here, [target_py]);
         } else {
             self.set_out(
@@ -187,7 +189,9 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
                 )
                 and cur.get('args')
             ) {
-                cur.items('args')[0] = tmp_ref;
+                rebound_args = cur.items('args');
+                rebound_args[0] = tmp_ref;
+                cur.setf('args', rebound_args);
             }
             body_expr = cur;
         } elif cur.cls == 'Subscript' {

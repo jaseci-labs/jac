@@ -338,9 +338,20 @@ def run_kernel_session(
         }
         host.compile_module(run.program, path, source, options);
         if with_codegen {
-            for emit_path in inputs.emit_paths {
-                if os.path.realpath(emit_path) not in host.units {
+            tried: set[str] = set();
+            emitted = True;
+            while emitted {
+                emitted = False;
+                for emit_path in inputs.emit_paths {
+                    real = os.path.realpath(emit_path);
+                    if real in tried
+                        or real in host.units
+                        or real not in host.analyses {
+                        continue;
+                    }
+                    tried.add(real);
                     host.compile_module(run.program, emit_path, None, options);
+                    emitted = True;
                 }
             }
         }

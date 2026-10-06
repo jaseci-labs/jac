@@ -365,10 +365,8 @@ test "deep imports interp mode" {
         sys.stdout = old_stdout;
     }
     stdout_value = captured.getvalue();
-    # Main module must be registered in the hub; transitive imports may also
-    # appear when their bytecode isn't cached yet, so only assert presence.
-    assert os.path.join(FIXTURES, "deep_import_interp.jac")
-        in Jac.get_program().mod.hub;
+    # An import compiled by the kernel leaves no tree in the host's hub, so
+    # the import is checked by what it ran.
     assert "one level deeperslHello World!" in stdout_value;
 
     Jac.set_base_path(FIXTURES);

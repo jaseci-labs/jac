@@ -32,6 +32,29 @@ def kernel_compile_in_process -> bool {
     return raw in ("inprocess", "in-process");
 }
 
+def miss_context(misses: list[str], inputs_json: str) -> str {
+    import json;
+    miss = misses[0];
+    asked = miss.partition(": ")[2].replace("\\", "/");
+    if "/vendor/typeshed/" not in asked {
+        return "";
+    }
+    import from jaclang.compiler.frontend.host { package_root }
+    import from jaclang.project.modresolver { get_typeshed_paths }
+    stub_dir = asked.rpartition("/")[0];
+    reached: list[str] = [];
+    try {
+        for row in json.loads(inputs_json).get("imports", []) {
+            found = str(row.get("path", "")).replace("\\", "/");
+            if found.startswith(stub_dir) and len(reached) < 3 {
+                reached.append(f"{row.get('target')} from {row.get('base_path')}");
+            }
+        }
+    } except (ValueError, AttributeError) {}
+    return f"; compiler package at {package_root()}, stubs at {get_typeshed_paths()}, "
+    f"imports resolved there: {reached}, misses: {misses[:5]}";
+}
+
 def kernel_compile(
     host: HostServices,
     program: JacProgram,
@@ -70,6 +93,7 @@ def kernel_compile(
     if analysis.misses {
         raise KernelAnalysisError(
             f"the kernel lacked host answers ({analysis.misses[0]})"
+                + miss_context(analysis.misses, inputs_json)
         );
     }
     return outcome;

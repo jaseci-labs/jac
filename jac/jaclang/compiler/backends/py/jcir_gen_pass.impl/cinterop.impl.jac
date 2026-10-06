@@ -293,6 +293,7 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
             )
         );
     }
+    call.setf('args', call_args);
     elements: list[CgNode] = [];
     elements.extend(pre);
     elements.append(call);

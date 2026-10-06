@@ -202,6 +202,15 @@ def project_mounts_dir(project_root: str) -> str {
     return _mounts_entry(project_root)[0];
 }
 
+def enclosing_mounts(project_root: str) -> (str | None) {
+    mounts = os.path.dirname(os.path.dirname(os.path.normpath(project_root)));
+    if os.path.basename(mounts) == MOUNTS_DIR_NAME
+        and os.path.basename(os.path.dirname(mounts)) == '.jac' {
+        return mounts;
+    }
+    return None;
+}
+
 def project_mounts(project_root: str) -> (str | None) {
     (mounts, name) = _mounts_entry(project_root);
     if project_root not in _self_mounted {
@@ -260,7 +269,19 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
         paths.append(project_root);
     }
     for owner in (project_root, find_jac_project_root(None)) {
-        mounts = project_mounts(owner) if owner else None;
+        if not owner {
+            continue;
+        }
+        around = enclosing_mounts(owner);
+        if around {
+            paths.append(around);
+            nested = project_mounts_dir(owner);
+            if os.path.isdir(nested) {
+                paths.append(nested);
+            }
+            continue;
+        }
+        mounts = project_mounts(owner);
         if mounts {
             paths.append(mounts);
         }
@@ -603,7 +624,7 @@ def resolve_module(
         ) {
             origin = os.path.normpath(spec.origin);
             lang = language_of(origin);
-            if (lang != 'other') {
+            if (lang != 'other') and named_exactly_any(origin) {
                 return (origin, lang);
             }
         }
