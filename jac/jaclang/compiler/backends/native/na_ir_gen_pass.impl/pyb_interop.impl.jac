@@ -38,63 +38,13 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
     Python-resident helper are all invisible here and stay unreported --
     this closes the shapes the tree can prove, not every shape that exists.
     """;
-    arch = self.lower.arch_ast_map.get(arch_name);
-    if not isinstance(arch, uni.Archetype) {
-        return None;
-    }
-    seen: set = {arch_name};
-    queue: list[uni.Expr] = list(arch.base_classes or []);
-    while queue {
-        base_expr = queue.pop(0);
-        if isinstance(base_expr, uni.AtomTrailer)
-            and isinstance(base_expr.right, uni.IndexSlice) {
-            base_expr = base_expr.target;
+    for (bname, _dispatched) in self.lower._pyb_shadowed_dispatch_candidates(
+        arch_name, method_name
+    ) {
+        _owner = self._pyb_native_override_owner(arch_name, _dispatched);
+        if _owner is not None {
+            return (bname, _dispatched, _owner);
         }
-        bname = self.lower._get_name(base_expr);
-        if bname is None or bname in seen {
-            continue;
-        }
-        seen.add(bname);
-        if bname in ("Node", "Edge", "Walker", "Object", "Obj", "Root", "Archetype") {
-            continue;
-        }
-        sym = base_expr.sym if isinstance(base_expr, uni.NameAtom) else None;
-        decl = sym.decl if sym is not None else None;
-        base_arch = decl.find_parent_of_type(uni.Archetype)
-            if decl is not None
-            else None;
-        if base_arch is None {
-            continue;
-        }
-
-        if (self.lower._arch_ref_key(base_expr) or bname) not in self.lower.arch_ast_map {
-            for stmt in (base_arch.body or []) {
-                if not isinstance(stmt, uni.Ability) {
-                    continue;
-                }
-                if stmt.name_ref is None or stmt.name_ref.sym_name != method_name {
-                    continue;
-                }
-                for _call in stmt.get_all_sub_nodes(uni.FuncCall) {
-                    _tgt = _call.target;
-                    if not isinstance(_tgt, uni.AtomTrailer) or not _tgt.is_attr {
-                        continue;
-                    }
-                    if self.lower._get_name(_tgt.target) != "self" {
-                        continue;
-                    }
-                    _dispatched = self.lower._get_name(_tgt.right);
-                    if _dispatched is None {
-                        continue;
-                    }
-                    _owner = self._pyb_native_override_owner(arch_name, _dispatched);
-                    if _owner is not None {
-                        return (bname, _dispatched, _owner);
-                    }
-                }
-            }
-        }
-        queue.extend(base_arch.base_classes or []);
     }
     return None;
 }
@@ -868,13 +818,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
         return None;
     }
     (bname, _bpath) = pb;
-    if method_name == "postinit" {
-        meth_names = ["__post_init__", "postinit"];
-    } elif method_name == "init" {
-        meth_names = ["__init__", "init"];
-    } else {
-        meth_names = [method_name];
-    }
+    meth_names = self.lower._pyb_super_call_meth_names(method_name);
     built = self._pyb_build_args(nd.params or []);
     if built is None {
         self.emit(

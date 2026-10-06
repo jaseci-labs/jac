@@ -98,3 +98,56 @@ impl NativeLowering._raise_has_frame_handler(nd: uni.RaiseStmt) -> bool {
     }
     return False;
 }
+
+impl NativeLowering._exception_match_isa_names(targets: list[str]) -> list[str] {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    known: set[str] = set();
+    for mro in get_layout_registry(self.module, self.prog).mro_order.values() {
+        known.update(mro);
+    }
+    isa_names = [
+        name
+        for name in targets
+        if name in known
+    ];
+    return isa_names;
+}
+
+impl NativeLowering._register_exc_lineage_ancestors(
+    cause: (uni.Expr | None), type_id: int
+) -> list[int] {
+    import from jaclang.compiler.types.types { ClassType, TypeBase }
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    if type_id == 0 or cause is None {
+        return [];
+    }
+    typ = cause.type;
+    if not isinstance(typ, ClassType) or typ._shared is None {
+        return [];
+    }
+    if not isinstance(typ.shared.symbol_table, uni.Archetype) {
+        return [];
+    }
+    ancestors: list[int] = [];
+    seen: set[int] = set();
+    pending: list[TypeBase] = list(typ.shared.base_classes);
+    while pending {
+        base = pending.pop(0);
+        if not isinstance(base, ClassType) or base._shared is None {
+            continue;
+        }
+        if id(base.shared) in seen {
+            continue;
+        }
+        seen.add(id(base.shared));
+        name = class_type_native_name(base) or base.shared.class_name;
+        if name not in ("object", "Exception", "BaseException") {
+            aid = self._get_or_register_exc_type(name);
+            if aid not in (0, type_id) and aid not in ancestors {
+                ancestors.append(aid);
+            }
+        }
+        pending.extend(base.shared.base_classes);
+    }
+    return ancestors;
+}

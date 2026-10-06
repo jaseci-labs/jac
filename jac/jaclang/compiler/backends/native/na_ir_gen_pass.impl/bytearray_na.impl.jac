@@ -298,19 +298,13 @@ impl NaIRGenPass._emit_struct_pack_into(
     }
     off_val = self._coerce_type(_off_raw, i64);
 
-    _expected = len(
-        [
-            f
-            for f in fields
-            if f[0] != "pad"
-        ]
-    );
-    if len(params) - 3 != _expected {
+    _arity_err = self.lower._struct_pack_into_arity_error(params, fields);
+    if _arity_err is not None {
         self.emit(
             E5092,
             node_override=nd,
             kind="struct.pack_into argument count",
-            name=f"expected {_expected}, got {len(params) - 3}"
+            name=_arity_err
         );
         return None;
     }

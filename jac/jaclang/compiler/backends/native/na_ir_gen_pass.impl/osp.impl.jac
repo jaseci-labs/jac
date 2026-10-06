@@ -853,36 +853,16 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         );
         return None;
     }
-    _left_is_list = self.lower._osp_disc_list_operand(nd.left);
-    _right_is_list = self.lower._osp_disc_list_operand(nd.right);
-    _disc_compares: list[uni.CompareExpr] = [];
-    if (_fcond is not None) and _fcond.compares {
-        _disc_compares = [
-            _c
-            for _c in _fcond.compares
-            if isinstance(_c, uni.CompareExpr)
-        ];
-    }
-    if _disc_compares and (_left_is_list or _right_is_list) {
+    (_left_is_list, _right_is_list, _disc_compares, _pred_help) = self.lower._disconnect_operand_shape(
+        nd, _fcond, _etname
+    );
+    if _pred_help is not None {
         self.emit(
             E5092,
             node_override=nd,
             kind="binary operator",
             name="DisconnectOp",
-            help_text="a disconnect with both list operands and attribute "
-            "predicates is not lowered natively; loop over the nodes and "
-            "disconnect each pair."
-        );
-        return None;
-    }
-    if _disc_compares and (_etname is None) {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="binary operator",
-            name="DisconnectOp",
-            help_text="edge attribute predicates need a named edge type "
-            "(`del ->:E:field == value:->`) so the edge layout is known"
+            help_text=_pred_help
         );
         return None;
     }
@@ -1021,19 +1001,9 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     _many_fn = self.func_symtab.get("osp_refs_many");
     _cur: (ir.Value | None) = None;
     while (_idx < len(chain)) and isinstance(chain[_idx], uni.EdgeOpRef) {
-        step = chain[_idx];
-        _idx += 1;
-
-        _step_filter: (uni.FilterCompr | None) = None;
-        if _idx < len(chain) {
-            _f = chain[_idx];
-            if isinstance(_f, uni.FilterCompr) and (_f.f_type is not None) {
-                _step_filter = _f;
-                _idx += 1;
-            }
-        }
-        _is_last_hop = (_idx >= len(chain))
-            or (not isinstance(chain[_idx], uni.EdgeOpRef));
+        (step, _step_filter, _idx, _is_last_hop) = self.lower._edge_ref_trailer_hop(
+            chain, _idx
+        );
 
         _dir = int(step.edge_dir.value);
         _fcond = step.filter_cond;
@@ -1048,18 +1018,16 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         if _edge_tag is None {
             return None;
         }
-        _ec_compares: list[any] = [];
-        if (_fcond is not None) and _fcond.compares {
-            _ec_compares = list(_fcond.compares);
-        }
-        if _ec_compares and (_etname is None) {
+        (_ec_compares, _ec_help) = self.lower._edge_ref_trailer_edge_compares(
+            _fcond, _etname
+        );
+        if _ec_help is not None {
             self.emit(
                 E5092,
                 node_override=nd,
                 kind="expression",
                 name="EdgeRefTrailer",
-                help_text="edge attribute predicates need a named edge type "
-                "(`->:E:field == value:->`) so the edge layout is known"
+                help_text=_ec_help
             );
             return None;
         }
@@ -1138,9 +1106,9 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         }
         if _step_filter is not None {
             _filter_fn = self.func_symtab.get("osp_filter");
-            _node_filter = self.lower._arch_ref_key(_step_filter.f_type)
-                or self.lower._get_name(_step_filter.f_type);
-            _ntag = _er_tags.get(_node_filter, -1) if _node_filter is not None else -1;
+            (_node_filter, _ntag) = self.lower._edge_ref_trailer_filter_tag(
+                _step_filter, _er_tags
+            );
             _tpair = self._osp_type_pair(_ntag) if _ntag >= 0 else None;
             if (_ntag < 0) or (_tpair is None) or (_filter_fn is None) {
                 self.emit(
@@ -1438,20 +1406,8 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     if not isinstance(_f, uni.FilterCompr) {
         return None;
     }
-    _fname = (self.lower._arch_ref_key(_f.f_type) or self.lower._get_name(_f.f_type))
-        if _f.f_type is not None
-        else None;
-    if _fname is None and _f.compares {
-        _fname = self.lower._elem_arch_name_of(nd.target);
-    }
+    _fname = self.lower._chained_filter_arch(nd, _f);
     if _fname is None {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="expression",
-            name="FilterCompr",
-            help_text="This filter's element archetype is not statically known; put a type filter first (`[?:NodeType]`) so field predicates can resolve a layout, or filter with an explicit loop."
-        );
         return None;
     }
     target_val = self._codegen_expr(nd.target);
@@ -1461,9 +1417,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     _result = target_val;
     _filter_fn = self.func_symtab.get("osp_filter");
     if _f.f_type is not None {
-        _model = self.module.gen.native_osp_model;
-        _tags = _model.tags if _model is not None else {};
-        _ntag = _tags.get(_fname, -1);
+        _ntag = self.lower._chained_filter_type_tag(_fname);
         _tpair = self._osp_type_pair(_ntag) if _ntag >= 0 else None;
         if _ntag < 0 or _tpair is None or _filter_fn is None {
             self.emit(
@@ -1532,40 +1486,8 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
 impl NaIRGenPass._osp_pred_pair(
     arch_name: str, compares: list[uni.CompareExpr], nd: uni.UniNode
 ) -> (ir.Value | None) {
-    _fields = self.lower.struct_field_indices.get(arch_name);
-    if _fields is None {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="expression",
-            name="FilterCompr",
-            help_text=self.lower._xmod_osp_help([arch_name])
-        );
+    if not self.lower._osp_pred_pair_compares_ok(arch_name, compares, nd) {
         return None;
-    }
-    for cmp in compares {
-        _bad = (
-            not isinstance(cmp.left, uni.Name)
-            or (not cmp.rights)
-            or (not cmp.ops)
-            or len(cmp.ops) > 1
-        );
-        _lhs_name = cmp.left.value if isinstance(cmp.left, uni.Name) else None;
-        if _bad or _lhs_name is None or _lhs_name not in _fields {
-            _fld = _lhs_name or "<expr>";
-            self.emit(
-                E5092,
-                node_override=cmp,
-                kind="expression",
-                name="FilterCompr",
-                help_text=(
-                    f"filter predicate on '{_fld}' does not resolve to a "
-                    f"simple `field <op> value` compare over archetype "
-                    f"'{arch_name}'"
-                )
-            );
-            return None;
-        }
     }
     _rhs_vals: list[ir.Value] = [];
     for cmp in compares {

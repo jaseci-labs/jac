@@ -151,3 +151,76 @@ impl NativeLowering._pyb_ret_key(nd: uni.FuncCall) -> (str | None) {
     }
     return tk;
 }
+
+impl NativeLowering._pyb_shadowed_dispatch_candidates(
+    arch_name: str, method_name: str
+) -> list[tuple[str, str]] {
+    out: list[tuple[str, str]] = [];
+    arch = self.arch_ast_map.get(arch_name);
+    if not isinstance(arch, uni.Archetype) {
+        return out;
+    }
+    seen: set = {arch_name};
+    queue: list[uni.Expr] = list(arch.base_classes or []);
+    while queue {
+        base_expr = queue.pop(0);
+        if isinstance(base_expr, uni.AtomTrailer)
+            and isinstance(base_expr.right, uni.IndexSlice) {
+            base_expr = base_expr.target;
+        }
+        bname = self._get_name(base_expr);
+        if bname is None or bname in seen {
+            continue;
+        }
+        seen.add(bname);
+        if bname in ("Node", "Edge", "Walker", "Object", "Obj", "Root", "Archetype") {
+            continue;
+        }
+        sym = base_expr.sym if isinstance(base_expr, uni.NameAtom) else None;
+        decl = sym.decl if sym is not None else None;
+        base_arch = decl.find_parent_of_type(uni.Archetype)
+            if decl is not None
+            else None;
+        if base_arch is None {
+            continue;
+        }
+
+        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
+            for stmt in (base_arch.body or []) {
+                if not isinstance(stmt, uni.Ability) {
+                    continue;
+                }
+                if stmt.name_ref is None or stmt.name_ref.sym_name != method_name {
+                    continue;
+                }
+                for _call in stmt.get_all_sub_nodes(uni.FuncCall) {
+                    _tgt = _call.target;
+                    if not isinstance(_tgt, uni.AtomTrailer) or not _tgt.is_attr {
+                        continue;
+                    }
+                    if self._get_name(_tgt.target) != "self" {
+                        continue;
+                    }
+                    _dispatched = self._get_name(_tgt.right);
+                    if _dispatched is None {
+                        continue;
+                    }
+                    out.append((bname, _dispatched));
+                }
+            }
+        }
+        queue.extend(base_arch.base_classes or []);
+    }
+    return out;
+}
+
+impl NativeLowering._pyb_super_call_meth_names(method_name: str) -> list[str] {
+    if method_name == "postinit" {
+        meth_names = ["__post_init__", "postinit"];
+    } elif method_name == "init" {
+        meth_names = ["__init__", "init"];
+    } else {
+        meth_names = [method_name];
+    }
+    return meth_names;
+}

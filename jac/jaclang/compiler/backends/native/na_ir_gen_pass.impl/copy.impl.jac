@@ -220,9 +220,8 @@ impl NaIRGenPass._copy_refusal(
 }
 
 impl NaIRGenPass._copy_candidates(arch: str) -> list[str] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     out: list[str] = [arch];
-    for cand in get_layout_registry(self.module, self.prog).mro_order {
+    for cand in self.lower._copy_candidates_classes() {
         if cand != arch and cand in self.struct_types and arch in self.lower._mro_of(cand) {
             out.append(cand);
         }

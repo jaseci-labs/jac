@@ -42,10 +42,7 @@ impl NaIRGenPass._osp_edge_tag(
 impl NaIRGenPass._osp_edge_descriptor(
     expr: uni.UniNode, nd: uni.UniNode
 ) -> (ir.Value | None) {
-    if self.lower._osp_edge_class_name(expr) is None {
-        self.emit(
-            E5092, node_override=nd, kind="edge type", name="non-class expression"
-        );
+    if not self.lower._osp_edge_descriptor_is_class(expr, nd) {
         return None;
     }
     lookup = self.func_symtab.get("osp_edge_type");

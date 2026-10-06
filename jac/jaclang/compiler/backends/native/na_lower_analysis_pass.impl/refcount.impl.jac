@@ -129,3 +129,20 @@ impl NativeLowering._is_move_site(expr: uni.UniNode | None) -> bool {
 impl NativeLowering._nogc_opt_slots_owned -> bool {
     return not self._nogc_headerless() or self._nogc_owned_world();
 }
+
+impl NativeLowering._nogc_osp_skip_unit -> (bool | None) {
+    if not getattr(self.module.gen, "nogc_enforced", False) {
+        return False;
+    }
+    import os;
+    if os.path.basename(self.module.loc.mod_path or "").startswith("osp_core_") {
+        return True;
+    }
+    return None;
+}
+
+impl NativeLowering._nogc_osp_skip_is_osp(tn: str) -> bool {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.module, self.prog).get_layout(tn);
+    return lay is not None and lay.is_osp;
+}

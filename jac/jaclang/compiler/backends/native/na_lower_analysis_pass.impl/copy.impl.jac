@@ -78,3 +78,8 @@ impl NativeLowering._copy_call_arg(
     }
     return params[0];
 }
+
+impl NativeLowering._copy_candidates_classes -> list[str] {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    return list(get_layout_registry(self.module, self.prog).mro_order);
+}

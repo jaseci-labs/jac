@@ -688,11 +688,33 @@ obj NativeLowering {
 
     def _swap_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
 
+    def _disconnect_operand_shape(
+        nd: uni.BinaryExpr, fcond: (uni.FilterCompr | None), etname: (str | None)
+    ) -> tuple[bool, bool, list[uni.CompareExpr], (str | None)];
+
+    def _edge_ref_trailer_hop(
+        chain: list[uni.Expr | uni.FilterCompr], idx: int
+    ) -> tuple[(uni.Expr | uni.FilterCompr), (uni.FilterCompr | None), int, bool];
+
+    def _edge_ref_trailer_filter_tag(
+        step_filter: uni.FilterCompr, tags: dict[str, int]
+    ) -> tuple[(str | None), int];
+
+    def _chained_filter_arch(nd: uni.AtomTrailer, f: uni.FilterCompr) -> (str | None);
+
+    def _chained_filter_type_tag(fname: str) -> int;
+
+    def _osp_pred_pair_compares_ok(
+        arch_name: str, compares: list[uni.CompareExpr], nd: uni.UniNode
+    ) -> bool;
+
     def _reads_unlowered_local_names(nd: uni.UniNode) -> list[uni.Name];
 
     def _lambda_inferred_return(nd: uni.LambdaExpr) -> (TypeBase | None);
 
     def _lambda_free_var_names(nd: uni.LambdaExpr) -> list[str];
+
+    def _osp_edge_descriptor_is_class(expr: uni.UniNode, nd: uni.UniNode) -> bool;
 
     def _name_sized_type_ref(nd: uni.Name, var_name: str) -> bool;
 
@@ -732,6 +754,12 @@ obj NativeLowering {
 
     def _atom_trailer_type_alias_class(nd: uni.AtomTrailer) -> (str | None);
 
+    def _pyb_shadowed_dispatch_candidates(
+        arch_name: str, method_name: str
+    ) -> list[tuple[str, str]];
+
+    def _pyb_super_call_meth_names(method_name: str) -> list[str];
+
     def _print_params(
         nd: uni.FuncCall
     ) -> tuple[list[any], str, (uni.KWPair | None), (str | None)];
@@ -752,6 +780,22 @@ obj NativeLowering {
 
     def _resolve_method_class_parents -> dict[str, list[str]];
 
+    def _c_scalar_llvm_shape(t: any) -> (tuple[bool, int] | None);
+
+    def _c_scalar_is_bool(t: any) -> bool;
+
+    def _c_view_elem_of_index(
+        nd: uni.AtomTrailer
+    ) -> (tuple[uni.IndexSlice, any] | None);
+
+    def _c_interop_store_kind(target: uni.AtomTrailer) -> (str | None);
+
+    def _c_interop_call_kind(
+        nd: uni.FuncCall
+    ) -> tuple[str, (uni.Expr | uni.KWPair | None), (uni.Expr | uni.KWPair | None)];
+
+    def _clib_param_info_type(p: uni.ParamVar) -> tuple[any, bool, bool];
+
     def _sized_cast_operand(
         nd: uni.FuncCall, name: str
     ) -> (tuple[ScalarShape, any] | None);
@@ -759,6 +803,20 @@ obj NativeLowering {
     def _sized_wrap_operand(
         nd: uni.FuncCall, name: str
     ) -> (tuple[ScalarShape, any] | None);
+
+    def _struct_call_layout(
+        nd: uni.FuncCall, params: Sequence[any]
+    ) -> (tuple[list[tuple[str, int, bool]], int, bool] | None);
+
+    def _struct_pack_arity_ok(
+        nd: uni.FuncCall,
+        params: Sequence[uni.Expr | uni.KWPair],
+        fields: list[tuple[str, int, bool]]
+    ) -> bool;
+
+    def _struct_pack_into_arity_error(
+        params: Sequence[uni.Expr | uni.KWPair], fields: list[tuple[str, int, bool]]
+    ) -> (str | None);
 
     def _list_val_dest_type_tag(nd: uni.ListVal) -> (uni.SubTag[uni.Expr] | None);
 
@@ -771,6 +829,22 @@ obj NativeLowering {
     def _dict_val_type_args(nd: uni.DictVal) -> list[TypeBase];
 
     def _dict_unpack_type_args(nd: uni.DictVal) -> list[TypeBase];
+
+    def _copy_candidates_classes -> list[str];
+
+    def _exception_match_isa_names(targets: list[str]) -> list[str];
+
+    def _register_exc_lineage_ancestors(
+        cause: (uni.Expr | None), type_id: int
+    ) -> list[int];
+
+    def _nogc_osp_skip_unit -> (bool | None);
+
+    def _nogc_osp_skip_is_osp(tn: str) -> bool;
+
+    def _edge_ref_trailer_edge_compares(
+        fcond: (uni.FilterCompr | None), etname: (str | None)
+    ) -> tuple[list[any], (str | None)];
 
     def _lower_type_union_members(t: UnionType) -> tuple[list[TypeBase], bool];
 

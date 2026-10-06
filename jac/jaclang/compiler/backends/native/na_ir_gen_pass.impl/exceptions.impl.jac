@@ -283,7 +283,6 @@ impl NaIRGenPass._emit_exception_match(
     on_match: ir.Block,
     on_miss: ir.Block
 ) -> None {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     b = self.builder;
     i32 = ir.IntType(32);
     does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
@@ -309,15 +308,7 @@ impl NaIRGenPass._emit_exception_match(
             name="exc.match.lineage"
         );
     }
-    known: set[str] = set();
-    for mro in get_layout_registry(self.module, self.prog).mro_order.values() {
-        known.update(mro);
-    }
-    isa_names = [
-        name
-        for name in targets
-        if name in known
-    ];
+    isa_names = self.lower._exception_match_isa_names(targets);
     if not isa_names or self._emit_runtime_class_name_fn() is None {
         b.cbranch(does_match, on_match, on_miss);
         return;
@@ -682,39 +673,7 @@ impl NaIRGenPass._emit_exc_lineage_match(
 }
 
 impl NaIRGenPass._register_exc_lineage(cause: (uni.Expr | None), type_id: int) -> None {
-    import from jaclang.compiler.types.types { ClassType, TypeBase }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
-    if type_id == 0 or cause is None {
-        return;
-    }
-    typ = cause.type;
-    if not isinstance(typ, ClassType) or typ._shared is None {
-        return;
-    }
-    if not isinstance(typ.shared.symbol_table, uni.Archetype) {
-        return;
-    }
-    ancestors: list[int] = [];
-    seen: set[int] = set();
-    pending: list[TypeBase] = list(typ.shared.base_classes);
-    while pending {
-        base = pending.pop(0);
-        if not isinstance(base, ClassType) or base._shared is None {
-            continue;
-        }
-        if id(base.shared) in seen {
-            continue;
-        }
-        seen.add(id(base.shared));
-        name = class_type_native_name(base) or base.shared.class_name;
-        if name not in ("object", "Exception", "BaseException") {
-            aid = self.lower._get_or_register_exc_type(name);
-            if aid not in (0, type_id) and aid not in ancestors {
-                ancestors.append(aid);
-            }
-        }
-        pending.extend(base.shared.base_classes);
-    }
+    ancestors = self.lower._register_exc_lineage_ancestors(cause, type_id);
     if not ancestors {
         return;
     }

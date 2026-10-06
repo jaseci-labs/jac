@@ -2331,20 +2331,15 @@ impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
 }
 
 impl NaIRGenPass._nogc_osp_skip(val: ir.Value) -> bool {
-    if not getattr(self.module.gen, "nogc_enforced", False) {
-        return False;
-    }
-    import os;
-    if os.path.basename(self.module.loc.mod_path or "").startswith("osp_core_") {
-        return True;
+    _unit_skip = self.lower._nogc_osp_skip_unit();
+    if _unit_skip is not None {
+        return _unit_skip;
     }
     _tn = self._struct_ptr_pointee_name(val);
     if _tn is None {
         return False;
     }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    lay = get_layout_registry(self.module, self.prog).get_layout(_tn);
-    return lay is not None and lay.is_osp;
+    return self.lower._nogc_osp_skip_is_osp(_tn);
 }
 
 impl NaIRGenPass._is_raw_int_ptr(value: ir.Value) -> bool {
