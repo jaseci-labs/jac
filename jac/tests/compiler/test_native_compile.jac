@@ -518,6 +518,18 @@ test "a kernel compile that misses only native stdlib answers defers to the host
     );
     assert not native_stdlib_misses([]);
     assert not native_stdlib_misses([inside, "resolve_module: 0 | sys | /tmp/x.jac"]);
+    import from jaclang.compiler.frontend.kernel_analyze { ANALYSIS_CRASHED }
+    import from jaclang.project.kernel_snapshot { host_deferred }
+    assert host_deferred(
+        AnalysisReport(
+            status=ANALYSIS_CRASHED,
+            message=": integer overflow (in TypeCheckPass at /tmp/x.jac:67:17)"
+        )
+    ) , "a literal past a native int is the host's to check";
+    assert not host_deferred(
+        AnalysisReport(status=ANALYSIS_CRASHED, message="KeyError: 'code'")
+    );
+    assert not host_deferred(AnalysisReport());
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         entry_file = str(base / 'clock.jac');
@@ -612,5 +624,29 @@ test "an interface rebuilt from a decoded interface keeps field defaults" {
         assert not outcome.analysis.errors , [
             e.message for e in outcome.analysis.errors
         ];
+    }
+}
+
+"""A graph expression makes the compiler add an import of the shared graph
+runtime that the source never wrote, so the snapshot has to learn that
+import for any module with one."""
+test "a module with a graph expression compiles in the kernel" {
+    import jaclang;
+    import shutil;
+    fixture = os.path.join(
+        os.path.dirname(str(jaclang.__file__)),
+        "compiler",
+        "tests",
+        "fixtures",
+        "osp_graph_fragment.jac"
+    );
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        entry_file = str(base / 'osp_graph_fragment.jac');
+        shutil.copyfile(fixture, entry_file);
+        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
     }
 }

@@ -10,7 +10,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.frontend.srcloc { Span }
 import from jaclang.compiler.passes.context { Alert }
-import from jaclang.project.kernel_snapshot { kernel_analysis, native_stdlib_misses }
+import from jaclang.project.kernel_snapshot { host_deferred, kernel_analysis }
 
 glob KERNEL_ANALYZE_ENV: str = "JAC_KERNEL_ANALYZE",
      _PASS_TYPES: dict[str, type] = {};
@@ -122,7 +122,7 @@ def kernel_check(
         }
         return KernelCheck(parity=True, failure=f"{type(err).__name__}: {err}");
     }
-    if native_stdlib_misses(outcome.misses) {
+    if host_deferred(outcome) {
         return KernelCheck(outcome=outcome);
     }
     if outcome.misses {

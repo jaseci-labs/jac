@@ -38,6 +38,7 @@ glob SCAN_LIMIT: int = 4000,
      INTERFACE_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
+     NATIVE_INT_OVERFLOW: str = "integer overflow",
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
@@ -260,6 +261,7 @@ obj ClosureScan {
                 continue;
             }
             self.scan_imports(tree, path);
+            self.learn_runtime_imports(tree, source_path);
             self.learn_arch(tree, source_path);
         }
         try {
@@ -274,6 +276,21 @@ obj ClosureScan {
                 self.scan_imports(tree, path);
             }
         } except Exception {}
+    }
+
+    def learn_runtime_imports(tree: uni.Module, path: str) {
+        import from jaclang.compiler.frontend.codeinfo { SHARED_RUNTIME_MODULES }
+        if not tree.get_all_sub_nodes(uni.GraphExpr) {
+            return;
+        }
+        for runtime_module in SHARED_RUNTIME_MODULES {
+            (resolved, _) = self.learner.resolve_module(runtime_module, path);
+            self.follow(resolved);
+            self.learn_npm(runtime_module, path);
+            self.learner.resolve_module(
+                runtime_module, os.path.join(os.path.dirname(path), "")
+            );
+        }
     }
 
     def learn_arch(tree: uni.Module, path: str) {
@@ -1022,6 +1039,14 @@ def native_stdlib_misses(misses: list[str]) -> bool {
     return True;
 }
 
+def host_deferred(outcome: AnalysisReport) -> bool {
+    if native_stdlib_misses(outcome.misses) {
+        return True;
+    }
+    return outcome.status == ANALYSIS_CRASHED
+        and NATIVE_INT_OVERFLOW in outcome.message;
+}
+
 def loaded_kernel(kind: KernelEntry) -> NativeCompiler {
     import from jaclang.compiler.native_compiler { ensure_loaded }
     kernel = ensure_loaded();
@@ -1053,8 +1078,7 @@ def kernel_analysis(
             call(kernel, ANALYZE_ENTRY, inputs_json, path, source)
         );
     }
-    if outcome.status == ANALYSIS_CRASHED
-        and not native_stdlib_misses(outcome.misses) {
+    if outcome.status == ANALYSIS_CRASHED and not host_deferred(outcome) {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";
         raise KernelAnalysisError(outcome.message + detail);
     }

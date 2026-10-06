@@ -31,7 +31,13 @@ method a subclass inherits from a generic base does not lower natively
 yet. Kernel compiles are not optional: when a kernel is present, a module
 compile, `jac check` and the preparation of an application without client
 code go through it, and a compile the kernel cannot finish is an error.
-Applications with client code or pages still prepare on the host.
+Applications with client code or pages still prepare on the host, and so do
+two kinds of module the kernel hands back rather than failing on: one placed
+in the native codespace (native code generation for a program, and the
+native stdlib modules it imports, are the host's), and one whose analysis
+needs an integer past 64 bits (a `u64` literal above `2**63 - 1`, or
+interval arithmetic over two 64-bit ranges), because the kernel's `int` is a
+native 64-bit integer that traps on overflow.
 
 ## Implemented foundations
 

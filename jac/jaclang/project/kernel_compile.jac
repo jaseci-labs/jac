@@ -16,9 +16,9 @@ import from jaclang.project.kernel_snapshot {
     KernelAnalysisError,
     call_kernel,
     call_kernel_isolated,
+    host_deferred,
     kernel_inputs_json,
-    loaded_kernel,
-    native_stdlib_misses
+    loaded_kernel
 }
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
@@ -54,7 +54,7 @@ def kernel_compile(
         );
     }
     analysis = outcome.analysis;
-    if native_stdlib_misses(analysis.misses) {
+    if host_deferred(analysis) {
         return CompileReport(
             analysis=AnalysisReport(
                 entry_path=path,
