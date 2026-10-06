@@ -4,6 +4,37 @@ impl ASTValidationPass.enter_match_stmt with MatchStmt entry {
     }
 }
 
+impl ASTValidationPass.enter_module with Module entry {
+    if here.is_raised_from_py or here.stub_only {
+        return;
+    }
+    first_line: dict[str, int] = {};
+    for item in here.body {
+        name_node: (UniNode | None) = None;
+        if isinstance(item, Ability) {
+            name_node = item.name_ref;
+        } elif isinstance(item, Archetype) {
+            name_node = item.name;
+        }
+        if not isinstance(name_node, Name)
+            or not isinstance(item, (Ability, Archetype))
+            or item.body is None
+            or item.decorators {
+            continue;
+        }
+        if name_node.value in first_line {
+            self.ctx.emit(
+                E2036,
+                node_override=name_node,
+                name=name_node.value,
+                line=first_line[name_node.value]
+            );
+        } else {
+            first_line[name_node.value] = name_node.loc.first_line;
+        }
+    }
+}
+
 impl ASTValidationPass.enter_module_code with ModuleCode entry {
     if isinstance(here.parent, Module) or here.parent is None {
         if [here->:Kid:->[?:Token, name==Tok.KW_EXIT]] {

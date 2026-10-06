@@ -1333,7 +1333,11 @@ impl serve(
                 [svc.entry_path(project_root) for svc in services],
                 not no_client
                     and not faux
-                    and (served is None or served.kind == "web-app"),
+                    and (
+                        served is None
+                        or (cfg.resolved_kind(served) if cfg else served.kind)
+                            == "web-app"
+                    ),
                 dev
             );
             console.print("Initializing application...", style="bold");

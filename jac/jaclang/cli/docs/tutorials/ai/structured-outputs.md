@@ -402,5 +402,6 @@ If the LLM returns invalid types, byLLM will:
 
 ## Next Steps
 
+- [Decision Models](decision-models.md) - Serve closed-set functions with a System One model
 - [Agentic AI](agentic.md) - Add tools for the LLM to use
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation

@@ -91,6 +91,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E2021,
     E2022,
     E2024,
+    E2036,
     E2084,
     W2019,
     W2020,
@@ -100,6 +101,7 @@ import from jaclang.compiler.frontend.diagnostics {
 walker ASTValidationPass(TreePass) {
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;
+    can enter_module with Module entry;
     can enter_module_code with ModuleCode entry;
     can enter_binary_expr with BinaryExpr entry;
     can enter_name with Name entry;

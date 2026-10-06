@@ -76,6 +76,7 @@
           "items": [
             {"title": "Your First AI Function", "page": "tutorials/ai/quickstart.md"},
             {"title": "Structured Outputs", "page": "tutorials/ai/structured-outputs.md"},
+            {"title": "Decision Models (System One)", "page": "tutorials/ai/decision-models.md"},
             {"title": "Agentic AI", "page": "tutorials/ai/agentic.md"},
             {"title": "Multimodal", "page": "tutorials/ai/multimodal.md"},
             {"title": "AI-Assisted Development (MCP)", "page": "tutorials/ai/mcp-quickstart.md"}

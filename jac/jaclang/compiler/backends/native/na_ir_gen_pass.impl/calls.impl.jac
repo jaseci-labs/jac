@@ -1293,6 +1293,52 @@ impl NaIRGenPass._native_module_call_target(
     return None;
 }
 
+impl NaIRGenPass._stdlib_intercept_covers(module_name: str, func_name: str) -> bool {
+    """Whether `module_name.func_name` lowers through a compiler intercept for an
+    imported stdlib module (`os`, `random`, `struct`).""";
+    if module_name not in self._native_stdlib_modules {
+        return False;
+    }
+    return (module_name == "os" and func_name in NATIVE_OS_FUNCS)
+        or (module_name == "random" and func_name in NATIVE_RANDOM_FUNCS)
+        or (module_name == "struct" and func_name in NATIVE_STRUCT_FUNCS);
+}
+
+impl NaIRGenPass._emit_stdlib_intercept(
+    module_name: str, func_name: str, nd: uni.FuncCall
+) -> (ir.Value | None) {
+    if module_name == "os" {
+        return self._emit_os_call(func_name, nd);
+    }
+    if module_name == "random" {
+        return self._emit_random_call(func_name, nd);
+    }
+    return self._emit_struct_call(func_name, nd);
+}
+
+impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] | None {
+    """The intercepted (module, function) a bare call names when the name was bound
+    by `import from <module> { function }`: `randint(1, 6)` lowers exactly like
+    `random.randint(1, 6)`. The callee symbol lives in the module's stub, so a
+    local or module definition that shadows the name never matches. The stub is
+    named by its place in the stdlib tree, not its file stem: `os` is a package
+    whose stub is `os/__init__.pyi`.""";
+    import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+    if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
+        return None;
+    }
+    scope = nd.target.sym.parent_tab;
+    if not isinstance(scope, uni.Module) or not scope.stub_only {
+        return None;
+    }
+    module_name = bundled_stdlib_module_of(scope.loc.mod_path);
+    if module_name is None
+        or not self._stdlib_intercept_covers(module_name, nd.target.sym.name) {
+        return None;
+    }
+    return (module_name, nd.target.sym.name);
+}
+
 impl NaIRGenPass._codegen_intrinsic(
     nd: uni.FuncCall, intr: IntrinsicEntry
 ) -> (ir.Value | None) {
@@ -1610,6 +1656,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     );
     if _sized_call is not None {
         return _sized_call;
+    }
+
+    _bare_intercept = self._from_imported_intercept(nd);
+    if _bare_intercept is not None {
+        return self._emit_stdlib_intercept(_bare_intercept[0], _bare_intercept[1], nd);
     }
 
     func_name: str | None = None;
@@ -4157,6 +4208,18 @@ impl NaIRGenPass._codegen_callable_value(
     }
     if not isinstance(value.type, ir.PointerType)
         or not isinstance(value.type.pointee, ir.FunctionType) {
+        """No call signature to lower against. Refuse loudly: in statement
+        position a silent None would drop the call and its effects.""";
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="call through a value",
+            name=self._get_name(nd.target) or "callable",
+            help_text="The callee's native type carries no call signature "
+            "(an `any` or an unparameterized `Callable`). Annotate it as "
+            "`Callable[[...], R]` so the native lane can call it, or make "
+            "the call from a Python/@sv context."
+        );
         return None;
     }
     signature = value.type.pointee;
