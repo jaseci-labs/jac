@@ -105,6 +105,8 @@ import from jaclang.compiler.backends.native.na_constants {
     NATIVE_COPY_FUNCS,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
+    NATIVE_RANDOM_FUNCS,
+    NATIVE_STRUCT_FUNCS,
     RC_BUFFERED_BIT,
     RC_COLOR_BLACK,
     RC_COLOR_GRAY,
