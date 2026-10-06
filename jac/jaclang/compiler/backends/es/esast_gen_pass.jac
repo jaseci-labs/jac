@@ -149,8 +149,8 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.KW_IN: "op_contains",
          Tok.KW_NIN: "op_contains"
      },
-     FW_JS_PLAIN_OPS: frozenset = frozenset({"&", "|", "^"}),
-     FW_JS_CHECKED_OPS: frozenset = frozenset({"+", "-", "*"}),
+     FW_JS_PLAIN_OPS: frozenset[str] = frozenset({"&", "|", "^"}),
+     FW_JS_CHECKED_OPS: frozenset[str] = frozenset({"+", "-", "*"}),
      FW_JS_HELPER_OPS: dict[(str, str)] = {
          "/": "div",
          "//": "fdiv",

@@ -1354,7 +1354,7 @@ impl BoundaryAnalysisPass.finish with exit {
     import from jaclang.runtime.scalars { sized_scalar_names }
     manifest = self.module.gen.interop_manifest;
 
-    ctypes_wire: set = {'int', 'float', 'bool', 'str'} | set(sized_scalar_names());
+    ctypes_wire: set[str] = {'int', 'float', 'bool', 'str'} | set(sized_scalar_names());
     for binding in manifest.bindings.values() {
         crosses_ctypes = (
             binding.source_context == InteropContext.SERVER
