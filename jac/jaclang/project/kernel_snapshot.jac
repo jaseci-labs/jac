@@ -35,13 +35,152 @@ import type from jaclang.compiler.native_compiler { NativeCompiler }
 
 glob SCAN_LIMIT: int = 4000,
      PACKAGE_CHAIN_DEPTH: int = 8,
-     INTERFACE_LIMIT: int = 400,
+     INTERFACE_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
+     _PACKAGE_SCANS: dict[str, PackageScan] = {},
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
 
 class KernelAnalysisError(RuntimeError) {}
+
+obj PackageScan {
+    has learned: KernelInputs,
+        edges: list[str] = [],
+        string_specs: list[tuple[str, str]] = [];
+}
+
+def package_scan_file(path: str, target_app: str) -> str {
+    import hashlib;
+    import from jaclang.compiler.driver.jir {
+        get_jir_cache_dir,
+        running_compiler_digest
+    }
+    key = hashlib.sha256(
+        (running_compiler_digest() + "\x1f" + path + "\x1f" + target_app).encode(
+            "utf-8"
+        )
+    ).hexdigest();
+    return os.path.join(
+        str(get_jir_cache_dir()), "kernel_scans", key[:2], key + ".json"
+    );
+}
+
+def stored_package_scan(target: str) -> (PackageScan | None) {
+    import json;
+    import from jaclang.compiler.frontend.kernel_inputs { inputs_from_dict, json_map }
+    try {
+        with open(target, "r", encoding="utf-8") as f {
+            record = json.load(f);
+        }
+        return PackageScan(
+            learned=inputs_from_dict(json_map(record["learned"])),
+            edges=[str(e) for e in record["edges"]],
+            string_specs=[(str(s[0]), str(s[1])) for s in record["string_specs"]]
+        );
+    } except (OSError, ValueError, KeyError, TypeError, IndexError) {
+        return None;
+    }
+}
+
+def store_package_scan(target: str, found: PackageScan) {
+    import json;
+    import from jaclang.compiler.frontend.kernel_inputs { inputs_to_dict }
+    try {
+        os.makedirs(os.path.dirname(target), exist_ok=True);
+        scratch_file = target + f".{os.getpid()}.tmp";
+        with open(scratch_file, "w", encoding="utf-8") as f {
+            json.dump(
+                {
+                    "learned": inputs_to_dict(found.learned),
+                    "edges": list(found.edges),
+                    "string_specs": [
+                        [spec, owner] for (spec, owner) in found.string_specs
+                    ]
+                },
+                f
+            );
+        }
+        os.replace(scratch_file, target);
+    } except OSError {}
+}
+
+def package_scan(
+    host: HostServices, program: JacProgram, options: CompileOptions, path: str
+) -> PackageScan {
+    target_app = options.target_app or "";
+    memo_key = path + "\x1f" + target_app;
+    found = _PACKAGE_SCANS.get(memo_key);
+    if found is not None {
+        return found;
+    }
+    target = package_scan_file(path, target_app);
+    found = stored_package_scan(target);
+    if found is None {
+        learner = KernelHost(inputs=KernelInputs(entry_path=path), fallback=host);
+        scan = ClosureScan(
+            learner=learner, program=program, options=options, entry_path=path
+        );
+        previous = active_host();
+        install_host(learner);
+        try {
+            scan.scan_module(path);
+        } finally {
+            install_host(previous);
+        }
+        found = PackageScan(
+            learned=learner.inputs,
+            edges=sorted(scan.package_edges),
+            string_specs=sorted(scan.string_specs)
+        );
+        store_package_scan(target, found);
+    }
+    _PACKAGE_SCANS[memo_key] = found;
+    return found;
+}
+
+def merge_learned(into: KernelInputs, part: KernelInputs) {
+    for (key, facts) in part.project_facts.items() {
+        into.project_facts.setdefault(key, facts);
+    }
+    for (key, ws) in part.workspaces.items() {
+        into.workspaces.setdefault(key, ws);
+    }
+    for (key, text) in part.facts_of.items() {
+        into.facts_of.setdefault(key, text);
+    }
+    for (key, text) in part.workspace_of.items() {
+        into.workspace_of.setdefault(key, text);
+    }
+    for (key, text) in part.app_of.items() {
+        into.app_of.setdefault(key, text);
+    }
+    for (key, text) in part.project_root_of.items() {
+        into.project_root_of.setdefault(key, text);
+    }
+    for (key, lint) in part.lint_of.items() {
+        into.lint_of.setdefault(key, lint);
+    }
+    for (key, verdict) in part.verdicts.items() {
+        into.verdicts.setdefault(key, verdict);
+    }
+    for (key, flag) in part.untyped.items() {
+        into.untyped.setdefault(key, flag);
+    }
+    for (key, text) in part.siblings.items() {
+        into.siblings.setdefault(key, text);
+    }
+    for (key, flag) in part.path_aliases.items() {
+        into.path_aliases.setdefault(key, flag);
+    }
+    for (key, text) in part.virtual_modules.items() {
+        into.virtual_modules.setdefault(key, text);
+    }
+    into.imports.extend(part.imports);
+    into.local_imports.extend(part.local_imports);
+    into.npm.extend(part.npm);
+    into.declared.extend(part.declared);
+}
 
 obj ClosureScan {
     has learner: KernelHost,
@@ -54,6 +193,8 @@ obj ClosureScan {
         seen: set[str] = set(),
         package_edges: set[str] = set(),
         learned: set[str] = set(),
+        merged_packages: set[str] = set(),
+        string_specs: set[tuple[str, str]] = set(),
         queue: list[str] = [];
 
     def run {
@@ -70,11 +211,25 @@ obj ClosureScan {
             self.seen.add(path);
             self.scan_module(path);
         }
-        direct = sorted(self.package_edges);
-        for package_path in direct {
-            self.scan_module(package_path);
+        for package_path in sorted(self.package_edges) {
+            self.learn_package(package_path);
         }
-        self.package_edges = set(direct);
+    }
+
+    def learn_package(path: str) {
+        if path in self.merged_packages {
+            return;
+        }
+        self.merged_packages.add(path);
+        host = self.learner.fallback;
+        if host is None {
+            return;
+        }
+        found = package_scan(host, self.program, self.options, path);
+        merge_learned(self.learner.inputs, found.learned);
+        for (spec, owner) in found.string_specs {
+            self.learn_npm(spec, owner);
+        }
     }
 
     def scan_module(path: str) {
@@ -178,12 +333,12 @@ obj ClosureScan {
             }
             spec = mod_path.string_path_value;
             if spec is not None {
+                self.string_specs.add((spec, owner));
                 learner.is_path_alias(spec, owner);
             } else {
                 spec = mod_path.dot_path_str;
             }
             self.follow(self.resolved(mod_path, None));
-            self.learn_native_variant(spec, owner);
             self.learn_npm(spec, owner);
             if spec.startswith("@jac/") {
                 virtual_path = learner.jac_virtual_module_path(spec);
@@ -223,23 +378,6 @@ obj ClosureScan {
             }
         } except Exception {}
         return "";
-    }
-
-    def learn_native_variant(spec: str, owner: str) {
-        import from jaclang.compiler.frontend.codeinfo {
-            NATIVE_STDLIB_EXTENSIONS,
-            is_bundled_native_module,
-            resolve_native_module
-        }
-        if not spec
-            or spec in NATIVE_STDLIB_EXTENSIONS
-            or not is_bundled_native_module(spec) {
-            return;
-        }
-        (_, full_path) = resolve_native_module(spec, os.path.dirname(owner));
-        if full_path {
-            self.follow(full_path);
-        }
     }
 
     def learn_npm(spec: str, owner: str) {
@@ -644,35 +782,28 @@ def kernel_analysis_inputs(
     local = [
         p
         for (p, untyped) in inputs.untyped.items()
-        if not untyped
+        if not untyped and not is_compiler_source_path(p)
     ];
     wanted = local + sorted(scan.package_edges);
     inputs.python_ifaces = python_interfaces(wanted, options);
     served = {iface.path for iface in inputs.python_ifaces};
-    learn_facts(host, inputs, program, options, path, sorted(served - set(wanted)));
+    learn_facts(scan, sorted(served - set(wanted)));
     return inputs;
 }
 
-def learn_facts(
-    host: HostServices,
-    inputs: KernelInputs,
-    program: JacProgram,
-    options: CompileOptions,
-    entry_path: str,
-    paths: list[str]
-) {
+def learn_facts(scan: ClosureScan, paths: list[str]) {
     if not paths {
         return;
     }
-    learner = KernelHost(inputs=inputs, fallback=host);
-    scan = ClosureScan(
-        learner=learner, program=program, options=options, entry_path=entry_path
-    );
     previous = active_host();
-    install_host(learner);
+    install_host(scan.learner);
     try {
         for dep in paths {
-            scan.learn_path(dep);
+            if is_compiler_source_path(dep) and not dep.endswith(".pyi") {
+                scan.learn_package(dep);
+            } else {
+                scan.learn_path(dep);
+            }
         }
     } finally {
         install_host(previous);
@@ -875,6 +1006,22 @@ def call_kernel_isolated(
     return payload.decode("utf-8");
 }
 
+def native_stdlib_misses(misses: list[str]) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
+    stdlib_dir = native_stdlib_root();
+    if not misses or not stdlib_dir {
+        return False;
+    }
+    prefix = os.path.join(os.path.realpath(stdlib_dir), "");
+    for miss in misses {
+        asked = miss.partition(": ")[2];
+        if not os.path.realpath(asked).startswith(prefix) {
+            return False;
+        }
+    }
+    return True;
+}
+
 def loaded_kernel(kind: KernelEntry) -> NativeCompiler {
     import from jaclang.compiler.native_compiler { ensure_loaded }
     kernel = ensure_loaded();
@@ -906,7 +1053,8 @@ def kernel_analysis(
             call(kernel, ANALYZE_ENTRY, inputs_json, path, source)
         );
     }
-    if outcome.status == ANALYSIS_CRASHED {
+    if outcome.status == ANALYSIS_CRASHED
+        and not native_stdlib_misses(outcome.misses) {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";
         raise KernelAnalysisError(outcome.message + detail);
     }

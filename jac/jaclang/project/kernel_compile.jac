@@ -7,6 +7,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_CRASHED,
     AnalysisReport,
     CompileReport,
+    ModuleReport,
     kernel_trace,
     run_kernel_compile
 }
@@ -16,7 +17,8 @@ import from jaclang.project.kernel_snapshot {
     call_kernel,
     call_kernel_isolated,
     kernel_inputs_json,
-    loaded_kernel
+    loaded_kernel,
+    native_stdlib_misses
 }
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
@@ -52,6 +54,14 @@ def kernel_compile(
         );
     }
     analysis = outcome.analysis;
+    if native_stdlib_misses(analysis.misses) {
+        return CompileReport(
+            analysis=AnalysisReport(
+                entry_path=path,
+                modules=[ModuleReport(path=os.path.realpath(path), native=True)]
+            )
+        );
+    }
     if analysis.status == ANALYSIS_CRASHED {
         detail = f" ({analysis.misses[-1]})" if analysis.misses else "";
         raise KernelAnalysisError(analysis.message + detail);

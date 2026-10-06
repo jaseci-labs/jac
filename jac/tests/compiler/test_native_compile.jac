@@ -17,6 +17,7 @@ import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_BLOCKED,
     ANALYSIS_OK,
+    AnalysisReport,
     CompileReport,
     run_kernel_compile
 }
@@ -502,29 +503,45 @@ test "a kernel compile with no unit defers only a native-codespace module" {
 }
 
 """A module placed in the native codespace resolves `import time` to the
-module the native stdlib ships, so the kernel asks about that module and
-needs its interface; the snapshot has to carry it."""
-test "a native-placed module importing a native stdlib module compiles in the kernel" {
-    import from jaclang.compiler.frontend.codeinfo {
-        get_effective_default_codespace_override,
-        set_effective_default_codespace
-    }
-    previous = get_effective_default_codespace_override();
-    set_effective_default_codespace('native');
-    try {
-        with TemporaryDirectory() as td {
-            base = Path(os.path.realpath(td));
-            entry_file = str(base / 'clock.jac');
-            Path(entry_file).write_text(
-                'import time;\n\ndef elapsed(since: float) -> float {\n'
-                    + '    return time.time() - since;\n}\n'
-            );
-            outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
-            assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
-            assert not outcome.analysis.misses , outcome.analysis.misses;
+module the native stdlib ships, which the snapshot does not carry: native
+code is the host's to generate. A kernel compile that stops only for want
+of answers about native stdlib modules hands the module to the host."""
+test "a kernel compile that misses only native stdlib answers defers to the host" {
+    import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
+    import from jaclang.project.kernel_snapshot { native_stdlib_misses }
+    stdlib_dir = native_stdlib_root();
+    assert stdlib_dir , "this build has no native stdlib";
+    inside = "project_facts: " + os.path.join(str(stdlib_dir), "time.jac");
+    assert native_stdlib_misses([inside]);
+    assert native_stdlib_misses(
+        [inside, "compile_module: " + os.path.join(str(stdlib_dir), "os", "path.jac")]
+    );
+    assert not native_stdlib_misses([]);
+    assert not native_stdlib_misses([inside, "resolve_module: 0 | sys | /tmp/x.jac"]);
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        entry_file = str(base / 'clock.jac');
+        Path(entry_file).write_text('def tick -> int { return 1; }\n');
+        missed = CompileReport(
+            analysis=AnalysisReport(entry_path=entry_file, misses=[inside])
+        );
+        import from unittest.mock { patch }
+        import jaclang.project.kernel_compile as kernel_compile_mod;
+        def run_missed(*args: any, **kwargs: any) -> CompileReport {
+            return missed;
         }
-    } finally {
-        set_effective_default_codespace(previous);
+        with patch.object(kernel_compile_mod, "run_kernel_compile", run_missed) {
+            deferred = kernel_compile_mod.kernel_compile(
+                active_host(),
+                JacProgram(),
+                entry_file,
+                compile_options(),
+                in_process=True
+            );
+        }
+        placed = deferred.analysis.module(entry_file);
+        assert placed is not None and placed.native;
+        assert not deferred.units;
     }
 }
 
