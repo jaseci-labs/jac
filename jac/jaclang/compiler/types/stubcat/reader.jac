@@ -416,10 +416,18 @@ obj StubCatalog {
             return None;
         }
         prefix = self._base_dir + os.sep;
-        if not real.startswith(prefix) {
-            return None;
+        if real.startswith(prefix) {
+            return real[len(prefix):].replace(os.sep, "/");
         }
-        return real[len(prefix):].replace(os.sep, "/");
+        normalized = real.replace(os.sep, "/");
+        at = normalized.rfind("/vendor/typeshed/");
+        if at >= 0 {
+            foreign = normalized[at + 1:];
+            if foreign in self._mod_rel {
+                return foreign;
+            }
+        }
+        return None;
     }
 
     def module_path(parts: list[str]) -> (str | None) {
