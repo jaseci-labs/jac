@@ -25,25 +25,46 @@ enum builtin_kind {
 }
 
 import from jaclang.runtime.python.cpython_api {
-    PyBytes_FromStringAndSize,
-    PyErr_GetRaisedException,
-    PyErr_SetRaisedException,
-    PyObject,
-    PyObject_Repr,
-    PyTuple_New,
-    PyUnicodeWriter,
-    Py_NewRef,
+    PyUnicode_DecodeUTF8Stateful,
     jacpy_bytes_copy_to,
+    jacpy_bytes_from_memory,
     jacpy_bytes_length,
-    jacpy_exception_note,
     jacpy_qualified_type_name,
-    jacpy_raise_error,
     jacpy_release,
+    jacpy_set_exception,
     jacpy_text,
     jacpy_tuple_set_owned,
     jacpy_type_name,
+    jacpy_unicode_decode_bytes,
     jacpy_utf8,
-    jacpy_writer_new
+    jacpy_writer_new,
+    Py_NewRef,
+    Py_TYPE,
+    PyBool_Type,
+    PyByteArray_Type,
+    PyBytes_FromStringAndSize,
+    PyBytes_Type,
+    PyDict_Type,
+    PyErr_GetRaisedException,
+    PyErr_SetRaisedException,
+    PyFloat_Type,
+    PyFrozenSet_Type,
+    PyFunction_Type,
+    PyList_Type,
+    PyLong_Type,
+    PyMem_RawMalloc,
+    _PyNone_Type,
+    PyObject,
+    PyObject_Repr,
+    PyPickleBuffer_Type,
+    PySet_Type,
+    PySys_AuditTuple,
+    PyTuple_New,
+    PyTuple_Type,
+    PyType_Type,
+    PyUnicode_Type,
+    PyUnicodeWriter,
+    PyObject_CallMethod
 }
 import from c {
     def jac_heap_size(address: u64) -> i64;  def jac_list_heap_size(
@@ -51,8 +72,75 @@ import from c {
     ) -> i64;
 }
 
-def object_error(kind: str, message: str) {
-    jacpy_raise_error(kind, message, i64(len(message.encode("utf-8"))));
+# The exact type of each builtin_kind, in value order; NONE is NoneType.
+glob:priv BUILTIN_TYPES: list[ptr[PyObject]] = [
+         addressof(_PyNone_Type),
+         addressof(PyBool_Type),
+         addressof(PyLong_Type),
+         addressof(PyFloat_Type),
+         addressof(PyBytes_Type),
+         addressof(PyUnicode_Type),
+         addressof(PyTuple_Type),
+         addressof(PyList_Type),
+         addressof(PyDict_Type),
+         addressof(PySet_Type),
+         addressof(PyFrozenSet_Type),
+         addressof(PyByteArray_Type),
+         addressof(PyType_Type),
+         addressof(PyFunction_Type),
+         addressof(PyPickleBuffer_Type)
+     ];
+
+"""The builtin_kind value of a value's exact type; OTHER for a subclass or any
+other type."""
+def builtin_kind_of(value: ptr[PyObject]) -> int {
+    exact = Py_TYPE(value);
+    for kind in range(len(BUILTIN_TYPES)) {
+        if BUILTIN_TYPES[kind] == exact {
+            return kind;
+        }
+    }
+    return builtin_kind.OTHER.value;
+}
+
+"""The exact type of a builtin_kind other than OTHER, as a new reference."""
+def builtin_type(kind: builtin_kind) -> ptr[PyObject] {
+    return Py_NewRef(BUILTIN_TYPES[kind.value]);
+}
+
+# Raise `kind` (an exception type such as PyExc_ValueError) with a text message.
+def object_error(kind: ptr[PyObject], message: str) {
+    jacpy_set_exception(kind, message, i64(len(message.encode("utf-8"))));
+}
+
+# `value` converted to a C int as a C cast does: its low 32 bits, read as a
+# signed number. A Jac narrowing `i32(value)` traps on an out-of-range value
+# instead; ports use this where the C code they replace truncates.
+def c_int(value: int) -> i32 {
+    bits = value & 0xFFFFFFFF;
+    if bits >= 0x80000000 {
+        bits -= 0x100000000;
+    }
+    return i32(bits);
+}
+
+# `value` converted to a C size_t as a C cast does: a negative value wraps to
+# its two's complement (-1 is SIZE_MAX), where a Jac `u64(value)` traps.
+def c_size(value: i64) -> u64 {
+    if value >= 0 {
+        return u64(value);
+    }
+    return ~u64(-(value + 1));
+}
+
+# The byte at `address + offset` of C memory.
+def memory_byte(address: ptr, offset: i64) -> i64 {
+    return i64(ptr[u8](int(address) + int(offset)).view(1)[0]);
+}
+
+# Store the low byte of `value` at `address + offset` of C memory.
+def memory_set(address: ptr, offset: i64, value: i64) {
+    ptr[u8](int(address) + int(offset)).view(1)[0] = u8(value & 255);
 }
 
 # The payload of a retained bytes-like value, copied into Jac storage.
@@ -127,6 +215,32 @@ def object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
     return result;
 }
 
+# PySys_Audit(event, format, ...): the argument values are owned and released
+# here. False with the exception set when a value is missing or a hook raises.
+def audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
+    complete = True;
+    for value in values {
+        if not value {
+            complete = False;
+        }
+    }
+    status = i32(-1);
+    if complete {
+        arguments = PyTuple_New(i64(len(values)));
+        if arguments {
+            for i in range(len(values)) {
+                jacpy_tuple_set_owned(arguments, i64(i), Py_NewRef(values[i]));
+            }
+            status = PySys_AuditTuple(event, arguments);
+            jacpy_release(arguments);
+        }
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    return status >= 0;
+}
+
 def type_name(value: ptr[PyObject], qualified: bool = False) -> str {
     name = required(
         jacpy_qualified_type_name(value) if qualified else jacpy_type_name(value)
@@ -155,7 +269,9 @@ def serialization_note(
         }
         note = text_object("when serializing " + type_name(value, True) + tail);
         try {
-            checked(jacpy_exception_note(error, note));
+            added = PyObject_CallMethod(error, "add_note", "O", note);
+            checked(i64(0 if added else -1));
+            jacpy_release(added);
         } finally {
             jacpy_release(note);
         }
@@ -171,4 +287,70 @@ def new_writer -> ptr[PyUnicodeWriter] {
         raise boundary_failure();
     }
     return writer;
+}
+
+# The length of a NUL-terminated C string, reading at most `limit` bytes
+# when `limit` is not negative (strnlen()).
+def c_string_length(address: ptr[u8], limit: int = -1) -> int {
+    length = 0;
+    while limit < 0 or length < limit {
+        if (address + length).view(1)[0] == 0 {
+            break;
+        }
+        length += 1;
+    }
+    return length;
+}
+
+# A C string as a new str decoded as strict UTF-8, as PyUnicode_FromString()
+# does; `limit` caps the bytes read, as strncpy() into a fixed buffer would.
+def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
+    payload = jacpy_bytes_from_memory(
+        ptr(address), i64(c_string_length(address, limit))
+    );
+    if not payload {
+        return payload;
+    }
+    text = jacpy_unicode_decode_bytes(payload, "utf-8");
+    jacpy_release(payload);
+    return text;
+}
+
+# `size` bytes at `address` as a new str decoded as strict UTF-8, as
+# PyUnicode_FromStringAndSize() does.
+def c_text(address: ptr, size: i64) -> ptr[PyObject] {
+    return PyUnicode_DecodeUTF8Stateful(address, size, ptr[u8](), None);
+}
+
+# A NUL-terminated UTF-8 copy of `text` in raw memory the caller keeps (as a
+# static C string would be); NULL when allocation fails.
+def c_string_copy(text: str) -> ptr[u8] {
+    encoded = text.encode("utf-8");
+    size = len(encoded);
+    memory = ptr[u8](PyMem_RawMalloc(u64(size + 1)));
+    if memory.is_null() {
+        return memory;
+    }
+    characters = memory.view(size + 1);
+    for i in range(size) {
+        characters[i] = u8(encoded[i]);
+    }
+    characters[size] = u8(0);
+    return memory;
+}
+
+# A C string made once and kept for the process, as a string literal is in C:
+# for C APIs that keep the pointer (a capsule name) or take a C string where
+# a Jac str would be a temporary.
+obj StaticText {
+    has text: str,
+        address: ptr[u8] = ptr[u8]();
+
+    # The C string; NULL when allocation fails.
+    def get -> ptr[u8] {
+        if not self.address {
+            self.address = c_string_copy(self.text);
+        }
+        return self.address;
+    }
 }

@@ -1,9 +1,10 @@
 """Native BOM and coding-cookie detection for Python source input."""
 
 import from jaclang.runtime.python.cpython_api {
+    PyErr_ExceptionMatches,
+    PyExc_LookupError,
     PyObject,
     jacpy_codec_valid,
-    jacpy_error_is,
     jacpy_fd_line
 }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
@@ -76,7 +77,7 @@ def source_encoding(source: bytes) -> str {
         encoding = cookie_encoding(line);
         if encoding is not None {
             if jacpy_codec_valid(encoding) == 0 {
-                if jacpy_error_is("LookupError") != 0 {
+                if PyErr_ExceptionMatches(PyExc_LookupError) != 0 {
                     take_error_text();
                     raise syntax_failure("unknown encoding: " + encoding);
                 }

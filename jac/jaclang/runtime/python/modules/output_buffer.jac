@@ -9,6 +9,8 @@ import from jaclang.runtime.python.cpython_api {
     NULL,
     PyBytes_AsString,
     PyBytes_Size,
+    PyExc_MemoryError,
+    PyExc_SystemError,
     PyList_Append,
     PyList_GetItem,
     PyList_New,
@@ -17,7 +19,6 @@ import from jaclang.runtime.python.cpython_api {
     Py_NewRef,
     jacpy_buffer_new,
     jacpy_memory_copy,
-    jacpy_offset,
     jacpy_release
 }
 import from jaclang.runtime.python.capi { object_error }
@@ -61,7 +62,7 @@ obj BlocksOutputBuffer {
         block = jacpy_buffer_new(size);
         if not block {
             if not quiet {
-                object_error("MemoryError", UNABLE);
+                object_error(PyExc_MemoryError, UNABLE);
             }
             return -1;
         }
@@ -94,7 +95,8 @@ obj BlocksOutputBuffer {
     def grow(cursor: Cursor) -> i64 {
         if cursor.avail_out != 0 {
             object_error(
-                "SystemError", "avail_out is non-zero in _BlocksOutputBuffer_Grow()."
+                PyExc_SystemError,
+                "avail_out is non-zero in _BlocksOutputBuffer_Grow()."
             );
             return -1;
         }
@@ -107,12 +109,12 @@ obj BlocksOutputBuffer {
             }
         }
         if size > SSIZE_MAX - self.allocated {
-            object_error("MemoryError", UNABLE);
+            object_error(PyExc_MemoryError, UNABLE);
             return -1;
         }
         block = jacpy_buffer_new(size);
         if not block {
-            object_error("MemoryError", UNABLE);
+            object_error(PyExc_MemoryError, UNABLE);
             return -1;
         }
         if PyList_Append(self.blocks, block) < 0 {
@@ -142,10 +144,10 @@ obj BlocksOutputBuffer {
         }
         result = jacpy_buffer_new(self.allocated - avail_out);
         if not result {
-            object_error("MemoryError", UNABLE);
+            object_error(PyExc_MemoryError, UNABLE);
             return NULL;
         }
-        position: ptr = PyBytes_AsString(result);
+        position = PyBytes_AsString(result);
         for index in range(count) {
             block = PyList_GetItem(self.blocks, index);
             size = PyBytes_Size(block);
@@ -153,7 +155,7 @@ obj BlocksOutputBuffer {
                 size -= avail_out;
             }
             jacpy_memory_copy(position, PyBytes_AsString(block), size);
-            position = jacpy_offset(position, size);
+            position += size;
         }
         self.discard();
         return result;

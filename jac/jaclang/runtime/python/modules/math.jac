@@ -6,9 +6,30 @@ see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_clear_errno,
+    jacpy_error_pending,
+    jacpy_float_bits,
+    jacpy_float_from_bits,
+    jacpy_is_bool,
+    jacpy_is_exact_float,
+    jacpy_is_exact_long,
+    jacpy_is_long,
+    jacpy_is_tuple,
+    jacpy_long_fits_i64,
+    jacpy_long_shift,
+    jacpy_long_sign,
+    jacpy_math_errno,
+    jacpy_release,
+    jacpy_special_noargs,
+    jacpy_tuple_item,
     NULL,
-    PyBool_FromLong,
+    Py_NewRef,
+    Py_None,
     PyErr_Clear,
+    PyExc_OverflowError,
+    PyExc_TypeError,
+    PyExc_ValueError,
+    PyExc_ZeroDivisionError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyIter_Next,
@@ -18,6 +39,8 @@ import from jaclang.runtime.python.cpython_api {
     PyLong_FromDouble,
     PyLong_FromLongLong,
     PyLong_FromUnsignedLongLong,
+    _PyLong_GCD,
+    _PyLong_NumBits,
     PyNumber_Absolute,
     PyNumber_Add,
     PyNumber_FloorDivide,
@@ -26,32 +49,15 @@ import from jaclang.runtime.python.cpython_api {
     PyNumber_Subtract,
     PyObject,
     PyObject_GetIter,
+    PyObject_IsTrue,
     PyObject_RichCompareBool,
     PySequence_Tuple,
     PyTuple_Size,
-    Py_NewRef,
-    _PyLong_GCD,
-    _PyLong_NumBits,
-    jacpy_clear_errno,
-    jacpy_error_pending,
-    jacpy_float_bits,
-    jacpy_float_from_bits,
-    jacpy_is_bool,
-    jacpy_is_exact_float,
-    jacpy_is_exact_long,
-    jacpy_is_long,
-    jacpy_is_none,
-    jacpy_is_tuple,
-    jacpy_libm_parts,
-    jacpy_long_fits_i64,
-    jacpy_long_frexp,
-    jacpy_long_shift,
-    jacpy_long_sign,
-    jacpy_math_errno,
-    jacpy_release,
-    jacpy_special_noargs,
-    jacpy_tuple_item
+    Py_BuildValue,
+    _PyLong_Frexp
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
+import from jaclang.runtime.python.bindings.arguments { vector_tuple }
 import from jaclang.runtime.python.capi { object_error, required, boundary_failure }
 
 import from jaclang.runtime.python.modules.numeric {
@@ -89,6 +95,8 @@ import from jaclang.runtime.python.modules.numeric {
     remainder,
     pow,
     fma,
+    frexp,
+    modf,
     isfinite,
     isinf,
     isnan,
@@ -179,12 +187,14 @@ def:pub jacpy_math_factorial(argument: ptr[PyObject]) -> ptr[PyObject] {
     try {
         value = required(PyNumber_Index(argument));
         if jacpy_long_sign(value) < 0 {
-            object_error("ValueError", "factorial() not defined for negative values");
+            object_error(
+                PyExc_ValueError, "factorial() not defined for negative values"
+            );
             return NULL;
         }
         if _PyLong_NumBits(value) > 63 {
             object_error(
-                "OverflowError",
+                PyExc_OverflowError,
                 "factorial() argument should not exceed 9223372036854775807"
             );
             return NULL;
@@ -236,7 +246,7 @@ def:pub jacpy_math_isqrt(argument: ptr[PyObject]) -> ptr[PyObject] {
         n = required(PyNumber_Index(argument));
         sign = jacpy_long_sign(n);
         if sign < 0 {
-            object_error("ValueError", "isqrt() argument must be nonnegative");
+            object_error(PyExc_ValueError, "isqrt() argument must be nonnegative");
             return NULL;
         }
         if sign == 0 {
@@ -329,7 +339,7 @@ def:priv perm_comb(n: ptr[PyObject], k: i64, combination: bool) -> ptr[PyObject]
 def:pub jacpy_math_comb(
     n_arg: ptr[PyObject], k_arg: ptr[PyObject], combination: i64
 ) -> ptr[PyObject] {
-    if combination == 0 and (k_arg == 0 or jacpy_is_none(k_arg) != 0) {
+    if combination == 0 and (k_arg == 0 or k_arg == Py_None) {
         return jacpy_math_factorial(n_arg);
     }
     n: ptr[PyObject] = NULL;
@@ -339,11 +349,11 @@ def:pub jacpy_math_comb(
         n = required(PyNumber_Index(n_arg));
         k = required(PyNumber_Index(k_arg));
         if jacpy_long_sign(n) < 0 {
-            object_error("ValueError", "n must be a non-negative integer");
+            object_error(PyExc_ValueError, "n must be a non-negative integer");
             return NULL;
         }
         if jacpy_long_sign(k) < 0 {
-            object_error("ValueError", "k must be a non-negative integer");
+            object_error(PyExc_ValueError, "k must be a non-negative integer");
             return NULL;
         }
         comparison = PyObject_RichCompareBool(k, n, 4);
@@ -366,7 +376,7 @@ def:pub jacpy_math_comb(
         }
         if _PyLong_NumBits(k) > 63 {
             object_error(
-                "OverflowError",
+                PyExc_OverflowError,
                 ("min(n - k, k)" if combination != 0 else "k")
                     + " must not exceed 9223372036854775807"
             );
@@ -421,38 +431,30 @@ def:priv domain(operation: i64, value: float) {
     } elif operation == 20 {
         message = "expected a nonnegative input, got " + float_repr(value);
     }
-    object_error("ValueError", message);
+    object_error(PyExc_ValueError, message);
 }
 
 def:priv logarithm(value: ptr[PyObject], base: int) -> float {
     if jacpy_is_long(value) != 0 {
         if jacpy_long_sign(value) <= 0 {
-            object_error("ValueError", "expected a positive input");
+            object_error(PyExc_ValueError, "expected a positive input");
             raise boundary_failure();
         }
         x = PyLong_AsDouble(value);
         if jacpy_error_pending() != 0 {
+            # The conversion to double overflowed, but the log can be computed
+            # anyway: the value is ~= x * 2**e, so its log ~= log(x) + log(2) * e.
             PyErr_Clear();
-            parts = required(jacpy_long_frexp(value));
-            fraction: ptr[PyObject] = NULL;
-            exponent: ptr[PyObject] = NULL;
-            try {
-                fraction = required(jacpy_tuple_item(parts, 0));
-                exponent = required(jacpy_tuple_item(parts, 1));
-                x = input_float(fraction);
-                power = float(PyLong_AsLongLong(exponent));
-                if base == 2 {
-                    return log2(x) + power;
-                }
-                if base == 10 {
-                    return log10(x) + power * log10(2.0);
-                }
-                return log(x) + power * log(2.0);
-            } finally {
-                jacpy_release(parts);
-                jacpy_release(fraction);
-                jacpy_release(exponent);
+            exponent: i64 = 0;
+            x = _PyLong_Frexp(value, &mut exponent);
+            power = float(exponent);
+            if base == 2 {
+                return log2(x) + power;
             }
+            if base == 10 {
+                return log10(x) + power * log10(2.0);
+            }
+            return log(x) + power * log(2.0);
         }
         if base == 2 {
             return log2(x);
@@ -464,7 +466,9 @@ def:priv logarithm(value: ptr[PyObject], base: int) -> float {
     }
     x = input_float(value);
     if x <= 0.0 {
-        object_error("ValueError", "expected a positive input, got " + float_repr(x));
+        object_error(
+            PyExc_ValueError, "expected a positive input, got " + float_repr(x)
+        );
         raise boundary_failure();
     }
     if base == 2 {
@@ -678,7 +682,7 @@ def:pub jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObjec
         }
         denominator = logarithm(base, 0);
         if denominator == 0.0 {
-            object_error("ZeroDivisionError", "division by zero");
+            object_error(PyExc_ZeroDivisionError, "division by zero");
             return NULL;
         }
         return required(PyFloat_FromDouble(numerator / denominator));
@@ -700,7 +704,7 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
             }
             if operation == 30 {
                 object_error(
-                    "TypeError",
+                    PyExc_TypeError,
                     "type " + type_name(value) + " doesn't define __trunc__ method"
                 );
                 return NULL;
@@ -753,7 +757,7 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
                 return NULL;
             }
             if gamma_error == 2 and fabs(gamma) >= 1.5 {
-                object_error("OverflowError", "math range error");
+                object_error(PyExc_OverflowError, "math range error");
                 return NULL;
             }
             return required(PyFloat_FromDouble(gamma));
@@ -819,7 +823,7 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
             return NULL;
         }
         if (isinf(result) and isfinite(x)) or (error == 2 and fabs(result) >= 1.0) {
-            object_error("OverflowError", "math range error");
+            object_error(PyExc_OverflowError, "math range error");
             return NULL;
         }
         return required(PyFloat_FromDouble(result));
@@ -850,14 +854,16 @@ def:pub jacpy_math_binary(
         error = jacpy_math_errno();
         if isnan(result) {
             if not isnan(x) and not isnan(y) {
-                object_error("ValueError", "math domain error");
+                object_error(PyExc_ValueError, "math domain error");
                 return NULL;
             }
             error = 0;
         } elif isinf(result) {
             if isfinite(x) and isfinite(y) {
                 object_error(
-                    "ValueError" if operation == 4 and x == 0.0 else "OverflowError",
+                    PyExc_ValueError
+                        if operation == 4 and x == 0.0
+                        else PyExc_OverflowError,
                     "math domain error"
                         if operation == 4 and x == 0.0
                         else "math range error"
@@ -867,11 +873,11 @@ def:pub jacpy_math_binary(
             error = 0;
         }
         if error == 1 {
-            object_error("ValueError", "math domain error");
+            object_error(PyExc_ValueError, "math domain error");
             return NULL;
         }
         if error == 2 and fabs(result) >= 1.0 {
-            object_error("OverflowError", "math range error");
+            object_error(PyExc_OverflowError, "math range error");
             return NULL;
         }
         return required(PyFloat_FromDouble(result));
@@ -880,12 +886,31 @@ def:pub jacpy_math_binary(
     }
 }
 
+# math.frexp(x) (operation 0) and math.modf(x) (operation 1). Special values
+# are handled directly, to sidestep platform differences.
 def:pub jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
+    x: float = 0.0;
     try {
-        return required(jacpy_libm_parts(input_float(value), operation));
+        x = input_float(value);
     } except boundary_failure {
         return NULL;
     }
+    if operation == 0 {
+        exponent: i32 = 0;
+        if not (isnan(x) or isinf(x) or x == 0.0) {
+            x = frexp(x, &mut exponent);
+        }
+        return Py_BuildValue("(di)", x, exponent);
+    }
+    if isinf(x) {
+        return Py_BuildValue("(dd)", copysign(0.0, x), x);
+    }
+    if isnan(x) {
+        return Py_BuildValue("(dd)", x, x);
+    }
+    whole: float = 0.0;
+    fraction = modf(x, &mut whole);
+    return Py_BuildValue("(dd)", fraction, whole);
 }
 
 def:pub jacpy_math_ldexp(
@@ -894,7 +919,9 @@ def:pub jacpy_math_ldexp(
     try {
         x = input_float(value);
         if jacpy_is_long(exponent) == 0 {
-            object_error("TypeError", "Expected an int as second argument to ldexp.");
+            object_error(
+                PyExc_TypeError, "Expected an int as second argument to ldexp."
+            );
             return NULL;
         }
         if x == 0.0 or not isfinite(x) {
@@ -903,14 +930,14 @@ def:pub jacpy_math_ldexp(
         sign = jacpy_long_sign(exponent);
         if _PyLong_NumBits(exponent) > 31 {
             if sign > 0 {
-                object_error("OverflowError", "math range error");
+                object_error(PyExc_OverflowError, "math range error");
                 return NULL;
             }
             return required(PyFloat_FromDouble(copysign(0.0, x)));
         }
         result = scaled(x, int(PyLong_AsLongLong(exponent)));
         if isinf(result) {
-            object_error("OverflowError", "math range error");
+            object_error(PyExc_OverflowError, "math range error");
             return NULL;
         }
         return required(PyFloat_FromDouble(result));
@@ -928,11 +955,11 @@ def:pub jacpy_math_fma(
         z = input_float(c);
         result = fma(x, y, z);
         if isnan(result) and not isnan(x) and not isnan(y) and not isnan(z) {
-            object_error("ValueError", "invalid operation in fma");
+            object_error(PyExc_ValueError, "invalid operation in fma");
             return NULL;
         }
         if isinf(result) and isfinite(x) and isfinite(y) and isfinite(z) {
-            object_error("OverflowError", "overflow in fma");
+            object_error(PyExc_OverflowError, "overflow in fma");
             return NULL;
         }
         return required(PyFloat_FromDouble(result));
@@ -950,7 +977,7 @@ def:pub jacpy_math_isclose(
         relative = input_float(rel) if rel != 0 else 1e-9;
         absolute = input_float(abs_tol) if abs_tol != 0 else 0.0;
         if relative < 0.0 or absolute < 0.0 {
-            object_error("ValueError", "tolerances must be non-negative");
+            object_error(PyExc_ValueError, "tolerances must be non-negative");
             return NULL;
         }
         if x == y {
@@ -982,13 +1009,13 @@ def:pub jacpy_math_nextafter(
         x = input_float(a);
         y = input_float(b);
         count: u64 = 1;
-        if steps == 0 or jacpy_is_none(steps) != 0 {
+        if steps == 0 or steps == Py_None {
             return required(PyFloat_FromDouble(nextafter(x, y)));
         }
         if steps != 0 {
             count_object = required(PyNumber_Index(steps));
             if jacpy_long_sign(count_object) < 0 {
-                object_error("ValueError", "steps must be a non-negative integer");
+                object_error(PyExc_ValueError, "steps must be a non-negative integer");
                 return NULL;
             }
             count = u64(18446744073709551615)
@@ -1092,7 +1119,9 @@ def:pub jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject] {
             if x != 0.0 {
                 if not isfinite(x) {
                     if isfinite(original) {
-                        object_error("OverflowError", "intermediate overflow in fsum");
+                        object_error(
+                            PyExc_OverflowError, "intermediate overflow in fsum"
+                        );
                         return NULL;
                     }
                     if isinf(original) {
@@ -1110,7 +1139,7 @@ def:pub jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject] {
         }
         if special != 0.0 {
             if isnan(infinities) {
-                object_error("ValueError", "-inf + inf in fsum");
+                object_error(PyExc_ValueError, "-inf + inf in fsum");
                 return NULL;
             }
             return required(PyFloat_FromDouble(special));
@@ -1191,24 +1220,17 @@ def:priv norm(values: list[float], largest: float, found_nan: bool) -> float {
     if largest == 0.0 or len(values) <= 1 {
         return largest;
     }
-    parts = required(jacpy_libm_parts(largest, 0));
-    exponent: ptr[PyObject] = NULL;
-    scale: float = 0.0;
-    try {
-        exponent = required(jacpy_tuple_item(parts, 1));
-        power = int(PyLong_AsLongLong(exponent));
-        if power < -1023 {
-            for i in range(len(values)) {
-                values[i] /= 2.2250738585072014e-308;
-            }
-            return 2.2250738585072014e-308
-                * norm(values, largest / 2.2250738585072014e-308, found_nan);
+    exponent: i32 = 0;
+    frexp(largest, &mut exponent);
+    power = int(exponent);
+    if power < -1023 {
+        for i in range(len(values)) {
+            values[i] /= 2.2250738585072014e-308;
         }
-        scale = scaled(1.0, -power);
-    } finally {
-        jacpy_release(parts);
-        jacpy_release(exponent);
+        return 2.2250738585072014e-308
+            * norm(values, largest / 2.2250738585072014e-308, found_nan);
     }
+    scale = scaled(1.0, -power);
     total: float = 1.0;
     fraction1: float = 0.0;
     fraction2: float = 0.0;
@@ -1269,7 +1291,7 @@ def:pub jacpy_math_dist(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
         count = PyTuple_Size(left);
         if count != PyTuple_Size(right) {
             object_error(
-                "ValueError", "both points must have the same number of dimensions"
+                PyExc_ValueError, "both points must have the same number of dimensions"
             );
             return NULL;
         }
@@ -1361,7 +1383,7 @@ def:pub jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] 
                     return NULL;
                 }
                 if (first == 0) != (second == 0) {
-                    object_error("ValueError", "Inputs are not the same length");
+                    object_error(PyExc_ValueError, "Inputs are not the same length");
                     return NULL;
                 }
                 finished = first == 0;
@@ -1455,4 +1477,250 @@ def:pub jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] 
         jacpy_release(result);
     }
     return NULL;
+}
+
+# The Argument Clinic _impl functions. A double parameter arrives converted;
+# the shared kernels take Python numbers, so it is passed back as a float.
+def:priv float_object(value: f64) -> ptr[PyObject] {
+    return PyFloat_FromDouble(value);
+}
+
+def:priv unary_float(operation: int, x: f64) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_unary(i64(operation), value);
+    jacpy_release(value);
+    return result;
+}
+
+def:priv binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject] {
+    left = float_object(x);
+    right = float_object(y);
+    result: ptr[PyObject] = NULL;
+    if left != 0 and right != 0 {
+        result = jacpy_math_binary(i64(operation), left, right);
+    }
+    jacpy_release(left);
+    jacpy_release(right);
+    return result;
+}
+
+def math_gcd_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if arguments == 0 {
+        return NULL;
+    }
+    result = jacpy_math_gcd(arguments, 0);
+    jacpy_release(arguments);
+    return result;
+}
+
+def math_lcm_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if arguments == 0 {
+        return NULL;
+    }
+    result = jacpy_math_gcd(arguments, 1);
+    jacpy_release(arguments);
+    return result;
+}
+
+def math_hypot_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    arguments = vector_tuple(args, nargs);
+    if arguments == 0 {
+        return NULL;
+    }
+    result = jacpy_math_hypot(arguments);
+    jacpy_release(arguments);
+    return result;
+}
+
+def math_ceil_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(28, x);
+}
+
+def math_floor_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(29, x);
+}
+
+def math_trunc_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(30, x);
+}
+
+def math_log10_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(31, x);
+}
+
+def math_log2_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_unary(32, x);
+}
+
+def math_fsum_impl(module: ptr[PyObject], seq: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_fsum(seq);
+}
+
+def math_isqrt_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_isqrt(n);
+}
+
+def math_factorial_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_math_factorial(n);
+}
+
+def math_frexp_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_parts(0, value);
+    jacpy_release(value);
+    return result;
+}
+
+def math_modf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_parts(1, value);
+    jacpy_release(value);
+    return result;
+}
+
+def math_ldexp_impl(module: ptr[PyObject], x: f64, i: ptr[PyObject]) -> ptr[PyObject] {
+    value = float_object(x);
+    if value == 0 {
+        return NULL;
+    }
+    result = jacpy_math_ldexp(value, i);
+    jacpy_release(value);
+    return result;
+}
+
+def math_fma_impl(module: ptr[PyObject], x: f64, y: f64, z: f64) -> ptr[PyObject] {
+    values = [float_object(x), float_object(y), float_object(z)];
+    result: ptr[PyObject] = NULL;
+    if 0 not in values {
+        result = jacpy_math_fma(values[0], values[1], values[2]);
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    return result;
+}
+
+def math_fmod_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
+    return binary_float(2, x, y);
+}
+
+def math_pow_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
+    return binary_float(4, x, y);
+}
+
+def math_dist_impl(
+    module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_dist(p, q);
+}
+
+def math_sumprod_impl(
+    module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_sumprod(p, q);
+}
+
+def math_degrees_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(23, x);
+}
+
+def math_radians_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(24, x);
+}
+
+def math_isfinite_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(25, x);
+}
+
+def math_isinf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(26, x);
+}
+
+def math_isnan_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+    return unary_float(27, x);
+}
+
+# isclose returns clinic's bool: -1 with the error set on failure.
+def math_isclose_impl(
+    module: ptr[PyObject], a: f64, b: f64, rel_tol: f64, abs_tol: f64
+) -> i32 {
+    values = [
+        float_object(a),
+        float_object(b),
+        float_object(rel_tol),
+        float_object(abs_tol)
+    ];
+    result: ptr[PyObject] = NULL;
+    if 0 not in values {
+        result = jacpy_math_isclose(values[0], values[1], values[2], values[3]);
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    if result == 0 {
+        return i32(-1);
+    }
+    truth = PyObject_IsTrue(result);
+    jacpy_release(result);
+    return i32(truth);
+}
+
+def math_prod_impl(
+    module: ptr[PyObject], iterable: ptr[PyObject], start: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_prod(iterable, start);
+}
+
+def math_perm_impl(
+    module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_comb(n, k, 0);
+}
+
+def math_comb_impl(
+    module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_math_comb(n, k, 1);
+}
+
+def math_nextafter_impl(
+    module: ptr[PyObject], x: f64, y: f64, steps: ptr[PyObject]
+) -> ptr[PyObject] {
+    left = float_object(x);
+    right = float_object(y);
+    result: ptr[PyObject] = NULL;
+    if left != 0 and right != 0 {
+        result = jacpy_math_nextafter(left, right, steps);
+    }
+    jacpy_release(left);
+    jacpy_release(right);
+    return result;
+}
+
+# ulp returns clinic's double: -1.0 with the error set on failure.
+def math_ulp_impl(module: ptr[PyObject], x: f64) -> f64 {
+    result = unary_float(33, x);
+    if result == 0 {
+        return -1.0;
+    }
+    value = PyFloat_AsDouble(result);
+    jacpy_release(result);
+    return value;
 }

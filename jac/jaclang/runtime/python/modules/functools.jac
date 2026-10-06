@@ -6,19 +6,41 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_call_two,
+    jacpy_dict_get,
+    jacpy_dict_size,
+    jacpy_error_pending,
+    jacpy_is_dict,
+    jacpy_is_exact_dict,
+    jacpy_is_exact_long,
+    jacpy_is_exact_tuple,
+    jacpy_is_exact_unicode,
+    jacpy_is_tuple,
+    jacpy_object_type,
+    jacpy_release,
+    jacpy_tuple_item,
+    jacpy_tuple_set_owned,
     NULL,
-    PyBool_FromLong,
+    Py_NewRef,
+    Py_None,
+    Py_ReprEnter,
+    Py_ReprLeave,
     PyCallable_Check,
     PyDict_Clear,
     PyDict_Copy,
     PyDict_New,
+    PyDict_Next,
     PyDict_SetItem,
     PyDict_Update,
+    PyErr_ExceptionMatches,
+    PyExc_SystemError,
+    PyExc_TypeError,
     PyIter_Next,
     PyLong_AsLongLong,
     PyLong_FromLongLong,
     PyObject,
     PyObject_Call,
+    PyObject_CallNoArgs,
     PyObject_CallOneArg,
     PyObject_GetAttrString,
     PyObject_GetIter,
@@ -26,31 +48,24 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_RichCompare,
     PyObject_SetItem,
     PyObject_Str,
+    PyODict_Type,
     PySequence_Tuple,
     PyTuple_New,
-    PyTuple_Size,
-    Py_NewRef,
-    Py_ReprEnter,
-    Py_ReprLeave,
-    jacpy_call_two,
-    jacpy_dict_entry,
-    jacpy_dict_get,
-    jacpy_dict_size,
-    jacpy_error_is,
-    jacpy_error_pending,
-    jacpy_is_dict,
-    jacpy_is_exact_dict,
-    jacpy_is_exact_long,
-    jacpy_is_exact_tuple,
-    jacpy_is_exact_unicode,
-    jacpy_is_none,
-    jacpy_is_tuple,
-    jacpy_none,
-    jacpy_object_type,
-    jacpy_ordered_dict_new,
-    jacpy_release,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned
+    PyTuple_Size
+}
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
+}
+import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
 }
 import from jaclang.runtime.python.capi {
     object_error,
@@ -69,8 +84,8 @@ def:pub jacpy_reduce(
 ) -> ptr[PyObject] {
     iterator = PyObject_GetIter(iterable);
     if iterator == 0 {
-        if jacpy_error_is("TypeError") != 0 {
-            object_error("TypeError", "reduce() arg 2 must support iteration");
+        if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
+            object_error(PyExc_TypeError, "reduce() arg 2 must support iteration");
         }
         return NULL;
     }
@@ -81,7 +96,7 @@ def:pub jacpy_reduce(
         if accumulator == 0 {
             if jacpy_error_pending() == 0 {
                 object_error(
-                    "TypeError", "reduce() of empty iterable with no initial value"
+                    PyExc_TypeError, "reduce() of empty iterable with no initial value"
                 );
             }
             return NULL;
@@ -185,7 +200,7 @@ def:priv merge_args(
     }
     if calling and n < holes {
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             "missing positional arguments in 'partial' call; expected at least "
                 + str(holes)
                 + ", got "
@@ -230,7 +245,7 @@ def:priv validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]) {
         invalid = last == placeholder;
         jacpy_release(last);
         if invalid {
-            object_error("TypeError", "trailing Placeholders are not allowed");
+            object_error(PyExc_TypeError, "trailing Placeholders are not allowed");
             raise boundary_failure();
         }
     }
@@ -247,34 +262,20 @@ def:pub jacpy_partial_init(
 ) -> i64 {
     merged: ptr[PyObject] = NULL;
     kw: ptr[PyObject] = NULL;
-    pair: ptr[PyObject] = NULL;
     try {
         validate_tail(args, placeholder);
         if keywords != 0 {
             pos: i64 = 0;
-            while True {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                position = required(jacpy_tuple_item(pair, 0));
-                pos = PyLong_AsLongLong(position);
-                jacpy_release(position);
-                value = required(jacpy_tuple_item(pair, 2));
-                invalid = value == placeholder;
-                jacpy_release(value);
-                jacpy_release(pair);
-                pair = NULL;
-                if invalid {
+            key: ptr[PyObject] = NULL;
+            value: ptr[PyObject] = NULL;
+            while PyDict_Next(keywords, &mut pos, &mut key, &mut value) != 0 {
+                if value == placeholder {
                     object_error(
-                        "TypeError",
+                        PyExc_TypeError,
                         "Placeholder cannot be passed as a keyword argument"
                     );
                     raise boundary_failure();
                 }
-            }
-            if jacpy_error_pending() != 0 {
-                raise boundary_failure();
             }
         }
         merged = required(merge_args(old_args, args, placeholder, False));
@@ -294,7 +295,6 @@ def:pub jacpy_partial_init(
     } finally {
         jacpy_release(merged);
         jacpy_release(kw);
-        jacpy_release(pair);
     }
 }
 
@@ -335,7 +335,7 @@ def:pub jacpy_partial_restore(
     dictionary: ptr[PyObject] = NULL;
     try {
         if jacpy_is_tuple(saved) == 0 or PyTuple_Size(saved) != 4 {
-            object_error("TypeError", "invalid partial state");
+            object_error(PyExc_TypeError, "invalid partial state");
             raise boundary_failure();
         }
         fn = required(jacpy_tuple_item(saved, 0));
@@ -344,9 +344,9 @@ def:pub jacpy_partial_restore(
         dictionary = required(jacpy_tuple_item(saved, 3));
         if PyCallable_Check(fn) == 0
             or jacpy_is_tuple(args) == 0
-            or (jacpy_is_none(kw) == 0 and jacpy_is_dict(kw) == 0)
-            or (jacpy_is_none(dictionary) == 0 and jacpy_is_dict(dictionary) == 0) {
-            object_error("TypeError", "invalid partial state");
+            or (kw != Py_None and jacpy_is_dict(kw) == 0)
+            or (dictionary != Py_None and jacpy_is_dict(dictionary) == 0) {
+            object_error(PyExc_TypeError, "invalid partial state");
             raise boundary_failure();
         }
         validate_tail(args, state.placeholder);
@@ -355,7 +355,7 @@ def:pub jacpy_partial_restore(
             jacpy_release(args);
             args = normalized;
         }
-        if jacpy_is_none(kw) != 0 {
+        if kw == Py_None {
             normalized_kw = required(PyDict_New());
             jacpy_release(kw);
             kw = normalized_kw;
@@ -402,7 +402,6 @@ def:pub jacpy_partial_repr(
     fn = Py_NewRef(state.function);
     args = Py_NewRef(state.args);
     kw = Py_NewRef(state.keywords);
-    pair: ptr[PyObject] = NULL;
     item: ptr[PyObject] = NULL;
     key: ptr[PyObject] = NULL;
     text: ptr[PyObject] = NULL;
@@ -415,17 +414,12 @@ def:pub jacpy_partial_repr(
             item = NULL;
         }
         pos: i64 = 0;
-        while True {
-            pair = jacpy_dict_entry(kw, pos);
-            if pair == 0 {
-                break;
-            }
-            item = required(jacpy_tuple_item(pair, 0));
-            pos = PyLong_AsLongLong(item);
-            jacpy_release(item);
-            item = NULL;
-            key = required(jacpy_tuple_item(pair, 1));
-            item = required(jacpy_tuple_item(pair, 2));
+        entry_key: ptr[PyObject] = NULL;
+        entry_value: ptr[PyObject] = NULL;
+        while PyDict_Next(kw, &mut pos, &mut entry_key, &mut entry_value) != 0 {
+            # Prevent key.__str__ from deleting the value.
+            key = Py_NewRef(entry_key);
+            item = Py_NewRef(entry_value);
             text = required(PyObject_Str(key));
             arguments += ", " + text_value(text) + "=" + repr_value(item);
             jacpy_release(item);
@@ -434,11 +428,6 @@ def:pub jacpy_partial_repr(
             key = NULL;
             jacpy_release(text);
             text = NULL;
-            jacpy_release(pair);
-            pair = NULL;
-        }
-        if jacpy_error_pending() != 0 {
-            return NULL;
         }
         return text_object(
             type_name(owner, True) + "(" + repr_value(fn) + arguments + ")"
@@ -449,7 +438,6 @@ def:pub jacpy_partial_repr(
         jacpy_release(fn);
         jacpy_release(args);
         jacpy_release(kw);
-        jacpy_release(pair);
         jacpy_release(item);
         jacpy_release(key);
         jacpy_release(text);
@@ -535,7 +523,9 @@ def:pub jacpy_lru_init(
     state.typed = typed != 0;
     try {
         state.cache = required(
-            jacpy_ordered_dict_new() if maximum > 0 else PyDict_New()
+            PyObject_CallNoArgs(addressof(PyODict_Type))
+                if maximum > 0
+                else PyDict_New()
         );
         if maximum > 0 {
             state.move = required(PyObject_GetAttrString(state.cache, "move_to_end"));
@@ -566,8 +556,10 @@ def:priv cache_key(
         + (2 * nk + 1 if nk > 0 else i64(0))
         + (n + nk if state.typed else i64(0));
     key = required(PyTuple_New(count));
-    pair: ptr[PyObject] = NULL;
     item: ptr[PyObject] = NULL;
+    pos: i64 = 0;
+    keyword: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
     try {
         position: i64 = 0;
         for i in range(int(n)) {
@@ -581,30 +573,11 @@ def:priv cache_key(
         if nk > 0 {
             checked(jacpy_tuple_set_owned(key, position, Py_NewRef(state.marker)));
             position += 1;
-            pos: i64 = 0;
-            while True {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                item = required(jacpy_tuple_item(pair, 0));
-                pos = PyLong_AsLongLong(item);
-                jacpy_release(item);
-                item = NULL;
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_tuple_item(pair, 1))
-                    )
-                );
+            while PyDict_Next(keywords, &mut pos, &mut keyword, &mut value) != 0 {
+                checked(jacpy_tuple_set_owned(key, position, Py_NewRef(keyword)));
                 position += 1;
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_tuple_item(pair, 2))
-                    )
-                );
+                checked(jacpy_tuple_set_owned(key, position, Py_NewRef(value)));
                 position += 1;
-                jacpy_release(pair);
-                pair = NULL;
             }
         }
         if state.typed {
@@ -619,37 +592,22 @@ def:priv cache_key(
                 jacpy_release(item);
                 item = NULL;
             }
-            pos = i64(0);
-            while nk > 0 {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                item = required(jacpy_tuple_item(pair, 0));
-                pos = PyLong_AsLongLong(item);
-                jacpy_release(item);
-                item = required(jacpy_tuple_item(pair, 2));
+            pos = 0;
+            while nk > 0
+                and PyDict_Next(keywords, &mut pos, &mut keyword, &mut value) != 0 {
                 checked(
                     jacpy_tuple_set_owned(
-                        key, position, required(jacpy_object_type(item))
+                        key, position, required(jacpy_object_type(value))
                     )
                 );
                 position += 1;
-                jacpy_release(item);
-                item = NULL;
-                jacpy_release(pair);
-                pair = NULL;
             }
-        }
-        if jacpy_error_pending() != 0 {
-            raise boundary_failure();
         }
         return key;
     } except boundary_failure {
         jacpy_release(key);
         raise;
     } finally {
-        jacpy_release(pair);
         jacpy_release(item);
     }
 }
@@ -770,7 +728,7 @@ def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
                 args,
                 2,
                 required(
-                    jacpy_none()
+                    Py_NewRef(Py_None)
                         if state.maximum < 0
                         else PyLong_FromLongLong(state.maximum)
                 )
@@ -787,4 +745,88 @@ def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
     } finally {
         jacpy_release(args);
     }
+}
+
+# The native state of a functools._lru_cache_wrapper instance.
+obj LruState(NativeState) {
+    has native: lru_state;
+
+    def clear {
+        jacpy_lru_destroy(self.native);
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        for i in range(7) {
+            status = visit_reference(
+                jacpy_lru_field(self.native, i64(i)), visitor, context
+            );
+            if status != 0 {
+                return status;
+            }
+        }
+        return i32(0);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+# The Argument Clinic _impl functions. The binding points the tokens at the
+# KeyWrapper and _lru_cache_wrapper types it creates; KeyWrapper is also the
+# module's state slot 1.
+glob KeyWrapper_token = ClassToken(),
+     _lru_cache_wrapper_token = ClassToken();
+
+def _functools_reduce_impl(
+    module: ptr[PyObject],
+    function: ptr[PyObject],
+    iterable: ptr[PyObject],
+    initial: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_reduce(function, iterable, initial);
+}
+
+# cmp_to_key(): a KeyWrapper over `mycmp` with no wrapped object yet.
+def _functools_cmp_to_key_impl(
+    module: ptr[PyObject], mycmp: ptr[PyObject]
+) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(jacpy_binding_state_get(module, 1));
+    if instance == 0 {
+        return NULL;
+    }
+    state = ReferenceState(references=[Py_NewRef(mycmp), NULL]);
+    if jacpy_binding_native_set(instance, KeyWrapper_token.handle, state) < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+def:priv lru_of(instance: ptr[PyObject]) -> (LruState | None) {
+    if jacpy_binding_native_present(instance, _lru_cache_wrapper_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, _lru_cache_wrapper_token.handle);
+        if isinstance(state, LruState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native cache state is unavailable");
+    return None;
+}
+
+def _functools__lru_cache_wrapper_cache_info_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = lru_of(instance);
+    return jacpy_lru_info(state.native) if state is not None else NULL;
+}
+
+def _functools__lru_cache_wrapper_cache_clear_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = lru_of(instance);
+    if state is None or jacpy_lru_clear(state.native) != 0 {
+        return NULL;
+    }
+    return Py_NewRef(Py_None);
 }

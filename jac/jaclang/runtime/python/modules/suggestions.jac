@@ -6,6 +6,7 @@ The Levenshtein search itself is Python/suggestions.c, which tracebacks share.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Occurred,
+    PyExc_TypeError,
     PyList_GetItem,
     PyList_Size,
     PyObject,
@@ -21,12 +22,14 @@ def _suggestions__generate_suggestions_impl(
     module: ptr[PyObject], candidates: ptr[PyObject], item: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_exact_list(candidates) == 0 {
-        object_error("TypeError", "candidates must be a list");
+        object_error(PyExc_TypeError, "candidates must be a list");
         return NULL;
     }
     for index in range(PyList_Size(candidates)) {
         if jacpy_is_unicode(PyList_GetItem(candidates, index)) == 0 {
-            object_error("TypeError", "all elements in 'candidates' must be strings");
+            object_error(
+                PyExc_TypeError, "all elements in 'candidates' must be strings"
+            );
             return NULL;
         }
     }

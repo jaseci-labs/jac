@@ -7,6 +7,7 @@ BSD file flags that differ live in stat_platform.jac and its per-OS variants.
 
 import from jaclang.runtime.python.cpython_api {
     PyErr_Occurred,
+    PyExc_OverflowError,
     PyLong_AsUnsignedLong,
     PyNumber_Index,
     PyObject,
@@ -59,7 +60,7 @@ def mode_value(value: ptr[PyObject]) -> u64 {
         raise boundary_failure();
     }
     if number > u64(0xFFFFFFFF) {
-        object_error("OverflowError", "mode out of range");
+        object_error(PyExc_OverflowError, "mode out of range");
         raise boundary_failure();
     }
     return number;

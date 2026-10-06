@@ -7,18 +7,20 @@ jaclang.runtime.python.modules.syslog.
 Bound by hand in the module binding (no generic Jac converter):
     syslog.syslog: optional groups
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
+import from jaclang.runtime.python.cpython_api { NULL, PyMem_Free, PyObject }
 import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
 import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
 import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
     CallSignature,
-    invoke
+    PARSE_KEYWORDS,
+    invoke_stack,
+    unpack_stack
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_long,
@@ -35,132 +37,128 @@ import from jaclang.runtime.python.modules.syslog {
 }
 
 glob:priv syslog_openlog_signature = CallSignature(
-         "openlog", ["ident", "logoption", "facility"], 0, 3, 0
+         "openlog", ["ident", "logoption", "facility"], 0, 3, 0, parser=PARSE_KEYWORDS
      );
 
-def:priv syslog_openlog_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    ident: ptr[PyObject] = NULL;
-    if args.values[0] != NULL {
-        value = args.values[0];
-        ident = convert_unicode(value, "openlog", argument_label("ident", 1));
+def:priv syslog_openlog_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        ident: ptr[PyObject] = NULL;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            ident = convert_unicode(value, "openlog", argument_label("ident", 1));
+        }
+        logoption: i64 = 0;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            logoption = convert_long(value);
+        }
+        facility: i64 = LOG_USER;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            facility = convert_long(value);
+        }
+        return syslog_openlog_impl(receiver, ident, logoption, facility);
+    } except boundary_failure {
+        return NULL;
     }
-    logoption: i64 = 0;
-    if args.values[1] != NULL {
-        value = args.values[1];
-        logoption = convert_long(value);
-    }
-    facility: i64 = LOG_USER;
-    if args.values[2] != NULL {
-        value = args.values[2];
-        facility = convert_long(value);
-    }
-    return syslog_openlog_impl(receiver, ident, logoption, facility);
 }
 
 def:priv syslog_openlog_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        syslog_openlog_signature, args, kwargs, syslog_openlog_bound, receiver
+    if kwnames == NULL and nargs >= 0 and nargs <= 3 {
+        return syslog_openlog_bound(receiver, args, nargs);
+    }
+    values = unpack_stack(syslog_openlog_signature, args, nargs, kwnames);
+    if values {
+        unpacked = syslog_openlog_bound(receiver, values, 3);
+        PyMem_Free(values);
+        return unpacked;
+    }
+    return invoke_stack(
+        syslog_openlog_signature, args, nargs, kwnames, syslog_openlog_bound, receiver
     );
-}
-
-glob:priv syslog_closelog_signature = CallSignature("closelog", [], 0, 0, 0);
-def:priv syslog_closelog_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    return syslog_closelog_impl(receiver);
 }
 
 def:priv syslog_closelog_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        syslog_closelog_signature, args, kwargs, syslog_closelog_bound, receiver
-    );
-}
-
-glob:priv syslog_setlogmask_signature = CallSignature(
-         "setlogmask", ["maskpri"], 1, 1, 1
-     );
-
-def:priv syslog_setlogmask_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    maskpri: i64 = convert_long(value);
-    return return_long(syslog_setlogmask_impl(receiver, maskpri));
+    try {
+        return syslog_closelog_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv syslog_setlogmask_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        syslog_setlogmask_signature, args, kwargs, syslog_setlogmask_bound, receiver
-    );
-}
-
-glob:priv syslog_LOG_MASK_signature = CallSignature("LOG_MASK", ["pri"], 1, 1, 1);
-def:priv syslog_LOG_MASK_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pri: i64 = convert_long(value);
-    return return_long(syslog_LOG_MASK_impl(receiver, pri));
+    try {
+        maskpri: i64 = convert_long(value);
+        return return_long(syslog_setlogmask_impl(receiver, maskpri));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv syslog_LOG_MASK_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        syslog_LOG_MASK_signature, args, kwargs, syslog_LOG_MASK_bound, receiver
-    );
-}
-
-glob:priv syslog_LOG_UPTO_signature = CallSignature("LOG_UPTO", ["pri"], 1, 1, 1);
-def:priv syslog_LOG_UPTO_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    pri: i64 = convert_long(value);
-    return return_long(syslog_LOG_UPTO_impl(receiver, pri));
+    try {
+        pri: i64 = convert_long(value);
+        return return_long(syslog_LOG_MASK_impl(receiver, pri));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv syslog_LOG_UPTO_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        syslog_LOG_UPTO_signature, args, kwargs, syslog_LOG_UPTO_bound, receiver
-    );
+    try {
+        pri: i64 = convert_long(value);
+        return return_long(syslog_LOG_UPTO_impl(receiver, pri));
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "openlog",
-             MethodCallbacks(keywords=syslog_openlog_call),
+             MethodCallbacks(fast_keywords=syslog_openlog_call),
              "openlog($module, /, ident=<unrepresentable>, logoption=0,\n        facility=LOG_USER)\n--\n\nSet logging options of subsequent syslog() calls.",
-             3
+             130
          ),
          MethodDefinition(
              "closelog",
-             MethodCallbacks(keywords=syslog_closelog_call),
+             MethodCallbacks(positional=syslog_closelog_call),
              "closelog($module, /)\n--\n\nReset the syslog module values and call the system library closelog().",
-             3
+             4
          ),
          MethodDefinition(
              "setlogmask",
-             MethodCallbacks(keywords=syslog_setlogmask_call),
+             MethodCallbacks(positional=syslog_setlogmask_call),
              "setlogmask($module, maskpri, /)\n--\n\nSet the priority mask to maskpri and return the previous mask value.",
-             3
+             8
          ),
          MethodDefinition(
              "LOG_MASK",
-             MethodCallbacks(keywords=syslog_LOG_MASK_call),
+             MethodCallbacks(positional=syslog_LOG_MASK_call),
              "LOG_MASK($module, pri, /)\n--\n\nCalculates the mask for the individual priority pri.",
-             3
+             8
          ),
          MethodDefinition(
              "LOG_UPTO",
-             MethodCallbacks(keywords=syslog_LOG_UPTO_call),
+             MethodCallbacks(positional=syslog_LOG_UPTO_call),
              "LOG_UPTO($module, pri, /)\n--\n\nCalculates the mask for all priorities up to and including pri.",
-             3
+             8
          ),
 
      ];

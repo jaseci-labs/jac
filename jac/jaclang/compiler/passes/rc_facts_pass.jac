@@ -56,6 +56,54 @@ enum Ownership {
     UNKNOWN = "unknown"
 }
 
+def method_returns_borrow(callee: (Ability | None)) -> bool {
+    import from jaclang.compiler.expr_keys { type_tag_borrows }
+    if not isinstance(callee, Ability)
+        or not callee.is_method
+        or callee.is_static
+        or not isinstance(callee.signature, FuncSignature) {
+        return False;
+    }
+    if type_tag_borrows(callee.signature.return_type) {
+        return True;
+    }
+    _bodies: list[UniNode] = [callee];
+    if isinstance(callee.body, ImplDef) {
+        _bodies.append(callee.body);
+    }
+    _found = False;
+    for _body in _bodies {
+        for _ret in _body.get_all_sub_nodes(ReturnStmt) {
+            _owner = _ret.find_parent_of_type(Ability);
+            if _owner is not callee and _owner is not None {
+                continue;
+            }
+            if _ret.find_parent_of_type(LambdaExpr) is not None {
+                continue;
+            }
+            if not (isinstance(_ret.expr, Name) and _ret.expr.value == "self") {
+                return False;
+            }
+            _found = True;
+        }
+    }
+    return _found;
+}
+
+def call_borrows_receiver(call: FuncCall) -> bool {
+    if not isinstance(call.target, AtomTrailer) or not call.target.is_attr {
+        return False;
+    }
+    _recv: (UniNode | None) = call.target.target;
+    while isinstance(_recv, AtomTrailer) {
+        _recv = _recv.target;
+    }
+    if not isinstance(_recv, Name) {
+        return False;
+    }
+    return method_returns_borrow(call.callee_decl);
+}
+
 def result_ownership(expr: (Expr | None)) -> Ownership {
     if expr is None {
         return Ownership.UNKNOWN;

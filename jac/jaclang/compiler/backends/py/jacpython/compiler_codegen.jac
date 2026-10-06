@@ -1009,7 +1009,8 @@ def visit_stmt(
             }
         }
         cmp_cleanup = visit_expr(g, asgn.value, False, False);
-        if cmp_cleanup is not None and more_code_follows {
+        if cmp_cleanup is not None
+            and (more_code_follows or g.fallthrough_target is not None) {
             join = g.new_block();
             cmp_loc = expr_loc(asgn.value);
             g.emit_jump(OP_JUMP_FORWARD, join.id, cmp_loc);

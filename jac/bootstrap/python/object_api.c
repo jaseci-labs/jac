@@ -21,20 +21,8 @@ void *jacpy_sequence_slot(PyObject *handle) {
             : "'%.200s' object does not support indexing", type->tp_name);
     return NULL;
 }
-PyObject *jacpy_slot_item(void *slot, PyObject *handle, int64_t index) {
-    return ((ssizeargfunc)(uintptr_t)slot)(handle, (Py_ssize_t)index);
-}
 int64_t jacpy_less(PyObject *left, PyObject *right) {
     return PyObject_RichCompareBool(left, right, Py_LT);
-}
-int64_t jacpy_insert(PyObject *handle, int64_t index, PyObject *value) {
-    if (PyList_CheckExact(handle))
-        return PyList_Insert(handle, (Py_ssize_t)index, value);
-    PyObject *result = PyObject_CallMethod(handle, "insert", "nO",
-                                         (Py_ssize_t)index, value);
-    if (!result) return -1;
-    Py_DECREF(result);
-    return 0;
 }
 int64_t jacpy_recursion_enter(const char *context) {
     /* Unlike most CPython status APIs this may return positive on failure. */
@@ -65,14 +53,6 @@ void *jacpy_comparison_slot(PyObject *handle) {
 }
 int64_t jacpy_same_type(PyObject *left, PyObject *right) {
     return Py_TYPE(left) == Py_TYPE(right);
-}
-/* -2 preserves NotImplemented so Jac can disable a cached fast comparison. */
-int64_t jacpy_slot_less(void *slot, PyObject *left, PyObject *right) {
-    PyObject *result = ((richcmpfunc)(uintptr_t)slot)(left, right, Py_LT);
-    if (!result) return -1;
-    int comparison = result == Py_NotImplemented ? -2 : PyObject_IsTrue(result);
-    Py_DECREF(result);
-    return comparison;
 }
 
 #include "internal/pycore_long.h"
@@ -124,6 +104,9 @@ int64_t jacpy_is_tuple(PyObject *handle) { return PyTuple_Check(handle); }
 PyObject *jacpy_tuple_item(PyObject *handle, int64_t index) {
     return Py_XNewRef(PyTuple_GetItem(handle, index));
 }
+/* A tuple's item array (PyTupleObject.ob_item): the generated argument glue
+ * binds a call's positional tuple in place. */
+PyObject **jacpy_tuple_items(PyObject *handle) { return ((PyTupleObject *)handle)->ob_item; }
 int64_t jacpy_tuple_set_owned(PyObject *handle, int64_t index, PyObject *value) {
     if (!value) return -1;
     return PyTuple_SetItem(handle, index, value);
@@ -154,46 +137,33 @@ static int jacpy_ascii_buffer(PyObject *value, void *output) {
     }
     return Py_CLEANUP_SUPPORTED;
 }
+/* Py_buffer(accept={str, buffer}): a str lends its UTF-8 encoding. */
+static int jacpy_text_buffer(PyObject *value, Py_buffer *view) {
+    if (!PyUnicode_Check(value)) return PyObject_GetBuffer(value, view, PyBUF_SIMPLE) == 0;
+    Py_ssize_t size;
+    const char *data = PyUnicode_AsUTF8AndSize(value, &size);
+    return data && PyBuffer_FillInfo(view, value, (void *)data, size, 1, PyBUF_SIMPLE) == 0;
+}
 PyObject *jacpy_buffer_bytes(const Py_buffer *view) {
     if (PyBytes_CheckExact(view->obj) && view->buf == PyBytes_AS_STRING(view->obj)
         && view->len == PyBytes_GET_SIZE(view->obj)) return Py_NewRef(view->obj);
     return PyBytes_FromStringAndSize(view->buf, view->len);
 }
-Py_buffer *jacpy_buffer_acquire(PyObject *value, int64_t ascii) {
+/* kind: 0 any buffer, 1 buffer or ASCII str, 2 buffer or str (UTF-8). */
+Py_buffer *jacpy_buffer_acquire(PyObject *value, int64_t kind) {
     Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
     if (!view) { PyErr_NoMemory(); return NULL; }
-    int ok = ascii ? jacpy_ascii_buffer(value, view)
-                   : jacpy_binary_buffer(value, view);
+    int ok = kind == 2 ? jacpy_text_buffer(value, view)
+           : kind == 1 ? jacpy_ascii_buffer(value, view)
+                       : jacpy_binary_buffer(value, view);
     if (!ok) { PyMem_Free(view); return NULL; }
     return view;
-}
-Py_buffer *jacpy_buffer_acquire_writable(PyObject *value) {
-    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
-    if (!view) { PyErr_NoMemory(); return NULL; }
-    if (!PyArg_Parse(value, "w*", view)) { PyMem_Free(view); return NULL; }
-    return view;
-}
-PyObject *jacpy_buffer_owner(Py_buffer *value) {
-    return value ? ((value)->obj) : 0;
-}
-int64_t jacpy_number_ssize(PyObject *value, const char *overflow) {
-    extern PyObject *jacpy_exception_type(const char *);
-    return PyNumber_AsSsize_t(value, jacpy_exception_type(overflow));
 }
 void jacpy_buffer_release(Py_buffer *value) {
     if (!value) return;
     Py_buffer *view = value;
     PyBuffer_Release(view);
     PyMem_Free(view);
-}
-void *jacpy_buffer_address(Py_buffer *value) {
-    return (value)->buf;
-}
-int64_t jacpy_buffer_length(Py_buffer *value) {
-    return (value)->len;
-}
-int64_t jacpy_buffer_dimensions(Py_buffer *value) {
-    return (value)->ndim;
 }
 int64_t jacpy_unicode_ascii(PyObject *value) { return PyUnicode_IS_ASCII(value); }
 void jacpy_set_exception(PyObject *type, const char *message, int64_t size) {
@@ -205,16 +175,9 @@ PyObject *jacpy_power(PyObject *a, PyObject *b, int64_t inplace) {
     return inplace ? PyNumber_InPlacePower(a, b, Py_None)
                           : PyNumber_Power(a, b, Py_None);
 }
-int64_t jacpy_is_none(PyObject *a) { return a == Py_None; }
 int64_t jacpy_is_unicode(PyObject *a) { return PyUnicode_Check(a); }
 PyObject *jacpy_unicode_split(PyObject *a, PyObject *sep) { return PyUnicode_Split(a, sep, -1); }
 int64_t jacpy_dict_size(PyObject *a) { return a ? PyDict_Size(a) : 0; }
-PyObject *jacpy_dict_entry(PyObject *a, int64_t position) {
-    Py_ssize_t pos = position;
-    PyObject *key, *value;
-    if (!PyDict_Next(a, &pos, &key, &value)) return NULL;
-    return Py_BuildValue("nOO", pos, key, value);
-}
 #include <openssl/crypto.h>
 int64_t jacpy_crypto_compare(const void *a, const void *b, int64_t size) {
     return CRYPTO_memcmp(a, b, size);
@@ -252,15 +215,12 @@ int64_t jacpy_timeout_ns(PyObject *value) {
 /* Unicode builders and exact container operations used by native serializers. */
 PyUnicodeWriter *jacpy_writer_new(void) { return PyUnicodeWriter_Create(0); }
 int64_t jacpy_unicode_size(PyObject *text) { return PyUnicode_GET_LENGTH(text); }
+int64_t jacpy_unicode_kind(PyObject *text) { return PyUnicode_KIND(text); }
+void *jacpy_unicode_data(PyObject *text) { return PyUnicode_DATA(text); }
 PyObject *jacpy_unicode_decode_bytes(PyObject *value, const char *encoding) { return PyUnicode_FromEncodedObject(value, encoding, "strict"); }
 PyObject *jacpy_dict_default(PyObject *dictionary, PyObject *key, PyObject *value) {
     PyObject *result;
     return PyDict_SetDefaultRef(dictionary, key, value, &result) < 0 ? NULL : result;
-}
-extern PyObject *jacpy_exception_type(const char *);
-void jacpy_raise_value(const char *kind, PyObject *value) {
-    PyObject *type = jacpy_exception_type(kind);
-    if (type) PyErr_SetObject(type, value);
 }
 int64_t jacpy_is_bool(PyObject *value) { return PyBool_Check(value); }
 int64_t jacpy_is_float(PyObject *value) { return PyFloat_Check(value); }
@@ -270,11 +230,6 @@ PyObject *jacpy_long_repr(PyObject *value) { return PyLong_Type.tp_repr(value); 
 PyObject *jacpy_float_repr(PyObject *value) { return PyFloat_Type.tp_repr(value); }
 PyObject *jacpy_type_name(PyObject *value) { return PyUnicode_FromString(Py_TYPE(value)->tp_name); }
 PyObject *jacpy_qualified_type_name(PyObject *value) { return PyType_GetFullyQualifiedName(Py_TYPE(value)); }
-int64_t jacpy_exception_note(PyObject *error, PyObject *note) {
-    PyObject *result = PyObject_CallMethod(error, "add_note", "O", note);
-    if (!result) return -1;
-    Py_DECREF(result); return 0;
-}
 int64_t jacpy_fast_size(PyObject *value) { return PySequence_Fast_GET_SIZE(value); }
 PyObject *jacpy_fast_item(PyObject *value, int64_t index) { return Py_NewRef(PySequence_Fast_GET_ITEM(value, index)); }
 
@@ -299,8 +254,8 @@ int64_t jacpy_native_size(int64_t kind, int64_t alignment) {
 #undef SIZE_CASE
 }
 int64_t jacpy_native_little_endian(void) { uint16_t value = 1; return *(unsigned char *)&value; }
-int64_t jacpy_memory_byte(void *address, int64_t offset) { return ((unsigned char *)address)[offset]; }
-void jacpy_memory_set(void *address, int64_t offset, int64_t value) { ((unsigned char *)address)[offset] = (unsigned char)value; }
+/* The target ABI's CHAR_MAX: 255 where char is unsigned (Linux aarch64). */
+int64_t jacpy_char_max(void) { return CHAR_MAX; }
 void jacpy_memory_zero(void *address, int64_t size) { memset(address, 0, (size_t)size); }
 void jacpy_memory_copy(void *target, void *source, int64_t size) { memcpy(target, source, (size_t)size); }
 void jacpy_memory_move(void *target, void *source, int64_t size) { memmove(target, source, (size_t)size); }
@@ -349,10 +304,16 @@ int64_t jacpy_math_errno(void) { return errno == EDOM ? 1 : errno == ERANGE ? 2 
  * the image ahead of libSystem's: its log2 misreads subnormal inputs and its
  * fma drops the sign of a result that underflows to zero. CPython's math
  * module is a shared extension there and reaches libSystem, so darwin looks
- * the functions up by name in libSystem. Elsewhere the plain call reaches the
- * C library already. Exactly rounded functions (sqrt, fabs, floor, ceil,
- * fmod) have one correct result and are called directly. */
-#ifdef __APPLE__
+ * the functions up by name in libSystem. A static Linux link can resolve the
+ * plain call to the same copies whenever compiler-rt precedes libm, so Linux
+ * looks them up in libm.so.6 the same way. Exactly rounded functions (sqrt,
+ * fabs, floor, ceil, fmod) have one correct result and are called directly. */
+#if defined(__APPLE__)
+#define JACPY_LIBM_IMAGE "/usr/lib/libSystem.B.dylib"
+#elif defined(__linux__)
+#define JACPY_LIBM_IMAGE "libm.so.6"
+#endif
+#ifdef JACPY_LIBM_IMAGE
 #include <dlfcn.h>
 #include <pthread.h>
 static struct {
@@ -372,7 +333,10 @@ static void *jacpy_libm_find(void *system, const char *name, void *fallback) {
     return found ? found : fallback;
 }
 static void jacpy_libm_resolve(void) {
-    void *system = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY | RTLD_NOLOAD);
+    void *system = dlopen(JACPY_LIBM_IMAGE, RTLD_LAZY | RTLD_NOLOAD);
+    if (!system) {
+        system = dlopen(JACPY_LIBM_IMAGE, RTLD_LAZY);
+    }
     jacpy_libm.log = (double (*)(double))jacpy_libm_find(system, "log", (void *)log);
     jacpy_libm.log2 = (double (*)(double))jacpy_libm_find(system, "log2", (void *)log2);
     jacpy_libm.log10 = (double (*)(double))jacpy_libm_find(system, "log10", (void *)log10);
@@ -398,11 +362,6 @@ double jacpy_libm_cos(double value) { return JACPY_LIBM(cos)(value); }
 double jacpy_libm_tan(double value) { return JACPY_LIBM(tan)(value); }
 double jacpy_libm_fma(double x, double y, double z) { return JACPY_LIBM(fma)(x, y, z); }
 
-void jacpy_set_key_error(PyObject *key) {
-    PyObject *args = PyTuple_Pack(1, key);
-    if (args) { PyErr_SetObject(PyExc_KeyError, args); Py_DECREF(args); }
-}
-
 PyObject *jacpy_dict_repr(PyObject *value) { return PyDict_Type.tp_repr(value); }
 
 
@@ -421,16 +380,8 @@ PyObject *jacpy_special_noargs(PyObject *value, const char *name) {
     if(!method) return NULL;
     PyObject *result=PyObject_CallNoArgs(method); Py_DECREF(method); return result;
 }
-PyObject *jacpy_libm_parts(double value, int64_t integral) {
-    if(integral) { double whole; double fraction=modf(value,&whole); return Py_BuildValue("dd",fraction,whole); }
-    int exponent=0; double fraction=frexp(value,&exponent); return Py_BuildValue("di",fraction,exponent);
-}
 uint64_t jacpy_float_bits(double value) { uint64_t bits; memcpy(&bits,&value,sizeof(bits)); return bits; }
 double jacpy_float_from_bits(uint64_t bits) { double value; memcpy(&value,&bits,sizeof(value)); return value; }
-PyObject *jacpy_long_frexp(PyObject *value) {
-    int64_t exponent; double fraction=_PyLong_Frexp((PyLongObject *)value,&exponent);
-    return PyErr_Occurred() ? NULL : Py_BuildValue("dL",fraction,(long long)exponent);
-}
 
 
 int64_t jacpy_is_exact_float(PyObject *value) { return PyFloat_CheckExact(value); }
@@ -446,7 +397,6 @@ PyObject *jacpy_object_type(PyObject *value) { return Py_NewRef(Py_TYPE(value));
 int64_t jacpy_is_exact_unicode(PyObject *value) { return PyUnicode_CheckExact(value); }
 int64_t jacpy_is_exact_tuple(PyObject *value) { return PyTuple_CheckExact(value); }
 int64_t jacpy_is_exact_list(PyObject *value) { return PyList_CheckExact(value); }
-PyObject *jacpy_ordered_dict_new(void) { return PyObject_CallNoArgs((PyObject *)&PyODict_Type); }
 
 int64_t jacpy_tuple_unique(PyObject *value) { return Py_REFCNT(value) == 1; }
 /* Exchange is valid only after the native caller has established exclusive
@@ -487,49 +437,15 @@ PyObject *jacpy_set_new(PyObject *iterable, int64_t frozen) { return frozen ? Py
 int64_t jacpy_is_type(PyObject *value) { return PyType_Check(value); }
 PyObject *jacpy_bytes_unescape(PyObject *value) { return PyBytes_DecodeEscape(PyBytes_AS_STRING(value), PyBytes_GET_SIZE(value), "strict", 0, NULL); }
 
-/* Exact built-in categories: subclasses use their object protocols instead. */
-static PyTypeObject *const builtin_types[] = {
-    NULL, &PyBool_Type, &PyLong_Type, &PyFloat_Type, &PyBytes_Type,
-    &PyUnicode_Type, &PyTuple_Type, &PyList_Type, &PyDict_Type, &PySet_Type,
-    &PyFrozenSet_Type, &PyByteArray_Type, &PyType_Type, &PyFunction_Type,
-    &PyPickleBuffer_Type
-};
-int64_t jacpy_builtin_kind(PyObject *value) {
-    PyObject *object = value;
-    if (object == Py_None) return 0;
-    for (size_t i = 1; i < sizeof(builtin_types) / sizeof(*builtin_types); ++i)
-        if (Py_TYPE(object) == builtin_types[i]) return (int64_t)i;
-    return 15;
-}
-PyObject *jacpy_builtin_type(int64_t kind) {
-    if (kind == 0) return Py_NewRef((PyObject *)Py_TYPE(Py_None));
-    if (kind < 0 || (uint64_t)kind >= sizeof(builtin_types) / sizeof(*builtin_types)) {
-        PyErr_SetString(PyExc_SystemError, "invalid built-in type category"); return NULL;
-    }
-    return Py_NewRef((PyObject *)builtin_types[kind]);
-}
 
-int64_t jacpy_is_not_implemented(PyObject *value) { return value == Py_NotImplemented; }
-
-int64_t jacpy_audit_pickle_find(PyObject *module, PyObject *name) { return PySys_Audit("pickle.find_class", "OO", module, name); }
 
 PyObject *jacpy_mapping_optional_item(PyObject *mapping, PyObject *key) { PyObject *result = NULL; return PyMapping_GetOptionalItem(mapping, key, &result) < 0 ? NULL : result; }
 
 
-PyObject *jacpy_not_implemented(void) { return Py_NewRef(Py_NotImplemented); }
-PyObject *jacpy_ellipsis(void) { return Py_NewRef(Py_Ellipsis); }
 
 void jacpy_exception_context(PyObject *error, PyObject *cause) { PyException_SetContext(error, Py_NewRef(cause)); }
 
 PyObject *jacpy_unicode_intern(PyObject *value) { PyObject *result=Py_NewRef(value); PyUnicode_InternInPlace(&result); return result; }
-
-int64_t jacpy_dict_memory(PyObject *value) {
-    PyObject *size = PyObject_CallMethod(value, "__sizeof__", NULL);
-    if (!size) return -1;
-    Py_ssize_t result = PyLong_AsSsize_t(size);
-    Py_DECREF(size);
-    return result;
-}
 
 /* General value conversion and interpreter services for native bindings. */
 int64_t jacpy_is_slice(PyObject *value) { return PySlice_Check(value); }
@@ -548,10 +464,6 @@ SliceBounds jacpy_slice_adjust(int64_t length, SliceBounds bounds) {
     bounds.start = start; bounds.stop = stop;
     return bounds;
 }
-int64_t jacpy_warn(const char *category, const char *message, int64_t stacklevel) {
-    extern PyObject *jacpy_exception_type(const char *);
-    return PyErr_WarnEx(jacpy_exception_type(category), message, stacklevel);
-}
 PyObject *jacpy_builtins(void) { return Py_NewRef(PyEval_GetBuiltins()); }
 #pragma GCC visibility pop
 
@@ -560,6 +472,11 @@ PyObject *jacpy_builtins(void) { return Py_NewRef(PyEval_GetBuiltins()); }
 PyObject *jacpy_fs_text(const void *text) {
     return text ? PyUnicode_DecodeFSDefault(text) : Py_NewRef(Py_None);
 }
+
+/* PyCFunctionObject fields, which only its object layout holds; borrowed. */
+PyMethodDef *jacpy_cfunction_method(PyObject *function) { return ((PyCFunctionObject *)function)->m_ml; }
+PyObject *jacpy_cfunction_self(PyObject *function) { return ((PyCFunctionObject *)function)->m_self; }
+PyObject *jacpy_cfunction_module(PyObject *function) { return ((PyCFunctionObject *)function)->m_module; }
 
 /* Struct sequence types need a field array that outlives the type, as the
  * static arrays of C modules do. Fields are "name\tdoc" lines. The
@@ -587,39 +504,31 @@ PyObject *jacpy_struct_sequence_type(const char *name, const char *doc,
     return (PyObject *)PyStructSequence_NewType(desc);
 }
 
-/* Interpreter objects that C defines as data symbols (static types and
- * singletons) or as interpreter state, looked up by their C name. Borrowed;
- * NULL with no exception set for an unknown name. */
-#include "internal/pycore_descrobject.h"
-#include "internal/pycore_namespace.h"
-#include "internal/pycore_unionobject.h"
-#include "internal/pycore_typevarobject.h"
+/* The interpreter's typing types (TypeVar, ParamSpec, Generic, ...) are
+ * interpreter-state fields, not data symbols. This is the run of
+ * interp->cached_objects from generic_type on, in declaration order. */
 #include "internal/pycore_interp.h"
 #include "internal/pycore_pystate.h"
-PyObject *jacpy_runtime_object(const char *name) {
-    static const struct { const char *name; PyObject *value; } objects[] = {
-#define OBJECT_ENTRY(symbol) {#symbol, (PyObject *)&symbol}
-        OBJECT_ENTRY(PyAsyncGen_Type), OBJECT_ENTRY(PyCFunction_Type), OBJECT_ENTRY(PyCapsule_Type),
-        OBJECT_ENTRY(PyCell_Type), OBJECT_ENTRY(PyClassMethodDescr_Type), OBJECT_ENTRY(PyCode_Type),
-        OBJECT_ENTRY(PyCoro_Type), OBJECT_ENTRY(PyEllipsis_Type), OBJECT_ENTRY(PyFrame_Type),
-        OBJECT_ENTRY(PyFunction_Type), OBJECT_ENTRY(PyGen_Type), OBJECT_ENTRY(Py_GenericAliasType),
-        OBJECT_ENTRY(PyGetSetDescr_Type), OBJECT_ENTRY(PyDictProxy_Type), OBJECT_ENTRY(PyMemberDescr_Type),
-        OBJECT_ENTRY(PyMethodDescr_Type), OBJECT_ENTRY(PyMethod_Type), OBJECT_ENTRY(_PyMethodWrapper_Type),
-        OBJECT_ENTRY(PyModule_Type), OBJECT_ENTRY(_PyNone_Type), OBJECT_ENTRY(_PyNotImplemented_Type),
-        OBJECT_ENTRY(_PyNamespace_Type), OBJECT_ENTRY(PyTraceBack_Type), OBJECT_ENTRY(_PyUnion_Type),
-        OBJECT_ENTRY(PyWrapperDescr_Type), OBJECT_ENTRY(_PyTypeAlias_Type), OBJECT_ENTRY(_Py_NoDefaultStruct),
-        OBJECT_ENTRY(_PyWeakref_RefType), OBJECT_ENTRY(_PyWeakref_ProxyType), OBJECT_ENTRY(_PyWeakref_CallableProxyType),
-#undef OBJECT_ENTRY
-    };
-    for (size_t i = 0; i < sizeof(objects) / sizeof(*objects); i++)
-        if (strcmp(objects[i].name, name) == 0) return objects[i].value;
-    PyInterpreterState *interp = _PyInterpreterState_GET();
-#define CACHED(field) if (strcmp(name, #field) == 0) return (PyObject *)interp->cached_objects.field
-    CACHED(typevar_type); CACHED(typevartuple_type); CACHED(paramspec_type);
-    CACHED(paramspecargs_type); CACHED(paramspeckwargs_type); CACHED(generic_type);
-#undef CACHED
-    return NULL;
+#define JACPY_TYPING_SLOT(field, index) \
+    _Static_assert(offsetof(struct _Py_interp_cached_objects, field) \
+        == offsetof(struct _Py_interp_cached_objects, generic_type) + (index) * sizeof(PyObject *), #field);
+JACPY_TYPING_SLOT(typevar_type, 1) JACPY_TYPING_SLOT(typevartuple_type, 2)
+JACPY_TYPING_SLOT(paramspec_type, 3) JACPY_TYPING_SLOT(paramspecargs_type, 4)
+JACPY_TYPING_SLOT(paramspeckwargs_type, 5)
+#undef JACPY_TYPING_SLOT
+PyObject **jacpy_typing_types(void) {
+    return (PyObject **)&_PyInterpreterState_GET()->cached_objects.generic_type;
 }
+
+/* The open_code hook and its data are _PyRuntime fields, whose layout
+ * differs between builds. */
+#include "internal/pycore_runtime.h"
+void **jacpy_open_code_hook(void) { return (void **)&_PyRuntime.open_code_hook; }
+void **jacpy_open_code_userdata(void) { return &_PyRuntime.open_code_userdata; }
+
+/* The descriptor of stdin (0), stdout (1) or stderr (2): the stdio streams are
+ * macros or differently named globals across C libraries. */
+int32_t jacpy_stdio_fileno(int32_t stream) { return fileno(stream == 2 ? stderr : stream == 1 ? stdout : stdin); }
 
 /* Weak references hang off an object-layout list that only C can walk. */
 #include "internal/pycore_weakref.h"
@@ -652,17 +561,147 @@ int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {
     return _PyDict_DelItemIf(dictionary, key, dead_weakref, NULL);
 }
 
-/* Pointer arithmetic for C-owned buffers. ptr[T] in Jac has no arithmetic,
- * so offsets into a block and distances between cursors come from here. */
-void *jacpy_offset(void *address, int64_t offset) { return (char *)address + offset; }
-int64_t jacpy_distance(const void *end, const void *start) { return (const char *)end - (const char *)start; }
+/* _asyncio's running loop and task are _PyThreadStateImpl fields, and its
+ * tasks are linked into lists headed there and in PyInterpreterState;
+ * visiting other threads needs the runtime's thread-state iteration with the
+ * world stopped. The Jac port links a task through the llist_node at
+ * `node_offset` of its TaskObj. */
+#include "internal/pycore_llist.h"
+#include "internal/pycore_tstate.h"
+#include "internal/pycore_list.h"
+#include "internal/pycore_ceval.h"
+PyObject **jacpy_asyncio_running_loop(void) { return &((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_running_loop; }
+PyObject **jacpy_asyncio_running_task(void) { return &((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_running_task; }
+void *jacpy_asyncio_tasks_head(void) { return &((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_tasks_head; }
+/* current_task(loop) for a loop another thread runs: a new reference to its
+ * running task, or to None. */
+PyObject *jacpy_asyncio_thread_task(PyObject *loop) {
+    PyObject *ret = Py_None;
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    _PyEval_StopTheWorld(interp);
+    _Py_FOR_EACH_TSTATE_BEGIN(interp, p) {
+        _PyThreadStateImpl *ts = (_PyThreadStateImpl *)p;
+        if (ts->asyncio_running_loop == loop) {
+            if (ts->asyncio_running_task != NULL) ret = ts->asyncio_running_task;
+            break;
+        }
+    }
+    _Py_FOR_EACH_TSTATE_END(interp);
+    Py_INCREF(ret);
+    _PyEval_StartTheWorld(interp);
+    return ret;
+}
+static int64_t jacpy_asyncio_add_list(struct llist_node *head, PyObject *tasks, int64_t node_offset) {
+    struct llist_node *node;
+    llist_for_each_safe(node, head) {
+        PyObject *task = (PyObject *)((char *)node - node_offset);
+        /* The lists hold borrowed references: skip a task being deallocated. */
+        if (_Py_TryIncref(task) && _PyList_AppendTakeRef((PyListObject *)tasks, task) < 0) return -1;
+    }
+    return 0;
+}
+/* all_tasks(): append the registered tasks to the list `tasks`, those of the
+ * current thread or, with `all_threads`, of the interpreter and every thread
+ * with the world stopped. */
+int64_t jacpy_asyncio_add_tasks(PyObject *tasks, int64_t node_offset, int64_t all_threads) {
+    if (!all_threads) {
+        return jacpy_asyncio_add_list(&((_PyThreadStateImpl *)_PyThreadState_GET())->asyncio_tasks_head, tasks, node_offset);
+    }
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    _PyEval_StopTheWorld(interp);
+    int64_t ret = jacpy_asyncio_add_list(&interp->asyncio_tasks_head, tasks, node_offset);
+    if (ret == 0) {
+        _Py_FOR_EACH_TSTATE_BEGIN(interp, p) {
+            if (jacpy_asyncio_add_list(&((_PyThreadStateImpl *)p)->asyncio_tasks_head, tasks, node_offset) < 0) {
+                ret = -1;
+                break;
+            }
+        }
+        _Py_FOR_EACH_TSTATE_END(interp);
+    }
+    _PyEval_StartTheWorld(interp);
+    return ret;
+}
 
-/* syslog(3) is variadic; the module always logs one preformatted message. */
-#include <syslog.h>
-void jacpy_syslog(int32_t priority, const char *message) { syslog(priority, "%s", message); }
-
-/* errno is a thread-local macro; read it through a function. */
+/* errno is a thread-local macro; read and write it through functions. */
 int64_t jacpy_errno(void) { return errno; }
+void jacpy_set_errno(int64_t value) { errno = (int)value; }
+
+/* Directory iteration. struct dirent's layout and the opendir/readdir symbol
+ * variants differ between C libraries and macOS architectures (x86_64 binds
+ * $INODE64 versions), so both calls and the d_name field stay in C. */
+#include <dirent.h>
+void *jacpy_opendir(const char *path) { return opendir(path); }
+const char *jacpy_readdir_name(void *directory) { struct dirent *entry = readdir((DIR *)directory); return entry ? entry->d_name : NULL; }
+int32_t jacpy_dirfd(void *directory) { return dirfd((DIR *)directory); }
+int32_t jacpy_closedir(void *directory) { return closedir((DIR *)directory); }
+void *jacpy_fdopendir(int32_t fd) { return fdopendir(fd); }
+void jacpy_rewinddir(void *directory) { rewinddir((DIR *)directory); }
+/* The next entry's name (NULL at the end) with its d_type, DT_UNKNOWN where
+ * the C library has none, and its inode number. */
+const char *jacpy_readdir_entry(void *directory, int64_t *type, uint64_t *inode) {
+    struct dirent *entry = readdir((DIR *)directory);
+    if (entry == NULL) return NULL;
+#ifdef HAVE_DIRENT_D_TYPE
+    *type = entry->d_type;
+#else
+    *type = DT_UNKNOWN;
+#endif
+    *inode = (uint64_t)entry->d_ino;
+    return entry->d_name;
+}
+
+/* The stat family binds $INODE64 symbol variants on macOS x86_64 (and is
+ * libc_nonshared inline wrappers on older glibc); each fills the target's
+ * struct stat, which stat_records.jac lays out per target. */
+#include <sys/stat.h>
+#include "internal/pycore_fileutils.h"
+int32_t jacpy_stat(const char *path, struct _Py_stat_struct *status) { return stat(path, status); }
+int32_t jacpy_lstat(const char *path, struct _Py_stat_struct *status) { return lstat(path, status); }
+int32_t jacpy_fstat(int32_t fd, struct _Py_stat_struct *status) { return fstat(fd, status); }
+int32_t jacpy_fstatat(int32_t dir_fd, const char *path, struct _Py_stat_struct *status, int32_t flags) {
+    return fstatat(dir_fd, path, status, flags);
+}
+
+/* macOS reads os.statvfs through struct statfs, whose statfs and fstatfs
+ * bind $INODE64 variants on x86_64. */
+#ifdef __APPLE__
+#include <sys/mount.h>
+int32_t jacpy_statfs(const char *path, void *buffer) { return statfs(path, (struct statfs *)buffer); }
+int32_t jacpy_fstatfs(int32_t fd, void *buffer) { return fstatfs(fd, (struct statfs *)buffer); }
+#endif
+
+/* The fork hooks: the at-fork callback lists are interpreter-state fields,
+ * HEAD_LOCK is a _PyRuntime field, and a forked child resets thread-state
+ * fields (native id, remote-debugger request, asyncio task list), all of
+ * whose offsets differ between builds. `which` is 0 for before_forkers, 1
+ * for after_forkers_parent and 2 for after_forkers_child. */
+#include "internal/pycore_llist.h"
+#include "internal/pycore_tstate.h"
+PyObject **jacpy_fork_callbacks(PyInterpreterState *interp, int64_t which) {
+    return which == 0 ? &interp->before_forkers
+        : which == 1 ? &interp->after_forkers_parent : &interp->after_forkers_child;
+}
+void jacpy_runtime_head_lock(void) { HEAD_LOCK(&_PyRuntime); }
+void jacpy_runtime_head_unlock(void) { HEAD_UNLOCK(&_PyRuntime); }
+void jacpy_thread_state_native_id(PyThreadState *tstate) {
+#ifdef PY_HAVE_THREAD_NATIVE_ID
+    tstate->native_thread_id = PyThread_get_thread_native_id();
+#else
+    (void)tstate;
+#endif
+}
+void jacpy_thread_state_fork_reset(PyThreadState *tstate) {
+    tstate->remote_debugger_support.debugger_pending_call = 0;
+    memset(tstate->remote_debugger_support.debugger_script_path, 0, _Py_MAX_SCRIPT_PATH_SIZE);
+    _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
+    llist_init(&impl->asyncio_tasks_head);
+    impl->asyncio_running_loop = NULL;
+    impl->asyncio_running_task = NULL;
+}
+
+/* _PyInterpreterState_GetFinalizing() is static inline. */
+int64_t jacpy_interpreter_finalizing(void) { return _PyInterpreterState_GetFinalizing(_PyInterpreterState_GET()) != NULL; }
 
 /* PyLong_AsNativeBytes into a uint64_t, the way modules convert rlim_t and
  * similar unsigned C types: -1 on error, 1 when the value needs more than
@@ -688,13 +727,6 @@ int64_t jacpy_unsigned_converter(PyObject *value, uint64_t *out, int64_t long_lo
 
 /* The address an int denotes, as struct's 'P' format packs it. */
 uint64_t jacpy_long_address(PyObject *value) { return (uint64_t)(uintptr_t)PyLong_AsVoidPtr(value); }
-
-/* PyErr_FormatUnraisable is variadic; modules pass the message and, where the
- * C format rendered one with %R, the object it names. */
-void jacpy_unraisable(const char *message, PyObject *object) {
-    if (object) PyErr_FormatUnraisable("%s %R", message, object);
-    else PyErr_FormatUnraisable("%s", message);
-}
 
 /* HACL*'s vectorized BLAKE2 runs only where configure compiled it and the CPU
  * has the instructions; the CPUID probe is an intrinsic Jac cannot express.

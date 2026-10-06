@@ -1,5 +1,6 @@
 import json;
 import from jaclang.compiler.frontend.constant { is_borrow_kind }
+import from jaclang.compiler.frontend.const_fold { fold_const }
 
 impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     import from jaclang.compiler.c_interop {
@@ -28,18 +29,35 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     structs: list[dict[str, any]] = [];
     opaque: list[str] = [];
     functions: list[dict[str, any]] = [];
+    data: list[list[any]] = [];
     for decl in imp.clib_decls or [] {
-        if isinstance(decl, Archetype) and is_opaque_c_archetype(decl) {
+        if isinstance(decl, GlobalVars) {
+            for assign in decl.assignments {
+                target = assign.target[0] if assign.target else None;
+                tag = assign.type_tag.tag if assign.type_tag else None;
+                if isinstance(target, Name) {
+                    data.append([target.sym_name, c_type_spec(target.type, tag)]);
+                }
+            }
+        } elif isinstance(decl, Archetype) and is_opaque_c_archetype(decl) {
             opaque.append(decl.name.value);
         } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             fields: list[list[any]] = [];
+            defaults: dict[str, any] = {};
             for hv in decl.get_has_vars() {
                 tag = hv.type_tag.tag if hv.type_tag else None;
                 fields.append([hv.name.sym_name, c_type_spec(hv.type, tag)]);
+                (folded, value) = fold_const(hv.value);
+                if folded and isinstance(value, (int, float, bool)) and value {
+                    defaults[hv.name.sym_name] = value;
+                }
             }
-            structs.append({"name": decl.name.value, "fields": fields});
+            structs.append(
+                {"name": decl.name.value, "fields": fields, "defaults": defaults}
+            );
         } elif isinstance(decl, Ability)
-            and isinstance(decl.signature, FuncSignature) {
+            and isinstance(decl.signature, FuncSignature)
+            and not decl.body {
             params: list[list[any]] = [];
             for p in decl.signature.get_parameters() {
                 if p.is_vararg or p.is_kwargs {
@@ -72,7 +90,13 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
             );
         }
     }
-    return {"lib": lib, "structs": structs, "opaque": opaque, "functions": functions};
+    return {
+        "lib": lib,
+        "structs": structs,
+        "opaque": opaque,
+        "functions": functions,
+        "globals": data
+    };
 }
 
 impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
@@ -100,6 +124,7 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
     ];
     declared: list[str] = desc["opaque"] + [s["name"] for s in desc["structs"]];
     declared += [f["name"] for f in desc["functions"]];
+    declared += [g[0] for g in desc["globals"]];
     for name in declared {
         out.append(
             self.nod(
@@ -124,6 +149,67 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
             )
         );
     }
+    for decl in imp.clib_decls or [] {
+        if isinstance(decl, Ability) and decl.body {
+            out.extend(
+                [
+                    item
+                    for item in self.outs(decl)
+                    if isinstance(item, CgNode)
+                ]
+            );
+            continue;
+        }
+        if not isinstance(decl, GlobalVars) {
+            continue;
+        }
+        for assign in decl.assignments {
+            target = assign.target[0] if assign.target else None;
+            if not isinstance(target, Name) or assign.value is None {
+                continue;
+            }
+            thunk = self.nod(
+                'Lambda',
+                ['args', 'body'],
+                [
+                    self.nod(
+                        'arguments',
+                        [
+                            'posonlyargs',
+                            'args',
+                            'kwonlyargs',
+                            'kw_defaults',
+                            'defaults'
+                        ],
+                        [[], [], [], [], []]
+                    ),
+                    self.val(assign.value)
+                ]
+            );
+            out.append(
+                self.nod(
+                    'Expr',
+                    ['value'],
+                    [
+                        self.call_node(
+                            self.nod(
+                                'Attribute',
+                                ['value', 'attr', 'ctx'],
+                                [
+                                    self.name_load(target.sym_name),
+                                    'define',
+                                    self.nod('Load', [], [])
+                                ]
+                            ),
+                            [thunk],
+                            []
+                        )
+                    ],
+                    jac_node=assign
+                )
+            );
+        }
+    }
     return out;
 }
 
@@ -142,7 +228,41 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
 }
 
 impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
-    import from jaclang.compiler.c_interop { c_type_spec, is_builtin_pin_call }
+    import from jaclang.compiler.c_interop {
+        c_lent_arg_elem,
+        c_lent_param,
+        c_param_type,
+        c_type_spec,
+        c_variadic_param,
+        is_builtin_pin_call,
+        is_ptr_type,
+        named_function_of
+    }
+    callee_type = nd.target.type if nd.target is not None else None;
+    cast_args = list(nd.params or []);
+    if is_ptr_type(callee_type)
+        and callee_type is not None
+        and not callee_type.is_instance()
+        and len(cast_args) == 1
+        and named_function_of(cast_args[0]) is not None {
+        call = self.outs(nd)[0] if self.outs(nd) else None;
+        if isinstance(call, CgNode) and call.cls == 'Call' {
+            fn_spec = self.const_of(json.dumps(c_type_spec(cast_args[0].type, None)));
+            scope = self.call_node(self.name_load('globals'), [], []);
+            self.set_out(
+                nd,
+                [
+                    self.call_node(
+                        self.builtin_name('_jac_c_function_ptr'),
+                        [call.get('args')[0], fn_spec, scope],
+                        [],
+                        jac_node=nd
+                    )
+                ]
+            );
+        }
+        return;
+    }
     if is_builtin_pin_call(nd) {
         args = [
             p
@@ -156,27 +276,56 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         }
         return;
     }
-    if nd.call_kind != "clib" or not isinstance(nd.callee_decl, Ability) {
-        return;
-    }
-    sig = nd.callee_decl.signature;
-    if not isinstance(sig, FuncSignature) {
-        return;
-    }
-    decl_params = [
-        p
-        for p in sig.get_parameters()
-        if not (p.is_vararg or p.is_kwargs)
-    ];
-    borrowed: list[tuple[int, list[any]]] = [];
-    for (i, p) in enumerate(decl_params) {
-        if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
-            continue;
+
+    borrowed: list[tuple[int, list[any], (list[any] | None)]] = [];
+    for (i, arg) in enumerate(list(nd.params or [])) {
+        lent = c_lent_arg_elem(arg);
+        lent_param = c_lent_param(arg) if lent is not None else None;
+        if lent is not None and lent_param is not None {
+            param_type = c_param_type(nd, lent_param);
+            borrowed.append(
+                (i, c_type_spec(lent, None), c_type_spec(param_type, None))
+            );
         }
-        spec = c_type_spec(p.type, p.type_tag.tag);
-        inner = spec[1] if spec[0] == "opt" else spec;
-        if inner[0] in ("s", "ptr") {
-            borrowed.append((i, inner));
+    }
+    callee = nd.callee_decl;
+    callee_sig = callee.signature if isinstance(callee, Ability) else None;
+    if isinstance(callee_sig, FuncSignature)
+        and nd.call_kind != "clib"
+        and c_variadic_param(callee_sig) is not None {
+        self._c_vararg_rewrite(
+            nd, len(callee_sig.posonly_params) + len(callee_sig.params or [])
+        );
+    } elif nd.call_kind == "clib" and isinstance(callee_sig, FuncSignature) {
+        decl_params = [
+            p
+            for p in callee_sig.get_parameters()
+            if not (p.is_vararg or p.is_kwargs)
+        ];
+        if callee_sig.varargs is not None {
+            self._c_vararg_rewrite(nd, len(decl_params));
+        }
+        for (i, p) in enumerate(decl_params) {
+            if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
+                continue;
+            }
+            spec = c_type_spec(p.type, p.type_tag.tag);
+            inner = spec[1] if spec[0] == "opt" else spec;
+            if inner[0] in ("s", "ptr") {
+                borrowed.append((i, inner, None));
+            }
+        }
+        if callee_sig.varargs is not None {
+            for (i, arg) in enumerate(list(nd.params or [])) {
+                if i >= len(decl_params)
+                    and isinstance(arg, UnaryExpr)
+                    and is_borrow_kind(arg.ownership) {
+                    spec = c_type_spec(arg.operand.type, None);
+                    if spec[0] in ("s", "ptr") {
+                        borrowed.append((i, spec, None));
+                    }
+                }
+            }
         }
     }
     if not borrowed {
@@ -194,16 +343,31 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     pre: list[CgNode] = [];
     post: list[CgNode] = [];
     scope = self.call_node(self.name_load('globals'), [], []);
-    for (i, spec) in borrowed {
-        if i >= len(params) {
+    for (i, spec, lent_spec) in borrowed {
+        if i >= len(params) or isinstance(params[i], Null) {
             continue;
         }
         spec_const = self.const_of(json.dumps(spec));
+        if lent_spec is not None and spec[0] == "struct" {
+            call_args[i] = self.call_node(
+                self.builtin_name('_jac_c_lend'),
+                [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                []
+            );
+            continue;
+        }
         parts = self._place_parts(params[i]);
         if parts is None {
             call_args[i] = self.call_node(
                 self.builtin_name('_jac_c_cell'), [spec_const, call_args[i], scope], []
             );
+            if lent_spec is not None {
+                call_args[i] = self.call_node(
+                    self.builtin_name('_jac_c_lend'),
+                    [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                    []
+                );
+            }
             continue;
         }
         (kind, owner, key) = parts;
@@ -241,6 +405,13 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
                 self.builtin_name('_jac_c_cell'), [spec_const, initial, scope], []
             )
         );
+        if lent_spec is not None {
+            call_args[i] = self.call_node(
+                self.builtin_name('_jac_c_lend'),
+                [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                []
+            );
+        }
         readback = self.call_node(
             self.nod(
                 'Attribute',
@@ -295,4 +466,48 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
         nd,
         [self.call_node(self.builtin_name('_jac_c_copy'), [got[0]], [], jac_node=nd)]
     );
+}
+
+impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
+    import from jaclang.compiler.c_interop {
+        clib_global_of_name,
+        is_builtin_addressof_call
+    }
+
+    if clib_global_of_name(nd) is None
+        or (
+            nd.find_parent_of_type(Import) is not None
+            and nd.find_parent_of_type(Ability) is None
+        ) {
+        return False;
+    }
+    return not is_builtin_addressof_call(nd.parent);
+}
+
+impl JcirGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
+    import from jaclang.compiler.c_interop { c_type_spec }
+    params: list[Expr | KWPair] = list(nd.params or []);
+    call = self.outs(nd)[0] if self.outs(nd) else None;
+    if not isinstance(call, CgNode)
+        or call.cls != 'Call'
+        or any([isinstance(p, KWPair) for p in params]) {
+        return;
+    }
+    call_args = call.get('args');
+    if len(call_args) != len(params) {
+        return;
+    }
+    for i in range(fixed, len(params)) {
+        arg = params[i];
+        if not isinstance(arg, Expr)
+            or (isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership)) {
+            continue;
+        }
+        spec = c_type_spec(arg.type, None);
+        call_args[i] = self.call_node(
+            self.builtin_name('_jac_c_vararg'),
+            [call_args[i], self.const_of(json.dumps(spec))],
+            []
+        );
+    }
 }

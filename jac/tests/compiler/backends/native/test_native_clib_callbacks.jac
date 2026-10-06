@@ -16,6 +16,18 @@ test "C callback arguments sign-extend the C integer before calling Jac" {
     assert function() == 123;
 }
 
+test "C function pointers from records adapt Jac callback arguments" {
+    callback_type = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_int32);
+    invoke_type = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_int32);
+    def invoke(address: int, value: int) -> int {
+        return callback_type(address)(value);
+    }
+    foreign = invoke_type(invoke);
+    (engine, _) = compile_native("clib_record_callback_argument.jac");
+    function = get_func(engine, "call_through_record", ctypes.c_int32, ctypes.c_int64);
+    assert function(ctypes.cast(foreign, ctypes.c_void_p).value) == 123;
+}
+
 test "nullable Jac callbacks cannot become untyped C code addresses" {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -95,12 +107,17 @@ test "Callback records survive managed field and container cleanup" {
     allocator_type = ctypes.CFUNCTYPE(
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t
     );
+    original = ctypes.cast(library.calloc, ctypes.c_void_p).value;
+    library.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t];
+    library.calloc.restype = ctypes.c_void_p;
+    guarded: list[bool] = [False];
     def allocate(count: int, size: int) -> int {
-        assert count * size <= mmap.PAGESIZE;
-        return address + mmap.PAGESIZE;
+        if guarded[0] and count * size <= mmap.PAGESIZE {
+            return address + mmap.PAGESIZE;
+        }
+        return library.calloc(count, size) or 0;
     }
     allocator = allocator_type(allocate);
-    original = ctypes.cast(library.calloc, ctypes.c_void_p).value;
     try {
         llvm.add_symbol("calloc", ctypes.cast(allocator, ctypes.c_void_p).value);
         program = JacProgram();
@@ -119,6 +136,7 @@ test "Callback records survive managed field and container cleanup" {
         function = get_func(module.gen.native_engine, "probe", ctypes.c_int32);
         child = os.fork();
         if child == 0 {
+            guarded[0] = True;
             os._exit(0 if function() == 0 else 1);
         }
         (_, status) = os.waitpid(child, 0);

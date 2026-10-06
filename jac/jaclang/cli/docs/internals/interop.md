@@ -335,8 +335,19 @@ the block opens with a declaration keyword, populates `Import.clib_decls`,
 and stamps `CodeContext.NATIVE`. A logical name (`raylib`) is mapped to
 `libraylib.so` / `.dylib` / `raylib.dll` per target triple, and the runpath
 is emitted as ELF `DT_RUNPATH=$ORIGIN` (or Mach-O `@loader_path`). A `str`
-parameter lowers to `i8*`. A clib declaration with a *body* is an error
-(`E5060`).
+parameter lowers to `i8*`.
+
+The block is the C boundary in both directions. A declaration without a body
+or initializer names something C defines; with one, Jac defines it under that
+exact symbol. `glob name: T = value;` is C-layout data built from a C constant
+initializer (`ptr(f)` is the address of the named function `f`, for an
+untyped function-pointer field), and `def name(...) -> R { ... }` is a C function with the C
+calling convention: callers in the same module call the Jac body directly,
+while C code and other modules reach it through a generated C-ABI entry point
+that unpacks struct-by-value arguments and returns (register pieces, `byval`
+memory, `sret`) with the same classification the call side uses. A C variadic
+definition (`*args: VaList`) is emitted directly under the C name, since its
+fixed parameters are scalars or pointers.
 
 ### The three-layer ABI implementation
 
@@ -392,6 +403,17 @@ rule both backends lower.
   the call when the Jac slot differs, e.g. `bool`). The borrow's lifetime is
   the call, so the ownership checker needs no new rule, and a clib call
   never consumes its arguments.
+- **`&mut x` for a `ptr[T]` parameter.** Passed positionally to a `ptr[T]`
+  parameter of a C-ABI function (a clib declaration, or a function a C
+  block defines in this module or another), `&mut x` (or `&x`) lends x's
+  address for the call, as C's `&x` does, when x is a local or field of
+  exactly `T` (a C scalar other than `bool`, a C pointer or a foreign
+  struct): `PySlice_Unpack(item, &mut start, &mut stop, &mut step)`. The
+  native backend passes the variable's slot or the struct's storage; the
+  Python backend passes a C cell's address and reads it back, or the
+  foreign struct's own storage. Anywhere else the argument is an ordinary
+  mismatch (`E1053`). `c_lent_arg_elem` in `compiler/c_interop.jac` is the
+  rule the checker and both backends share.
 - **`ptr[T]`** lowers to an `i64` in Jac values (locals, fields, container
   elements, foreign struct fields), so no reference-count or cycle-collector
   path ever sees it; the marshaller converts at the call boundary.

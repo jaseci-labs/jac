@@ -57,6 +57,11 @@ glob RC_COLOR_BLACK: int = 0,
 glob JACVAL_ELLIPSIS_TAG: int = 9;
 
 glob CLASS_DISPLAY_OFF: int = 24;
+
+glob CLASS_RECORD_ANCESTRY: int = 6;
+
+glob VTABLE_SET_SYMBOL: str = "__jac_vtables",
+     VTABLE_SET_BUCKETS: int = 256;
 glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_USER_OFF: int = 8,
      LIVE_NODE_TAG_OFF: int = 16,
@@ -68,4 +73,5 @@ glob NATIVE_CONTAINER_CODES: dict[str, str] = {"dict": "natdict", "set": "natset
 
 glob EXC_LINEAGE_BITS: int = 11,
      EXC_LINEAGE_SLOTS: int = 2048,
-     EXC_LINEAGE_MIX: int = -7046029254386353131;
+     EXC_LINEAGE_MIX: int = -7046029254386353131,
+     UNBOUND_CAUGHT: str = "__jac caught";

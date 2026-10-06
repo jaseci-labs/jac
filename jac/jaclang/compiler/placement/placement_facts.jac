@@ -127,7 +127,22 @@ def _toolchain_rel(source_path: str) -> (str | None) {
     return target_package_rel(source_path);
 }
 
+def variant_selected(source_path: str) -> (bool | None) {
+    import from jaclang.compiler.frontend.codeinfo {
+        is_native_variant_path,
+        is_selected_native_variant
+    }
+    if not is_native_variant_path(source_path) {
+        return None;
+    }
+    return is_selected_native_variant(source_path);
+}
+
 def native_only(source_path: str) -> bool {
+    selected = variant_selected(source_path);
+    if selected is not None {
+        return selected;
+    }
     rel = _toolchain_rel(source_path);
     if rel is None {
         return False;
@@ -158,6 +173,10 @@ def native_unit(
     native_unit_compile: (bool | None) = None,
     prog: (JacProgram | None) = None
 ) -> bool {
+    selected = variant_selected(source_path);
+    if selected is not None {
+        return selected;
+    }
     if native_only(source_path) {
         return True;
     }

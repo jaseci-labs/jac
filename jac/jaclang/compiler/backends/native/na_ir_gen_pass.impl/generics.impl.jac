@@ -698,14 +698,23 @@ impl NaIRGenPass._find_source_ability(
     if imported_mod is None {
         return None;
     }
-    for stmt in (imported_mod.body or []) {
-        if (
-            isinstance(stmt, uni.Ability)
-            and stmt.name_ref is not None
-            and stmt.name_ref.sym_name == func_name
-            and isinstance(stmt.signature, uni.FuncSignature)
-        ) {
-            return stmt;
+    return NaIRGenPass._module_ability(imported_mod, func_name);
+}
+
+impl NaIRGenPass._module_ability(
+    mod: uni.Module, func_name: str
+) -> (uni.Ability | None) {
+    for stmt in (mod.body or []) {
+        candidates = (stmt.clib_decls or [])
+            if isinstance(stmt, uni.Import)
+            else [stmt];
+        for decl in candidates {
+            if isinstance(decl, uni.Ability)
+                and decl.name_ref is not None
+                and decl.name_ref.sym_name == func_name
+                and isinstance(decl.signature, uni.FuncSignature) {
+                return decl;
+            }
         }
     }
     return None;

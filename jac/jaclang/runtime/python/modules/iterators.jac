@@ -9,6 +9,7 @@ see ../LICENSE.cpython.
 import from jaclang.runtime.python.cpython_api {
     NULL,
     PyErr_Clear,
+    PyExc_ValueError,
     PyIter_Next,
     PyList_Append,
     PyList_GetItemRef,
@@ -23,14 +24,13 @@ import from jaclang.runtime.python.cpython_api {
     PyTuple_New,
     PyTuple_Size,
     Py_NewRef,
+    Py_None,
     jacpy_call_two,
     jacpy_error_pending,
     jacpy_is_long,
-    jacpy_is_none,
     jacpy_list_exchange,
     jacpy_list_new,
     jacpy_list_size,
-    jacpy_none,
     jacpy_release,
     jacpy_tuple_exchange,
     jacpy_tuple_item,
@@ -175,10 +175,10 @@ def:pub jacpy_pipeline_init(
             if second != 0 {
                 state.auxiliary = required(PyObject_GetIter(second));
             }
-            if function != 0 and jacpy_is_none(function) == 0 {
+            if function != 0 and function != Py_None {
                 state.function = Py_NewRef(function);
             }
-            if initial != 0 and jacpy_is_none(initial) == 0 {
+            if initial != 0 and initial != Py_None {
                 state.initial = Py_NewRef(initial);
             }
             if kind == pipeline_kind.CYCLE.value {
@@ -202,7 +202,7 @@ def reusable_tuple(previous: ptr[PyObject], width: i64) -> ptr[PyObject] {
     }
     result = required(PyTuple_New(width));
     for i in range(int(width)) {
-        checked(jacpy_tuple_set_owned(result, i64(i), jacpy_none()));
+        checked(jacpy_tuple_set_owned(result, i64(i), Py_NewRef(Py_None)));
     }
     return result;
 }
@@ -287,7 +287,7 @@ def:priv pipeline_zip(state: pipeline_state) -> ptr[PyObject] {
         result = reusable_tuple(state.result, width);
         for i in range(int(width)) {
             iterator = required(PyList_GetItemRef(state.source, i64(i)));
-            if jacpy_is_none(iterator) != 0 {
+            if iterator == Py_None {
                 item = Py_NewRef(state.function);
             } else {
                 item = PyIter_Next(iterator);
@@ -297,7 +297,7 @@ def:priv pipeline_zip(state: pipeline_state) -> ptr[PyObject] {
                         state.active = 0;
                         return NULL;
                     }
-                    empty = jacpy_none();
+                    empty = Py_NewRef(Py_None);
                     previous = jacpy_list_exchange(state.source, i64(i), empty);
                     jacpy_release(empty);
                     jacpy_release(previous);
@@ -336,6 +336,22 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
     if kind == pipeline_kind.ZIP_LONGEST.value {
         return pipeline_zip(state);
     }
+    # repeat cannot fail: it stays out of the exception region, which keeps
+    # a function from being optimized.
+    if kind == pipeline_kind.REPEAT.value {
+        if state.stop == 0 {
+            return NULL;
+        }
+        if state.stop > 0 {
+            state.stop -= 1;
+        }
+        return Py_NewRef(state.value);
+    }
+    return pipeline_advance(state, kind);
+}
+
+# The kinds whose step can fail, inside the exception region.
+def:priv pipeline_advance(state: pipeline_state, kind: i64) -> ptr[PyObject] {
     item: ptr[PyObject] = NULL;
     good: ptr[PyObject] = NULL;
     result: ptr[PyObject] = NULL;
@@ -350,15 +366,6 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
             answer = item;
             item = NULL;
             return answer;
-        }
-        if kind == pipeline_kind.REPEAT.value {
-            if state.stop == 0 {
-                return NULL;
-            }
-            if state.stop > 0 {
-                state.stop -= 1;
-            }
-            return Py_NewRef(state.value);
         }
         if kind == pipeline_kind.ACCUMULATE.value and state.initial != 0 {
             prior = state.value;
@@ -470,7 +477,7 @@ def:pub jacpy_pipeline_next(state: pipeline_state) -> ptr[PyObject] {
                         return NULL;
                     }
                     if state.flag {
-                        object_error("ValueError", "batched(): incomplete batch");
+                        object_error(PyExc_ValueError, "batched(): incomplete batch");
                         return NULL;
                     }
                     # Copy the initialized prefix; the unused tuple slots stay NULL.

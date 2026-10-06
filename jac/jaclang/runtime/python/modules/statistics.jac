@@ -5,13 +5,7 @@ approximation evaluates natively over machine doubles.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyFloat_AsDouble,
-    PyFloat_FromDouble,
-    PyObject,
-    jacpy_error_pending
-}
+import from jaclang.runtime.python.cpython_api { PyExc_ValueError, PyObject }
 import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.modules.numeric { fabs, log, sqrt }
 
@@ -89,39 +83,16 @@ def:priv polynomial(coefficients: list[float], value: float) -> float {
     return total;
 }
 
-def:priv undefined -> ptr[PyObject] {
-    object_error("ValueError", "inv_cdf undefined for these parameters");
-    return NULL;
-}
-
-# PyFloat_AsDouble, reporting a failed conversion as None rather than the
-# -1.0 the C API overloads for it.
-def:priv input_float(value: ptr[PyObject]) -> (float | None) {
-    result = PyFloat_AsDouble(value);
-    if jacpy_error_pending() != 0 {
-        return None;
-    }
-    return result;
+def:priv undefined -> f64 {
+    object_error(PyExc_ValueError, "inv_cdf undefined for these parameters");
+    return -1.0;
 }
 
 # Every comparison keeps the reference implementation's orientation so that a
 # NaN probability falls through to the tail branch and yields NaN instead of
-# raising.
-def:pub jacpy_statistics_inv_cdf(
-    probability: ptr[PyObject], mean: ptr[PyObject], deviation: ptr[PyObject]
-) -> ptr[PyObject] {
-    p = input_float(probability);
-    if p is None {
-        return NULL;
-    }
-    mu = input_float(mean);
-    if mu is None {
-        return NULL;
-    }
-    sigma = input_float(deviation);
-    if sigma is None {
-        return NULL;
-    }
+# raising. Returns -1.0 with the error set on failure (clinic's double
+# return converter).
+def:pub jacpy_statistics_inv_cdf(p: f64, mu: f64, sigma: f64) -> f64 {
     if p <= 0.0 or p >= 1.0 {
         return undefined();
     }
@@ -136,7 +107,7 @@ def:pub jacpy_statistics_inv_cdf(
             return undefined();
         }
         x = polynomial(central_numerator, r) * q / den;
-        return PyFloat_FromDouble(mu + x * sigma);
+        return mu + x * sigma;
     }
     r = p if q <= 0.0 else 1.0 - p;
     if r <= 0.0 or r >= 1.0 {
@@ -161,5 +132,11 @@ def:pub jacpy_statistics_inv_cdf(
     if q < 0.0 {
         x = -x;
     }
-    return PyFloat_FromDouble(mu + x * sigma);
+    return mu + x * sigma;
+}
+
+def _statistics__normal_dist_inv_cdf_impl(
+    module: ptr[PyObject], p: f64, mu: f64, sigma: f64
+) -> f64 {
+    return jacpy_statistics_inv_cdf(p, mu, sigma);
 }

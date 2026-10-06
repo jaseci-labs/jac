@@ -2,6 +2,8 @@
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_ImportError,
+    PyExc_TypeError,
     PyModule_AddIntConstant,
     PyObject,
     PyTuple_GetItem,
@@ -44,7 +46,7 @@ def:priv syslog_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
             );
             return syslog_syslog_impl(module, i32(1), priority, message);
         }
-        object_error("TypeError", "syslog.syslog requires 1 to 2 arguments");
+        object_error(PyExc_TypeError, "syslog.syslog requires 1 to 2 arguments");
         return NULL;
     } except boundary_failure {
         return NULL;
@@ -54,7 +56,7 @@ def:priv syslog_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
-            "ImportError",
+            PyExc_ImportError,
             "syslog has no syslog_constants.<os>.jac for this target platform"
         );
         return i32(-1);

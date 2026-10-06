@@ -482,7 +482,7 @@ impl NaIRGenPass._class_ctor_registry -> ir.GlobalVariable {
 impl NaIRGenPass._class_record_type -> ir.LiteralStructType {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    return ir.LiteralStructType([i8p, i64, i8p, i64, i8p, i64]);
+    return ir.LiteralStructType([i8p, i64, i8p, i64, i8p, i64, i8p]);
 }
 
 impl NaIRGenPass._class_ctor_entry_type -> ir.LiteralStructType {
@@ -920,9 +920,6 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
             }
         }
         tag = stable_osp_tag(name) if name in self.osp_type_tag_field else 0;
-        if not entries and tag == 0 {
-            continue;
-        }
         table: ir.Value = ir.Constant(i8p, None);
         if entries {
             table_ty = ir.ArrayType(entry_ty, len(entries));
@@ -946,14 +943,28 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
                 self._emit_class_name_const(name),
                 ir.Constant(i64, len(entries)),
                 table,
-                ir.Constant(i64, tag)
+                ir.Constant(i64, tag),
+                self._emit_vtable_ancestry(name).bitcast(i8p)
             ]
         );
         self._class_ctor_records.append((record, self._static_str_hash(name)));
+        vtable = self.vtable_globals.get(name) if self._arch_has_vtable(name) else None;
+        if vtable is not None {
+            node_ty = ir.LiteralStructType([i8p, i8p]);
+            vt_node = ir.GlobalVariable(
+                self.llvm_module, node_ty, name=f"{name}.__vtnode"
+            );
+            vt_node.linkage = "internal";
+            vt_node.initializer = ir.Constant(
+                node_ty, [ir.Constant(i8p, None), vtable.bitcast(i8p)]
+            );
+            self._vtable_nodes.append(vt_node);
+        }
     }
 }
 
 impl NaIRGenPass._emit_class_ctor_registrations -> None {
+    self._emit_vtable_set_registrations();
     if not self._class_ctor_records {
         return;
     }

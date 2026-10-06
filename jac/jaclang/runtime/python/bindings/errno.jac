@@ -9,6 +9,7 @@ import from jaclang.runtime.python.cpython_api {
     PyDict_New,
     PyDict_SetItem,
     PyDict_SetItemString,
+    PyExc_ImportError,
     PyLong_FromLong,
     PyModule_GetDict,
     PyObject,
@@ -36,7 +37,7 @@ def:priv add_errcode(
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
-            "ImportError",
+            PyExc_ImportError,
             "errno has no errno_constants.<os>.jac for this target platform"
         );
         return i32(-1);

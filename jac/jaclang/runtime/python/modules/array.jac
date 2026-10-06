@@ -7,9 +7,35 @@ see ../LICENSE.cpython.
 """
 
 import from jaclang.runtime.python.cpython_api {
+    jacpy_bytearray_memory,
+    jacpy_bytearray_new,
+    jacpy_bytes_address,
+    jacpy_bytes_from_memory,
+    jacpy_bytes_length,
+    jacpy_error_pending,
+    jacpy_float32_bits,
+    jacpy_float_bits,
+    jacpy_float_unpack,
+    jacpy_is_bytes,
+    jacpy_is_unicode,
+    jacpy_list_new,
+    jacpy_memory_copy,
+    jacpy_memory_move,
+    jacpy_native_little_endian,
+    jacpy_native_size,
+    jacpy_release,
+    jacpy_unicode_decode_bytes,
+    jacpy_unicode_size,
     NULL,
-    PyBool_FromLong,
+    Py_NewRef,
     PyByteArray_Resize,
+    PyExc_BufferError,
+    PyExc_EOFError,
+    PyExc_IndexError,
+    PyExc_MemoryError,
+    PyExc_OverflowError,
+    PyExc_TypeError,
+    PyExc_ValueError,
     PyFloat_AsDouble,
     PyFloat_FromDouble,
     PyIter_Next,
@@ -28,35 +54,28 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicode_FromOrdinal,
     PyUnicode_Join,
     PyUnicode_ReadChar,
-    Py_NewRef,
-    jacpy_bytearray_memory,
-    jacpy_bytearray_new,
-    jacpy_bytes_address,
-    jacpy_bytes_from_memory,
-    jacpy_bytes_length,
-    jacpy_error_pending,
-    jacpy_float32_bits,
-    jacpy_float_bits,
-    jacpy_float_unpack,
-    jacpy_is_bytes,
-    jacpy_is_unicode,
-    jacpy_list_new,
-    jacpy_memory_copy,
-    jacpy_memory_move,
-    jacpy_memory_zero,
-    jacpy_native_little_endian,
-    jacpy_native_size,
-    jacpy_offset,
-    jacpy_release,
-    jacpy_unicode_decode_bytes,
-    jacpy_unicode_size
+    PyExc_RuntimeError,
+    PyExc_SystemError,
+    PyLong_AsSsize_t,
+    PyLong_FromVoidPtr,
+    PyType_IsSubtype,
+    Py_None,
+    Py_TYPE,
+    jacpy_builtins,
+    jacpy_dict_get,
+    jacpy_is_list,
+    jacpy_is_long,
+    jacpy_is_type,
+    jacpy_optional_attr
 }
+import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
 import from jaclang.runtime.python.modules.binary_scalars {
     read_bits,
     write_bits,
     integer_from_bits
 }
 import from jaclang.runtime.python.capi {
+    type_name,
     required,
     checked,
     object_error,
@@ -65,6 +84,25 @@ import from jaclang.runtime.python.capi {
     jac_heap_size,
     repr_value,
     object_tuple
+}
+import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.bindings.converters { ClassToken }
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
+import from jaclang.runtime.python.bindings.type {
+    jacpy_binding_allocate,
+    jacpy_binding_basicsize,
+    jacpy_binding_matches,
+    jacpy_binding_owner
+}
+import from jaclang.runtime.python.bindings.payload {
+    jacpy_binding_native_get,
+    jacpy_binding_native_present,
+    jacpy_binding_native_set
+}
+import from jaclang.runtime.python.bindings.module {
+    jacpy_binding_state_get,
+    visit_reference
 }
 
 obj array_state {
@@ -94,7 +132,7 @@ def:pub jacpy_array_init(state: array_state, code: i64) -> i64 {
     kind = "bBhHiIlLqQfd".find(letter);
     if kind < 0 and letter not in "uw" {
         object_error(
-            "ValueError",
+            PyExc_ValueError,
             "bad typecode (must be b, B, u, h, H, i, I, l, L, q, Q, f, d or w)"
         );
         return -1;
@@ -152,8 +190,21 @@ def:pub jacpy_array_memory(state: array_state) -> i64 {
 def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
     letter = chr(state.code);
     if letter in "uw" {
-        if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
-            object_error("TypeError", "array item must be unicode character");
+        # u_setitem / w_setitem (wchar_t is UCS-4 on every JacPython target).
+        if jacpy_is_unicode(value) == 0 {
+            object_error(
+                PyExc_TypeError,
+                f"array item must be a unicode character, not {type_name(value, True)}"
+            );
+            raise boundary_failure();
+        }
+        if jacpy_unicode_size(value) != 1 {
+            object_error(
+                PyExc_TypeError,
+                f"array item must be a unicode character, not a string of length {jacpy_unicode_size(
+                    value
+                )}"
+            );
             raise boundary_failure();
         }
         return u64(PyUnicode_ReadChar(value, 0));
@@ -174,7 +225,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
             if state.itemsize < 8 {
                 limit = i64(1) << i64(state.itemsize * 8 - 1);
                 if actual < -limit or actual >= limit {
-                    object_error("OverflowError", "signed integer is out of range");
+                    object_error(PyExc_OverflowError, "signed integer is out of range");
                     raise boundary_failure();
                 }
             }
@@ -183,7 +234,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
         bits = PyLong_AsUnsignedLongLong(number);
         pending();
         if state.itemsize < 8 and bits >= (u64(1) << i64(state.itemsize * 8)) {
-            object_error("OverflowError", "unsigned integer is out of range");
+            object_error(PyExc_OverflowError, "unsigned integer is out of range");
             raise boundary_failure();
         }
         return bits;
@@ -193,9 +244,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
 }
 
 def:priv decode(state: array_state, index: i64) -> ptr[PyObject] {
-    address = jacpy_offset(
-        jacpy_bytes_address(state.storage), index * i64(state.itemsize)
-    );
+    address = jacpy_bytes_address(state.storage) + index * i64(state.itemsize);
     letter = chr(state.code);
     if letter in "fd" {
         number = jacpy_float_unpack(address, i64(state.itemsize), i64(state.little));
@@ -205,7 +254,7 @@ def:priv decode(state: array_state, index: i64) -> ptr[PyObject] {
     bits = read_bits(address, state.itemsize, state.little);
     if letter in "uw" {
         if bits > u64(1114111) {
-            object_error("ValueError", "character out of range [U+0000; U+10ffff]");
+            object_error(PyExc_ValueError, "character out of range [U+0000; U+10ffff]");
             raise boundary_failure();
         }
         return required(PyUnicode_FromOrdinal(i32(bits)));
@@ -218,11 +267,13 @@ def:priv resize(state: array_state, length: i64) {
         return;
     }
     if state.exports != 0 {
-        object_error("BufferError", "cannot resize an array that is exporting buffers");
+        object_error(
+            PyExc_BufferError, "cannot resize an array that is exporting buffers"
+        );
         raise boundary_failure();
     }
     if length < 0 or length > i64(9223372036854775807) // i64(state.itemsize) {
-        object_error("MemoryError", "");
+        object_error(PyExc_MemoryError, "");
         raise boundary_failure();
     }
     if length > state.capacity or length == 0 {
@@ -241,7 +292,7 @@ def:priv resize(state: array_state, length: i64) {
 def:pub jacpy_array_item(state: array_state, index: i64) -> ptr[PyObject] {
     try {
         if index < 0 or index >= state.length {
-            object_error("IndexError", "array index out of range");
+            object_error(PyExc_IndexError, "array index out of range");
             return NULL;
         }
         return decode(state, index);
@@ -256,13 +307,11 @@ def:pub jacpy_array_assign(
     try {
         bits = encode(state, value);
         if index < 0 or index >= state.length {
-            object_error("IndexError", "array assignment index out of range");
+            object_error(PyExc_IndexError, "array assignment index out of range");
             return -1;
         }
         write_bits(
-            jacpy_offset(
-                jacpy_bytes_address(state.storage), index * i64(state.itemsize)
-            ),
+            jacpy_bytes_address(state.storage) + index * i64(state.itemsize),
             state.itemsize,
             state.little,
             bits
@@ -287,13 +336,11 @@ def:pub jacpy_array_insert(
         address = jacpy_bytes_address(state.storage);
         width = i64(state.itemsize);
         jacpy_memory_move(
-            jacpy_offset(address, (index + 1) * width),
-            jacpy_offset(address, index * width),
+            address + (index + 1) * width,
+            address + index * width,
             (old_length - index) * width
         );
-        write_bits(
-            jacpy_offset(address, index * width), state.itemsize, state.little, bits
-        );
+        write_bits(address + index * width, state.itemsize, state.little, bits);
         return 0;
     } except boundary_failure {
         return -1;
@@ -367,20 +414,18 @@ def:pub jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i6
     try {
         width = i64(state.itemsize);
         if size % width != 0 {
-            object_error("ValueError", "bytes length not a multiple of item size");
+            object_error(PyExc_ValueError, "bytes length not a multiple of item size");
             return -1;
         }
         old_length = state.length;
         if size // width > i64(9223372036854775807) - old_length {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         resize(state, old_length + size // width);
         if size != 0 {
             jacpy_memory_copy(
-                jacpy_offset(jacpy_bytes_address(state.storage), old_length * width),
-                address,
-                size
+                jacpy_bytes_address(state.storage) + old_length * width, address, size
             );
         }
         return 0;
@@ -395,7 +440,7 @@ def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64) {
     if swap_bytes != 0 {
         index: i64 = 0;
         while index < state.length {
-            offset = jacpy_offset(address, index * width);
+            offset = address + index * width;
             write_bits(
                 offset,
                 state.itemsize,
@@ -407,8 +452,8 @@ def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64) {
     } else {
         index: i64 = 0;
         while index < state.length // 2 {
-            left = jacpy_offset(address, index * width);
-            right = jacpy_offset(address, (state.length - index - 1) * width);
+            left = address + index * width;
+            right = address + (state.length - index - 1) * width;
             a = read_bits(left, state.itemsize, state.little);
             b = read_bits(right, state.itemsize, state.little);
             write_bits(left, state.itemsize, state.little, b);
@@ -427,16 +472,12 @@ def:pub jacpy_array_copy(
         target = jacpy_bytes_address(out.storage);
         address = jacpy_bytes_address(source.storage);
         if step == 1 and count > 0 {
-            jacpy_memory_copy(
-                target, jacpy_offset(address, start * width), count * width
-            );
+            jacpy_memory_copy(target, address + start * width, count * width);
         } else {
             i: i64 = 0;
             while i < count {
                 jacpy_memory_copy(
-                    jacpy_offset(target, i * width),
-                    jacpy_offset(address, (start + i * step) * width),
-                    width
+                    target + i * width, address + (start + i * step) * width, width
                 );
                 i += 1;
             }
@@ -453,12 +494,12 @@ def:pub jacpy_array_assign_slice(
     snapshot: ptr[PyObject] = NULL;
     try {
         if state.code != source.code {
-            object_error("TypeError", "bad argument type for built-in operation");
+            object_error(PyExc_TypeError, "bad argument type for built-in operation");
             return -1;
         }
         if step != 1 and count != source.length {
             object_error(
-                "ValueError",
+                PyExc_ValueError,
                 "attempt to assign array of size "
                     + str(source.length)
                     + " to extended slice of size "
@@ -470,13 +511,13 @@ def:pub jacpy_array_assign_slice(
         old_length = state.length;
         width = i64(state.itemsize);
         if source_length > i64(9223372036854775807) - (old_length - count) {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         new_length = old_length - count + source_length;
         if new_length != old_length and state.exports != 0 {
             object_error(
-                "BufferError", "cannot resize an array that is exporting buffers"
+                PyExc_BufferError, "cannot resize an array that is exporting buffers"
             );
             return -1;
         }
@@ -490,23 +531,19 @@ def:pub jacpy_array_assign_slice(
             tail = old_length - start - count;
             if tail > 0 {
                 jacpy_memory_move(
-                    jacpy_offset(address, (start + source_length) * width),
-                    jacpy_offset(address, (start + count) * width),
+                    address + (start + source_length) * width,
+                    address + (start + count) * width,
                     tail * width
                 );
             }
             if source_length > 0 {
-                jacpy_memory_copy(
-                    jacpy_offset(address, start * width), data, source_length * width
-                );
+                jacpy_memory_copy(address + start * width, data, source_length * width);
             }
         } else {
             i: i64 = 0;
             while i < count {
                 jacpy_memory_copy(
-                    jacpy_offset(address, (start + i * step) * width),
-                    jacpy_offset(data, i * width),
-                    width
+                    address + (start + i * step) * width, data + i * width, width
                 );
                 i += 1;
             }
@@ -531,7 +568,7 @@ def:pub jacpy_array_delete(
         }
         if state.exports != 0 {
             object_error(
-                "BufferError", "cannot resize an array that is exporting buffers"
+                PyExc_BufferError, "cannot resize an array that is exporting buffers"
             );
             return -1;
         }
@@ -554,9 +591,7 @@ def:pub jacpy_array_delete(
             } else {
                 if write != read {
                     jacpy_memory_move(
-                        jacpy_offset(address, write * width),
-                        jacpy_offset(address, read * width),
-                        width
+                        address + write * width, address + read * width, width
                     );
                 }
                 write += 1;
@@ -577,7 +612,7 @@ def:pub jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject] {
             index += state.length;
         }
         if index < 0 or index >= state.length {
-            object_error("IndexError", "pop index out of range");
+            object_error(PyExc_IndexError, "pop index out of range");
             return NULL;
         }
         value = decode(state, index);
@@ -602,7 +637,7 @@ def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64 {
             return 0;
         }
         if times > i64(9223372036854775807) // old_length {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         resize(state, old_length * times);
@@ -611,9 +646,7 @@ def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64 {
         copied = old_length;
         while copied < state.length {
             amount = min(copied, state.length - copied);
-            jacpy_memory_copy(
-                jacpy_offset(address, copied * width), address, amount * width
-            );
+            jacpy_memory_copy(address + copied * width, address, amount * width);
             copied += amount;
         }
         return 0;
@@ -673,7 +706,12 @@ def:pub jacpy_array_search(
             index += 1;
         }
         if mode == 1 or mode == 2 {
-            object_error("ValueError", "array.index(x): x not in array");
+            object_error(
+                PyExc_ValueError,
+                "array.index(x): x not in array"
+                    if mode == 1
+                    else "array.remove(x): x not in array"
+            );
             return -1;
         }
         return found;
@@ -725,7 +763,8 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
     try {
         if chr(state.code) not in "uw" {
             object_error(
-                "ValueError", "tounicode() may only be called on unicode type arrays"
+                PyExc_ValueError,
+                "tounicode() may only be called on unicode type arrays ('u' or 'w')"
             );
             return NULL;
         }
@@ -743,7 +782,8 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
 def:pub jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64 {
     if chr(state.code) not in "uw" {
         object_error(
-            "ValueError", "fromunicode() may only be called on unicode type arrays"
+            PyExc_ValueError,
+            "fromunicode() may only be called on unicode type arrays ('u' or 'w')"
         );
         return -1;
     }
@@ -830,11 +870,11 @@ def:pub jacpy_array_fromfile(
     data: ptr[PyObject] = NULL;
     try {
         if count < 0 {
-            object_error("ValueError", "negative count");
+            object_error(PyExc_ValueError, "negative count");
             return -1;
         }
         if count > i64(9223372036854775807) // i64(state.itemsize) {
-            object_error("MemoryError", "");
+            object_error(PyExc_MemoryError, "");
             return -1;
         }
         expected = count * i64(state.itemsize);
@@ -842,13 +882,13 @@ def:pub jacpy_array_fromfile(
         method = required(PyObject_GetAttrString(file, "read"));
         data = required(PyObject_CallOneArg(method, size));
         if jacpy_is_bytes(data) == 0 {
-            object_error("TypeError", "read() didn't return bytes");
+            object_error(PyExc_TypeError, "read() didn't return bytes");
             return -1;
         }
         actual = jacpy_bytes_length(data);
         checked(jacpy_array_frombytes(state, jacpy_bytes_address(data), actual));
         if actual != expected {
-            object_error("EOFError", "read() didn't return enough bytes");
+            object_error(PyExc_EOFError, "read() didn't return enough bytes");
             return -1;
         }
         return 0;
@@ -876,9 +916,7 @@ def:pub jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64 {
         while offset < size {
             amount = min(i64(65536), size - offset);
             block = required(
-                jacpy_bytes_from_memory(
-                    jacpy_offset(jacpy_bytes_address(snapshot), offset), amount
-                )
+                jacpy_bytes_from_memory(jacpy_bytes_address(snapshot) + offset, amount)
             );
             method = required(PyObject_GetAttrString(file, "write"));
             result = required(PyObject_CallOneArg(method, block));
@@ -988,7 +1026,7 @@ def:priv decode_pickle(
     try {
         if format < 0 or format > 21 {
             object_error(
-                "ValueError", "third argument must be a valid machine format code"
+                PyExc_ValueError, "third argument must be a valid machine format code"
             );
             return NULL;
         }
@@ -1009,7 +1047,7 @@ def:priv decode_pickle(
                             if format < 16
                             else 8 if format < 18 else 4 if format < 20 else 8;
         if size % i64(width) != 0 {
-            object_error("ValueError", "string length not a multiple of item size");
+            object_error(PyExc_ValueError, "string length not a multiple of item size");
             return NULL;
         }
         little = format % 2 == 0;
@@ -1039,15 +1077,13 @@ def:priv decode_pickle(
         while offset < size {
             if format >= 14 {
                 floating = jacpy_float_unpack(
-                    jacpy_offset(address, offset), i64(width), i64(little)
+                    address + offset, i64(width), i64(little)
                 );
                 pending();
                 value = required(PyFloat_FromDouble(floating));
             } else {
                 value = integer_from_bits(
-                    read_bits(jacpy_offset(address, offset), width, little),
-                    width,
-                    signed
+                    read_bits(address + offset, width, little), width, signed
                 );
             }
             checked(PyList_Append(values, value));
@@ -1088,4 +1124,412 @@ def:pub jacpy_array_reconstruct_object(
         jacpy_release(tag);
         jacpy_release(args);
     }
+}
+
+# The definitions the binding creates: methods find the receiver's state and
+# the module's by these (clinic's defining-class tokens).
+glob array_token = ClassToken(),
+     arrayiterator_token = ClassToken(),
+     array_module_token = ClassToken();
+
+obj ArrayState(NativeState) {
+    has native: array_state;
+
+    def clear {
+        # An exported view keeps storage valid until its release callback runs.
+        if self.native.exports == 0 {
+            jacpy_array_clear(self.native);
+        }
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        return visit_reference(jacpy_array_field(self.native), visitor, context);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+obj ArrayIteratorState(NativeState) {
+    has native: array_cursor;
+
+    def clear {
+        jacpy_array_cursor_clear(self.native);
+    }
+
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+        return visit_reference(jacpy_array_cursor_owner(self.native), visitor, context);
+    }
+
+    def drop {
+        self.clear();
+    }
+}
+
+def module_for(type: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_binding_owner(type, array_module_token.handle);
+}
+
+def state_for(instance: ptr[PyObject]) -> (ArrayState | None) {
+    if jacpy_binding_native_present(instance, array_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, array_token.handle);
+        if isinstance(state, ArrayState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native array state is unavailable");
+    return None;
+}
+
+def iterator_state(instance: ptr[PyObject]) -> (ArrayIteratorState | None) {
+    if jacpy_binding_native_present(instance, arrayiterator_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, arrayiterator_token.handle);
+        if isinstance(state, ArrayIteratorState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native array iterator state is unavailable");
+    return None;
+}
+
+def allocate(type: ptr[PyObject], code: i64) -> ptr[PyObject] {
+    state = ArrayState(native=array_state());
+    if jacpy_array_init(state.native, code) < 0 {
+        return NULL;
+    }
+    instance = jacpy_binding_allocate(type);
+    if instance != 0
+        and jacpy_binding_native_set(instance, array_token.handle, state) < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+def done(status: i64) -> ptr[PyObject] {
+    return Py_NewRef(Py_None) if status >= 0 else NULL;
+}
+
+def append_buffer(state: array_state, value: ptr[PyObject]) -> i64 {
+    buffer = BufferArgument();
+    if not buffer.acquire(value) {
+        return -1;
+    }
+    return jacpy_array_frombytes(state, buffer.address(), buffer.size());
+}
+
+# The Argument Clinic _impl functions.
+def array_array___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    module = module_for(Py_TYPE(instance));
+    if module == 0 {
+        return NULL;
+    }
+    result = allocate(jacpy_binding_state_get(module, 0), i64(state.native.code));
+    if result == 0 {
+        return NULL;
+    }
+    target = state_for(result);
+    if target is None
+        or jacpy_array_copy(target.native, state.native, 0, 1, state.native.length)
+            < 0 {
+        jacpy_release(result);
+        return NULL;
+    }
+    return result;
+}
+
+def array_array___deepcopy___impl(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
+    return array_array___copy___impl(instance);
+}
+
+def array_array_clear_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    return done(jacpy_array_empty(state.native)) if state is not None else NULL;
+}
+
+def array_array_count_impl(instance: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    result = jacpy_array_search(state.native, v, 0, 9223372036854775807, 0);
+    return PyLong_FromLongLong(result) if result >= 0 else NULL;
+}
+
+def array_array_index_impl(
+    instance: ptr[PyObject], v: ptr[PyObject], start: i64, stop: i64
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    result = jacpy_array_search(state.native, v, start, stop, 1);
+    return PyLong_FromLongLong(result) if result >= 0 else NULL;
+}
+
+def array_array_remove_impl(
+    instance: ptr[PyObject], v: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return done(jacpy_array_search(state.native, v, 0, 9223372036854775807, 2));
+}
+
+def array_array_pop_impl(instance: ptr[PyObject], i: i64) -> ptr[PyObject] {
+    state = state_for(instance);
+    return jacpy_array_pop(state.native, i) if state is not None else NULL;
+}
+
+def array_array_extend_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], bb: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    if jacpy_binding_matches(bb, array_token.handle) != 0 {
+        other = state_for(bb);
+        if other is None {
+            return NULL;
+        }
+        return done(
+            jacpy_array_assign_slice(
+                state.native, state.native.length, 1, 0, other.native
+            )
+        );
+    }
+    return done(jacpy_array_extend(state.native, bb));
+}
+
+def array_array_insert_impl(
+    instance: ptr[PyObject], i: i64, v: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return done(jacpy_array_insert(state.native, i, v));
+}
+
+def array_array_buffer_info_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    address = jacpy_array_address(state.native) if state.native.length != 0 else ptr();
+    return owned_tuple(
+        [PyLong_FromVoidPtr(address), PyLong_FromLongLong(state.native.length)]
+    );
+}
+
+def array_array_append_impl(
+    instance: ptr[PyObject], v: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return done(jacpy_array_insert(state.native, 9223372036854775807, v));
+}
+
+def array_array_byteswap_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_array_reverse(state.native, 1);
+    return Py_NewRef(Py_None);
+}
+
+def array_array_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_array_reverse(state.native, 0);
+    return Py_NewRef(Py_None);
+}
+
+def array_array_fromfile_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], f: ptr[PyObject], n: i64
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return done(jacpy_array_fromfile(state.native, f, n));
+}
+
+def array_array_tofile_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], f: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return done(jacpy_array_tofile(state.native, f));
+}
+
+def array_array_fromlist_impl(
+    instance: ptr[PyObject], list_: ptr[PyObject]
+) -> ptr[PyObject] {
+    if jacpy_is_list(list_) == 0 {
+        object_error(PyExc_TypeError, "arg must be list");
+        return NULL;
+    }
+    state = state_for(instance);
+    return done(jacpy_array_fromlist(state.native, list_))
+        if state is not None
+        else NULL;
+}
+
+def array_array_tolist_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    return jacpy_array_tolist(state.native) if state is not None else NULL;
+}
+
+def array_array_frombytes_impl(
+    instance: ptr[PyObject], buffer: BufferArgument
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return done(jacpy_array_frombytes(state.native, buffer.address(), buffer.size()));
+}
+
+def array_array_tobytes_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    return jacpy_array_tobytes(state.native) if state is not None else NULL;
+}
+
+def array_array_fromunicode_impl(
+    instance: ptr[PyObject], ustr: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = state_for(instance);
+    return done(jacpy_array_fromunicode(state.native, ustr))
+        if state is not None
+        else NULL;
+}
+
+def array_array_tounicode_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    return jacpy_array_tounicode(state.native) if state is not None else NULL;
+}
+
+def array_array___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return PyLong_FromLongLong(
+        jacpy_binding_basicsize(instance)
+            + jac_heap_size(u64(id(state)))
+            + jacpy_array_memory(state.native)
+    );
+}
+
+def array_array___reduce_ex___impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject] {
+    if jacpy_is_long(value) == 0 {
+        object_error(PyExc_TypeError, "__reduce_ex__ argument should be an integer");
+        return NULL;
+    }
+    protocol = PyLong_AsSsize_t(value);
+    if jacpy_error_pending() != 0 {
+        return NULL;
+    }
+    module = module_for(Py_TYPE(instance));
+    if module == 0 {
+        return NULL;
+    }
+    held = ReferenceState(
+        references=[PyObject_GetAttrString(module, "_array_reconstructor"), NULL]
+    );
+    if held.references[0] == 0 {
+        return NULL;
+    }
+    held.references[1] = jacpy_optional_attr(instance, "__dict__");
+    if held.references[1] == 0 {
+        if jacpy_error_pending() != 0 {
+            return NULL;
+        }
+        held.references[1] = Py_NewRef(Py_None);
+    }
+    state = state_for(instance);
+    if state is None {
+        return NULL;
+    }
+    return jacpy_array_reduce(
+        state.native,
+        Py_TYPE(instance),
+        held.references[1],
+        held.references[0],
+        protocol
+    );
+}
+
+def array__array_reconstructor_impl(
+    module: ptr[PyObject],
+    arraytype: ptr[PyObject],
+    typecode: i32,
+    mformat_code: i32,
+    items: ptr[PyObject]
+) -> ptr[PyObject] {
+    if jacpy_is_type(arraytype) == 0
+        or PyType_IsSubtype(arraytype, jacpy_binding_state_get(module, 0)) == 0 {
+        object_error(PyExc_TypeError, "first argument must be an array subtype");
+        return NULL;
+    }
+    if jacpy_is_bytes(items) == 0 {
+        object_error(PyExc_TypeError, "fourth argument should be bytes");
+        return NULL;
+    }
+    return jacpy_array_reconstruct_object(
+        arraytype, i64(typecode), i64(mformat_code), items
+    );
+}
+
+def array_arrayiterator___setstate___impl(
+    instance: ptr[PyObject], state: ptr[PyObject]
+) -> ptr[PyObject] {
+    index = PyLong_AsSsize_t(state);
+    if jacpy_error_pending() != 0 {
+        return NULL;
+    }
+    cursor = iterator_state(instance);
+    if cursor is None {
+        return NULL;
+    }
+    jacpy_array_cursor_set(cursor.native, index);
+    return Py_NewRef(Py_None);
+}
+
+def array_arrayiterator___reduce___impl(
+    instance: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject] {
+    held = ReferenceState(references=[jacpy_builtins(), text_object("iter"), NULL]);
+    if held.references[0] == 0 or held.references[1] == 0 {
+        return NULL;
+    }
+    held.references[2] = jacpy_dict_get(held.references[0], held.references[1]);
+    if held.references[2] == 0 {
+        object_error(PyExc_RuntimeError, "missing builtin iter");
+        return NULL;
+    }
+    state = iterator_state(instance);
+    if state is None {
+        return NULL;
+    }
+    return jacpy_array_cursor_reduce(state.native, held.references[2]);
 }

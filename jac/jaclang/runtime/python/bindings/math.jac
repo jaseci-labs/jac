@@ -1,4 +1,5 @@
-"""Python math signatures, constants, and native initialization."""
+"""The math module: its clinic-generated functions, the FUNC1/FUNC2 ones
+mathmodule.c writes by hand, and the constants."""
 
 import from jaclang.runtime.python.cpython_api { NULL, PyFloat_FromDouble, PyObject }
 import from jaclang.runtime.python.bindings.module {
@@ -8,66 +9,45 @@ import from jaclang.runtime.python.bindings.module {
     ModuleHooks,
     add_owned
 }
-import from jaclang.runtime.python.bindings.arguments {
-    CallSignature,
-    BoundArguments,
-    invoke
+import from jaclang.runtime.python.bindings.arguments { check_positional }
+import from jaclang.runtime.python.bindings.clinic.math {
+    math_acos_doc,
+    math_acosh_doc,
+    math_asin_doc,
+    math_asinh_doc,
+    math_atan_doc,
+    math_atan2_doc,
+    math_atanh_doc,
+    math_cbrt_doc,
+    math_copysign_doc,
+    math_cos_doc,
+    math_cosh_doc,
+    math_erf_doc,
+    math_erfc_doc,
+    math_exp_doc,
+    math_exp2_doc,
+    math_expm1_doc,
+    math_fabs_doc,
+    math_gamma_doc,
+    math_lgamma_doc,
+    math_log_doc,
+    math_log1p_doc,
+    math_remainder_doc,
+    math_sin_doc,
+    math_sinh_doc,
+    math_sqrt_doc,
+    math_tan_doc,
+    math_tanh_doc,
+    module_doc,
+    module_methods
 }
-
 import from jaclang.runtime.python.modules.math {
     jacpy_math_binary,
-    jacpy_math_comb,
-    jacpy_math_dist,
-    jacpy_math_factorial,
-    jacpy_math_fma,
-    jacpy_math_fsum,
-    jacpy_math_gcd,
-    jacpy_math_hypot,
-    jacpy_math_isclose,
-    jacpy_math_isqrt,
-    jacpy_math_ldexp,
     jacpy_math_log,
-    jacpy_math_nextafter,
-    jacpy_math_parts,
-    jacpy_math_prod,
-    jacpy_math_sumprod,
     jacpy_math_unary
 }
 
-def:priv factorial_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_factorial(value);
-}
-
-def:priv isqrt_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_isqrt(value);
-}
-
-def:priv gcd_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_gcd(args, 0);
-}
-
-def:priv lcm_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_gcd(args, 1);
-}
-
-glob:priv comb_signature = CallSignature("comb", ["n", "k"], 2, 2, 2);
-def:priv comb_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_comb(args.values[0], args.values[1], 1);
-}
-
-def:priv comb_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(comb_signature, args, NULL, comb_bound);
-}
-
-glob:priv perm_signature = CallSignature("perm", ["n", "k"], 1, 2, 2);
-def:priv perm_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_comb(args.values[0], args.values[1], 0);
-}
-
-def:priv perm_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(perm_signature, args, NULL, perm_bound);
-}
-
+# FUNC1/FUNC1A/FUNC1D/FUNC1AD: METH_O over math_1().
 def:priv acos_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(0, value);
 }
@@ -160,195 +140,44 @@ def:priv tanh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject]
     return jacpy_math_unary(22, value);
 }
 
-def:priv degrees_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(23, value);
-}
-
-def:priv radians_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(24, value);
-}
-
-def:priv isfinite_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(25, value);
-}
-
-def:priv isinf_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(26, value);
-}
-
-def:priv isnan_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(27, value);
-}
-
-def:priv ceil_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(28, value);
-}
-
-def:priv floor_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(29, value);
-}
-
-def:priv trunc_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(30, value);
-}
-
-def:priv log10_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(31, value);
-}
-
-def:priv log2_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(32, value);
-}
-
-def:priv ulp_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_unary(33, value);
-}
-
-glob:priv atan2_signature = CallSignature("atan2", ["x", "y"], 2, 2, 2);
-def:priv atan2_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_binary(0, args.values[0], args.values[1]);
-}
-
-def:priv atan2_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(atan2_signature, args, NULL, atan2_bound);
-}
-
-glob:priv copysign_signature = CallSignature("copysign", ["x", "y"], 2, 2, 2);
-def:priv copysign_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_binary(1, args.values[0], args.values[1]);
-}
-
-def:priv copysign_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(copysign_signature, args, NULL, copysign_bound);
-}
-
-glob:priv fmod_signature = CallSignature("fmod", ["x", "y"], 2, 2, 2);
-def:priv fmod_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_binary(2, args.values[0], args.values[1]);
-}
-
-def:priv fmod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(fmod_signature, args, NULL, fmod_bound);
-}
-
-glob:priv remainder_signature = CallSignature("remainder", ["x", "y"], 2, 2, 2);
-def:priv remainder_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_binary(3, args.values[0], args.values[1]);
-}
-
-def:priv remainder_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(remainder_signature, args, NULL, remainder_bound);
-}
-
-glob:priv pow_signature = CallSignature("pow", ["x", "y"], 2, 2, 2);
-def:priv pow_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_binary(4, args.values[0], args.values[1]);
-}
-
-def:priv pow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(pow_signature, args, NULL, pow_bound);
-}
-
-glob:priv log_signature = CallSignature("log", ["x", "base"], 1, 2, 2);
-def:priv log_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_log(args.values[0], args.values[1]);
-}
-
-def:priv log_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(log_signature, args, NULL, log_bound);
-}
-
-glob:priv ldexp_signature = CallSignature("ldexp", ["x", "i"], 2, 2, 2);
-def:priv ldexp_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_ldexp(args.values[0], args.values[1]);
-}
-
-def:priv ldexp_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(ldexp_signature, args, NULL, ldexp_bound);
-}
-
-glob:priv fma_signature = CallSignature("fma", ["x", "y", "z"], 3, 3, 3);
-def:priv fma_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_fma(args.values[0], args.values[1], args.values[2]);
-}
-
-def:priv fma_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(fma_signature, args, NULL, fma_bound);
-}
-
-def:priv frexp_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_parts(0, value);
-}
-
-def:priv modf_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_parts(1, value);
-}
-
-glob:priv isclose_signature = CallSignature(
-         "isclose", ["a", "b", "rel_tol", "abs_tol"], 2, 2, 0
-     );
-
-def:priv isclose_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_isclose(
-        args.values[0], args.values[1], args.values[2], args.values[3]
-    );
-}
-
-def:priv isclose_call(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+# FUNC2: METH_FASTCALL over math_2(), which checks for exactly two arguments.
+def:priv binary(
+    args: ptr[ptr[PyObject]], nargs: i64, name: str, operation: int
 ) -> ptr[PyObject] {
-    return invoke(isclose_signature, args, kwargs, isclose_bound);
+    if not check_positional(name, int(nargs), 2, 2) {
+        return NULL;
+    }
+    stack = args.view(2);
+    return jacpy_math_binary(i64(operation), stack[0], stack[1]);
 }
 
-glob:priv nextafter_signature = CallSignature(
-         "nextafter", ["x", "y", "steps"], 2, 2, 2
-     );
-
-def:priv nextafter_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_nextafter(args.values[0], args.values[1], args.values[2]);
-}
-
-def:priv nextafter_call(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+def:priv atan2_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(nextafter_signature, args, kwargs, nextafter_bound);
+    return binary(args, nargs, "atan2", 0);
 }
 
-def:priv fsum_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_fsum(value);
-}
-
-def:priv hypot_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_math_hypot(args);
-}
-
-glob:priv dist_signature = CallSignature("dist", ["p", "q"], 2, 2, 2);
-def:priv dist_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_dist(args.values[0], args.values[1]);
-}
-
-def:priv dist_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(dist_signature, args, NULL, dist_bound);
-}
-
-glob:priv sumprod_signature = CallSignature("sumprod", ["p", "q"], 2, 2, 2);
-def:priv sumprod_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_sumprod(args.values[0], args.values[1]);
-}
-
-def:priv sumprod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(sumprod_signature, args, NULL, sumprod_bound);
-}
-
-glob:priv prod_signature = CallSignature("prod", ["iterable", "start"], 1, 1, 1);
-def:priv prod_bound(args: BoundArguments) -> ptr[PyObject] {
-    return jacpy_math_prod(args.values[0], args.values[1]);
-}
-
-def:priv prod_call(
-    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+def:priv copysign_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(prod_signature, args, kwargs, prod_bound);
+    return binary(args, nargs, "copysign", 1);
+}
+
+def:priv remainder_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    return binary(args, nargs, "remainder", 3);
+}
+
+# math_log(): METH_FASTCALL, "log" with one or two arguments.
+def:priv log_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    if not check_positional("log", int(nargs), 1, 2) {
+        return NULL;
+    }
+    stack = args.view(int(nargs));
+    return jacpy_math_log(stack[0], stack[1] if nargs == 2 else NULL);
 }
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
@@ -368,350 +197,122 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
+# math_methods[]: the hand-written entries with their mathmodule.c docs, and
+# the clinic-generated ones.
 glob:priv definition = ModuleDefinition(
          "math",
-         "Native Jac mathematics.",
+         module_doc,
          [
              MethodDefinition(
-                 "factorial",
-                 MethodCallbacks(positional=factorial_call),
-                 "factorial($module, n, /)\n--\n\nReturn n factorial.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "isqrt",
-                 MethodCallbacks(positional=isqrt_call),
-                 "isqrt($module, n, /)\n--\n\nReturn the integer part of the square root of n.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "gcd",
-                 MethodCallbacks(positional=gcd_call),
-                 "gcd($module, *integers)\n--\n\nGreatest common divisor.",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "lcm",
-                 MethodCallbacks(positional=lcm_call),
-                 "lcm($module, *integers)\n--\n\nLeast common multiple.",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "comb",
-                 MethodCallbacks(positional=comb_call),
-                 "comb($module, n, k, /)\n--\n\nNumber of unordered selections without repetition.",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "perm",
-                 MethodCallbacks(positional=perm_call),
-                 "perm($module, n, k=None, /)\n--\n\nNumber of ordered selections without repetition.",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "acos",
-                 MethodCallbacks(positional=acos_call),
-                 "Return the arc cosine (measured in radians) of x.\n\nThe result is between 0 and pi.",
-                 flags=8
+                 "acos", MethodCallbacks(positional=acos_call), math_acos_doc, flags=8
              ),
              MethodDefinition(
                  "acosh",
                  MethodCallbacks(positional=acosh_call),
-                 "Return the inverse hyperbolic cosine of x.",
+                 math_acosh_doc,
                  flags=8
              ),
              MethodDefinition(
-                 "asin",
-                 MethodCallbacks(positional=asin_call),
-                 "Return the arc sine (measured in radians) of x.\n\nThe result is between -pi/2 and pi/2.",
-                 flags=8
+                 "asin", MethodCallbacks(positional=asin_call), math_asin_doc, flags=8
              ),
              MethodDefinition(
                  "asinh",
                  MethodCallbacks(positional=asinh_call),
-                 "Return the inverse hyperbolic sine of x.",
+                 math_asinh_doc,
                  flags=8
              ),
              MethodDefinition(
-                 "atan",
-                 MethodCallbacks(positional=atan_call),
-                 "Return the arc tangent (measured in radians) of x.\n\nThe result is between -pi/2 and pi/2.",
-                 flags=8
+                 "atan", MethodCallbacks(positional=atan_call), math_atan_doc, flags=8
+             ),
+             MethodDefinition(
+                 "atan2", MethodCallbacks(fast=atan2_call), math_atan2_doc, flags=128
              ),
              MethodDefinition(
                  "atanh",
                  MethodCallbacks(positional=atanh_call),
-                 "Return the inverse hyperbolic tangent of x.",
+                 math_atanh_doc,
                  flags=8
              ),
              MethodDefinition(
-                 "cbrt",
-                 MethodCallbacks(positional=cbrt_call),
-                 "Return the cube root of x.",
-                 flags=8
+                 "cbrt", MethodCallbacks(positional=cbrt_call), math_cbrt_doc, flags=8
              ),
              MethodDefinition(
-                 "cos",
-                 MethodCallbacks(positional=cos_call),
-                 "Return the cosine of x (measured in radians).",
-                 flags=8
+                 "copysign",
+                 MethodCallbacks(fast=copysign_call),
+                 math_copysign_doc,
+                 flags=128
              ),
              MethodDefinition(
-                 "cosh",
-                 MethodCallbacks(positional=cosh_call),
-                 "Return the hyperbolic cosine of x.",
-                 flags=8
+                 "cos", MethodCallbacks(positional=cos_call), math_cos_doc, flags=8
              ),
              MethodDefinition(
-                 "erf",
-                 MethodCallbacks(positional=erf_call),
-                 "Error function at x.",
-                 flags=8
+                 "cosh", MethodCallbacks(positional=cosh_call), math_cosh_doc, flags=8
              ),
              MethodDefinition(
-                 "erfc",
-                 MethodCallbacks(positional=erfc_call),
-                 "Complementary error function at x.",
-                 flags=8
+                 "erf", MethodCallbacks(positional=erf_call), math_erf_doc, flags=8
              ),
              MethodDefinition(
-                 "exp",
-                 MethodCallbacks(positional=exp_call),
-                 "Return e raised to the power of x.",
-                 flags=8
+                 "erfc", MethodCallbacks(positional=erfc_call), math_erfc_doc, flags=8
              ),
              MethodDefinition(
-                 "exp2",
-                 MethodCallbacks(positional=exp2_call),
-                 "Return 2 raised to the power of x.",
-                 flags=8
+                 "exp", MethodCallbacks(positional=exp_call), math_exp_doc, flags=8
+             ),
+             MethodDefinition(
+                 "exp2", MethodCallbacks(positional=exp2_call), math_exp2_doc, flags=8
              ),
              MethodDefinition(
                  "expm1",
                  MethodCallbacks(positional=expm1_call),
-                 "Return exp(x)-1.\n\nThis function avoids the loss of precision involved in the direct evaluation of exp(x)-1 for small x.",
+                 math_expm1_doc,
                  flags=8
              ),
              MethodDefinition(
-                 "fabs",
-                 MethodCallbacks(positional=fabs_call),
-                 "Return the absolute value of the float x.",
-                 flags=8
+                 "fabs", MethodCallbacks(positional=fabs_call), math_fabs_doc, flags=8
              ),
              MethodDefinition(
                  "gamma",
                  MethodCallbacks(positional=gamma_call),
-                 "Gamma function at x.",
+                 math_gamma_doc,
                  flags=8
              ),
              MethodDefinition(
                  "lgamma",
                  MethodCallbacks(positional=lgamma_call),
-                 "Natural logarithm of absolute value of Gamma function at x.",
+                 math_lgamma_doc,
                  flags=8
+             ),
+             MethodDefinition(
+                 "log", MethodCallbacks(fast=log_call), math_log_doc, flags=128
              ),
              MethodDefinition(
                  "log1p",
                  MethodCallbacks(positional=log1p_call),
-                 "Return the natural logarithm of 1+x (base e).\n\nThe result is computed in a way which is accurate for x near zero.",
+                 math_log1p_doc,
                  flags=8
-             ),
-             MethodDefinition(
-                 "sin",
-                 MethodCallbacks(positional=sin_call),
-                 "Return the sine of x (measured in radians).",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "sinh",
-                 MethodCallbacks(positional=sinh_call),
-                 "Return the hyperbolic sine of x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "sqrt",
-                 MethodCallbacks(positional=sqrt_call),
-                 "Return the square root of x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "tan",
-                 MethodCallbacks(positional=tan_call),
-                 "Return the tangent of x (measured in radians).",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "tanh",
-                 MethodCallbacks(positional=tanh_call),
-                 "Return the hyperbolic tangent of x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "degrees",
-                 MethodCallbacks(positional=degrees_call),
-                 "Convert angle x from radians to degrees.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "radians",
-                 MethodCallbacks(positional=radians_call),
-                 "Convert angle x from degrees to radians.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "isfinite",
-                 MethodCallbacks(positional=isfinite_call),
-                 "Return True if x is neither an infinity nor a NaN, and False otherwise.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "isinf",
-                 MethodCallbacks(positional=isinf_call),
-                 "Return True if x is a positive or negative infinity, and False otherwise.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "isnan",
-                 MethodCallbacks(positional=isnan_call),
-                 "Return True if x is a NaN (not a number), and False otherwise.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "ceil",
-                 MethodCallbacks(positional=ceil_call),
-                 "Return the ceiling of x as an Integral.\n\nThis is the smallest integer >= x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "floor",
-                 MethodCallbacks(positional=floor_call),
-                 "Return the floor of x as an Integral.\n\nThis is the largest integer <= x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "trunc",
-                 MethodCallbacks(positional=trunc_call),
-                 "Truncates the Real x to the nearest Integral toward 0.\n\nUses the __trunc__ magic method.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "log10",
-                 MethodCallbacks(positional=log10_call),
-                 "Return the base 10 logarithm of x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "log2",
-                 MethodCallbacks(positional=log2_call),
-                 "Return the base 2 logarithm of x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "ulp",
-                 MethodCallbacks(positional=ulp_call),
-                 "Return the value of the least significant bit of the float x.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "atan2",
-                 MethodCallbacks(positional=atan2_call),
-                 "Return the arc tangent (measured in radians) of y/x.\n\nUnlike atan(y/x), the signs of both x and y are considered.",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "copysign",
-                 MethodCallbacks(positional=copysign_call),
-                 "Return a float with the magnitude (absolute value) of x but the sign of y.\n\nOn platforms that support signed zeros, copysign(1.0, -0.0)\nreturns -1.0.\n",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "fmod",
-                 MethodCallbacks(positional=fmod_call),
-                 "Return fmod(x, y), according to platform C.\n\nx % y may differ.",
-                 flags=1
              ),
              MethodDefinition(
                  "remainder",
-                 MethodCallbacks(positional=remainder_call),
-                 "Difference between x and the closest integer multiple of y.\n\nReturn x - n*y where n*y is the closest integer multiple of y.\nIn the case where x is exactly halfway between two multiples of\ny, the nearest even value of n is used. The result is always exact.",
-                 flags=1
+                 MethodCallbacks(fast=remainder_call),
+                 math_remainder_doc,
+                 flags=128
              ),
              MethodDefinition(
-                 "pow",
-                 MethodCallbacks(positional=pow_call),
-                 "Return x**y (x to the power of y).",
-                 flags=1
+                 "sin", MethodCallbacks(positional=sin_call), math_sin_doc, flags=8
              ),
              MethodDefinition(
-                 "log",
-                 MethodCallbacks(positional=log_call),
-                 "log(x, [base=math.e])\nReturn the logarithm of x to the given base.\n\nIf the base is not specified, returns the natural logarithm (base e) of x.",
-                 flags=1
+                 "sinh", MethodCallbacks(positional=sinh_call), math_sinh_doc, flags=8
              ),
              MethodDefinition(
-                 "ldexp",
-                 MethodCallbacks(positional=ldexp_call),
-                 "Return x * (2**i).\n\nThis is essentially the inverse of frexp().",
-                 flags=1
+                 "sqrt", MethodCallbacks(positional=sqrt_call), math_sqrt_doc, flags=8
              ),
              MethodDefinition(
-                 "fma",
-                 MethodCallbacks(positional=fma_call),
-                 "Fused multiply-add operation.\n\nCompute (x * y) + z with a single round.",
-                 flags=1
+                 "tan", MethodCallbacks(positional=tan_call), math_tan_doc, flags=8
              ),
              MethodDefinition(
-                 "frexp",
-                 MethodCallbacks(positional=frexp_call),
-                 "Return the mantissa and exponent of x, as pair (m, e).\n\nIf x is a finite nonzero number, then m is a float with\n0.5 <= abs(m) < 1.0 and an integer e is such that\nx == m * 2**e exactly.  Else, return (x, 0).",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "modf",
-                 MethodCallbacks(positional=modf_call),
-                 "Return the fractional and integer parts of x.\n\nBoth results carry the sign of x and are floats.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "isclose",
-                 MethodCallbacks(keywords=isclose_call),
-                 "Determine whether two floating-point numbers are close in value.\n\n  rel_tol\n    maximum difference for being considered \"close\", relative to the\n    magnitude of the input values\n  abs_tol\n    maximum difference for being considered \"close\", regardless of the\n    magnitude of the input values\n\nReturn True if a is close in value to b, and False otherwise.\n\nFor the values to be considered close, the difference between them\nmust be smaller than at least one of the tolerances.\n\n-inf, inf and NaN behave similarly to the IEEE 754 Standard.  That\nis, NaN is not close to anything, even itself.  inf and -inf are\nonly close to themselves."
-             ),
-             MethodDefinition(
-                 "nextafter",
-                 MethodCallbacks(keywords=nextafter_call),
-                 "Return the floating-point value the given number of steps after x towards y.\n\nIf steps is not specified or is None, it defaults to 1.\n\nRaises a TypeError, if x or y is not a double, or if steps is not\nan integer.  Raises ValueError if steps is negative."
-             ),
-             MethodDefinition(
-                 "fsum",
-                 MethodCallbacks(positional=fsum_call),
-                 "Return an accurate floating-point sum of values in the iterable seq.\n\nAssumes IEEE-754 floating-point arithmetic.",
-                 flags=8
-             ),
-             MethodDefinition(
-                 "hypot",
-                 MethodCallbacks(positional=hypot_call),
-                 "Multidimensional Euclidean distance from the origin to a point.\n\nRoughly equivalent to:\n    sqrt(sum(x**2 for x in coordinates))\n\nFor a two dimensional point (x, y), gives the hypotenuse\nusing the Pythagorean theorem:  sqrt(x*x + y*y).\n\nFor example, the hypotenuse of a 3/4/5 right triangle is:\n\n    >>> hypot(3.0, 4.0)\n    5.0",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "dist",
-                 MethodCallbacks(positional=dist_call),
-                 "Return the Euclidean distance between two points p and q.\n\nThe points should be specified as sequences (or iterables) of\ncoordinates.  Both inputs must have the same dimension.\n\nRoughly equivalent to:\n    sqrt(sum((px - qx) ** 2.0 for px, qx in zip(p, q)))",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "sumprod",
-                 MethodCallbacks(positional=sumprod_call),
-                 "Return the sum of products of values from two iterables p and q.\n\nRoughly equivalent to:\n\n    sum(map(operator.mul, p, q, strict=True))\n\nFor float and mixed int/float inputs, the intermediate products\nand sums are computed with extended precision.",
-                 flags=1
-             ),
-             MethodDefinition(
-                 "prod",
-                 MethodCallbacks(keywords=prod_call),
-                 "Calculate the product of all the elements in the input iterable.\n\nThe default start value for the product is 1.\n\nWhen the iterable is empty, return the start value.  This function is\nintended specifically for use with numeric values and may reject\nnon-numeric types."
+                 "tanh", MethodCallbacks(positional=tanh_call), math_tanh_doc, flags=8
              )
-         ],
+         ]
+             + module_methods,
          ModuleHooks(execute=execute)
      );
 

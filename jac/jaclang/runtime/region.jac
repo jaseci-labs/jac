@@ -74,6 +74,19 @@ obj JacRegion {
     }
 }
 
+def escape_regions -> list[JacRegion] {
+    s = _stack();
+    saved = list(s);
+    s.clear();
+    return saved;
+}
+
+def restore_regions(saved: list[JacRegion]) {
+    s = _stack();
+    s.clear();
+    s.extend(saved);
+}
+
 def open_region(r: any) {
     if isinstance(r, JacRegion) {
         r._jac_open();

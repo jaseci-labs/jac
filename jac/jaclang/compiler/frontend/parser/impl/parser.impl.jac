@@ -4741,18 +4741,58 @@ impl Parser.parse_class_pattern_args(
 }
 
 impl Parser.parse_return_stmt -> ReturnStmt {
+    """`return expr;`, or `return tail call(...);` for a guaranteed tail call.
+
+    `tail` is contextual: it marks a tail call only directly after `return`
+    and before a name that starts the call, so `return tail;`,
+    `return tail(x);` and `return tail.next;` still read a variable named
+    `tail`. The operand of `return tail` must be a call.
+    """;
     ret_uni = self.consume_uni(TokenKind.KW_RETURN);
     expr = None;
+    tail_uni: Token | None = None;
+    tail_loc: any = None;
+    if self.check(TokenKind.NAME)
+        and self.current().value == "tail"
+        and self.check_peek_any(
+            TokenKind.NAME, TokenKind.KWESC_NAME, TokenKind.KW_SELF, TokenKind.KW_SUPER
+        ) {
+        tail_tok = self.advance();
+        tail_loc = tail_tok.loc;
+        tail_uni = Token(
+            orig_src=self.source,
+            name=Tok.KW_TAIL.value,
+            value=tail_tok.value,
+            line=tail_tok.loc.line,
+            end_line=tail_tok.loc.end_line,
+            col_start=tail_tok.loc.col_start,
+            col_end=tail_tok.loc.col_end,
+            pos_start=tail_tok.loc.pos_start,
+            pos_end=tail_tok.loc.pos_end
+        );
+    }
     if not self.check(TokenKind.SEMI) and not self.check(TokenKind.RBRACE) {
         expr = self.parse_expression();
     }
+    tail_on_call = isinstance(expr, FuncCall);
+    if tail_uni is not None and not tail_on_call {
+        self.emit_diag(
+            "`return tail` needs a function call",
+            "E0097",
+            loc=tail_loc,
+            help="A guaranteed tail call replaces the current frame with the callee's, so its operand is a call: `return tail next_step(state);`."
+        );
+    }
     kid: list[UniNode] = [ret_uni];
-    if expr {
+    if tail_uni is not None {
+        kid.append(tail_uni);
+    }
+    if expr is not None {
         kid.append(expr);
     }
     self.expect(TokenKind.SEMI);
     kid.append(self.make_semi());
-    return ReturnStmt(expr=expr, kid=kid);
+    return ReturnStmt(expr=expr, is_tail=tail_uni is not None, kid=kid);
 }
 
 impl Parser.parse_yield_stmt -> YieldExpr {

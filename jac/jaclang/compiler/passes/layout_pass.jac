@@ -32,7 +32,11 @@ import from jaclang.compiler.frontend.unitree {
 }
 
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.types.types { ClassType, TypeBase }
+import type from jaclang.compiler.types.types {
+    ClassDetailsShared,
+    ClassType,
+    TypeBase
+}
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
@@ -46,7 +50,8 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "bytes"
      }
          | set(JAC_TYPE_REGISTRY.sized_scalar_names()),
-     VTABLE_HEADER_SLOTS: int = 2,
+     VTABLE_HEADER_SLOTS: int = 3,
+     VTABLE_DROP_SLOT: int = 2,
      EXC_MESSAGE_FIELD: str = "__jac_exc_msg__";
 
 glob LAYOUT_COMPATIBLE_SCALARS: set[str] = LAYOUT_COMPATIBLE_PRIMITIVES | {"type"};
@@ -84,6 +89,7 @@ obj ArchetypeLayout {
         method_index: dict[str, int] = {},
         has_vtable: bool = False,
         vtable_by_dispatch: bool = False,
+        vtable_by_isinstance_only: bool = False,
         parent_field_start: dict[str, int] = {},
         is_osp: bool = False,
         is_acyclic: bool = False,
@@ -136,6 +142,42 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
     return out;
 }
 
+glob NON_DISPATCHED_METHODS: frozenset[str] = frozenset(
+         {"init", "postinit", "__init__", "__post_init__", "drop"}
+     );
+
+def open_dispatch(arch: Archetype) -> bool {
+    """Can a module this one never sees override a method dispatched through it?
+
+    Layout is decided per module, and a subclass in an importing module is
+    invisible here. A class other modules can name, whose own body declares a
+    method or accessor a subclass may override, must carry a vtable so a call
+    through a reference typed as this class reaches the override wherever it
+    was declared; without one the call binds to this class's body. A private
+    class cannot be named, so cannot be subclassed, outside its module, whose
+    registry is therefore complete for it. A foreign (C-layout) struct is
+    plain data, and constructors, static and class methods never dispatch
+    through an instance. A `drop` hook alone does not open a class either: it
+    runs only when the owner lets go, and a class whose only behavior is its
+    hook stays flat so a headerless build can embed it inline in an own field.
+    """;
+    import from jaclang.compiler.frontend.constant { SymbolAccess }
+    import from jaclang.compiler.c_interop { is_clib_archetype }
+    if arch.access_type == SymbolAccess.PRIVATE or is_clib_archetype(arch) {
+        return False;
+    }
+    for method in arch.get_methods() {
+        mname = method.name_ref.sym_name if method.name_ref else None;
+        if mname is not None
+            and mname not in NON_DISPATCHED_METHODS
+            and not method.is_static
+            and not method.is_classmethod {
+            return True;
+        }
+    }
+    return bool(archetype_accessors(arch));
+}
+
 def get_layout_registry(module: Module, prog: JacProgram) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
@@ -164,9 +206,37 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
     return top;
 }
 
+glob _NATIVE_NAME_BY_DECL: dict[tuple[str, int, int, str], str] = {},
+     _NATIVE_NAMED_CLASSES: set[str] = set(),
+     _NATIVE_NAME_BY_STDLIB: dict[tuple[str, str], str] = {};
+
 def archetype_native_name(arch: Archetype) -> str {
-    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     name = arch.name.value if arch.name else "unknown";
+    native = _archetype_native_name(arch, name);
+    if arch.loc is not None and arch.loc.mod_path {
+        import os;
+        key = (
+            os.path.realpath(arch.loc.mod_path),
+            arch.loc.first_line,
+            arch.loc.col_start,
+            name
+        );
+        if key not in _NATIVE_NAME_BY_DECL {
+            _NATIVE_NAME_BY_DECL[key] = native;
+            _NATIVE_NAMED_CLASSES.add(name);
+            import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+            stdlib_module = bundled_stdlib_module_of(arch.loc.mod_path);
+            if stdlib_module is not None
+                and (stdlib_module, name) not in _NATIVE_NAME_BY_STDLIB {
+                _NATIVE_NAME_BY_STDLIB[(stdlib_module, name)] = native;
+            }
+        }
+    }
+    return native;
+}
+
+def _archetype_native_name(arch: Archetype, name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     if arch.name is not None and is_enum_class_type(arch.name.type) {
         return name;
     }
@@ -174,6 +244,32 @@ def archetype_native_name(arch: Archetype) -> str {
         return name;
     }
     return native_arch_name(arch.loc.mod_path if arch.loc else "", name);
+}
+
+def _recorded_native_name(shared: ClassDetailsShared) -> (str | None) {
+    if shared.class_name not in _NATIVE_NAMED_CLASSES {
+        return None;
+    }
+    key = shared.canonical_key();
+    if key is None or not key[0] {
+        return None;
+    }
+    import os;
+    found = _NATIVE_NAME_BY_DECL.get(
+        (os.path.realpath(key[0]), key[1], key[2], key[3])
+    );
+    if found is None {
+        import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+        stdlib_module = bundled_stdlib_module_of(key[0]);
+        if stdlib_module is not None {
+            found = _NATIVE_NAME_BY_STDLIB.get((stdlib_module, key[3]));
+        }
+    }
+    return found;
+}
+
+def _declared_native_name(shared: ClassDetailsShared) -> str {
+    return _recorded_native_name(shared) or shared.class_name;
 }
 
 def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
@@ -206,8 +302,19 @@ def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
 }
 
 def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
+    import from jaclang.compiler.types.types { ClassType }
     arch = referenced_archetype(expr);
-    return archetype_native_name(arch) if arch is not None else None;
+    if arch is not None {
+        return archetype_native_name(arch);
+    }
+    typ = expr.type if isinstance(expr, Expr) else None;
+    if isinstance(typ, ClassType)
+        and typ._shared is not None
+        and not typ.is_instance()
+        and not isinstance(typ.shared.symbol_table, Archetype) {
+        return _recorded_native_name(typ.shared);
+    }
+    return None;
 }
 
 def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
@@ -217,8 +324,11 @@ def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     }
     shared = typ.shared;
     scope = shared.symbol_table;
-    if not isinstance(scope, Archetype) or shared.is_enum_class {
+    if shared.is_enum_class {
         return shared.class_name;
+    }
+    if not isinstance(scope, Archetype) {
+        return _declared_native_name(shared);
     }
     memo = shared._native_name;
     if memo is not None and memo[0] is scope {
@@ -307,7 +417,7 @@ def headers_agree(child: ArchetypeLayout, base: ArchetypeLayout) -> bool {
 }
 
 def relax_vtable_header(
-    lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]
+    lay: ArchetypeLayout, ancestors: list[ArchetypeLayout], header_identity: bool = True
 ) -> bool {
     """Drop a vtable header a class carries only for having had a base.
 
@@ -325,12 +435,22 @@ def relax_vtable_header(
     carries a header either, the child's vtable slot is a habit rather than a
     requirement and dropping it makes the two units agree.
 
+    An `isinstance` target is not dispatched through: it needs a runtime
+    identity, and a build whose allocations carry a header already stamps the
+    class name there, which answers `isinstance` for a flat class as well as
+    the vtable pointer would. `header_identity` says the build has that
+    header; only then does an `isinstance`-only header count as a habit. A
+    headerless build keeps the vtable, the one identity it has.
+
     Every ancestor is checked, not just the primary: relaxing a child whose
     grandparent carries a header would trade one disagreement for another.
     A class that IS dispatched through keeps its header and its refusal --
     that pair genuinely has no assignment satisfying both.
     """;
-    if lay.is_osp or lay.vtable_by_dispatch or not lay.has_vtable {
+    identity_only = lay.vtable_by_isinstance_only and header_identity;
+    if lay.is_osp
+        or (lay.vtable_by_dispatch and not identity_only)
+        or not lay.has_vtable {
         return False;
     }
     for anc_lay in ancestors {
@@ -375,7 +495,7 @@ def extended_mro(reg: LayoutRegistry, lay: ArchetypeLayout) -> list[str] {
     return out;
 }
 
-def adopt_imported_bases(module: Module) -> list[str] {
+def adopt_imported_bases(module: Module, header_identity: bool = True) -> list[str] {
     reg: (LayoutRegistry | None) = module.gen.layout_registry;
     if reg is None {
         return [];
@@ -439,7 +559,7 @@ def adopt_imported_bases(module: Module) -> list[str] {
             continue;
         }
         if not headers_agree(lay, ancestors[0])
-            and not relax_vtable_header(lay, ancestors) {
+            and not relax_vtable_header(lay, ancestors, header_identity) {
             continue;
         }
         adopt_ancestor_slots(lay, ancestors);

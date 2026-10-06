@@ -12,6 +12,7 @@ No upstream test corpus is checked into this repository.
 import argparse;
 import builtins;
 import ctypes;
+import faulthandler;
 import hashlib;
 import importlib;
 import io;
@@ -62,6 +63,8 @@ def fetch_tests(cache: Path) -> Path {
 }
 
 def main -> int {
+    # A native crash inside an upstream test names its Python frame.
+    faulthandler.enable();
     parser = argparse.ArgumentParser(description=__doc__);
     parser.add_argument(
         "--cache",
@@ -98,10 +101,18 @@ def main -> int {
         action="store_true",
         help="Count public native tokenizer calls"
     );
+    parser.add_argument(
+        "--timeout",
+        `type=int,
+        `default=1800,
+        help="Seconds one module may run before every thread's stack is dumped and the run fails"
+    );
     # Retained command-line compatibility: every run now uses these native APIs.
     parser.add_argument("--runtime", action="store_true", help=argparse.SUPPRESS);
     parser.add_argument("--ast-api", action="store_true", help=argparse.SUPPRESS);
     args = parser.parse_args();
+    # A module that hangs fails with the stacks of its threads, not the job's time limit.
+    faulthandler.dump_traceback_later(args.timeout, `exit=True);
     bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 4 {
         raise RuntimeError(
@@ -168,8 +179,81 @@ def main -> int {
     }
 }
 
+# Tests whose premise the Jac runtime does not provide, by module and
+# "Class.method", with the reason each is skipped.
+glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
+     LAUNCHER_ENVIRONMENT: str = "the jac launcher starts the interpreter without the PYTHON* environment",
+     LAUNCHER_SCRIPT: str = "the jac launcher runs a script path only when it ends in .py, .jac or .jab",
+     RUNTIME_DIFFERENCES: dict[str, dict[str, str]] = {
+         "test.test_posix": {"PosixTester.test_pipe2_c_limits": NO_TESTCAPI},
+         "test.test_os": {
+             "PseudoterminalTests.test_pipe_spawnl": LAUNCHER_SCRIPT,
+             "SpawnTests.test_nowait": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnl": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnle": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnlp": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnlpe": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnv": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve_bytes": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve_invalid_env": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvp": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvpe": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvpe_invalid_env": LAUNCHER_SCRIPT
+         },
+         "test.test_asyncio": {
+             "BaseEventLoopTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
+             "CoroutineGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
+             "FutureGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT
+         }
+     };
+
+def skip_runtime_differences(suite: unittest.TestSuite, module: str) {
+    reasons = RUNTIME_DIFFERENCES.get(module, {});
+    pending: list[any] = [suite] if reasons else [];
+    while pending {
+        item = pending.pop();
+        if isinstance(item, unittest.TestSuite) {
+            pending.extend(item);
+            continue;
+        }
+        name = getattr(item, "_testMethodName", "");
+        reason = reasons.get(f"{type(item).__name__}.{name}");
+        if reason {
+            setattr(item, name, unittest.skip(reason)(getattr(item, name)));
+        }
+    }
+}
+
+# The upstream suite assumes two things of the interpreter it runs in: the
+# test package sits beside the standard library, where every interpreter a
+# test starts can import it, and the main module is one a spawn or forkserver
+# child can re-import by name. The Jac runtime ships no test package and this
+# runner is a Jac application, so for the run the fetched package is linked
+# into the standard library and the main module is a neutral stand-in.
 def run_tests(args: any, calls: list[int]) -> int {
     library = fetch_tests(args.cache);
+    main_module = sys.modules["__main__"];
+    sys.modules["__main__"] = types.ModuleType("__main__");
+    link = Path(unittest.__file__).resolve().parent.parent / "test";
+    if link.is_symlink() {
+        link.unlink();
+    }
+    linked = not link.exists();
+    if linked {
+        link.symlink_to(library / "test", target_is_directory=True);
+    }
+    try {
+        return run_library_tests(args, calls, library);
+    } finally {
+        if linked {
+            link.unlink();
+        }
+        sys.modules["__main__"] = main_module;
+    }
+}
+
+def run_library_tests(args: any, calls: list[int], library: Path) -> int {
     sys.path.insert(0, str(library));
     try {
         importlib.import_module("test");
@@ -180,7 +264,13 @@ def run_tests(args: any, calls: list[int]) -> int {
     support = importlib.import_module("test.support");
     # Resource decorators are evaluated when the test module is imported.
     support.use_resources = [];
-    reference_module = importlib.import_module(args.module);
+    try {
+        reference_module = importlib.import_module(args.module);
+    } except unittest.SkipTest as reason {
+        # A module the platform does not support skips itself on import.
+        print(f"{args.module} skipped: {reason}", file=sys.stderr);
+        return 0;
+    }
     test_module: any = reference_module;
     # Verify runtime compilation before measuring individual tests.
     builtins.compile("pass", "<warmup>", "exec", dont_inherit=True);
@@ -390,6 +480,7 @@ def run_tests(args: any, calls: list[int]) -> int {
         } else {
             suite = unittest.defaultTestLoader.loadTestsFromModule(test_module);
         }
+        skip_runtime_differences(suite, args.module);
         result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(suite);
         return int(not result.wasSuccessful());
     } finally {

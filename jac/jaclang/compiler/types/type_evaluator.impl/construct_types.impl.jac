@@ -426,9 +426,13 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                     Parameter(
                         name=extern_param.name.value,
                         category=_get_param_category(extern_param),
-                        param_type=self._extern_scalar_type(
-                            extern_param.type_tag.tag if extern_param.type_tag else None
-                        ),
+                        param_type=AnyType()
+                            if extern_param.is_vararg
+                            else self._extern_scalar_type(
+                                extern_param.type_tag.tag
+                                    if extern_param.type_tag
+                                    else None
+                            ),
                         default_value=extern_param.value,
                         param_kind=extern_param.param_kind,
                     )
@@ -451,6 +455,9 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         if param.type_tag {
             param_type_cls = self.get_type_of_expression(param.type_tag.tag);
             param_type = self._convert_to_instance(param_type_cls);
+            if param.is_vararg and is_va_list_type(param_type) {
+                param_type = AnyType();
+            }
         }
 
         is_cls_param = (

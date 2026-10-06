@@ -10,12 +10,9 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    invoke
-}
+import from jaclang.runtime.python.bindings.arguments { check_positional }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.bindings.converters {
     argument_label,
     convert_unicode
@@ -24,41 +21,39 @@ import from jaclang.runtime.python.modules.suggestions {
     _suggestions__generate_suggestions_impl
 }
 
-glob:priv _suggestions__generate_suggestions_signature = CallSignature(
-         "_generate_suggestions", ["candidates", "item"], 2, 2, 2
-     );
-
 def:priv _suggestions__generate_suggestions_bound(
-    args: BoundArguments
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    candidates: ptr[PyObject] = value;
-    value = args.values[1];
-    item: ptr[PyObject] = convert_unicode(
-        value, "_generate_suggestions", argument_label("", 2)
-    );
-    return _suggestions__generate_suggestions_impl(receiver, candidates, item);
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        candidates: ptr[PyObject] = value;
+        value = clinic_args[1];
+        item: ptr[PyObject] = convert_unicode(
+            value, "_generate_suggestions", argument_label("", 2)
+        );
+        return _suggestions__generate_suggestions_impl(receiver, candidates, item);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 def:priv _suggestions__generate_suggestions_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    return invoke(
-        _suggestions__generate_suggestions_signature,
-        args,
-        kwargs,
-        _suggestions__generate_suggestions_bound,
-        receiver
-    );
+    if (nargs < 2 or nargs > 2)
+        and not check_positional("_generate_suggestions", int(nargs), 2, 2) {
+        return NULL;
+    }
+    return _suggestions__generate_suggestions_bound(receiver, args, nargs);
 }
 
 glob module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "_generate_suggestions",
-             MethodCallbacks(keywords=_suggestions__generate_suggestions_call),
+             MethodCallbacks(fast=_suggestions__generate_suggestions_call),
              "_generate_suggestions($module, candidates, item, /)\n--\n\nReturns the candidate in candidates that's closest to item",
-             3
+             128
          ),
 
      ];

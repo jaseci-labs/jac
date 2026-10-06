@@ -627,7 +627,7 @@ impl NaIRGenPass._make_iter_from_value(
             return (
                 self._make_list_iter(val, _checked_list, elem_type),
                 _checked_list,
-                elem_type,
+                self._iter_yield_llvm(elem_type, expr),
 
             );
         }
@@ -635,7 +635,11 @@ impl NaIRGenPass._make_iter_from_value(
     for (lk, lt) in self.list_types.items() {
         if val.type == lt.as_pointer() {
             elem_type = self.list_helpers[lk]["elem_type"];
-            return (self._make_list_iter(val, lk, elem_type), lk, elem_type);
+            return (
+                self._make_list_iter(val, lk, elem_type),
+                lk,
+                self._iter_yield_llvm(elem_type, expr)
+            );
         }
     }
 
@@ -653,7 +657,11 @@ impl NaIRGenPass._make_iter_from_value(
     for (sk, st) in self.set_types.items() {
         if val.type == st.as_pointer() {
             elem_type = self.set_helpers[sk]["elem_type"];
-            return (self._make_set_iter(val, sk, elem_type), sk, elem_type);
+            return (
+                self._make_set_iter(val, sk, elem_type),
+                sk,
+                self._iter_yield_llvm(elem_type, expr)
+            );
         }
     }
 
@@ -678,6 +686,25 @@ impl NaIRGenPass._make_iter_from_value(
         return self._make_user_iter_from_obj(val, ustruct, expr);
     }
     return None;
+}
+
+impl NaIRGenPass._iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type {
+    """The type a collection iterator yields, as the loop body reads it.
+
+    A `ptr`-spec list or set stores every boxed element (a tuple, an object)
+    as an erased `i8*`; the iterator's next function writes that word into
+    the out slot unchanged. The consumer must read it back as the element's
+    static layout, the same refinement the indexed for-loop applies through
+    `elem_cast`, or a tuple element reaches the body typed as a string.
+    """;
+    if storage != ir.IntType(8).as_pointer() {
+        return storage;
+    }
+    refined = self._static_elem_llvm_of(expr);
+    if refined is not None and isinstance(refined, ir.PointerType) {
+        return refined;
+    }
+    return storage;
 }
 
 impl NaIRGenPass._adapter_clos_parts(clos: ir.Value) -> (NativeIterCallback | None) {
@@ -1140,8 +1167,7 @@ impl NaIRGenPass._user_iter_next_fn(
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_user_" + iter_struct);
     fn.linkage = "private";
-    fn.attributes.add("optnone");
-    fn.attributes.add("noinline");
+    self._mark_setjmp_function(fn);
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -1158,7 +1184,7 @@ impl NaIRGenPass._user_iter_next_fn(
     recv = b.bitcast(obj_i8, struct_ptr_type, name="usr.obj");
 
     exc_state = b.alloca(exc_state_type, name="usr.exc.state");
-    b.call(self._exc_push_fn, [exc_state]);
+    self._emit_exc_push(b, exc_state);
     env_ptr = b.gep(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
     );
@@ -1169,13 +1195,13 @@ impl NaIRGenPass._user_iter_next_fn(
 
     b.position_at_end(call_bb);
     v = b.call(next_method_fn, [recv], name="usr.v");
-    b.call(self._exc_pop_fn, []);
+    self._emit_exc_pop(b);
     out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="usr.out");
     b.store(v, out_t);
     b.ret(ir.Constant(i1, 1));
 
     b.position_at_end(caught_bb);
-    b.call(self._exc_pop_fn, []);
+    self._emit_exc_pop(b);
     exc_type_ptr = b.gep(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="usr.exc.type.ptr"
     );

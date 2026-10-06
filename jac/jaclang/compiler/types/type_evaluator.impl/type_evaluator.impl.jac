@@ -2606,6 +2606,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
         case ParamVar():
             if node_.type_tag {
                 annotation_type = self.get_type_of_expression(node_.type_tag.tag);
+                if node_.is_vararg and is_va_list_type(annotation_type) {
+                    return self._convert_to_instance(annotation_type);
+                }
                 if node_.is_vararg {
                     if self.prefetch.list_class is None {
                         return UnknownType();

@@ -2,7 +2,9 @@ import ctypes;
 import json;
 import os;
 import sys;
+import from ctypes.util { find_library }
 import from jaclang.runtime.scalars { numeric_shapes }
+import from jaclang.runtime.region { escape_regions, restore_regions }
 
 def _scalar_ctypes -> dict[str, any] {
     out: dict[str, any] = {};
@@ -21,14 +23,29 @@ def _scalar_ctypes -> dict[str, any] {
 
 glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),
      _LIBS: dict[str, any] = {},
+     _C_STRINGS: dict[str, any] = {},
+     _C_FUNCTIONS: list[any] = [],
+     _C_FUNCTION_TYPES: dict[any, any] = {},
      _VIEW_RANGE: str = "PtrView index out of range";
 
 class JacCOpaque {}
+
+def _c_string(text: str) -> any {
+    buffer = _C_STRINGS.get(text);
+    if buffer is None {
+        buffer = ctypes.create_string_buffer(text.encode("utf-8"));
+        _C_STRINGS[text] = buffer;
+    }
+    return buffer;
+}
 
 class JacCStruct(ctypes.Structure) {
     def init(self: JacCStruct, *args: any, **kwargs: any) {
         ctypes.Structure.__init__(self);
         cls: any = type(self);
+        for (key, value) in getattr(cls, "_jac_defaults_", {}).items() {
+            setattr(self, key, value);
+        }
         names = [f[0] for f in cls._jac_fields_];
         if len(args) > len(names) {
             raise TypeError(
@@ -68,8 +85,16 @@ class JacPtr {
             self._addr = 0;
         } elif isinstance(address, JacPtr) {
             self._addr = address._addr;
+        } elif isinstance(address, int) and not isinstance(address, bool) {
+            self._addr = address & 0xFFFFFFFFFFFFFFFF;
+        } elif isinstance(address, str) {
+            self._addr = ctypes.addressof(_c_string(address));
         } else {
-            raise TypeError(f"ptr() expects a pointer, not '{type(address).__name__}'");
+            raise TypeError(
+                f"ptr() expects a pointer or an integer address, not '{type(
+                    address
+                ).__name__}'"
+            );
         }
     }
 
@@ -104,12 +129,64 @@ class JacPtr {
         return JacPtrView(self._addr, n, elem);
     }
 
+    def _stride(self: JacPtr) -> int {
+        cls: any = type(self);
+        elem = cls._jac_elem;
+        if elem is None or (isinstance(elem, `type) and issubclass(elem, JacCOpaque)) {
+            return 1;
+        }
+        return ctypes.sizeof(_elem_ctype(elem));
+    }
+
+    def __add__(self: JacPtr, n: int) -> JacPtr {
+        return type(self)(self._addr + int(n) * self._stride());
+    }
+
+    def __sub__(self: JacPtr, other: any) -> any {
+        if isinstance(other, JacPtr) {
+            return (self._addr - other._addr) // self._stride();
+        }
+        return type(self)(self._addr - int(other) * self._stride());
+    }
+
+    def __int__(self: JacPtr) -> int {
+        return self._addr;
+    }
+
     def __eq__(self: JacPtr, other: any) -> bool {
         return isinstance(other, JacPtr) and other._addr == self._addr;
     }
 
     def __ne__(self: JacPtr, other: any) -> bool {
         return not self.__eq__(other);
+    }
+
+    def __lt__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr < other._addr;
+    }
+
+    def __le__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr <= other._addr;
+    }
+
+    def __gt__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr > other._addr;
+    }
+
+    def __ge__(self: JacPtr, other: any) -> any {
+        if not isinstance(other, JacPtr) {
+            return NotImplemented;
+        }
+        return self._addr >= other._addr;
     }
 
     def __hash__(self: JacPtr) -> int {
@@ -310,8 +387,126 @@ def _spec_scalar_elem(spec: any) -> (str | None) {
     return None;
 }
 
+class JacVaList {
+    def init(self: JacVaList, values: any) {
+        self._values = list(values);
+        self._next = 0;
+        self._keep: list[any] = [];
+    }
+
+    def arg(self: JacVaList, kind: any) -> any {
+        if self._next >= len(self._values) {
+            raise IndexError("VaList.arg() read past the last variadic argument");
+        }
+        raw = self._values[self._next];
+        self._next += 1;
+        value = raw.value if isinstance(raw, ctypes._SimpleCData) else raw;
+        if isinstance(kind, `type) and issubclass(kind, JacPtr) {
+            return kind(value or 0);
+        }
+        return kind(value);
+    }
+
+    def to_c(self: JacVaList) -> any {
+        import platform;
+        rest = self._values[self._next:];
+        slots = (ctypes.c_uint64 * max(len(rest), 1))();
+        for (i, raw) in enumerate(rest) {
+            if isinstance(raw, ctypes.c_double) {
+                slots[i] = ctypes.c_uint64.from_buffer(
+                    ctypes.c_double(raw.value)
+                ).value;
+            } elif isinstance(raw, ctypes.c_char_p) {
+                self._keep.append(raw);
+                slots[i] = ctypes.cast(raw, ctypes.c_void_p).value or 0;
+            } else {
+                value = raw.value if isinstance(raw, ctypes._SimpleCData) else raw;
+                slots[i] = int(value or 0) & 0xFFFFFFFFFFFFFFFF;
+            }
+        }
+        self._keep.append(slots);
+        machine = platform.machine().lower();
+        address = ctypes.addressof(slots);
+        if sys.platform == "darwin"
+            and machine in ("arm64", "aarch64")
+            or sys.platform == "win32" {
+            return ctypes.c_void_p(address);
+        }
+        state: any = None;
+        if machine in ("x86_64", "amd64") {
+            state = _SysVVaList(48, 176, address, None);
+        } elif machine in ("arm64", "aarch64") {
+            state = _AapcsVaList(address, None, None, 0, 0);
+        } else {
+            raise TypeError(f"a VaList cannot pass to C on {machine}");
+        }
+        self._keep.append(state);
+        return ctypes.c_void_p(ctypes.addressof(state));
+    }
+}
+
+class _SysVVaList(ctypes.Structure) {
+    with entry {
+        _fields_: any = [
+            ("gp_offset", ctypes.c_uint32),
+            ("fp_offset", ctypes.c_uint32),
+            ("overflow_arg_area", ctypes.c_void_p),
+            ("reg_save_area", ctypes.c_void_p)
+        ];
+    }
+}
+
+class _AapcsVaList(ctypes.Structure) {
+    with entry {
+        _fields_: any = [
+            ("stack", ctypes.c_void_p),
+            ("gr_top", ctypes.c_void_p),
+            ("vr_top", ctypes.c_void_p),
+            ("gr_offs", ctypes.c_int32),
+            ("vr_offs", ctypes.c_int32)
+        ];
+    }
+}
+
+def c_vararg(value: any, spec_json: str) -> any {
+    spec = json.loads(spec_json);
+    kind = spec[0];
+    if kind == "ptr" {
+        return ctypes.c_void_p(value._addr if isinstance(value, JacPtr) else value);
+    }
+    if kind == "str" {
+        return ctypes.c_char_p(value.encode("utf-8"));
+    }
+    if kind == "bytes" {
+        return ctypes.c_char_p(bytes(value));
+    }
+    if kind == "s" {
+        name = spec[1];
+        ctype = _SCALAR_CTYPES[name];
+        if ctype in (ctypes.c_float, ctypes.c_double) {
+            return ctypes.c_double(value);
+        }
+        if ctypes.sizeof(ctype) < ctypes.sizeof(ctypes.c_int)
+            or ctype is ctypes.c_bool {
+            return ctypes.c_int(int(value));
+        }
+        return ctype(value);
+    }
+    raise TypeError(
+        f"a C variadic argument is a C scalar, ptr, str or bytes, not '{type(
+            value
+        ).__name__}'"
+    );
+}
+
 def c_cell(spec: str, value: any, scope: any) -> CCell {
     return CCell(_resolve_elem(json.loads(spec), scope), value);
+}
+
+def c_lend(spec: str, target: any, scope: any) -> JacPtr {
+    cls = _resolve_elem(json.loads(spec), scope);
+    storage = target.c if isinstance(target, CCell) else target;
+    return cls(ctypes.addressof(storage));
 }
 
 def _resolve_elem(spec: list[any], scope: any) -> any {
@@ -355,10 +550,29 @@ def _field_ctype(spec: list[any], scope: any) -> any {
     raise TypeError(f"'{spec!r}' is not a C struct field type");
 }
 
+def _c_function_address(fn: any) -> int {
+    return ctypes.cast(fn, ctypes.c_void_p).value or 0;
+}
+
 def _fn_ctype(spec: list[any], scope: any) -> any {
     params = [_arg_ctype(p, scope) for p in spec[1]];
     ret = _ret_ctype(spec[2], scope);
-    return ctypes.CFUNCTYPE(ret, *params);
+    base = ctypes.CFUNCTYPE(ret, *params);
+    addressable = _C_FUNCTION_TYPES.get(base);
+    if addressable is None {
+        addressable = `type(
+            base.__name__,
+            (base, ),
+            {
+                "_flags_": base._flags_,
+                "_restype_": base._restype_,
+                "_argtypes_": base._argtypes_,
+                "__int__": _c_function_address
+            }
+        );
+        _C_FUNCTION_TYPES[base] = addressable;
+    }
+    return addressable;
 }
 
 def _arg_ctype(spec: list[any], scope: any) -> any {
@@ -432,7 +646,12 @@ def _callback_trampoline(spec: list[any], fn: any, scope: any) -> any {
             _callback_arg(params[i], raw[i], scope) if i < len(params) else raw[i]
             for i in range(len(raw))
         ];
-        result = fn(*args);
+        saved = escape_regions();
+        try {
+            result = fn(*args);
+        } finally {
+            restore_regions(saved);
+        }
         if ret[0] == "ptr" {
             return result._addr if isinstance(result, JacPtr) else None;
         }
@@ -480,7 +699,12 @@ def _lib_candidates(desc: dict[str, any], module_file: str) -> list[str] {
     if desc.get("level", 0) > 0 or len(names) > 1 {
         return [os.path.join(module_dir, rel)];
     }
-    return [fname, os.path.join(module_dir, fname)];
+    out = [fname, os.path.join(module_dir, fname)];
+    soname = find_library(base);
+    if soname and soname not in out {
+        out.append(soname);
+    }
+    return out;
 }
 
 def _load_library(desc: dict[str, any], module_file: str) -> any {
@@ -536,6 +760,8 @@ class CFunction {
         for (i, value) in enumerate(args) {
             if i < len(self._params) {
                 c_args.append(self._to_c(self._params[i][1], value, keep));
+            } elif isinstance(value, CCell) {
+                c_args.append(ctypes.c_void_p(ctypes.addressof(value.c)));
             } else {
                 c_args.append(value);
             }
@@ -546,6 +772,9 @@ class CFunction {
 
     def _to_c(self: CFunction, spec: list[any], value: any, keep: list[any]) -> any {
         kind = spec[0];
+        if kind == "va_list" {
+            return value.to_c();
+        }
         if kind == "opt" {
             return None if value is None else self._to_c(spec[1], value, keep);
         }
@@ -615,6 +844,127 @@ class CFunction {
     }
 }
 
+class CGlobal {
+    def init(self: CGlobal, lib: any, name: str, spec: list[any], scope: any) {
+        self._lib = lib;
+        self._name = name;
+        self._spec = spec;
+        self._scope = scope;
+        self._slot: any = None;
+        self._init: any = None;
+        self._keep: any = None;
+    }
+
+    def define(self: CGlobal, initializer: any) {
+        self._init = initializer;
+    }
+
+    def _cell(self: CGlobal) -> any {
+        if self._slot is None and self._init is not None {
+            self._slot = self._defined_slot(self._init());
+        }
+        if self._slot is None {
+            kind = self._spec[0];
+            ctype: any = ctypes.c_uint8;
+            if kind == "ptr" {
+                ctype = ctypes.c_void_p;
+            } elif kind == "s" {
+                ctype = _SCALAR_CTYPES[self._spec[1]];
+            } elif kind == "struct" {
+                ctype = _resolve_elem(self._spec, self._scope);
+            } elif kind == "array" {
+                ctype = _field_ctype(self._spec[1], self._scope) * 1;
+            }
+            self._slot = ctype.in_dll(_loaded_library(self._lib), self._name);
+        }
+        return self._slot;
+    }
+
+    def _defined_slot(self: CGlobal, value: any) -> any {
+        kind = self._spec[0];
+        if kind == "struct" {
+            return value;
+        }
+        if kind == "array" {
+            self._keep = value;
+            elem = _field_ctype(self._spec[1], self._scope);
+            if isinstance(value, bytes) {
+                width = ctypes.sizeof(elem);
+                signed = elem(-1).value < 0;
+                value = [
+                    int.from_bytes(value[i:i + width], "little", signed=signed)
+                    for i in range(0, len(value), width)
+                ];
+            }
+            items = [
+                item._addr if isinstance(item, JacPtr) else item for item in value
+            ];
+            return (elem * len(items))(*items);
+        }
+        if kind == "ptr" {
+            return ctypes.c_void_p(value._addr if isinstance(value, JacPtr) else value);
+        }
+        return _SCALAR_CTYPES[self._spec[1]](value);
+    }
+
+    def _check_plain(self: CGlobal) {
+        if self._spec[0] not in ("s", "ptr") {
+            raise TypeError(
+                f"C data object '{self._name}' is handled only by address: use addressof({self._name})"
+            );
+        }
+    }
+
+    has value: any { getter; setter(value: any); }
+
+    def get(self: CGlobal) -> any {
+        self._check_plain();
+        raw = self._cell().value;
+        if self._spec[0] == "ptr" {
+            return _make_ptr(_resolve_elem(self._spec, self._scope), raw);
+        }
+        if self._spec[1] == "bool" {
+            return bool(raw);
+        }
+        return raw;
+    }
+
+    def set(self: CGlobal, value: any) {
+        self._check_plain();
+        self._cell().value = value._addr if isinstance(value, JacPtr) else value;
+    }
+
+    def address(self: CGlobal) -> JacPtr {
+        target = self._spec[1] if self._spec[0] == "array" else self._spec;
+        elem = JacPtr[_resolve_elem(target, self._scope)];
+        return _make_ptr(elem, ctypes.addressof(self._cell()));
+    }
+}
+
+impl CGlobal.value.getter -> any {
+    return self.get();
+}
+
+impl CGlobal.value.setter(value: any) {
+    self.set(value);
+}
+
+def jac_addressof(symbol: any) -> JacPtr {
+    if not isinstance(symbol, CGlobal) {
+        raise TypeError(
+            f"addressof() takes a C data symbol, not '{type(symbol).__name__}'"
+        );
+    }
+    return symbol.address();
+}
+
+def c_function_ptr(fn: any, spec_json: str, scope: any) -> JacPtr {
+    spec = json.loads(spec_json);
+    callback = _fn_ctype(spec, scope)(_callback_trampoline(spec, fn, scope));
+    _C_FUNCTIONS.append(callback);
+    return JacPtr(ctypes.cast(callback, ctypes.c_void_p).value or 0);
+}
+
 class _LazyLibrary {
     def init(self: _LazyLibrary, desc: dict[str, any], module_file: str) {
         self._desc = desc;
@@ -633,6 +983,16 @@ class _LazyLibrary {
     }
 }
 
+def _loaded_library(lib: any) -> any {
+    if isinstance(lib, _LazyLibrary) {
+        if lib._lib is None {
+            lib._lib = _load_library(lib._desc, lib._module_file);
+        }
+        return lib._lib;
+    }
+    return lib;
+}
+
 def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     desc = json.loads(desc_json);
     lib = _LazyLibrary(desc["lib"], scope.get("__file__") or "");
@@ -645,7 +1005,12 @@ def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     for entry_desc in desc.get("structs", []) {
         name = entry_desc["name"];
         local[name] = `type(
-            name, (JacCStruct, ), {"_jac_fields_": entry_desc["fields"]}
+            name,
+            (JacCStruct, ),
+            {
+                "_jac_fields_": entry_desc["fields"],
+                "_jac_defaults_": entry_desc.get("defaults", {})
+            }
         );
         pending[name] = entry_desc["fields"];
     }
@@ -690,6 +1055,9 @@ def clib_bind(scope: any, desc_json: str) -> dict[str, any] {
     }
     for name in pending {
         finish(name);
+    }
+    for (gname, gspec) in desc.get("globals", []) {
+        local[gname] = CGlobal(lib, gname, gspec, lookup);
     }
     for fn_desc in desc.get("functions", []) {
         local[fn_desc["name"]] = CFunction(

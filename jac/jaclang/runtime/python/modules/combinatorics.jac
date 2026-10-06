@@ -5,6 +5,8 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 
 import from jaclang.runtime.python.cpython_api {
     NULL,
+    PyExc_MemoryError,
+    PyExc_OverflowError,
     PyObject,
     PySequence_Tuple,
     PyTuple_New,
@@ -80,7 +82,7 @@ def:pub jacpy_combinatorial_init(
         if kind == combination_kind.PRODUCT.value {
             count = PyTuple_Size(source);
             if count > 0 and width > i64(9223372036854775807) // count {
-                object_error("OverflowError", "repeat argument too large");
+                object_error(PyExc_OverflowError, "repeat argument too large");
                 return -1;
             }
             state.width = count * width;
@@ -114,7 +116,7 @@ def:pub jacpy_combinatorial_init(
             state.population = PyTuple_Size(state.pools);
             state.width = state.population if width < 0 else width;
             if state.width > i64(9223372036854775807) // 8 {
-                object_error("MemoryError", "");
+                object_error(PyExc_MemoryError, "");
                 return -1;
             }
             if kind == combination_kind.WITH_REPLACEMENT.value {

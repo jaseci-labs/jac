@@ -5757,7 +5757,11 @@ impl NativeBuiltinEmitter.emit_str(
     }
 
     if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
-        return p._bool_text(b, arg_val, "str.bool");
+        _str_flag = p._bool_text(b, arg_val, "str.bool");
+        if p._nogc_headerless() {
+            return p._mark_owned(p._call_str_dup(b, _str_flag, name="str.bool.own"));
+        }
+        return _str_flag;
     }
 
     if isinstance(arg_val.type, ir.PointerType) {
@@ -5780,6 +5784,12 @@ impl NativeBuiltinEmitter.emit_str(
             "==", arg_val, ir.Constant(i8p, None), name="str.isnone"
         );
         result = b.select(is_null, none_s, arg_val, name="str.ornone");
+        if p._nogc_headerless() {
+            if p._is_owned(arg_val) {
+                return p._mark_owned(result);
+            }
+            return p._rc_strdup(result, name="str.copy");
+        }
         p._emit_rc_retain(result, op="builtin_str_id");
         return result;
     }

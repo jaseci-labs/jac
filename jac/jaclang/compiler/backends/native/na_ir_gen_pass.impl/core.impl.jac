@@ -1,3 +1,4 @@
+import from jaclang.compiler.c_interop { c_variadic_param, clib_block_defines }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
     if `entry.is_float {
@@ -142,7 +143,9 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._forward_declare_archetype_names(self.module);
 
     self._register_imported_struct_types();
+    self._declare_pending_clib_globals();
     self._declare_pending_clib_abilities();
+    self._declare_clib_definitions();
     self._register_globals(self.module);
     self._register_entry_globals(self.module);
 
@@ -164,6 +167,8 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._codegen_test(stmt);
         }
     }
+    self._emit_clib_definitions();
+    self._emit_clib_data_inits();
     self._propagate_seam_demotions();
     _unclaimed = False;
     for (_ck, _cviols) in self._capability_demotions.items() {
@@ -191,6 +196,8 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
+        self._volatilize_setjmp_locals();
+        self._exc_context_cache = {};
         self.module.gen.llvm_ir = self.llvm_module;
         self.module.gen.native_deps = list(self._native_dep_paths);
 
@@ -233,6 +240,35 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
 impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
     self._lowering_issues.append(issue);
     issue.record(self.llvm_module);
+}
+
+impl NaIRGenPass._glob_init_symbols -> tuple[list[str], list[str]] {
+    computed: list[str] = [];
+    for init_tuple in self._global_init_nodes {
+        global_var = self.global_vars.get(init_tuple[0]);
+        if global_var is not None and global_var.name not in computed {
+            computed.append(global_var.name);
+        }
+    }
+    reads: list[str] = [];
+    init_fn = self.func_symtab.get("__jac_glob_init");
+    if isinstance(init_fn, ir.Function) {
+        for block in init_fn.blocks {
+            for instr in block.instructions {
+                if not isinstance(instr, ir.Instruction) {
+                    continue;
+                }
+                for operand in instr.operands {
+                    if isinstance(operand, ir.GlobalVariable)
+                        and operand.initializer is None
+                        and operand.name not in reads {
+                        reads.append(operand.name);
+                    }
+                }
+            }
+        }
+    }
+    return (computed, reads);
 }
 
 impl NaIRGenPass._export_native_iface -> None {
@@ -329,6 +365,9 @@ impl NaIRGenPass._export_native_iface -> None {
     ];
     iface.clib_symbol_lib = dict(self.module.gen._clib_symbol_lib or {});
     iface.deps = list(self._native_dep_paths);
+    init_symbols = self._glob_init_symbols();
+    iface.runtime_globals = init_symbols[0];
+    iface.init_reads = init_symbols[1];
     try {
         import from jaclang.compiler.driver.na_coverage { na_coverage_capture }
         iface.coverage = na_coverage_capture(mod_path) if mod_path else {};
@@ -962,6 +1001,8 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     processed_modules: set[str] = set();
     imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
+    self._glob_import_sources = {};
+    self._native_import_items = [];
 
     entry_base = os.path.dirname(os.path.abspath(self.module.loc.mod_path))
         if (self.module?.loc)
@@ -1004,6 +1045,26 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             }
         }
         wq.append((mod_name, entry_base, None, bool(imp.is_typed)));
+        """A name this module imports from a module is bound to that module:
+        another imported module defining a global of the same name (two
+        generated constant tables both named CONSTANTS) must not supply it.""";
+        if imp.from_loc and imp.items {
+            _bound_path = resolve_native_module(mod_name, entry_base)[1];
+            if _bound_path is not None {
+                for _it in imp.items {
+                    if isinstance(_it, uni.ModuleItem) and _it.alias is None {
+                        self._glob_import_sources[_it.name.value] = os.path.realpath(
+                            _bound_path
+                        );
+                    }
+                    if isinstance(_it, uni.ModuleItem) {
+                        self._native_import_items.append(
+                            (_it, os.path.realpath(_bound_path), mod_name)
+                        );
+                    }
+                }
+            }
+        }
     }
 
     _self_key = (
@@ -1130,7 +1191,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             _direct_mod is None
             or self._is_catalog_module(_direct_mod)
             or any(
-                not isinstance(s, uni.Import)
+                not isinstance(s, uni.Import) or clib_block_defines(s)
                 for s in ModuleFacts.iter_context_stmts(_direct_mod)
             )
         );
@@ -1145,6 +1206,38 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     imported_mods = self._permuted_walk_order(imported_mods);
 
+    """Keep a name's binding only where the named module defines that global
+    itself; a name it re-exports resolves by walk order as before.""";
+    _defined: dict[str, set[str]] = {};
+    for (_, _gmod) in imported_mods {
+        if _gmod?.loc and _gmod.loc.mod_path {
+            _names: set[str] = set();
+            for _st in ModuleFacts.iter_context_stmts(_gmod) {
+                if isinstance(_st, uni.GlobalVars) {
+                    for _ga in _st.assignments {
+                        for _gt in (
+                            _ga.target
+                                if isinstance(_ga.target, (list, tuple))
+                                else [_ga.target]
+                        ) {
+                            _gn = self._get_name(_gt);
+                            if _gn is not None {
+                                _names.add(_gn);
+                            }
+                        }
+                    }
+                }
+            }
+            _defined[os.path.realpath(_gmod.loc.mod_path)] = _names;
+        }
+    }
+    self._glob_import_sources = {
+        _gname: _gpath
+        for (_gname, _gpath) in self._glob_import_sources.items()
+        if _gname in _defined.get(_gpath, set())
+    };
+    self._check_native_import_names(imported_mods);
+
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
     }
@@ -1153,6 +1246,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         self._walk_imported_module_type_names(imported_mod);
     }
 
+    self._declare_pending_clib_globals();
     self._declare_pending_clib_abilities();
 
     for (_, imported_mod) in imported_mods {
@@ -1160,7 +1254,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     import from jaclang.compiler.passes.layout_pass { adopt_imported_bases }
-    adopt_imported_bases(self.module);
+    adopt_imported_bases(self.module, header_identity=not self._nogc_headerless());
 
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
@@ -1520,13 +1614,38 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
 impl NaIRGenPass._register_imported_globals(
     nd: uni.GlobalVars, source_path: str = ""
 ) -> None {
+    import os;
+    real_source = os.path.realpath(source_path) if source_path else "";
+    aliases: dict[str, list[str]] = {};
+    for (item, path, _) in self._native_import_items {
+        alias = self._get_name(item.alias) if item.alias is not None else None;
+        if alias is not None and path == real_source {
+            aliases.setdefault(item.name.value, []).append(alias);
+        }
+    }
+    _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+    _owner = nd.find_parent_of_type(uni.Module);
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
             else [(assign.target)];
         for target in targets {
             var_name = self._get_name(target);
-            if var_name is None or var_name in self.global_vars {
+            if var_name is None {
+                continue;
+            }
+            _bound = self._glob_import_sources.get(var_name);
+            names: list[str] = [];
+            if var_name not in self.global_vars
+                and (_bound is None or not real_source or real_source == _bound) {
+                names.append(var_name);
+            }
+            for alias in aliases.get(var_name, []) {
+                if alias not in self.global_vars {
+                    names.append(alias);
+                }
+            }
+            if not names {
                 continue;
             }
             var_type: ir.Type = ir.IntType(64);
@@ -1544,19 +1663,20 @@ impl NaIRGenPass._register_imported_globals(
                     var_type = inferred;
                 }
             }
-            _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
-            _owner = nd.find_parent_of_type(uni.Module);
-            global_var = ir.GlobalVariable(
-                self.llvm_module,
-                var_type,
-                name=self._symbol_for(var_name, _owner, _is_pub)
-            );
-            global_var.linkage = "external";
-            self.global_vars[var_name] = global_var;
-            self.global_var_types[var_name] = var_type;
-
-            if source_path {
-                self._global_origins[var_name] = source_path;
+            symbol = self._symbol_for(var_name, _owner, _is_pub);
+            declared = self.llvm_module.globals.get(symbol);
+            if isinstance(declared, ir.GlobalVariable) {
+                global_var = declared;
+            } else {
+                global_var = ir.GlobalVariable(self.llvm_module, var_type, name=symbol);
+                global_var.linkage = "external";
+            }
+            for name in names {
+                self.global_vars[name] = global_var;
+                self.global_var_types[name] = var_type;
+                if source_path {
+                    self._global_origins[name] = source_path;
+                }
             }
             self.has_native_code = True;
         }
@@ -1690,6 +1810,108 @@ impl NaIRGenPass._imported_function_demotions(
     return None;
 }
 
+impl NaIRGenPass._check_native_import_names(
+    imported_mods: list[tuple[str, uni.Module]]
+) -> None {
+    """Refuse a name imported from a Jac module that does not define it.
+
+    A use of an imported global lowers to a load of the defining unit's
+    symbol. A name the module never defines has no symbol, and every use of
+    it used to lower to nothing: a call argument or a glob initializer took a
+    NULL in its place and the binary crashed wherever that value was read.
+    The module's own scope is the whole answer (its globals, functions,
+    archetypes, enums and the names it imports); a module that absorbs
+    another (`include`, `*`) is left to the checker.
+    """;
+    import os;
+    import from jaclang.compiler.types.type_utils { lookup_symtab }
+    by_path: dict[str, uni.Module] = {};
+    for (_, _mod) in imported_mods {
+        if _mod?.loc and _mod.loc.mod_path {
+            by_path[os.path.realpath(_mod.loc.mod_path)] = _mod;
+        }
+    }
+    for (item, path, mod_name) in self._native_import_items {
+        name = item.name.value if item.name else None;
+        src = by_path.get(path);
+        if name is None or name == "*" or src is None or not path.endswith(".jac") {
+            continue;
+        }
+        if any(
+            _imp.is_absorb
+                or any(
+                    isinstance(_i, uni.ModuleItem) and _i.name.value == "*"
+                    for _i in (_imp.items or [])
+                ) for _imp in src.get_all_sub_nodes(uni.Import)
+        ) {
+            continue;
+        }
+        if lookup_symtab(src, name, None) is None {
+            self.emit(E1145, node_override=item, name=name, module=mod_name);
+        }
+    }
+}
+
+impl NaIRGenPass._declare_clib_struct(decl: uni.Archetype) -> (str | None) {
+    arch_name = decl.name.value if decl.name else None;
+    if arch_name is None {
+        return None;
+    }
+    self.struct_types[arch_name] = self.llvm_module.context.get_identified_type(
+        arch_name
+    );
+    self.clib_struct_names.add(arch_name);
+    self.has_native_code = True;
+    return arch_name;
+}
+
+impl NaIRGenPass._lower_clib_struct(decl: uni.Archetype) -> None {
+    arch_name = decl.name.value if decl.name else None;
+    if arch_name is None or arch_name not in self.struct_types {
+        return;
+    }
+    self._codegen_archetype(decl);
+    stype = self.struct_types[arch_name];
+    if not (stype?.elements and stype.elements) {
+        return;
+    }
+    total_bits = 0;
+    for elem in stype.elements {
+        if not isinstance(elem, ir.IntType) {
+            return;
+        }
+        total_bits += elem.width;
+    }
+    if 0 < total_bits <= 64 {
+        abi_bits = 8;
+        while abi_bits < total_bits {
+            abi_bits *= 2;
+        }
+        self.clib_struct_abi_types[arch_name] = ir.IntType(abi_bits);
+    }
+}
+
+impl NaIRGenPass._adopt_foreign_struct(t: any) -> (str | None) {
+    """Register a foreign struct that another module declares, on first use.
+
+    A module's own clib structs are laid out before any imported module's
+    clib block is processed, so a field that embeds an imported foreign
+    struct by value would find no layout for it. The imported declaration is
+    declared and laid out here, dependency first; its own clib block later
+    finds the layout already in place.
+    """;
+    import from jaclang.compiler.c_interop { foreign_struct_of_type }
+    arch = foreign_struct_of_type(t);
+    if arch is None {
+        return None;
+    }
+    arch_name = self._declare_clib_struct(arch);
+    if arch_name is not None {
+        self._lower_clib_struct(arch);
+    }
+    return arch_name;
+}
+
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
     imports = ModuleFacts.iter_module_imports(module)
         + ModuleFacts.iter_nested_imports(module, CodeContext.NATIVE);
@@ -1760,60 +1982,52 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
 
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Archetype) {
-                arch_name = decl.name.value if decl.name else None;
-                if arch_name is not None {
-                    struct_type = self.llvm_module.context.get_identified_type(
-                        arch_name
-                    );
-                    self.struct_types[arch_name] = struct_type;
-                    self.clib_struct_names.add(arch_name);
-                    self.has_native_code = True;
-                }
+                self._declare_clib_struct(decl);
             }
         }
 
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Archetype) {
-                arch_name = decl.name.value if decl.name else None;
-                if arch_name is not None and arch_name in self.struct_types {
-                    self._codegen_archetype(decl);
-
-                    stype = self.struct_types[arch_name];
-                    if stype?.elements and stype.elements {
-                        total_bits = 0;
-                        all_int = True;
-                        for elem in stype.elements {
-                            if isinstance(elem, ir.IntType) {
-                                total_bits += elem.width;
-                            } else {
-                                all_int = False;
-                                break;
-                            }
-                        }
-                        if all_int and 0 < total_bits <= 64 {
-                            abi_bits = 8;
-                            while abi_bits < total_bits {
-                                abi_bits *= 2;
-                            }
-                            self.clib_struct_abi_types[arch_name] = ir.IntType(
-                                abi_bits
-                            );
-                        }
-                    }
-                }
+                self._lower_clib_struct(decl);
             }
         }
 
         self._clib_detect_vtable_structs();
 
         for decl in stmt.clib_decls {
+            if isinstance(decl, uni.GlobalVars) {
+                for assign in decl.assignments {
+                    self._pending_clib_globals.append((assign, _cur_lib, module));
+                    target = assign.target[0] if assign.target else None;
+                    if _cur_lib is not None and isinstance(target, uni.Name) {
+                        self._clib_symbol_lib[target.sym_name] = _cur_lib;
+                    }
+                }
+            }
+        }
+
+        for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
+                if fn_name and module is not self.module {
+                    self._foreign_clib_abilities.setdefault(fn_name, decl);
+                }
 
                 _is_empty_list = isinstance(decl.body, list) and not decl.body;
                 if decl.body is not None and not _is_empty_list {
-                    self.emit(E5060, name=fn_name);
-                    continue;
+                    if module is not self.module {
+                        self._pending_clib_abilities.append(decl);
+                        if fn_name {
+                            self.clib_extern_names.add(fn_name);
+                        }
+                        continue;
+                    }
+                    if fn_name {
+                        self._clib_definitions[fn_name] = decl;
+                    }
+                    if c_variadic_param(decl.signature) is not None {
+                        continue;
+                    }
                 }
                 self._pending_clib_abilities.append(decl);
                 if fn_name {
@@ -1830,6 +2044,14 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             self.module.gen._clib_symbol_lib = dict(self._clib_symbol_lib);
             self.has_native_code = True;
         }
+    }
+}
+
+impl NaIRGenPass._declare_pending_clib_globals -> None {
+    pending = self._pending_clib_globals;
+    self._pending_clib_globals = [];
+    for (assign, lib, owner) in pending {
+        self._declare_clib_global(assign, lib, owner);
     }
 }
 

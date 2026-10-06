@@ -14,7 +14,6 @@ import from jaclang.runtime.python.cpython_api {
     PySequence_Fast,
     PySequence_GetItem,
     PySequence_Tuple,
-    PySlice_AdjustIndices,
     PyUnicode_Format,
     _Py_c_pow,
     _Py_c_quot

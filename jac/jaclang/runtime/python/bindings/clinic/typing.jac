@@ -10,37 +10,28 @@ import from jaclang.runtime.python.bindings.type {
     PropertyDefinition,
     PropertyCallbacks
 }
-import from jaclang.runtime.python.bindings.arguments {
-    BoundArguments,
-    CallSignature,
-    invoke
-}
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { argument_label }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from jaclang.runtime.python.modules.typing { _typing__idfunc_impl }
 
-glob:priv _typing__idfunc_signature = CallSignature("_idfunc", ["x"], 1, 1, 1);
-def:priv _typing__idfunc_bound(args: BoundArguments) -> ptr[PyObject] {
-    receiver = args.context;
-    value = args.values[0];
-    x: ptr[PyObject] = value;
-    return _typing__idfunc_impl(receiver, x);
-}
-
 def:priv _typing__idfunc_call(
-    receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+    receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return invoke(
-        _typing__idfunc_signature, args, kwargs, _typing__idfunc_bound, receiver
-    );
+    try {
+        x: ptr[PyObject] = value;
+        return _typing__idfunc_impl(receiver, x);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
-glob module_methods: list[MethodDefinition] = [
+glob typing_doc: str = "Primitives and accelerators for the typing module.\n",
+     module_methods: list[MethodDefinition] = [
          MethodDefinition(
              "_idfunc",
-             MethodCallbacks(keywords=_typing__idfunc_call),
-             "_idfunc($module, x, /)\n--",
-             3
+             MethodCallbacks(positional=_typing__idfunc_call),
+             "_idfunc($module, x, /)\n--\n\n",
+             8
          ),
 
      ];

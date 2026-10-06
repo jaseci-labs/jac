@@ -139,10 +139,16 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
                 or self._opt_payload_of(_result.type) is not None
             ) {
             import from jaclang.compiler.passes.rc_facts_pass {
+                call_borrows_receiver,
                 Ownership,
                 result_ownership
             }
-            if result_ownership(nd) == Ownership.OWNED {
+            if result_ownership(nd) == Ownership.OWNED
+                and not (
+                    self._nogc_headerless()
+                    and isinstance(nd, uni.FuncCall)
+                    and call_borrows_receiver(nd)
+                ) {
                 self._mark_owned(_result);
             }
         }
@@ -284,7 +290,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     );
     self.builder.store(v, out_typed);
     for _entry in self._gen_try_stack {
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
     }
     k = len(gc.resume_blocks) + 1;
     ip_slot = self.builder.bitcast(gc.frame_i8, i64.as_pointer(), name="yield.ip");
@@ -296,7 +302,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     self.builder.position_at_end(rbb);
     for _entry in self._gen_try_stack {
         exc_state = _entry.state;
-        self.builder.call(self._exc_push_fn, [exc_state]);
+        self._emit_exc_push(self.builder, exc_state);
         if _entry.depth is not None {
             self.builder.store(self._region_depth(), _entry.depth);
         }
@@ -615,8 +621,22 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         return self.func_symtab[var_name];
     }
 
+    c_global = self._clib_global_of(nd);
+    if c_global is not None {
+        if self._c_scalar_llvm(c_global[1]) is None {
+            self.ctx.emit(E5092, node_override=nd, kind="read", name="C data object");
+            return None;
+        }
+        return self._c_load_scalar(c_global[0], c_global[1], f"c.glob.{var_name}");
+    }
     if var_name in self.global_vars {
         global_var = self.global_vars[var_name];
+        if isinstance(global_var.type, ir.PointerType) {
+            folded = self._final_scalar_value(nd, global_var.type.pointee);
+            if folded is not None {
+                return folded;
+            }
+        }
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
     if var_name == "__file__" and self.module?.loc and self.module.loc.mod_path {
@@ -708,6 +728,10 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     if op == Tok.KW_SPAWN {
         return self._codegen_spawn(nd);
+    }
+    (is_ptr_arith, ptr_result) = self._codegen_c_ptr_arith(nd, op);
+    if is_ptr_arith {
+        return ptr_result;
     }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
@@ -1654,7 +1678,9 @@ impl NaIRGenPass._codegen_compare_link(
     is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
         or isinstance(right.type, (ir.DoubleType, ir.FloatType));
     _cmp_unsigned = self._is_unsigned_node(left_node)
-        or self._is_unsigned_node(right_node);
+        or self._is_unsigned_node(right_node)
+        or self._is_c_ptr_node(left_node)
+        or self._is_c_ptr_node(right_node);
     if is_float {
         (left, right) = self._promote_to_float(left, right, unsigned=_cmp_unsigned);
     }
@@ -1688,8 +1714,9 @@ impl NaIRGenPass._identity_over_optional(
     and the fallback below answers a different question entirely: the
     truthiness of the left operand, with the right operand discarded. Two
     options are identical when both are absent, or both present with the same
-    payload; an option against a plain reference is identical when the option
-    is present and the payloads match. A comparison against a literal `None`
+    payload; an option against a plain reference or value is identical when
+    the option is present and the payloads match. A reference payload matches
+    by address, a by-value payload by its bits. A comparison against a literal `None`
     never reaches here -- it is answered as a tag test further up.
     """;
     _lp = self._opt_payload_of(left.type);
@@ -1712,14 +1739,18 @@ impl NaIRGenPass._identity_over_optional(
         _r_set = self.builder.icmp_signed("!=", _r_tag, _zero_tag, name="is.r.set");
         _r_val = self.builder.extract_value(right, 1, name="is.r.pv");
     }
-    if not isinstance(_l_val.type, ir.PointerType)
-        or not isinstance(_r_val.type, ir.PointerType) {
+    _l_ref = isinstance(_l_val.type, ir.PointerType);
+    _r_ref = isinstance(_r_val.type, ir.PointerType);
+    if _l_ref != _r_ref
+        or self._opt_payload_of(_l_val.type) is not None
+        or self._opt_payload_of(_r_val.type) is not None {
         return None;
     }
-    if _l_val.type != _r_val.type {
-        _r_val = self.builder.bitcast(_r_val, _l_val.type, name="is.r.cast");
+
+    _same_pv = self._word_identity(_l_val, _r_val);
+    if _same_pv is None {
+        return None;
     }
-    _same_pv = self.builder.icmp_unsigned("==", _l_val, _r_val, name="is.pv.eq");
     _both_set = self.builder.and_(_l_set, _r_set, name="is.both.set");
     _hit = self.builder.and_(_both_set, _same_pv, name="is.opt.hit");
     _l_none = self.builder.not_(_l_set, name="is.l.none");
@@ -1919,6 +1950,11 @@ impl NaIRGenPass._codegen_compare_chain(
 }
 
 impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
+    import from jaclang.compiler.c_interop { c_lent_arg_elem }
+    lent = c_lent_arg_elem(nd);
+    if lent is not None {
+        return self._c_lent_address(nd, lent);
+    }
     operand = self._codegen_expr(nd.operand);
     if operand is None {
         return None;
@@ -1949,6 +1985,13 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
         } elif isinstance(operand.type, ir.IntType) {
+            if isinstance(operand, ir.Constant) and isinstance(operand.constant, int) {
+                width = operand.type.width;
+                negated = -operand.constant;
+                if -(1 << (width - 1)) <= negated < (1 << (width - 1)) {
+                    return ir.Constant(operand.type, negated);
+                }
+            }
             if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
                 return self._emit_checked_neg(operand);
             }
@@ -2245,14 +2288,16 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     if then_open {
         self.builder.position_at_end(then_end_bb);
         if owns_result and then_val is not None {
-            self._emit_take_ref(then_val, op="ternary_keep");
+            then_val = self._ternary_keep(then_val);
+            then_end_bb = self.builder.block;
         }
         self.builder.branch(merge_bb);
     }
     if else_open {
         self.builder.position_at_end(else_end_bb);
         if owns_result and else_val is not None {
-            self._emit_take_ref(else_val, op="ternary_keep");
+            else_val = self._ternary_keep(else_val);
+            else_end_bb = self.builder.block;
         }
         self.builder.branch(merge_bb);
     }
@@ -2264,6 +2309,45 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     phi.add_incoming(then_val, then_end_bb);
     phi.add_incoming(else_val, else_end_bb);
     return self._mark_owned(phi) if owns_result else phi;
+}
+
+impl NaIRGenPass._ternary_keep(value: ir.Value) -> ir.Value {
+    """One arm of a conditional expression whose other arm owns its value:
+    the result is owned, so a borrowed arm takes a reference, or, where
+    nothing is counted (headerless nogc), a copy of its text or bytes.""";
+    if self._is_owned(value) {
+        return value;
+    }
+    if not self._nogc_headerless() {
+        self._emit_take_ref(value, op="ternary_keep");
+        return value;
+    }
+    if self._is_bytes_value(value) {
+        return self._bytes_from_raw(
+            self._bytes_data_ptr(value), self._bytes_len_val(value)
+        );
+    }
+    if value.type == ir.IntType(8).as_pointer() {
+        return self._mark_owned(
+            self._call_str_dup(self.builder, value, name="ternary.copy")
+        );
+    }
+    if self._str_desc_ty is not None and value.type == self._str_desc_ty {
+        if self.str_new_fn is None {
+            self._emit_str_len_helpers();
+        }
+        copied = self.builder.call(
+            self.str_new_fn,
+            [
+                self.builder.extract_value(value, 0, name="ternary.data"),
+                self.builder.extract_value(value, 1, name="ternary.len")
+            ],
+            name="ternary.copy"
+        );
+        return self._mark_owned(self._coerce_type(copied, self._str_desc_ty));
+    }
+    self._emit_take_ref(value, op="ternary_keep");
+    return value;
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
@@ -3003,4 +3087,72 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
     }
     arch = owner.find_parent_of_type(uni.Archetype);
     return self._arch_key(arch) if arch is not None else None;
+}
+
+impl NaIRGenPass._final_variant_value(
+    nd: uni.Name, value: uni.Expr
+) -> (uni.Expr | None) {
+    """The value a Final glob has on the native target: a module with a
+    platform variant (`<name>.<os>.<arch>.jac`) is lowered as that variant,
+    so its glob is folded from the variant's declaration of the same name,
+    never from the portable module's placeholder. None when the variant
+    declares no such Final glob, which leaves the read a load.""";
+    import os;
+    import from jaclang.compiler.c_interop { final_glob_value }
+    import from jaclang.compiler.frontend.codeinfo { native_variant_of }
+    mod = value.find_parent_of_type(uni.Module);
+    if mod is None or mod.loc is None or not mod.loc.mod_path {
+        return value;
+    }
+    variant = os.path.realpath(native_variant_of(mod.loc.mod_path));
+    if variant == os.path.realpath(mod.loc.mod_path) {
+        return value;
+    }
+    variant_mod = self.prog.mod.hub.get(variant);
+    if variant_mod is None {
+        return None;
+    }
+    for gv in variant_mod.get_all_sub_nodes(uni.GlobalVars) {
+        for assign in gv.assignments {
+            target = assign.target[0] if len(assign.target) == 1 else None;
+            if isinstance(target, uni.Name) and target.sym_name == nd.sym_name {
+                return final_glob_value(target);
+            }
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._final_scalar_value(
+    nd: uni.Name, value_type: ir.Type
+) -> (ir.Value | None) {
+    import from jaclang.compiler.c_interop { c_scalar_constant, final_glob_value }
+    value = final_glob_value(nd);
+    if value is None {
+        return None;
+    }
+    value = self._final_variant_value(nd, value);
+    if value is None {
+        return None;
+    }
+    (ok, folded) = c_scalar_constant(value);
+    if not ok {
+        return None;
+    }
+    if isinstance(value_type, ir.IntType)
+        and value_type.width > 1
+        and isinstance(folded, int)
+        and not isinstance(folded, bool) {
+        bits = folded & ((1 << value_type.width) - 1);
+        if bits >= (1 << (value_type.width - 1)) {
+            bits -= 1 << value_type.width;
+        }
+        return ir.Constant(value_type, bits);
+    }
+    if isinstance(value_type, (ir.DoubleType, ir.FloatType))
+        and isinstance(folded, (int, float))
+        and not isinstance(folded, bool) {
+        return ir.Constant(value_type, float(folded));
+    }
+    return None;
 }

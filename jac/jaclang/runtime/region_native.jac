@@ -127,6 +127,23 @@ def:pub __jac_region_leave {
     __jac_region_unwind(__mem_load_i64(blk + TLS_DEPTH) - 1);
 }
 
+def:pub __jac_region_escape -> int {
+    blk = __jac_region_tls_get();
+    if blk == 0 or __mem_load_i64(blk + TLS_CUR) == 0 {
+        return -1;
+    }
+    depth = __mem_load_i64(blk + TLS_DEPTH);
+    _stack_push(blk, 0);
+    __mem_store_i64(blk + TLS_CUR, 0);
+    return depth;
+}
+
+def:pub __jac_region_restore(depth: int) {
+    if depth >= 0 {
+        __jac_region_unwind(depth);
+    }
+}
+
 def _lock(hdl: int) {
     spins = 0;
     while __atomic_xchg_i64(hdl + RGN_LOCK, 1) != 0 {

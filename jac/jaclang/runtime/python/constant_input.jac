@@ -1,8 +1,6 @@
 """Retained CPython constants become compiler-owned native values at the boundary."""
 
 import from jaclang.runtime.python.cpython_api {
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble,
     PyObject,
     PyObject_IsTrue,
     PySequence_List,
@@ -13,6 +11,10 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_sequence_size,
     jacpy_utf8,
     jacpy_value_kind
+}
+import from jaclang.runtime.python.object_model.complex {
+    PyComplex_ImagAsDouble,
+    PyComplex_RealAsDouble
 }
 import from jaclang.runtime.python.objects {
     PyObj,
