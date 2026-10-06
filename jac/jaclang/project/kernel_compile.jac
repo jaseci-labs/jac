@@ -67,12 +67,19 @@ def kernel_compile(
     source: (str | None) = None,
     in_process: bool = False,
     isolated: bool = True,
-    emit_closure: bool = False
+    emit_closure: bool = False,
+    emit_cached: bool = True
 ) -> CompileReport {
     import time;
     started = time.monotonic();
     snapshot = kernel_snapshot(
-        host, program, path, options, source, emit_closure=emit_closure
+        host,
+        program,
+        path,
+        options,
+        source,
+        emit_closure=emit_closure,
+        emit_cached=emit_cached
     );
     snapped = time.monotonic();
     in_kernel = 0.0;
@@ -162,7 +169,8 @@ def kernel_compile_reported(
     path: str,
     options: CompileOptions,
     in_process: bool,
-    emit_closure: bool
+    emit_closure: bool,
+    emit_cached: bool = True
 ) -> CompileReport {
     try {
         compiled = kernel_compile(
@@ -171,7 +179,8 @@ def kernel_compile_reported(
             path,
             options,
             in_process=in_process,
-            emit_closure=emit_closure
+            emit_closure=emit_closure,
+            emit_cached=emit_cached
         );
     } except KernelAnalysisError as err {
         raise KernelCompileError(
@@ -207,7 +216,9 @@ def host_kernel_compile(
     if ready is not None {
         return CompileReport(analysis=AnalysisReport(entry_path=path), units=[ready]);
     }
-    return kernel_compile_reported(host, program, path, options, in_process, False);
+    return kernel_compile_reported(
+        host, program, path, options, in_process, True, emit_cached=False
+    );
 }
 
 def kernel_compile_application(

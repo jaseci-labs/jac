@@ -40,6 +40,7 @@ glob SCAN_LIMIT: int = 4000,
      _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _IFACE_REFUSED: dict[str, str] = {},
      _IFACE_BUILT: list[float] = [0.0, 0.0],
+     _OTHER_COMPILER_DIRS: dict[str, bool] = {},
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
      MISS_ROUNDS: int = 12,
@@ -333,6 +334,10 @@ obj ClosureScan {
             }
             if shared {
                 self.wired_dirs.add(wired);
+                self.learn_arch(tree, source_path);
+                if source_path != path {
+                    continue;
+                }
             }
             self.scan_imports(tree, path);
             self.learn_runtime_imports(tree, source_path);
@@ -909,6 +914,7 @@ obj KernelSnapshot {
         host: HostServices,
         options: CompileOptions,
         emit_closure: bool = False,
+        emit_cached: bool = False,
         answered: set[str] = set(),
         wanted_interfaces: set[str] = set(),
         rounds: int = 0;
@@ -929,6 +935,7 @@ obj KernelSnapshot {
                 if seen.endswith(".jac")
                     and not is_annex(seen)
                     and os.path.realpath(seen) != entry_real
+                    and (self.emit_cached or not compiled_already(seen))
             );
         }
         for ws in list(inputs.workspaces.values()) {
@@ -1109,19 +1116,33 @@ obj KernelSnapshot {
     }
 }
 
+def compiled_already(path: str) -> bool {
+    import from jaclang.compiler.driver.jir {
+        get_module_cache_path,
+        is_module_cache_valid
+    }
+    try {
+        return is_module_cache_valid(path, get_module_cache_path(path));
+    } except Exception {
+        return False;
+    }
+}
+
 def kernel_snapshot(
     host: HostServices,
     program: JacProgram,
     path: str,
     options: CompileOptions,
     source: (str | None) = None,
-    emit_closure: bool = False
+    emit_closure: bool = False,
+    emit_cached: bool = True
 ) -> KernelSnapshot {
     snapshot = KernelSnapshot(
         scan=snapshot_closure(host, program, path, options, source),
         host=host,
         options=options,
-        emit_closure=emit_closure
+        emit_closure=emit_closure,
+        emit_cached=emit_cached
     );
     if not snapshot.scan.other_compiler {
         snapshot.refresh();
@@ -1333,11 +1354,24 @@ def call_kernel_isolated(
 }
 
 def in_other_compiler_tree(path: str) -> bool {
-    import from jaclang.project.modresolver { COMPILER_PACKAGE }
-    if not path.endswith((".jac", ".py")) or is_compiler_source_path(path) {
+    if not path.endswith((".jac", ".py")) {
         return False;
     }
-    current = os.path.dirname(os.path.realpath(path));
+    folder = os.path.dirname(path);
+    known = _OTHER_COMPILER_DIRS.get(folder);
+    if known is None {
+        known = other_compiler_dir(folder);
+        _OTHER_COMPILER_DIRS[folder] = known;
+    }
+    return known;
+}
+
+def other_compiler_dir(folder: str) -> bool {
+    import from jaclang.project.modresolver { COMPILER_PACKAGE }
+    current = os.path.realpath(folder);
+    if is_compiler_source_path(os.path.join(current, "x.jac")) {
+        return False;
+    }
     while True {
         above = os.path.dirname(current);
         if above == current {

@@ -84,6 +84,14 @@ obj _JsonParser {
 
     def _parse_string -> str {
         self.pos += 1;
+        closing: int = self.src.find("\"", self.pos);
+        if closing >= 0 {
+            plain: str = self.src[self.pos:closing];
+            if plain.find("\\") < 0 {
+                self.pos = closing + 1;
+                return plain;
+            }
+        }
         out: str = "";
         while True {
             c: int = self._cc();
@@ -263,8 +271,16 @@ def _dump_str(s: str, ensure_ascii: bool) -> str {
     out: str = "\"";
     n: int = len(s);
     i: int = 0;
+    start: int = 0;
     while i < n {
         ch: int = ord(s[i]);
+        if ch >= 32 and ch != 34 and ch != 92 and (ch < 127 or not ensure_ascii) {
+            i += 1;
+            continue;
+        }
+        if i > start {
+            out += s[start:i];
+        }
         if ch == 34 {
             out += "\\\"";
         } elif ch == 92 {
@@ -303,6 +319,13 @@ def _dump_str(s: str, ensure_ascii: bool) -> str {
             out += s[i];
         }
         i += 1;
+        start = i;
+    }
+    if start == 0 {
+        return "\"" + s + "\"";
+    }
+    if n > start {
+        out += s[start:n];
     }
     out += "\"";
     return out;
