@@ -1,3 +1,4 @@
+import bisect;
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint, WSEndPoint }
 
 
@@ -90,17 +91,20 @@ def compile_route(path: str) -> CompiledRoute {
     return route;
 }
 
-def route_sort_key(route: CompiledRoute) -> tuple[int, int, int, str] {
+def route_sort_key(route: CompiledRoute) -> tuple[int, int, int, int, str] {
     path = '';
+    yields = False;
     if route.endpoint is not None {
         path = route.endpoint.path;
+        yields = route.endpoint.yields_to_declared;
     } elif route.ws_endpoint is not None {
         path = route.ws_endpoint.path;
     }
     return (
         1 if route.catchall is not None else 0,
-        route.param_count,
+        1 if yields else 0,
         -len(route.segments),
+        route.param_count,
         path
     );
 }
@@ -115,16 +119,15 @@ obj Router {
         method = str(endpoint.method.value)
             if isinstance(endpoint.method, HTTPMethod)
             else str(endpoint.method);
-        bucket = self.routes.setdefault(method.upper(), []);
-        bucket.append(route);
-        bucket.sort(key=route_sort_key);
+        bisect.insort(
+            self.routes.setdefault(method.upper(), []), route, key=route_sort_key
+        );
     }
 
     def add_ws(endpoint: WSEndPoint) {
         route = compile_route(endpoint.path);
         route.ws_endpoint = endpoint;
-        self.ws_routes.append(route);
-        self.ws_routes.sort(key=route_sort_key);
+        bisect.insort(self.ws_routes, route, key=route_sort_key);
     }
 
     def clear {

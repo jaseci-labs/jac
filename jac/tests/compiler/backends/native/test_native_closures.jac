@@ -325,6 +325,53 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
     );
 }
 
+test "closure: a void lambda over a statement call returns void" {
+    (prog, ir) = compile_na_inline_ir(
+        "void_lambda_stmt_call",
+        "def apply(f: Callable[[int], None], x: int) {\n"
+        "    f(x);\n"
+        "}\n"
+        "def seen_count -> int {\n"
+        "    seen: list[int] = [];\n"
+        "    apply(lambda (x: int) -> None { seen.append(x); }, 7);\n"
+        "    return len(seen);\n"
+        "}\n"
+    );
+    assert not prog.errors_had , (
+        f"a void lambda's tail call is evaluated for effect, never returned: "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+    assert "seen_count" in ir.gen.native_layout.functions;
+    f = get_func(ir.gen.native_engine, "seen_count", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "closure escape: a statement call through an any-typed field stays rejected" {
+    (prog, ir) = compile_na_inline_ir(
+        "any_field_stmt_call",
+        "obj Probe {\n"
+        "    has f: any = None;\n"
+        "    def fire(x: int) {\n"
+        "        self.f(x);\n"
+        "    }\n"
+        "}\n"
+        "def run -> int {\n"
+        "    p = Probe();\n"
+        "    p.fire(7);\n"
+        "    return 1;\n"
+        "}\n"
+    );
+    assert not prog.errors_had , (
+        f"the any-typed call refusal is owned by fire(), which must demote "
+        f"to a seam, got: {[str(e) for e in prog.errors_had]}"
+    );
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert not any(name.endswith("fire") for name in ir.gen.native_layout.functions) , (
+        "a statement call through an any-typed value must demote its method, "
+        "never lower to nothing"
+    );
+}
+
 test "adapter: map with a capturing lambda callback" {
     (eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);

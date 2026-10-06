@@ -96,6 +96,9 @@ def forget(`entry: str) {
 def containing_application(
     path: str, module_name: str = ""
 ) -> (PreparedApplication | None) {
+    if module_name == 'jaclang' or module_name.startswith('jaclang.') {
+        return None;
+    }
     resolved = os.path.realpath(path);
     for application in _applications.values() {
         if module_name.startswith(application_namespace(application) + '.') {

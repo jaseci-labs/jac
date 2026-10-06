@@ -78,6 +78,35 @@ curl -X PUT http://localhost:8000/admin/users/alice \
 
 The built-in roles gate *platform* surfaces (admin portal, `/metrics`). For **app-domain** roles (moderator, team owner, ...), the in-Jac pattern is still a role field on a node hanging off the user's root, checked inside an authenticated endpoint - see `jac-sv-multi-user`.
 
+## Second factor (TOTP)
+
+Opt-in per user; an account with no verified factor signs in exactly as above. All bodies are JSON, all but the last need `Authorization: Bearer $TOKEN`.
+
+| Call | Body | Answers |
+|---|---|---|
+| `POST /user/mfa/enroll` | `password` (+ `code` or `recovery_code` if a verified factor already exists) | `factor_id`, `secret`, `otpauth_uri` - shown once, factor is `unverified` |
+| `POST /user/mfa/verify` | `factor_id`, `code` | activates the factor; a new `token` at `aal2`; `recovery_codes` (10, single-use) the first time |
+| `GET /user/mfa/factors` | - | `factors` (id, status, created_at; never the secret), `current_level`, `next_level` |
+| `POST /user/mfa/unenroll` | `factor_id`, `code` or `recovery_code` | removes the factor (the password alone cannot) |
+| `POST /user/mfa/login` | `challenge_token`, `code` or `recovery_code` | the session `token`, at `aal2` |
+
+Once a factor is verified, `POST /user/login` stops answering a `token`: it answers `{"mfa_required": true, "challenge_token": "...", "expires_in": 300}`. The challenge is not a session (every other endpoint answers 401 for it); exchange it at `/user/mfa/login`. Codes are RFC 6238 (SHA-1, 6 digits, 30 s, one step of clock skew), single-use, and five failures lock the account's second step for 15 minutes (`JAC_SERVE_AUTH_SECOND_FACTOR_ATTEMPTS`, `..._LOCKOUT_SECONDS`, `..._CHALLENGE_TTL_SECONDS`, `..._ISSUER`).
+
+A session that proved a second factor carries `"aal": "aal2"` (plus `amr`, `auth_time`); a password-only or SSO session has no `aal` claim and reads as `aal1`. Use `/user/mfa/verify` on a verified factor to step an `aal1` session up. Require the level inside an endpoint:
+
+```jac
+import from jaclang.server.identity.assurance { caller_assurance_level }
+
+def:protect rotate_keys -> dict[str, any] {
+    if caller_assurance_level() != "aal2" {
+        return {"ok": False, "error": "second factor required"};
+    }
+    return {"ok": True};
+}
+```
+
+`caller_assurance_level()` is `"aal2"`, `"aal1"`, or `""` when there is no signed-in HTTP caller (anonymous, scheduled, or a WebSocket call - gate those closed).
+
 ## JWT production footgun
 
 With no secret configured, a dev server mints one per project into `.jac/data/jwt_secret` (gitignored, mode 0600) and reuses it across restarts, so browser sessions survive a restart and no two projects share a signing key. A deployment must set its own secret, because a per-project file would be per-replica in a cluster - a cluster with none configured falls back to the shipped placeholder and warns at boot, and anyone who knows that placeholder can forge tokens for any user:

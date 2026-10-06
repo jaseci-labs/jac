@@ -392,6 +392,38 @@ test "E0076: Python __init__ and init are distinct methods" {
     assert not has_diagnostic_code(prog, "E0076");
 }
 
+test "E2036: a second module-level definition of a name is rejected" {
+    (prog, _) = compile_and_check("scope_E2036_duplicate_def.jac");
+    assert count_diagnostic_code(prog, "E2036") == 2 , "the second 'foo' and the second 'Bar'";
+}
+
+test "E2036: the call the checker passed against the first def is now an error" {
+    # The later def wins at run time, so `resolve("edit")` used to check clean
+    # and then fail with "takes 0 positional arguments but 1 was given".
+    prog = JacProgram();
+    prog.compile(
+        use_str='def resolve(capability: str = "") -> str { return "first:" + capability; }\n'
+            + 'def resolve() -> str { return "second"; }\n'
+            + 'with entry { print(resolve("edit")); }',
+        file_path="dup.jac"
+    );
+    assert count_diagnostic_code(prog, "E2036") == 1;
+}
+
+test "E2036: a stub with its impl and overloads are not duplicates" {
+    (prog, _) = compile_only("scope_E2036_allowed_redefinitions.jac");
+    assert not has_diagnostic_code(prog, "E2036");
+}
+
+test "E2036: a Python module may redefine a name" {
+    prog = JacProgram();
+    prog.compile(
+        use_str="def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
+        file_path="redefine.py"
+    );
+    assert not has_diagnostic_code(prog, "E2036");
+}
+
 test "removed nonlocal directive is a parse error" {
     (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
     assert has_err;

@@ -42,6 +42,46 @@ def extract_data(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
+# RFC 6238 computed here, independently of the implementation under test.
+def totp_code(secret: str, step: int) -> str {
+    import base64;
+    import hashlib;
+    import hmac;
+    import struct;
+    key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8));
+    digest = hmac.new(key, struct.pack(">Q", step), hashlib.sha1).digest();
+    offset = digest[-1] & 15;
+    number = struct.unpack(">I", digest[offset:offset + 4])[0] & 2147483647;
+    return str(number % 1000000).zfill(6);
+}
+
+# A code the server has not accepted yet: the window is one step either side,
+# so up to three distinct codes are valid at once and each is single-use.
+def fresh_totp_code(secret: str, used: set[int]) -> str {
+    import time;
+    now = int(time.time() // 30);
+    for step in [now, now + 1, now - 1] {
+        if step not in used {
+            used.add(step);
+            return totp_code(secret, step);
+        }
+    }
+    time.sleep(31);
+    return fresh_totp_code(secret, used);
+}
+
+def wrong_totp_code(secret: str) -> str {
+    import time;
+    now = int(time.time() // 30);
+    valid = {totp_code(secret, s) for s in [now - 2, now - 1, now, now + 1, now + 2]};
+    for candidate in ["000000", "111111", "222222", "333333", "444444", "555555"] {
+        if candidate not in valid {
+            return candidate;
+        }
+    }
+    return "999999";
+}
+
 obj ScaleTestClient {
     has _jac_file: str,
         _base_path: str,
