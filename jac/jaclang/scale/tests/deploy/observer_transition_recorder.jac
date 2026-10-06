@@ -20,7 +20,52 @@ import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 
 
 def _log(line: str) {
-    print(f"[observer] {line}", flush=True);
+    print(f"[observer {time.strftime('%H:%M:%S', time.gmtime())}] {line}", flush=True);
+}
+
+
+def _resync(keda: any, namespace: str, known: dict[str, str], out_path: str) -> int {
+    """Record what changed while no watch was open.
+
+    Each watch pass seeds its cache from a fresh list and emits nothing for it,
+    which is right for a subscriber that has seen no history. This recorder
+    reopens the watch itself, so a state that moved between two of its own
+    passes is a transition it did witness, one pass apart. Without this a
+    target that settled during the reopen was never recorded as having moved.
+    """;
+    found = 0;
+    try {
+        (targets, _) = keda._list_scale_targets(namespace);
+    } except Exception as e {
+        _log(f"resync list failed ({type(e).__name__}: {e})");
+        return 0;
+    }
+    for target in sorted(targets) {
+        try {
+            status = keda.get_runtime_status(target, namespace);
+        } except Exception as e {
+            _log(f"resync status failed for {target} ({type(e).__name__}: {e})");
+            continue;
+        }
+        current = status.status.value;
+        before = known.get(target);
+        if before is not None and before != current {
+            line = (
+                f"{target} {before} -> {current} "
+                f"reason={status.reason or '-'} "
+                f"rv={status.resource_version or '-'} "
+                f"at={time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())}+00:00 "
+                f"via=reopen"
+            );
+            _log(line);
+            with open(out_path, "a") as fh {
+                fh.write(line + "\n");
+            }
+            found += 1;
+        }
+        known[target] = current;
+    }
+    return found;
 }
 
 
@@ -72,14 +117,22 @@ with entry {
 
     deadline = time.time() + watch_seconds;
     seen = 0;
+}
+
+glob known: dict[str, str] = {};
+
+with entry {
     # Each pass returns when its own timeout elapses, so the loop is what keeps
     # observing across the whole cycle and also exercises resuming a watch.
     while time.time() < deadline {
         remaining = int(max(5.0, min(120.0, deadline - time.time())));
+        seen += _resync(keda, namespace, known, out_path);
+        _log(f"watch pass opening for {remaining}s; states {known}");
         try {
             for moved in keda.watch_scale_targets(
                 namespace, timeout_seconds=remaining
             ) {
+                known[moved.scale_target_name] = moved.state.value;
                 line = (
                     f"{moved.scale_target_name} "
                     f"{moved.previous_state.value if moved.previous_state else 'none'} "
