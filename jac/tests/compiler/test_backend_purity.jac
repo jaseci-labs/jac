@@ -171,37 +171,12 @@ glob FORBIDDEN: dict[str, str] = {
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"
          ),
-         ("native/na_ir_gen_pass.impl/expr.impl.jac", "symbol_utils"): (
-             1,
-             "imported_module_name consumes the stamped ModuleType and "
-             "resolved import declaration for native module attributes"
-         ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
-             3,
-             "resolve_expr_symbol reads the expression attached symbol; "
-             "imported_module_name reads its stamped ModuleType and import "
-             "declaration. Neither asks the evaluator to resolve a type. "
-             "collect_method_names as the central ancestor-method walk over "
-             "an already-resolved archetype symbol - a symbol-FACT reader, "
-             "not a re-run of member resolution"
-         ),
          ("native/na_ir_gen_pass.impl/core.impl.jac", "type_tag.tag"): (
              3,
              "declaration-surface reads at interop layout export, plus the "
              "quiet lowerability probe on imported globs (the py-side "
              "carve-out for dual-codespace modules) which reads the same "
              "declared annotation the adjacent _resolve_jac_type consumes"
-         ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "type_tag.tag"): (
-             1,
-             "declaration-surface read of foreign extern signatures: the "
-             "clib membrane needs the DECLARED str params/returns of a "
-             "foreign call to route them through the JacStr wrap/unwrap "
-             "shims (#7870 strings step 2) - the C membrane always "
-             "trafficks NUL-terminated char*. Plus the mono isinstance "
-             "substitution: inside a stamped monomorph body a type[X] "
-             "parameter names its concrete mangle through its own declared "
-             "tag - the declaration is the binding surface"
          ),
          ("native/na_ir_gen_pass.impl/types.impl.jac", "type_tag.tag"): (
              2,
@@ -224,13 +199,6 @@ glob FORBIDDEN: dict[str, str] = {
              "element-key map the sealed layout exports. Keep it one read "
              "- consumers of the annotation are added to the local, never "
              "by reaching for type_tag.tag again"
-         ),
-         ("native/na_ir_gen_pass.impl/lists.impl.jac", "type_tag.tag"): (
-             1,
-             "declared-vs-inferred bare list is a declaration-surface "
-             "distinction central facts do not carry (the checker stamps "
-             "unannotated empties as bare list too); the empty-literal "
-             "storage-family decision must key on the explicit annotation"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
              7,
@@ -279,7 +247,7 @@ glob FORBIDDEN: dict[str, str] = {
              "than merely renaming the reach"
          ),
          ("native/na_lower_analysis_pass.impl/calls.impl.jac", "type_tag.tag"): (
-             1,
+             2,
              "Moved unchanged from na_ir_gen_pass.impl/calls.impl.jac with the "
              "functions that read it, when lowering analysis left the "
              "emitter; the count there fell by the same amount. "
@@ -330,6 +298,36 @@ glob FORBIDDEN: dict[str, str] = {
              "binding's concrete Callable annotation to derive the "
              "monomorphization solution - the template is uninstantiated, "
              "so the declared annotations are the only TypeVar surface"
+         ),
+         ("native/na_lower_analysis_pass.impl/expr.impl.jac", "symbol_utils"): (
+             1,
+             "Moved unchanged from na_ir_gen_pass.impl/expr.impl.jac with the "
+             "functions that read it, when lowering analysis left the "
+             "emitter; the count there fell by the same amount. "
+             "imported_module_name consumes the stamped ModuleType and "
+             "resolved import declaration for native module attributes"
+         ),
+         ("native/na_lower_analysis_pass.impl/lists.impl.jac", "type_tag.tag"): (
+             1,
+             "Moved unchanged from na_ir_gen_pass.impl/lists.impl.jac with the "
+             "functions that read it, when lowering analysis left the "
+             "emitter; the count there fell by the same amount. "
+             "declared-vs-inferred bare list is a declaration-surface "
+             "distinction central facts do not carry (the checker stamps "
+             "unannotated empties as bare list too); the empty-literal "
+             "storage-family decision must key on the explicit annotation"
+         ),
+         ("native/na_lower_analysis_pass.impl/objects.impl.jac", "symbol_utils"): (
+             5,
+             "Moved unchanged from na_ir_gen_pass.impl/objects.impl.jac with the "
+             "functions that read it, when lowering analysis left the "
+             "emitter; the count there fell by the same amount. "
+             "resolve_expr_symbol reads the expression attached symbol; "
+             "imported_module_name reads its stamped ModuleType and import "
+             "declaration. Neither asks the evaluator to resolve a type. "
+             "collect_method_names as the central ancestor-method walk over "
+             "an already-resolved archetype symbol - a symbol-FACT reader, "
+             "not a re-run of member resolution"
          ),
 
      };
