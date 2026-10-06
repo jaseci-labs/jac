@@ -2245,6 +2245,21 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
             }
         }
         if then_val.type != else_val.type {
+            _obj_ty = self._object_meet_type(nd);
+            if _obj_ty is not None
+                and isinstance(then_val.type, ir.PointerType)
+                and isinstance(else_val.type, ir.PointerType) {
+                if then_val.type != _obj_ty and then_open {
+                    self.builder.position_at_end(then_end_bb);
+                    then_val = self._recast_object(then_val, _obj_ty);
+                }
+                if else_val.type != _obj_ty and else_open {
+                    self.builder.position_at_end(else_end_bb);
+                    else_val = self._recast_object(else_val, _obj_ty);
+                }
+            }
+        }
+        if then_val.type != else_val.type {
             _uni_ty = self._unify_repr_lowering([then_val.type, else_val.type]);
             if _uni_ty is not None and then_val.type != _uni_ty and then_open {
                 self.builder.position_at_end(then_end_bb);
@@ -2282,6 +2297,32 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     phi.add_incoming(then_val, then_end_bb);
     phi.add_incoming(else_val, else_end_bb);
     return self._mark_owned(phi) if owns_result else phi;
+}
+
+impl NaIRGenPass._object_meet_type(nd: uni.Expr) -> (ir.Type | None) {
+    """The pointer type an expression's branch values meet at when the
+    expression is an object.
+
+    A value whose static type is an archetype, or a union of archetypes,
+    is one object pointer however its slot is typed: a field of a declared
+    class reads as that class's struct pointer, while an element of a list
+    of a union reads as an untyped pointer. Boxing the pair into an `any`
+    would tag the untyped one as a string, and a later `isinstance` on the
+    result would never match; they meet as the pointer they both are.
+    """;
+    if nd.type is None {
+        return None;
+    }
+    _lowered = self._lower_type(nd.type);
+    if _lowered is None or self._ptr_box_kind(_lowered) != 6 {
+        return None;
+    }
+    return _lowered;
+}
+
+impl NaIRGenPass._recast_object(value: ir.Value, target: ir.Type) -> ir.Value {
+    _cast = self.builder.bitcast(value, target, name="obj.meet");
+    return self._mark_owned(_cast) if self._is_owned(value) else _cast;
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {

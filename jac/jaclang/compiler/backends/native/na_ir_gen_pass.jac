@@ -1542,6 +1542,8 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
+    def _object_meet_type(nd: uni.Expr) -> (ir.Type | None);
+    def _recast_object(value: ir.Value, target: ir.Type) -> ir.Value;
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str,
