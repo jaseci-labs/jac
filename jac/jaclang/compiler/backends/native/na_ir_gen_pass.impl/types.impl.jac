@@ -46,15 +46,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         lowered = self._lower_class_type(t);
     } elif isinstance(t, _UnionType) {
         lowered = ir.VoidType();
-        _members: list[TypeBase] = [];
-        for m in (t.types or []) {
-            if isinstance(m, _ClassType)
-                and m.shared.class_name in ("NoneType", "None") {
-                continue;
-            }
-            _members.append(m);
-        }
-        _had_none = len(_members) < len(t.types or []);
+        (_members, _had_none) = self.lower._lower_type_union_members(t);
         if _members {
             _mreprs: list[ir.Type | None] = [];
             for _m in _members {
@@ -299,21 +291,9 @@ impl NaIRGenPass._spec_union_agreement(t: any, names: tuple[str, ...]) -> (any |
 }
 
 impl NaIRGenPass._typevar_bound_struct(t: (TypeBase | None)) -> (str | None) {
-    import from jaclang.compiler.types.types { ClassType, TypeVarType, UnionType }
-    if isinstance(t, UnionType) {
-        members = [
-            m
-            for m in (t.types or [])
-            if not (
-                isinstance(m, ClassType)
-                and m._shared is not None
-                and m.shared.class_name in ("NoneType", "None")
-            )
-        ];
-        t = members[0] if len(members) == 1 else None;
-    }
-    if isinstance(t, TypeVarType) and isinstance(t.bound, ClassType) {
-        return self._struct_name_for_key(self.lower._mangled_of(t.bound));
+    _bound = self.lower._typevar_bound_struct_class(t);
+    if _bound is not None {
+        return self._struct_name_for_key(self.lower._mangled_of(_bound));
     }
     return None;
 }
@@ -536,34 +516,11 @@ impl NaIRGenPass._typed_elem_llvm_of(
     layout for. `_opt_sole_member` is the same unwrap `_list_spec_of` uses
     to recognise the container itself, so the two answers stay congruent.
     """;
-    _ty = self.lower._flow_narrowed_type_of(expr);
-    if _ty is None {
+    _arg = self.lower._typed_elem_llvm_of_arg(expr, prefix, arg_index);
+    if _arg is None {
         return None;
     }
-    _mg = self.lower._mangled_of(_ty);
-    if _mg is None or not _mg.startswith(prefix) {
-        _sole = self.lower._opt_sole_member(_ty);
-        _sole_mg = self.lower._mangled_of(_sole) if _sole is not None else None;
-        if _sole_mg is None or not _sole_mg.startswith(prefix) {
-            return None;
-        }
-        _ty = _sole;
-    }
-    candidates = _ty.types if isinstance(_ty, UnionType) else [_ty];
-    for _cand in candidates {
-        if isinstance(_cand, ClassType) and _cand.private.type_args {
-            _ty = _cand;
-            break;
-        }
-    }
-    if not isinstance(_ty, ClassType) {
-        return None;
-    }
-    args = _ty.private.type_args;
-    if not args or arg_index >= len(args) {
-        return None;
-    }
-    lowered = self._elem_storage_llvm(args[arg_index]);
+    lowered = self._elem_storage_llvm(_arg);
     if lowered is not None and isinstance(lowered, ir.VoidType) {
         return ir.IntType(64);
     }
@@ -633,15 +590,16 @@ impl NaIRGenPass._is_object_union_key(t: any, key_llvm: ir.Type) -> bool {
     if key_llvm != ir.IntType(8).as_pointer() {
         return False;
     }
-    import from jaclang.compiler.types.types { ClassType, UnionType }
-    if not isinstance(t, UnionType) or not t.types {
+    _members = self.lower._is_object_union_key_members(t);
+    if _members is None {
         return False;
     }
-    for member in t.types {
-        if not isinstance(member, ClassType) or member._shared is None {
+    for member in _members {
+        _member_kind = self.lower._is_object_union_key_member_kind(member);
+        if _member_kind == "other" {
             return False;
         }
-        if member.shared.class_name in ("NoneType", "None") {
+        if _member_kind == "none" {
             continue;
         }
         lowered = self._lower_type(member);
@@ -656,37 +614,11 @@ impl NaIRGenPass._is_object_union_key(t: any, key_llvm: ir.Type) -> bool {
 }
 
 impl NaIRGenPass._static_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
-    if not isinstance(expr, uni.Expr) {
+    _arg = self.lower._static_elem_llvm_of_arg(expr);
+    if _arg is None {
         return None;
     }
-    _t = expr.type;
-    if _t is None and isinstance(expr, uni.Name) and expr.sym is not None {
-        _decl = expr.sym.decl;
-        _t = _decl?.type;
-        if _t is None and isinstance(_decl?.parent, (uni.ParamVar, uni.HasVar)) {
-            _t = _decl.parent?.type;
-        }
-    }
-    if _t is None {
-        return None;
-    }
-    _names = ("list", "set", "frozenset", "Sequence");
-    if not self.lower._spec_name_match(self.lower._mangled_of(_t) or "", _names) {
-        _sole = self.lower._opt_sole_member(_t);
-        if _sole is None
-            or not self.lower._spec_name_match(self.lower._mangled_of(_sole) or "", _names) {
-            return None;
-        }
-        _t = _sole;
-    }
-    if not isinstance(_t, ClassType) {
-        return None;
-    }
-    _args = _t.private.type_args;
-    if not _args {
-        return None;
-    }
-    _low = self._elem_storage_llvm(_args[0]);
+    _low = self._elem_storage_llvm(_arg);
     if _low is None or isinstance(_low, ir.VoidType) {
         return None;
     }
@@ -927,35 +859,11 @@ impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.Functi
 }
 
 impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
-    if not self.lower._nogc_headerless() {
+    _arg = self.lower._aos_elem_of_list_arg(type_expr);
+    if _arg is None {
         return None;
     }
-    nd = type_expr;
-    if isinstance(nd, uni.ParamVar) {
-        nd = nd.type_tag;
-    }
-    if isinstance(nd, uni.SubTag) {
-        nd = nd.tag;
-    }
-    if isinstance(nd, uni.UnaryExpr) {
-        nd = nd.operand;
-    }
-    _t = nd?.type if isinstance(nd, uni.Expr) else None;
-    if _t is None {
-        return None;
-    }
-    _sole = self.lower._opt_sole_member(_t);
-    if _sole is not None {
-        _t = _sole;
-    }
-    if not isinstance(_t, ClassType) or _t.shared.class_name != "list" {
-        return None;
-    }
-    _args = _t.private.type_args;
-    if not _args {
-        return None;
-    }
-    return self._aos_elem_name(_args[0]);
+    return self._aos_elem_name(_arg);
 }
 
 impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
@@ -1052,8 +960,7 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return _sig_seq;
         }
         if not self.lower._type_base_is_unknown(_ptb) {
-            _sig_cn = _ptb.shared.class_name if isinstance(_ptb, ClassType) else None;
-            if _sig_cn in ("tuple", "list", "dict", "set", "type") {
+            if self.lower._resolve_sig_type_is_container(_ptb) {
                 _sig_lmark = len(self.ctx.errors_had);
                 _sig_res = self._resolve_jac_type(type_expr);
                 if len(self.ctx.errors_had) == _sig_lmark {
@@ -1625,16 +1532,7 @@ impl NaIRGenPass._erased_seq_type(tb: any) -> (ir.Type | None) {
 }
 
 impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
-    if isinstance(type_expr, uni.Expr) {
-        import from jaclang.compiler.frontend.unparse { unparse_node }
-        _label = unparse_node(type_expr);
-    } else {
-        _tag = type_expr?.type_tag;
-        _label = self.lower._get_name(_tag?.tag) or str(tb);
-    }
-    self.emit(
-        E5092, node_override=type_expr, kind=self._sig_decl_kind or "type", name=_label
-    );
+    self.lower._unlowerable_type_refuse(type_expr, tb, self._sig_decl_kind or "type");
 
     import logging as _logging;
     _logging.getLogger("jaclang.native").debug(
@@ -2165,21 +2063,12 @@ impl NaIRGenPass._bare_any_container_type(nt: ClassType) -> (ir.Type | None) {
     if not self?.jacval_type {
         return None;
     }
-    _cn = nt.shared.class_name;
-    _args: list[TypeBase] = nt.private.type_args or [];
-    if _cn in ("list", "Sequence") {
-        _a0 = _args[0] if len(_args) == 1 else None;
-        if _args
-            and not (
-                isinstance(_a0, ClassType)
-                and _a0.shared.class_name in ("any", "Any", "object")
-            ) {
-            return None;
-        }
+    _kind = self.lower._bare_any_container_type_kind(nt);
+    if _kind == "list" {
         self._emit_list_helpers("jacval", self.jacval_type);
         return self.list_types["jacval"].as_pointer();
     }
-    if _cn == "dict" and not _args {
+    if _kind == "dict" {
         _i8p = ir.IntType(8).as_pointer();
         self._emit_dict_helpers("ptr", "jacval", _i8p, self.jacval_type);
         return self.dict_types["ptr:jacval"].as_pointer();
@@ -5097,35 +4986,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
     if isinstance(nd, uni.BinaryExpr)
         and isinstance(nd.op, uni.Token)
         and nd.op.value == "|" {
-        _leaves: list[uni.UniNode] = [];
-        _stack: list[uni.UniNode] = [nd];
-        while _stack {
-            _cur = _stack.pop();
-            if isinstance(_cur, uni.AtomUnit) and _cur.value is not None {
-                _cur = _cur.value;
-            }
-            if isinstance(_cur, uni.BinaryExpr)
-                and isinstance(_cur.op, uni.Token)
-                and _cur.op.value == "|" {
-                _stack.append(_cur.left);
-                _stack.append(_cur.right);
-            } else {
-                _leaves.append(_cur);
-            }
-        }
-        _live: list[uni.UniNode] = [];
-        _had_none = False;
-        for _side in _leaves {
-            if isinstance(_side, uni.Null) {
-                _had_none = True;
-                continue;
-            }
-            if isinstance(_side, uni.Name) and _side.value in ("None", "NoneType") {
-                _had_none = True;
-                continue;
-            }
-            _live.append(_side);
-        }
+        (_live, _had_none) = self.lower._lower_untyped_annotation_union_members(nd);
         if not _live {
             return None;
         }
@@ -5164,17 +5025,8 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
             return self._lower_list_for_elem(_elem_ty);
         }
         if _base == "tuple" {
-            _tslices = nd.right.slices;
-            if _tslices and _tslices[0].start is not None {
-                _tvals: uni.UniNode = _tslices[0].start;
-                if isinstance(_tvals, uni.AtomUnit) and _tvals.value is not None {
-                    _tvals = _tvals.value;
-                }
-                _telems = (
-                    list(_tvals.values)
-                        if isinstance(_tvals, uni.TupleVal)
-                        else [_tvals]
-                );
+            _telems = self.lower._lower_untyped_annotation_tuple_elems(nd.right);
+            if _telems is not None {
                 _tlow: list[ir.Type] = [];
                 _tok = True;
                 for _tv in _telems {
@@ -5195,29 +5047,9 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
             return None;
         }
         if _base == "Callable" {
-            _fnslices = nd.right.slices;
-            _fnparams_nd: (uni.UniNode | None) = None;
-            _fnret_nd: (uni.UniNode | None) = None;
-            if len(_fnslices) == 2
-                and _fnslices[0].start is not None
-                and _fnslices[1].start is not None {
-                _fnparams_nd = _fnslices[0].start;
-                _fnret_nd = _fnslices[1].start;
-            } elif _fnslices and _fnslices[0].start is not None {
-                _fnargs: uni.UniNode = _fnslices[0].start;
-                if isinstance(_fnargs, uni.AtomUnit) and _fnargs.value is not None {
-                    _fnargs = _fnargs.value;
-                }
-                if isinstance(_fnargs, uni.TupleVal) and len(_fnargs.values) == 2 {
-                    _fnparams_nd = _fnargs.values[0];
-                    _fnret_nd = _fnargs.values[1];
-                }
-            }
-            if _fnparams_nd is not None and _fnret_nd is not None {
-                if isinstance(_fnparams_nd, uni.AtomUnit)
-                    and _fnparams_nd.value is not None {
-                    _fnparams_nd = _fnparams_nd.value;
-                }
+            _fnparts = self.lower._lower_untyped_annotation_callable_parts(nd.right);
+            if _fnparts is not None {
+                (_fnparams_nd, _fnret_nd) = _fnparts;
                 _fnret = self._lower_untyped_annotation(_fnret_nd);
                 if _fnret is None {
                     _fnret = ir.VoidType();
@@ -5237,31 +5069,25 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
             return None;
         }
         if _base == "dict" {
-            _dslices = nd.right.slices;
-            if _dslices and _dslices[0].start is not None {
-                _dkv: uni.UniNode = _dslices[0].start;
-                if isinstance(_dkv, uni.AtomUnit) and _dkv.value is not None {
-                    _dkv = _dkv.value;
-                }
-                if isinstance(_dkv, uni.TupleVal) and len(_dkv.values) == 2 {
-                    _dk = self._lower_untyped_annotation(_dkv.values[0]);
-                    _dv = self._lower_untyped_annotation(_dkv.values[1]);
-                    if _dk is not None and _dv is not None {
-                        if self._str_desc_ty is not None {
-                            if _dk == self._str_desc_ty {
-                                _dk = ir.IntType(8).as_pointer();
-                            }
-                            if _dv == self._str_desc_ty {
-                                _dv = ir.IntType(8).as_pointer();
-                            }
+            _dkv = self.lower._lower_untyped_annotation_dict_kv(nd.right);
+            if _dkv is not None {
+                _dk = self._lower_untyped_annotation(_dkv[0]);
+                _dv = self._lower_untyped_annotation(_dkv[1]);
+                if _dk is not None and _dv is not None {
+                    if self._str_desc_ty is not None {
+                        if _dk == self._str_desc_ty {
+                            _dk = ir.IntType(8).as_pointer();
                         }
-                        (_dk_spec, _dk_size) = self._hash_key_spec(_dk);
-                        _dv_spec = self._dict_val_spec(_dv);
-                        self._emit_dict_helpers(_dk_spec, _dv_spec, _dk, _dv, _dk_size);
-                        _dict_ty = self.dict_types.get(f"{_dk_spec}:{_dv_spec}");
-                        if _dict_ty is not None {
-                            return _dict_ty.as_pointer();
+                        if _dv == self._str_desc_ty {
+                            _dv = ir.IntType(8).as_pointer();
                         }
+                    }
+                    (_dk_spec, _dk_size) = self._hash_key_spec(_dk);
+                    _dv_spec = self._dict_val_spec(_dv);
+                    self._emit_dict_helpers(_dk_spec, _dv_spec, _dk, _dv, _dk_size);
+                    _dict_ty = self.dict_types.get(f"{_dk_spec}:{_dv_spec}");
+                    if _dict_ty is not None {
+                        return _dict_ty.as_pointer();
                     }
                 }
             }
@@ -5300,47 +5126,36 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
     if _ref_key is not None and _ref_key in self.struct_types {
         return self.struct_types[_ref_key].as_pointer();
     }
-    if isinstance(nd, uni.Name) and nd.sym is not None and nd.sym.decl is not None {
-        _decl_of = nd.sym.decl.name_of;
-        if isinstance(_decl_of, uni.Enum) {
-            return ir.IntType(64);
+    (_decl_kind, _item, _orig) = self.lower._lower_untyped_annotation_decl(nd);
+    if _decl_kind == "enum" {
+        return ir.IntType(64);
+    }
+    if _decl_kind == "typeparam" {
+        return ir.IntType(8).as_pointer();
+    }
+    if _item is not None {
+        if _orig is not None and _orig != _nm {
+            if _orig in self.struct_types {
+                return self.struct_types[_orig].as_pointer();
+            }
+            _by_name = self._lower_type_by_name(_orig);
+            if _by_name is not None {
+                return _by_name;
+            }
         }
-        if isinstance(_decl_of, uni.TypeParam)
-            or (_decl_of is not None and isinstance(_decl_of.parent, uni.TypeParam)) {
-            return ir.IntType(8).as_pointer();
-        }
-        if _decl_of is not None and isinstance(_decl_of.parent, uni.ModuleItem) {
-            _item = _decl_of.parent;
-            _orig = _item.name.value if isinstance(_item.name, uni.Name) else None;
-            if _orig is not None and _orig != _nm {
-                if _orig in self.struct_types {
-                    return self.struct_types[_orig].as_pointer();
-                }
-                _by_name = self._lower_type_by_name(_orig);
-                if _by_name is not None {
-                    return _by_name;
+
+        if _orig is not None {
+            _imp_tail = self.lower._lower_untyped_annotation_import_tail(_item);
+            if _imp_tail is not None {
+                if self._enum_source_name.get(_orig) == _imp_tail {
+                    return ir.IntType(64);
                 }
             }
-
-            if _orig is not None {
-                _imp_node = _item.find_parent_of_type(uni.Import);
-                _imp_from = _imp_node.from_loc if _imp_node is not None else None;
-                _imp_tail = (
-                    _imp_from.dot_path_str.split(".")[-1]
-                        if _imp_from is not None
-                        else None
-                );
-                if _imp_tail is not None {
-                    if self._enum_source_name.get(_orig) == _imp_tail {
-                        return ir.IntType(64);
-                    }
-                }
-                if _orig in self.struct_types {
-                    return self.struct_types[_orig].as_pointer();
-                }
-                if _orig in self.enum_types {
-                    return self.enum_types[_orig];
-                }
+            if _orig in self.struct_types {
+                return self.struct_types[_orig].as_pointer();
+            }
+            if _orig in self.enum_types {
+                return self.enum_types[_orig];
             }
         }
     }

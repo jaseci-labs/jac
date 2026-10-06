@@ -56,28 +56,11 @@ impl NaIRGenPass._instantiate_generic(
     nd: uni.FuncCall, func_name: str
 ) -> (ir.Function | None) {
     ability = self.generic_fns[func_name];
-    solution = self.lower._solve_generic_call(ability, nd);
-    if solution is None {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="function",
-            name=func_name,
-            help_text="Could not solve this call's type arguments for monomorphization; annotate the arguments with concrete types."
-        );
+    _plan = self.lower._instantiate_generic_plan(ability, nd, func_name);
+    if _plan is None {
         return None;
     }
-    ct_bind = self.lower._solve_ct_args(ability, nd);
-    if ct_bind is None {
-        return None;
-    }
-    _mangles: dict[str, str] = {};
-    for (k, v) in solution.items() {
-        _mangles[k] = native_type_key(v) if v?.mangle else "any";
-    }
-    parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
-    parts.extend(sorted([f"ct_{k}={ct_mangle(v)}" for (k, v) in ct_bind.items()]));
-    key = func_name + "|" + ",".join(parts);
+    (solution, ct_bind, _mangles, parts, key) = _plan;
     _hit = self._mono_fns.get(key);
     if _hit is not None {
         return _hit;
@@ -216,23 +199,13 @@ impl NaIRGenPass._instantiate_generic_method(
     nd: uni.FuncCall, owner_arch: str, method_name: str
 ) -> (ir.Function | None) {
     ability = self._generic_methods[f"{owner_arch}.{method_name}"];
-    solution = self.lower._solve_generic_call(ability, nd);
-    if not solution {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="method",
-            name=f"{owner_arch}.{method_name}",
-            help_text="Could not solve this call's type arguments for monomorphization; annotate the arguments with concrete types."
-        );
+    _plan = self.lower._instantiate_generic_method_plan(
+        ability, nd, owner_arch, method_name
+    );
+    if _plan is None {
         return None;
     }
-    _mangles: dict[str, str] = {};
-    for (k, v) in solution.items() {
-        _mangles[k] = native_type_key(v) if v?.mangle else "any";
-    }
-    parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
-    key = f"{owner_arch}.{method_name}|" + ",".join(parts);
+    (solution, _mangles, parts, key) = _plan;
     _hit = self._mono_fns.get(key);
     if _hit is not None {
         return _hit;

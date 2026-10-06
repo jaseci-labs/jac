@@ -74,3 +74,43 @@ impl NativeLowering._emit_enum_ctor_refusal(
         )
     );
 }
+
+impl NativeLowering._register_enum_methods_enums(module: uni.Module) -> list[uni.Enum] {
+    out: list[uni.Enum] = [];
+    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Enum) {
+            out.append(stmt);
+        }
+    }
+    return out;
+}
+
+impl NativeLowering._enum_owner_module(nd: uni.Enum) -> uni.Module {
+    _owner_mod = nd.find_parent_of_type(uni.Module) or self.module;
+    return _owner_mod;
+}
+
+impl NativeLowering._enum_layout_of_owner(
+    enum_name: str, owner: (uni.Module | None)
+) -> (EnumLayout | None) {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    candidates: list[uni.Module] = [];
+    if owner is not None {
+        candidates.append(owner);
+    }
+    candidates.append(self.module);
+    for _fm in (self._foreign_modules or []) {
+        candidates.append(_fm);
+    }
+    lay: EnumLayout | None = None;
+    for _cand in candidates {
+        lay = get_layout_registry(_cand, self.prog).get_enum_layout(enum_name);
+        if lay is not None and lay.members {
+            break;
+        }
+    }
+    if lay is None or not lay.members {
+        return None;
+    }
+    return lay;
+}

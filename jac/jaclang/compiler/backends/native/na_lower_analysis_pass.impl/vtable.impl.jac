@@ -137,3 +137,61 @@ impl NativeLowering._is_runtime_class_tuple(t: any) -> bool {
     }
     return saw_class;
 }
+
+impl NativeLowering._layout_mro_order -> list[str] {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
+    reg = get_layout_registry(self.module, self.prog);
+    return list(reg.mro_order);
+}
+
+impl NativeLowering._vtable_candidates_match(cand: str, names: list[str]) -> bool {
+    cand_mro = self._mro_of(cand);
+    for name in names {
+        if name in cand_mro {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl NativeLowering._is_enum_arch_in_layouts(name: str) -> bool {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    _cands: list[uni.Module] = [self.module];
+    for _fm in (self._foreign_modules or []) {
+        _cands.append(_fm);
+    }
+    for _cand in _cands {
+        if get_layout_registry(_cand, self.prog).get_enum_layout(name) is not None {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl NativeLowering._vtable_slot_certain_members(
+    ty: (TypeBase | None)
+) -> list[TypeBase] {
+    members: list[TypeBase] = (
+        list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
+    );
+    return members;
+}
+
+impl NativeLowering._vtable_slot_certain_member_arch(
+    member: TypeBase
+) -> tuple[bool, str | None] {
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    if not isinstance(member, ClassType) {
+        return (False, None);
+    }
+    if member._shared is not None
+        and member.shared.class_name in ("NoneType", "None") {
+        return (True, None);
+    }
+    arch = class_type_native_name(member);
+    if arch is None {
+        return (False, None);
+    }
+    return (True, arch);
+}

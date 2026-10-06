@@ -688,6 +688,70 @@ obj NativeLowering {
 
     def _swap_params(nd: uni.FuncCall) -> (list[uni.Expr | uni.KWPair] | None);
 
+    def _lower_type_union_members(t: UnionType) -> tuple[list[TypeBase], bool];
+
+    def _typevar_bound_struct_class(t: (TypeBase | None)) -> (ClassType | None);
+
+    def _typed_elem_llvm_of_arg(
+        expr: (uni.UniNode | None), prefix: str, arg_index: int
+    ) -> (TypeBase | None);
+
+    def _static_elem_llvm_of_arg(expr: (uni.UniNode | None)) -> (TypeBase | None);
+
+    def _aos_elem_of_list_arg(type_expr: (uni.UniNode | None)) -> (TypeBase | None);
+
+    def _resolve_sig_type_is_container(ptb: TypeBase) -> bool;
+
+    def _unlowerable_type_refuse(
+        type_expr: uni.UniNode, tb: any, decl_kind: str
+    ) -> None;
+
+    def _bare_any_container_type_kind(nt: ClassType) -> (str | None);
+
+    def _lower_untyped_annotation_union_members(
+        nd: uni.BinaryExpr
+    ) -> tuple[list[uni.UniNode], bool];
+
+    def _lower_untyped_annotation_tuple_elems(
+        idx: uni.IndexSlice
+    ) -> (list[uni.UniNode] | None);
+
+    def _lower_untyped_annotation_callable_parts(
+        idx: uni.IndexSlice
+    ) -> (tuple[uni.UniNode, uni.UniNode] | None);
+
+    def _lower_untyped_annotation_dict_kv(
+        idx: uni.IndexSlice
+    ) -> (tuple[uni.UniNode, uni.UniNode] | None);
+
+    def _lower_untyped_annotation_decl(
+        nd: uni.UniNode
+    ) -> tuple[str | None, uni.ModuleItem | None, str | None];
+
+    def _lower_untyped_annotation_import_tail(item: uni.ModuleItem) -> (str | None);
+
+    def _instantiate_generic_plan(
+        ability: uni.Ability, nd: uni.FuncCall, func_name: str
+    ) -> (
+        tuple[dict[str, TypeBase], dict[str, CtValue], dict[str, str], list[str], str]
+        | None
+    );
+
+    def _instantiate_generic_method_plan(
+        ability: uni.Ability, nd: uni.FuncCall, owner_arch: str, method_name: str
+    ) -> (tuple[dict[str, TypeBase], dict[str, str], list[str], str] | None);
+
+    def _is_runtime_class_value_shape(
+        target: (uni.UniNode | None), in_scope: bool, class_symbols: tuple[SymbolType, ...]
+    ) -> bool;
+
+    def _bind_class_ctor_args_plan(
+        nd: uni.FuncCall,
+        args: list[uni.Expr | uni.KWPair],
+        params: list[tuple[str, bool, bool]],
+        bound: str
+    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
+
     def _register_archetypes_topo_order(archetypes: list[uni.Archetype]) -> list[str];
 
     def _register_archetypes_method_shape(stmt: uni.Ability) -> str;
@@ -798,6 +862,27 @@ obj NativeLowering {
         semantic: (TypeBase | None)
     ) -> tuple[list[TypeBase], str];
 
+    def _layout_mro_order -> list[str];
+
+    def _vtable_candidates_match(cand: str, names: list[str]) -> bool;
+
+    def _is_enum_arch_in_layouts(name: str) -> bool;
+
+    def _vtable_slot_certain_members(ty: (TypeBase | None)) -> list[TypeBase];
+
+    def _vtable_slot_certain_member_arch(member: TypeBase) -> tuple[bool, str | None];
+
+    def _register_enum_methods_enums(module: uni.Module) -> list[uni.Enum];
+
+    def _enum_owner_module(nd: uni.Enum) -> uni.Module;
+
+    def _enum_layout_of_owner(
+        enum_name: str, owner: (uni.Module | None)
+    ) -> (EnumLayout | None);
+
+    def _is_object_union_key_members(t: any) -> (list[TypeBase] | None);
+
+    def _is_object_union_key_member_kind(member: TypeBase) -> str;
 }
 
 glob _READY: dict[int, NativeLowering] = {};

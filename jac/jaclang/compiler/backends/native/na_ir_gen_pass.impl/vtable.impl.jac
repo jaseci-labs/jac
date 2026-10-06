@@ -68,19 +68,13 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
 }
 
 impl NaIRGenPass._vtable_candidates(names: list[str]) -> list[ir.GlobalVariable] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-
-    reg = get_layout_registry(self.module, self.prog);
+    _order = self.lower._layout_mro_order();
     out: list[ir.GlobalVariable] = [];
-    for cand in reg.mro_order {
-        cand_mro = self.lower._mro_of(cand);
-        for name in names {
-            if name in cand_mro {
-                vt = self._vtable_global_for(cand);
-                if vt is not None {
-                    out.append(vt);
-                }
-                break;
+    for cand in _order {
+        if self.lower._vtable_candidates_match(cand, names) {
+            vt = self._vtable_global_for(cand);
+            if vt is not None {
+                out.append(vt);
             }
         }
     }
@@ -101,13 +95,11 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
     garbage. Either way the answer has to come from the class-name identity
     every instance carries instead.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-
     _reach = self._vtable_less_reach;
     if _reach is None {
-        reg = get_layout_registry(self.module, self.prog);
+        _order = self.lower._layout_mro_order();
         _reach = set();
-        for cand in reg.mro_order {
+        for cand in _order {
             if self._arch_has_vtable(cand) {
                 continue;
             }
@@ -698,20 +690,10 @@ impl NaIRGenPass._codegen_class_ref(
 }
 
 impl NaIRGenPass._is_enum_arch(name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     if name in self.enum_types {
         return True;
     }
-    _cands: list[uni.Module] = [self.module];
-    for _fm in (self.lower._foreign_modules or []) {
-        _cands.append(_fm);
-    }
-    for _cand in _cands {
-        if get_layout_registry(_cand, self.prog).get_enum_layout(name) is not None {
-            return True;
-        }
-    }
-    return False;
+    return self.lower._is_enum_arch_in_layouts(name);
 }
 
 impl NaIRGenPass._emit_isa_fn -> ir.Function {
@@ -760,7 +742,6 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     after the hashes agree, which also keeps two names that collide on 64 bits
     distinct.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     if self._isa_h_fn is not None {
         return self._isa_h_fn;
     }
@@ -771,8 +752,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     anc_ty = ir.LiteralStructType([i64, i8p]);
     ent_ty = ir.LiteralStructType([i64, i8p, i32, i32]);
 
-    reg = get_layout_registry(self.module, self.prog);
-    classes = sorted(set(reg.mro_order));
+    classes = sorted(set(self.lower._layout_mro_order()));
     ancestors: list[ir.Constant] = [];
     spans: dict[str, tuple[int, int]] = {};
     for cls in classes {
@@ -1132,23 +1112,17 @@ impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
     `None` members are fine (the operand is null-checked first); an unknown or
     non-class type is not.
     """;
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
-    members: list[TypeBase] = (
-        list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
-    );
+    members = self.lower._vtable_slot_certain_members(ty);
     certain = False;
     for member in members {
-        if not isinstance(member, ClassType) {
+        (_ok, arch) = self.lower._vtable_slot_certain_member_arch(member);
+        if not _ok {
             return False;
         }
-        if member._shared is not None
-            and member.shared.class_name in ("NoneType", "None") {
+        if arch is None {
             continue;
         }
-        arch = class_type_native_name(member);
-        if arch is None
-            or arch not in self.struct_types
-            or not self._arch_has_vtable(arch) {
+        if arch not in self.struct_types or not self._arch_has_vtable(arch) {
             return False;
         }
         certain = True;

@@ -553,3 +553,333 @@ impl NativeLowering._key_elem_unsigned(et: (TypeBase | None)) -> bool {
         and not _shape.is_float
         and not _shape.signed;
 }
+
+impl NativeLowering._lower_type_union_members(
+    t: UnionType
+) -> tuple[list[TypeBase], bool] {
+    _members: list[TypeBase] = [];
+    for m in (t.types or []) {
+        if isinstance(m, ClassType)
+            and m.shared.class_name in ("NoneType", "None") {
+            continue;
+        }
+        _members.append(m);
+    }
+    _had_none = len(_members) < len(t.types or []);
+    return (_members, _had_none);
+}
+
+impl NativeLowering._typevar_bound_struct_class(
+    t: (TypeBase | None)
+) -> (ClassType | None) {
+    import from jaclang.compiler.types.types { TypeVarType }
+    if isinstance(t, UnionType) {
+        members = [
+            m
+            for m in (t.types or [])
+            if not (
+                isinstance(m, ClassType)
+                and m._shared is not None
+                and m.shared.class_name in ("NoneType", "None")
+            )
+        ];
+        t = members[0] if len(members) == 1 else None;
+    }
+    if isinstance(t, TypeVarType) and isinstance(t.bound, ClassType) {
+        return t.bound;
+    }
+    return None;
+}
+
+impl NativeLowering._typed_elem_llvm_of_arg(
+    expr: (uni.UniNode | None), prefix: str, arg_index: int
+) -> (TypeBase | None) {
+    _ty = self._flow_narrowed_type_of(expr);
+    if _ty is None {
+        return None;
+    }
+    _mg = self._mangled_of(_ty);
+    if _mg is None or not _mg.startswith(prefix) {
+        _sole = self._opt_sole_member(_ty);
+        _sole_mg = self._mangled_of(_sole) if _sole is not None else None;
+        if _sole_mg is None or not _sole_mg.startswith(prefix) {
+            return None;
+        }
+        _ty = _sole;
+    }
+    candidates = _ty.types if isinstance(_ty, UnionType) else [_ty];
+    for _cand in candidates {
+        if isinstance(_cand, ClassType) and _cand.private.type_args {
+            _ty = _cand;
+            break;
+        }
+    }
+    if not isinstance(_ty, ClassType) {
+        return None;
+    }
+    args = _ty.private.type_args;
+    if not args or arg_index >= len(args) {
+        return None;
+    }
+    return args[arg_index];
+}
+
+impl NativeLowering._static_elem_llvm_of_arg(
+    expr: (uni.UniNode | None)
+) -> (TypeBase | None) {
+    if not isinstance(expr, uni.Expr) {
+        return None;
+    }
+    _t = expr.type;
+    if _t is None and isinstance(expr, uni.Name) and expr.sym is not None {
+        _decl = expr.sym.decl;
+        _t = _decl?.type;
+        if _t is None and isinstance(_decl?.parent, (uni.ParamVar, uni.HasVar)) {
+            _t = _decl.parent?.type;
+        }
+    }
+    if _t is None {
+        return None;
+    }
+    _names = ("list", "set", "frozenset", "Sequence");
+    if not self._spec_name_match(self._mangled_of(_t) or "", _names) {
+        _sole = self._opt_sole_member(_t);
+        if _sole is None
+            or not self._spec_name_match(self._mangled_of(_sole) or "", _names) {
+            return None;
+        }
+        _t = _sole;
+    }
+    if not isinstance(_t, ClassType) {
+        return None;
+    }
+    _args = _t.private.type_args;
+    if not _args {
+        return None;
+    }
+    return _args[0];
+}
+
+impl NativeLowering._aos_elem_of_list_arg(
+    type_expr: (uni.UniNode | None)
+) -> (TypeBase | None) {
+    if not self._nogc_headerless() {
+        return None;
+    }
+    nd = type_expr;
+    if isinstance(nd, uni.ParamVar) {
+        nd = nd.type_tag;
+    }
+    if isinstance(nd, uni.SubTag) {
+        nd = nd.tag;
+    }
+    if isinstance(nd, uni.UnaryExpr) {
+        nd = nd.operand;
+    }
+    _t = nd?.type if isinstance(nd, uni.Expr) else None;
+    if _t is None {
+        return None;
+    }
+    _sole = self._opt_sole_member(_t);
+    if _sole is not None {
+        _t = _sole;
+    }
+    if not isinstance(_t, ClassType) or _t.shared.class_name != "list" {
+        return None;
+    }
+    _args = _t.private.type_args;
+    if not _args {
+        return None;
+    }
+    return _args[0];
+}
+
+impl NativeLowering._resolve_sig_type_is_container(ptb: TypeBase) -> bool {
+    _sig_cn = ptb.shared.class_name if isinstance(ptb, ClassType) else None;
+    return _sig_cn in ("tuple", "list", "dict", "set", "type");
+}
+
+impl NativeLowering._unlowerable_type_refuse(
+    type_expr: uni.UniNode, tb: any, decl_kind: str
+) -> None {
+    if isinstance(type_expr, uni.Expr) {
+        import from jaclang.compiler.frontend.unparse { unparse_node }
+        _label = unparse_node(type_expr);
+    } else {
+        _tag = type_expr?.type_tag;
+        _label = self._get_name(_tag?.tag) or str(tb);
+    }
+    self.emit(E5092, node_override=type_expr, kind=decl_kind, name=_label);
+}
+
+impl NativeLowering._bare_any_container_type_kind(nt: ClassType) -> (str | None) {
+    _cn = nt.shared.class_name;
+    _args: list[TypeBase] = nt.private.type_args or [];
+    if _cn in ("list", "Sequence") {
+        _a0 = _args[0] if len(_args) == 1 else None;
+        if _args
+            and not (
+                isinstance(_a0, ClassType)
+                and _a0.shared.class_name in ("any", "Any", "object")
+            ) {
+            return None;
+        }
+        return "list";
+    }
+    if _cn == "dict" and not _args {
+        return "dict";
+    }
+    return None;
+}
+
+impl NativeLowering._lower_untyped_annotation_union_members(
+    nd: uni.BinaryExpr
+) -> tuple[list[uni.UniNode], bool] {
+    _leaves: list[uni.UniNode] = [];
+    _stack: list[uni.UniNode] = [nd];
+    while _stack {
+        _cur = _stack.pop();
+        if isinstance(_cur, uni.AtomUnit) and _cur.value is not None {
+            _cur = _cur.value;
+        }
+        if isinstance(_cur, uni.BinaryExpr)
+            and isinstance(_cur.op, uni.Token)
+            and _cur.op.value == "|" {
+            _stack.append(_cur.left);
+            _stack.append(_cur.right);
+        } else {
+            _leaves.append(_cur);
+        }
+    }
+    _live: list[uni.UniNode] = [];
+    _had_none = False;
+    for _side in _leaves {
+        if isinstance(_side, uni.Null) {
+            _had_none = True;
+            continue;
+        }
+        if isinstance(_side, uni.Name) and _side.value in ("None", "NoneType") {
+            _had_none = True;
+            continue;
+        }
+        _live.append(_side);
+    }
+    return (_live, _had_none);
+}
+
+impl NativeLowering._lower_untyped_annotation_tuple_elems(
+    idx: uni.IndexSlice
+) -> (list[uni.UniNode] | None) {
+    _tslices = idx.slices;
+    if _tslices and _tslices[0].start is not None {
+        _tvals: uni.UniNode = _tslices[0].start;
+        if isinstance(_tvals, uni.AtomUnit) and _tvals.value is not None {
+            _tvals = _tvals.value;
+        }
+        _telems = (
+            list(_tvals.values)
+                if isinstance(_tvals, uni.TupleVal)
+                else [_tvals]
+        );
+        return _telems;
+    }
+    return None;
+}
+
+impl NativeLowering._lower_untyped_annotation_callable_parts(
+    idx: uni.IndexSlice
+) -> (tuple[uni.UniNode, uni.UniNode] | None) {
+    _fnslices = idx.slices;
+    _fnparams_nd: (uni.UniNode | None) = None;
+    _fnret_nd: (uni.UniNode | None) = None;
+    if len(_fnslices) == 2
+        and _fnslices[0].start is not None
+        and _fnslices[1].start is not None {
+        _fnparams_nd = _fnslices[0].start;
+        _fnret_nd = _fnslices[1].start;
+    } elif _fnslices and _fnslices[0].start is not None {
+        _fnargs: uni.UniNode = _fnslices[0].start;
+        if isinstance(_fnargs, uni.AtomUnit) and _fnargs.value is not None {
+            _fnargs = _fnargs.value;
+        }
+        if isinstance(_fnargs, uni.TupleVal) and len(_fnargs.values) == 2 {
+            _fnparams_nd = _fnargs.values[0];
+            _fnret_nd = _fnargs.values[1];
+        }
+    }
+    if _fnparams_nd is not None and _fnret_nd is not None {
+        if isinstance(_fnparams_nd, uni.AtomUnit)
+            and _fnparams_nd.value is not None {
+            _fnparams_nd = _fnparams_nd.value;
+        }
+        return (_fnparams_nd, _fnret_nd);
+    }
+    return None;
+}
+
+impl NativeLowering._lower_untyped_annotation_dict_kv(
+    idx: uni.IndexSlice
+) -> (tuple[uni.UniNode, uni.UniNode] | None) {
+    _dslices = idx.slices;
+    if _dslices and _dslices[0].start is not None {
+        _dkv: uni.UniNode = _dslices[0].start;
+        if isinstance(_dkv, uni.AtomUnit) and _dkv.value is not None {
+            _dkv = _dkv.value;
+        }
+        if isinstance(_dkv, uni.TupleVal) and len(_dkv.values) == 2 {
+            return (_dkv.values[0], _dkv.values[1]);
+        }
+    }
+    return None;
+}
+
+impl NativeLowering._lower_untyped_annotation_decl(
+    nd: uni.UniNode
+) -> tuple[str | None, uni.ModuleItem | None, str | None] {
+    if isinstance(nd, uni.Name) and nd.sym is not None and nd.sym.decl is not None {
+        _decl_of = nd.sym.decl.name_of;
+        if isinstance(_decl_of, uni.Enum) {
+            return ("enum", None, None);
+        }
+        if isinstance(_decl_of, uni.TypeParam)
+            or (_decl_of is not None and isinstance(_decl_of.parent, uni.TypeParam)) {
+            return ("typeparam", None, None);
+        }
+        if _decl_of is not None and isinstance(_decl_of.parent, uni.ModuleItem) {
+            _item = _decl_of.parent;
+            _orig = _item.name.value if isinstance(_item.name, uni.Name) else None;
+            return ("item", _item, _orig);
+        }
+    }
+    return (None, None, None);
+}
+
+impl NativeLowering._lower_untyped_annotation_import_tail(
+    item: uni.ModuleItem
+) -> (str | None) {
+    _imp_node = item.find_parent_of_type(uni.Import);
+    _imp_from = _imp_node.from_loc if _imp_node is not None else None;
+    _imp_tail = (
+        _imp_from.dot_path_str.split(".")[-1]
+            if _imp_from is not None
+            else None
+    );
+    return _imp_tail;
+}
+
+impl NativeLowering._is_object_union_key_members(t: any) -> (list[TypeBase] | None) {
+    if not isinstance(t, UnionType) or not t.types {
+        return None;
+    }
+    return t.types;
+}
+
+impl NativeLowering._is_object_union_key_member_kind(member: TypeBase) -> str {
+    if not isinstance(member, ClassType) or member._shared is None {
+        return "other";
+    }
+    if member.shared.class_name in ("NoneType", "None") {
+        return "none";
+    }
+    return "class";
+}

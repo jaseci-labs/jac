@@ -1,13 +1,11 @@
 
 impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> None {
-    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
-        if isinstance(stmt, uni.Enum) {
-            for method in self.lower._enum_methods(stmt) {
-                if declare {
-                    self._forward_declare_method(stmt.name.value, method);
-                } else {
-                    self._codegen_method(stmt.name.value, method);
-                }
+    for stmt in self.lower._register_enum_methods_enums(module) {
+        for method in self.lower._enum_methods(stmt) {
+            if declare {
+                self._forward_declare_method(stmt.name.value, method);
+            } else {
+                self._codegen_method(stmt.name.value, method);
             }
         }
     }
@@ -58,7 +56,7 @@ impl NaIRGenPass._codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None {
         self.has_native_code = True;
         return;
     }
-    _owner_mod = nd.find_parent_of_type(uni.Module) or self.module;
+    _owner_mod = self.lower._enum_owner_module(nd);
     self._codegen_enum_layout(enum_name, _owner_mod);
 }
 
@@ -69,23 +67,8 @@ impl NaIRGenPass._codegen_enum_layout(
         return;
     }
 
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    candidates: list[uni.Module] = [];
-    if owner is not None {
-        candidates.append(owner);
-    }
-    candidates.append(self.module);
-    for _fm in (self.lower._foreign_modules or []) {
-        candidates.append(_fm);
-    }
-    lay: EnumLayout | None = None;
-    for _cand in candidates {
-        lay = get_layout_registry(_cand, self.prog).get_enum_layout(enum_name);
-        if lay is not None and lay.members {
-            break;
-        }
-    }
-    if lay is None or not lay.members {
+    lay = self.lower._enum_layout_of_owner(enum_name, owner);
+    if lay is None {
         return;
     }
     if lay.is_class_form {
