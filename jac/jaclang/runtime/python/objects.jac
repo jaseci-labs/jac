@@ -2552,7 +2552,7 @@ def _base_type_name(v: PyObj) -> str {
 # ``type_name_fn`` resolves each operand's type name so callers with richer
 # operand kinds (user classes, dict views) can supply their own namer.
 def py_ordering_type_error(
-    op_kind: int, v: PyObj, w: PyObj, type_name_fn: any
+    op_kind: int, v: PyObj, w: PyObj, type_name_fn: Callable[[PyObj], str]
 ) -> PyObj {
     ops = ["<", "<=", "", "", ">", ">="];
     if op_kind < 0 or op_kind >= len(ops) or ops[op_kind] == "" {
@@ -2563,9 +2563,9 @@ def py_ordering_type_error(
         "'"
             + ops[op_kind]
             + "' not supported between instances of '"
-            + (type_name_fn(v) as str)
+            + type_name_fn(v)
             + "' and '"
-            + (type_name_fn(w) as str)
+            + type_name_fn(w)
             + "'"
     );
 }

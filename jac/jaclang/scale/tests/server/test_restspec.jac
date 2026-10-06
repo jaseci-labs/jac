@@ -436,6 +436,85 @@ test "walker with node parameter functional test" {
     }
 }
 
+test "a declared route outranks a walker's implicit node route of the same shape" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # /boards/{board_id}/cards/{nd} (ReorderCards on a node) and
+        # /boards/{board_id}/cards/{slot} (EditCard) have the same shape.
+        r = client.put("/boards/b1/cards/c1", json={});
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["reports"][0];
+        assert d == {"message": "EditCard executed", "board_id": "b1", "slot": "c1"};
+
+        r = client.put("/boards/b1/cards", json={});
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["reports"][0]
+            == {"message": "ReorderCards executed", "board_id": "b1"};
+    } finally {
+        client.close();
+    }
+}
+
+test "a catch-all behind a path parameter outranks the page fallback" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/boards/b1/files/output.mp4");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "b1:output.mp4";
+
+        r = client.get("/boards/b1/files/scenes/s1/video.mp4");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "b1:scenes/s1/video.mp4";
+    } finally {
+        client.close();
+    }
+}
+
+test "a field named request reaches the walker and the function" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        body = {"request": {"rawText": "two oil filters"}, "status": "draft"};
+        r = client.post("/orders/save", json=body);
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["reports"][0] == body;
+
+        r = client.post("/orders/echo", json=body);
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["result"] == body;
+    } finally {
+        client.close();
+    }
+}
+
+test "a JSON null is refused for a field that is not optional, whatever its type" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # Each non-optional field answers the same 422; str used to store "None"
+        # and bool used to read null as an invalid boolean string.
+        for (name, body) in [
+            ("title", {"title": None}),
+            ("count", {"count": None}),
+            ("ratio", {"ratio": None}),
+            ("flag", {"flag": None}),
+            ("tags", {"tags": None}),
+            ("tags", {"tags": ["a", None]})
+        ] {
+            r = client.post("/nulls", json=body);
+            assert r.status_code == 422 , f"{body}: {r.status_code} {r.text}";
+            detail = _as_any(r.json())["detail"];
+            assert [d["loc"] for d in detail] == [["body", name]] , r.text;
+            assert "null is not allowed" in detail[0]["msg"] , r.text;
+        }
+
+        r = client.post("/nulls", json={"note": None});
+        assert r.status_code == 200 , r.text;
+        got = extract_data(r.json())["reports"][0];
+        assert got["note"] is None and got["title"] == "seed";
+    } finally {
+        client.close();
+    }
+}
+
 # ============================================================================
 # Custom Object Body Parameter Tests — walker + function + recursive
 # One integration test per variant; schema + runtime + validation in one flow.
@@ -690,6 +769,98 @@ test "raw body sends a bytearray verbatim (#9234)" {
     }
 }
 
+test "raw body sends a returned Response as returned (#9291)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/response", params={"name": "q3"});
+        assert r.status_code == 200 , r.text;
+        assert r.text == "a,b\n1,2\n" , r.text;
+        assert r.headers["content-type"].startswith("text/csv");
+        assert r.headers["content-disposition"] == 'attachment; filename="q3.csv"';
+
+        # Status and media type are the function's, not the route's.
+        r = client.get("/raw/response", params={"kind": "missing"});
+        assert r.status_code == 404 , r.text;
+        assert r.text == "<h1>no such report</h1>" , r.text;
+        assert r.headers["content-type"].startswith("text/html");
+
+        # A header value cannot smuggle a second header onto the wire.
+        r = client.get(
+            "/raw/response",
+            params={"kind": "header", "name": "a\r\nSet-Cookie: stolen=1"}
+        );
+        assert r.status_code == 500 , r.text;
+        assert r.headers.get("set-cookie") is None;
+        assert r.headers.get("x-report-name") is None;
+        r = client.get("/raw/response", params={"kind": "header", "name": "q3"});
+        assert r.status_code == 200 and r.headers["x-report-name"] == "q3" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body sends a returned RedirectResponse (#9291)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/moved", allow_redirects=False);
+        assert r.status_code == 302 , r.text;
+        assert r.headers["location"] == "/raw/plain";
+        r = client.get("/raw/moved");
+        assert r.status_code == 200 and r.text == "plain body" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body pair picks the media type per request (#9291)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/pair");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "a,b\n1,2\n" , r.text;
+        assert r.headers["content-type"].startswith("text/csv");
+
+        r = client.get("/raw/pair", params={"fmt": "view"});
+        assert r.status_code == 200 , r.text;
+        assert r.text == "<h1>report</h1>" , r.text;
+        assert r.headers["content-type"].startswith("text/html");
+
+        # Control: a plain body from the same route still uses `produces`.
+        r = client.get("/raw/pair", params={"fmt": "plain"});
+        assert r.status_code == 200 and r.text == "plain default" , r.text;
+        assert r.headers["content-type"].startswith("text/plain");
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body serves a returned FileResponse with Range (#9291)" {
+    import os;
+    import tempfile;
+    client = make_client("restspec_fixtures.jac");
+    media = os.path.join(tempfile.mkdtemp(), "clip.mp4");
+    blob = bytes(range(256)) * 4;
+    with open(media, "wb") as fh {
+        fh.write(blob);
+    }
+    try {
+        r = client.get("/raw/file", params={"path": media});
+        assert r.status_code == 200 , r.text;
+        assert r.content == blob;
+        assert r.headers["content-type"].startswith("video/mp4");
+        assert r.headers["accept-ranges"] == "bytes";
+
+        r = client.get(
+            "/raw/file", params={"path": media}, headers={"Range": "bytes=0-99"}
+        );
+        assert r.status_code == 206 , str(r.status_code);
+        assert r.content == blob[:100];
+        assert r.headers["content-range"] == "bytes 0-99/1024";
+    } finally {
+        client.close();
+    }
+}
+
 test "envelope remains the default" {
     client = make_client("restspec_fixtures.jac");
     try {
@@ -770,4 +941,201 @@ test "restspec decoration-time validation rejects bad specs (#8000 f3)" {
     # String coercion: 'ws' and 'get' normalize instead of degrading to HTTP.
     decorated = blt.restspec(method="get")(some_fn);
     assert decorated.restspec.method.value == "GET";
+}
+
+
+# ============================================================================
+# Request and response channel (#9618, #9619): a served unit reads the request
+# it is serving and chooses the status and headers of its own enveloped
+# response. One client per group; the fixture compile dominates the cost.
+# ============================================================================
+def _count_marks(client: ScaleTestClient, auth: dict[str, str], label: str) -> int {
+    r = client.post("/walker/CountAuditMarks", headers=auth, json={"label": label});
+    assert r.status_code == 200 , r.text;
+    return extract_data(r.json())["reports"][0]["count"];
+}
+
+test "a walker or function chooses its status and keeps its body (#9618)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        auth = {"Authorization": "Bearer " + client.register_and_login("u1", "p1")};
+
+        # Nothing chosen: the answer is the same 200 envelope as before.
+        r = client.post("/walker/DefaultWalker", headers=auth);
+        assert r.status_code == 200 , r.text;
+        assert sorted(r.json().keys()) == ["data", "error", "ok", "type"] , r.text;
+        assert r.json()["ok"] is True and r.json()["error"] is None , r.text;
+
+        # A refusal that does not raise: 403, report body intact, write kept.
+        r = client.post(
+            "/walker/RefuseAfterWrite", headers=auth, json={"label": "kept"}
+        );
+        assert r.status_code == 403 , r.text;
+        body = r.json();
+        assert body["ok"] is False and body["error"] is None , r.text;
+        assert body["data"]["reports"] == [{"error": "Forbidden", "label": "kept"}] , r.text;
+        assert _count_marks(client, auth, "kept") == 1;
+
+        # A refusal that raises: the unit rolls back and the 409 still stands.
+        r = client.post(
+            "/walker/RefuseAndRollBack", headers=auth, json={"label": "gone"}
+        );
+        assert r.status_code == 409 , r.text;
+        assert r.json()["ok"] is False , r.text;
+        assert r.json()["error"]["message"] == "Already exists" , r.text;
+        assert _count_marks(client, auth, "gone") == 0;
+
+        # A crash after choosing a success status is still a 500.
+        r = client.post("/walker/CrashAfterCreated", headers=auth);
+        assert r.status_code == 500 , r.text;
+
+        # A success status and a header of the walker's own on the envelope.
+        r = client.post("/walker/CreatedWithHeader", headers=auth);
+        assert r.status_code == 201 , r.text;
+        assert r.json()["ok"] is True , r.text;
+        assert r.headers["x-resource-id"] == "r-7";
+        assert r.json()["data"]["reports"] == [{"id": "r-7"}] , r.text;
+
+        # A function: 404 with its return value as the body, 200 otherwise.
+        r = client.post("/function/find_thing", json={"thing_id": "nope"});
+        assert r.status_code == 404 , r.text;
+        assert r.json()["data"]["result"]
+            == {"error": "Not found", "thing_id": "nope"} , r.text;
+        r = client.post("/function/find_thing", json={"thing_id": "known"});
+        assert r.status_code == 200 , r.text;
+        assert r.json()["ok"] is True , r.text;
+        assert extract_data(r.json())["result"] == {"thing_id": "known"};
+    } finally {
+        client.close();
+    }
+}
+
+test "a chosen status and header survive the idempotency replay (#9618)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        auth = {"Authorization": "Bearer " + client.register_and_login("u1", "p1")};
+        keyed = dict(auth);
+        keyed["X-Jac-Idempotency-Key"] = "refuse-once";
+        first = client.post(
+            "/walker/RefuseAfterWrite", headers=keyed, json={"label": "once"}
+        );
+        again = client.post(
+            "/walker/RefuseAfterWrite", headers=keyed, json={"label": "once"}
+        );
+        assert first.status_code == 403 and again.status_code == 403 , again.text;
+        assert again.json() == first.json() , again.text;
+        # The write was kept, so the retry must replay instead of running again.
+        assert _count_marks(client, auth, "once") == 1;
+
+        keyed["X-Jac-Idempotency-Key"] = "create-once";
+        first = client.post("/walker/CreatedWithHeader", headers=keyed);
+        again = client.post("/walker/CreatedWithHeader", headers=keyed);
+        assert again.status_code == 201 , again.text;
+        assert again.headers["x-resource-id"] == "r-7";
+        assert again.json() == first.json() , again.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "a walker and a function read the request they serve (#9619)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        token = client.register_and_login("u1", "p1");
+        # A sync walker runs on a worker thread and still sees the request.
+        r = client.get(
+            "/channel/walker-request",
+            params={"x": "1"},
+            headers={
+                "Host": "shop.example.com",
+                "X-Probe": "p1",
+                "X-Forwarded-Host": "evil.example.net",
+                "Authorization": "Bearer " + token
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        seen = extract_data(r.json())["reports"][0];
+        assert seen["method"] == "GET" , r.text;
+        assert seen["path"] == "/channel/walker-request" , r.text;
+        # The forwarded host of an untrusted peer is not the origin.
+        assert seen["origin"] == "http://shop.example.com" , r.text;
+        assert seen["public_origin"] == "" , r.text;
+        assert seen["link"] == "http://shop.example.com/invite/abc" , r.text;
+        assert seen["probe"] == "p1" , r.text;
+        # Credentials stay with the framework.
+        assert seen["authorization"] is None , r.text;
+        assert seen["query"] == {"x": "1"} and seen["query_string"] == "x=1" , r.text;
+
+        # An async walker runs on the request's own task; it reads and shapes.
+        r = client.post(
+            "/walker/AsyncWalkerReadsRequest", headers={"Host": "shop.example.com:8443"}
+        );
+        assert r.status_code == 202 , r.text;
+        seen = r.json()["data"]["reports"][0];
+        assert seen["origin"] == "http://shop.example.com:8443" , r.text;
+        assert seen["path"] == "/walker/AsyncWalkerReadsRequest" , r.text;
+
+        r = client.get(
+            "/channel/func-request",
+            params={"tag": "t"},
+            headers={"Host": "shop.example.com", "X-Probe": "p2"}
+        );
+        assert r.status_code == 200 , r.text;
+        seen = extract_data(r.json())["result"];
+        assert seen["path"] == "/channel/func-request" , r.text;
+        assert seen["origin"] == "http://shop.example.com" , r.text;
+        assert seen["probe"] == "p2" and seen["query"] == {"tag": "t"} , r.text;
+
+        # A raw-body function reads the request; its body is its return value.
+        r = client.get("/raw/origin", headers={"Host": "shop.example.com"});
+        assert r.status_code == 200 and r.text == "http://shop.example.com" , r.text;
+
+        # A Host that is not a host cannot become part of a link.
+        r = client.get(
+            "/channel/func-request", headers={"Host": "evil.example.net/x?y="}
+        );
+        assert extract_data(r.json())["result"]["origin"] == "" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "a configured public origin is what links are built from (#9619)" {
+    import os;
+    os.environ["JAC_SERVE_PUBLIC_ORIGIN"] = "https://app.example.com/";
+    try {
+        client = make_client("restspec_fixtures.jac");
+    } finally {
+        os.environ.pop("JAC_SERVE_PUBLIC_ORIGIN", None);
+    }
+    try {
+        r = client.get(
+            "/channel/func-request", headers={"Host": "attacker.example.net"}
+        );
+        assert r.status_code == 200 , r.text;
+        seen = extract_data(r.json())["result"];
+        assert seen["origin"] == "http://attacker.example.net" , r.text;
+        assert seen["public_origin"] == "https://app.example.com" , r.text;
+        assert seen["link"] == "https://app.example.com/invite/abc" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "outside a request there is no request and nothing to shape (#9619)" {
+    import from jaclang.server.exchange { current_request, respond }
+    assert current_request() is None;
+    assert respond(status=403) is False;
+    with testraises(ValueError) as bad_status {
+        respond(status=99);
+    }
+    assert "200..599" in str(bad_status.value);
+    with testraises(ValueError) as server_owned {
+        respond(headers={"Content-Length": "1"});
+    }
+    assert "set by the server" in str(server_owned.value);
+    with testraises(ValueError) as split {
+        respond(headers={"X-Injected": "a\r\nSet-Cookie: stolen=1"});
+    }
+    assert "line break" in str(split.value);
 }

@@ -1,4 +1,11 @@
-import from jaclang.byllm.llm { MockLLM, Model, ModelPool }
+import from jaclang.byllm.llm {
+    MockLLM,
+    Model,
+    ModelPool,
+    SystemOneModel,
+    MockSystemOne
+}
+import from jaclang.byllm.systemone { Decision }
 import from jaclang.byllm.mtir { MTIR, MTRuntime }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.byllm.types {
@@ -20,6 +27,7 @@ import from jaclang.byllm.exceptions {
     AuthenticationError,
     RateLimitError,
     ModelNotFoundError,
+    LLMTimeout,
     OutputConversionError,
     FinishToolError,
     ConfigurationError,
@@ -36,6 +44,7 @@ glob `by = JacRuntime.`by,
          'AuthenticationError',
          'RateLimitError',
          'ModelNotFoundError',
+         'LLMTimeout',
          'OutputConversionError',
          'FinishToolError',
          'ConfigurationError',
@@ -53,6 +62,9 @@ glob `by = JacRuntime.`by,
          'MockError',
          'Model',
          'ModelPool',
+         'Decision',
+         'SystemOneModel',
+         'MockSystemOne',
          'MTIR',
          'MTRuntime',
          'StreamEvent',

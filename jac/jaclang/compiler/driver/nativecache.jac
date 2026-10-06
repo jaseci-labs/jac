@@ -91,6 +91,23 @@ obj NativeUnitRegistry {
         self.failures.pop(real, None);
     }
 
+    def adopt_dep_digests(path: str, digests: dict[str, str]) -> bool {
+        real = os.path.realpath(path);
+        session = self.session;
+        if session is None or real not in session.lowered {
+            return False;
+        }
+        ent = self.entries.get(real);
+        if ent is None {
+            return False;
+        }
+        for (dep, digest) in digests.items() {
+            ent.dep_digests[os.path.realpath(dep)] = digest;
+        }
+        self._event("native_dep_adopt");
+        return True;
+    }
+
     static def _source_key(path: str) -> (str | None) {
         import from jaclang.compiler.driver.compilation_context { cache_scope }
         import from jaclang.compiler.frontend.codeinfo {
@@ -880,6 +897,49 @@ obj NativeBuildSession {
         }
     }
 
+    def _optimize_in_parallel(paths: list[str]) -> set[str] {
+        """Ahead-of-time units with no cached bitcode are optimized together
+        on a thread pool; each worker parses into its own LLVM context.""";
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            optimize_unit_texts,
+            require_native_ir
+        }
+        opts = self.prog.options;
+        if opts.native_debug
+            or opts.dump_ir_path
+            or not (opts.aot_mode or opts.skip_native_engine) {
+            return set();
+        }
+        todo: list[tuple[str, Module]] = [];
+        for path in paths {
+            mod = self.lowered.get(path);
+            if mod is None or mod.gen.llvm_ir is None {
+                continue;
+            }
+            cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
+            if cached is not None and cached.bitcode is not None {
+                continue;
+            }
+            if opts.native_required_for(path) {
+                require_native_ir(str(mod.gen.llvm_ir));
+            }
+            todo.append((path, mod));
+        }
+        if len(todo) < 2 {
+            return set();
+        }
+        started = time.perf_counter();
+        bitcodes = optimize_unit_texts(
+            [str(mod.gen.llvm_ir) for (_, mod) in todo], opts, int(opts.opt_level or 0)
+        );
+        self.registry._timed("NATIVE_OPTIMIZE", started);
+        for ((path, mod), bitcode) in zip(todo, bitcodes) {
+            mod.gen.native_bitcode = bitcode;
+            self.registry.note_codegen(path, False);
+        }
+        return {path for (path, _) in todo};
+    }
+
     def _finish(paths: list[str]) {
         """Optimize and persist only after every consumed interface agrees.
         Cyclic interface settlement reuses the analyzed trees and never emits
@@ -894,6 +954,7 @@ obj NativeBuildSession {
                 raise RuntimeError(f"native source changed during analysis: {path}");
             }
         }
+        optimized = self._optimize_in_parallel(paths);
         for path in paths {
             mod = self.lowered.get(path);
             if mod is None {
@@ -912,9 +973,11 @@ obj NativeBuildSession {
                 }
             }
             errors_before = len(self.prog.errors_had);
-            started = time.perf_counter();
-            self.prog.run_schedule(mod, [NativeCompilePass]);
-            self.registry._timed("NATIVE_OPTIMIZE", started);
+            if path not in optimized {
+                started = time.perf_counter();
+                self.prog.run_schedule(mod, [NativeCompilePass]);
+                self.registry._timed("NATIVE_OPTIMIZE", started);
+            }
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
                 raise RuntimeError(f"native product emission failed for {path}");

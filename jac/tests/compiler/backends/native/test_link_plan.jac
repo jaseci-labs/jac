@@ -84,6 +84,9 @@ test "the plan holds every unit of the diamond, dependencies first" {
     ];
     assert sorted(names) == sorted(UNITS) , names;
     assert toolchain;
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_lower", 0)
+        == events.get("native_unit_analysis", 0) , events;
     for u in plan.units {
         for dep in u.iface.deps {
             assert plan.units.index(plan.unit(dep)) < plan.units.index(u) , f"{dep} must precede its consumer {u.path}";
@@ -635,6 +638,8 @@ test "an import cycle settles without repeating frontend analysis or optimizatio
         assert str(even.resolve()) in compiled and str(odd.resolve()) in compiled;
         assert len(compiled) == len(set(compiled));
         assert events.get("native_unit_analysis", 0) == len(compiled);
+        assert events.get("native_unit_lower", 0) == len(compiled) , events;
+        assert events.get("native_dep_adopt", 0) >= 1 , events;
         for unit in plan.units {
             consumed = prog.native_units().entries[unit.path].dep_digests;
             for dep in unit.iface.deps {

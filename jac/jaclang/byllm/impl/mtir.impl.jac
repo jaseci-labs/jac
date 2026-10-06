@@ -161,6 +161,8 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             } elif isinstance(m, dict) {
                 reconstructed: any = Message.from_dict(m);
                 conv_msgs.append(reconstructed);
+            } elif hasattr(m, "model_dump") {
+                conv_msgs.append(Message.from_dict(m.model_dump(exclude_none=True)));
             } else {
                 conv_msgs.append(m);
             }
