@@ -7,12 +7,37 @@ import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 8,
+glob _FORMAT: int = 9,
      SLOW_PREPARE_SECONDS: int = 45,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
-def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
-    result: dict[str, tuple[int, int]] = {};
+def _stamp(path: str, previous: any = None) -> tuple[int, int, str] {
+    import from jaclang.compiler.driver.jir { compute_content_sha256 }
+    import from jaclang.compiler.driver.bccache { LISTING_SETTLE_NS }
+    st = os.stat(path);
+    if (
+        isinstance(previous, (list, tuple))
+        and len(previous) == 3
+        and previous[0] == st.st_mtime_ns
+        and previous[1] == st.st_size
+    ) {
+        return (st.st_mtime_ns, st.st_size, previous[2]);
+    }
+    settled = time.time_ns() - st.st_mtime_ns > LISTING_SETTLE_NS;
+    return (
+        st.st_mtime_ns if settled else -1,
+        st.st_size,
+        compute_content_sha256(path)
+    );
+}
+
+def _inventory(
+    `root: any,
+    inputs: bool = False,
+    previous: (dict[str, tuple[int, int, str]] | None) = None
+) -> dict[str, tuple[int, int, str]] {
+    previous = previous or {};
+    result: dict[str, tuple[int, int, str]] = {};
     for (directory, dirs, files) in os.walk(`root) {
         dirs[:] = sorted(
             d
@@ -27,15 +52,17 @@ def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
                 continue;
             }
             path = os.path.join(directory, name);
-            stat = os.stat(path);
-            result[path] = (stat.st_mtime_ns, stat.st_size);
+            result[path] = _stamp(path, previous.get(path));
         }
     }
     for path in Path(`root).`glob('jac*.toml') {
-        stat = path.stat();
-        result[str(path)] = (stat.st_mtime_ns, stat.st_size);
+        result[str(path)] = _stamp(str(path), previous.get(str(path)));
     }
     return result;
+}
+
+def _digests(inventory: dict[str, tuple[int, int, str]]) -> dict[str, str] {
+    return {path: stamp[2] for (path, stamp) in inventory.items()};
 }
 
 def _identity -> tuple[str, str | None, str] {
@@ -696,43 +723,58 @@ def _prepare_revision(
     inventory_root = `root
         if client
         else os.path.join(os.path.dirname(`entry), 'pages');
-    inventory = _inventory(inventory_root, inputs=True);
+    slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
+    cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
+    candidate: any = None;
+    try {
+        with cache.open('rb') as stream {
+            candidate = marshal.load(stream);
+        }
+    } except (OSError, ValueError, EOFError, TypeError) {}
+    stamps = candidate if isinstance(candidate, dict) else {};
+    inventory = _inventory(
+        inventory_root, inputs=True, previous=stamps.get('inventory')
+    );
     key = (
         _FORMAT,
         _identity(),
-        inventory,
+        _digests(inventory),
         sorted(inputs.items()),
         entries,
         client,
         dev
     );
-    slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
-    cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev
     );
     record = None;
     try {
-        with cache.open('rb') as stream {
-            candidate = marshal.load(stream);
-        }
         import from jaclang.compiler.driver.jir { cache_mode }
-        if (
-            not cache_mode()[0]
-            and (candidate['key'] == key)
-            and all(
-                (
-                    Path(path).is_file()
-                    and ((os.stat(path).st_mtime_ns, os.stat(path).st_size) == stamp)
-                ) for (path, stamp) in candidate['outputs'].items()
+        if candidate is not None
+            and not cache_mode()[0]
+            and (candidate['key'] == key) {
+            outputs = {
+                path: _stamp(path, stamp)
+                for (path, stamp) in candidate['outputs'].items()
+            };
+            if all(
+                outputs[path][2] == stamp[2]
+                for (path, stamp) in candidate['outputs'].items()
             )
-            and all(
-                (ct_dep_digest(path, with_annexes=True) == digest)
-                for (path, digest) in candidate['dependencies'].items()
-            )
-        ) {
-            record = candidate;
+                and all(
+                    (ct_dep_digest(path, with_annexes=True) == digest)
+                    for (path, digest) in candidate['dependencies'].items()
+                ) {
+                record = candidate;
+                if inventory != record['inventory'] or outputs != record['outputs'] {
+                    record['inventory'] = inventory;
+                    record['outputs'] = outputs;
+                    try {
+                        _write(cache, record);
+                    } except OSError {}
+                }
+            }
         }
     } except (OSError, ValueError, EOFError, TypeError, KeyError) {}
     builder = None;
@@ -931,10 +973,11 @@ def _prepare_revision(
             'Sources changed during preparation; retry with the new revision.'
         );
     }
-    current_inventory = _inventory(inventory_root, inputs=True);
-    if (not client and current_inventory != inventory)
+    current = _digests(_inventory(inventory_root, inputs=True, previous=inventory));
+    if (not client and current != _digests(inventory))
         or any(
-            current_inventory.get(path) != stamp for (path, stamp) in inventory.items()
+            current.get(path) != digest
+            for (path, digest) in _digests(inventory).items()
         ) {
         raise RuntimeError(
             'Sources changed during preparation; retry with the new revision.'
@@ -957,6 +1000,7 @@ def _prepare_revision(
             manifests=revision.manifests,
             sections=sections,
             outputs=outputs,
+            inventory=inventory,
             dependencies=inputs
         )
     );

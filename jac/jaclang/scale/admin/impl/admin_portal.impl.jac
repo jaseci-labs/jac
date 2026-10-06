@@ -20,6 +20,12 @@ import from jaclang.server.serving.endpoint {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.identity.user_manager { UserRole, UserManager }
+import from jaclang.server.identity.assurance {
+    METHOD_PASSWORD,
+    second_factor_claims,
+    token_assurance
+}
+import from jaclang.server.identity.second_factor { SecondFactorUnavailable }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.runtime.constants { Constants as Con }
 
@@ -69,6 +75,22 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     required=True,
                     default_value=None,
                     description='Admin password',
+                    kind=ParameterType.BODY
+                ),
+                APIParameter(
+                    name='code',
+                    data_type='string',
+                    required=False,
+                    default_value='',
+                    description='Current second factor code, when the account has a verified factor',
+                    kind=ParameterType.BODY
+                ),
+                APIParameter(
+                    name='recovery_code',
+                    data_type='string',
+                    required=False,
+                    default_value='',
+                    description='Single-use recovery code, in place of code',
                     kind=ParameterType.BODY
                 )
             ],
@@ -594,7 +616,9 @@ impl JacAPIServerAdmin.require_admin_json(
     return None;
 }
 
-impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportResponse {
+impl JacAPIServerAdmin.admin_login(
+    username: str, password: str, code: str = '', recovery_code: str = ''
+) -> TransportResponse {
     if not username or not password {
         return TransportResponse.fail(
             code='VALIDATION_ERROR',
@@ -619,8 +643,45 @@ impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportRes
             meta=Meta(extra={'http_status': 403})
         );
     }
+    assurance: (dict[str, any] | None) = None;
+    if result.get('second_factor_required') {
+        if not code and not recovery_code {
+            return TransportResponse.fail(
+                code='MFA_REQUIRED',
+                message='A second factor code is required',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+        try {
+            proof = self._require_user_manager().second_factors().prove(
+                user_id, str(code or ''), str(recovery_code or '')
+            );
+        } except SecondFactorUnavailable {
+            return TransportResponse.fail(
+                code='SECOND_FACTOR_UNAVAILABLE',
+                message='Second factor verification is temporarily unavailable. Please try again.',
+                meta=Meta(extra={'http_status': 503})
+            );
+        }
+        if proof.get('code') == 'RATE_LIMITED' {
+            retry = int(proof.get('retry_after') or 1);
+            return TransportResponse.fail(
+                code='RATE_LIMITED',
+                message=f"Too many attempts. Try again in {retry} seconds.",
+                meta=Meta(extra={'http_status': 429, 'retry_after_seconds': retry})
+            );
+        }
+        if not proof.get('ok') {
+            return TransportResponse.fail(
+                code='INVALID_CODE',
+                message='Code is invalid or already used',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+        assurance = second_factor_claims([METHOD_PASSWORD, str(proof['method'])]);
+    }
     requires_reset = self._require_user_manager().requires_password_reset(user_id);
-    token = self._require_user_manager().create_jwt_token(user_id);
+    token = self._require_user_manager().create_jwt_token(user_id, assurance=assurance);
     return TransportResponse.success(
         data={
             'message': 'Login successful',
@@ -681,7 +742,9 @@ impl JacAPIServerAdmin.reset_password(
 
     self._require_user_manager().set_requires_password_reset(user_id, False);
 
-    new_token = self._require_user_manager().create_jwt_token(user_id);
+    new_token = self._require_user_manager().create_jwt_token(
+        user_id, assurance=token_assurance(token)
+    );
     return TransportResponse.success(
         data={'message': 'Password updated successfully', 'token': new_token},
         meta=Meta(extra={'http_status': 200})

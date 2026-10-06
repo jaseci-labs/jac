@@ -117,6 +117,42 @@ test "an expired gateway token is never provisioned into existence" {
 }
 
 
+test "a fleet service reads the assurance level the gateway put in the session" {
+    import asyncio;
+    import from jaclang.server.identity.assurance {
+        caller_assurance_level,
+        second_factor_claims
+    }
+    import from jaclang.server.middleware { jwt_middleware }
+    import from jaclang.server.serving.datatypes { Request, Response }
+    gateway = _manager("__gateway__");
+    service = _manager("orders_app");
+    if gateway is None or service is None {
+        return;
+    }
+    user_id = str(uuid.uuid4());
+    # The service's own middleware, fed the token the gateway forwards.
+    def level_seen(token: str) -> str {
+        request = Request();
+        request.headers.set("Authorization", "Bearer " + token);
+        seen: list[str] = [];
+        async def next_fn(req: Request) -> Response {
+            seen.append(caller_assurance_level());
+            return Response();
+        }
+        asyncio.run(jwt_middleware(service)(request, next_fn));
+        return seen[0];
+    }
+    strong = gateway.create_jwt_token(
+        user_id, assurance=second_factor_claims(["pwd", "otp"])
+    );
+    assert level_seen(strong) == "aal2";
+    assert level_seen(gateway.create_jwt_token(user_id)) == "aal1";
+    assert level_seen("not.a.token") == "";
+    assert caller_assurance_level() == "";
+}
+
+
 test "gateway-owned identity is on by default and can be turned off" {
     default_config = normalize_gateway_config({});
     assert default_config["identity"]["gateway_owned"] is True;

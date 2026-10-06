@@ -8,12 +8,14 @@ with entry {
         class _OpenAIAuthError(_OpenAIUnavailable) {}
         class _OpenAIRateLimit(_OpenAIUnavailable) {}
         class _OpenAINotFound(_OpenAIUnavailable) {}
+        class _OpenAITimeout(_OpenAIUnavailable) {}
 
         import types;
         openai = types.SimpleNamespace(
             AuthenticationError=_OpenAIAuthError,
             RateLimitError=_OpenAIRateLimit,
-            NotFoundError=_OpenAINotFound
+            NotFoundError=_OpenAINotFound,
+            APITimeoutError=_OpenAITimeout
         );
         OpenAI = None;
         AsyncOpenAI = None;

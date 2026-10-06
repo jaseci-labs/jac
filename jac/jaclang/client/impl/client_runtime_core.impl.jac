@@ -369,6 +369,15 @@ impl jacLogin(
 impl jacLogout -> None {
     __jacClearCache();
     __removeLocalStorage("jac_token");
+    try {
+        fetch(f"{__getApiBaseUrl()}/user/logout", {"method": "POST"}).catch(
+            lambda (e: any) { console.warn(
+                "[jac-client] session cookie clear failed:", e
+            ); }
+        );
+    } except Exception as e {
+        console.warn("[jac-client] session cookie clear failed:", e);
+    }
     broker = __jacDesktopBroker();
     if broker {
         try {
@@ -377,7 +386,7 @@ impl jacLogout -> None {
                     "[jac-client] broker session clear failed:", e
                 ); }
             );
-        } except e {
+        } except Exception as e {
             console.warn("[jac-client] broker session clear failed:", e);
         }
     }

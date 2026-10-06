@@ -417,11 +417,15 @@ impl JacCompiler._load_native_from_cache(
         manifest = interop_manifest_of(cached_interop);
         gen.interop_manifest = manifest;
         import from jaclang.runtime.native_library { SharedNativeEngine }
-        if manifest.native_imports and not isinstance(engine, SharedNativeEngine) {
+        if manifest.callable_native_imports
+            and not isinstance(engine, SharedNativeEngine) {
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
             import jaclang.compiler.backends.native.llvm.binding as llvm;
             register_py_callbacks(
-                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+                manifest.callable_native_imports,
+                py_func_table,
+                callbacks_list,
+                llvm.add_symbol
             );
         }
     }

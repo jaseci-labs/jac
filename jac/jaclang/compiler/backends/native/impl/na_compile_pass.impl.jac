@@ -44,6 +44,26 @@ impl emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[b
     }
 }
 
+impl optimize_unit_texts(
+    texts: list[str], options: CompileOptions, opt_level: int
+) -> list[bytes] {
+    def optimize_one(text: str) -> bytes {
+        mod = llvm.parse_assembly(text, llvm.create_context());
+        mod.verify();
+        optimize_unit(mod, create_unit_target_machine(options), opt_level);
+        return module_bitcode(mod);
+    }
+    workers = min(len(texts), object_emit_jobs());
+    if workers < 2 {
+        return [optimize_one(text) for text in texts];
+    }
+    import from concurrent.futures { ThreadPoolExecutor }
+    create_unit_target_machine(options);
+    with ThreadPoolExecutor(max_workers=workers) as pool {
+        return list(pool.map(optimize_one, texts));
+    }
+}
+
 impl create_unit_target_machine(
     options: CompileOptions, jit: bool = False
 ) -> TargetMachine {
@@ -141,12 +161,15 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         }
 
         manifest = module.gen.interop_manifest;
-        if manifest.native_imports {
+        if manifest.callable_native_imports {
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
             py_func_table: dict[str, any] = {};
             callbacks_list: list[any] = [];
             register_py_callbacks(
-                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+                manifest.callable_native_imports,
+                py_func_table,
+                callbacks_list,
+                llvm.add_symbol
             );
             module.gen.interop_py_funcs = py_func_table;
             module.gen._interop_callbacks = callbacks_list;

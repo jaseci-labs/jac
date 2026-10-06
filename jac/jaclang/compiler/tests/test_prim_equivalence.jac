@@ -585,6 +585,14 @@ glob STR_NA_GAPS: list[any] = [
          ),
          ("csv bundled", "prim_csv.jac", "csv_py", "csv_cl", "csv_na", ["na"]),
          (
+             "itertools bundled",
+             "prim_itertools.jac",
+             "itertools_py",
+             "itertools_cl",
+             "itertools_na",
+             ["na"]
+         ),
+         (
              "pprint bundled",
              "prim_pprint.jac",
              "pprint_py",
@@ -609,6 +617,14 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),
+         (
+             "bare from-imported stdlib names",
+             "prim_from_imports.jac",
+             "from_imports_py",
+             "from_imports_cl",
+             "from_imports_na",
+             ["na"]
+         ),
          (
              "any dispatch",
              "prim_any.jac",
@@ -679,6 +695,14 @@ glob STR_NA_GAPS: list[any] = [
              "builtins_introspection_py",
              "builtins_introspection_cl",
              "builtins_introspection_na"
+         ),
+         (
+             "type identity",
+             "prim_builtins_introspection.jac",
+             "type_identity_py",
+             "type_identity_cl",
+             "builtins_introspection_na",
+             ["cl"]
          ),
          (
              "match sequence",

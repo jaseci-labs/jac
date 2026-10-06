@@ -97,7 +97,8 @@ test "a pool with every deployment exhausted raises rather than swallowing" {
     }
     router(pool).completion = _all_fail;
 
-    def get_answer(question: str) -> str by pool();
+    # Rate limits are retried with backoff; skip that here to keep the test fast.
+    def get_answer(question: str) -> str by pool(stream_num_retries=0);
 
     raised: any = None;
     try {

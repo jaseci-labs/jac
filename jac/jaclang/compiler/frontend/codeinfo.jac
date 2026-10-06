@@ -163,7 +163,8 @@ def _reserved_c_symbols -> frozenset[str] {
         "feclearexcept fegetexceptflag feraiseexcept fesetexceptflag fetestexcept "
         "fegetround fesetround fegetenv feholdexcept fesetenv feupdateenv "
         "setlocale localeconv nl_langinfo setjmp longjmp _setjmp _longjmp sigsetjmp siglongjmp "
-        "signal raise kill "
+        "signal raise kill bsd_signal sigemptyset sigaddset sigismember "
+        "sigprocmask setitimer select "
         "remove rename renameat tmpfile tmpnam fclose fflush fopen freopen fdopen "
         "fileno setbuf setvbuf "
         "fprintf fscanf printf scanf snprintf sprintf sscanf dprintf vfprintf "
@@ -189,6 +190,10 @@ def _reserved_c_symbols -> frozenset[str] {
         "open openat creat close read pread write lseek stat fstat lstat access "
         "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
         "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
+        "pipe poll waitpid posix_spawnp posix_spawn_file_actions_init "
+        "posix_spawn_file_actions_destroy posix_spawn_file_actions_addopen "
+        "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
+        "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
         "pthread_setspecific "
@@ -201,8 +206,12 @@ def _reserved_c_symbols -> frozenset[str] {
         "ZSTD_CCtx_setParameter ZSTD_compress2 ZSTD_freeDCtx ZSTD_DCtx_setParameter "
         "ZSTD_decompressStream_simpleArgs ZSTD_getFrameContentSize "
         "ZSTD_getDictID_fromFrame "
-        "RAND_bytes EVP_MD_CTX_free EVP_DigestInit_ex EVP_DigestUpdate "
-        "EVP_DigestFinal_ex HMAC_CTX_free HMAC_Init_ex HMAC_Update HMAC_Final "
+        "RAND_bytes CRYPTO_memcmp EVP_MD_CTX_new EVP_MD_CTX_free EVP_MD_CTX_copy_ex "
+        "EVP_DigestInit_ex EVP_DigestUpdate EVP_DigestFinal_ex "
+        "EVP_md5 EVP_sha1 EVP_sha224 EVP_sha256 EVP_sha384 EVP_sha512 "
+        "EVP_sha3_256 EVP_sha3_512 "
+        "HMAC_CTX_new HMAC_CTX_free HMAC_CTX_copy HMAC_Init_ex HMAC_Update "
+        "HMAC_Final TLS_client_method "
         "SSL_CTX_new SSL_CTX_set_verify SSL_CTX_load_verify_locations "
         "SSL_CTX_set_default_verify_paths SSL_CTX_free SSL_new SSL_set_fd SSL_ctrl "
         "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
@@ -1106,6 +1115,7 @@ obj InteropManifest {
         provider_routes: dict[(str, str)] = {};
 
     has native_imports: list[InteropBinding] { getter; }
+    has callable_native_imports: list[InteropBinding] { getter; }
     has native_exports: list[InteropBinding] { getter; }
     has native_cross_module_imports: list[InteropBinding] { getter; }
     has client_native_imports: list[InteropBinding] { getter; }
@@ -1139,6 +1149,7 @@ obj CodeGenTarget {
         native_object: (bytes | None) = None,
         native_iface: (NativeIface | None) = None,
         native_deps: list[str] = [],
+        native_codespace: bool = False,
         _interop_manifest: (InteropManifest | None) = None,
         interop_py_funcs: dict[(str, any)] = {},
         _interop_callbacks: list[any] = [],

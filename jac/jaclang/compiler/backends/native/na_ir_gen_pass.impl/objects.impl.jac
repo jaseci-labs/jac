@@ -2871,7 +2871,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         and method_name in self.struct_field_types[_fld_struct]
     ) {
         _fld_ty = self.struct_field_types[_fld_struct][method_name];
-        if self._closure_struct_of(_fld_ty) is not None {
+        if self._closure_struct_of(_fld_ty) is not None
+            or _fld_ty == self.jacval_type {
             callable_value = self._codegen_expr(trailer);
             if callable_value is not None {
                 return self._codegen_callable_value(nd, callable_value, []);
@@ -2960,31 +2961,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
 
-    if (
-        module_name == "os"
-        and self._native_stdlib_modules
-        and "os" in self._native_stdlib_modules
-        and method_name in NATIVE_OS_FUNCS
-    ) {
-        return self._emit_os_call(method_name, nd);
-    }
-
-    if (
-        module_name == "random"
-        and self._native_stdlib_modules
-        and "random" in self._native_stdlib_modules
-        and method_name in NATIVE_RANDOM_FUNCS
-    ) {
-        return self._emit_random_call(method_name, nd);
-    }
-
-    if (
-        module_name == "struct"
-        and self._native_stdlib_modules
-        and "struct" in self._native_stdlib_modules
-        and method_name in NATIVE_STRUCT_FUNCS
-    ) {
-        return self._emit_struct_call(method_name, nd);
+    if module_name is not None
+        and self._stdlib_intercept_covers(module_name, method_name) {
+        return self._emit_stdlib_intercept(module_name, method_name, nd);
     }
 
     _static_emitter = self._ensure_emitters().get(target_name)
