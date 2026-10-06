@@ -14,8 +14,10 @@ impl JcirGenPass.postinit -> None {
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
     self._runtime_aliases = {};
-    self._builtin_names = set(JCIR_BUILTIN_NAMES);
-    self._ambient_typing_names = set(JCIR_AMBIENT_TYPING_NAMES);
+    _builtin_names: set[str] = set(JCIR_BUILTIN_NAMES);
+    _ambient_names: set[str] = set(JCIR_AMBIENT_TYPING_NAMES);
+    self._builtin_names = _builtin_names;
+    self._ambient_typing_names = _ambient_names;
     self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
     self.builtin_imports = _builtins;
     self.sized_imports = _sized;
