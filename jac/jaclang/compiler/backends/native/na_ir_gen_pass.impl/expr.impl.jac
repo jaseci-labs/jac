@@ -2011,6 +2011,16 @@ impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | Non
         or (_pa is not None and isinstance(_pa, ir.PointerType));
     _b_ptrish = isinstance(b, ir.PointerType)
         or (_pb is not None and isinstance(_pb, ir.PointerType));
+    if _a_ptrish and _b_ptrish and self?.jacval_type {
+        """A container met with a different kind of pointer keeps its tag:
+        as a bare pointer the pair would test true whenever it is non-null,
+        so `obj and items` held for an empty `items`.""";
+        _ka = self._ptr_box_kind(a if _pa is None else _pa);
+        _kb = self._ptr_box_kind(b if _pb is None else _pb);
+        if _ka != _kb and (_ka in (3, 4, 5) or _kb in (3, 4, 5)) {
+            return self.jacval_type;
+        }
+    }
     if _a_ptrish and _b_ptrish and (_pa is not None or _pb is not None) {
         return ir.IntType(8).as_pointer();
     }
