@@ -366,7 +366,7 @@ impl NaIRGenPass._codegen_delete_list_slice(
         return;
     }
     (_start, _stop, _step, _pos) = _bounds;
-    _cursor = b.alloca(i64, name="dsl.i");
+    _cursor = self._stack_entry_alloca(i64, "dsl.i");
     b.store(_stop, _cursor);
     _func = b.basic_block.function;
     _check = _func.append_basic_block(name="dsl.check");
@@ -3899,7 +3899,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         + ([i64] if _chk is not None else [])
         + [v.type for v in _cap_vals];
     _ctx_ty = ir.LiteralStructType(_ctx_field_types);
-    _ctx_slot = self.builder.alloca(_ctx_ty, name="ffor.ctx");
+    _ctx_slot = self._stack_entry_alloca(_ctx_ty, "ffor.ctx");
     self.builder.store(
         coll,
         self.builder.gep(
@@ -4130,7 +4130,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     _env_null = self.builder.icmp_unsigned(
         "==", _env_val, ir.Constant(i8p, None), name="ffor.env.null"
     );
-    _nt_slot = self.builder.alloca(i32, name="ffor.nt.slot");
+    _nt_slot = self._stack_entry_alloca(i32, "ffor.nt.slot");
     _cfg_threads = int(getattr(self.prog?.options, "native_threads", 4) or 4);
     self.builder.store(ir.Constant(i32, _cfg_threads), _nt_slot);
     _envfunc = self.builder.function;
@@ -4188,7 +4188,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         _ri_cond = func.append_basic_block("ffor.red.init.cond");
         _ri_body = func.append_basic_block("ffor.red.init.body");
         _ri_done = func.append_basic_block("ffor.red.init.done");
-        _ri_slot = self.builder.alloca(i64, name="ffor.red.init.t");
+        _ri_slot = self._stack_entry_alloca(i64, "ffor.red.init.t");
         self.builder.store(ir.Constant(i64, 0), _ri_slot);
         self.builder.branch(_ri_cond);
         self.builder.position_at_end(_ri_cond);
@@ -4232,7 +4232,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     _j_next = func.append_basic_block("ffor.join.next");
     _done_bb = func.append_basic_block("ffor.done");
 
-    _t_slot = self.builder.alloca(i64, name="ffor.t");
+    _t_slot = self._stack_entry_alloca(i64, "ffor.t");
     self.builder.store(ir.Constant(i64, 0), _t_slot);
     self.builder.branch(_s_cond);
 
@@ -4351,11 +4351,11 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         if _acc_slot is None {
             _acc_slot = self.global_vars[_red[0]];
         }
-        _cur_slot = self.builder.alloca(i64, name=f"ffor.comb.{_red[0]}");
+        _cur_slot = self._stack_entry_alloca(i64, f"ffor.comb.{_red[0]}");
         self.builder.store(
             self.builder.load(_acc_slot, name=f"ffor.comb.{_red[0]}.0"), _cur_slot
         );
-        _ct_slot = self.builder.alloca(i64, name=f"ffor.comb.{_red[0]}.t");
+        _ct_slot = self._stack_entry_alloca(i64, f"ffor.comb.{_red[0]}.t");
         self.builder.store(ir.Constant(i64, 0), _ct_slot);
         _cb_cond = func.append_basic_block(f"ffor.comb.cond.{_ri}");
         _cb_body = func.append_basic_block(f"ffor.comb.body.{_ri}");

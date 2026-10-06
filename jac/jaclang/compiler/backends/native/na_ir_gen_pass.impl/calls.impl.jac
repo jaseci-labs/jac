@@ -2167,7 +2167,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
             buf_size = 256;
             buf_type = ir.ArrayType(ir.IntType(8), buf_size);
-            buf = self.builder.alloca(buf_type, name="input.buf");
+            buf = self._stack_entry_alloca(buf_type, "input.buf");
             buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
 
             import platform;
