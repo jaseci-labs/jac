@@ -862,3 +862,51 @@ test "a dependency outside the project is scanned when the kernel asks about it"
         assert 1 <= len(runs) <= 3 , runs;
     }
 }
+
+"""A module that imports from another copy of the compiler package (a test
+inside a jaclang checkout, run by an installed jac) is the host's. Its
+imports resolve into that checkout, which to the running compiler is project
+code: the kernel would compile a second compiler as a user program, where
+the host reads only the signatures it needs."""
+test "a module importing another copy of the compiler is handed to the host" {
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    import from unittest.mock { patch }
+    import from jaclang.project.kernel_snapshot { in_other_compiler_tree }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        copy = base / 'jaclang';
+        (copy / 'jac0core').mkdir(parents=True);
+        (copy / 'pkg').mkdir();
+        (copy / 'tests').mkdir();
+        (base / 'jac.toml').write_text(CONFIG);
+        (copy / 'pkg' / 'mod.jac').write_text(
+            'def helper(x: int) -> int { return x; }\n'
+        );
+        (copy / 'tests' / 'entry.jac').write_text(
+            'import from jaclang.pkg.mod { helper }\nwith entry { print(helper(1)); }\n'
+        );
+        entry_file = str(copy / 'tests' / 'entry.jac');
+        assert in_other_compiler_tree(str(copy / 'pkg' / 'mod.jac'));
+        assert not in_other_compiler_tree(str(base / 'jac.toml'));
+        assert not in_other_compiler_tree(kernel_compile_mod.__file__);
+        runs: list[str] = [];
+        run_compile = kernel_compile_mod.run_kernel_compile;
+        def counted(*args: any, **kwargs: any) -> any {
+            runs.append(str(args[1]));
+            return run_compile(*args, **kwargs);
+        }
+        with patch.object(kernel_compile_mod, "run_kernel_compile", counted) {
+            outcome = kernel_compile_mod.kernel_compile(
+                active_host(),
+                JacProgram(),
+                entry_file,
+                compile_options(),
+                in_process=True
+            );
+        }
+        assert not runs , runs;
+        assert not outcome.units;
+        placed = outcome.analysis.module(entry_file);
+        assert placed is not None and placed.native , outcome.analysis.modules;
+    }
+}

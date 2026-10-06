@@ -18,6 +18,7 @@ import from jaclang.project.kernel_snapshot {
     call_kernel_isolated,
     host_deferred,
     _IFACE_BUILT,
+    other_compiler_report,
     kernel_snapshot,
     loaded_kernel
 }
@@ -75,7 +76,14 @@ def kernel_compile(
     );
     snapped = time.monotonic();
     in_kernel = 0.0;
+    inputs_json = "";
     while True {
+        reached = snapshot.scan.other_compiler;
+        if reached {
+            outcome = CompileReport(analysis=other_compiler_report(path, reached[0]));
+            analysis = outcome.analysis;
+            break;
+        }
         inputs_json = snapshot.text();
         called = time.monotonic();
         if in_process {

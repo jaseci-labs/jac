@@ -43,6 +43,7 @@ glob SCAN_LIMIT: int = 4000,
      _PACKAGE_SCANS: dict[str, PackageScan] = {},
      NATIVE_INT_OVERFLOW: str = "integer overflow",
      MISS_ROUNDS: int = 12,
+     OTHER_COMPILER_MISS: str = "other_compiler",
      INTERFACE_MISSES: tuple[str, ...] = ("compile_module", "parse_python"),
      NPM_MISSES: tuple[str, ...] = (
          "has_npm_package",
@@ -223,6 +224,7 @@ obj ClosureScan {
         learned: set[str] = set(),
         merged_packages: set[str] = set(),
         closed_packages: set[str] = set(),
+        other_compiler: list[str] = [],
         wiring_trees: dict[str, uni.Module] = {},
         wired_dirs: set[tuple[str, str]] = set(),
         string_specs: set[tuple[str, str]] = set(),
@@ -241,7 +243,7 @@ obj ClosureScan {
     }
 
     def settle {
-        while self.queue and len(self.seen) < SCAN_LIMIT {
+        while self.queue and len(self.seen) < SCAN_LIMIT and not self.other_compiler {
             path = self.queue.pop();
             if path in self.seen {
                 continue;
@@ -508,6 +510,10 @@ obj ClosureScan {
             return;
         }
         if not path or not os.path.isfile(path) {
+            return;
+        }
+        if in_other_compiler_tree(path) {
+            self.other_compiler.append(path);
             return;
         }
         self.learn_path(path);
@@ -997,7 +1003,7 @@ obj KernelSnapshot {
         } finally {
             install_host(previous);
         }
-        if acted {
+        if acted and not scan.other_compiler {
             self.refresh();
         }
         return acted;
@@ -1019,6 +1025,10 @@ obj KernelSnapshot {
             return;
         }
         if not base.endswith((".jac", ".py")) {
+            return;
+        }
+        if in_other_compiler_tree(base) {
+            scan.other_compiler.append(base);
             return;
         }
         owner = scan.learner.project_root(base) or os.path.dirname(real);
@@ -1113,7 +1123,9 @@ def kernel_snapshot(
         options=options,
         emit_closure=emit_closure
     );
-    snapshot.refresh();
+    if not snapshot.scan.other_compiler {
+        snapshot.refresh();
+    }
     return snapshot;
 }
 
@@ -1320,6 +1332,25 @@ def call_kernel_isolated(
     return payload.decode("utf-8");
 }
 
+def in_other_compiler_tree(path: str) -> bool {
+    import from jaclang.project.modresolver { COMPILER_PACKAGE }
+    if not path.endswith((".jac", ".py")) or is_compiler_source_path(path) {
+        return False;
+    }
+    current = os.path.dirname(os.path.realpath(path));
+    while True {
+        above = os.path.dirname(current);
+        if above == current {
+            return False;
+        }
+        if os.path.basename(current) == COMPILER_PACKAGE
+            and os.path.isdir(os.path.join(current, "jac0core")) {
+            return True;
+        }
+        current = above;
+    }
+}
+
 def native_stdlib_misses(misses: list[str]) -> bool {
     import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
     stdlib_dir = native_stdlib_root();
@@ -1338,6 +1369,9 @@ def native_stdlib_misses(misses: list[str]) -> bool {
 
 def host_only_miss(miss: str) -> bool {
     (kind, _, asked) = miss.partition(": ");
+    if kind == OTHER_COMPILER_MISS {
+        return True;
+    }
     if native_stdlib_misses([miss]) {
         return True;
     }
@@ -1377,6 +1411,9 @@ def kernel_analysis(
 ) -> AnalysisReport {
     snapshot = kernel_snapshot(host, program, path, options, source);
     while True {
+        if snapshot.scan.other_compiler {
+            return other_compiler_report(path, snapshot.scan.other_compiler[0]);
+        }
         inputs_json = snapshot.text();
         if in_process {
             outcome = run_kernel_analysis(inputs_json, path, source);
@@ -1398,6 +1435,12 @@ def kernel_analysis(
         raise KernelAnalysisError(outcome.message + detail);
     }
     return outcome;
+}
+
+def other_compiler_report(path: str, reached: str) -> AnalysisReport {
+    return AnalysisReport(
+        entry_path=path, misses=[f"{OTHER_COMPILER_MISS}: {reached}"]
+    );
 }
 
 def kernel_census -> HostCensus {
