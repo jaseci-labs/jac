@@ -1231,7 +1231,8 @@ impl NaIRGenPass._codegen_method(
             self.emit(
                 E5092,
                 node_override=method,
-                kind="method (native emitter error in)",
+                kind=f"method (native emitter error in: "
+                f"{type(_codegen_exc).__name__}: {_codegen_exc})",
                 name=full_name,
                 help_text=f"The native backend raised {type(_codegen_exc).__name__} "
                 f"while lowering this method; it falls back to its Python "

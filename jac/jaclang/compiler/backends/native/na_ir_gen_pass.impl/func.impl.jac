@@ -621,7 +621,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         self.emit(
             E5092,
             node_override=nd,
-            kind="function (native emitter error in)",
+            kind=f"function (native emitter error in: "
+            f"{type(_codegen_exc).__name__}: {_codegen_exc})",
             name=name,
             help_text=f"The native backend raised {type(_codegen_exc).__name__} "
             f"while lowering this function; it falls back to its Python "
@@ -760,7 +761,8 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         self.emit(
             E5092,
             node_override=nd,
-            kind="test (native emitter error in)",
+            kind=f"test (native emitter error in: "
+            f"{type(_codegen_exc).__name__}: {_codegen_exc})",
             name=test_name,
             help_text=f"The native backend raised {type(_codegen_exc).__name__} "
             f"while lowering this test; it runs in the server codespace "
