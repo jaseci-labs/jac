@@ -105,6 +105,25 @@ import from jaclang.compiler.backends.native.na_constants {
     RC_CYCLE_THRESHOLD,
     RC_UNTRACED_BIT
 }
+import from jaclang.compiler.c_interop {
+    c_builtin_kind,
+    c_type_arg,
+    foreign_read_copies,
+    foreign_struct_of_type,
+    is_builtin_pin_call,
+    is_pinned_type,
+    is_ptr_type,
+    is_ptr_view_type
+}
+import from jaclang.compiler.frontend.constant { SymbolType }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+import from jaclang.compiler.passes.layout_pass { native_type_key }
+import from jaclang.compiler.expr_keys { type_tag_borrows }
+import from jaclang.runtime.scalars {
+    range_of,
+    shape_of,
+    wrap_value
+}
 
 obj NativeLowering {
     has module: uni.Module,
@@ -570,6 +589,41 @@ obj NativeLowering {
     def _program_has_subclasses(arch_name: str) -> bool;
 
     def _copy_call_arg(kind: str, nd: uni.FuncCall) -> (uni.Expr | uni.KWPair | None);
+
+    def _delete_location_subscript(target: uni.AtomTrailer, nd: uni.DeleteStmt) -> (tuple[bool, uni.Slice] | None);
+
+    def _delete_list_slice_unstepped(slice_node: uni.Slice, nd: uni.DeleteStmt) -> bool;
+
+    def _if_ct_taken(nd: uni.IfStmt) -> (bool | None);
+
+    def _match_tuple_seq_heads(pat: uni.MatchSequence) -> (list[uni.MatchPattern] | None);
+
+    def _assignment_environ_store(nd: uni.Assignment, target_expr: uni.AtomTrailer) -> bool;
+
+    def _assignment_tag_bare_container(tag: uni.Expr) -> bool;
+
+    def _assignment_borrows_source(nd: uni.Assignment) -> bool;
+
+    def _assignment_sole_target_owned(nd: uni.Assignment) -> bool;
+
+    def _assignment_target_module_global(target_expr: uni.Expr) -> bool;
+
+    def _for_ct_items(nd: uni.InForStmt) -> (CtValue | None);
+
+    def _for_dict_items_unpack(nd: uni.InForStmt) -> bool;
+
+    def _for_builtin_range(nd: uni.InForStmt) -> bool;
+
+    def _try_flow_for_parallel_is_flow(nd: uni.InForStmt) -> bool;
+
+    def _try_flow_for_parallel_reduce_candidates(nd: uni.InForStmt) -> list[tuple[str, str]];
+
+    def _try_flow_for_parallel_body_names(nd: uni.InForStmt) -> list[uni.Name];
+
+    def _try_flow_for_parallel_decl_inside(anm: uni.Name, nd: uni.InForStmt) -> bool;
+
+    def _for_indexed_has_yield(nd: uni.InForStmt) -> bool;
+
 }
 
 glob _READY: dict[int, NativeLowering] = {};
