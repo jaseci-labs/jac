@@ -466,6 +466,19 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
     if arch_name in self.struct_field_types {
         return;
     }
+    if isinstance(nd.body, uni.ImplDef) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="archetype",
+            name=nd.name.value if nd.name else arch_name,
+            help_text="The archetype's members are supplied by a separate `impl` "
+            "block, which the native backend does not read yet. Declare the "
+            "members in the archetype itself, or keep the module off the "
+            "native pathway."
+        );
+        return;
+    }
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None {
         return;
@@ -617,9 +630,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
         }
     }
 
-    if (nd).body is not None {
+    _arch_body = ModuleFacts.unwrap_body(nd);
+    if _arch_body is not None {
         _owner = nd.find_parent_of_type(uni.Module);
-        for stmt in (nd).body {
+        for stmt in _arch_body {
             if isinstance(stmt, uni.ArchHas) and stmt.is_static {
                 self._register_static_fields(arch_name, stmt, _owner, imported);
             } elif isinstance(stmt, uni.ModuleCode) {
