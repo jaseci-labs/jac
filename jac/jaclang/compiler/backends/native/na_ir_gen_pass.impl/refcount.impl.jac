@@ -3071,6 +3071,101 @@ impl NaIRGenPass._str_cmp_parts_of(
     return None;
 }
 
+impl NaIRGenPass._emit_memcmp_nz(
+    a: ir.Value, b: ir.Value, n: ir.Value, name: str
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    bld = self.builder;
+    func = bld.basic_block.function;
+    memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
+    entry_bb = bld.basic_block;
+    call_bb = func.append_basic_block(name=f"{name}.call");
+    done_bb = func.append_basic_block(name=f"{name}.done");
+
+    bld.cbranch(
+        bld.icmp_signed(">", n, ir.Constant(i64, 0), name=f"{name}.has"),
+        call_bb,
+        done_bb
+    );
+    bld.position_at_end(call_bb);
+    r = bld.call(memcmp_fn, [a, b, n], name=f"{name}.memcmp");
+    call_end_bb = bld.basic_block;
+    bld.branch(done_bb);
+    bld.position_at_end(done_bb);
+    res = bld.phi(i32, name=name);
+    res.add_incoming(ir.Constant(i32, 0), entry_bb);
+    res.add_incoming(r, call_end_bb);
+    return res;
+}
+
+impl NaIRGenPass._emit_str_parts_cmp(
+    op: str, l_data: ir.Value, l_len: ir.Value, r_data: ir.Value, r_len: ir.Value
+) -> ir.Value {
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    bld = self.builder;
+    func = bld.basic_block.function;
+    zero32 = ir.Constant(i32, 0);
+    if op == Tok.EE or op == Tok.NE {
+        entry_bb = bld.basic_block;
+        cmp_bb = func.append_basic_block(name="seq.cmp");
+        done_bb = func.append_basic_block(name="seq.done");
+        bld.cbranch(
+            bld.icmp_signed("==", l_len, r_len, name="seq.len"), cmp_bb, done_bb
+        );
+        bld.position_at_end(cmp_bb);
+        c = self._emit_memcmp_nz(l_data, r_data, r_len, "seq.mc");
+        data_eq = bld.icmp_signed("==", c, zero32, name="seq.data");
+        cmp_end_bb = bld.basic_block;
+        bld.branch(done_bb);
+        bld.position_at_end(done_bb);
+        res = bld.phi(i1, name="seq");
+        res.add_incoming(ir.Constant(i1, 0), entry_bb);
+        res.add_incoming(data_eq, cmp_end_bb);
+        if op == Tok.NE {
+            return bld.not_(res, name="sne");
+        }
+        return res;
+    }
+    ge_bb = func.append_basic_block(name="sord.ge");
+    lt_bb = func.append_basic_block(name="sord.lt");
+    done_bb = func.append_basic_block(name="sord.done");
+    bld.cbranch(bld.icmp_signed(">=", l_len, r_len, name="sord.lge"), ge_bb, lt_bb);
+
+    bld.position_at_end(ge_bb);
+    c_ge = self._emit_memcmp_nz(l_data, r_data, r_len, "sord.mg");
+    tie_ge = bld.zext(
+        bld.icmp_signed(">", l_len, r_len, name="sord.gt"), i32, name="sord.gt32"
+    );
+    s_ge = bld.select(
+        bld.icmp_signed("!=", c_ge, zero32, name="sord.gne"),
+        c_ge,
+        tie_ge,
+        name="sord.sg"
+    );
+    ge_end_bb = bld.basic_block;
+    bld.branch(done_bb);
+
+    bld.position_at_end(lt_bb);
+    c_lt = self._emit_memcmp_nz(l_data, r_data, l_len, "sord.ml");
+    s_lt = bld.select(
+        bld.icmp_signed("!=", c_lt, zero32, name="sord.lne"),
+        c_lt,
+        ir.Constant(i32, -1),
+        name="sord.sl"
+    );
+    lt_end_bb = bld.basic_block;
+    bld.branch(done_bb);
+    bld.position_at_end(done_bb);
+    sign = bld.phi(i32, name="sord");
+    sign.add_incoming(s_ge, ge_end_bb);
+    sign.add_incoming(s_lt, lt_end_bb);
+    _sym = {Tok.LT: "<", Tok.GT: ">", Tok.LTE: "<=", Tok.GTE: ">="}[op];
+    return bld.icmp_signed(_sym, sign, zero32, name="scmp3");
+}
+
 impl NaIRGenPass._nogc_str_free_owned(val: ir.Value) -> None {
     _d = val;
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {

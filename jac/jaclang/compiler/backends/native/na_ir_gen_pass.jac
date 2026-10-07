@@ -2391,6 +2391,11 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _str_cmp_parts_of(val: ir.Value) -> (tuple[ir.Value, ir.Value] | None);
+    def _emit_memcmp_nz(a: ir.Value, b: ir.Value, n: ir.Value, name: str) -> ir.Value;
+    def _emit_str_parts_cmp(
+        op: str, l_data: ir.Value, l_len: ir.Value, r_data: ir.Value, r_len: ir.Value
+    ) -> ir.Value;
+
     def _emit_str_dup_helper -> None;
     def _call_str_dup(b: ir.IRBuilder, ptr: ir.Value, name: str = "s.dup") -> ir.Value;
     def _emit_str_len_raw_helper -> None;
