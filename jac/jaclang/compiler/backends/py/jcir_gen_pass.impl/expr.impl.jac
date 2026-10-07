@@ -1047,7 +1047,26 @@ impl JcirGenPass.exit_float with Float exit {
 }
 
 impl JcirGenPass.exit_int with Int exit {
-    self.set_out(here, [self.const_of(int(here.value, 0))]);
+    if len(here.value) <= SHORT_INT_LITERAL {
+        self.set_out(here, [self.const_of(int(here.value, 0))]);
+        return;
+    }
+    magnitude = int_literal_magnitude(here.value);
+    if len(magnitude) < 8 or (len(magnitude) == 8 and magnitude[7] < 128) {
+        self.set_out(here, [self.const_of(int(here.value, 0))]);
+        return;
+    }
+    self.set_out(
+        here,
+        [
+            self.nod(
+                'Constant',
+                ['value'],
+                [CgWideInt(negative=False, magnitude=magnitude)],
+                jac_node=here
+            )
+        ]
+    );
 }
 
 impl JcirGenPass.exit_string with String exit {

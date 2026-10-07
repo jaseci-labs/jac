@@ -1,5 +1,6 @@
 import math;
 import from jaclang.compiler.types.ct_int {
+    MAG_SHIFT,
     MAX_STR_DIGITS,
     mag_add_small,
     mag_bit_length,
@@ -281,6 +282,37 @@ def int_host(v: CtInt) -> int {
     }
     val = mag_to_int(v.mag);
     return -val if v.neg else val;
+}
+
+"""The little-endian magnitude bytes of an integer too wide for a 64-bit host
+value, or None when it fits. The limbs are 30 bits each, so the bytes are
+packed through a small accumulator and no wide value is ever formed."""
+def int_wide_bytes(v: CtInt) -> (bytes | None) {
+    if not v.mag {
+        return None;
+    }
+    if mag_bit_length(v.mag) <= 63 {
+        return None;
+    }
+    out = bytearray();
+    acc = 0;
+    held = 0;
+    for limb in v.mag {
+        acc = acc | (limb << held);
+        held += MAG_SHIFT;
+        while held >= 8 {
+            out.append(acc & 255);
+            acc = acc >> 8;
+            held -= 8;
+        }
+    }
+    if held > 0 and acc != 0 {
+        out.append(acc & 255);
+    }
+    while out and out[-1] == 0 {
+        out.pop();
+    }
+    return bytes(out);
 }
 
 def int_decimal(v: CtInt) -> str {

@@ -77,6 +77,45 @@ def _w_varint(buf: bytearray, v: int) -> None {
     }
 }
 
+def int_literal_magnitude(text: str) -> bytes {
+    body = text.replace("_", "").lower();
+    base = 10;
+    if body.startswith("0x") {
+        base = 16;
+        body = body[2:];
+    } elif body.startswith("0o") {
+        base = 8;
+        body = body[2:];
+    } elif body.startswith("0b") {
+        base = 2;
+        body = body[2:];
+    }
+    digits = "0123456789abcdef";
+    limbs: list[int] = [];
+    for ch in body {
+        carry = digits.find(ch);
+        if carry < 0 or carry >= base {
+            raise ValueError(f"invalid integer literal {text!r}");
+        }
+        at = 0;
+        while at < len(limbs) {
+            cur = limbs[at] * base + carry;
+            limbs[at] = cur & 255;
+            carry = cur >> 8;
+            at += 1;
+        }
+        while carry > 0 {
+            limbs.append(carry & 255);
+            carry = carry >> 8;
+        }
+    }
+    out = bytearray();
+    for limb in limbs {
+        out.append(limb);
+    }
+    return bytes(out);
+}
+
 def _w_svarint(buf: bytearray, v: int) {
     sign = 0 if v >= 0 else 1;
     half = v if v >= 0 else -(v + 1);
@@ -243,6 +282,15 @@ obj CodegenIrWriter {
             _w_varint(self._code, nbytes);
             self._code.extend(mag.to_bytes(nbytes, "little"));
         }
+        self._depth += 1;
+    }
+
+    def emit_int_wide(negative: bool, magnitude: bytes) {
+        self._require_open();
+        self._code.append(OP_INT_BIG);
+        self._code.append(1 if negative else 0);
+        _w_varint(self._code, len(magnitude));
+        self._code.extend(magnitude);
         self._depth += 1;
     }
 

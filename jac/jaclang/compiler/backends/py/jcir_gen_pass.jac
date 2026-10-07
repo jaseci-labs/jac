@@ -139,9 +139,12 @@ import from jaclang.compiler.frontend.constant {
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.runtime.scalars { shape_of }
-import type from jaclang.compiler.types.ct_value { CtRecord, CtValue }
+import type from jaclang.compiler.types.ct_value { CtInt, CtRecord, CtValue }
 
-import from jaclang.compiler.backends.py.codegen_ir { CodegenIrWriter }
+import from jaclang.compiler.backends.py.codegen_ir {
+    CodegenIrWriter,
+    int_literal_magnitude
+}
 import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, InteropBinding }
 import from jaclang.compiler.backends.py.jcir_facts {
     JCIR_AMBIENT_TYPING_NAMES,
@@ -237,7 +240,8 @@ glob EDGE_DIR_NAMES: dict[(int, str)] = {
          int(EdgeDir.IN): 'IN',
          int(EdgeDir.OUT): 'OUT',
          int(EdgeDir.ANY): 'ANY'
-     };
+     },
+     SHORT_INT_LITERAL: int = 17;
 
 obj CgItem {}
 
@@ -306,6 +310,11 @@ obj CgSplice(CgItem) {
 
 obj CgEllipsis(CgItem) {}
 
+obj CgWideInt(CgItem) {
+    has negative: bool,
+        magnitude: bytes;
+}
+
 def write_ir_value(w: CodegenIrWriter, v: object) {
     if v is None {
         w.emit_none();
@@ -319,6 +328,8 @@ def write_ir_value(w: CodegenIrWriter, v: object) {
         w.emit_node(v.cls, v.keys);
     } elif isinstance(v, CgSplice) {
         w.emit_parse_splice(v.src, v.offset);
+    } elif isinstance(v, CgWideInt) {
+        w.emit_int_wide(v.negative, v.magnitude);
     } elif isinstance(v, bool) {
         if v {
             w.emit_true();
@@ -446,6 +457,7 @@ walker JcirGenPass(TreePass) {
     def _c_interop_call_rewrite(nd: FuncCall) -> None;
     def _c_copy_rewrite(nd: AtomTrailer) -> None;
     def const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode;
+    def int_const_of(value: CtInt, jac_node: (UniNode | None) = None) -> CgNode;
     def _ct_kind(v: CtValue) -> str;
     def _ct_order_key(v: CtValue) -> str;
     def _ct_materializable(v: CtValue) -> bool;

@@ -284,6 +284,9 @@ impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) 
         ct_repr
     }
     load = self.nod('Load', [], []);
+    if isinstance(v, CtInt) {
+        return self.int_const_of(v, jac_node);
+    }
     if ct_is_scalar(v) {
         return self.const_of(ct_host_scalar(v), jac_node);
     }

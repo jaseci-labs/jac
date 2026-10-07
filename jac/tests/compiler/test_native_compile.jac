@@ -1076,3 +1076,48 @@ test "a typed third-party package reaches the kernel as interfaces" {
         assert_same_products(emitted, expected);
     }
 }
+
+"""The kernel's integers are 64 bits wide, and a Jac integer literal is not
+bounded. A literal past that width is carried from its text to the compiled
+constant as sign and magnitude bytes, never as a value, so the kernel
+compiles such a module itself and emits the constant the host emits."""
+test "an integer literal wider than 64 bits compiles in the kernel" {
+    import from jaclang.compiler.backends.py.codegen_ir { int_literal_magnitude }
+    assert int_literal_magnitude("0") == b"";
+    assert int_literal_magnitude("255") == b"\xff";
+    assert int_literal_magnitude("0x1_00") == b"\x00\x01";
+    assert int_literal_magnitude("0b1000_0000") == b"\x80";
+    assert int_literal_magnitude("0o777") == (511).to_bytes(2, "little");
+    wide = 340282366920938463463374607431768211455;
+    assert int_literal_magnitude(str(wide)) == wide.to_bytes(16, "little");
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'main.jac').write_text(
+            'glob MASK: int = 0xFFFFFFFFFFFFFFFF,\n'
+                + '     EDGE: int = 9223372036854775807,\n'
+                + '     PAST: int = 9223372036854775808,\n'
+                + '     BIG: int = 340282366920938463463374607431768211455;\n'
+                + 'node Item { has label: str = ""; }\n'
+                + 'def fold(x: int) -> int {\n'
+                + '    return (x * 6364136223846793005 + 1442695040888963407) & MASK;\n'
+                + '}\n'
+                + 'with entry { root ++> Item(label="a"); print(fold(7), BIG > PAST); }\n'
+        );
+        entry_file = str(base / 'main.jac');
+        expected = host_products(entry_file);
+        outcome = compile_in_process(entry_file);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None , outcome.analysis.modules;
+        assert_same_products(emitted, expected);
+        kernel = loaded_kernel();
+        if kernel is not None {
+            native = compile_natively(kernel, entry_file);
+            assert native.analysis.status == ANALYSIS_OK , native.analysis.message;
+            from_kernel = native.unit(entry_file);
+            assert from_kernel is not None , native.analysis.modules;
+            assert_same_products(from_kernel, expected);
+        }
+    }
+}

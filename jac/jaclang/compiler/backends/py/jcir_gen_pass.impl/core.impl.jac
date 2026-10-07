@@ -253,6 +253,22 @@ impl JcirGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNo
     return self.nod('Constant', ['value'], [value], jac_node=jac_node);
 }
 
+impl JcirGenPass.int_const_of(
+    value: CtInt, jac_node: (UniNode | None) = None
+) -> CgNode {
+    import from jaclang.compiler.types.ct_value { int_host, int_wide_bytes }
+    wide = int_wide_bytes(value);
+    if wide is None {
+        return self.const_of(int_host(value), jac_node);
+    }
+    return self.nod(
+        'Constant',
+        ['value'],
+        [CgWideInt(negative=value.neg, magnitude=wide)],
+        jac_node=jac_node
+    );
+}
+
 impl JcirGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode {
     return self.nod(
         'Name',
