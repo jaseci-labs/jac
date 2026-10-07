@@ -590,15 +590,23 @@ impl NaIRGenPass._propagate_seam_demotions -> None {
     }
     method_names = {id(fn): name for (name, fn) in self.method_funcs.items()};
     owners: list[tuple[str, ir.Function, uni.Ability, bool]] = [];
-    for (_fid, (func, decl)) in self._linked_fn_decls.items() {
-        if func is None or not func.blocks or id(func) in self._seam_stub_ids {
+    for (_fid, _linked) in self._linked_fn_decls.items() {
+        _linked_fn = _linked[0];
+        _linked_decl = _linked[1];
+        if _linked_fn is None
+            or not _linked_fn.blocks
+            or id(_linked_fn) in self._seam_stub_ids {
             continue;
         }
-        if id(func) in method_names {
-            owners.append((method_names[id(func)], func, decl, True));
-        } elif decl.name_ref is not None
-            and self.func_symtab.get(decl.name_ref.sym_name) is func {
-            owners.append((decl.name_ref.sym_name, func, decl, False));
+        if id(_linked_fn) in method_names {
+            owners.append(
+                (method_names[id(_linked_fn)], _linked_fn, _linked_decl, True)
+            );
+        } elif _linked_decl.name_ref is not None
+            and self.func_symtab.get(_linked_decl.name_ref.sym_name) is _linked_fn {
+            owners.append(
+                (_linked_decl.name_ref.sym_name, _linked_fn, _linked_decl, False)
+            );
         }
     }
     changed = True;
@@ -608,7 +616,8 @@ impl NaIRGenPass._propagate_seam_demotions -> None {
             if id(func) in self._seam_stub_ids {
                 continue;
             }
-            reached = self._reaches_seam_stub(func, set());
+            _owner_seen: set[int] = set();
+            reached = self._reaches_seam_stub(func, _owner_seen);
             if reached is None {
                 continue;
             }
@@ -631,11 +640,13 @@ impl NaIRGenPass._propagate_seam_demotions -> None {
         }
     }
     for (symbol, nd) in list(self._native_test_nodes.items()) {
-        func = self.llvm_module.globals.get(symbol);
-        if not isinstance(func, ir.Function) or id(func) in self._seam_stub_ids {
+        _test_fn = self.llvm_module.globals.get(symbol);
+        if not isinstance(_test_fn, ir.Function)
+            or id(_test_fn) in self._seam_stub_ids {
             continue;
         }
-        reached = self._reaches_seam_stub(func, set());
+        _test_seen: set[int] = set();
+        reached = self._reaches_seam_stub(_test_fn, _test_seen);
         if reached is None {
             continue;
         }
@@ -648,7 +659,7 @@ impl NaIRGenPass._propagate_seam_demotions -> None {
             help_text=f"'{reached}' demoted to its Python-only implementation "
             f"(native seam); the test runs in the server codespace instead."
         );
-        self._demote_native_test(nd, func, mark);
+        self._demote_native_test(nd, _test_fn, mark);
     }
 }
 
