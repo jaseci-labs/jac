@@ -1,6 +1,5 @@
 import os;
 
-"""What one module's native lowering came to, and the seams it took."""
 obj CoverageRecord {
     has outcome: str = 'native',
         code: str = '',
@@ -21,7 +20,6 @@ glob _na_coverage: dict[str, CoverageRecord] = {},
      _na_coverage_state: dict[str, bool] = {"enabled": False},
      _STICKY_OUTCOMES: frozenset[str] = frozenset(['demoted', 'ice']);
 
-"""The text a replayed record holds under a key, or the fallback."""
 def _replayed_text(rec: dict[str, any], key: str, fallback: str) -> str {
     held = rec.get(key);
     if isinstance(held, str) and held {
@@ -105,7 +103,6 @@ def na_coverage_replay(path: str, rec: dict[str, any]) {
     );
 }
 
-"""Every record collected so far, as plain dictionaries."""
 def na_coverage_snapshot -> dict[str, dict[str, any]] {
     snap: dict[str, dict[str, any]] = {};
     for (key, rec) in _na_coverage.items() {

@@ -8,7 +8,6 @@ glob LOWERING_METADATA: str = "jac.native.lowering.v1",
 
 enum NativeLoweringKind { CALLABLE = "callable", FIELD = "field" }
 
-"""The kind a recorded kind name stands for."""
 def _lowering_kind(name: str) -> NativeLoweringKind {
     if name == "callable" {
         return NativeLoweringKind.CALLABLE;
@@ -37,7 +36,6 @@ obj NativeLoweringIssue {
     }
 }
 
-"""The index after any blanks at `at` within one line of `text`."""
 def _skip_blanks(text: str, at: int) -> int {
     while at < len(text) and text[at] in _BLANKS {
         at += 1;
@@ -45,7 +43,6 @@ def _skip_blanks(text: str, at: int) -> int {
     return at;
 }
 
-"""The `!N` node numbers a named metadata root's operand list refers to."""
 def _node_references(operands: str) -> list[str] {
     found: list[str] = [];
     at = 0;
@@ -66,7 +63,6 @@ def _node_references(operands: str) -> list[str] {
     return found;
 }
 
-"""The operand lists of every `!jac.native.lowering.v1 = !{...}` root."""
 def _lowering_roots(llvm_ir_text: str) -> list[str] {
     roots: list[str] = [];
     marker = "!" + LOWERING_METADATA;
@@ -100,7 +96,6 @@ def _lowering_roots(llvm_ir_text: str) -> list[str] {
     return roots;
 }
 
-"""Every `!N = !{ !"<hex>" }` node of the text, by node number."""
 def _hex_nodes(llvm_ir_text: str) -> dict[str, str] {
     nodes: dict[str, str] = {};
     for line in llvm_ir_text.split("\n") {
@@ -142,12 +137,6 @@ def _hex_nodes(llvm_ir_text: str) -> dict[str, str] {
     return nodes;
 }
 
-"""Read only records referenced by the versioned native metadata schema.
-
-Hex encodes the JSON payload so LLVM string escaping and metadata number
-renumbering during linking cannot change its content. Malformed metadata is
-an error, never evidence that a strict compilation succeeded.
-"""
 def native_lowering_issues(llvm_ir_text: str) -> list[NativeLoweringIssue] {
     roots = _lowering_roots(llvm_ir_text);
     if not roots {

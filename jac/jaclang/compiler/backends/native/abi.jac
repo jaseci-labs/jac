@@ -31,10 +31,18 @@ def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
             + FACT_SEP
             + str(probe)
     );
-    found: dict[str, list[any]] = json.loads(answered);
-    for (name, row) in found.items() {
-        offsets: list[int] = [int(offset) for offset in row[0]];
-        layouts[name] = (offsets, int(row[1]));
+    for line in answered.split("\n") {
+        fields = line.split("\t");
+        if len(fields) != 3 {
+            continue;
+        }
+        offsets: list[int] = [];
+        for offset in fields[2].split(",") {
+            if offset {
+                offsets.append(int(offset));
+            }
+        }
+        layouts[fields[0]] = (offsets, int(fields[1]));
     }
     return layouts;
 }

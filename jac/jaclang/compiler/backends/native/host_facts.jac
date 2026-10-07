@@ -78,7 +78,7 @@ def struct_layouts_fact(key: str) -> str {
     (data_layout, _, probe) = key.partition(FACT_SEP);
     (counts_text, _, probe_ir) = probe.partition(FACT_SEP);
     counts: dict[str, int] = json.loads(counts_text);
-    layouts: dict[str, list[any]] = {};
+    rows: list[str] = [];
     with llvm.parse_assembly(probe_ir) as bound, llvm.create_target_data(
         data_layout
     ) as target_data {
@@ -86,10 +86,12 @@ def struct_layouts_fact(key: str) -> str {
             (offsets, size) = target_data.get_global_struct_layout(
                 value, counts[value.name]
             );
-            layouts[value.name] = [list(offsets), size];
+            rows.append(
+                f"{value.name}\t{size}\t" + ",".join(str(offset) for offset in offsets)
+            );
         }
     }
-    return json.dumps(layouts, sort_keys=True);
+    return "\n".join(rows);
 }
 
 def codec_tables_fact -> str {

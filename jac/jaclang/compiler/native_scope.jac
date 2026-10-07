@@ -144,7 +144,6 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.runtime.osp_tag"),
          NativeScopeEntry(module="jaclang.compiler.driver.native_iface"),
          NativeScopeEntry(module="jaclang.compiler.driver.na_coverage"),
-         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.__init__"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.__init__"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir._utils"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.types"),

@@ -39,8 +39,6 @@ def _region_layout_facts -> dict[str, int] {
     };
 }
 
-"""The integer literal the first `<name>: int = <literal>` declaration in the
-source gives, as its text; None when the source has no such declaration."""
 def _declared_int(source: str, name: str) -> (str | None) {
     lead = f"{name}: int = ";
     at = source.find(lead);

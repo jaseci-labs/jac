@@ -24,7 +24,6 @@ import from jaclang.compiler.backends.native.na_constants {
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
-import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import jaclang.compiler.backends.native.llvm.ir as ir;
 import from jaclang.compiler.backends.native.primitives_native {
     NativeEmitCtx,
