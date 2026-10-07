@@ -43,7 +43,7 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
     candidates: dict[str, ir.Type] = {};
-    dropped: set = set();
+    dropped: set[str] = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if not isinstance(stmt, uni.ModuleCode) {
             continue;
@@ -52,10 +52,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             if assign.aug_op is not None {
                 continue;
             }
-            targets = assign.target
-                if isinstance(assign.target, (list, tuple))
-                else [(assign.target)];
-            for target in targets {
+            for target in assign.target {
                 if (
                     not isinstance(target, uni.NameAtom)
                     or target.sym is None

@@ -724,8 +724,9 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]]
             }
             _pname = p.name.value if p.name else "arg";
             _star = "*" if p.is_vararg else "";
+            _targs = param_type.private.type_args;
             out[f"{_mname}({_star}{_pname})"] = self._erased_typevar_names(
-                (param_type.private.type_args or [None])[0]
+                _targs[0] if _targs else None
             );
         }
     }
@@ -4707,7 +4708,8 @@ impl NaIRGenPass._emit_class_routed_call(
     method_name = _sfull.partition(".")[2];
     _recv_cls: (str | None) = _given_recv_cls;
     if _recv_cls is None {
-        _recv_first = (nd.params or [None])[0];
+        _recv_params = nd.params;
+        _recv_first = _recv_params[0] if _recv_params else None;
         _recv_cls = (
             self._struct_name_of(_recv_first)
                 if _recv_first is not None and not isinstance(_recv_first, uni.KWPair)

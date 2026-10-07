@@ -70,10 +70,13 @@ impl NaIRGenPass._slot_abi_matches(
     if len(fn_type.args) != len(slot_type.args) {
         return False;
     }
-    for (have, want) in [
-        (fn_type.return_type, slot_type.return_type),
-        *zip(fn_type.args, slot_type.args)
-    ] {
+    haves: list[ir.Type] = [fn_type.return_type];
+    wants: list[ir.Type] = [slot_type.return_type];
+    haves.extend(fn_type.args);
+    wants.extend(slot_type.args);
+    for i in range(len(haves)) {
+        have = haves[i];
+        want = wants[i];
         if have != want
             and not (
                 isinstance(have, ir.PointerType) and isinstance(want, ir.PointerType)
@@ -973,7 +976,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     ent_ty = ir.LiteralStructType([i64, i8p, i32, i32]);
 
     reg = get_layout_registry(self.module, self.prog);
-    classes = sorted(set(reg.mro_order));
+    classes = sorted(reg.mro_order.keys());
     ancestors: list[ir.Constant] = [];
     spans: dict[str, tuple[int, int]] = {};
     for cls in classes {

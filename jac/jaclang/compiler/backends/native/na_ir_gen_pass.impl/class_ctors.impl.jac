@@ -165,7 +165,8 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
     field_types = self.struct_field_types.get(type_name, {});
     defaults = self.struct_field_defaults.get(type_name, {});
     foreign = self.struct_field_foreign.get(type_name, set());
-    inline = self.struct_field_inline.get(type_name, None) or set();
+    _no_inline: set[str] = set();
+    inline = self.struct_field_inline.get(type_name) or _no_inline;
     positional = self.struct_constructor_order.get(type_name, []);
     params: list[NativeCtorParam] = [];
     for field in layout.fields {
