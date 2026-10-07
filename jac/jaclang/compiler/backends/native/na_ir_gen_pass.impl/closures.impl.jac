@@ -152,10 +152,10 @@ impl NaIRGenPass._emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Val
     }
     cell_name = self._closure_cell_struct(slot_type);
     i32 = ir.IntType(32);
-    func: any = self.builder.function;
+    func = self.builder.function;
     _gc = self._gen_ctx;
     if _gc is not None and func is _gc.resume_fn {
-        _cell_st: any = self.struct_types[cell_name];
+        _cell_st = self.struct_types[cell_name];
         cell_ptr_ty: ir.Type = _cell_st.as_pointer();
         handle_slot = self._entry_alloca(cell_ptr_ty, f"__cell_{var_name}");
         (_sn, _soff, _st) = _gc.slots[-1];
@@ -167,13 +167,15 @@ impl NaIRGenPass._emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Val
         entry_block = func.entry_basic_block;
         cur_block = self.builder.block;
         self.builder.position_at_end(entry_block);
-        cell: any = self.builder.load(handle_slot, name=f"cellh.{var_name}");
-        slot: any = self.builder.gep(
-            cell, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"cell.{var_name}"
+        _gen_cell = self.builder.load(handle_slot, name=f"cellh.{var_name}");
+        _gen_slot = self.builder.gep(
+            _gen_cell,
+            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+            name=f"cell.{var_name}"
         );
         self.builder.position_at_end(cur_block);
-        self.closure_cell_handles[var_name] = cell;
-        return slot;
+        self.closure_cell_handles[var_name] = _gen_cell;
+        return _gen_slot;
     }
     entry_block = func.entry_basic_block;
     cur_block = self.builder.block;
@@ -183,7 +185,7 @@ impl NaIRGenPass._emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Val
         self.builder.position_at_start(entry_block);
     }
     cell = self._alloc_iter_struct(cell_name);
-    slot: any = self.builder.gep(
+    slot = self.builder.gep(
         cell, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"cell.{var_name}"
     );
     if isinstance(slot_type, ir.IntType) {
@@ -210,15 +212,20 @@ impl NaIRGenPass._emit_closure_thunk(
     field_names: list[str] = [];
     field_types: list[ir.Type] = [];
     for (cname, cmode, hidden_ty) in cap_info {
-        _ht: any = hidden_ty;
-        slot_ty = _ht.pointee if cmode == "ptr" else _ht;
-        cell_struct: any = self.struct_types[self._closure_cell_struct(slot_ty)];
+        slot_ty: ir.Type = hidden_ty;
+        if cmode == "ptr" {
+            assert isinstance(hidden_ty, ir.PointerType);
+            _cap_pointee = hidden_ty.pointee;
+            assert _cap_pointee is not None;
+            slot_ty = _cap_pointee;
+        }
+        cell_struct = self.struct_types[self._closure_cell_struct(slot_ty)];
         field_names.append(cname);
         field_types.append(cell_struct.as_pointer());
     }
     self._register_iter_struct(env_name, field_names, field_types);
 
-    fnty: any = target_fn.function_type;
+    fnty = target_fn.function_type;
     declared = list(fnty.args)[:declared_count];
     thunk_ty = ir.FunctionType(fnty.return_type, declared + [i8p]);
     thunk: any = ir.Function(
@@ -229,10 +236,14 @@ impl NaIRGenPass._emit_closure_thunk(
 
     saved_builder = self._builder;
     self._builder = ir.IRBuilder(thunk.append_basic_block("entry"));
-    _env_st: any = self.struct_types[env_name];
+    _env_st = self.struct_types[env_name];
     envp = self.builder.bitcast(thunk.args[-1], _env_st.as_pointer(), name="env.typed");
-    call_args = list(thunk.args)[:-1];
-    for (i, (cname, cmode, _hidden_ty)) in enumerate(cap_info) {
+    call_args: list[ir.Value] = [];
+    for _declared_arg in list(thunk.args)[:-1] {
+        call_args.append(_declared_arg);
+    }
+    for (i, _cap) in enumerate(cap_info) {
+        (cname, cmode, _hidden_ty) = _cap;
         fslot = self.builder.gep(
             envp, [ir.Constant(i32, 0), ir.Constant(i32, i)], name=f"env.{cname}"
         );
@@ -275,18 +286,23 @@ impl NaIRGenPass._emit_closure_pair(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     (sig_name, _sig_st, _fnty_env) = self._closure_sig_struct(declared_fnty);
-    _tname: any = target_fn.name;
-    thunk: any = self.closure_thunks.get(_tname);
-    if thunk is None {
-        thunk = self._emit_closure_thunk(target_fn, len(declared_fnty.args), cap_info);
-        self.closure_thunks[_tname] = thunk;
+    _tname = target_fn.name;
+    _cached_thunk = self.closure_thunks.get(_tname);
+    if _cached_thunk is None {
+        _cached_thunk = self._emit_closure_thunk(
+            target_fn, len(declared_fnty.args), cap_info
+        );
+        self.closure_thunks[_tname] = _cached_thunk;
     }
-    env_name: any = thunk.jac_env_struct;
+    thunk: ir.Function = _cached_thunk;
+    env_name = thunk.jac_env_struct;
+    assert env_name is not None;
     env_field_types = self.struct_field_types[env_name];
     env = self._alloc_iter_struct(env_name);
-    for (i, (cname, _cmode, _ht)) in enumerate(cap_info) {
-        cell: any = self.closure_cell_handles[cname];
-        fty = env_field_types[cname];
+    for (i, _cap) in enumerate(cap_info) {
+        cname = _cap[0];
+        cell = self.closure_cell_handles[cname];
+        fty: ir.Type = env_field_types[cname];
         cellv = cell
             if cell.type == fty
             else self.builder.bitcast(cell, fty, name=f"cellc.{cname}");
@@ -316,8 +332,7 @@ impl NaIRGenPass._emit_closure_value(
     if cap_entry is None {
         return None;
     }
-    fn: any = cap_entry[0];
-    caps: list[tuple[str, str]] = cap_entry[1];
+    (fn, caps) = cap_entry;
     declared_count = len(fn.args) - len(caps);
     if declared_count < 0 {
         return None;
@@ -325,7 +340,8 @@ impl NaIRGenPass._emit_closure_value(
     fnty = fn.function_type;
     declared_fnty = ir.FunctionType(fnty.return_type, list(fnty.args)[:declared_count]);
     cap_info: list[tuple[str, str, ir.Type]] = [];
-    for (i, (cname, cmode)) in enumerate(caps) {
+    for (i, _cap) in enumerate(caps) {
+        (cname, cmode) = _cap;
         cap_info.append((cname, cmode, fnty.args[declared_count + i]));
     }
     return self._emit_closure_pair(fn, declared_fnty, cap_info);
