@@ -284,9 +284,6 @@ def int_host(v: CtInt) -> int {
     return -val if v.neg else val;
 }
 
-"""The little-endian magnitude bytes of an integer too wide for a 64-bit host
-value, or None when it fits. The limbs are 30 bits each, so the bytes are
-packed through a small accumulator and no wide value is ever formed."""
 def int_wide_bytes(v: CtInt) -> (bytes | None) {
     if not v.mag {
         return None;
