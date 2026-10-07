@@ -2269,7 +2269,7 @@ impl NaIRGenPass._codegen_instantiation(
             and isinstance(ftype, ir.PointerType)
             and isinstance(ftype.pointee, ir.FunctionType)
         );
-        if _is_clib_cb {
+        if _is_clib_cb and isinstance(ftype, ir.PointerType) {
             val = self._clib_coerce_callback(val, ftype);
         } else {
             if isinstance(ftype, ir.PointerType)
@@ -2351,7 +2351,7 @@ impl NaIRGenPass._codegen_instantiation(
                     and isinstance(ftype, ir.PointerType)
                     and isinstance(ftype.pointee, ir.FunctionType)
                 );
-                if _is_clib_cb_d {
+                if _is_clib_cb_d and isinstance(ftype, ir.PointerType) {
                     val = self._clib_coerce_callback(val, ftype);
                 } else {
                     val = self._coerce_type(val, ftype);
@@ -4553,7 +4553,7 @@ impl NaIRGenPass._emit_field_store(
             )
         );
     }
-    if _is_clib_cb {
+    if _is_clib_cb and isinstance(ftype, ir.PointerType) {
         value = self._clib_coerce_callback(value, ftype);
     } elif not (skip_narrow_coerce and value.type != ftype) {
         value = self._coerce_type(value, ftype);
