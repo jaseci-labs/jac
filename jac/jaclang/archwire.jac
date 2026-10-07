@@ -6795,6 +6795,8 @@ graph import compiler.frontend {
         MatchStmt,
         Module,
         ModuleCode,
+        ModuleItem,
+        ModulePath,
         MultiString,
         Name,
         ParamVar,
