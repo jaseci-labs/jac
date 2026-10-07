@@ -95,8 +95,14 @@ obj ModuleAnalysis {
         import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
         self.native = self.module is not None
             and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
+        candidate = self.native
+            or (
+                self.module is not None
+                and not self.parse_failed
+                and self.program.infers_native_codespace(self.path)
+            );
 
-        if self.native {
+        if candidate {
             self.options.need_full_ast = True;
         }
 
@@ -111,7 +117,7 @@ obj ModuleAnalysis {
             and not _is_decl_stub
             and not _annex_of_base
             and (
-                self.native
+                candidate
                 or not (
                     self.options.skip_analysis
                     or (self.program.internal and host.import_in_flight(self.path))
@@ -136,6 +142,8 @@ obj ModuleAnalysis {
             and self.program.count_module_errors(self.module_path) > 0 {
             self.blocked = True;
         }
+        self.native = self.module is not None
+            and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
     }
 
     def run_phase(phase: CompilationPhase) {

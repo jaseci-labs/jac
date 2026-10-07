@@ -483,9 +483,6 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
 impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> bool {
     import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
     opts = self.options;
-    if opts is not None and opts.no_cgen {
-        return False;
-    }
     if opts is not None and opts.native_unit {
         import from jaclang.compiler.native_scope {
             in_native_scope_path,
@@ -522,7 +519,6 @@ impl JacProgram.parse_source(
     import from jaclang.compiler.frontend.host { active_host }
     had_error = False;
     run_codespace_infer = False;
-    infer_native = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
         (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
     } else {
@@ -548,13 +544,12 @@ impl JacProgram.parse_source(
             parse_woven
         }
         codespace = self.declared_codespace(file_path);
-        infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
             source_str,
             file_path,
             self,
             annex_sources(file_path),
-            early_context=codespace or ('' if infer_native else 'server')
+            early_context=codespace or 'server'
         );
         if (codespace == 'client') {
             _coerce_client_module(parsed);
@@ -582,43 +577,9 @@ impl JacProgram.parse_source(
     }
     self.install_module(hub_key, parsed);
 
-    if run_codespace_infer and infer_native {
-        _native_unit_opt = bool(self.options is not None and self.options.native_unit);
-        import from jaclang.compiler.placement.placement_solver {
-            native_default_verdict
-        }
-        (_na_ok, _na_why) = native_default_verdict(parsed, self, _native_unit_opt);
-        if _na_ok {
-            _coerce_native_module(parsed);
-            parsed.codespace_inferred = True;
-            active_host().record_native_coverage(parsed.loc.mod_path, 'native');
-        } elif _na_why == 'previously-demoted' {
-            import from jaclang.compiler.placement.placement_pins {
-                native_demotion_code
-            }
-            active_host().record_native_coverage(
-                parsed.loc.mod_path,
-                'demoted',
-                native_demotion_code(os.path.realpath(parsed.loc.mod_path), self),
-                _na_why
-            );
-        } else {
-            active_host().record_native_coverage(
-                parsed.loc.mod_path, 'server', '', _na_why
-            );
-        }
-    } elif run_codespace_infer and self.anchors_native_under_default(parsed) {
-        import from jaclang.compiler.placement.placement_solver {
-            native_default_verdict
-        }
-        (_na_ok, _na_why) = native_default_verdict(
-            parsed, self, bool(self.options is not None and self.options.native_unit)
-        );
-        if _na_ok {
-            _coerce_native_module(parsed);
-            parsed.codespace_inferred = True;
-            active_host().record_native_coverage(parsed.loc.mod_path, 'native');
-        }
+    if run_codespace_infer and self.anchors_native_under_default(parsed) {
+        _coerce_native_module(parsed);
+        active_host().record_native_coverage(parsed.loc.mod_path, 'native');
     }
     return parsed;
 }

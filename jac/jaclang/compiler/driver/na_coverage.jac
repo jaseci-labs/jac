@@ -5,9 +5,7 @@ glob _na_coverage: dict[str, dict[str, any]] = {},
      _na_coverage_state: dict[str, bool] = {"enabled": False};
 
 def na_coverage_begin {
-    import from jaclang.compiler.placement.placement_solver { native_scan_memo_clear }
     _na_coverage.clear();
-    native_scan_memo_clear();
     _na_coverage_state["enabled"] = True;
 }
 

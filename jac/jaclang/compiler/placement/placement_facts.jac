@@ -19,7 +19,7 @@ glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
 
 
 def native_placement_soft(prog: JacProgram, mod: uni.Module) -> bool {
-    if mod.decided_codespace != SPACE_NATIVE {
+    if mod.decided_codespace != SPACE_NATIVE or not mod.codespace_inferred {
         return False;
     }
     opts = prog.options;

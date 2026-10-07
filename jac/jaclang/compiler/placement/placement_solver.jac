@@ -10,27 +10,16 @@ import from jaclang.compiler.placement.placement {
     PLACEMENT_HOLD_EXEMPT_ROOTS,
     get_module_summary,
     record_placement_evidence,
-    scan_native_blockers,
     summarize_module
 }
 import from jaclang.runtime.portability { supports }
 
-obj NativeDepScan {
-    has fresh: list[tuple[str, float, int]],
-        reason: str,
-        deps: list[str];
-}
-
-glob _na_scan_memo: dict[str, NativeDepScan] = {},
-     _SPACE_BY_NAME: dict[str, CodeContext] = {
+glob _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
          'native': CodeContext.NATIVE
-     };
-
-def native_scan_memo_clear {
-    _na_scan_memo.clear();
-}
+     },
+     _placed_native_memo: dict[str, tuple[float, int, bool]] = {};
 
 def placement_work(prog: JacProgram) -> PlacementWork {
     work = prog.analysis.placement_work;
@@ -45,147 +34,36 @@ def refresh_placement_module(module: uni.Module, prog: JacProgram) {
     placement_work(prog).refresh(module);
 }
 
-def _native_dep_scan(
-    path: str, hold_exempt: bool = False
-) -> (tuple[str, list[str]] | None) {
-    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
-    import from jaclang.compiler.driver.program { JacProgram }
-    if module_native_demoted(os.path.realpath(path)) {
-        return ("previously-demoted", []);
-    }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
-    files = [path]
-        + active_host().annex_files(path, '.impl.jac')
-        + active_host().annex_files(path, '.test.jac');
-    fresh: list[tuple[str, float, int]] = [];
-    for f in files {
-        try {
-            fresh.append((f, os.path.getmtime(f), os.path.getsize(f)));
-        } except OSError {
-            return None;
-        }
-    }
-    memo_key = f"{int(hold_exempt)}:{path}";
-    cached = _na_scan_memo.get(memo_key);
-    if cached is not None and cached.fresh == fresh {
-        return (cached.reason, cached.deps);
-    }
-    sv_reason = '';
-    deps: list[str] = [];
-    if not sv_reason {
-        base_dir = os.path.dirname(os.path.abspath(path)) or '.';
-        for f in files {
-            try {
-                src = active_host().read_source(f);
-            } except Exception {
-                sv_reason = "unreadable annex";
-                break;
-            }
-            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
-            if had_err {
-                sv_reason = "parse error";
-                break;
-            }
-            (f_sv, f_deps) = scan_native_blockers(
-                dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
-            );
-            if f_sv {
-                sv_reason = f_sv;
-                break;
-            }
-            deps.extend(f_deps);
-        }
-    }
-    if sv_reason {
-        deps = [];
-    }
-    _na_scan_memo[memo_key] = NativeDepScan(fresh=fresh, reason=sv_reason, deps=deps);
-    return (sv_reason, deps);
-}
-
-glob _CLOSURE_CAP_NOTED: set[str] = set();
-
-def note_native_closure_cap(root_path: str, cap: int) {
-    import from jaclang.compiler.frontend.host { active_host }
-    resolved = os.path.realpath(root_path);
-    if resolved in _CLOSURE_CAP_NOTED {
-        return;
-    }
-    _CLOSURE_CAP_NOTED.add(resolved);
-    active_host().note(
-        f"note: {root_path} preferred native but its import closure "
-        f"exceeded the inference cap ({cap} modules); compiled in the "
-        f"server codespace. Raise [build] native_closure_cap in jac.toml "
-        f"to scan larger closures."
-    );
-}
-
-def _native_deps_ok(
-    root_path: str, root_deps: list[str], hold_exempt: bool = False
-) -> bool {
-    import from jaclang.compiler.frontend.codeinfo {
-        effective_native_closure_cap,
-        native_unit_compile_active
-    }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
-    cap = effective_native_closure_cap();
-    edges: dict[str, list[str]] = {root_path: list(root_deps)};
-    queue: list[str] = list(root_deps);
-    while queue {
-        if len(edges) > cap {
-            note_native_closure_cap(root_path, cap);
-            return False;
-        }
-        dep = queue.pop();
-        if dep in edges {
-            continue;
-        }
-        if in_native_scope_path(dep) and not native_unit_compile_active() {
-            return False;
-        }
-        info = _native_dep_scan(dep, hold_exempt=hold_exempt);
-        if info is None {
-            return False;
-        }
-        (dep_sv, dep_deps) = info;
-        if dep_sv {
-            return False;
-        }
-        edges[dep] = list(dep_deps);
-        for d in dep_deps {
-            if d not in edges {
-                queue.append(d);
-            }
-        }
-    }
-    return True;
-}
-
 def native_default_path_ok(path: str) -> bool {
-    ap = os.path.abspath(path);
-
-    _ap_posix = ap.replace(os.sep, "/");
-    exempt = any(marker in _ap_posix for marker in PLACEMENT_HOLD_EXEMPT_ROOTS);
-    info = _native_dep_scan(ap, hold_exempt=exempt);
-    if info is None {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.passes.native_legality { import_placed_native }
+    resolved = os.path.realpath(path);
+    try {
+        stamp = (os.path.getmtime(resolved), os.path.getsize(resolved));
+    } except OSError {
         return False;
     }
-    (has_sv, deps) = info;
-    if has_sv {
-        return False;
+    cached = _placed_native_memo.get(resolved);
+    if cached is not None and (cached[0], cached[1]) == stamp {
+        return cached[2];
     }
-    return _native_deps_ok(ap, deps, hold_exempt=exempt);
+    placed = import_placed_native(JacProgram(), resolved);
+    _placed_native_memo[resolved] = (stamp[0], stamp[1], placed);
+    return placed;
 }
 
-def native_default_verdict(
-    module: uni.Module,
-    prog: (JacProgram | None) = None,
-    native_unit_compile: bool = False
+def native_placement_candidate(
+    module: uni.Module, prog: JacProgram
 ) -> tuple[bool, str] {
     import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
-
+    import from jaclang.compiler.native_scope { in_native_scope_path }
+    mod_path = module.loc.mod_path if module.loc is not None else '';
+    if not mod_path {
+        return (False, "no module path");
+    }
+    if not prog.infers_native_codespace(mod_path) {
+        return (False, "the default codespace is not native");
+    }
     if module.app_kind == 'web-app' {
         return (False, "web-app project: native is opt-in");
     }
@@ -193,27 +71,18 @@ def native_default_verdict(
     if not env_ok {
         return (False, env_reason);
     }
-    mod_path = module.loc.mod_path if module.loc is not None else '';
-    if not mod_path {
-        return (False, "no module path");
-    }
-    if module_native_demoted(os.path.realpath(mod_path), prog) {
-        return (False, "previously-demoted");
-    }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
+    native_unit_compile = bool(prog.options is not None and prog.options.native_unit);
     if in_native_scope_path(mod_path) and not native_unit_compile {
         return (False, "compiler frontend module: native only inside the kernel build");
     }
     if not any([isinstance(e, uni.ElementStmt) for e in module.body]) {
         return (False, "empty module: nothing to lower");
     }
-    base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
-    (sv_reason, deps) = scan_native_blockers(module, base_dir);
-    if sv_reason {
-        return (False, sv_reason);
-    }
-    if not _native_deps_ok(os.path.abspath(mod_path), deps) {
-        return (False, "import-closure (sv dep or cap)");
+    for elem in module.body {
+        if isinstance(elem, uni.ContextAwareNode)
+            and elem.code_context == CodeContext.CLIENT {
+            return (False, "declares client elements");
+        }
     }
     return (True, '');
 }

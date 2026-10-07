@@ -1,10 +1,13 @@
 import from jaclang.compiler.passes.context { Alert, CompilerPass }
+import os;
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
+    ContextAwareNode,
     ImplDef,
     Import,
     Module,
+    ModuleCode,
     Name,
     Test,
     UniNode
@@ -42,7 +45,9 @@ obj NativeLegality {
         module: list[NativeRefusal] = [],
         reach: list[NativeRefusal] = [],
         reached: dict[int, int] = {},
-        late: dict[str, list[NativeRefusal]] = {};
+        late: dict[str, list[NativeRefusal]] = {},
+        requires: dict[int, NativeRefusal] = {},
+        module_requires: list[NativeRefusal] = [];
 
     def refuse_unit(owner: UniNode, refusal: NativeRefusal) -> None;
     def refuse_module(refusal: NativeRefusal) -> None;
@@ -52,17 +57,27 @@ obj NativeLegality {
     def settle -> None;
     def static_units -> int;
     def late_units -> int;
+    def unmet -> list[tuple[NativeRefusal, NativeRefusal]];
 }
 
 def native_unit_name(owner: UniNode) -> str;
 def native_enclosing_unit(nd: UniNode) -> (UniNode | None);
 def refusal_from_alert(alert: Alert) -> NativeRefusal;
-def build_native_legality(mod: Module) -> NativeLegality;
+def build_native_legality(
+    mod: Module, prog: (JacProgram | None) = None
+) -> NativeLegality;
+
+def stamp_native(mod: Module) -> list[ContextAwareNode];
+def unstamp_native(stamped: list[ContextAwareNode]) -> None;
+def import_placed_native(prog: JacProgram, dep_path: str) -> bool;
+def place_module_server(mod: Module, prog: JacProgram, refusal: NativeRefusal) -> None;
 def settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None);
 
 walker NativeLegalityPass(CompilerPass) {
+    def _emit_refusal(refusal: NativeRefusal) -> None;
+    def _report_unmet(legality: NativeLegality, why: str) -> None;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
@@ -200,6 +215,26 @@ impl NativeLegality.late_units -> int {
     return len(self.late);
 }
 
+impl NativeLegality.unmet -> list[tuple[NativeRefusal, NativeRefusal]] {
+    out: list[tuple[NativeRefusal, NativeRefusal]] = [];
+    blocked = self.module[0]
+        if self.module
+        else (self.reach[0] if self.reach else None);
+    for (uid, need) in self.requires.items() {
+        if uid in self.units {
+            out.append((need, self.units[uid][0]));
+        } elif blocked is not None {
+            out.append((need, blocked));
+        }
+    }
+    if blocked is not None {
+        for need in self.module_requires {
+            out.append((need, blocked));
+        }
+    }
+    return out;
+}
+
 impl native_unit_name(owner: UniNode) -> str {
     if isinstance(owner, Test) {
         return owner.name.sym_name;
@@ -286,12 +321,64 @@ def _reference_targets(nm: Name) -> list[UniNode] {
     return [];
 }
 
-impl build_native_legality(mod: Module) -> NativeLegality {
+impl build_native_legality(
+    mod: Module, prog: (JacProgram | None) = None
+) -> NativeLegality {
     import from jaclang.compiler.passes.capability_check_pass {
         native_capability_demotion_owner,
         native_capability_violations
     }
+    import from jaclang.compiler.placement.placement { scan_native_blockers }
+    import from jaclang.compiler.native_notes { native_notes_of }
+    import from jaclang.compiler.native_bindings { binding_gaps }
     legality = NativeLegality();
+    mod_path = mod.loc.mod_path if mod.loc is not None else "";
+    base_dir = os.path.dirname(os.path.abspath(mod_path)) if mod_path else ".";
+    (blocker, deps) = scan_native_blockers(mod, base_dir);
+    if blocker {
+        legality.refuse_module(NativeRefusal(kind="module", name=blocker, site=mod));
+    }
+    if prog is not None {
+        for dep in deps {
+            if not import_placed_native(prog, dep) {
+                legality.refuse_module(
+                    NativeRefusal(
+                        kind="import",
+                        name=os.path.basename(dep),
+                        site=mod,
+                        help="The imported module is placed on the server, and "
+                        "native code cannot call into it."
+                    )
+                );
+                break;
+            }
+        }
+        for note in native_notes_of(prog, mod_path) {
+            noted = NativeRefusal(
+                kind="construct",
+                name=note.text,
+                site=note.site,
+                code=note.code,
+                text=f"error[{note.code}]: {note.text}"
+            );
+            if note.requires {
+                unit = native_enclosing_unit(note.site);
+                if unit is None {
+                    legality.module_requires.append(noted);
+                } else {
+                    legality.owners[id(unit)] = unit;
+                    legality.requires[id(unit)] = noted;
+                }
+                continue;
+            }
+            owner = native_capability_demotion_owner(note.site);
+            if owner is None {
+                legality.refuse_module(noted);
+            } else {
+                legality.refuse_unit(owner, noted);
+            }
+        }
+    }
     for (vnode, vkind, vname, vhelp) in native_capability_violations(mod) {
         owner = native_capability_demotion_owner(vnode);
         if owner is None {
@@ -316,6 +403,22 @@ impl build_native_legality(mod: Module) -> NativeLegality {
             continue;
         }
         for nm in stmt.get_all_sub_nodes(Name) {
+            if prog is not None {
+                for gap in binding_gaps(prog, nm, base_dir) {
+                    missing = NativeRefusal(
+                        kind="library member",
+                        name=gap,
+                        site=nm,
+                        text=f"error[E5090]: {gap}"
+                    );
+                    gap_owner = native_capability_demotion_owner(nm);
+                    if gap_owner is None {
+                        legality.refuse_module(missing);
+                    } else {
+                        legality.refuse_unit(gap_owner, missing);
+                    }
+                }
+            }
             targets = _reference_targets(nm);
             if not targets {
                 continue;
@@ -342,6 +445,99 @@ impl build_native_legality(mod: Module) -> NativeLegality {
     return legality;
 }
 
+impl stamp_native(mod: Module) -> list[ContextAwareNode] {
+    stamped: list[ContextAwareNode] = [];
+    for elem in mod.body {
+        if not isinstance(elem, ContextAwareNode)
+            or elem.code_context != CodeContext.SERVER {
+            continue;
+        }
+        elem.code_context = CodeContext.NATIVE;
+        stamped.append(elem);
+        if isinstance(elem, ModuleCode) and elem.body {
+            for inner in elem.body {
+                if isinstance(inner, ContextAwareNode)
+                    and inner.code_context == CodeContext.SERVER {
+                    inner.code_context = CodeContext.NATIVE;
+                    stamped.append(inner);
+                }
+            }
+        }
+    }
+    return stamped;
+}
+
+impl unstamp_native(stamped: list[ContextAwareNode]) -> None {
+    for elem in stamped {
+        elem.code_context = CodeContext.SERVER;
+    }
+}
+
+impl import_placed_native(prog: JacProgram, dep_path: str) -> bool {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+    resolved = os.path.realpath(dep_path);
+    placing = prog.analysis.native_placing;
+    if resolved in placing {
+        return True;
+    }
+    target = prog.mod.hub.get(resolved);
+    if target is None
+        or not prog.analysis.analyses_run.provides(target, AnalysisFact.CAPABILITY) {
+        placing.add(resolved);
+        try {
+            target = prog.compile(resolved, options=CompileOptions(no_cgen=True));
+        } finally {
+            placing.discard(resolved);
+        }
+    }
+    return target is not None and target.declares_codespace(CodeContext.NATIVE);
+}
+
+impl place_module_server(
+    mod: Module, prog: JacProgram, refusal: NativeRefusal
+) -> None {
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.placement.placement_solver {
+        invalidate_importers_es,
+        placement_work
+    }
+    import from jaclang.compiler.driver.session_compile { drop_native_bindings }
+    for elem in mod.body {
+        if not isinstance(elem, ContextAwareNode)
+            or elem.code_context != CodeContext.NATIVE
+            or (isinstance(elem, Import) and elem.has_clib_decls) {
+            continue;
+        }
+        elem.code_context = CodeContext.SERVER;
+        if isinstance(elem, ModuleCode) and elem.body {
+            for inner in elem.body {
+                if isinstance(inner, ContextAwareNode) {
+                    inner.code_context = CodeContext.SERVER;
+                }
+            }
+        }
+    }
+    mod.decided_codespace = "";
+    mod.codespace_inferred = False;
+    mod_path = mod.loc.mod_path if mod.loc is not None else "";
+    if not mod_path {
+        return;
+    }
+    resolved = os.path.realpath(mod_path);
+    host = active_host();
+    host.record_native_coverage(resolved, 'server', refusal.code, refusal.headline());
+    for stale in invalidate_importers_es(prog, resolved) {
+        drop_native_bindings(stale, resolved);
+    }
+    placement_work(prog).changed(mod);
+    host.note(
+        f"note: {mod_path} preferred native but did not lower; "
+        f"compiled in the server codespace ({refusal.headline()})",
+        "dim"
+    );
+}
+
 impl settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None) {
@@ -352,7 +548,6 @@ impl settle_native_module(
     del pending[:];
     del warnings[:];
     gen = mod.gen;
-    gen.native_refusal_code = refusal.code;
     gen.native_refusal = refusal.headline();
     gen.llvm_ir = None;
     gen.native_engine = None;
@@ -361,58 +556,108 @@ impl settle_native_module(
     gen.native_iface = None;
     gen.native_layout = None;
     gen.native_deps = [];
+    place_module_server(mod, prog, refusal);
     return refusal;
 }
 
+impl NativeLegalityPass._emit_refusal(refusal: NativeRefusal) -> None {
+    if refusal.site is None {
+        return;
+    }
+    self.ctx.emit(
+        E5090,
+        node_override=refusal.site,
+        kind=refusal.kind,
+        name=refusal.name,
+        help_text=refusal.help
+    );
+}
+
 impl NativeLegalityPass._run_impl(ir_in: Module) -> Module {
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.placement.placement_solver {
+        native_placement_candidate,
+        placement_work
+    }
     ir_in.native_viols_reported = True;
-    if not ModuleFacts.has_native_context_stmts(ir_in) {
-        return ir_in;
+    mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    declared = ModuleFacts.has_native_context_stmts(ir_in);
+    stamped: list[ContextAwareNode] = [];
+    if not declared {
+        (candidate, why) = native_placement_candidate(ir_in, self.prog);
+        if not candidate {
+            active_host().record_native_coverage(mod_path, 'server', '', why);
+            self._report_unmet(build_native_legality(ir_in, self.prog), why);
+            return ir_in;
+        }
+        stamped = stamp_native(ir_in);
     }
-    legality = build_native_legality(ir_in);
+    legality = build_native_legality(ir_in, self.prog);
     if not legality.module_refused() {
+        if stamped {
+            ir_in.decided_codespace = CodeContext.NATIVE.value;
+            ir_in.codespace_inferred = True;
+            placement_work(self.prog).changed(ir_in);
+        }
+        active_host().record_native_coverage(mod_path, 'native');
+        self._report_unmet(legality, "");
         return ir_in;
     }
-    if native_placement_soft(self.prog, ir_in) {
-        first = legality.module[0] if legality.module else legality.reach[0];
-        ir_in.gen.native_refusal_code = first.code;
-        ir_in.gen.native_refusal = first.headline();
+    first = legality.module[0] if legality.module else legality.reach[0];
+    if stamped {
+        unstamp_native(stamped);
+        active_host().record_native_coverage(
+            mod_path, 'server', first.code, first.headline()
+        );
+        self._report_unmet(legality, first.headline());
         return ir_in;
     }
-    if not legality.module {
-        return ir_in;
-    }
-    shown: list[NativeRefusal] = [];
     seen: set[int] = set();
     candidates: list[NativeRefusal] = list(legality.module);
     for refusals in legality.units.values() {
         candidates.extend(refusals);
     }
     for refusal in candidates {
-        if refusal.site is None
-            or refusal.code != "E5090"
-            or id(refusal.site) in seen {
+        if refusal.site is None or id(refusal.site) in seen {
             continue;
         }
         seen.add(id(refusal.site));
-        shown.append(refusal);
+        self._emit_refusal(refusal);
     }
-    for refusal in shown {
-        if refusal.help is None {
-            self.ctx.emit(
-                E5090, node_override=refusal.site, kind=refusal.kind, name=refusal.name
-            );
-        } else {
+    return ir_in;
+}
+
+impl NativeLegalityPass._report_unmet(legality: NativeLegality, why: str) -> None {
+    for (need, blocked) in legality.unmet() {
+        if need.site is None {
+            continue;
+        }
+        self.ctx.emit(
+            E5090,
+            node_override=need.site,
+            kind="native-only construct",
+            name=need.name,
+            help_text="This construct only exists natively, but the code that uses "
+            f"it cannot be placed native: {blocked.headline()}"
+        );
+    }
+    if why and not legality.module_refused() {
+        needs: list[NativeRefusal] = list(legality.requires.values());
+        needs.extend(legality.module_requires);
+        for need in needs {
+            if need.site is None {
+                continue;
+            }
             self.ctx.emit(
                 E5090,
-                node_override=refusal.site,
-                kind=refusal.kind,
-                name=refusal.name,
-                help_text=refusal.help
+                node_override=need.site,
+                kind="native-only construct",
+                name=need.name,
+                help_text="This construct only exists natively, but this module "
+                f"is not a candidate for native placement: {why}"
             );
         }
     }
-    return ir_in;
 }
 
 impl NativeLegalityPass.run_walk with Module entry {

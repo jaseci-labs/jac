@@ -205,7 +205,7 @@ impl NaIRGenPass._refuse_split_bodies(mod: uni.Module) -> None {
 
 impl NaIRGenPass._lower_module -> None {
     import from jaclang.compiler.passes.native_legality { build_native_legality }
-    self._legality = build_native_legality(self.module);
+    self._legality = build_native_legality(self.module, self.prog);
     self._claimed_units = set();
     self._internal_errors = [];
     if self._legality.module {
