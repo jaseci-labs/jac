@@ -3808,7 +3808,10 @@ impl NaIRGenPass._empty_ctor_args_of(nd: uni.FuncCall) -> list[TypeBase] {
     if isinstance(_par, uni.IfElseExpr) {
         _sib = _par.else_value if _par.value is _cur else _par.value;
         if _sib is not _cur {
-            return self._container_type_args(self._unwrap_cfg_expr(_sib)?.type);
+            _sib_e = self._unwrap_cfg_expr(_sib);
+            return self._container_type_args(
+                _sib_e.type if isinstance(_sib_e, uni.Expr) else None
+            );
         }
     }
     return [];
@@ -3875,13 +3878,18 @@ impl NaIRGenPass._spec_from_container_ptr(t: (ir.Type | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._container_type_args(t: any) -> list[TypeBase] {
-    if t is None {
-        return [];
+    _cands: list[TypeBase] = [];
+    if isinstance(t, UnionType) and t.types {
+        _cands = list(t.types);
+    } elif isinstance(t, TypeBase) {
+        _cands = [t];
     }
-    for _cand in (t?.types or [t]) {
-        _priv = _cand?.private;
-        if _priv is not None and (_priv?.type_args or []) {
-            return list(_priv.type_args);
+    for _cand in _cands {
+        if isinstance(_cand, ClassType) {
+            _targs = _cand.private.type_args;
+            if _targs {
+                return list(_targs);
+            }
         }
     }
     return [];

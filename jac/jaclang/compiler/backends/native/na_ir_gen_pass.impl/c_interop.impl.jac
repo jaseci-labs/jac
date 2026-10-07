@@ -499,7 +499,12 @@ impl NaIRGenPass._clib_ret_is_cptr(sig: uni.FuncSignature) -> bool {
 }
 
 impl NaIRGenPass._c_decl_type_of(type_expr: uni.UniNode) -> any {
-    t = type_expr?.type;
+    t: (TypeBase | None) = None;
+    if isinstance(type_expr, uni.Expr) {
+        t = type_expr.type;
+    } elif isinstance(type_expr, uni.AstTypedVarNode) {
+        t = type_expr.type;
+    }
     if isinstance(t, ClassType) and not t.is_instance() {
         return t.clone_as_instance();
     }
