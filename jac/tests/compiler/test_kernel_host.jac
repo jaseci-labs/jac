@@ -93,7 +93,8 @@ def observe(base: Path, kernel: bool) -> dict[str, any] {
                 continue;
             }
             facts[norm(path)] = (
-                mod.decided_codespace, norm(repr(get_module_summary(mod, context)))
+                mod.decided_codespace,
+                norm(repr(get_module_summary(mod, context)))
             );
         }
     }
