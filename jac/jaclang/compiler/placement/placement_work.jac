@@ -16,7 +16,8 @@ obj PlacementWork {
         queue: list[int] = [],
         cursor: int = 0,
         current: int | None = None,
-        solving: bool = False;
+        solving: bool = False,
+        seeded: set[int] = set();
 
     def enqueue(edge_id: int) {
         if edge_id in self.edges and edge_id not in self.pending {

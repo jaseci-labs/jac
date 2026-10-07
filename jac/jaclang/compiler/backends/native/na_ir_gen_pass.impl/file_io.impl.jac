@@ -335,14 +335,22 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i1 = ir.IntType(1);
-    params: Sequence[any] = nd.params or [];
-    if not params or len(params) > 2 {
-        return None;
-    }
-    for _p in params {
-        if isinstance(_p, uni.KWPair) {
+    params: list[any] = [];
+    for _p in nd.params or [] {
+        if not isinstance(_p, uni.KWPair) {
+            params.append(_p);
+        } elif _p.key is not None and _p.key.sym_name == "mode" and len(params) == 1 {
+            params.append(_p.value);
+        } elif not (
+            _p.key is not None
+            and _p.key.sym_name == "encoding"
+            and _open_encoding_is_utf8(_p.value)
+        ) {
             return None;
         }
+    }
+    if not params or len(params) > 2 {
+        return None;
     }
     path_val = self._str_norm_optional(self._codegen_expr(params[0]));
     if path_val is None {
@@ -417,4 +425,15 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     );
     self.builder.store(ir.Constant(i1, 0), closed_ptr);
     return self._mark_owned(file_obj);
+}
+
+def _open_encoding_is_utf8(value: uni.Expr) -> bool {
+    literal: uni.UniNode = value;
+    if isinstance(literal, uni.MultiString) and len(literal.strings) == 1 {
+        literal = literal.strings[0];
+    }
+    if not isinstance(literal, uni.String) or not isinstance(literal.lit_value, str) {
+        return False;
+    }
+    return literal.lit_value.lower().replace("-", "").replace("_", "") == "utf8";
 }

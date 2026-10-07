@@ -42,4 +42,10 @@ glob colors: list[str] = [
          '#F0F8FF',
          '#F8F8FF',
          '#F0FFFF'
-     ];
+     ],
+     JAC_TO_CTYPES_STR: dict[str, str] = {
+         'int': 'ctypes.c_int64',
+         'float': 'ctypes.c_double',
+         'bool': 'ctypes.c_bool',
+         'str': 'ctypes.c_char_p'
+     };

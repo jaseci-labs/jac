@@ -1,5 +1,15 @@
 import jaclang.compiler.backends.es.estree as es;
 import type from jaclang.compiler.backends.es.view_ir { ViewChild }
+import from jaclang.compiler.backends.es.view_ir {
+    DynamicAttr,
+    EachChild,
+    EventAttr,
+    IfChild,
+    RefAttr,
+    SpreadAttr,
+    StaticAttr,
+    ViewLocator
+}
 import from jaclang.compiler.backends.es.reactive_intent {
     StateField,
     RefField,
@@ -86,10 +96,6 @@ impl SolidBackend.lower_state_read(name: str) -> es.Expression {
     return es.CallExpression(callee=es.Identifier(name=name), arguments=[]);
 }
 
-impl SolidBackend._noloc(es_node: any, jac_node: any = None) -> any {
-    return es_node;
-}
-
 impl SolidBackend._jsx_tag_name(
     expr: (es.Expression | None)
 ) -> (es.JsxIdentifier | es.JsxMemberExpression | None) {
@@ -129,50 +135,72 @@ impl SolidBackend._jsx_attr_str_safe(value: str) -> bool {
 }
 
 impl SolidBackend._jsx_attr(
-    attr: any, sync_loc: any
+    attr: (StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr),
+    locator: ViewLocator
 ) -> (es.JsxAttribute | es.JsxSpreadAttribute) {
-    import from jaclang.compiler.backends.es.view_ir {
-        StaticAttr,
-        EventAttr,
-        SpreadAttr
-    }
     if isinstance(attr, SpreadAttr) {
-        return sync_loc(
+        return locator.at(
             es.JsxSpreadAttribute(argument=attr.value), jac_node=attr.jac_node
         );
     }
-    name_node = sync_loc(
-        es.JsxIdentifier(name=self._map_attr_name(attr.name)), jac_node=attr.jac_node
-    );
     if isinstance(attr, StaticAttr) {
-        if attr.value.value is True {
-            value: (es.Literal | es.JsxExpressionContainer | None) = None;
-        } elif (
-            isinstance(attr.value.value, str)
-            and not self._jsx_attr_str_safe(attr.value.value)
-        ) {
-            value = sync_loc(
-                es.JsxExpressionContainer(expression=attr.value), jac_node=attr.jac_node
+        literal = attr.value;
+        raw = literal.value;
+        value: (es.Literal | es.JsxExpressionContainer | None) = literal;
+        if raw is True {
+            value = None;
+        } elif isinstance(raw, str) and not self._jsx_attr_str_safe(raw) {
+            value = locator.at(
+                es.JsxExpressionContainer(expression=literal), jac_node=attr.jac_node
             );
-        } else {
-            value = attr.value;
         }
-    } elif isinstance(attr, EventAttr) {
-        value = sync_loc(
-            es.JsxExpressionContainer(expression=attr.handler), jac_node=attr.jac_node
-        );
-    } else {
-        value = sync_loc(
-            es.JsxExpressionContainer(expression=attr.value), jac_node=attr.jac_node
+        return self._jsx_named_attr(attr.name, value, attr.jac_node, locator);
+    }
+    if isinstance(attr, EventAttr) {
+        return self._jsx_named_attr(
+            attr.name,
+            locator.at(
+                es.JsxExpressionContainer(expression=attr.handler),
+                jac_node=attr.jac_node
+            ),
+            attr.jac_node,
+            locator
         );
     }
-    return sync_loc(
-        es.JsxAttribute(name=name_node, value=value), jac_node=attr.jac_node
+    if isinstance(attr, DynamicAttr) {
+        return self._jsx_named_attr(
+            attr.name,
+            locator.at(
+                es.JsxExpressionContainer(expression=attr.value), jac_node=attr.jac_node
+            ),
+            attr.jac_node,
+            locator
+        );
+    }
+    return self._jsx_named_attr(
+        attr.name,
+        locator.at(
+            es.JsxExpressionContainer(expression=attr.value), jac_node=attr.jac_node
+        ),
+        attr.jac_node,
+        locator
     );
 }
 
+impl SolidBackend._jsx_named_attr(
+    name: str,
+    value: (es.Literal | es.JsxExpressionContainer | None),
+    jac_node: (uni.UniNode | None),
+    locator: ViewLocator
+) -> es.JsxAttribute {
+    name_node = locator.at(
+        es.JsxIdentifier(name=self._map_attr_name(name)), jac_node=jac_node
+    );
+    return locator.at(es.JsxAttribute(name=name_node, value=value), jac_node=jac_node);
+}
+
 impl SolidBackend._jsx_child_nodes(
-    children: list[ViewChild], sync_loc: any
+    children: list[ViewChild], locator: ViewLocator
 ) -> list[any] {
     import from jaclang.compiler.backends.es.view_ir {
         TextChild,
@@ -185,23 +213,23 @@ impl SolidBackend._jsx_child_nodes(
     out = [];
     for child in children {
         if isinstance(child, EachChild) {
-            out.append(self._jsx_for(child, sync_loc));
+            out.append(self._jsx_for(child, locator));
             continue;
         }
         if isinstance(child, IfChild) {
-            out.append(self._jsx_show(child, sync_loc));
+            out.append(self._jsx_show(child, locator));
             continue;
         }
         if isinstance(child, TextChild) {
             out.append(
-                sync_loc(
+                locator.at(
                     es.JsxExpressionContainer(expression=child.value),
                     jac_node=child.jac_node
                 )
             );
         } elif isinstance(child, DynamicChild) {
             out.append(
-                sync_loc(
+                locator.at(
                     es.JsxExpressionContainer(expression=child.value),
                     jac_node=child.jac_node
                 )
@@ -209,15 +237,15 @@ impl SolidBackend._jsx_child_nodes(
         } elif isinstance(child, ElementChild) {
             el = child.element;
             if isinstance(el.tag, FragmentTag) {
-                for sub in self._jsx_child_nodes(el.children, sync_loc) {
+                for sub in self._jsx_child_nodes(el.children, locator) {
                     out.append(sub);
                 }
             } else {
-                out.append(self.lower_view(el, sync_loc));
+                out.append(self.lower_view(el, locator));
             }
         } else {
             out.append(
-                sync_loc(
+                locator.at(
                     es.JsxExpressionContainer(expression=child.expr),
                     jac_node=child.jac_node
                 )
@@ -228,7 +256,7 @@ impl SolidBackend._jsx_child_nodes(
 }
 
 impl SolidBackend._view_children_as_expr(
-    children: list[ViewChild], sync_loc: any
+    children: list[ViewChild], locator: ViewLocator
 ) -> es.Expression {
     import from jaclang.compiler.backends.es.view_ir { ElementChild, FragmentTag }
     if (
@@ -236,48 +264,47 @@ impl SolidBackend._view_children_as_expr(
         and isinstance(children[0], ElementChild)
         and not isinstance(children[0].element.tag, FragmentTag)
     ) {
-        return self.lower_view(children[0].element, sync_loc);
+        return self.lower_view(children[0].element, locator);
     }
-    return sync_loc(
-        es.JsxFragment(children=self._jsx_child_nodes(children, sync_loc)),
-        jac_node=None
+    return locator.at(
+        es.JsxFragment(children=self._jsx_child_nodes(children, locator)), jac_node=None
     );
 }
 
-impl SolidBackend._jsx_for(child: any, sync_loc: any) -> es.JsxElement {
-    each_attr = sync_loc(
+impl SolidBackend._jsx_for(child: EachChild, locator: ViewLocator) -> es.JsxElement {
+    each_attr = locator.at(
         es.JsxAttribute(
-            name=sync_loc(es.JsxIdentifier(name="each"), jac_node=child.jac_node),
-            value=sync_loc(
+            name=locator.at(es.JsxIdentifier(name="each"), jac_node=child.jac_node),
+            value=locator.at(
                 es.JsxExpressionContainer(expression=child.items),
                 jac_node=child.jac_node
             )
         ),
         jac_node=child.jac_node
     );
-    arrow = sync_loc(
+    arrow = locator.at(
         es.ArrowFunctionExpression(
             params=[es.Identifier(name=child.item)],
-            body=self._view_children_as_expr(child.body, sync_loc),
+            body=self._view_children_as_expr(child.body, locator),
             async_=False,
             expression=True
         ),
         jac_node=child.jac_node
     );
-    callback = sync_loc(
+    callback = locator.at(
         es.JsxExpressionContainer(expression=arrow), jac_node=child.jac_node
     );
-    name_node = sync_loc(es.JsxIdentifier(name="For"), jac_node=child.jac_node);
+    name_node = locator.at(es.JsxIdentifier(name="For"), jac_node=child.jac_node);
     return self._jsx_element(
-        name_node, [each_attr], [callback], child.jac_node, sync_loc
+        name_node, [each_attr], [callback], child.jac_node, locator
     );
 }
 
-impl SolidBackend._jsx_show(child: any, sync_loc: any) -> es.JsxElement {
-    when_attr = sync_loc(
+impl SolidBackend._jsx_show(child: IfChild, locator: ViewLocator) -> es.JsxElement {
+    when_attr = locator.at(
         es.JsxAttribute(
-            name=sync_loc(es.JsxIdentifier(name="when"), jac_node=child.jac_node),
-            value=sync_loc(
+            name=locator.at(es.JsxIdentifier(name="when"), jac_node=child.jac_node),
+            value=locator.at(
                 es.JsxExpressionContainer(expression=child.`test),
                 jac_node=child.jac_node
             )
@@ -286,16 +313,14 @@ impl SolidBackend._jsx_show(child: any, sync_loc: any) -> es.JsxElement {
     );
     attrs = [when_attr];
     if child.alternate is not None {
-        fallback_attr = sync_loc(
+        fallback_attr = locator.at(
             es.JsxAttribute(
-                name=sync_loc(
+                name=locator.at(
                     es.JsxIdentifier(name="fallback"), jac_node=child.jac_node
                 ),
-                value=sync_loc(
+                value=locator.at(
                     es.JsxExpressionContainer(
-                        expression=self._view_children_as_expr(
-                            child.alternate, sync_loc
-                        )
+                        expression=self._view_children_as_expr(child.alternate, locator)
                     ),
                     jac_node=child.jac_node
                 )
@@ -304,13 +329,13 @@ impl SolidBackend._jsx_show(child: any, sync_loc: any) -> es.JsxElement {
         );
         attrs.append(fallback_attr);
     }
-    name_node = sync_loc(es.JsxIdentifier(name="Show"), jac_node=child.jac_node);
+    name_node = locator.at(es.JsxIdentifier(name="Show"), jac_node=child.jac_node);
     return self._jsx_element(
         name_node,
         attrs,
-        self._jsx_child_nodes(child.consequent, sync_loc),
+        self._jsx_child_nodes(child.consequent, locator),
         child.jac_node,
-        sync_loc
+        locator
     );
 }
 
@@ -341,24 +366,24 @@ impl SolidBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
 }
 
 impl SolidBackend._jsx_element(
-    name_node: any,
+    name_node: (es.JsxIdentifier | es.JsxMemberExpression),
     attrs: list[es.JsxAttribute | es.JsxSpreadAttribute],
     children: list[any],
-    jac_node: any,
-    sync_loc: any
+    jac_node: (uni.UniNode | None),
+    locator: ViewLocator
 ) -> es.JsxElement {
     self_closing = len(children) == 0;
-    opening = sync_loc(
+    opening = locator.at(
         es.JsxOpeningElement(
             name=name_node, attributes=attrs, selfClosing=self_closing
         ),
         jac_node=jac_node
     );
     if self_closing {
-        return sync_loc(es.JsxElement(openingElement=opening), jac_node=jac_node);
+        return locator.at(es.JsxElement(openingElement=opening), jac_node=jac_node);
     }
-    closing = sync_loc(es.JsxClosingElement(name=name_node), jac_node=jac_node);
-    return sync_loc(
+    closing = locator.at(es.JsxClosingElement(name=name_node), jac_node=jac_node);
+    return locator.at(
         es.JsxElement(
             openingElement=opening, children=children, closingElement=closing
         ),
@@ -370,50 +395,53 @@ impl SolidBackend._jsx_dynamic(
     component_expr: es.Expression,
     attrs: list[es.JsxAttribute | es.JsxSpreadAttribute],
     children: list[any],
-    jac_node: any,
-    sync_loc: any
+    jac_node: (uni.UniNode | None),
+    locator: ViewLocator
 ) -> es.JsxElement {
-    comp_attr = sync_loc(
+    comp_attr = locator.at(
         es.JsxAttribute(
-            name=sync_loc(es.JsxIdentifier(name="component"), jac_node=jac_node),
-            value=sync_loc(
+            name=locator.at(es.JsxIdentifier(name="component"), jac_node=jac_node),
+            value=locator.at(
                 es.JsxExpressionContainer(expression=component_expr), jac_node=jac_node
             )
         ),
         jac_node=jac_node
     );
-    name_node = sync_loc(es.JsxIdentifier(name="Dynamic"), jac_node=jac_node);
+    name_node = locator.at(es.JsxIdentifier(name="Dynamic"), jac_node=jac_node);
     return self._jsx_element(
-        name_node, [comp_attr] + attrs, children, jac_node, sync_loc
+        name_node, [comp_attr] + attrs, children, jac_node, locator
     );
 }
 
-impl SolidBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression {
+impl SolidBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expression {
     import from jaclang.compiler.backends.es.view_ir {
         HostTag,
         ComponentTag,
         FragmentTag
     }
     tag = view.tag;
-    children_nodes = self._jsx_child_nodes(view.children, sync_loc);
+    children_nodes = self._jsx_child_nodes(view.children, locator);
 
     if isinstance(tag, FragmentTag) {
-        return sync_loc(es.JsxFragment(children=children_nodes), jac_node=tag.jac_node);
+        return locator.at(
+            es.JsxFragment(children=children_nodes), jac_node=tag.jac_node
+        );
     }
-    attr_nodes = [self._jsx_attr(a, sync_loc) for a in view.attrs];
+    attr_nodes = [self._jsx_attr(a, locator) for a in view.attrs];
+    name_node: (es.JsxIdentifier | es.JsxMemberExpression);
     if isinstance(tag, HostTag) {
-        name_node = sync_loc(es.JsxIdentifier(name=tag.name), jac_node=tag.jac_node);
+        name_node = locator.at(es.JsxIdentifier(name=tag.name), jac_node=tag.jac_node);
     } elif isinstance(tag, ComponentTag) {
         resolved = self._jsx_tag_name(tag.ref);
         assert resolved is not None , "ComponentTag.ref did not resolve to a JSX tag name (producer invariant broken)";
-        name_node = sync_loc(resolved, jac_node=tag.jac_node);
+        name_node = locator.at(resolved, jac_node=tag.jac_node);
     } else {
         return self._jsx_dynamic(
-            tag.expr, attr_nodes, children_nodes, view.jac_node, sync_loc
+            tag.expr, attr_nodes, children_nodes, view.jac_node, locator
         );
     }
     return self._jsx_element(
-        name_node, attr_nodes, children_nodes, view.jac_node, sync_loc
+        name_node, attr_nodes, children_nodes, view.jac_node, locator
     );
 }
 
@@ -533,13 +561,14 @@ impl SolidBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
         jac_node=jn
     );
     if not a.except_exprs {
-        return self.lower_view(suspense_view, self._noloc);
+        return self.lower_view(suspense_view, ViewLocator(locate=False));
     }
     if len(a.except_exprs) == 1 {
         except_fallback: es.Expression = a.except_exprs[0];
     } else {
         except_fallback = self._view_children_as_expr(
-            [DynamicChild(value=ex, jac_node=jn) for ex in a.except_exprs], self._noloc
+            [DynamicChild(value=ex, jac_node=jn) for ex in a.except_exprs],
+            ViewLocator(locate=False)
         );
     }
     error_view = ViewElement(
@@ -548,7 +577,7 @@ impl SolidBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
         children=[ElementChild(element=suspense_view, jac_node=jn)],
         jac_node=jn
     );
-    return self.lower_view(error_view, self._noloc);
+    return self.lower_view(error_view, ViewLocator(locate=False));
 }
 
 impl SolidBackend.state_field_symbols(s: StateField) -> list[str] {

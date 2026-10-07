@@ -2,7 +2,7 @@ import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
-import from jaclang.compiler.passes.context { Alert, PassResult }
+import from jaclang.compiler.passes.context { Alert, CompileContext, PassResult }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
 import type from jaclang.compiler.placement.placement { PlacementSummary }
@@ -323,6 +323,7 @@ class AnalysisCaches {
         native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
+        mtir_owned: dict[str, list[str]],
         pass_runs: dict[str, int],
         pass_time: dict[str, float],
         phase_time: dict[str, float],
@@ -330,7 +331,8 @@ class AnalysisCaches {
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, uni.Module],
         early_passes: dict[int, PendingPassResults],
-        cache_events: dict[str, int];
+        cache_events: dict[str, int],
+        running: (CompileContext | None);
 
     def init(self: AnalysisCaches) {
         self.placement_summaries: dict[str, PlacementSummary] = {};
@@ -339,6 +341,7 @@ class AnalysisCaches {
         self.native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
+        self.mtir_owned: dict[str, list[str]] = {};
         self.pass_runs: dict[str, int] = {};
         self.pass_time: dict[str, float] = {};
         self.phase_time: dict[str, float] = {};
@@ -347,6 +350,7 @@ class AnalysisCaches {
         self.task_owners: dict[int, uni.Module] = {};
         self.early_passes: dict[int, PendingPassResults] = {};
         self.cache_events: dict[str, int] = {};
+        self.running: (CompileContext | None) = None;
     }
 
     def retain_tasks(self: AnalysisCaches, module: uni.Module) {

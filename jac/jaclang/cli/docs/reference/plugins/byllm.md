@@ -982,7 +982,7 @@ After each call byLLM appends the turn to your list **in place** as plain dicts.
 {"role": "assistant", "content": "It's sunny in Paris."}
 ```
 
-The auto-generated SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn. The list is safe to JSON-serialise and replay across sessions.
+The SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn, so a `system` message found in the list (for example one stored by an earlier version) is dropped rather than replayed. The list is safe to JSON-serialise and replay across sessions.
 
 ---
 
@@ -1366,11 +1366,13 @@ After every LLM response byLLM compares `prompt_tokens / ctx_window` against a t
 1. The oldest tool-call rounds are serialised and sent to a summarisation LLM call.
 2. The summary replaces those rounds with a single user message tagged `[Compacted context summary]`.
 3. The system message and original user task (`messages[0]` and `messages[1]`) are always preserved verbatim.
-4. The most-recent `keep_recent_iterations` tool-call rounds are also kept verbatim for immediate context.
+4. The most-recent tool-call rounds are also kept verbatim for immediate context: at most `keep_recent_iterations` of them, and fewer when they would take more than a quarter of the context window. The newest round is always kept, and its tool results are truncated (with a marker) if it alone is over that quarter.
+
+A compaction whose summarised part would be no more than 5 % of the context window is skipped, since an extra model call would save almost nothing. If compaction cannot bring the history down, byLLM logs a warning and carries on; the provider's own limit decides.
 
 The summarisation call goes through the full byLLM stack - it inherits telemetry, prompt caching, and proxy configuration from the active model.
 
-A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up.
+A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up. If that compaction cannot reduce the history, byLLM raises `CompactionNotEffectiveError`.
 
 ### Context window resolution
 
@@ -1441,7 +1443,7 @@ def my_agent(query: str) -> str by llm(
 
 ### `CompactionNotEffectiveError`
 
-If the threshold fires on two consecutive iterations with a compaction between them - meaning the summarisation produced no meaningful reduction - byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
+If the provider rejects a request as too long and compaction cannot reduce the history, or the request is rejected again after a compaction, byLLM raises `CompactionNotEffectiveError` rather than retrying forever. Crossing the threshold without being able to compact only logs a warning. See [Error Handling](#error-handling) for how to catch it.
 
 ---
 
@@ -2082,7 +2084,7 @@ ByLLMError (base)
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
 ├── LLMTimeout                   - A non-streaming request outlived its timeout
-└── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
+└── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
 ```
 
 All exceptions are importable from `byllm.lib`.
@@ -2098,7 +2100,7 @@ All exceptions are importable from `byllm.lib`.
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
 | `LLMTimeout` | A non-streaming request outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
-| `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
+| `CompactionNotEffectiveError` | The provider rejected a request as too long and auto-compaction could not reduce the context, or the request was rejected again after a compaction. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
 
@@ -2197,7 +2199,7 @@ with entry {
 
 ### `CompactionNotEffectiveError`
 
-Raised when auto-compaction fires on two consecutive iterations without reducing the context size. This prevents an infinite compaction loop:
+Raised when the provider rejects a request as too long and auto-compaction cannot reduce the context, or rejects it again after a compaction. This prevents an infinite compaction loop:
 
 ```jac
 import from jaclang.byllm.lib { CompactionNotEffectiveError }

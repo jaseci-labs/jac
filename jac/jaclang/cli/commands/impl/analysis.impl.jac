@@ -1221,38 +1221,36 @@ impl format(
                 {'path': res['path'], 'errors': res['syntax_errors'], 'warnings': []}
             );
         } elif res['changed'] {
-            changed_files += 1;
             if check {
+                changed_files += 1;
                 unformatted_files.append(res['path']);
             } else {
+                outputs: list[tuple[str, str]] = [];
                 if res['formatted_code'] is not None {
+                    outputs.append((res['path'], res['formatted_code']));
+                }
+                outputs.extend(res['impl_results']);
+                write_errors: list[str] = [];
+                for (out_path, code) in outputs {
                     try {
                         if to_screen {
-                            console.print(
-                                res['formatted_code'], markup=False, highlight=False
-                            );
+                            console.print(code, markup=False, highlight=False);
                         } else {
-                            with open(res['path'], 'w', encoding='utf-8') as f {
-                                f.write(res['formatted_code']);
+                            with open(out_path, 'w', encoding='utf-8') as f {
+                                f.write(code);
                             }
                         }
                     } except Exception as e {
-                        console.error(f"Error writing to '{res['path']}': {e}");
+                        write_errors.append(f"Error writing to '{out_path}': {e}");
                     }
                 }
-                impl_pairs: list[tuple[str, str]] = res['impl_results'];
-                for (impl_path, impl_code) in impl_pairs {
-                    try {
-                        if to_screen {
-                            console.print(impl_code, markup=False, highlight=False);
-                        } else {
-                            with open(impl_path, 'w', encoding='utf-8') as f {
-                                f.write(impl_code);
-                            }
-                        }
-                    } except Exception as e {
-                        console.error(f"Error writing to '{impl_path}': {e}");
-                    }
+                if write_errors {
+                    failed_files += 1;
+                    failed_results.append(
+                        {'path': res['path'], 'errors': write_errors, 'warnings': []}
+                    );
+                } else {
+                    changed_files += 1;
                 }
             }
         }

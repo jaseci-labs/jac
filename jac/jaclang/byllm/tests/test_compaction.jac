@@ -9,7 +9,7 @@ import from jaclang.byllm.types { MockToolCall }
 import from jaclang.byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
 import from pathlib { Path }
-import from support { call, fail, finish, fixture_path, scripted }
+import from support { call, capture_loguru, fail, finish, fixture_path, scripted }
 
 
 glob COMPACTION_TOML_FIXTURE = fixture_path("compaction_config");
@@ -290,12 +290,43 @@ test "ContextWindowExceededError triggers emergency compaction and retries" {
 }
 
 
-test "compaction with no reduction raises CompactionNotEffectiveError" {
+test "a proactive compaction that does not reduce the history lets the call continue" {
     llm = MockLLM(
         ctx_window=1000,
         outputs=[
             (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900}),
+            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+        ]
+    );
+
+    hook_calls = [0];
+    def noop_hook(msgs: list[any], keep_recent: int) -> list[any] {
+        hook_calls[0] += 1;
+        return msgs;
+    }
+
+    def my_task(q: str) -> str by llm(
+        tools=[step_a], threshold_ratio=0.80, on_compaction=noop_hook
+    );
+
+    with capture_loguru() as logs {
+        assert my_task("test") == "ok";
+    }
+    assert hook_calls[0] == 1;
+    assert "could not reduce the message history" in logs.text();
+}
+
+
+test "an emergency compaction that does not reduce the history raises CompactionNotEffectiveError" {
+    llm = MockLLM(
+        outputs=[
+            (MockToolCall(tool=step_a, args={}), {}),
+            fail(
+                litellm.exceptions.ContextWindowExceededError(
+                    message="ctx exceeded", model="mockllm", llm_provider="openai"
+                )
+            )
         ]
     );
 
@@ -303,9 +334,7 @@ test "compaction with no reduction raises CompactionNotEffectiveError" {
         return msgs;
     }
 
-    def my_task(q: str) -> str by llm(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=noop_hook
-    );
+    def my_task(q: str) -> str by llm(tools=[step_a], on_compaction=noop_hook);
 
     raised = False;
     try {
@@ -315,6 +344,7 @@ test "compaction with no reduction raises CompactionNotEffectiveError" {
         assert "no reduction" in str(e);
     }
     assert raised;
+    assert len(llm.seen) == 2 , "a compaction that did nothing must not retry the call";
 }
 
 

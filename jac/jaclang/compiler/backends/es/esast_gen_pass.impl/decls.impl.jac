@@ -536,10 +536,7 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
     );
     has_postinit = False;
     for _stmt in (ModuleFacts.unwrap_body(here) or []) {
-        if (
-            isinstance(_stmt, uni.Ability)
-            and getattr(_stmt, 'sym_name', '') == '__post_init__'
-        ) {
+        if isinstance(_stmt, uni.Ability) and _stmt.sym_name == '__post_init__' {
             has_postinit = True;
         }
     }

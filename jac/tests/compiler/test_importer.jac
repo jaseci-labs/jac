@@ -231,7 +231,9 @@ test "compiler separates internal from user modules" {
         internal_hub_paths = list(compiler.selfhost.program.mod.hub.keys());
         user_hub_paths = list(user_program.mod.hub.keys());
 
-        assert len(user_hub_paths) > 0 , "User program hub should not be empty";
+        assert not any(path.startswith(user_file) for path in internal_hub_paths) , (
+            "the user module was compiled in the compiler's internal program"
+        );
 
         for path in internal_hub_paths {
             assert path.startswith(jaclang_root) , (

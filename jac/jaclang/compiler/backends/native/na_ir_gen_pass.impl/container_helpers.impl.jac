@@ -538,7 +538,9 @@ impl NaIRGenPass._emit_container_new_fn(
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    result = self._emit_rc_alloc_container(b, container_ptr_type, layout);
+    result = self._emit_rc_alloc_container(
+        b, container_ptr_type, layout, initial_cap=0
+    );
     container_ptr = result[0];
 
     if self._gc_mode() == "none" {
@@ -971,14 +973,19 @@ impl NaIRGenPass._emit_rc_alloc_container(
     data_ptrs = [];
     for (i, fpair) in enumerate(layout["data_fields"]) {
         (field_idx, dtype) = fpair;
-        elem_null = ir.Constant(dtype.as_pointer(), None);
-        elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name=f"elem{i}.sizeof");
-        elem_size = b.ptrtoint(elem_gep, i64, name=f"elem{i}.size");
-        data_bytes = b.mul(
-            ir.Constant(i64, initial_cap), elem_size, name=f"data{i}.bytes"
-        );
-        data_raw = b.call(malloc_fn, [data_bytes], name=f"data{i}.raw");
-        data = b.bitcast(data_raw, dtype.as_pointer(), name=f"data{i}");
+        data: any = None;
+        if initial_cap == 0 {
+            data = ir.Constant(dtype.as_pointer(), None);
+        } else {
+            elem_null = ir.Constant(dtype.as_pointer(), None);
+            elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name=f"elem{i}.sizeof");
+            elem_size = b.ptrtoint(elem_gep, i64, name=f"elem{i}.size");
+            data_bytes = b.mul(
+                ir.Constant(i64, initial_cap), elem_size, name=f"data{i}.bytes"
+            );
+            data_raw = b.call(malloc_fn, [data_bytes], name=f"data{i}.raw");
+            data = b.bitcast(data_raw, dtype.as_pointer(), name=f"data{i}");
+        }
         data_p = b.gep(
             container_ptr,
             [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
@@ -988,12 +995,17 @@ impl NaIRGenPass._emit_rc_alloc_container(
         data_ptrs.append(data);
     }
     if layout["kind"] == "hash" {
-        calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
-        _ctrl0 = b.call(
-            calloc_fn,
-            [ir.Constant(i64, initial_cap), ir.Constant(i64, 1)],
-            name="ctrl0"
-        );
+        _ctrl0: any = None;
+        if initial_cap == 0 {
+            _ctrl0 = ir.Constant(i8_ptr, None);
+        } else {
+            calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
+            _ctrl0 = b.call(
+                calloc_fn,
+                [ir.Constant(i64, initial_cap), ir.Constant(i64, 1)],
+                name="ctrl0"
+            );
+        }
         b.store(
             _ctrl0,
             b.gep(
@@ -1010,7 +1022,10 @@ impl NaIRGenPass._emit_rc_alloc_container(
                 name="used.ptr"
             )
         );
-        _ord0 = self._hash_order_alloc(b, ir.Constant(i64, initial_cap));
+
+        _ord0 = ir.Constant(i64.as_pointer(), None)
+            if initial_cap == 0
+            else self._hash_order_alloc(b, ir.Constant(i64, initial_cap));
         b.store(
             _ord0,
             b.gep(
@@ -1037,7 +1052,9 @@ impl NaIRGenPass._emit_grow_array(
     malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
-    new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
+    _dbl_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="cap.dbl");
+    _was_zero = b.icmp_unsigned("==", cur_cap, ir.Constant(i64, 0), name="cap.was0");
+    new_cap = b.select(_was_zero, ir.Constant(i64, 8), _dbl_cap, name="new.cap");
     b.store(new_cap, cap_ptr);
     elem_null = ir.Constant(elem_type.as_pointer(), None);
     elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
@@ -1049,6 +1066,14 @@ impl NaIRGenPass._emit_grow_array(
     old_bytes = b.mul(cur_len, elem_sz, name="old.bytes");
     old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
     new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
+    _gr_fn = b.basic_block.function;
+    _gr_copy_bb = _gr_fn.append_basic_block(name="grow.copy");
+    _gr_cont_bb = _gr_fn.append_basic_block(name="grow.cont");
+    _gr_has_old = b.icmp_unsigned(
+        "!=", old_i8, ir.Constant(i8_ptr, None), name="grow.hasold"
+    );
+    b.cbranch(_gr_has_old, _gr_copy_bb, _gr_cont_bb);
+    b.position_at_end(_gr_copy_bb);
     b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
     if self._nogc_headerless() {
         _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
@@ -1059,6 +1084,8 @@ impl NaIRGenPass._emit_grow_array(
         }
         b.call(self.rc_safe_free_fn, [old_i8]);
     }
+    b.branch(_gr_cont_bb);
+    b.position_at_end(_gr_cont_bb);
     b.store(new_data, arr_ptr);
     return new_data;
 }

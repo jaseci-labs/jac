@@ -1,5 +1,6 @@
 """Native module aliases retain their source module binding."""
 import ctypes;
+import re;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -12,6 +13,24 @@ test "private helpers in modules with the same basename remain distinct" {
     assert not issues , "\n".join(issue.detail for issue in issues);
     probe = get_func(engine, "private_modules_probe", ctypes.c_int64);
     assert probe() == 31;
+}
+
+test "an imported module's private global does not shadow an imported public one" {
+    (engine, module) = compile_native("native_private_glob_import.jac");
+    ir = str(module.gen.llvm_ir);
+    issues = native_lowering_issues(ir);
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    # The public global keeps its bare symbol; a unit-qualified @X_VALUE here is
+    # private_glob_hidden's internal one, which the importer can never link.
+    # Local names such as %"glob.X_VALUE" (a load of the public one) don't count.
+    leaked = [
+        ln
+        for ln in ir.splitlines()
+        if re.search(r'@"[^"]+\.X_VALUE"', ln)
+    ];
+    assert not leaked , "\n".join(leaked);
+    probe = get_func(engine, "private_glob_probe", ctypes.c_int64);
+    assert probe() == 21;
 }
 
 test "module aliases resolve native functions and globals" {

@@ -280,7 +280,7 @@ def native_tree_trips(pin: Stage0Pin, repo: str, prefix: str) -> list[str] {
 }
 
 def stage0_child_env(snapshot_pkg: str, spec_path: str) -> dict[str, str] {
-    import from jaclang.compiler.backends.native.kernel_resolve { KERNEL_LIB_ENV }
+    import from jaclang.compiler.backends.native.kernel_resolve { kernel_build_env }
     import from jaclang.compiler.kernel_target { KERNEL_TARGET_ENV }
     import from jaclang.compiler.backends.native.llvm { _find_shim }
     parent = os.path.dirname(snapshot_pkg);
@@ -288,7 +288,7 @@ def stage0_child_env(snapshot_pkg: str, spec_path: str) -> dict[str, str] {
     env.pop("JAC_NO_DEV_SOURCE", None);
     env["PYTHONPATH"] = parent;
     env["JAC_DEV_SOURCE"] = parent;
-    env[KERNEL_LIB_ENV] = "off";
+    env.update(kernel_build_env());
     env[KERNEL_TARGET_ENV] = spec_path;
     env["JAC_LLVM_SHIM"] = _find_shim();
     return env;
