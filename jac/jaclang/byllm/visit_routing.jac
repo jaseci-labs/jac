@@ -356,6 +356,7 @@ def route_visit(candidates: list[object], model: BaseLLM) -> list[object] {
         mtir=None,
     );
 
+    setattr(mt_run, ROUTE_SELECT_ATTR, select);
     raw = Jac.call_llm(model, mt_run);
 
     selected = raw if isinstance(raw, list) else [raw];

@@ -11,6 +11,7 @@ import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 obj NativeVerdict {
     has demoted: bool = False,
@@ -143,6 +144,11 @@ obj HostServices {
         return None;
     }
 
+    def client_pulls(path: str) -> str {
+        return "";
+    }
+
+    def client_pull_grew(path: str) {}
     def has_npm_package(spec: str, base_path: str) -> bool {
         return False;
     }
@@ -242,6 +248,29 @@ obj HostServices {
 
     def native_units_for(program: JacProgram) -> NativeUnitRegistry {
         raise RuntimeError("no compiler host is installed");
+    }
+
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
+        return None;
+    }
+
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None) {
+        return None;
+    }
+
+    def in_compiler_tree(path: str) -> bool {
+        return False;
+    }
+
+    def schedule_import_failed(err: ImportError) {}
+    def client_osp_core_js -> str {
+        return "";
+    }
+
+    def client_stub_globals -> list[str] {
+        return [];
     }
 
     def native_session_declares(

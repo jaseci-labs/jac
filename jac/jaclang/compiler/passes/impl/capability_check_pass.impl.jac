@@ -286,8 +286,8 @@ impl native_capability_violations(
     _native_stmts: list[ElementStmt] = ModuleFacts.iter_context_stmts(
         mod, CodeContext.NATIVE
     );
-    _runtime_used: set = set();
-    _type_used: set = set();
+    _runtime_used: set[str] = set();
+    _type_used: set[str] = set();
     for _stmt in _native_stmts {
         if isinstance(_stmt, Import) {
             continue;

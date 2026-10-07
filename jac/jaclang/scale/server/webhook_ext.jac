@@ -307,7 +307,9 @@ obj WebhookExtension(ServerExtension) {
             return await self.process_api_key(server, walker_name, request);
         }
 
-        async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+        async def callback(
+            request: Request, /, **kwargs: JsonValue
+        ) -> TransportResponse {
             resp = await _process(request);
             status = resp.meta.extra.get('http_status') if resp?.meta else None;
             outcome = 'ok'
@@ -354,9 +356,9 @@ obj WebhookExtension(ServerExtension) {
 
     def register(server: JacAPIServer) {
         needs_keys = False;
-        for walker_name in list(server.get_walkers()) {
-            if server.introspector.walker_protocol(walker_name)
-                != APIProtocol.WEBHOOK {
+        walkers = server.get_walkers();
+        for walker_name in list(walkers) {
+            if target_protocol(walkers[walker_name]) != APIProtocol.WEBHOOK {
                 continue;
             }
             scheme = walker_scheme(server, walker_name);

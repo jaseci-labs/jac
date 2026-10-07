@@ -77,9 +77,56 @@ def _w_varint(buf: bytearray, v: int) -> None {
     }
 }
 
+def int_literal_magnitude(text: str) -> bytes {
+    body = text.replace("_", "").lower();
+    base = 10;
+    if body.startswith("0x") {
+        base = 16;
+        body = body[2:];
+    } elif body.startswith("0o") {
+        base = 8;
+        body = body[2:];
+    } elif body.startswith("0b") {
+        base = 2;
+        body = body[2:];
+    }
+    digits = "0123456789abcdef";
+    limbs: list[int] = [];
+    for ch in body {
+        carry = digits.find(ch);
+        if carry < 0 or carry >= base {
+            raise ValueError(f"invalid integer literal {text!r}");
+        }
+        at = 0;
+        while at < len(limbs) {
+            cur = limbs[at] * base + carry;
+            limbs[at] = cur & 255;
+            carry = cur >> 8;
+            at += 1;
+        }
+        while carry > 0 {
+            limbs.append(carry & 255);
+            carry = carry >> 8;
+        }
+    }
+    out = bytearray();
+    for limb in limbs {
+        out.append(limb);
+    }
+    return bytes(out);
+}
+
 def _w_svarint(buf: bytearray, v: int) {
-    u = (v << 1) if v >= 0 else (((-v) << 1) - 1);
-    _w_varint(buf, u);
+    sign = 0 if v >= 0 else 1;
+    half = v if v >= 0 else -(v + 1);
+    first = ((half & 63) << 1) | sign;
+    rest = half >> 6;
+    if rest {
+        buf.append(first | 128);
+        _w_varint(buf, rest);
+    } else {
+        buf.append(first);
+    }
 }
 
 def _r_varint(data: bytes, pos: int, what: str) -> tuple[int, int] {
@@ -133,7 +180,8 @@ obj CodegenIrWriter {
         string_idx: dict[str, int] = {},
         modules: list[CirModule] = [],
         diags: list[CirDiag] = [],
-        _code: any = None,
+        _code: bytearray = bytearray(),
+        _open: bool = False,
         _mod_path: str = "",
         _depth: int = 0,
         _loc_set: bool = False,
@@ -173,7 +221,7 @@ obj CodegenIrWriter {
     }
 
     def _require_open {
-        if self._code is None {
+        if not self._open {
             raise CodegenIrFormatError(
                 "no module is open: call begin_module before emitting"
             );
@@ -181,12 +229,13 @@ obj CodegenIrWriter {
     }
 
     def begin_module(mod_path: str) {
-        if self._code is not None {
+        if self._open {
             raise CodegenIrFormatError(
                 f"module {self._mod_path} is still open; call end_module first"
             );
         }
         self._code = bytearray();
+        self._open = True;
         self._mod_path = mod_path;
         self._depth = 0;
         self._loc_set = False;
@@ -233,6 +282,15 @@ obj CodegenIrWriter {
             _w_varint(self._code, nbytes);
             self._code.extend(mag.to_bytes(nbytes, "little"));
         }
+        self._depth += 1;
+    }
+
+    def emit_int_wide(negative: bool, magnitude: bytes) {
+        self._require_open();
+        self._code.append(OP_INT_BIG);
+        self._code.append(1 if negative else 0);
+        _w_varint(self._code, len(magnitude));
+        self._code.extend(magnitude);
         self._depth += 1;
     }
 
@@ -350,9 +408,9 @@ obj CodegenIrWriter {
             );
         }
         self._code.append(OP_END);
-        frozen: bytearray = self._code;
-        self.modules.append(CirModule(mod_path=self._mod_path, code=bytes(frozen)));
-        self._code = None;
+        self.modules.append(CirModule(mod_path=self._mod_path, code=bytes(self._code)));
+        self._code = bytearray();
+        self._open = False;
         self._mod_path = "";
     }
 
@@ -361,7 +419,7 @@ obj CodegenIrWriter {
     }
 
     def to_bytes -> bytes {
-        if self._code is not None {
+        if self._open {
             raise CodegenIrFormatError(
                 f"module {self._mod_path} is still open; call end_module before to_bytes"
             );

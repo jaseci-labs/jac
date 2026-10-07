@@ -299,7 +299,7 @@ def load_musl_static(triple: str) -> (StaticRuntime | None) {
     }
 
     archives_data: list[bytes] = [];
-    for af in ["libc.a", "libzigc.a", "libcompiler_rt.a"] {
+    for af in ["libc.a", "libzigc.a", "libcompiler_rt.a", "libmusl_compat.a"] {
         p = os.path.join(lib_dir, af);
         if os.path.isfile(p) {
             with open(p, "rb") as archive {

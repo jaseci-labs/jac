@@ -4,6 +4,7 @@ import sys;
 impl main(argv: list[str]) -> int {
     import os;
     os.environ.setdefault("JAC_COMPILER_LIB", "off");
+    os.environ.setdefault("JAC_KERNEL_BUILDING", "1");
     try {
         dispatch(list(argv));
     } except PayloadDie as e {

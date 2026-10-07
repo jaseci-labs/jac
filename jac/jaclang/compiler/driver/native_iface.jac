@@ -240,7 +240,7 @@ def native_layout_from_dict(raw: any) -> NativeModuleLayout {
     return layout;
 }
 
-glob NIFACE_FORMAT: int = 3,
+glob NIFACE_FORMAT: int = 5,
      NIFACE_HASH_LEN: int = 64,
      EXPORT_FUNCTION: str = "function",
      EXPORT_METHOD: str = "method",
@@ -603,6 +603,24 @@ obj NativeIface {
     }
 }
 
+def _rekey_class_refs(value: any, keys: dict[str, str]) -> any {
+    if isinstance(value, dict) {
+        out: dict[str, any] = {};
+        for (k, v) in value.items() {
+            if k in ("aux", "class") and isinstance(v, str) {
+                out[k] = keys.get(v, v);
+            } else {
+                out[k] = _rekey_class_refs(v, keys);
+            }
+        }
+        return out;
+    }
+    if isinstance(value, list) {
+        return [_rekey_class_refs(v, keys) for v in value];
+    }
+    return value;
+}
+
 def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
     by_name: dict[str, dict[str, tuple[any, str]]] = {};
     for iface in ifaces {
@@ -625,14 +643,21 @@ def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
         }
     }
     merged: dict[str, any] = {};
+    keys: dict[str, str] = {};
     for (name, idents) in by_name.items() {
         if len(idents) == 1 {
+            ident = list(idents.keys())[0];
             merged[name] = list(idents.values())[0][0];
+            keys[ident] = name;
             continue;
         }
         for (ident, found) in idents.items() {
             merged[ident] = found[0];
+            keys[ident] = ident;
         }
+    }
+    for (key, body) in list(merged.items()) {
+        merged[key] = _rekey_class_refs(body, keys);
     }
     return {k: merged[k] for k in sorted(merged.keys())};
 }

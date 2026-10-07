@@ -1247,7 +1247,8 @@ impl _parse_toml_data(
                 ),
                 registration_challenges_per_10_minutes=max(
                     0, int(auth_data.get("registration_challenges_per_10_minutes", 0))
-                )
+                ),
+                session_cookie=bool(auth_data.get("session_cookie", False))
             )
         );
     }

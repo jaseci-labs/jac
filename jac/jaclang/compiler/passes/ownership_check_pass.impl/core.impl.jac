@@ -424,7 +424,7 @@ impl OwnershipCheckPass._spawn_move_gen(nd: UniCFGNode) -> set[SymId] {
             if _seal_h is not None {
                 operands.append(_seal_h);
             }
-        } elif bx.op?.name == Tok.KW_SPAWN {
+        } elif isinstance(bx.op, Token) and bx.op.name == Tok.KW_SPAWN {
             operands.append(bx.left);
             operands.append(bx.right);
         }

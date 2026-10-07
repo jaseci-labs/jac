@@ -496,30 +496,17 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
         body = nd.body;
         _lam_errs0 = len(self.ctx.errors_had);
-        if not isinstance(body, uni.Expr) {
-            tail = nd.tail_return_expr();
-            if tail is not None {
-                body_value = self._codegen_expr(tail);
-                if body_value is not None {
-                    self.builder.ret(self._coerce_type(body_value, ret_type));
-                } else {
-                    if len(self.ctx.errors_had) == _lam_errs0 {
-                        self.emit(
-                            E5092,
-                            node_override=nd,
-                            kind="expression",
-                            name="lambda body",
-                            help_text="An expression in this lambda body could not lower natively; an unresolvable name here usually means the lambda reads a variable its enclosing frame cannot expose (e.g. a module-entry local)."
-                        );
-                    }
-                    self.builder.ret(self._zero_const(ret_type));
-                }
-            } else {
-                self._codegen_body(body);
-            }
+        tail = body if isinstance(body, uni.Expr) else nd.tail_return_expr();
+        if tail is None {
+            self._codegen_body(body);
         } else {
-            body_value = self._codegen_expr(body);
-            if body_value is not None {
+            body_value = self._codegen_expr(tail);
+            if isinstance(ret_type, ir.VoidType) {
+                """A void lambda evaluates its tail expression for effect
+                only; the expression's value (a call's placeholder, say)
+                is never the function's result.""";
+                self.builder.ret_void();
+            } elif body_value is not None {
                 self.builder.ret(self._coerce_type(body_value, ret_type));
             } else {
                 if len(self.ctx.errors_had) == _lam_errs0 {
@@ -2011,6 +1998,16 @@ impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | Non
         or (_pa is not None and isinstance(_pa, ir.PointerType));
     _b_ptrish = isinstance(b, ir.PointerType)
         or (_pb is not None and isinstance(_pb, ir.PointerType));
+    if _a_ptrish and _b_ptrish and self?.jacval_type {
+        """A container met with a different kind of pointer keeps its tag:
+        as a bare pointer the pair would test true whenever it is non-null,
+        so `obj and items` held for an empty `items`.""";
+        _ka = self._ptr_box_kind(a if _pa is None else _pa);
+        _kb = self._ptr_box_kind(b if _pb is None else _pb);
+        if _ka != _kb and (_ka in (3, 4, 5) or _kb in (3, 4, 5)) {
+            return self.jacval_type;
+        }
+    }
     if _a_ptrish and _b_ptrish and (_pa is not None or _pb is not None) {
         return ir.IntType(8).as_pointer();
     }
@@ -2025,6 +2022,12 @@ impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | Non
     }
     if isinstance(a, ir.PointerType) and isinstance(b, ir.PointerType) {
         return a;
+    }
+    if all(
+        self._is_jacval_boxable(t) or self._opt_payload_of(t) is not None
+        for t in (a, b)
+    ) {
+        return self.jacval_type;
     }
     return None;
 }
@@ -2043,7 +2046,6 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     result: ir.Value = first_value;
 
     for i in range(1, len(nd.values)) {
-        left_value = result;
         cond = self._to_bool(result);
         func = self.builder.function;
         rhs_bb = func.append_basic_block(name=f"bool.rhs.{i}");
@@ -2072,11 +2074,14 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
             return None;
         }
         target_t = self._bool_expr_unify_type(result.type, rhs_val.type);
-        bool_only = target_t is None;
         if target_t is None {
-            rhs_val = self._consume_bool(rhs_val);
-            result = cond;
-            target_t = ir.IntType(1);
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name=f"`{op_name}` over {result.type} and {rhs_val.type}"
+            );
+            return None;
         }
 
         rhs_owned = self._is_owned(rhs_val);
@@ -2100,9 +2105,6 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
         }
 
         self.builder.position_at_end(take_bb);
-        if bool_only {
-            self._release_owned_args([left_value], op="bool_drop");
-        }
         if result.type != target_t {
             if self._opt_ptr_payload_of(result.type) == target_t {
                 result = self.builder.extract_value(result, 1, name="bool.opt.lpv");
@@ -2240,6 +2242,21 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
             }
         }
         if then_val.type != else_val.type {
+            _obj_ty = self._object_meet_type(nd);
+            if _obj_ty is not None
+                and isinstance(then_val.type, ir.PointerType)
+                and isinstance(else_val.type, ir.PointerType) {
+                if then_val.type != _obj_ty and then_open {
+                    self.builder.position_at_end(then_end_bb);
+                    then_val = self._recast_object(then_val, _obj_ty);
+                }
+                if else_val.type != _obj_ty and else_open {
+                    self.builder.position_at_end(else_end_bb);
+                    else_val = self._recast_object(else_val, _obj_ty);
+                }
+            }
+        }
+        if then_val.type != else_val.type {
             _uni_ty = self._unify_repr_lowering([then_val.type, else_val.type]);
             if _uni_ty is not None and then_val.type != _uni_ty and then_open {
                 self.builder.position_at_end(then_end_bb);
@@ -2277,6 +2294,36 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     phi.add_incoming(then_val, then_end_bb);
     phi.add_incoming(else_val, else_end_bb);
     return self._mark_owned(phi) if owns_result else phi;
+}
+
+impl NaIRGenPass._object_meet_type(nd: uni.Expr) -> (ir.Type | None) {
+    """The pointer type an expression's branch values meet at when the
+    expression is an object.
+
+    A value whose static type is an archetype, or a union of archetypes,
+    is one object pointer however its slot is typed: a field of a declared
+    class reads as that class's struct pointer, while an element of a list
+    of a union reads as an untyped pointer. Boxing the pair into an `any`
+    would tag the untyped one as a string, and a later `isinstance` on the
+    result would never match; they meet as the pointer they both are. The
+    type is an object when it lowers to a named struct that is not a
+    container or a closure, whether or not this unit registered the class.
+    """;
+    if nd.type is None {
+        return None;
+    }
+    _lowered = self._lower_type(nd.type);
+    if not isinstance(_lowered, ir.PointerType)
+        or not isinstance(_lowered.pointee, ir.IdentifiedStructType)
+        or self._ptr_box_kind(_lowered) not in (2, 6) {
+        return None;
+    }
+    return _lowered;
+}
+
+impl NaIRGenPass._recast_object(value: ir.Value, target: ir.Type) -> ir.Value {
+    _cast = self.builder.bitcast(value, target, name="obj.meet");
+    return self._mark_owned(_cast) if self._is_owned(value) else _cast;
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {

@@ -386,7 +386,7 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
 
     bind_local = '__jac_na_bind';
     if bind_local not in self.injected_imports {
-        host_module = '@jac/wasm_host';
+        host_module = WASM_HOST_MODULE;
         specifier = self.sync_loc(
             es.ImportSpecifier(
                 imported=es.Identifier(name='__na_bind'),
@@ -490,8 +490,9 @@ impl EsastGenPass._sv_import_item_is_type(
 }
 
 impl EsastGenPass.exit_sub_tag with uni.SubTag exit {
-    if here.tag.gen.es_ast {
-        here.gen.es_ast = here.tag.gen.es_ast;
+    tag = here.tag;
+    if isinstance(tag, uni.UniNode) and tag.gen.es_ast {
+        here.gen.es_ast = tag.gen.es_ast;
     }
 }
 
@@ -527,23 +528,24 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
         ]
     );
 
-    import re;
     referenced: set[str] = set();
-    pending: list[object] = [value_body];
+    pending: list[any] = [value_body];
     while pending {
         value = pending.pop();
-        if isinstance(value, (es.Identifier, es.JsxIdentifier)) {
-            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.name));
+        if isinstance(value, es.Identifier) {
+            referenced.update(js_identifiers(value.name));
+        } elif isinstance(value, es.JsxIdentifier) {
+            referenced.update(js_identifiers(value.name));
         } elif isinstance(value, es.RawCode) {
-            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.code));
+            referenced.update(js_identifiers(value.code));
         } elif isinstance(value, es.Node) {
-            pending.extend(
-                child
-                for (key, child) in vars(value).items()
-                if key not in ("loc", "type")
-            );
-        } elif isinstance(value, (list, tuple)) {
-            pending.extend(value);
+            for (_field, child) in es.es_children(value).items() {
+                pending.append(child);
+            }
+        } elif isinstance(value, list) {
+            for item in value {
+                pending.append(item);
+            }
         }
     }
     for stmt in program.body {

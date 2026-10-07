@@ -1726,12 +1726,6 @@ impl ESBuiltinEmitter.emit_print(
     return _fcall("console.log", shown);
 }
 
-impl ESBuiltinEmitter.emit_sized_cast(
-    self: ESBuiltinEmitter, name: str, args: list[str]
-) -> (str | None) {
-    return _rt("fw", "cast_" + name, [args[0] if args else "0"]);
-}
-
 impl ESBuiltinEmitter.emit_wrapping(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, op: str, args: list[str]
 ) -> (str | None) {
@@ -1919,7 +1913,10 @@ impl ESBuiltinEmitter.emit_issubclass(
 impl ESBuiltinEmitter.emit_type(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "typeof " + args[0];
+    if len(args) != 1 {
+        return None;
+    }
+    return _rt("builtin", "type", args);
 }
 
 impl ESBuiltinEmitter.emit_id(

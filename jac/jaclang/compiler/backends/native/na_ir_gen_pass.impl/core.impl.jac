@@ -267,9 +267,9 @@ impl NaIRGenPass._export_native_iface -> None {
                         else "" for p in decl.signature.get_parameters()
                 ];
             }
+            _borrowed = self.borrow_param_args.get(fn.name, set());
             ex.ownership = [
-                "borrow" if "readonly" in [str(a) for a in arg.attributes] else "own"
-                for arg in fn.args
+                "borrow" if i in _borrowed else "own" for i in range(len(fn.args))
             ];
         }
         spelled = native_unit_spelling(name, mod_path);
@@ -1484,6 +1484,9 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
 impl NaIRGenPass._register_imported_globals(
     nd: uni.GlobalVars, source_path: str = ""
 ) -> None {
+    if bool(nd.access and nd.access.tag.name == Tok.KW_PRIV) {
+        return;
+    }
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))

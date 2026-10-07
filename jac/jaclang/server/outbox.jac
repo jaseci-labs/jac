@@ -174,7 +174,7 @@ def remember_idempotency_key(
 
 def scoped_idempotency_key(raw: str, username: str, app: str, target: str) -> str;
 def replay_cached(key: str) -> any;
-def remember_response(key: str, response: any) -> any;
+def remember_response(key: str, response: any, committed: bool = False) -> any;
 
 def _row_to_entry(row: tuple[any, ...]) -> OutboxEntry;
 def _current_memory -> any;

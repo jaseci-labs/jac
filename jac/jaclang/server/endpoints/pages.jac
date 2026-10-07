@@ -75,7 +75,9 @@ def register_page_endpoints(server: JacAPIServer) {
         }
     }
 
-    def render_page(request: Request, page_name: str, **kwargs: JsonValue) -> Response {
+    def render_page(
+        request: Request, /, page_name: str, **kwargs: JsonValue
+    ) -> Response {
         sibling = sibling_app_dist(config, page_name, server.base_path);
         if sibling is not None {
             return _sibling_response(request, sibling, '');
@@ -141,7 +143,7 @@ def register_page_endpoints(server: JacAPIServer) {
         );
     }
 
-    def root_index(request: Request, **kwargs: JsonValue) -> Response {
+    def root_index(request: Request, /, **kwargs: JsonValue) -> Response {
         index = client_dist_index(asset_dist);
         if index is not None {
             return file_response(request, str(index), cache_control='no-cache');

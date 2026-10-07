@@ -2,8 +2,10 @@ import asyncio;
 import contextlib;
 import glob;
 import json;
+import os;
 import socket;
 import subprocess;
+import tempfile;
 import from jaclang.scale.runtime.context.util { jac_executable }
 import time;
 import uuid;
@@ -14,12 +16,17 @@ import from jaclang.server.serving.authcrypt {
     jwt_encode as _jwt_encode
 }
 import from jaclang.server.identity.config { signing_secret as jwt_secret }
+import from jaclang.server.serving.client { run_blocking }
+import from jaclang.server.serving.datatypes { Headers, Request, URL }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
-    extract_data
+    extract_data,
+    fresh_totp_code,
+    totp_code,
+    wrong_totp_code
 }
 import from jaclang.scale.tests.support {
     cleanup_db_files,
@@ -1348,8 +1355,16 @@ def setup_dev_mode_server -> subprocess.Popen {
         str(dm_test_file)
     ];
 
+    import os;
+    # A server that never comes up is killed mid-preparation and says nothing
+    # about where it was. With this set, a preparation that runs long writes
+    # its stack to stderr, which the failure below prints.
     server_process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={** os.environ, "JAC_KERNEL_TIMING": "1"}
     );
 
     max_attempts = 60;
@@ -2110,6 +2125,739 @@ test "jwt middleware: per-user isolation and token rejection" {
             assert r.status_code == 200 , f"{label} on pub function: expected 200 (guest), got {r.status_code}";
         }
         assert client.post("/function/public_status", json={}).status_code == 200 , "pub function broken for anonymous requests";
+    } finally {
+        client.close();
+    }
+}
+
+
+glob SESSION_COOKIE_ENV: str = "JAC_SERVE_AUTH_SESSION_COOKIE";
+
+# The setting is read once, when the server is assembled, so the variable is
+# restored as soon as the client exists and no later test inherits it.
+# `in_toml` adds `[serve.auth] session_cookie` to the project's own jac.toml.
+def session_cookie_client(
+    setting: str | None, in_toml: bool | None = None
+) -> ScaleTestClient {
+    prior = os.environ.get(SESSION_COOKIE_ENV);
+    if setting is None {
+        os.environ.pop(SESSION_COOKIE_ENV, None);
+    } else {
+        os.environ[SESSION_COOKIE_ENV] = setting;
+    }
+    try {
+        if in_toml is None {
+            return make_client("restspec_fixtures.jac");
+        }
+        tmp = Path(tempfile.mkdtemp());
+        for f in sv_fixtures_dir.iterdir() {
+            if f.is_file() {
+                shutil.copy2(f, tmp / f.name);
+            }
+        }
+        toml = tmp / "jac.toml";
+        toml.write_text(
+            toml.read_text()
+                + "\n[serve.auth]\nsession_cookie = "
+                + ("true" if in_toml else "false")
+                + "\n"
+        );
+        client = ScaleTestClient.from_file(
+            str(sv_fixtures_dir / "restspec_fixtures.jac"), base_path=str(tmp)
+        );
+        client._tmp_dir = str(tmp);
+        return client;
+    } finally {
+        if prior is None {
+            os.environ.pop(SESSION_COOKIE_ENV, None);
+        } else {
+            os.environ[SESSION_COOKIE_ENV] = prior;
+        }
+    }
+}
+
+# Splits one Set-Cookie value into its cookie value and its attributes, lowercased.
+def cookie_parts(set_cookie: str) -> tuple[str, dict[str, str]] {
+    pieces = [piece.strip() for piece in set_cookie.split(";")];
+    assert pieces[0].startswith("jac_session=") , set_cookie;
+    attrs: dict[str, str] = {};
+    for piece in pieces[1:] {
+        (name, _, value) = piece.partition("=");
+        attrs[name.lower()] = value;
+    }
+    return (pieces[0][len("jac_session="):], attrs);
+}
+
+def me_user_id(response: any) -> str {
+    assert response.status_code == 200 , response.text;
+    return str(extract_data(response.json())["user_id"]);
+}
+
+test "session cookie: login sets it and it authorizes safe requests only" {
+    client = session_cookie_client(None, in_toml=True);
+    try {
+        name_a = f"cookie_a_{uuid.uuid4().hex[:8]}";
+        name_b = f"cookie_b_{uuid.uuid4().hex[:8]}";
+        registered = client.post(
+            "/user/register", json=register_payload(name_a, "Pass!99")
+        );
+        assert registered.status_code == 201;
+        id_a = str(extract_data(registered.json())["user_id"]);
+        token_b = register_and_get_token(client, name_b, "Pass!99");
+        bearer_b = {"Authorization": f"Bearer {token_b}"};
+        id_b = me_user_id(client.get("/user/me", headers=bearer_b));
+        assert id_a != id_b;
+
+        login = client.post("/user/login", json=login_payload(name_a, "Pass!99"));
+        assert login.status_code == 200;
+        token_a = extract_data(login.json())["token"];
+        set_cookie = login.headers.get("Set-Cookie");
+        assert set_cookie is not None , "login set no session cookie";
+        (value, attrs) = cookie_parts(str(set_cookie));
+        assert value == token_a;
+        assert "httponly" in attrs;
+        assert attrs["samesite"] == "Strict";
+        assert attrs["path"] == "/";
+        assert attrs["max-age"] == str(7 * 86400);
+        assert "domain" not in attrs;
+        # Plain HTTP: a Secure cookie would never come back to a dev server.
+        assert "secure" not in attrs;
+        assert login.headers.get("Cache-Control") == "no-store";
+
+        # Over HTTPS (the scheme the trusted-proxy rule resolved) it is Secure.
+        over_tls = Headers();
+        over_tls.append("Content-Type", "application/json");
+        tls_login = run_blocking(
+            client.raw_client.app.dispatch(
+                Request(
+                    method="POST",
+                    url=URL(path="/user/login", scheme="https"),
+                    headers=over_tls,
+                    body=json.dumps(login_payload(name_a, "Pass!99")).encode("utf-8"),
+                    client_host="testclient"
+                )
+            )
+        );
+        assert tls_login.status_code == 200;
+        assert "secure" in cookie_parts(str(tls_login.headers.get("Set-Cookie")))[1];
+
+        cookie_a = {"Cookie": f"theme=dark; jac_session={token_a}"};
+
+        # The request a media element makes: no header, the cookie only.
+        assert client.get("/custom/func").status_code == 401;
+        via_cookie = client.get("/custom/func", headers=cookie_a);
+        assert via_cookie.status_code == 200 , via_cookie.text;
+        assert _as_any(client.raw_client).head(
+            "/custom/func", headers=cookie_a
+        ).status_code
+            == 200;
+        me = client.get("/user/me", headers=cookie_a);
+        assert me_user_id(me) == id_a;
+        # A shared cache must not hand one user's response to another.
+        assert "cookie" in str(me.headers.get("Vary")).lower();
+        assert me.headers.get("Cache-Control") == "private";
+        # HttpOnly would be pointless if a cookie-only GET echoed the token.
+        info = client.get("/user/info", headers=cookie_a);
+        assert info.status_code == 200;
+        assert extract_data(info.json())["token"] == "";
+
+        # On the wire the transport's own Vary is merged, not replaced.
+        port = _as_any(client.raw_client)._ensure_live_server();
+        wire = requests.get(
+            f"http://127.0.0.1:{port}/openapi.json",
+            headers={"Cookie": f"jac_session={token_a}", "Accept-Encoding": "gzip"},
+            timeout=10
+        );
+        assert wire.status_code == 200;
+        assert wire.headers.get("Content-Encoding") == "gzip";
+        varies = {v.strip().lower() for v in wire.headers.get("Vary", "").split(",")};
+        assert varies == {"cookie", "accept-encoding"} , wire.headers.get("Vary");
+
+        # A header-authenticated response is untouched.
+        by_header = client.get("/user/me", headers=bearer_b);
+        assert by_header.headers.get("Cache-Control") is None;
+        assert by_header.headers.get("Set-Cookie") is None;
+
+        # State-changing methods never authenticate by cookie (no CSRF surface).
+        assert client.post("/function/post_func", json={}, headers=cookie_a).status_code
+            == 401;
+        assert client.put(
+            "/user/password",
+            json={"current_password": "Pass!99", "new_password": "Other!99"},
+            headers=cookie_a
+        ).status_code
+            == 401;
+        assert client.post(
+            "/function/post_func",
+            json={},
+            headers={"Authorization": f"Bearer {token_a}"}
+        ).status_code
+            == 200;
+
+        # Whatever the header path rejects, the cookie path rejects.
+        claims = _jwt_decode(token_a, jwt_secret(), algorithms=["HS256"]);
+        claims["exp"] = datetime.now(UTC) - timedelta(minutes=5);
+        expired = _jwt_encode(claims, jwt_secret(), algorithm="HS256");
+        claims["exp"] = datetime.now(UTC) + timedelta(hours=1);
+        forged = _jwt_encode(claims, "wrong_key", algorithm="HS256");
+        tampered = token_a[:-2] + ("AA" if not token_a.endswith("AA") else "BB");
+        bad_cookies = [
+            (f"jac_session={expired}", "expired"),
+            (f"jac_session={forged}", "forged secret"),
+            (f"jac_session={tampered}", "tampered signature"),
+            ("jac_session=not.a.jwt", "malformed"),
+            ("jac_session=", "empty"),
+            (f"jac_session={token_a}; jac_session={token_b}", "two session cookies"),
+            (f"session={token_a}; token={token_a}", "other cookie names")
+        ];
+        for (cookie, label) in bad_cookies {
+            r = client.get("/custom/func", headers={"Cookie": cookie});
+            assert r.status_code == 401 , f"{label}: expected 401, got {r.status_code}";
+        }
+        for (cookie, label) in bad_cookies[:3] {
+            r = client.get(
+                "/custom/func", headers={"Authorization": f"Bearer {cookie[12:]}"}
+            );
+            assert r.status_code == 401 , f"{label} as a header: {r.status_code}";
+        }
+
+        # The header wins, and a rejected header is never rescued by the cookie.
+        both = dict(cookie_a);
+        both["Authorization"] = f"Bearer {token_b}";
+        assert me_user_id(client.get("/user/me", headers=both)) == id_b;
+        for bad_header in ["Bearer not.a.jwt", f"Bearer {expired}", "Basic abc", ""] {
+            rejected = dict(cookie_a);
+            rejected["Authorization"] = bad_header;
+            r = client.get("/custom/func", headers=rejected);
+            assert r.status_code == 401 , f"header {bad_header[:12]!r} fell back to the cookie";
+        }
+
+        # The token is never read from the query string.
+        r = client.get(
+            "/custom/func",
+            params={"token": token_a, "access_token": token_a, "jac_session": token_a}
+        );
+        assert r.status_code == 401;
+
+        # One request's session change never reaches another request.
+        assert client.get("/custom/walker").headers.get("Set-Cookie") is None;
+
+        # Refresh re-issues the cookie with the new token.
+        refreshed = client.post("/user/refresh-token", json={"token": token_a});
+        assert refreshed.status_code == 200;
+        (value, attrs) = cookie_parts(str(refreshed.headers.get("Set-Cookie")));
+        assert value == extract_data(refreshed.json())["token"];
+
+        # Logout and a password change both drop it.
+        logout = client.post("/user/logout", json={});
+        assert logout.status_code == 200;
+        (value, attrs) = cookie_parts(str(logout.headers.get("Set-Cookie")));
+        assert value == "" and attrs["max-age"] == "0";
+        assert "httponly" in attrs and attrs["path"] == "/";
+        changed = client.put(
+            "/user/password",
+            json={"current_password": "Pass!99", "new_password": "Other!99"},
+            headers={"Authorization": f"Bearer {token_a}"}
+        );
+        assert changed.status_code == 200 , changed.text;
+        (value, attrs) = cookie_parts(str(changed.headers.get("Set-Cookie")));
+        assert value == "" and attrs["max-age"] == "0";
+    } finally {
+        client.close();
+    }
+}
+
+# =============================================================================
+# Second factor (TOTP): enroll, verify, sign-in challenge, assurance, recovery
+# =============================================================================
+def _bearer(token: str) -> dict[str, str] {
+    return {"Authorization": f"Bearer {token}"};
+}
+
+def _claims(token: str) -> dict[str, any] {
+    return _jwt_decode(token, jwt_secret(), algorithms=["HS256"]);
+}
+
+def _enrolled_user(client: any, prefix: str) -> dict[str, any] {
+    username = f"{prefix}_{uuid.uuid4().hex[:8]}";
+    password = "Mfa!Passw0rd";
+    token = register_and_get_token(client, username, password);
+    r = client.post(
+        "/user/mfa/enroll", json={"password": password}, headers=_bearer(token)
+    );
+    assert r.status_code == 201 , r.text;
+    enrolled = extract_data(r.json());
+    used: set[int] = set();
+    r = client.post(
+        "/user/mfa/verify",
+        json={
+            "factor_id": enrolled["factor_id"],
+            "code": fresh_totp_code(enrolled["secret"], used)
+        },
+        headers=_bearer(token)
+    );
+    assert r.status_code == 200 , r.text;
+    verified = extract_data(r.json());
+    return {
+        "username": username,
+        "password": password,
+        "password_token": token,
+        "factor_id": enrolled["factor_id"],
+        "secret": enrolled["secret"],
+        "used": used,
+        "token": verified["token"],
+        "recovery_codes": verified["recovery_codes"]
+    };
+}
+
+def _challenge(client: any, user: dict[str, any]) -> str {
+    r = client.post(
+        "/user/login", json=login_payload(user["username"], user["password"])
+    );
+    assert r.status_code == 200 , r.text;
+    data = extract_data(r.json());
+    assert data["mfa_required"] is True;
+    assert "token" not in data;
+    return data["challenge_token"];
+}
+
+test "second factor: the test's own TOTP matches the RFC 6238 vectors" {
+    secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    assert totp_code(secret, 59 // 30) == "287082";
+    assert totp_code(secret, 1111111109 // 30) == "081804";
+    assert totp_code(secret, 1234567890 // 30) == "005924";
+    assert totp_code(secret, 20000000000 // 30) == "353130";
+}
+
+test "second factor: enroll, verify, and sign-in then needs the code" {
+    client = make_client();
+    try {
+        username = f"mfa_{uuid.uuid4().hex[:8]}";
+        password = "Mfa!Passw0rd";
+        plain = do_register(client, username, password);
+        login = do_login(client, username, password);
+        password_token = login["token"];
+        assert "mfa_required" not in login;
+        assert "aal" not in _claims(password_token);
+
+        # An app reads the caller's level: a password session is aal1.
+        r = client.post(
+            "/function/session_assurance", json={}, headers=_bearer(password_token)
+        );
+        assert extract_data(r.json())["result"] == {"level": "aal1", "methods": []};
+
+        r = client.get("/user/mfa/factors", headers=_bearer(password_token));
+        assert r.status_code == 200 , r.text;
+        listing = extract_data(r.json());
+        assert listing["factors"] == [];
+        assert listing["current_level"] == "aal1";
+        assert listing["next_level"] == "aal1";
+
+        # Enrolling needs a session and the password again.
+        r = client.post("/user/mfa/enroll", json={"password": password});
+        assert r.status_code == 401;
+        r = client.post(
+            "/user/mfa/enroll",
+            json={"password": "not-the-password"},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_PASSWORD";
+
+        r = client.post(
+            "/user/mfa/enroll",
+            json={"password": password},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 201 , r.text;
+        enrolled = extract_data(r.json());
+        secret = enrolled["secret"];
+        factor_id = enrolled["factor_id"];
+        assert enrolled["status"] == "unverified";
+        assert enrolled["otpauth_uri"].startswith("otpauth://totp/");
+        assert f"secret={secret}" in enrolled["otpauth_uri"];
+        assert username in enrolled["otpauth_uri"];
+
+        # An unverified factor does not count: sign-in is unchanged.
+        assert "token" in do_login(client, username, password);
+
+        # A wrong code does not verify the factor.
+        r = client.post(
+            "/user/mfa/verify",
+            json={"factor_id": factor_id, "code": wrong_totp_code(secret)},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+        listing = extract_data(
+            client.get("/user/mfa/factors", headers=_bearer(password_token)).json()
+        );
+        assert [f["status"] for f in listing["factors"]] == ["unverified"];
+        assert listing["next_level"] == "aal1";
+
+        used: set[int] = set();
+        verify_step_code = fresh_totp_code(secret, used);
+        r = client.post(
+            "/user/mfa/verify",
+            json={"factor_id": factor_id, "code": verify_step_code},
+            headers=_bearer(password_token)
+        );
+        assert r.status_code == 200 , r.text;
+        verified = extract_data(r.json());
+        assert verified["status"] == "verified";
+        assert len(verified["recovery_codes"]) == 10;
+        assert _claims(verified["token"])["aal"] == "aal2";
+
+        # The listing shows the factor and never the secret.
+        r = client.get("/user/mfa/factors", headers=_bearer(verified["token"]));
+        listing = extract_data(r.json());
+        assert len(listing["factors"]) == 1;
+        factor = listing["factors"][0];
+        assert factor["id"] == factor_id;
+        assert factor["status"] == "verified";
+        assert factor["created_at"];
+        assert "secret" not in factor;
+        assert secret not in r.text;
+        assert listing["current_level"] == "aal2";
+        assert listing["next_level"] == "aal2";
+
+        # The password alone no longer yields a session token.
+        r = client.post("/user/login", json=login_payload(username, password));
+        assert r.status_code == 200 , r.text;
+        challenge = extract_data(r.json());
+        assert challenge["mfa_required"] is True;
+        assert "token" not in challenge;
+        assert challenge["expires_in"] > 0;
+        assert challenge["factors"] == [{"id": factor_id, "type": "totp"}];
+        challenge_token = challenge["challenge_token"];
+
+        # The challenge token is not a session anywhere.
+        assert client.get("/user/me", headers=_bearer(challenge_token)).status_code
+            == 401;
+        assert client.get(
+            "/user/mfa/factors", headers=_bearer(challenge_token)
+        ).status_code
+            == 401;
+        assert client.post(
+            "/walker/CreateTask", json={"title": "x"}, headers=_bearer(challenge_token)
+        ).status_code
+            == 401;
+        assert client.post(
+            "/user/refresh-token", json={"token": challenge_token}
+        ).status_code
+            == 401;
+
+        # A wrong code is refused and the challenge survives for a retry.
+        r = client.post(
+            "/user/mfa/login",
+            json={"challenge_token": challenge_token, "code": wrong_totp_code(secret)}
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+
+        # The code that verified the factor was already used: replay refused.
+        r = client.post(
+            "/user/mfa/login",
+            json={"challenge_token": challenge_token, "code": verify_step_code}
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+
+        login_code = fresh_totp_code(secret, used);
+        r = client.post(
+            "/user/mfa/login",
+            json={"challenge_token": challenge_token, "code": login_code}
+        );
+        assert r.status_code == 200 , r.text;
+        session = extract_data(r.json());
+        assert session["user_id"] == plain["user_id"];
+        assert session["root_id"] == login["root_id"];
+        claims = _claims(session["token"]);
+        assert claims["aal"] == "aal2";
+        assert claims["amr"] == ["pwd", "otp"];
+        assert claims["auth_time"] > 0;
+        assert claims["sub"] == plain["user_id"];
+        assert client.get("/user/me", headers=_bearer(session["token"])).status_code
+            == 200;
+
+        # An app sees aal2 for this caller, from a function and from a walker.
+        r = client.post(
+            "/function/session_assurance", json={}, headers=_bearer(session["token"])
+        );
+        assert extract_data(r.json())["result"]
+            == {"level": "aal2", "methods": ["pwd", "otp"]};
+        r = client.post(
+            "/walker/SessionAssurance", json={}, headers=_bearer(session["token"])
+        );
+        assert extract_data(r.json())["reports"] == [{"level": "aal2"}];
+        r = client.post(
+            "/walker/SessionAssurance", json={}, headers=_bearer(password_token)
+        );
+        assert extract_data(r.json())["reports"] == [{"level": "aal1"}];
+
+        # The challenge is single-use, and a used code stays used.
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": challenge_token,
+                "code": fresh_totp_code(secret, used)
+            }
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CHALLENGE";
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": _challenge(
+                    client, {"username": username, "password": password}
+                ),
+                "code": login_code
+            }
+        );
+        assert r.status_code == 401 , r.text;
+
+        # Refresh keeps the level; a session without the factor cannot be extended.
+        r = client.post("/user/refresh-token", json={"token": session["token"]});
+        assert r.status_code == 200 , r.text;
+        refreshed = _claims(extract_data(r.json())["token"]);
+        assert refreshed["aal"] == "aal2";
+        assert refreshed["amr"] == ["pwd", "otp"];
+        assert refreshed["auth_time"] == claims["auth_time"];
+        r = client.post("/user/refresh-token", json={"token": password_token});
+        assert r.status_code == 401 , r.text;
+
+        # A token reissued by a rename keeps the level of the session that asked.
+        r = client.put(
+            "/user/username",
+            json={"new_username": f"{username}_renamed"},
+            headers=_bearer(session["token"])
+        );
+        assert r.status_code == 200 , r.text;
+        assert _claims(extract_data(r.json())["token"])["aal"] == "aal2";
+    } finally {
+        client.close();
+    }
+}
+
+test "session cookie: off unless the deployment opts in" {
+    client = session_cookie_client(None);
+    try {
+        name = f"cookie_off_{uuid.uuid4().hex[:8]}";
+        registered = client.post(
+            "/user/register", json=register_payload(name, "Pass!99")
+        );
+        assert registered.status_code == 201;
+        assert registered.headers.get("Set-Cookie") is None;
+        login = client.post("/user/login", json=login_payload(name, "Pass!99"));
+        assert login.status_code == 200;
+        assert login.headers.get("Set-Cookie") is None;
+        token = extract_data(login.json())["token"];
+
+        r = client.get("/custom/func", headers={"Cookie": f"jac_session={token}"});
+        assert r.status_code == 401;
+        by_header = client.get(
+            "/custom/func", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert by_header.status_code == 200;
+        assert by_header.headers.get("Vary") is None
+            or "cookie" not in str(by_header.headers.get("Vary")).lower();
+
+        logout = client.post("/user/logout", json={});
+        assert logout.status_code == 200;
+        assert logout.headers.get("Set-Cookie") is None;
+    } finally {
+        client.close();
+    }
+}
+
+test "session cookie: the env variable overrides [serve.auth] either way" {
+    for (env_setting, in_toml, expect_cookie) in [
+        ("0", True, False),
+        ("1", False, True)
+    ] {
+        client = session_cookie_client(env_setting, in_toml=in_toml);
+        try {
+            name = f"cookie_env_{uuid.uuid4().hex[:8]}";
+            registered = client.post(
+                "/user/register", json=register_payload(name, "Pass!99")
+            );
+            assert registered.status_code == 201 , registered.text;
+            set_cookie = registered.headers.get("Set-Cookie");
+            assert (set_cookie is not None) == expect_cookie , f"env {env_setting} over toml {in_toml}: {set_cookie}";
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "session cookie: a second-factor sign-in sets it, the password step does not" {
+    client = session_cookie_client("true");
+    try {
+        user = _enrolled_user(client, "mfa_cookie");
+        r = client.post(
+            "/user/login", json=login_payload(user["username"], user["password"])
+        );
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["mfa_required"] is True;
+        assert r.headers.get("Set-Cookie") is None;
+
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": extract_data(r.json())["challenge_token"],
+                "code": fresh_totp_code(user["secret"], user["used"])
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        (value, attrs) = cookie_parts(str(r.headers.get("Set-Cookie")));
+        assert value == extract_data(r.json())["token"];
+        assert _claims(value)["aal"] == "aal2";
+    } finally {
+        client.close();
+    }
+}
+
+test "second factor: recovery code signs in once, and deleting a factor needs proof" {
+    client = make_client();
+    try {
+        user = _enrolled_user(client, "mfa_rec");
+        recovery = user["recovery_codes"][0];
+
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": _challenge(client, user),
+                "recovery_code": recovery
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        claims = _claims(extract_data(r.json())["token"]);
+        assert claims["aal"] == "aal2";
+        assert claims["amr"] == ["pwd", "recovery"];
+
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": _challenge(client, user),
+                "recovery_code": recovery
+            }
+        );
+        assert r.status_code == 401 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+
+        # Deleting a verified factor needs a current code, whatever the session.
+        r = client.post(
+            "/user/mfa/unenroll",
+            json={"factor_id": user["factor_id"]},
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 403 , r.text;
+        r = client.post(
+            "/user/mfa/unenroll",
+            json={
+                "factor_id": user["factor_id"],
+                "code": wrong_totp_code(user["secret"])
+            },
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+        # A second enrollment also needs proof of the existing factor.
+        r = client.post(
+            "/user/mfa/enroll",
+            json={"password": user["password"]},
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 403 , r.text;
+        assert r.json()["error"]["code"] == "INVALID_CODE";
+        assert len(
+            extract_data(
+                client.get("/user/mfa/factors", headers=_bearer(user["token"])).json()
+            )["factors"]
+        )
+            == 1;
+
+        r = client.post(
+            "/user/mfa/unenroll",
+            json={
+                "factor_id": user["factor_id"],
+                "code": fresh_totp_code(user["secret"], user["used"])
+            },
+            headers=_bearer(user["token"])
+        );
+        assert r.status_code == 200 , r.text;
+        listing = extract_data(
+            client.get("/user/mfa/factors", headers=_bearer(user["token"])).json()
+        );
+        assert listing["factors"] == [];
+        assert listing["next_level"] == "aal1";
+
+        # With no factor left the account signs in with the password alone,
+        # and the recovery codes died with the factor.
+        again = do_login(client, user["username"], user["password"]);
+        assert "token" in again;
+        assert "aal" not in _claims(again["token"]);
+    } finally {
+        client.close();
+    }
+}
+
+test "second factor: failed codes are counted and lock the account's second step" {
+    client = make_client();
+    try {
+        user = _enrolled_user(client, "mfa_lock");
+        other = f"mfa_other_{uuid.uuid4().hex[:8]}";
+
+        # A session that predates the factor steps up with a current code.
+        assert "aal" not in _claims(user["password_token"]);
+        r = client.post(
+            "/user/mfa/verify",
+            json={
+                "factor_id": user["factor_id"],
+                "code": fresh_totp_code(user["secret"], user["used"])
+            },
+            headers=_bearer(user["password_token"])
+        );
+        assert r.status_code == 200 , r.text;
+        stepped = extract_data(r.json());
+        assert _claims(stepped["token"])["aal"] == "aal2";
+        assert "recovery_codes" not in stepped;
+
+        challenge_token = _challenge(client, user);
+        for attempt in range(5) {
+            r = client.post(
+                "/user/mfa/login",
+                json={
+                    "challenge_token": challenge_token,
+                    "code": wrong_totp_code(user["secret"])
+                }
+            );
+            assert r.status_code == 401 , f"attempt {attempt}: {r.text}";
+        }
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": challenge_token,
+                "code": wrong_totp_code(user["secret"])
+            }
+        );
+        assert r.status_code == 429 , r.text;
+        assert r.json()["error"]["code"] == "RATE_LIMITED";
+        assert int(r.headers.get("Retry-After")) > 0;
+
+        # While locked, even the right code is refused.
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": challenge_token,
+                "code": fresh_totp_code(user["secret"], user["used"])
+            }
+        );
+        assert r.status_code == 429 , r.text;
+
+        # The lock is per account: another user signs in as before.
+        do_register(client, other, "otherpass1");
+        assert "token" in do_login(client, other, "otherpass1");
     } finally {
         client.close();
     }

@@ -679,15 +679,15 @@ impl replay_cached(key: str) -> any {
 }
 
 
-impl remember_response(key: str, response: any) -> any {
+impl remember_response(key: str, response: any, committed: bool = False) -> any {
     if not key {
         return response;
     }
 
-    ok = False;
-    if isinstance(response, TransportResponse) {
+    ok = committed;
+    if not ok and isinstance(response, TransportResponse) {
         ok = bool(response.ok);
-    } elif isinstance(response, JSONResponse) {
+    } elif not ok and isinstance(response, JSONResponse) {
         ok = 200 <= int(response.status_code) < 300;
     }
     if ok {

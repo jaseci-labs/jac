@@ -2412,13 +2412,77 @@ impl NativeBytesEmitter.emit_decode(
 impl NativeBytesEmitter.emit_hex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_hex", [target]);
+}
+
+impl NativeBytesEmitter._kernel_call(
+    self: NativeBytesEmitter, ctx: NativeEmitCtx, name: str, values: list[ir.Value]
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    fn = p._get_fmt_kernel_fn(name);
+    if fn is None or len(fn.args) != len(values) {
+        return None;
+    }
+    coerced: list[ir.Value] = [];
+    for (index, value) in enumerate(values) {
+        coerced.append(p._coerce_type(value, fn.args[index].type));
+    }
+    return get_builder(p).call(fn, coerced, name=f"bytes.{name}");
+}
+
+impl NativeBytesEmitter._optional_bytes(
+    self: NativeBytesEmitter, ctx: NativeEmitCtx, arg: ir.Value, target: ir.Value
+) -> (tuple[ir.Value, ir.Value] | None) {
+    b = get_builder(ctx.pass_ref);
+    null = ir.Constant(target.type, None);
+    if arg.type == target.type {
+        return (arg, b.icmp_unsigned("!=", arg, null, name="bytes.arg.given"));
+    }
+    if ctx.pass_ref._opt_payload_of(arg.type) != target.type {
+        return None;
+    }
+    tag = b.extract_value(arg, 0, name="bytes.arg.tag");
+    given = b.icmp_signed("!=", tag, ir.Constant(tag.type, 0), name="bytes.arg.given");
+    payload = b.extract_value(arg, 1, name="bytes.arg.val");
+    return (b.select(given, payload, null, name="bytes.arg"), given);
+}
+
+impl NativeBytesEmitter._emit_strip(
+    self: NativeBytesEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    args: list[ir.Value],
+    which: int
+) -> (ir.Value | None) {
+    if len(args) > 1 {
+        return None;
+    }
+    chars = target;
+    has_chars: ir.Value = ir.Constant(ir.IntType(1), 0);
+    if args {
+        given = self._optional_bytes(ctx, args[0], target);
+        if given is None {
+            return None;
+        }
+        (chars, has_chars) = given;
+    }
+    return self._kernel_call(
+        ctx,
+        "jac_bytes_strip",
+        [target, chars, has_chars, ir.Constant(ir.IntType(64), which)]
+    );
 }
 
 impl NativeBytesEmitter.emit_fromhex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 1 {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_fromhex", [args[0]]);
 }
 
 impl NativeBytesEmitter.emit_count(
@@ -2515,25 +2579,40 @@ impl NativeBytesEmitter._emit_affix(
 impl NativeBytesEmitter.emit_replace(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) < 2 or len(args) > 3 {
+        return None;
+    }
+    if args[0].type != target.type or args[1].type != target.type {
+        return None;
+    }
+    count: ir.Value = ir.Constant(ir.IntType(64), -1);
+    if len(args) == 3 {
+        if not isinstance(args[2].type, ir.IntType) {
+            return None;
+        }
+        count = args[2];
+    }
+    return self._kernel_call(
+        ctx, "jac_bytes_replace", [target, args[0], args[1], count]
+    );
 }
 
 impl NativeBytesEmitter.emit_strip(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_strip(ctx, target, args, 0);
 }
 
 impl NativeBytesEmitter.emit_lstrip(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_strip(ctx, target, args, 1);
 }
 
 impl NativeBytesEmitter.emit_rstrip(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_strip(ctx, target, args, 2);
 }
 
 impl NativeBytesEmitter.emit_removeprefix(
@@ -2551,7 +2630,27 @@ impl NativeBytesEmitter.emit_removesuffix(
 impl NativeBytesEmitter.emit_split(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) > 2 {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    sep = target;
+    has_sep: ir.Value = ir.Constant(ir.IntType(1), 0);
+    if args {
+        given = self._optional_bytes(ctx, args[0], target);
+        if given is None {
+            return None;
+        }
+        (sep, has_sep) = given;
+    }
+    maxsplit: ir.Value = ir.Constant(i64, -1);
+    if len(args) == 2 {
+        if not isinstance(args[1].type, ir.IntType) {
+            return None;
+        }
+        maxsplit = args[1];
+    }
+    return self._kernel_call(ctx, "jac_bytes_split", [target, sep, has_sep, maxsplit]);
 }
 
 impl NativeBytesEmitter.emit_rsplit(
@@ -2569,7 +2668,14 @@ impl NativeBytesEmitter.emit_splitlines(
 impl NativeBytesEmitter.emit_join(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 1 {
+        return None;
+    }
+    fn = ctx.pass_ref._get_fmt_kernel_fn("jac_bytes_join");
+    if fn is None or args[0].type != fn.args[1].type {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_join", [target, args[0]]);
 }
 
 impl NativeBytesEmitter.emit_partition(
@@ -2593,13 +2699,19 @@ impl NativeBytesEmitter.emit_capitalize(
 impl NativeBytesEmitter.emit_lower(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_lower", [target]);
 }
 
 impl NativeBytesEmitter.emit_upper(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_upper", [target]);
 }
 
 impl NativeBytesEmitter.emit_title(
@@ -5872,6 +5984,18 @@ impl NativeBuiltinEmitter._int_from_c_string(
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
+    parse_fn = p._get_fmt_kernel_fn("jac_int_parse");
+    if parse_fn is not None and len(parse_fn.args) == 2 {
+        base_val = base if base is not None else ir.Constant(i32, 10);
+        return b.call(
+            parse_fn,
+            [
+                p._coerce_type(text, parse_fn.args[0].type),
+                p._coerce_type(base_val, parse_fn.args[1].type)
+            ],
+            name="int.parse"
+        );
+    }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
     endptr_alloca = b.alloca(i8p, name="endptr");
     result_val = b.call(

@@ -10,6 +10,11 @@ def result_ownership(expr: (Expr | None)) -> Ownership {
         return Ownership.UNKNOWN;
     }
     if isinstance(expr, FuncCall) {
+        import from jaclang.compiler.erased_imports { erased_identity_call_arg }
+        erased_to = erased_identity_call_arg(expr);
+        if erased_to is not None {
+            return result_ownership(erased_to);
+        }
         return Ownership.OWNED;
     }
     if isinstance(expr, BinaryExpr)

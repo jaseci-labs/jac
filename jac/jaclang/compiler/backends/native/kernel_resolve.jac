@@ -4,6 +4,7 @@ import os;
 import sys;
 
 glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
+     KERNEL_BUILDING_ENV: str = "JAC_KERNEL_BUILDING",
      STUBCAT_BUILDING_ENV: str = "JAC_STUBCAT_BUILDING",
      KERNEL_OFF_VALUES: tuple[str, ...] = ("none", "off", "disabled", "0"),
      LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
@@ -22,6 +23,10 @@ obj ResolvedKernel {
 }
 
 class KernelUnavailable(RuntimeError) {}
+
+def kernel_build_env -> dict[str, str] {
+    return {KERNEL_LIB_ENV: "off", KERNEL_BUILDING_ENV: "1"};
+}
 
 def kernel_lib_name -> str {
     if sys.platform == "darwin" {
@@ -213,20 +218,22 @@ def build_kernel(
 
 class _StoreParserSpan {
     def init(self: _StoreParserSpan) {
-        self.prev = None;
+        self.prev: dict[str, (str | None)] = {};
     }
 
     def __enter__(self: _StoreParserSpan) -> _StoreParserSpan {
-        self.prev: (str | None) = os.environ.get(KERNEL_LIB_ENV);
-        os.environ[KERNEL_LIB_ENV] = "off";
+        self.prev = {key: os.environ.get(key) for key in kernel_build_env()};
+        os.environ.update(kernel_build_env());
         return self;
     }
 
     def __exit__(self: _StoreParserSpan, exc_type: any, exc: any, tb: any) -> bool {
-        if self.prev is None {
-            os.environ.pop(KERNEL_LIB_ENV, None);
-        } else {
-            os.environ[KERNEL_LIB_ENV] = str(self.prev);
+        for (key, value) in self.prev.items() {
+            if value is None {
+                os.environ.pop(key, None);
+            } else {
+                os.environ[key] = str(value);
+            }
         }
         return False;
     }
@@ -246,12 +253,11 @@ def _from_source_tree -> (ResolvedKernel | None) {
     } except KernelUnavailable {
         raise;
     } except Exception as e {
-        sys.stderr.write(
-            f"jac: the native compiler kernel could not be derived "
-            f"({type(e).__name__}: {e}); parsing with the store parser. "
-            "Run `jac precompile ./jac --seal` to see the full diagnostics.\n"
-        );
-        return None;
+        raise KernelUnavailable(
+            f"the native compiler kernel could not be derived "
+            f"({type(e).__name__}: {e}). Run `jac precompile ./jac --seal` to see "
+            "the full diagnostics."
+        ) from e;
     }
 }
 
@@ -452,7 +458,7 @@ def _publish_kernel(
 
 def _build_kernel_in_child(dst: str) {
     import subprocess;
-    env = child_compiler_env({KERNEL_LIB_ENV: "off"});
+    env = child_compiler_env(kernel_build_env());
     code = (
         "import sys\n"
         "sys.path.insert(0, sys.argv[-1])\n"
@@ -516,7 +522,14 @@ def resolve_kernel -> (ResolvedKernel | None) {
     }
     lib_setting = os.environ.get(KERNEL_LIB_ENV, "");
     if lib_setting.strip().lower() in KERNEL_OFF_VALUES {
-        return None;
+        if os.environ.get(KERNEL_BUILDING_ENV) {
+            return None;
+        }
+        raise KernelUnavailable(
+            f"{KERNEL_LIB_ENV}={lib_setting} is not supported: the native compiler "
+            "kernel compiles and analyzes every program (only a kernel build "
+            "parses with the store parser)"
+        );
     }
     if lib_setting {
         return _from_explicit(lib_setting);

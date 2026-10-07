@@ -69,7 +69,11 @@ impl UserManager.update_user_fields(user_id: str, fields: dict[str, any]) -> boo
 impl UserManager.authenticate(identifier: str, password: str) -> dict[str, any] | None {
     result = self._identity_storage.authenticate(identifier, password);
     if result is not None {
-        result['token'] = self.create_jwt_token(result.get('user_id', ''));
+        if self.second_factors().required_for(str(result.get('user_id', ''))) {
+            result['second_factor_required'] = True;
+        } else {
+            result['token'] = self.create_jwt_token(result.get('user_id', ''));
+        }
     }
     return result;
 }
@@ -200,7 +204,13 @@ impl UserManager.get_username(user_id: str) -> str | None {
     return self._identity_storage.get_username(user_id);
 }
 
-impl UserManager.create_jwt_token(user_id: str, include_role: bool = True) -> str {
+impl UserManager.second_factors -> SecondFactorManager {
+    return SecondFactorManager(storage=self._identity_storage);
+}
+
+impl UserManager.create_jwt_token(
+    user_id: str, include_role: bool = True, assurance: (dict[str, any] | None) = None
+) -> str {
     now = datetime.now(UTC);
     payload: dict[(str, any)] = {
         'sub': user_id,
@@ -218,6 +228,7 @@ impl UserManager.create_jwt_token(user_id: str, include_role: bool = True) -> st
             payload['role'] = role;
         }
     }
+    payload.update(carried_claims(assurance));
     return jwt_encode(payload, signing_secret(), algorithm=signing_algorithm());
 }
 
@@ -317,7 +328,14 @@ impl UserManager.refresh_jwt_token(token: str) -> str | None {
             return None;
         }
         user_id = decoded.get('sub') or decoded.get('user_id');
-        return self.create_jwt_token(user_id) if user_id else None;
+        if not user_id {
+            return None;
+        }
+        carried = carried_claims(decoded);
+        if not carried and self.second_factors().required_for(str(user_id)) {
+            return None;
+        }
+        return self.create_jwt_token(user_id, assurance=carried);
     } except Exception as e {
         logger.debug(f"Failed to refresh JWT token: {str(e)}");
         return None;

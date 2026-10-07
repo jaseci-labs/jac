@@ -118,7 +118,7 @@ glob FORBIDDEN: dict[str, str] = {
              "the #8681 reorg with its consumption unchanged"
          ),
          ("es/esast_gen_pass.impl/calls.impl.jac", "type_tag.tag"): (
-             4,
+             3,
              "declaration-surface name reads: the param type-name map for "
              "interop payloads and the W6005 Callable-over-RPC guard on "
              "endpoint params - the declared annotation is the consumed "

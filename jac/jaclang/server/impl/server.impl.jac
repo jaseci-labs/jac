@@ -215,6 +215,7 @@ async def _run_function_with_occ(
                 ctx.pending_effects.clear();
                 ctx.read_versions.clear();
                 ctx.diagnostics.clear();
+                forget_response_choice();
                 ro_retries += 1;
                 observe_read_tier_retry(mgr.metrics, rr.unit_key or unit_key or "");
                 if ro_retries <= 2 {
@@ -231,6 +232,7 @@ async def _run_function_with_occ(
                 ctx.read_versions.clear();
 
                 ctx.diagnostics.clear();
+                forget_response_choice();
                 if attempt >= max_attempts {
                     return {
                         'error': wc.message(),
@@ -496,6 +498,11 @@ impl ModuleIntrospector._load_surface -> None {
         str(name): SurfaceEntry.from_dict(str(name), dict(rec))
         for (name, rec) in dict(manifest.get('surface', {}) or {}).items()
     };
+    self._served_walkers = sum(
+        1
+        for rec in self._surface.values()
+        if rec.kind == 'walker' and rec.is_served()
+    );
     self._manifest_root = str(manifest.get('root') or '');
 }
 
@@ -633,7 +640,7 @@ impl ModuleIntrospector._check_module_freshness -> None {
             break;
         }
     }
-    if not needs_refresh {
+    if not needs_refresh and len(self._walkers) < self._served_walkers {
         _fresh_walkers = self._collect_walkers();
         if set(_fresh_walkers.keys()) != set(self._walkers.keys()) {
             needs_refresh = True;
@@ -1011,11 +1018,7 @@ impl ModuleIntrospector.walker_protocol(walker_name: str) -> APIProtocol {
     if walker_name not in walkers {
         return APIProtocol.HTTP;
     }
-    restspec: any = target_restspec(walkers[walker_name]);
-    if restspec?.protocol {
-        return APIProtocol(restspec.protocol);
-    }
-    return APIProtocol.HTTP;
+    return target_protocol(walkers[walker_name]);
 }
 
 impl ModuleIntrospector.function_protocol(func_name: str) -> APIProtocol {
@@ -1023,11 +1026,7 @@ impl ModuleIntrospector.function_protocol(func_name: str) -> APIProtocol {
     if func_name not in functions {
         return APIProtocol.HTTP;
     }
-    restspec: any = target_restspec(functions[func_name]);
-    if restspec?.protocol {
-        return APIProtocol(restspec.protocol);
-    }
-    return APIProtocol.HTTP;
+    return target_protocol(functions[func_name]);
 }
 
 
@@ -1129,7 +1128,8 @@ impl JacAPIServer._install_middleware -> None {
     self.add_middleware(
         request_context_middleware(
             base_path_dir=Jac.get_base_path_dir() or self.base_path or None,
-            full_target_path=Jac.get_full_target_path() or self.module_file
+            full_target_path=Jac.get_full_target_path() or self.module_file,
+            public_origin=self.resolved_settings().public_origin
         )
     );
     self.add_middleware(jwt_middleware(self.user_manager));

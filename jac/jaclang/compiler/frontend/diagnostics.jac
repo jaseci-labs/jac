@@ -1739,6 +1739,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "inside '{owner}' and its subclasses.",
          help="Access protected (`:protect`) members from within the declaring class or a subclass, or mark the member `:pub` to expose it more broadly."
      ),
+     E2036 = _err(
+         "E2036",
+         Category.SEMANTIC,
+         "Duplicate definition of '{name}': it replaces the definition on line {line}.",
+         help="A module-level name can be defined once. The later definition is the one that runs, while calls are checked against the earlier one, so rename or remove one of them. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
+     ),
      E2037 = _err(
          "E2037",
          Category.SEMANTIC,

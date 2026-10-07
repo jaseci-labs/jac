@@ -11,7 +11,8 @@ import from unittest.mock { MagicMock, patch }
 import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
+import from jaclang.server.server { JacAPIServer, ModuleIntrospector, ServerExtension }
+import from jaclang.runtime.constructs { WalkerArchetype }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -328,6 +329,99 @@ test "api server construction is socket-free and builds a serving app" {
         app = srv.build_app();
         assert isinstance(app, ServingApp);
         assert app.router.all_endpoints() , "built app has no endpoints";
+    }
+}
+
+obj _CountingIntrospector(ModuleIntrospector) {
+    has collects: int = 0;
+
+    def _collect_walkers -> dict[str, type[WalkerArchetype]] {
+        self.collects += 1;
+        return super._collect_walkers();
+    }
+}
+
+"""Looking up the served walkers used to re-resolve every one of them, so route
+registration paid the walker count twice over. A module whose walkers all
+resolved and have not changed is collected once, at load."""
+test "repeated walker lookups do not re-resolve an unchanged module" {
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application }
+    prepared = prepare_application(
+        fixture_abs_path('serve_api.jac'), Jac.get_program(), FIXTURES
+    );
+    module = initialize_application(prepared);
+    with TemporaryDirectory() as tmpdir {
+        Jac.set_base_path(tmpdir);
+        introspector = _CountingIntrospector(module.__name__, tmpdir);
+        introspector.load();
+        assert introspector.collects == 1 , f"load collected {introspector.collects} times";
+        assert introspector.get_walkers() , "the fixture declares served walkers";
+        for _ in range(8) {
+            introspector.get_walkers();
+        }
+        extra = introspector.collects - 1;
+        assert introspector.collects == 1 , f"lookups re-collected {extra} times";
+    }
+}
+
+"""Registering routes used to re-sort a method's whole route list on every add and
+to look each walker up again through the full walker table, so startup grew with
+the square of the route count. Counted on a real build, not timed."""
+test "route registration grows with the route count, not its square" {
+    import math;
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application, forget }
+    walkers = 60;
+    with TemporaryDirectory() as tmpdir {
+        main_file = Path(tmpdir) / 'main.jac';
+        main_file.write_text(
+            ''.join(
+                'walker:pub w_'
+                    + str(i)
+                    + ' {\n    can go with Root entry {\n'
+                    + '        report 1;\n    }\n}\n\n' for i in range(walkers)
+            )
+        );
+        prepared = prepare_application(str(main_file), Jac.get_program(), tmpdir);
+        try {
+            module = initialize_application(prepared);
+            Jac.set_base_path(tmpdir);
+            srv = JacAPIServer(
+                module_name=module.__name__, port=get_free_port(), base_path=tmpdir
+            );
+            calls = {'sort_keys': 0, 'walker_tables': 0};
+            def tally(frame: any, event: str, arg: any) {
+                if event != 'call' {
+                    return;
+                }
+                name = frame.f_code.co_name;
+                if name == 'route_sort_key' {
+                    calls['sort_keys'] += 1;
+                } elif name == 'get_walkers'
+                    and isinstance(frame.f_locals.get('self'), ModuleIntrospector) {
+                    calls['walker_tables'] += 1;
+                }
+            }
+            sys.setprofile(tally);
+            try {
+                app = srv.build_app();
+            } finally {
+                sys.setprofile(None);
+            }
+            routes = sum(len(bucket) for bucket in app.router.routes.values())
+                + len(app.router.ws_routes);
+            assert routes > 2 * walkers , f"expected every walker routed, got {routes}";
+            bound = routes * (math.ceil(math.log2(routes)) + 2);
+            assert calls['sort_keys'] <= bound , (
+                f"{calls['sort_keys']} sort-key calls for {routes} routes"
+            );
+            assert calls['walker_tables'] < walkers // 4 , (
+                f"{calls['walker_tables']} walker-table lookups for {walkers} walkers"
+            );
+        } finally {
+            forget(str(main_file));
+        }
     }
 }
 

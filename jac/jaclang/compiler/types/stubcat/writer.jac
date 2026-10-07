@@ -1107,6 +1107,11 @@ obj CatalogWriter {
                 }
             }
         } except Exception {}
+
+        catalog_origin = sym.provider;
+        if isinstance(catalog_origin, CatProvider) {
+            symbits |= catalog_origin.symbits & (SYMF_HAS_DEFAULT | SYMF_DEFER);
+        }
         put_uvar(out, symbits);
         return bytes(out);
     }
@@ -1308,6 +1313,9 @@ obj CatalogWriter {
         }
         if sh.is_enum_class {
             bits |= SH_ENUM;
+        }
+        if sh.is_extern_struct {
+            bits |= SH_EXTERN;
         }
         put_uvar(out, bits);
         scope_ref = self.ref_scope(sh.symbol_table);

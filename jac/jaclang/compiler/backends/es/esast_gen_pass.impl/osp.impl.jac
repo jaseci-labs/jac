@@ -696,10 +696,8 @@ impl EsastGenPass._build_osp_filter_pred(
             and (len(cmp.ops) == 1)
             and (len(cmp.rights) == 1) {
             _op_name = cmp.ops[0].name;
-            _op_tok = Tok(_op_name) if (_op_name in Tok.__members__) else None;
-            if _op_tok is not None
-                and _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
-                _js_op = ES_COMPARISON_OPS.get(_op_tok);
+            if _op_name in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+                _js_op = ES_COMPARISON_OPS.get(_op_name);
             }
         }
         if (_js_op is None) or (not isinstance(_lhs, uni.Name)) {

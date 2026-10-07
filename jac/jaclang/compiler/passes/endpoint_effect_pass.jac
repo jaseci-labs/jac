@@ -129,7 +129,10 @@ walker EndpointEffectPass(TreePass) {
                 self._scan(nd);
             }
         }
-        result: dict[str, any] = endpoint_descriptor(self.module, kind, name);
+        result: dict[str, any] = {};
+        for (field, value) in endpoint_descriptor(self.module, kind, name).items() {
+            result[field] = value;
+        }
         result["reads"] = sorted(list(self._declared_reads))
             if declared is not None
             else ["*"];

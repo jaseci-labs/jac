@@ -147,14 +147,6 @@ impl emitted_tree_digest(tree_root: Path) -> str {
 }
 
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
-    parts: list[str] = [];
-    for path in paths {
-        try {
-            stat = path.stat();
-            parts.append(f"{path}:{stat.st_mtime_ns}");
-        } except FileNotFoundError {
-            parts.append(f"{path}:missing");
-        }
-    }
+    parts = [f"{path}:{ct_dep_digest(str(path), with_annexes=True)}" for path in paths];
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
 }

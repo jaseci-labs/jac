@@ -263,7 +263,7 @@ def stage0_child_env(snapshot_pkg: str, spec_path: str) -> dict[str, str] {
     env.pop("JAC_NO_DEV_SOURCE", None);
     env["PYTHONPATH"] = parent;
     env["JAC_DEV_SOURCE"] = parent;
-    env[KERNEL_LIB_ENV] = "off";
+    env.update(kernel_build_env());
     env[KERNEL_TARGET_ENV] = spec_path;
     env["JAC_LLVM_SHIM"] = _find_shim();
     return env;

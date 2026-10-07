@@ -225,26 +225,38 @@ test "kernel parses retain no native memory once the tree is handed over" {
 }
 
 
-test "JAC_COMPILER_LIB=off selects the store parser: no kernel is resolved" {
-    # The explicit switch is the first step of `resolve_kernel`'s precedence
-    # (`kernel_resolve.jac`): `off` means no kernel, before a sealed image or
-    # the source tree is consulted, so `ensure_loaded` serves the store parser.
+test "only a kernel build parses with the store parser" {
+    # `JAC_COMPILER_LIB=off` is the first step of `resolve_kernel`'s precedence
+    # (`kernel_resolve.jac`), honored only beside the kernel-build marker that
+    # a kernel build's own processes carry; anywhere else it is refused, since
+    # the kernel compiles and analyzes every program.
     import from jaclang.compiler.backends.native.kernel_resolve {
+        KERNEL_BUILDING_ENV,
         KERNEL_LIB_ENV,
+        KernelUnavailable,
+        kernel_build_env,
         resolve_kernel
     }
     import from jaclang.compiler.native_compiler { ensure_loaded, reset_loaded }
-    saved = os.environ.get(KERNEL_LIB_ENV);
+    saved = {key: os.environ.get(key) for key in kernel_build_env()};
     reset_loaded();
     try {
         os.environ[KERNEL_LIB_ENV] = "off";
-        assert resolve_kernel() is None , "JAC_COMPILER_LIB=off must resolve no kernel";
-        assert ensure_loaded() is None , "ensure_loaded must serve no kernel under the off switch";
+        os.environ.pop(KERNEL_BUILDING_ENV, None);
+        try {
+            resolve_kernel();
+            assert False , "JAC_COMPILER_LIB=off outside a kernel build must be refused";
+        } except KernelUnavailable {}
+        os.environ.update(kernel_build_env());
+        assert resolve_kernel() is None , "a kernel build must resolve no kernel";
+        assert ensure_loaded() is None , "a kernel build must parse with the store parser";
     } finally {
-        if saved is None {
-            os.environ.pop(KERNEL_LIB_ENV, None);
-        } else {
-            os.environ[KERNEL_LIB_ENV] = saved;
+        for (key, value) in saved.items() {
+            if value is None {
+                os.environ.pop(key, None);
+            } else {
+                os.environ[key] = value;
+            }
         }
         reset_loaded();
     }

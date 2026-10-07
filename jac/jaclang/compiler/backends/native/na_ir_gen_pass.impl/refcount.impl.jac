@@ -42,6 +42,69 @@ impl NaIRGenPass._gc_mode -> str {
     return _mode;
 }
 
+impl NaIRGenPass._emit_rc_count_update(
+    fn: ir.Function,
+    b: ir.IRBuilder,
+    cnt_ptr: ir.Value,
+    old_cnt: (ir.Value | None),
+    op: str,
+    ordering: str,
+    tag: str
+) -> tuple[ir.IRBuilder, ir.Value] {
+    """Add or subtract 1 at `cnt_ptr` and return (builder, count before the update).
+
+    Until a program starts its first thread, `__jac_rc_threaded` is 0, only one
+    thread exists, and a plain load/add/store is enough; a `lock`-prefixed RMW
+    there costs roughly an order of magnitude more per retain/release. Every
+    thread spawn the compiler emits sets the flag before `pthread_create` (see
+    `_emit_rc_mark_threaded`) and nothing clears it, so from then on every unit
+    takes the atomic RMW with the ordering the caller passes. pthread_create
+    orders the flag store and all earlier plain updates before the new thread's
+    first instruction. `old_cnt`, when given, is the count the caller already
+    loaded on this path; the single-threaded branch reuses it.
+    """;
+    i8 = ir.IntType(8);
+    one = ir.Constant(ir.IntType(64), 1);
+    st_bb = fn.append_basic_block(f"{tag}.st");
+    mt_bb = fn.append_basic_block(f"{tag}.mt");
+    join_bb = fn.append_basic_block(f"{tag}.join");
+    mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name=f"{tag}.mt.flag");
+    b.cbranch(
+        b.icmp_unsigned("!=", mt_flag, ir.Constant(i8, 0), name=f"{tag}.mt.on"),
+        mt_bb,
+        st_bb
+    );
+    sb = ir.IRBuilder(st_bb);
+    st_old = old_cnt if old_cnt is not None else sb.load(cnt_ptr, name=f"{tag}.st.old");
+    st_new = sb.add(st_old, one, name=f"{tag}.st.new")
+        if op == "add"
+        else sb.sub(st_old, one, name=f"{tag}.st.new");
+    sb.store(st_new, cnt_ptr);
+    sb.branch(join_bb);
+    mb = ir.IRBuilder(mt_bb);
+    mt_old = mb.atomic_rmw(op, cnt_ptr, one, ordering=ordering, name=f"{tag}.mt.old");
+    mb.branch(join_bb);
+    jb = ir.IRBuilder(join_bb);
+    old = jb.phi(ir.IntType(64), name=f"{tag}.old");
+    old.add_incoming(st_old, st_bb);
+    old.add_incoming(mt_old, mt_bb);
+    return (jb, old);
+}
+
+impl NaIRGenPass._emit_rc_mark_threaded -> None {
+    """Switch every refcount update to atomic RMW; call right before a thread spawn.
+
+    The store goes before `pthread_create` so the new thread starts with the
+    flag already set. It is sticky: joining the threads does not switch back.
+    """;
+    if self.rc_threaded_gv is None {
+        return;
+    }
+    self.builder.store_atomic(
+        ir.Constant(ir.IntType(8), 1), self.rc_threaded_gv, "monotonic", 1
+    );
+}
+
 impl NaIRGenPass._emit_rc_helpers -> None {
     if self._nogc_headerless() {
         i8_ptr_hl = ir.IntType(8).as_pointer();
@@ -86,6 +149,11 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     rc_gc_disabled_gv.linkage = "weak";
     rc_gc_disabled_gv.initializer = ir.Constant(i8, 0);
     self.rc_gc_disabled_gv = rc_gc_disabled_gv;
+
+    rc_threaded_gv = ir.GlobalVariable(self.llvm_module, i8, name="__jac_rc_threaded");
+    rc_threaded_gv.linkage = "weak";
+    rc_threaded_gv.initializer = ir.Constant(i8, 0);
+    self.rc_threaded_gv = rc_threaded_gv;
 
     dis_gc_fnty = ir.FunctionType(ir.VoidType(), []);
     dis_gc_fn = self._define_function("__rc_gc_disable", dis_gc_fnty);
@@ -172,8 +240,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     total = b.and_(total, ir.Constant(i64, -16), name="total.align");
     raw = b.call(self.malloc_fn, [total], name="raw");
 
-    _aid_old = b.atomic_rmw(
-        "add", alloc_id_gv, ir.Constant(i64, 1), ordering="monotonic"
+    (b, _aid_old) = self._emit_rc_count_update(
+        alloc_fn, b, alloc_id_gv, None, "add", "monotonic", "aid"
     );
     _aid_ptr = b.bitcast(raw, i64_ptr, name="aid.ptr");
     _magic_base = ir.Constant(i64, HDR_MAGIC_SHIFT_BASE);
@@ -343,8 +411,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b.cbranch(_mc_ok_r, do_bb, done_bb);
     b = ir.IRBuilder(do_bb);
 
-    _rmw_old_r = b.atomic_rmw(
-        "add", rc_ptr, ir.Constant(i64, 1), ordering="monotonic", name="rmw.old"
+    (b, _rmw_old_r) = self._emit_rc_count_update(
+        retain_fn, b, rc_ptr, old_rc, "add", "monotonic", "rc.r"
     );
     new_rc = b.add(_rmw_old_r, ir.Constant(i64, 1), name="new.rc");
     if self._rc_debug_codegen {
@@ -423,8 +491,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b.cbranch(is_dbl, log_dbl_free_bb, do_bb);
     b = ir.IRBuilder(do_bb);
 
-    _rmw_old = b.atomic_rmw(
-        "sub", rc_ptr, ir.Constant(i64, 1), ordering="acq_rel", name="rmw.old"
+    (b, _rmw_old) = self._emit_rc_count_update(
+        release_fn, b, rc_ptr, old_rc, "sub", "acq_rel", "rc.rel"
     );
     new_rc = b.sub(_rmw_old, ir.Constant(i64, 1), name="new.rc");
     is_zero = b.icmp_unsigned("==", _rmw_old, ir.Constant(i64, 1), name="is.zero");
@@ -2666,9 +2734,7 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
             if not self._nogc_headerless() {
-                val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
-                self._emit_rc_release_typed(val, op="iter_end", loc=loc);
-                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+                self._emit_iter_slot_release(alloca, var_name, loc);
             } elif var_name in self.nogc_owned_str_vars {
                 val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
                 self._nogc_str_free_owned(val);
@@ -2701,14 +2767,38 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
                 _region_handles.append((var_name, alloca));
                 continue;
             }
-            val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
-            self._emit_rc_release_typed(val, op="iter_end", loc=loc);
-            self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            self._emit_iter_slot_release(alloca, var_name, loc);
         }
     }
     for (var_name, alloca) in _region_handles {
         self._emit_region_handle_drop(alloca, var_name);
     }
+}
+
+impl NaIRGenPass._emit_iter_slot_release(
+    alloca: ir.Value, var_name: str, loc: str
+) -> None {
+    val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
+
+    held = val;
+    if self._str_desc_ty is not None and val.type == self._str_desc_ty {
+        held = self.builder.extract_value(val, 0, name=f"iter.root.{var_name}");
+    }
+    func = self.builder.function;
+    rel_bb = func.append_basic_block(name=f"iter.rel.{var_name}");
+    cont_bb = func.append_basic_block(name=f"iter.cont.{var_name}");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "!=", held, ir.Constant(held.type, None), name=f"iter.set.{var_name}"
+        ),
+        rel_bb,
+        cont_bb
+    );
+    self.builder.position_at_end(rel_bb);
+    self._emit_rc_release_typed(val, op="iter_end", loc=loc);
+    self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+    self.builder.branch(cont_bb);
+    self.builder.position_at_end(cont_bb);
 }
 
 impl NaIRGenPass._bind_loop_coll_slot(val: ir.Value) -> (str | None) {

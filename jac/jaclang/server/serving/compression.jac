@@ -61,23 +61,6 @@ def is_compressible(media_type: str) -> bool {
 }
 
 
-def _append_vary(headers: Headers) {
-    existing = [
-        v.strip() for raw in headers.getlist('Vary')
-        for v in str(raw).split(',')
-        if v.strip()
-    ];
-    if any(v.lower() == 'accept-encoding' for v in existing) {
-        return;
-    }
-    if existing {
-        headers.set('Vary', ', '.join(existing + ['Accept-Encoding']));
-    } else {
-        headers.append('Vary', 'Accept-Encoding');
-    }
-}
-
-
 async def _gzip_stream(source: any, level: int) -> AsyncIterator[bytes] {
     comp = zlib.compressobj(level, zlib.DEFLATED, GZIP_WBITS);
     if inspect.isasyncgen(source) or hasattr(source, '__aiter__') {
@@ -139,7 +122,7 @@ obj CompressionPolicy {
         if not self._negotiable(request, response) {
             return body;
         }
-        _append_vary(response.headers);
+        response.headers.add_vary('Accept-Encoding');
         if not accepts_gzip(request.headers) {
             return body;
         }

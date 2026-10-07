@@ -143,6 +143,7 @@ def register_auth_endpoints(server: EndpointHost) {
             );
         }
         result['token'] = users.create_jwt_token(str(result.get('user_id', '')));
+        start_session(request, str(result['token']));
         return ok(result, status=201);
     }
     server.add_endpoint(
@@ -157,7 +158,7 @@ def register_auth_endpoints(server: EndpointHost) {
         )
     );
 
-    def login_handler(body_data: LoginRequest) -> TransportResponse {
+    def login_handler(body_data: LoginRequest, request: Request) -> TransportResponse {
         result = users.authenticate(
             body_data.identity.value, body_data.credential.password
         );
@@ -168,7 +169,20 @@ def register_auth_endpoints(server: EndpointHost) {
         if users.get_user_role(user_id) == UserRole.SYSTEM.value {
             return fail('UNAUTHORIZED', 'Invalid credentials', 401);
         }
+        if result.get('second_factor_required') {
+            try {
+                return ok(users.second_factors().begin_login(str(user_id)));
+            } except Exception as e {
+                logger.error(f"second factor challenge failed: {e}");
+                return fail(
+                    'SECOND_FACTOR_UNAVAILABLE',
+                    'Sign-in is temporarily unavailable. Please try again.',
+                    503
+                );
+            }
+        }
         result['token'] = users.create_jwt_token(user_id);
+        start_session(request, str(result['token']));
         return ok(dict[(str, JsonValue)](result));
     }
     server.add_endpoint(
@@ -179,11 +193,13 @@ def register_auth_endpoints(server: EndpointHost) {
             request_model=LoginRequest,
             tags=['User APIs'],
             summary='User login',
-            description='Authenticate with an identity (username or email) and password. Returns a JWT.'
+            description='Authenticate with an identity (username or email) and password. Returns a JWT, or a challenge_token to finish at /user/mfa/login when the account has a verified second factor. With the session cookie on, a returned JWT is also set as the HttpOnly session cookie that authorizes same-site GET and HEAD requests.'
         )
     );
 
-    def refresh_token_handler(token: (str | None) = None) -> TransportResponse {
+    def refresh_token_handler(
+        request: Request, token: (str | None) = None
+    ) -> TransportResponse {
         if not token {
             return fail('VALIDATION_ERROR', 'Token is required', 400);
         }
@@ -198,6 +214,7 @@ def register_auth_endpoints(server: EndpointHost) {
         if not new_token {
             return fail('UNAUTHORIZED', 'Invalid or expired token', 401);
         }
+        start_session(request, new_token);
         return ok({'token': new_token, 'message': 'Token refreshed successfully'});
     }
     server.add_endpoint(
@@ -217,6 +234,21 @@ def register_auth_endpoints(server: EndpointHost) {
             tags=['User APIs'],
             summary='Refresh JWT token',
             description='Exchange a still-valid token for a fresh one.'
+        )
+    );
+
+    def logout_handler(request: Request) -> TransportResponse {
+        end_session(request);
+        return ok({'status': 'logged_out'});
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/user/logout',
+            callback=logout_handler,
+            tags=['User APIs'],
+            summary='User logout',
+            description='Clears the session cookie. A bearer token held by the client stays valid until it expires; the client discards it.'
         )
     );
 
@@ -241,6 +273,7 @@ def register_auth_endpoints(server: EndpointHost) {
                 'UPDATE_FAILED', result.get('error', 'Password update failed'), 400
             );
         }
+        end_session(request);
         payload: dict[str, any] = dict(result);
         payload['user_id'] = str(user_id);
         username = primary_username(users.get_user(str(user_id)) or {});
@@ -283,7 +316,10 @@ def register_auth_endpoints(server: EndpointHost) {
             }
             return fail(code, result.get('error', 'Username update failed'), status);
         }
-        result['token'] = users.create_jwt_token(str(user_id));
+        result['token'] = users.create_jwt_token(
+            str(user_id), assurance=token_assurance(bearer_token(request))
+        );
+        start_session(request, str(result['token']));
         return ok(result);
     }
     server.add_endpoint(
@@ -569,6 +605,7 @@ def register_auth_endpoints(server: EndpointHost) {
             return fail('NOT_FOUND', result.get('error', 'User not found'), 404);
         }
         AuthTokenStore.instance().revoke_user_tokens(user_id, 'reset');
+        end_session(request);
         audit(
             'password_reset.completed',
             user_id=user_id,
@@ -588,4 +625,6 @@ def register_auth_endpoints(server: EndpointHost) {
             description='Sets a new password after verifying a reset token.'
         )
     );
+
+    register_second_factor_endpoints(server);
 }

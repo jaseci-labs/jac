@@ -173,8 +173,11 @@ def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     }
     shared = typ.shared;
     scope = shared.symbol_table;
-    if not isinstance(scope, Archetype) or shared.is_enum_class {
+    if shared.is_enum_class or shared.is_extern_struct {
         return shared.class_name;
+    }
+    if not isinstance(scope, Archetype) {
+        return interface_class_native_name(shared);
     }
     memo = shared._native_name;
     if memo is not None and memo[0] is scope {
@@ -183,6 +186,15 @@ def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     name = archetype_native_name(scope);
     shared._native_name = (scope, name);
     return name;
+}
+
+def interface_class_native_name(shared: ClassDetailsShared) -> str {
+    key = shared.canonical_key();
+    if key is None or not key[0].endswith(".jac") {
+        return shared.class_name;
+    }
+
+    return native_arch_name(key[0], shared.class_name);
 }
 
 def native_type_key(typ: TypeBase) -> str {

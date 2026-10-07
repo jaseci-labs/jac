@@ -1624,6 +1624,82 @@ jobs:
           path: /tmp/site-server.log
           retention-days: 7
 
+      # Registration cost per served walker is invisible on a small app and
+      # dominates a large one, so the journeys above cannot see it. This app is
+      # generated, needs no dependencies, and is sized where a per-lookup
+      # resolution shows up as minutes rather than seconds.
+      - name: Generate a many-walker app
+        if: always()
+        env:
+          WALKERS: 400
+          MODULES: 10
+        run: |
+          APP="$RUNNER_TEMP/walker-scale"
+          rm -rf "$APP"
+          mkdir -p "$APP/mods"
+          printf '[project]\nname = "walkerscale"\nversion = "0.1.0"\n' > "$APP/jac.toml"
+          : > "$APP/main.jac"
+          per=$((WALKERS / MODULES))
+          for k in $(seq 0 $((MODULES - 1))); do
+            f="$APP/mods/m$k.jac"
+            : > "$f"
+            names=""
+            for i in $(seq 0 $((per - 1))); do
+              n="w_${k}_$i"
+              printf 'walker:pub %s {\n    can go with Root entry {\n        report 1;\n    }\n}\n\n' "$n" >> "$f"
+              names="$names$n, "
+            done
+            printf 'import mods.m%s;\nimport from mods.m%s { %s }\n' "$k" "$k" "${names%, }" >> "$APP/main.jac"
+          done
+          echo "generated $WALKERS walkers over $MODULES modules"
+
+      # First boot prepares the application; the phase below measures the
+      # restart that reuses it, which is what a redeploy and a worker respawn
+      # pay. Sequential on purpose: the prepare must finish before the timer.
+      - name: Prime the many-walker app
+        if: always()
+        timeout-minutes: 10
+        working-directory: ${{ runner.temp }}/walker-scale
+        run: |
+          timeout 540 jac run --serve --port 8211 main.jac > /tmp/walker-scale-cold.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 108); do
+            kill -0 $PID 2>/dev/null || { echo "server exited during prepare"; tail -50 /tmp/walker-scale-cold.log; exit 1; }
+            curl -sf --max-time 10 -o /dev/null http://localhost:8211/healthz && break
+            sleep 5
+          done
+          curl -sf --max-time 10 -o /dev/null http://localhost:8211/healthz || { echo "not ready after prepare"; tail -50 /tmp/walker-scale-cold.log; exit 1; }
+          kill $PID 2>/dev/null || true
+          sleep 5
+          kill -9 $PID 2>/dev/null || true
+
+      # This wait is the phase's ceiling. Registration linear in the walker
+      # count answers in seconds here; the ceiling exists so that making it
+      # quadratic again fails the job instead of only annotating it.
+      - name: Restart the many-walker app
+        if: always()
+        timeout-minutes: 7
+        working-directory: ${{ runner.temp }}/walker-scale
+        run: |
+          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/walker-scale-ready.start"
+          timeout 330 jac run --serve --port 8212 main.jac > /tmp/walker-scale-warm.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 60); do
+            kill -0 $PID 2>/dev/null || { echo "server exited during restart"; tail -50 /tmp/walker-scale-warm.log; exit 1; }
+            if curl -sf --max-time 10 -o /dev/null http://localhost:8212/healthz; then
+              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/walker-scale-ready.ready"
+              echo "restart answered /healthz on attempt $i"
+              grep -c "Restoring prepared application" /tmp/walker-scale-warm.log || true
+              kill $PID 2>/dev/null || true
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::the many-walker app did not answer /healthz within the restart ceiling"
+          tail -80 /tmp/walker-scale-warm.log
+          kill -9 $PID 2>/dev/null || true
+          exit 1
+
       # Wall time is compared with the median of main's last runs and only
       # annotated; exit status, the hang ceilings and peak RSS are the gates.
       # See .github/pack-smoke-performance.md.

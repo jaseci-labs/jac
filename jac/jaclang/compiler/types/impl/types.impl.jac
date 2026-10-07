@@ -265,6 +265,7 @@ impl ClassDetailsShared.init(
     typeddict_fields: (dict[str, TypeBase] | None) = None,
     is_root_class: bool = False,
     is_enum_class: bool = False,
+    is_extern_struct: bool = False,
     enum_value_type: (TypeBase | None) = None,
     enum_members: (dict[str, EnumMemberInfo] | None) = None,
     _identity_key: (tuple[str, int, int, str] | None) = None,
@@ -279,6 +280,7 @@ impl ClassDetailsShared.init(
     self.is_typeddict = is_typeddict;
     self.is_root_class = is_root_class;
     self.is_enum_class = is_enum_class;
+    self.is_extern_struct = is_extern_struct;
     self._identity_key = _identity_key;
     self._derived_special_types = _derived_special_types;
     self.ct_params = ct_params;

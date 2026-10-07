@@ -129,6 +129,18 @@ obj ModuleFacts {
         return None;
     }
 
+    static def merged_body(module: Module) -> list[UniNode] {
+        merged: list[UniNode] = [];
+        for (body, strip_impl_defs) in ModuleFacts.iter_woven_segments(module) {
+            for item in body {
+                if not (strip_impl_defs and isinstance(item, ImplDef)) {
+                    merged.append(item);
+                }
+            }
+        }
+        return merged;
+    }
+
     static def iter_woven_segments(module: Module) -> list[tuple[list[UniNode], bool]] {
         own_path = module.loc.mod_path;
         annex_stmts: list[UniNode] = [

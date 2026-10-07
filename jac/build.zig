@@ -252,7 +252,8 @@ pub fn build(b: *std.Build) void {
     }
 
     // Standalone: harvest a static-musl runtime (libc.a + libzigc.a + compiler-rt
-    // + crt) from the bundled Zig toolchain into .pbs-build/<osarch>/musl/lib, so
+    // + crt, plus the glibc LFS64 forwarders the floor archives call) from the
+    // bundled Zig toolchain into .pbs-build/<osarch>/musl/lib, so
     // `jac build --native` can fully static-link Linux executables against musl with
     // NO external toolchain at compile time. Idempotent; Linux only.
     if (std.mem.startsWith(u8, host_osarch, "linux-")) {

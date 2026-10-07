@@ -555,6 +555,22 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
+    def _kernel_call(
+        self: NativeBytesEmitter, ctx: NativeEmitCtx, name: str, values: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def _optional_bytes(
+        self: NativeBytesEmitter, ctx: NativeEmitCtx, arg: ir.Value, target: ir.Value
+    ) -> (tuple[ir.Value, ir.Value] | None);
+
+    def _emit_strip(
+        self: NativeBytesEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        which: int
+    ) -> (ir.Value | None);
+
     def emit_decode(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,

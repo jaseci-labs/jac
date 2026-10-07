@@ -132,24 +132,31 @@ impl EsastGenPass.exit_module with uni.Module exit {
         body.extend(hoisted);
     }
 
-    merged_body = self._merge_module_bodies(here);
-    client_items: list[es.Statement | list[es.Statement] | None] = [];
-    fallback_items: list[es.Statement | list[es.Statement] | None] = [];
-    for stmt in merged_body {
-        if stmt.gen.es_ast {
-            is_shared_arch = (
-                isinstance(stmt, uni.Archetype)
-                and (stmt.name is not None)
-                and (stmt.name.value in self.shared_arch_names)
-            );
-            if (getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT)
-                or is_shared_arch {
-                client_items.append(cast(es.Statement, stmt.gen.es_ast));
-            } else {}
+    for stmt in ModuleFacts.merged_body(here) {
+        produced = stmt.gen.es_ast;
+        if not produced {
+            continue;
+        }
+        is_shared_arch = (
+            isinstance(stmt, uni.Archetype)
+            and (stmt.name is not None)
+            and (stmt.name.value in self.shared_arch_names)
+        );
+        is_client = (
+            not isinstance(stmt, uni.ContextAwareNode)
+            or stmt.code_context == CodeContext.CLIENT
+        );
+        if not (is_client or is_shared_arch) {
+            continue;
+        }
+        if isinstance(produced, list) {
+            for part in produced {
+                body.append(cast(es.Statement, part));
+            }
+        } else {
+            body.append(cast(es.Statement, produced));
         }
     }
-    target_body = client_items or fallback_items;
-    body.extend(self._flatten_ast_list(target_body));
 
     if self.needs_osp_graph or self.needs_osp_kernel {
         import from jaclang.compiler.backends.es.jac_runtime_js {

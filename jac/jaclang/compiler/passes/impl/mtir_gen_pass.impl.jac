@@ -1,12 +1,14 @@
 import from pathlib { Path }
 
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
+    self._owned = [];
     for nd in ir_in.get_all_sub_nodes(Ability) {
         self._process_ability(nd);
     }
     for arch in self._collect_routing_archetypes(ir_in) {
         self._register_archetype_light(arch);
     }
+    self.prog.analysis.mtir_owned[ir_in.loc.mod_path] = list(self._owned);
     return ir_in;
 }
 
@@ -439,6 +441,7 @@ impl MTIRGenPass._process_ability(nd: Ability) -> None {
     }
     scope = self._get_scope_str(nd);
     self.prog.mtir_map[scope] = func_info;
+    self._owned.append(scope);
 }
 
 impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
@@ -582,7 +585,9 @@ impl MTIRGenPass._register_archetype_light(nd: Archetype) -> None {
         base_classes=[],
         methods=methods
     );
-    self.prog.mtir_map[self._get_scope_str(nd)] = class_info;
+    scope = self._get_scope_str(nd);
+    self.prog.mtir_map[scope] = class_info;
+    self._owned.append(scope);
 }
 
 impl MTIRGenPass.run_walk with Module entry {

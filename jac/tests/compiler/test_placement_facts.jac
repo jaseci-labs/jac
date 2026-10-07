@@ -95,7 +95,6 @@ test "a module with compile errors is never classified client-only" {
 
 test "sealed images persist placement and expose it without re-derivation" {
     import json;
-    import from jaclang.compiler.placement.placement_export { sealed_spaces_for }
     import from jaclang.jac0core.sealed { SealedImage, MANIFEST_FORMAT }
     d = tempfile.mkdtemp(prefix="jac-sealed-facts-");
     pre = os.path.join(d, "_precompiled");
@@ -110,9 +109,6 @@ test "sealed images persist placement and expose it without re-derivation" {
     with open(os.path.join(pre, "MANIFEST.json"), "w") as f {
         json.dump(manifest, f);
     }
-    assert sealed_spaces_for(os.path.join(d, "svc.jac")) == {"server"};
-    assert sealed_spaces_for(os.path.join(d, "ui", "page.jac")) == {"client"};
-    assert sealed_spaces_for(os.path.join(d, "unknown.jac")) is None;
     import from pathlib { Path }
     img = SealedImage(Path(pre), manifest);
     assert img.placement == {"svc.jac": ["server"], "ui/page.jac": ["client"]};

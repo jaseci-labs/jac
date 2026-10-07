@@ -1691,7 +1691,7 @@ impl NaIRGenPass._osp_pred_pair(
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     _env_ty = ir.LiteralStructType([_v.type for _v in _rhs_vals]);
-    _env = self.builder.alloca(_env_ty, name="predp.env");
+    _env = self._stack_entry_alloca(_env_ty, "predp.env");
     for (_ci, _v) in enumerate(_rhs_vals) {
         self.builder.store(
             _v,
@@ -1752,7 +1752,7 @@ impl NaIRGenPass._osp_pred_pair(
         return None;
     }
     _pair_ty = ir.LiteralStructType([i64, i8p]);
-    _pair = self.builder.alloca(_pair_ty, name="predp.pair");
+    _pair = self._stack_entry_alloca(_pair_ty, "predp.pair");
     self.builder.store(
         self.builder.ptrtoint(_tf, i64, name="predp.fni"),
         self.builder.gep(
@@ -1809,7 +1809,7 @@ impl NaIRGenPass._osp_type_pair(ntag: int) -> (ir.Value | None) {
     );
     self._builder = _saved;
     _pair_ty = ir.LiteralStructType([i64, i8p]);
-    _pair = self.builder.alloca(_pair_ty, name="typep.pair");
+    _pair = self._stack_entry_alloca(_pair_ty, "typep.pair");
     self.builder.store(
         self.builder.ptrtoint(_tf, i64, name="typep.fni"),
         self.builder.gep(

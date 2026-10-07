@@ -656,6 +656,19 @@ impl NaIRGenPass._typed_elem_llvm_of(
     if _ty is None {
         return None;
     }
+    try {
+        import from jaclang.compiler.types.types { TypeVarType as _TeTypeVar }
+    } except ImportError {
+        _TeTypeVar = None;
+    }
+    if (
+        _TeTypeVar is not None
+        and isinstance(_ty, _TeTypeVar)
+        and self._mono_solution is not None
+        and _ty.name in self._mono_solution
+    ) {
+        _ty = self._mono_solution[_ty.name];
+    }
     _mg = self._mangled_of(_ty);
     if _mg is None or not _mg.startswith(prefix) {
         _sole = self._opt_sole_member(_ty);
@@ -1595,7 +1608,9 @@ impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | Non
     if not tv_names or not isinstance(owner, ClassType) or owner._shared is None {
         return None;
     }
-    _params: list[str] = self.arch_type_params.get(owner.shared.class_name) or [];
+
+    _owner_key = class_type_native_name(owner) or owner.shared.class_name;
+    _params: list[str] = self.arch_type_params.get(_owner_key) or [];
     _args: list[TypeBase] = owner.private.type_args or [];
     for _tv in tv_names {
         if _tv in _params {

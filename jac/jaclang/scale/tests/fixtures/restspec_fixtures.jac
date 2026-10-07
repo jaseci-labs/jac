@@ -1,6 +1,12 @@
 """Test API fixture for restspec decorator tests."""
 
 import from jaclang.runtime.builtin { restspec }
+import from jaclang.server.exchange { current_request, respond }
+import from jaclang.server.serving.datatypes {
+    FileResponse,
+    RedirectResponse,
+    Response
+}
 import from http { HTTPMethod }
 
 # ============================================================================
@@ -138,6 +144,86 @@ walker:pub GetProjectTaskWalker {
             "message": "GetProjectTaskWalker executed",
             "project_id": self.project_id,
             "task_id": self.task_id
+        };
+    }
+}
+
+"""A list walker one segment shorter than its item route, both on PUT: the
+list walker's implicit `/{nd}` route has the item route's shape."""
+@restspec(method=HTTPMethod.PUT, path="/boards/{board_id}/cards")
+walker:pub ReorderCards {
+    has board_id: str = "";
+
+    can reorder with Root entry {
+        report {"message": "ReorderCards executed", "board_id": self.board_id};
+    }
+}
+
+"""The item route the list walker's `/{nd}` route must not shadow. Its
+parameter name sorts after `nd`, which is the case that lost the tie."""
+@restspec(method=HTTPMethod.PUT, path="/boards/{board_id}/cards/{slot}")
+walker:pub EditCard {
+    has board_id: str = "",
+        slot: str = "";
+
+    can edit with Root entry {
+        report {
+            "message": "EditCard executed",
+            "board_id": self.board_id,
+            "slot": self.slot
+        };
+    }
+}
+
+"""A catch-all behind a path parameter, which the server's own `/{file_path:path}`
+page fallback must not shadow on GET."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/boards/{board_id}/files/{file_path:path}",
+    produces="text/plain",
+    envelope=False
+)
+def:pub board_file(board_id: str, file_path: str) -> str {
+    return board_id + ":" + file_path;
+}
+
+"""A walker field named `request`, the name the server uses for its own
+request object."""
+@restspec(method=HTTPMethod.POST, path="/orders/save")
+walker:pub SaveOrder {
+    has request: dict[str, any] = {},
+        status: str = "";
+
+    can save with Root entry {
+        report {"request": self.request, "status": self.status};
+    }
+}
+
+"""A function parameter named `request`."""
+@restspec(method=HTTPMethod.POST, path="/orders/echo")
+def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] {
+    return {"request": request, "status": status};
+}
+
+"""One field of each scalar type, plus an optional one and a list, to send
+JSON null to."""
+@restspec(method=HTTPMethod.POST, path="/nulls")
+walker:pub NullFields {
+    has title: str = "seed",
+        note: str | None = "seed",
+        count: int = -1,
+        ratio: float = 0.5,
+        flag: bool = True,
+        tags: list[str] = [];
+
+    can echo with Root entry {
+        report {
+            "title": self.title,
+            "note": self.note,
+            "count": self.count,
+            "ratio": self.ratio,
+            "flag": self.flag,
+            "tags": self.tags
         };
     }
 }
@@ -375,6 +461,54 @@ def:pub raw_bytearray -> bytearray {
     return bytearray(b"\x00\x01\x02");
 }
 
+"""A returned Response is sent as returned: status, headers and media type
+are the function's, per request (#9291)."""
+@restspec(
+    method=HTTPMethod.GET, path="/raw/response", produces="text/plain", envelope=False
+)
+def:pub raw_response(kind: str = "csv", name: str = "report") -> Response {
+    if kind == "missing" {
+        return Response(
+            content="<h1>no such report</h1>", status_code=404, media_type="text/html"
+        );
+    }
+    if kind == "header" {
+        return Response(content="x", headers={"X-Report-Name": name});
+    }
+    return Response(
+        content="a,b\n1,2\n",
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="' + name + '.csv"'}
+    );
+}
+
+"""A returned RedirectResponse is a redirect."""
+@restspec(method=HTTPMethod.GET, path="/raw/moved", envelope=False)
+def:pub raw_moved -> RedirectResponse {
+    return RedirectResponse(url="/raw/plain", status_code=302);
+}
+
+"""A (body, media_type) pair picks the representation per request; a plain
+body still uses the registered `produces`."""
+@restspec(
+    method=HTTPMethod.GET, path="/raw/pair", produces="text/plain", envelope=False
+)
+def:pub raw_pair(fmt: str = "csv") -> tuple[str, str] | str {
+    if fmt == "view" {
+        return ("<h1>report</h1>", "text/html");
+    }
+    if fmt == "plain" {
+        return "plain default";
+    }
+    return ("a,b\n1,2\n", "text/csv");
+}
+
+"""A returned FileResponse is served by the server's Range-aware file path."""
+@restspec(method=HTTPMethod.GET, path="/raw/file", envelope=False)
+def:pub raw_file(path: str) -> FileResponse {
+    return FileResponse(path=path, media_type="video/mp4");
+}
+
 """Envelope stays on by default -- regression guard for the opt-in."""
 @restspec(method=HTTPMethod.GET, path="/raw/enveloped")
 def:pub still_enveloped -> str {
@@ -387,4 +521,121 @@ POST and register a live route instead of an unroutable "" method."""
 @restspec(path="/custom/no-method-func")
 def:protect no_method_func -> dict[str, any] {
     return {"message": "no_method_func executed"};
+}
+
+
+# ============================================================================
+# Request and response channel: a served unit reads the request it is serving
+# and chooses the status and headers of its own enveloped response.
+# ============================================================================
+node AuditMark {
+    has label: str = "";
+}
+
+"""A refusal that keeps its write: the report stays the body, the status is 403."""
+walker:pub RefuseAfterWrite {
+    has label: str;
+
+    can refuse with Root entry {
+        here ++> AuditMark(label=self.label);
+        respond(status=403);
+        report {"error": "Forbidden", "label": self.label};
+    }
+}
+
+"""A refusal that raises: the unit rolls back and the chosen status is kept."""
+walker:pub RefuseAndRollBack {
+    has label: str;
+
+    can refuse with Root entry {
+        here ++> AuditMark(label=self.label);
+        respond(status=409);
+        raise ValueError("Already exists");
+    }
+}
+
+"""A crash after choosing a success status is still a server fault."""
+walker:pub CrashAfterCreated {
+    can crash with Root entry {
+        respond(status=201);
+        raise RuntimeError("boom");
+    }
+}
+
+walker:pub CountAuditMarks {
+    has label: str;
+
+    can count with Root entry {
+        marks = [
+            m
+            for m in [-->[?:AuditMark]]
+            if m.label == self.label
+        ];
+        report {"count": len(marks)};
+    }
+}
+
+"""A walker answering 201 with a header of its own on the envelope."""
+walker:pub CreatedWithHeader {
+    can create with Root entry {
+        respond(status=201, headers={"X-Resource-Id": "r-7"});
+        report {"id": "r-7"};
+    }
+}
+
+def:pub find_thing(thing_id: str) -> dict[str, any] {
+    if thing_id != "known" {
+        respond(status=404);
+        return {"error": "Not found", "thing_id": thing_id};
+    }
+    return {"thing_id": thing_id};
+}
+
+def _request_facts -> dict[str, any] {
+    seen = current_request();
+    if seen is None {
+        return {"request": None};
+    }
+    return {
+        "method": seen.method,
+        "path": seen.path,
+        "origin": seen.origin,
+        "public_origin": seen.public_origin,
+        "link": seen.link("/invite/abc"),
+        "probe": seen.header("X-Probe"),
+        "authorization": seen.header("Authorization"),
+        "query": seen.query,
+        "query_string": seen.query_string
+    };
+}
+
+"""A sync walker runs on a worker thread; it must still see the request."""
+@restspec(method=HTTPMethod.GET, path="/channel/walker-request")
+walker:pub WalkerReadsRequest {
+    can read with Root entry {
+        report _request_facts();
+    }
+}
+
+"""An async walker runs on the event loop task itself."""
+async walker:pub AsyncWalkerReadsRequest {
+    async can read with Root entry {
+        respond(status=202);
+        report _request_facts();
+    }
+}
+
+@restspec(method=HTTPMethod.GET, path="/channel/func-request")
+def:pub func_reads_request(tag: str = "") -> dict[str, any] {
+    return _request_facts();
+}
+
+"""A raw-body function reads the request too; its body is still its return."""
+@restspec(method=HTTPMethod.GET, path="/raw/origin", envelope=False)
+def:pub raw_origin -> str {
+    seen = current_request();
+    if seen is None {
+        return "none";
+    }
+    return seen.origin;
 }

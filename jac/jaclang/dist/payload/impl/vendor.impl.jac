@@ -16,6 +16,7 @@ impl build_musl(osarch: str, dest: str, zig_exe: str) {
     if osarch == "linux-aarch64" {
         build_outline_atomics(dest, zig_exe);
     }
+    build_musl_compat(ztarget, dest, zig_exe);
     have_all = all(file_exists(os.path.join(dest, name)) for name in MUSL_MANDATORY);
     if have_all {
         log(f"==> musl runtime already vendored in {dest}; skipping");
@@ -162,6 +163,71 @@ impl build_outline_atomics(dest: str, zig_exe: str) {
         output = os.path.join(work, "runtime.a");
         if not run_child([zig_exe, "ar", "rcsD", output] + objects, None, False) {
             die("compiler-rt: failed to archive AArch64 builtins");
+        }
+        os.replace(output, archive);
+    }
+    digest_of["archive"] = sha256_hex(read_bytes(archive));
+    write_source_manifest(manifest, list(digest_of), digest_of);
+}
+
+impl build_musl_compat(ztarget: str, dest: str, zig_exe: str) {
+    import jaclang;
+    import subprocess;
+    import tempfile;
+    source = os.path.join(
+        os.path.dirname(str(jaclang.__file__)),
+        "compiler",
+        "backends",
+        "native",
+        "musl_compat",
+        "lfs64.c"
+    );
+    digest_of: dict[str, str] = {
+        "lfs64.c": sha256_hex(read_bytes(source)),
+        "toolchain": sha256_hex(
+            subprocess.check_output([zig_exe, "version"])
+                + f"{ztarget}:O2:PIC:{','.join(MUSL_LFS64_ENTRIES)}".encode()
+        )
+    };
+    manifest = os.path.join(dest, "MUSL_COMPAT.sha256");
+    archive = os.path.join(dest, "libmusl_compat.a");
+    if file_exists(archive) {
+        digest_of["archive"] = sha256_hex(read_bytes(archive));
+        if read_source_manifest(manifest) == digest_of {
+            return;
+        }
+    }
+    make_dirs(dest);
+    log(f"==> building glibc LFS64 compat archive ({ztarget}) ...");
+    with tempfile.TemporaryDirectory(prefix=".musl-compat-", dir=dest) as work {
+        objects: list[str] = [];
+        for forwarder in MUSL_LFS64_ENTRIES {
+            obj_path = os.path.join(work, f"{forwarder}.o");
+            if not run_child(
+                [
+                    zig_exe,
+                    "cc",
+                    "-target",
+                    ztarget,
+                    "-O2",
+                    "-fPIC",
+                    "-fno-stack-protector",
+                    "-c",
+                    f"-DL_{forwarder}",
+                    source,
+                    "-o",
+                    obj_path
+                ],
+                None,
+                False
+            ) {
+                die(f"musl-compat: failed to build {forwarder}");
+            }
+            objects.append(obj_path);
+        }
+        output = os.path.join(work, "compat.a");
+        if not run_child([zig_exe, "ar", "rcsD", output] + objects, None, False) {
+            die("musl-compat: failed to archive the LFS64 forwarders");
         }
         os.replace(output, archive);
     }

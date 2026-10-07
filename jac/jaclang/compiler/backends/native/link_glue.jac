@@ -2,7 +2,8 @@ glob SHARED_INIT_SYMBOL: str = "__jac_shared_init",
      ENTRY_SYMBOL: str = "jac_entry",
      WASM_INIT_SYMBOL: str = "__jac_glob_init",
      REGION_DIED_HOOK: str = "__jac_region_died_hook",
-     STR_NEW_SYMBOL: str = "__jac_str_new";
+     STR_NEW_SYMBOL: str = "__jac_str_new",
+     RC_THREADED_SYMBOL: str = "__jac_rc_threaded";
 
 obj GlueUnit {
     has prefix: str,
@@ -48,6 +49,12 @@ def entry_preamble_ir(spec: GlueSpec) -> str {
     if not spec.shared and root_unit is not None and root_unit.entry_symbol {
         decls.append(_decl_void_fn(root_unit.entry_symbol));
         calls.append(f'  call void @"{root_unit.entry_symbol}"()');
+    }
+    if spec.shared {
+        decls.append(f"@{RC_THREADED_SYMBOL} = weak global i8 0\n");
+        calls.insert(
+            0, f"  store atomic i8 1, ptr @{RC_THREADED_SYMBOL} monotonic, align 1"
+        );
     }
     name = SHARED_INIT_SYMBOL if spec.shared else ENTRY_SYMBOL;
     body = "\n".join(calls) + "\n" if calls else "";

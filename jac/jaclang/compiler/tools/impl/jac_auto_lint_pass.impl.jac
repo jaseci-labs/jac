@@ -1104,7 +1104,7 @@ impl JacAutoLintPass.exit_if_else_expr with uni.IfElseExpr exit {
     if len(trailers) < 2 {
         return;
     }
-    null_ok_keys: set = set();
+    null_ok_keys: set[str] = set();
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
             key = self._expr_to_key(trailer);
@@ -1135,7 +1135,7 @@ impl JacAutoLintPass.exit_bool_expr with uni.BoolExpr exit {
     if len(trailers) < 2 {
         return;
     }
-    null_ok_keys: set = set();
+    null_ok_keys: set[str] = set();
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
             key = self._expr_to_key(trailer);

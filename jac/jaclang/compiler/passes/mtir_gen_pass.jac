@@ -13,7 +13,8 @@ glob PRIMITIVE_TYPES: list[str] = [
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
 walker MTIRGenPass(CompilerPass) {
-    has _class_info_cache: dict[int, ClassInfo] = {};
+    has _class_info_cache: dict[int, ClassInfo] = {},
+        _owned: list[str] = [];
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

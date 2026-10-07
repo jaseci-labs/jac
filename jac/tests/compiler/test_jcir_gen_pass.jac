@@ -35,7 +35,7 @@ import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
+import from jaclang.compiler.driver.module_compile { get_py_code_gen }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
@@ -926,7 +926,7 @@ with entry {
     assert mod.gen.py_bytecode;
     sched = get_py_code_gen(native=False);
     assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
-    assert JcirBytecodeGenPass in sched;
+    assert JcirBytecodeGenPass not in sched;
     for `entry in sched {
         assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
             f"a legacy emitter is back in the codegen schedule: {`entry.__name__}"
