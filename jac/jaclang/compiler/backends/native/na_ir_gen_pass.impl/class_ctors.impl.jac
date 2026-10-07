@@ -60,6 +60,9 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
             if sym is None or sym.sym_type in CLASS_REFERENCE_SYMBOLS {
                 return False;
             }
+            if self._module_class_name(target) is not None {
+                return False;
+            }
         } elif self._class_expr_bound(target.target) is not None {
             return False;
         }
