@@ -3,6 +3,7 @@ import json;
 import from jaclang.compiler.backends.native.na_constants {
     FACT_CODEC_NAME,
     FACT_CODEC_TABLES,
+    FACT_IMPORT_PATHS,
     FACT_OS,
     FACT_PRIMITIVE_METHODS,
     FACT_SEALED_RUNTIME,
@@ -16,6 +17,15 @@ glob _HELD: dict[str, str] = {};
 def host_native_fact(kind: str, key: str) -> str {
     if kind == FACT_STRUCT_LAYOUTS {
         return struct_layouts_fact(key);
+    }
+    if kind == FACT_IMPORT_PATHS {
+        import sys;
+        import os;
+        return FACT_SEP.join(
+            p
+            for p in sys.path
+            if p and os.path.isabs(p)
+        );
     }
     tag = kind + FACT_SEP + key;
     held = _HELD.get(tag);

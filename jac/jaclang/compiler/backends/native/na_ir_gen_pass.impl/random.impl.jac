@@ -24,7 +24,7 @@ impl NaIRGenPass._mt_ensure -> None {
     idx.global_constant = False;
     idx.initializer = ir.Constant(i32, _MT_N + 1);
 
-    def elem(b: any, k: any) -> any {
+    def elem(b: ir.IRBuilder, k: ir.Value) -> ir.Value {
         return b.gep(mt, [ir.Constant(i32, 0), k]);
     }
 

@@ -695,9 +695,7 @@ impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str |
     return None;
 }
 
-impl NaIRGenPass._llvm_type_str(
-    ty: ir.Type, pointee_names: dict[(ir.Type, str)]
-) -> str {
+impl NaIRGenPass._llvm_type_str(ty: ir.Type, pointee_names: dict[str, str]) -> str {
     _opt_pt = self._opt_payload_of(ty);
     if _opt_pt is not None {
         return "opt." + self._llvm_type_str(_opt_pt, pointee_names);
@@ -722,29 +720,29 @@ impl NaIRGenPass._llvm_type_str(
             if isinstance(ty.pointee, ir.IntType) and ty.pointee.width == 8 {
                 return "i8*";
             }
-            return pointee_names.get(ty.pointee, "ptr");
+            return pointee_names.get(str(ty.pointee), "ptr");
         }
         return "ptr";
     }
     return "i64";
 }
 
-impl NaIRGenPass._layout_pointee_names -> dict[(ir.Type, str)] {
-    names: dict[(ir.Type, str)] = {};
+impl NaIRGenPass._layout_pointee_names -> dict[str, str] {
+    names: dict[str, str] = {};
     for (sname, stype) in self.struct_types.items() {
-        names.setdefault(stype, f"{sname}*");
+        names.setdefault(str(stype), f"{sname}*");
     }
     for (ename, ltype) in self.list_types.items() {
-        names.setdefault(ltype, f"List.{ename}*");
+        names.setdefault(str(ltype), f"List.{ename}*");
     }
     for ttype in self.tuple_types.values() {
-        names.setdefault(ttype, "Tuple*");
+        names.setdefault(str(ttype), "Tuple*");
     }
     for dtype in self.dict_types.values() {
-        names.setdefault(dtype, f"{dtype.name}*");
+        names.setdefault(str(dtype), f"{dtype.name}*");
     }
     for setype in self.set_types.values() {
-        names.setdefault(setype, f"{setype.name}*");
+        names.setdefault(str(setype), f"{setype.name}*");
     }
     return names;
 }
@@ -761,13 +759,13 @@ impl NaIRGenPass._export_native_layout -> None {
     }
     layout = NativeModuleLayout(str_headerless=self._nogc_headerless());
     pointee_names = self._layout_pointee_names();
-    struct_names: dict[(ir.Type, str)] = {};
+    struct_names: dict[str, str] = {};
     for (sname, stype) in self.struct_types.items() {
-        struct_names.setdefault(stype, sname);
+        struct_names.setdefault(str(stype), sname);
     }
-    tuple_keys: dict[(ir.Type, str)] = {};
+    tuple_keys: dict[str, str] = {};
     for (tkey, ttype) in self.tuple_types.items() {
-        tuple_keys.setdefault(ttype, tkey);
+        tuple_keys.setdefault(str(ttype), tkey);
     }
 
     for (arch_name, field_indices) in self.struct_field_indices.items() {
@@ -856,9 +854,11 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_struct: (str | None) = None;
         ret_tuple: (NativeTupleLayout | None) = None;
         if isinstance(func.function_type.return_type, ir.PointerType) {
-            ret_struct = struct_names.get(func.function_type.return_type.pointee_type);
+            ret_struct = struct_names.get(
+                str(func.function_type.return_type.pointee_type)
+            );
 
-            tkey = tuple_keys.get(func.function_type.return_type.pointee_type)
+            tkey = tuple_keys.get(str(func.function_type.return_type.pointee_type))
                 if ret_type.startswith("Tuple")
                 else None;
             if tkey is not None {
@@ -927,7 +927,9 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_type = self._llvm_type_str(func.function_type.return_type, pointee_names);
         ret_struct: (str | None) = None;
         if isinstance(func.function_type.return_type, ir.PointerType) {
-            ret_struct = struct_names.get(func.function_type.return_type.pointee_type);
+            ret_struct = struct_names.get(
+                str(func.function_type.return_type.pointee_type)
+            );
         }
         layout.methods[mname] = NativeFuncLayout(
             name=mname,

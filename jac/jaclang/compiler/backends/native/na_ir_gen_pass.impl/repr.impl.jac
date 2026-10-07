@@ -364,7 +364,7 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     _pst = self.struct_types[arch_name];
     pty = _pst.as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(arch_name)}"
     );
     fn.linkage = "private";
@@ -561,7 +561,7 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     i64 = ir.IntType(64);
     pty = _st.as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(type_key)}"
     );
     fn.linkage = "private";

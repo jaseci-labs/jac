@@ -1,7 +1,6 @@
 import hashlib;
 import json;
 import os;
-import sys;
 import from jaclang.compiler.frontend.codeinfo {
     NATIVE_ABI_VERSION,
     NativeFieldInfo,
@@ -53,7 +52,14 @@ def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             }
         }
     }
-    for search_dir in sys.path {
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.backends.native.na_constants {
+        FACT_IMPORT_PATHS,
+        FACT_SEP
+    }
+    for search_dir in active_host().native_fact(FACT_IMPORT_PATHS, "").split(
+        FACT_SEP
+    ) {
         if search_dir and os.path.isabs(search_dir) {
             candidate = os.path.join(search_dir, ref);
             if os.path.isfile(candidate) {

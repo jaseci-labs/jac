@@ -228,7 +228,7 @@ impl NaIRGenPass._emit_closure_thunk(
     fnty = target_fn.function_type;
     declared = list(fnty.args)[:declared_count];
     thunk_ty = ir.FunctionType(fnty.return_type, declared + [i8p]);
-    thunk: any = ir.Function(
+    thunk: ir.Function = ir.Function(
         self.llvm_module, thunk_ty, name=f"__jac_closure_{target_fn.name}"
     );
     thunk.linkage = "private";
