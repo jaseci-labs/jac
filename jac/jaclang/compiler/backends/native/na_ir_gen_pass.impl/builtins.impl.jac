@@ -28,9 +28,12 @@ impl NaIRGenPass._get_or_declare_extern(
             f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
         );
     }
-    pairs = list(zip(arg_types, actual.args));
-    pairs.append((actual.return_type, ret_type));
-    for (source, target) in pairs {
+    _n_pairs = len(arg_types);
+    for _pair_i in range(_n_pairs + 1) {
+        source: ir.Type = arg_types[_pair_i]
+            if _pair_i < _n_pairs
+            else actual.return_type;
+        target: ir.Type = actual.args[_pair_i] if _pair_i < _n_pairs else ret_type;
         if source == target {
             continue;
         }
