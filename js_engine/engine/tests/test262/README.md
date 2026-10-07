@@ -10,7 +10,7 @@ QuickJS, and Boa.
 
 ```bash
 # From the js_engine/ repo root:
-python3 engine/tests/test262/run_test262.py --dry-run
+jac run engine/tests/test262/run_test262.jac --dry-run
 ```
 
 A `--dry-run` lists all tests that would be run without actually executing them.
@@ -19,10 +19,10 @@ To run a real subset:
 
 ```bash
 # Run tests matching a glob (e.g. language/expressions/):
-python3 engine/tests/test262/run_test262.py --filter "*/language/expressions/*"
+jac run engine/tests/test262/run_test262.jac --filter "*/language/expressions/*"
 
 # Run everything (slow — ~40 000 tests):
-python3 engine/tests/test262/run_test262.py
+jac run engine/tests/test262/run_test262.jac
 ```
 
 ---
@@ -30,14 +30,14 @@ python3 engine/tests/test262/run_test262.py
 ## Bootstrapping the test262 source
 
 The runner reads test262 from `engine/tests/test262/vendor/`. It is gitignored
-and must be cloned before first use:
+and is fetched at a pinned commit before first use:
 
 ```bash
 # From the repo root:
-git clone --depth 1 https://github.com/tc39/test262 engine/tests/test262/vendor
+tools/fetch_test_deps.sh test262
 ```
 
-This clones at depth 1 (~50 MB instead of the full ~500 MB history).
+This fetches only that commit (depth 1, about 50 MB instead of the full ~500 MB history).
 
 ---
 
@@ -68,7 +68,7 @@ These differ from the `qa/` harness:
 | `negative:` declared; engine exits 0 (no throw) | **FAIL** |
 | Engine hangs past `--timeout` | **HANG** (counted as failure) |
 
-`run_test262.py` exits with code **0** when there are no failures. It exits **1** when there are failures.
+`run_test262.jac` exits with code **0** when there are no failures. It exits **1** when there are failures.
 
 ### Harness injection
 
@@ -96,8 +96,8 @@ and the first 300 characters of engine stderr/stdout.
 ## Baseline pass rate
 
 > Phase B baseline not yet recorded.  
-> Run `python3 engine/tests/test262/run_test262.py --node` to establish a Node.js baseline,
-> then `python3 engine/tests/test262/run_test262.py` for the engine baseline.
+> Run `jac run engine/tests/test262/run_test262.jac --node` to establish a Node.js baseline,
+> then `jac run engine/tests/test262/run_test262.jac` for the engine baseline.
 > Record both here once available.
 
 ---

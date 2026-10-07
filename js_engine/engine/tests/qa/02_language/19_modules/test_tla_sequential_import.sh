@@ -2,7 +2,7 @@
 # TLA-SEQ-001..005: sequential top-level `await import()` of distinct uncached
 # modules must not crash. Regression for the frame-pool locals-aliasing bug
 # (see test_tla_sequential_import.fixture.mjs + docs/VITE_BLOCKER_SEQUENTIAL_TLA_IMPORT.md).
-# Standalone wrapper so run_reg.py discovers this as an independent suite; the
+# Standalone wrapper so run_reg.jac discovers this as an independent suite; the
 # ESM entry (.fixture.mjs, not itself discovered) needs the .mjs runner path.
 set -uo pipefail
 : "${JAC_JS_RUNNER:=bin/js_engine}"

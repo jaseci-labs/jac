@@ -673,7 +673,6 @@ with entry {
             continue;
         }
         if opt == "--gc" {
-            # no-op: the collector is on by default; accepted so existing scripts and run_reg.py --gc still work
             exec_argv.append(opt);
             i = i + 1;
             continue;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ESM-C-003 / ESM-C-004b: bidirectional cyclic ESM with export-let live bindings.
-# Standalone wrapper so run_reg.py discovers this as an independent suite.
+# Standalone wrapper so run_reg.jac discovers this as an independent suite.
 set -uo pipefail
 : "${JAC_JS_RUNNER:=bin/js_engine}"
 dir=$(dirname "${BASH_SOURCE[0]}")

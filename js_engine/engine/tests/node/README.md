@@ -1,7 +1,7 @@
 # Node.js Core Test Runner
 
 This directory contains the js_engine runner for the [nodejs/node](https://github.com/nodejs/node)
-core test suite (submodule at `engine/tests/node/vendor`, branch `v24.x`).
+core test suite (fetched into `engine/tests/node/vendor` at a pinned `v24.x` commit by `tools/fetch_test_deps.sh node`).
 
 Unlike test262, Node tests are self-contained programs that `require('../common')` and
 exit `0` on success. This runner executes them in place (no harness injection).
@@ -11,27 +11,27 @@ exit `0` on success. This runner executes them in place (no harness injection).
 ## Quick start
 
 ```bash
-# From the js_engine/ repo root:
-python3 engine/tests/node/run_node_tests.py --dry-run
+# From the js_engine/ repo root (options: append `-- --help`):
+jac run engine/tests/node/run_node_tests.jac --dry-run
 
 # Any specific test file (path relative to repo, to test/, or absolute):
-python3 engine/tests/node/run_node_tests.py \
+jac run engine/tests/node/run_node_tests.jac \
   engine/tests/node/vendor/test/module-hooks/test-async-loader-hooks-globalpreload-warning.mjs
 
 # Or the same file via --filter (searches all suites under test/):
-python3 engine/tests/node/run_node_tests.py --filter \
+jac run engine/tests/node/run_node_tests.jac --filter \
   'module-hooks/test-async-loader-hooks-globalpreload-warning.mjs'
 
 # Run fs module tests under system Node (baseline):
-python3 engine/tests/node/run_node_tests.py --node --filter 'test-fs-*'
+jac run engine/tests/node/run_node_tests.jac --node --filter 'test-fs-*'
 
 # Same subset against js_engine:
-python3 engine/tests/node/run_node_tests.py --filter 'test-fs-*'
+jac run engine/tests/node/run_node_tests.jac --filter 'test-fs-*'
 
 # Entire suite directory:
-python3 engine/tests/node/run_node_tests.py --suite module-hooks
+jac run engine/tests/node/run_node_tests.jac --suite module-hooks
 # or:
-python3 engine/tests/node/run_node_tests.py engine/tests/node/vendor/test/module-hooks
+jac run engine/tests/node/run_node_tests.jac engine/tests/node/vendor/test/module-hooks
 ```
 
 ---
@@ -39,10 +39,10 @@ python3 engine/tests/node/run_node_tests.py engine/tests/node/vendor/test/module
 ## Bootstrapping the Node.js source
 
 ```bash
-git submodule update --init engine/tests/node/vendor
+tools/fetch_test_deps.sh node
 ```
 
-The submodule tracks the `v24.x` branch.
+This fetches nodejs/node at the pinned `v24.x` commit (depth 1).
 
 ---
 
@@ -120,16 +120,16 @@ suite path (e.g. `regression_logs/node/parallel/test-fs-access.js.log`).
 
 ```bash
 # All parallel tests matching http (workers = nproc):
-python3 engine/tests/node/run_node_tests.py --filter 'test-http-*'
+jac run engine/tests/node/run_node_tests.jac --filter 'test-http-*'
 
 # parallel + sequential, engine run, save baseline:
-python3 engine/tests/node/run_node_tests.py \
+jac run engine/tests/node/run_node_tests.jac \
   --suite parallel,sequential \
   --filter 'test-fs-*' \
   --save-baseline docs/regression_logs/node_fs_baseline.json
 
 # Check for regressions:
-python3 engine/tests/node/run_node_tests.py \
+jac run engine/tests/node/run_node_tests.jac \
   --filter 'test-fs-*' \
   --check-baseline docs/regression_logs/node_fs_baseline.json
 ```

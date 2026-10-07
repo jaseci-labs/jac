@@ -7,13 +7,13 @@ Executable checks for the JavaScript / Node-compatible engine. Tests are plain *
 From the repository root (after `make` so `bin/js_engine` exists):
 
 ```bash
-python3 run_reg.py
+jac run engine/tests/qa/run_reg.jac
 ```
 
 Run against **Node.js** for baseline comparison:
 
 ```bash
-python3 run_reg.py --node
+jac run engine/tests/qa/run_reg.jac --node
 ```
 
 `--node` runs **every** discovered suite under Node (no skip filtering).
@@ -25,17 +25,17 @@ Each runnable suite (`*.js` except `*.fixture.js`, and `*.sh`) must:
 1. Print a line containing **`REGRESSION_TESTCASE_FINISHED`** (with `failures=N`) before exiting normally.
 2. Exit with code **`0`** only when `N == 0` (all checks passed). A non-zero exit code is the **failure count** (capped at 255); multiple failing checks are accumulated, not fail-fast.
 
-[`run_reg.py`](../run_reg.py) marks a suite **PASS** only when the exit code is `0` **and** the completion marker appears in captured output (avoids false positives if the process exits early).
+[`run_reg.jac`](./run_reg.jac) marks a suite **PASS** only when the exit code is `0` **and** the completion marker appears in captured output (avoids false positives if the process exits early).
 
 ### Skip manifest (default `js_engine` runs)
 
-Known **failing** or **hanging** suites are listed in [`skip_manifest.json`](./skip_manifest.json) with `skip_type`, `reason`, and a `qa_issues/…` ticket path. By default, `run_reg.py` **does not run** those entries when using `bin/js_engine`.
+Known **failing** or **hanging** suites are listed in [`skip_manifest.json`](./skip_manifest.json) with `skip_type`, `reason`, and a `qa_issues/…` ticket path. By default, `run_reg.jac` **does not run** those entries when using `bin/js_engine`.
 
 - `--run-fail` — also run suites marked `fail`
 - `--run-hang` — also run suites marked `hang`
 - `--all` — run both skipped categories
 
-Pass specific files or directories under `regression/` to narrow the run (see `python3 run_reg.py --help` / source for flags).
+Pass specific files or directories under `regression/` to narrow the run (the flags are listed at the top of [`run_reg.jac`](./run_reg.jac)).
 
 Logs for the last run are written under `regression_logs/`, mirroring the folder layout of `regression/`.
 

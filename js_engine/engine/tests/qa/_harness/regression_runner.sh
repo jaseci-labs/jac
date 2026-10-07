@@ -1,5 +1,5 @@
 # Shared runner helpers for QA shell suites.
-# Always execute scripts with JAC_JS_RUNNER (set by run_reg.py); do not hardcode node.
+# Always execute scripts with JAC_JS_RUNNER (set by run_reg.jac); do not hardcode node.
 # shellcheck shell=bash
 
 : "${JAC_JS_RUNNER:=bin/js_engine}"

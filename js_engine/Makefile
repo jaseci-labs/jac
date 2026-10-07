@@ -57,7 +57,7 @@ PCRE2_INSTDIR  := /tmp/pcre2-inst-$(PCRE2_VERSION)
 # Vendored Bytecode Alliance Wasmtime C API release. libwasmtime.so lives
 # directly in lib/ next to the other shims (it carries no SONAME, so its
 # DT_NEEDED is the literal import path lib/libwasmtime.so, rewritten to the bare
-# soname libwasmtime.so by tools/fix_engine_needed.py). Headers are vendored
+# soname libwasmtime.so by tools/fix_engine_needed.jac). Headers are vendored
 # under lib/wasmtime/include/ for reference (jac FFI signatures live in
 # engine/src/ffi/wasmtime.jac). See docs/wasm.md Phase 0.
 WASMTIME_VERSION  := 48.0.2
@@ -175,12 +175,12 @@ tzdata: $(TZDATA_DIR)/UTC
 
 # Jac embeds relative DT_NEEDED entries (lib/libnapi_shim.so, …) which the
 # dynamic linker resolves against *cwd*.  Post-link rewrite those strings to
-# bare sonames (tools/fix_engine_needed.py) so LD_LIBRARY_PATH / the test
+# bare sonames (tools/fix_engine_needed.jac) so LD_LIBRARY_PATH / the test
 # harness / child_process.js can locate them regardless of cwd.  Avoid a
 # shell-wrapper launcher: nested bash under RLIMIT_AS caused SIGSEGVs in
 # spawn-heavy es-module tests.
 define fix_engine_libs
-	@python3 tools/fix_engine_needed.py $(1)
+	@jac tools/fix_engine_needed.jac $(1)
 	@chmod +x $(1)
 	@echo "DT_NEEDED sonames fixed: $(1)"
 	@# The linker emits DT_RUNPATH=$$ORIGIN (and the ELF has no section headers,
@@ -280,13 +280,13 @@ run: $(BIN)
 
 # ── Test targets ─────────────────────────────────────────────────────────────
 check_native_kinds:
-	@python3 engine/tests/check_native_kinds.py
+	@jac engine/tests/check_native_kinds.jac
 
 test: $(BIN)
-	@python3 engine/tests/qa/run_reg.py --gc
+	@jac engine/tests/qa/run_reg.jac --gc
 
 test_node: $(BIN)
-	@python3 engine/tests/qa/run_reg.py --node
+	@jac engine/tests/qa/run_reg.jac --node
 
 test_unit:
 	@for f in engine/tests/unit/test_*.jac; do \
@@ -380,7 +380,7 @@ help:
 	@echo "  build            Compile main.jac → bin/js_engine  (incremental; runs install_deps first)"
 	@echo "  scrub            Full recompile from scratch (jac clean --cache, then build)"
 	@echo "  run FILE=<path>  Run a JS file with the compiled engine"
-	@echo "  test             Run QA regression suite (engine/tests/qa/) via run_reg.py"
+	@echo "  test             Run QA regression suite (engine/tests/qa/) via run_reg.jac"
 	@echo "  test_unit        Run unit tests (engine/tests/unit/test_*.jac) one by one via jac run"
 	@echo "  test_e2e         Run e2e JS tests (engine/tests/e2e/) via run_tests.sh"
 	@echo "  test_napi        Build all NAPI addon.c files and run napi/tests/*"

@@ -2,7 +2,7 @@
 
 /**
  * Canonical completion marker for regression suites.
- * run_reg.py must treat output as incomplete if this substring is missing.
+ * run_reg.jac must treat output as incomplete if this substring is missing.
  */
 var REGRESSION_TESTCASE_FINISHED = "REGRESSION_TESTCASE_FINISHED";
 
@@ -118,7 +118,7 @@ function createTestCase(suiteName) {
   };
 }
 
-/** True when run_reg.py selected js_engine, not system node. */
+/** True when run_reg.jac selected js_engine, not system node. */
 function isJacEngineRunner() {
   var runner = process.env.JAC_JS_RUNNER || "";
   return runner.indexOf("js_engine") !== -1;

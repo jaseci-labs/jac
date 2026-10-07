@@ -29,8 +29,8 @@ run_and_log test_node make test_node
 run_and_log test_e2e make test_e2e
 run_and_log test_napi make test_napi
 
-if [ -f engine/tests/test262/run_test262.py ]; then
-    run_and_log test262 python3 engine/tests/test262/run_test262.py --summary 2>/dev/null || \
+if [ -f engine/tests/test262/run_test262.jac ]; then
+    run_and_log test262 jac engine/tests/test262/run_test262.jac --summary 2>/dev/null || \
         echo "test262 skipped (submodule or deps missing)" >> "$OUT/test262.status"
 fi
 
