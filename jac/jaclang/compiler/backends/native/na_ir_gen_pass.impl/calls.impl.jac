@@ -1338,28 +1338,41 @@ impl NaIRGenPass._codegen_intrinsic(
         );
         return None;
     }
-    _emitters: dict[IntrinsicDispatch, Callable[..., (ir.Value | None)]] = {
-        IntrinsicDispatch.RC_RUNTIME: self._emit_intrinsic_rc_runtime,
-        IntrinsicDispatch.FLOAT_BITS: self._emit_intrinsic_float_bits,
-        IntrinsicDispatch.BITS_FLOAT: self._emit_intrinsic_bits_float,
-        IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
-        IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
-        IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
-        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor,
-        IntrinsicDispatch.REGION_TLS: self._emit_intrinsic_region_tls,
-        IntrinsicDispatch.ALLOCA: self._emit_intrinsic_alloca
-    };
-    handler = _emitters.get(intr.dispatch);
-    if handler is None {
-        self.emit(
-            E9001,
-            node_override=nd,
-            pass_name="NaIRGenPass",
-            details=f"intrinsic '{intr.name}' registers dispatch key {intr.dispatch.value} with no mapped emitter"
-        );
-        return None;
+    _dispatch = intr.dispatch;
+    if _dispatch == IntrinsicDispatch.RC_RUNTIME {
+        return self._emit_intrinsic_rc_runtime(nd, intr, positional);
     }
-    return handler(nd, intr, positional);
+    if _dispatch == IntrinsicDispatch.FLOAT_BITS {
+        return self._emit_intrinsic_float_bits(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.BITS_FLOAT {
+        return self._emit_intrinsic_bits_float(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.MEM_LOAD {
+        return self._emit_intrinsic_mem_load(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.MEM_STORE {
+        return self._emit_intrinsic_mem_store(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.ATOMIC_XCHG {
+        return self._emit_intrinsic_atomic_xchg(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.CALL_DTOR {
+        return self._emit_intrinsic_call_dtor(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.REGION_TLS {
+        return self._emit_intrinsic_region_tls(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.ALLOCA {
+        return self._emit_intrinsic_alloca(nd, intr, positional);
+    }
+    self.emit(
+        E9001,
+        node_override=nd,
+        pass_name="NaIRGenPass",
+        details=f"intrinsic '{intr.name}' registers dispatch key {intr.dispatch.value} with no mapped emitter"
+    );
+    return None;
 }
 
 impl NaIRGenPass._emit_intrinsic_misuse(
