@@ -4938,8 +4938,9 @@ impl NaIRGenPass._emit_arch_eq(
     first. A missing `__ne__` answers as the negation of `__eq__`; when no
     side defines either, the caller compares identity. Classes in a hierarchy
     settle the subclass rule on the operands' run-time classes. The operands
-    reach the method through fresh casts, so the callee's argument release
-    never touches values the comparison itself owns and releases.
+    are lent to the method: the comparison owns them and releases them once,
+    so they are passed as borrowed and the call's own argument release leaves
+    them alone.
     """;
     def _method(
         pass_ref: NaIRGenPass, recv: ir.Value, arg: ir.Value, mname: str
@@ -4977,22 +4978,26 @@ impl NaIRGenPass._emit_arch_eq(
     ) -> ir.Value {
         (arch, mfn) = found;
         b = pass_ref.builder;
-        _recv = b.bitcast(recv, recv.type, name=f"{mname}.self");
-        _arg = b.bitcast(arg, arg.type, name=f"{mname}.other");
+        recv_owned = recv.is_owned;
+        arg_owned = arg.is_owned;
+        recv.is_owned = False;
+        arg.is_owned = False;
         res: (ir.Value | None) = None;
         if pass_ref._arch_has_vtable(arch) {
-            res = pass_ref._codegen_virtual_call(_recv, mname, [_recv, _arg], arch);
+            res = pass_ref._codegen_virtual_call(recv, mname, [recv, arg], arch);
         }
         if res is None {
             res = b.call(
                 mfn,
                 [
-                    pass_ref._coerce_type(_recv, mfn.args[0].type),
-                    pass_ref._coerce_type(_arg, mfn.args[1].type)
+                    pass_ref._coerce_type(recv, mfn.args[0].type),
+                    pass_ref._coerce_type(arg, mfn.args[1].type)
                 ],
                 name=f"cmp{mname}"
             );
         }
+        recv.is_owned = recv_owned;
+        arg.is_owned = arg_owned;
         return pass_ref._to_bool(res);
     }
 
