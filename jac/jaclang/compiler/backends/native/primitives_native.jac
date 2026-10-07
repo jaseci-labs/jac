@@ -1252,7 +1252,7 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         ctx: NativeEmitCtx,
         src_set: ir.Value,
         prefix: str,
-        body_cb: object
+        body_cb: Callable[[ir.IRBuilder, ir.Value], None]
     ) -> None;
 
     def _emit_set_relation(
