@@ -42,6 +42,7 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
+    import from jaclang.compiler.frontend.constant { SymbolStorage }
     candidates: dict[str, ir.Type] = {};
     dropped: set[str] = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
@@ -56,7 +57,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
                 if (
                     not isinstance(target, uni.NameAtom)
                     or target.sym is None
-                    or target.sym.storage != uni.SymbolStorage.MODULE_GLOBAL
+                    or target.sym.storage != SymbolStorage.MODULE_GLOBAL
                 ) {
                     continue;
                 }
