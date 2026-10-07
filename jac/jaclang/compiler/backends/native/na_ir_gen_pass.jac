@@ -2220,7 +2220,11 @@ walker NaIRGenPass(CompilerPass) {
     def _class_ctor_registry -> ir.GlobalVariable;
     def _emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> None;
     def _emit_class_ctor(
-        arch: uni.Archetype, params: list[NativeCtorParam]
+        arch: uni.Archetype, params: list[NativeCtorParam], symbol: str = ""
+    ) -> (ir.Function | None);
+
+    def _emit_wide_class_ctor(
+        arch: uni.Archetype, bound: str, signature: list[NativeCtorParam]
     ) -> (ir.Function | None);
 
     def _emit_class_ctor_bridge(
