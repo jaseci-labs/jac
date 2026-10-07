@@ -1480,7 +1480,7 @@ impl NaIRGenPass._erased_typevar_names(tb: any) -> list[str] {
     if isinstance(tb, _EtvTypeVarType) and self._lower_type(tb) is None {
         return [tb.name];
     }
-    if not self._typevar_optional_field(tb) {
+    if not isinstance(tb, UnionType) or not self._typevar_optional_field(tb) {
         return [];
     }
     out: list[str] = [];
@@ -2028,7 +2028,7 @@ impl NaIRGenPass._abi_sizeof(t: ir.Type) -> int {
         return total;
     }
     raise RuntimeError(
-        f"native codegen internal error: _abi_sizeof has no layout for {t!r}. "
+        f"native codegen internal error: _abi_sizeof has no layout for {t.__repr__()}. "
         f"A generator-frame slot of unknown size would silently corrupt "
         f"adjacent slots; teach _abi_sizeof this type instead."
     );

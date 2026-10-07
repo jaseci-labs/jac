@@ -109,11 +109,21 @@ impl NaIRGenPass._lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value {
         return val;
     }
     dst_ty = self._scalar_llvm(dst);
-    if isinstance(val, ir.Constant) and isinstance(val.constant, (int, float)) {
-        if isinstance(dst_ty, ir.IntType) {
-            return ir.Constant(dst_ty, _signed_repr(dst.width, int(val.constant)));
+    if isinstance(val, ir.Constant) {
+        _cv = val.constant;
+        if isinstance(_cv, float) {
+            if isinstance(dst_ty, ir.IntType) {
+                return ir.Constant(dst_ty, _signed_repr(dst.width, int(_cv)));
+            }
+            return ir.Constant(dst_ty, _cv);
         }
-        return ir.Constant(dst_ty, float(val.constant));
+        if isinstance(_cv, (bool, int)) {
+            _ci = int(_cv);
+            if isinstance(dst_ty, ir.IntType) {
+                return ir.Constant(dst_ty, _signed_repr(dst.width, _ci));
+            }
+            return ir.Constant(dst_ty, float(_ci));
+        }
     }
     src = self._scalar_shape_named(primitive_type_name_of(nd.type));
     if src is None {

@@ -122,6 +122,7 @@ impl NaIRGenPass._emit_clib_c_trampoline(
 impl NaIRGenPass._lower_clib_function_type(
     arch_name: str, fname: str, t: any
 ) -> ir.Type {
+    assert isinstance(t, SemanticFunctionType);
     i8p = ir.IntType(8).as_pointer();
     _sd = self._str_desc_ty;
     _bt = self._get_bytes_struct_type();
