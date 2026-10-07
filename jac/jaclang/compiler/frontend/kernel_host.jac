@@ -9,7 +9,6 @@ import from jaclang.compiler.frontend.host {
     HostPlatform,
     HostServices,
     LintSettings,
-    NativeVerdict,
     PathFacts,
     ProjectDefaults,
     ProjectFacts
@@ -295,7 +294,6 @@ obj KernelHost(HostServices) {
         closure: (CompileOptions | None) = None,
         census: HostCensus = HostCensus(),
         events: list[HostEvent] = [],
-        demoted: dict[str, NativeVerdict] = {},
         _imports: dict[str, ImportResolution] = {},
         _locals: dict[str, LocalResolution] = {},
         _npm: dict[str, NpmAnswer] = {},
@@ -1057,24 +1055,6 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
-    def native_verdict(
-        path: str, program: (JacProgram | None) = None
-    ) -> (NativeVerdict | None) {
-        self.census.count("native_verdict");
-        recorded = self.demoted.get(os.path.realpath(path));
-        if recorded is not None {
-            return recorded;
-        }
-        if path in self.inputs.verdicts {
-            return self.inputs.verdicts[path];
-        }
-        with self.missing("native_verdict", path) as host {
-            answer = host.native_verdict(path, program);
-        }
-        self.inputs.verdicts[path] = answer;
-        return answer;
-    }
-
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     ) {
@@ -1088,18 +1068,6 @@ obj KernelHost(HostServices) {
             ),
             "record_native_coverage"
         );
-    }
-
-    def record_native_verdict(program: JacProgram, path: str, code: str, detail: str) {
-        self.demoted[os.path.realpath(path)] = NativeVerdict(
-            demoted=True, code=code, detail=detail
-        );
-        if self.kernel_only("record_native_verdict") {
-            return;
-        }
-        with self.delegating("record_native_verdict") as host {
-            host.record_native_verdict(program, path, code, detail);
-        }
     }
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {

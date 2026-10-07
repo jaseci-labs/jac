@@ -4,7 +4,6 @@ import from jaclang.compiler.frontend.host {
     HostPlatform,
     HostServices,
     LintSettings,
-    NativeVerdict,
     PathFacts,
     ProjectDefaults,
     ProjectFacts
@@ -111,15 +110,10 @@ obj ProjectHost(HostServices) {
         program: JacProgram, source: str, element: str
     ) -> (bool | None);
 
-    def native_verdict(
-        path: str, program: (JacProgram | None) = None
-    ) -> (NativeVerdict | None);
-
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     );
 
-    def record_native_verdict(program: JacProgram, path: str, code: str, detail: str);
     def native_analyze(
         program: JacProgram, path: str, options: CompileOptions, source: (str | None)
     ) -> (ModuleAnalysis | None);

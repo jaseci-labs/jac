@@ -53,9 +53,6 @@ obj PlacementSummary {
         decided: str = '',
         anchors: list[str] = [],
         native_blocker: str = '',
-        native_verdict: str = '',
-        native_verdict_code: str = '',
-        native_verdict_deps: list[list[str]] = [],
         jac_deps: list[str] = [],
         has_refs: bool = False,
         elements: list[ElementSummary] = [];
@@ -683,14 +680,6 @@ def summarize_module(
     base_dir = os.path.dirname(os.path.abspath(ps.mod_path)) if ps.mod_path else '';
     (blocker, deps) = scan_native_blockers(module, base_dir);
     ps.native_blocker = blocker;
-    if prog is not None and ps.mod_path {
-        pending = prog.analysis.native_verdict_notes.get(os.path.realpath(ps.mod_path));
-        if pending is not None {
-            ps.native_verdict_code = pending[0];
-            ps.native_verdict = pending[1];
-            ps.native_verdict_deps = [list(row) for row in pending[2]];
-        }
-    }
     ps.jac_deps = deps;
     ps.has_refs = with_refs;
     index_by_id: dict[int, int] = {};
@@ -752,23 +741,6 @@ def summarize_module(
 
 def summary_store(prog: JacProgram) -> dict[str, PlacementSummary] {
     return prog.analysis.placement_summaries;
-}
-
-def note_native_verdict(
-    prog: JacProgram,
-    resolved: str,
-    code: str,
-    detail: str,
-    deps: (list[list[str]] | None) = None
-) {
-    rows = [list(row) for row in (deps or [])];
-    prog.analysis.native_verdict_notes[resolved] = (code, detail, rows);
-    cached = prog.analysis.placement_summaries.get(os.path.abspath(resolved));
-    if cached is not None {
-        cached.native_verdict_code = code;
-        cached.native_verdict = detail;
-        cached.native_verdict_deps = rows;
-    }
 }
 
 def jac_import_targets(module: uni.Module) -> list[str] {

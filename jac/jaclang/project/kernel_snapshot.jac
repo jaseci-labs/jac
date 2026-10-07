@@ -365,8 +365,6 @@ obj KernelSnapshot(HostAsker) {
             learner.client_stub_globals();
         } elif method == "check_settings" {
             learner.check_settings(key);
-        } elif method == "native_verdict" {
-            learner.native_verdict(key, self.program);
         } elif method == "is_untyped_third_party" {
             learner.is_untyped_third_party(key);
         } elif method == "sibling_declaration" {

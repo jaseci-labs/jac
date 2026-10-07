@@ -5,7 +5,6 @@ import from jaclang.compiler.frontend.host {
     CheckSettings,
     HostPlatform,
     LintSettings,
-    NativeVerdict,
     ProjectDefaults,
     ProjectFacts
 }
@@ -213,7 +212,6 @@ obj KernelInputs {
         app_of: dict[str, str] = {},
         project_root_of: dict[str, str] = {},
         lint_of: dict[str, LintSettings] = {},
-        verdicts: dict[str, (NativeVerdict | None)] = {},
         untyped: dict[str, bool] = {},
         siblings: dict[str, str] = {},
         client_pulls: dict[str, str] = {},
@@ -515,27 +513,6 @@ def workspace_from_dict(raw: dict[str, any]) -> WorkspaceSpec {
     );
 }
 
-def verdict_to_dict(verdict: (NativeVerdict | None)) -> (dict[str, any] | None) {
-    if verdict is None {
-        return None;
-    }
-    return {
-        "demoted": verdict.demoted,
-        "code": verdict.code,
-        "detail": verdict.detail,
-        "deps": [list(row) for row in verdict.deps]
-    };
-}
-
-def verdict_from_dict(raw: dict[str, any]) -> NativeVerdict {
-    return NativeVerdict(
-        demoted=bool(raw.get("demoted", False)),
-        code=str(raw.get("code", "")),
-        detail=str(raw.get("detail", "")),
-        deps=json_str_pairs(raw.get("deps"))
-    );
-}
-
 def layout_to_dict(layout: LayoutTables) -> dict[str, any] {
     return {
         "jac_suffix": layout.jac_suffix,
@@ -737,10 +714,6 @@ def answers_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "lint_of": {
             path: lint_to_dict(lint) for (path, lint) in inputs.lint_of.items()
         },
-        "verdicts": {
-            path: verdict_to_dict(verdict)
-            for (path, verdict) in inputs.verdicts.items()
-        },
         "untyped": dict(inputs.untyped),
         "siblings": dict(inputs.siblings),
         "client_pulls": dict(inputs.client_pulls),
@@ -841,11 +814,6 @@ def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
     }
     for (path, lint) in json_map(raw.get("lint_of")).items() {
         inputs.lint_of[path] = lint_from_dict(json_map(lint));
-    }
-    for (path, verdict) in json_map(raw.get("verdicts")).items() {
-        inputs.verdicts[path] = verdict_from_dict(json_map(verdict))
-            if verdict is not None
-            else None;
     }
     for r in json_maps(raw.get("imports")) {
         inputs.imports.append(
