@@ -375,8 +375,8 @@ walker NaIRGenPass(CompilerPass) {
         osp_thunk_funcs: dict[str, ir.Function] = {},
         _osp_thunk_uid: int = 0,
         imported_osp_archs: dict[str, tuple[str, str]] = {},
-        _osp_kernel_mod: (object | None) = None,
-        _osp_graph_mod: (object | None) = None,
+        _osp_kernel_mod: (uni.Module | None) = None,
+        _osp_graph_mod: (uni.Module | None) = None,
         _fmt_kernel_mod: (object | None) = None,
         _osp_rt_global: (ir.GlobalVariable | None) = None,
         _osp_setup_fn: (ir.Function | None) = None,
@@ -481,7 +481,7 @@ walker NaIRGenPass(CompilerPass) {
         rc_push_garbage_fn: (ir.Function | None) = None,
         rc_collect_cycles_fn: (ir.Function | None) = None,
         rc_trace_lookup_fn: (ir.Function | None) = None,
-        rc_trace_pairs: dict[str, tuple[any, ir.Function]] = {},
+        rc_trace_pairs: dict[str, tuple[ir.Function, ir.Function]] = {},
         rc_treg_find_fn: (ir.Function | None) = None,
         rc_treg_register_fn: (ir.Function | None) = None,
         rc_treg_final: bool = False,
@@ -1132,7 +1132,7 @@ walker NaIRGenPass(CompilerPass) {
         container_ptr_type: ir.Type,
         layout: dict[str, any],
         initial_cap: int = 8
-    ) -> tuple[ir.Value, ...];
+    ) -> list[ir.Value];
 
     def _emit_grow_array(
         b: ir.IRBuilder,
@@ -1182,7 +1182,7 @@ walker NaIRGenPass(CompilerPass) {
         raw: ir.Value, struct_type: ir.LiteralStructType
     ) -> None;
 
-    def _container_type_name(dtor_fn: object) -> str;
+    def _container_type_name(dtor_fn: (ir.Function | None)) -> str;
     def _emit_container_trace_fn(
         trace_fn_name: str, container_ptr_type: ir.Type, layout: dict[str, any]
     ) -> ir.Function;
@@ -1866,7 +1866,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _cast_to_list_elem(
-        b: any, val: ir.Value, elem_type: ir.Type, name: str
+        b: ir.IRBuilder, val: ir.Value, elem_type: ir.Type, name: str
     ) -> ir.Value;
 
     def _empty_list_dest_spec(nd: uni.ListVal) -> (str | None);
@@ -2776,7 +2776,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_trace_fn(arch_name: str) -> None;
-    def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
+    def _register_trace_pair(
+        dtor_fn: (ir.Function | None), trace_fn: ir.Function
+    ) -> bool;
+
     def _finalize_trace_lookup -> None;
     def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
     def _struct_has_ref_fields(arch_name: str) -> bool;
