@@ -895,6 +895,7 @@ obj KernelHost(HostServices) {
 
     def place_wired_imports(module: Module) {
         if self.kernel_only("place_wired_imports") {
+            dedupe_generated_imports(module);
             return;
         }
         with self.delegating("place_wired_imports") as host {

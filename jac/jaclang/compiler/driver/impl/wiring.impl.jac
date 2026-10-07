@@ -600,7 +600,7 @@ impl scope_owners(mod: Module) -> dict[str, (Ability | ImplDef)] {
 }
 
 impl inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None {
-    body = list(owner.body);
+    body: list[UniNode] = [owner->:BodyRole:->];
     kids: list[UniNode] = [owner->:Kid:->];
     anchor = -1;
     for i in range(len(kids)) {

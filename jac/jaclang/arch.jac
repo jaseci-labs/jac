@@ -4329,7 +4329,7 @@ graph import compiler.driver {
     }
     wiring --> project.compiler_host.ProjectHost.session { wiring_scope }
     pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
-    wiring --> project.compiler_host.ProjectHost.place_wired_imports {
+    wiring --> compiler.frontend.kernel_host.KernelHost.place_wired_imports | project.compiler_host.ProjectHost.place_wired_imports {
         dedupe_generated_imports
     }
     jir --> dist.precompile_bytecode._stage0_kernel_workdir { get_jir_cache_dir }
