@@ -1,28 +1,35 @@
-"""Native legality: where a module that prefers native runs is decided from
-recorded facts, before any body is lowered where the rules can say so.
+"""Native placement is one judgment over a module that was typed once.
 
-A unit the static rules refuse is placed on its Python-only implementation
-without lowering it, and so is every unit that reaches it. Module-level
-code that reaches a refused unit refuses the module during analysis, so the
-native backend never runs for it. A refusal only the backend can see is
-recorded on the same table and re-places the module once. A backend crash
-is none of these: it is a compiler error."""
+Every module is type-checked by the same rules, whatever codespace it ends
+up in. What only matters natively is recorded on the typed module as a
+note, a requirement or a library gap, and the legality pass reads those
+after analysis to decide placement. A module that cannot be native is not
+analyzed a second time and nothing about it is remembered between
+compiles; a refusal only the backend can see places the module on the
+server in place. A backend crash is none of these: it is a compiler error."""
 
 import os;
 import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
+import from jaclang.compiler.native_notes { native_notes_of }
 import from jaclang.compiler.passes.native_legality {
     build_native_legality,
     native_unit_name
 }
-import from jaclang.compiler.placement.placement_pins {
-    module_native_demoted,
-    native_demotion_code
+import from jaclang.compiler.driver.session_compile { drop_native_bindings }
+import from jaclang.compiler.placement.placement_solver {
+    invalidate_importers_es,
+    native_placement_candidate
 }
+import from tests.support { JAC_ROOT }
 
-glob SEAM_SRC = (
+glob PIN_FIXTURE_DIR = os.path.join(
+         JAC_ROOT, "tests", "compiler", "fixtures", "codespace", "native_demoted_pin"
+     ),
+     SEAM_SRC = (
          "def helper(x: int) -> str {\n"
          "    s = \"abc\";\n"
          "    return f\"{s!a}{x}\";\n"
@@ -52,9 +59,39 @@ glob SEAM_SRC = (
          "with entry {\n"
          "    print(other(2));\n"
          "}\n"
+     ),
+     GAP_SRC = (
+         "import json;\n\n"
+         "def pretty(x: dict[str, int]) -> str {\n"
+         "    return json.dumps(x, indent=2);\n"
+         "}\n\n"
+         "def plain(x: dict[str, int]) -> str {\n"
+         "    return json.dumps(x);\n"
+         "}\n\n"
+         "with entry {\n"
+         "    print(plain({\"a\": 1}));\n"
+         "}\n"
+     ),
+     ERASED_SRC = (
+         "import json;\n\n"
+         "with entry {\n"
+         "    data = json.loads(\"[1, 2]\");\n"
+         "    print(1 in data);\n"
+         "}\n"
+     ),
+     NATIVE_ONLY_SRC = (
+         "with entry {\n"
+         "    a = [1];\n"
+         "    b = [2];\n"
+         "    swap(a, b);\n"
+         "    s = \"x\";\n"
+         "    print(f\"{s!a}\", a, b);\n"
+         "}\n"
      );
 
-def compile_native_default(text: str) -> tuple[JacProgram, uni.Module, str] {
+"""Compile `text` under the native default, counting how often it is parsed."""
+def compile_native_default(text: str) -> tuple[JacProgram, uni.Module, str, int] {
+    import from unittest.mock { patch }
     import from jaclang.compiler.frontend.codeinfo {
         set_effective_default_codespace,
         get_effective_default_codespace_override
@@ -63,18 +100,28 @@ def compile_native_default(text: str) -> tuple[JacProgram, uni.Module, str] {
     with open(path, "w", encoding="utf-8") as fh {
         fh.write(text);
     }
+    real_parse: any = getattr(JacProgram, "parse_source");
+    parsed: list[str] = [];
+    def count_parse(this: JacProgram, *args: any, **kwargs: any) -> uni.Module {
+        parsed.append(os.path.realpath(str(args[1])));
+        return real_parse(this, *args, **kwargs);
+    }
     previous = get_effective_default_codespace_override();
     prog = JacProgram();
     try {
-        mod = prog.compile(path, options=CompileOptions(default_codespace="native"));
+        with patch.object(JacProgram, "parse_source", count_parse) {
+            mod = prog.compile(
+                path, options=CompileOptions(default_codespace="native")
+            );
+        }
     } finally {
         set_effective_default_codespace(previous);
     }
-    return (prog, mod, path);
+    return (prog, mod, path, parsed.count(path));
 }
 
-def refused_units(mod: uni.Module) -> list[str] {
-    legality = build_native_legality(mod);
+def refused_units(prog: JacProgram, mod: uni.Module) -> list[str] {
+    legality = build_native_legality(mod, prog);
     return sorted(
         native_unit_name(owner)
         for (key, owner) in legality.owners.items()
@@ -82,20 +129,27 @@ def refused_units(mod: uni.Module) -> list[str] {
     );
 }
 
+test "a module is parsed and analyzed once and placed native after analysis" {
+    (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert parses == 1;
+    assert mod.decided_codespace == 'native' and mod.codespace_inferred;
+    assert mod.gen.llvm_ir is not None;
+}
+
 test "a refused unit and every unit that reaches it are placed in Python statically" {
-    (prog, mod, path) = compile_native_default(SEAM_SRC + SEAM_ENTRY);
+    (prog, mod, path, parses) = compile_native_default(SEAM_SRC + SEAM_ENTRY);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert mod.decided_codespace == 'native' , "an unreached seam must not cost the module its placement";
-    assert refused_units(mod) == ["helper", "mid"];
-    assert not build_native_legality(mod).module_refused();
-    assert not module_native_demoted(path, prog);
+    assert refused_units(prog, mod) == ["helper", "mid"];
+    assert not build_native_legality(mod, prog).module_refused();
     iface = mod.gen.native_iface;
     assert iface is not None;
     assert "helper" in iface.demoted and "mid" in iface.demoted;
     assert "other" not in iface.demoted;
 }
 
-test "module-level code reaching a refused unit refuses the module before the backend runs" {
+test "a statically refused module stays where it was parsed: no backend, no second analysis" {
     import from unittest.mock { patch }
     import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
     real_lower: any = NaIRGenPass._lower_module;
@@ -105,22 +159,52 @@ test "module-level code reaching a refused unit refuses the module before the ba
         real_lower(this);
     }
     with patch.object(NaIRGenPass, "_lower_module", record_lower) {
-        (prog, mod, path) = compile_native_default(SEAM_SRC + REACHING_ENTRY);
+        (prog, mod, path, parses) = compile_native_default(SEAM_SRC + REACHING_ENTRY);
     }
     assert path not in lowered , "a statically refused module must never reach the native backend";
+    assert parses == 1 , "a refused module must not be parsed or analyzed again";
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert mod.decided_codespace != 'native';
-    assert module_native_demoted(path, prog) , "the refusal must be published for pins and importers";
-    assert native_demotion_code(path, prog) == "E5090" , "the verdict names the root cause in `helper`, reached through `mid`";
 }
 
-test "a refusal only the backend can see re-places the module once, with no error" {
-    (prog, mod, path) = compile_native_default(LATE_SRC);
+test "a refusal only the backend can see places the module on the server in place" {
+    (prog, mod, path, parses) = compile_native_default(LATE_SRC);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert parses == 1 , "a late refusal must not recompile the module";
     assert mod.decided_codespace != 'native';
     assert mod.gen.llvm_ir is None;
-    assert module_native_demoted(path, prog);
-    assert native_demotion_code(path, prog) == "E5092";
+    assert mod.gen.py_ast , "the Python backend emits the module in the same compile";
+}
+
+test "a native library gap refuses the function that uses it, not the module" {
+    (prog, mod, path, parses) = compile_native_default(GAP_SRC);
+    assert not prog.errors_had , (
+        f"a parameter the native json lacks is a placement fact, not a type "
+        f"error: {[str(e) for e in prog.errors_had]}"
+    );
+    assert mod.decided_codespace == 'native';
+    assert refused_units(prog, mod) == ["pretty"];
+}
+
+test "what only matters natively is a note on the typed module, never a type error" {
+    (prog, mod, path, parses) = compile_native_default(ERASED_SRC);
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert parses == 1;
+    assert mod.decided_codespace != 'native';
+    assert "E1124" in [note.code for note in native_notes_of(prog, path)];
+}
+
+test "a native-only construct in code that cannot be placed native is an error" {
+    (prog, mod, path, parses) = compile_native_default(NATIVE_ONLY_SRC);
+    unmet = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5090" and "native-only" in str(e)
+    ];
+    assert unmet , f"expected the unmet native requirement: {[
+        str(e) for e in prog.errors_had
+    ]}";
+    assert "cannot be placed native" in (unmet[0].help_text or "");
 }
 
 test "a backend crash is a compiler error, never a placement decision" {
@@ -136,7 +220,7 @@ test "a backend crash is a compiler error, never a placement decision" {
         real_body(this, *args);
     }
     with patch.object(NaIRGenPass, "_codegen_body", crash_once) {
-        (prog, mod, path) = compile_native_default(CLEAN_SRC);
+        (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
     }
     crashes = [
         e
@@ -147,5 +231,46 @@ test "a backend crash is a compiler error, never a placement decision" {
         str(e) for e in prog.errors_had
     ]}";
     assert "compiler bug" in (crashes[0].help_text or "");
-    assert not module_native_demoted(path, prog) , "a crash must not be recorded as a placement verdict";
+    assert mod.decided_codespace == 'native' , "a crash must not move the module";
+}
+
+test "a docstring-only module is not a candidate for native placement" {
+    path = os.path.join(tempfile.mkdtemp(), "__init__.jac");
+    with open(path, "w") as fh {
+        fh.write('"""pkg."""\n');
+    }
+    prog = JacProgram();
+    mod = prog.compile(path, options=CompileOptions(no_cgen=True));
+    (ok, why) = native_placement_candidate(mod, prog);
+    assert not ok , "an empty module was a native candidate";
+    assert "empty module" in why , why;
+}
+
+test "importer invalidation clears ES output and NATIVE bindings" {
+    prog = JacProgram();
+    app = prog.compile(os.path.join(PIN_FIXTURE_DIR, "app.jac"));
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    models_path = os.path.realpath(os.path.join(PIN_FIXTURE_DIR, "models.jac"));
+    app.gen.js = "stale na glue";
+    manifest = app.gen.interop_manifest;
+    manifest.bindings["double"] = InteropBinding(
+        name="double",
+        source_context=InteropContext.NATIVE,
+        callers={InteropContext.CLIENT},
+        source_module=models_path
+    );
+    manifest.bindings["unrelated"] = InteropBinding(
+        name="unrelated",
+        source_context=InteropContext.SERVER,
+        callers={InteropContext.CLIENT},
+        source_module=models_path
+    );
+    cleared = invalidate_importers_es(prog, models_path);
+    assert app in cleared , "the importer must be found by the hub walk";
+    assert app.gen.js == "" , "stale ES output must be cleared";
+    for m in cleared {
+        drop_native_bindings(m, models_path);
+    }
+    assert "double" not in manifest.bindings , "the NATIVE binding naming the module must be dropped";
+    assert "unrelated" in manifest.bindings , "bindings in other contexts must survive";
 }
