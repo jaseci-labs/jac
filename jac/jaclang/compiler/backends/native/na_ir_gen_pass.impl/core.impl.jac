@@ -15,6 +15,50 @@ def _source_param_names(func: ir.Function) -> list[str] {
     return names;
 }
 
+def _native_emitter_of(suffix: str) -> (object | None) {
+    import jaclang.compiler.backends.native.primitives_native as _pn;
+    if suffix == "IntEmitter" {
+        return _pn.NativeIntEmitter();
+    }
+    if suffix == "FloatEmitter" {
+        return _pn.NativeFloatEmitter();
+    }
+    if suffix == "BoolEmitter" {
+        return _pn.NativeBoolEmitter();
+    }
+    if suffix == "ComplexEmitter" {
+        return _pn.NativeComplexEmitter();
+    }
+    if suffix == "StrEmitter" {
+        return _pn.NativeStrEmitter();
+    }
+    if suffix == "BytesEmitter" {
+        return _pn.NativeBytesEmitter();
+    }
+    if suffix == "ListEmitter" {
+        return _pn.NativeListEmitter();
+    }
+    if suffix == "DictEmitter" {
+        return _pn.NativeDictEmitter();
+    }
+    if suffix == "SetEmitter" {
+        return _pn.NativeSetEmitter();
+    }
+    if suffix == "FrozensetEmitter" {
+        return _pn.NativeFrozensetEmitter();
+    }
+    if suffix == "TupleEmitter" {
+        return _pn.NativeTupleEmitter();
+    }
+    if suffix == "RangeEmitter" {
+        return _pn.NativeRangeEmitter();
+    }
+    if suffix == "BuiltinEmitter" {
+        return _pn.NativeBuiltinEmitter();
+    }
+    return None;
+}
+
 impl NaIRGenPass.postinit -> None {
     import os as _ni_os;
 
@@ -1866,9 +1910,9 @@ impl NaIRGenPass._ensure_emitters -> dict[str, object] {
     import jaclang.compiler.backends.native.primitives_native as _pn;
     emitters: dict[str, object] = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
-        _ecls = getattr(_pn, "Native" + _suffix, None);
-        if _ecls is not None {
-            emitters[_tn] = _ecls();
+        _made = _native_emitter_of(_suffix);
+        if _made is not None {
+            emitters[_tn] = _made;
         }
     }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
@@ -1913,12 +1957,19 @@ impl NaIRGenPass._dispatch_primitive_method(
     target = self._str_norm(target);
     originals = list(args);
     args = [self._str_borrow(_a) for _a in args];
+    import jaclang.compiler.backends.native.primitives_native as _pm_pn;
     _emitter = self._ensure_emitters().get(type_name);
-    if _emitter is None {
+    if not isinstance(_emitter, PrimitiveEmitter) {
         return None;
     }
-    _emit_fn = getattr(_emitter, "emit_" + method_name, None);
-    if _emit_fn is None {
+    _pm_instance = method_name in _emitter.method_names();
+    _pm_static = method_name in _emitter.static_names();
+    _pm_native_only = (
+        (isinstance(_emitter, _pm_pn.NativeStrEmitter) and method_name == "decode")
+        or (isinstance(_emitter, _pm_pn.NativeListEmitter) and method_name == "del_at")
+        or (isinstance(_emitter, _pm_pn.NativeDictEmitter) and method_name == "remove")
+    );
+    if not _pm_instance and not _pm_static and not _pm_native_only {
         return None;
     }
     if kwargs and not self._primitive_method_takes_kwargs(type_name, method_name) {
@@ -1936,7 +1987,22 @@ impl NaIRGenPass._dispatch_primitive_method(
         _ctx.receiver_node = kw_node.target.target;
     }
     try {
-        result = _emit_fn(_ctx, target, args);
+        result: (ir.Value | None) = None;
+        if isinstance(_emitter, _pm_pn.NativeStrEmitter) and method_name == "decode" {
+            result = _emitter.emit_decode(_ctx, target, args);
+        } elif isinstance(_emitter, _pm_pn.NativeListEmitter)
+            and method_name == "del_at" {
+            result = _emitter.emit_del_at(_ctx, target, args);
+        } elif isinstance(_emitter, _pm_pn.NativeDictEmitter)
+            and method_name == "remove" {
+            result = _emitter.emit_remove(_ctx, target, args);
+        } elif _pm_instance {
+            result = _emitter.dispatch(method_name, _ctx, target, args);
+        } else {
+            raise TypeError(
+                f"emit_{method_name}() takes 3 positional arguments but 4 were given"
+            );
+        }
         if result is not None {
             self._consume_str_args(originals);
         }
@@ -1944,9 +2010,10 @@ impl NaIRGenPass._dispatch_primitive_method(
     } except Exception as _pm_exc {
         if self._na_debug_on() {
             import sys as _pm_sys;
-            import traceback as _pm_tb;
-            _pm_sys.stderr.write(f"NA_DEBUG primitive {type_name}.{method_name}\n");
-            _pm_tb.print_exc(file=_pm_sys.stderr);
+            _pm_sys.stderr.write(
+                f"NA_DEBUG primitive {type_name}.{method_name}: "
+                f"{type(_pm_exc).__name__}: {_pm_exc}\n"
+            );
         }
         self.emit(
             E5092,
@@ -1981,8 +2048,9 @@ impl NaIRGenPass._dispatch_builtin(
     ) {
         return self._emit_optional_str(args[0], arg_nodes[0] if arg_nodes else None);
     }
-    _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
-    if _emit_fn is None {
+    _builtin_emitter = self._native_builtin_emitter;
+    if not isinstance(_builtin_emitter, PrimitiveEmitter)
+        or func_name not in _builtin_emitter.static_names() {
         return None;
     }
     if kwargs and func_name not in ("sorted", "min", "max") {
@@ -2001,7 +2069,7 @@ impl NaIRGenPass._dispatch_builtin(
         arg_nodes=(arg_nodes or []),
         call_node=kw_node
     );
-    result = _emit_fn(_ctx, args);
+    result: (ir.Value | None) = _builtin_emitter.dispatch_static(func_name, _ctx, args);
     if result is not None {
         self._consume_str_args(originals);
     }
