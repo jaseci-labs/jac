@@ -375,8 +375,8 @@ impl ProjectHost.native_analyze(
 impl ProjectHost.kernel_inputs(
     program: JacProgram, path: str, options: CompileOptions, source: (str | None) = None
 ) -> KernelInputs {
-    import from jaclang.project.kernel_snapshot { snapshot_inputs }
-    return snapshot_inputs(self, program, path, options, source);
+    import from jaclang.project.kernel_snapshot { session_inputs }
+    return session_inputs(self, program, path, options);
 }
 
 impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {

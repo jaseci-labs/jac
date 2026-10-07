@@ -14,6 +14,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.frontend.parser.lexer"),
          NativeScopeEntry(module="jaclang.compiler.frontend.parser.parser"),
          NativeScopeEntry(module="jaclang.compiler.jc_materialize"),
+         NativeScopeEntry(module="jaclang.compiler.jc_ask"),
          NativeScopeEntry(module="jaclang.compiler.jc_unit"),
          NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics"),
          NativeScopeEntry(module="jaclang.compiler.passes.context"),

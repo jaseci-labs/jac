@@ -323,6 +323,7 @@ class AnalysisCaches {
         native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
+        mtir_owned: dict[str, list[str]],
         pass_runs: dict[str, int],
         pass_time: dict[str, float],
         phase_time: dict[str, float],
@@ -340,6 +341,7 @@ class AnalysisCaches {
         self.native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
+        self.mtir_owned: dict[str, list[str]] = {};
         self.pass_runs: dict[str, int] = {};
         self.pass_time: dict[str, float] = {};
         self.phase_time: dict[str, float] = {};

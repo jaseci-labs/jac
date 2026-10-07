@@ -1,3 +1,4 @@
+import json;
 import os;
 import sys;
 import from contextlib { contextmanager }
@@ -21,7 +22,9 @@ import from jaclang.compiler.frontend.kernel_inputs {
     KEY_SEP,
     NpmAnswer,
     PythonInterface,
+    json_map,
     local_key,
+    merge_answers,
     pair_key,
     resolution_key
 }
@@ -55,7 +58,14 @@ import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob _CATALOGS: dict[str, StubCatalog] = {};
 
+glob HOST_ONLY_ANSWER: str = "host_only",
+     EMIT_QUESTION: str = "emit_unit";
+
 class HostOnlyError(RuntimeError) {}
+
+obj HostAsker {
+    def ask(method: str, key: str) -> str abst;
+}
 
 enum HostEventKind { NOTE, COVERAGE, COLLECT }
 
@@ -295,25 +305,88 @@ obj KernelHost(HostServices) {
         _catalog: (StubCatalog | None) = None,
         analyses: dict[str, ModuleAnalysis] = {},
         units: dict[str, UnitProducts] = {},
+        asker: (HostAsker | None) = None,
+        kernel_asker: bool = False,
+        _asked: set[str] = set(),
+        _indexed: list[int] = [0, 0, 0, 0, 0],
         _session: (KernelSession | None) = None;
 
     def postinit {
-        for resolution in self.inputs.imports {
-            self._imports[resolution.key()] = resolution;
-        }
-        for local in self.inputs.local_imports {
-            self._locals[local.key()] = local;
-        }
-        for answer in self.inputs.npm {
-            self._npm[answer.key()] = answer;
-        }
-        for declared in self.inputs.declared {
-            self._declared[declared.key()] = declared;
-        }
-        for iface in self.inputs.python_ifaces {
-            self._python[os.path.realpath(iface.path)] = iface;
-        }
+        self.index_answers();
         self._session = KernelSession(host=self, closure=self.closure);
+    }
+
+    def index_answers {
+        inputs = self.inputs;
+        seen = self._indexed;
+        while seen[0] < len(inputs.imports) {
+            resolution = inputs.imports[seen[0]];
+            self._imports[resolution.key()] = resolution;
+            seen[0] += 1;
+        }
+        while seen[1] < len(inputs.local_imports) {
+            local = inputs.local_imports[seen[1]];
+            self._locals[local.key()] = local;
+            seen[1] += 1;
+        }
+        while seen[2] < len(inputs.npm) {
+            answer = inputs.npm[seen[2]];
+            self._npm[answer.key()] = answer;
+            seen[2] += 1;
+        }
+        while seen[3] < len(inputs.declared) {
+            declared = inputs.declared[seen[3]];
+            self._declared[declared.key()] = declared;
+            seen[3] += 1;
+        }
+        while seen[4] < len(inputs.python_ifaces) {
+            iface = inputs.python_ifaces[seen[4]];
+            self._python[os.path.realpath(iface.path)] = iface;
+            seen[4] += 1;
+        }
+    }
+
+    def ask(method: str, key: str) -> bool {
+        asker = self.asker;
+        if self.fallback is not None or (asker is None and not self.kernel_asker) {
+            return False;
+        }
+        tag = method + KEY_SEP + key;
+        if tag in self._asked {
+            return False;
+        }
+        self._asked.add(tag);
+        self.census.count("ask");
+        text = "";
+        if asker is not None {
+            text = asker.ask(method, key);
+        } else {
+            import from jaclang.compiler.jc_ask { ask_host }
+            text = ask_host(method, key);
+        }
+        if not text {
+            return False;
+        }
+        raw = json_map(json.loads(text));
+        merge_answers(self.inputs, raw);
+        self.index_answers();
+        reason = str(raw.get(HOST_ONLY_ANSWER, ""));
+        if reason {
+            cut = reason.partition(": ");
+            self.census.miss(cut[0], cut[2]);
+            raise HostOnlyError(reason);
+        }
+        return True;
+    }
+
+    def wants_unit(path: str) -> bool {
+        if not self.inputs.emit_closure {
+            return False;
+        }
+        if path not in self.inputs.emit_of {
+            self.ask(EMIT_QUESTION, path);
+        }
+        return self.inputs.emit_of.get(path, False);
     }
 
     def host(method: str = "") -> HostServices {
@@ -403,7 +476,12 @@ obj KernelHost(HostServices) {
         if task.parse_failed or task.blocked or not module.gen.jcir {
             return;
         }
-        self.units[os.path.realpath(task.path)] = unit_products(module, task.program);
+        real = os.path.realpath(task.path);
+        products = unit_products(module, task.program);
+        if not products.path {
+            products.path = real;
+        }
+        self.units[real] = products;
     }
 
     def host_turn(method: str = "") -> HostTurn {
@@ -411,6 +489,9 @@ obj KernelHost(HostServices) {
     }
 
     def missing(method: str, key: str) -> HostTurn {
+        if self.ask(method, key) {
+            return HostTurn(host=self);
+        }
         self.census.miss(method, key);
         return self.host_turn(method);
     }
@@ -1041,14 +1122,20 @@ obj KernelHost(HostServices) {
         use_str: (str | None),
         options: CompileOptions
     ) -> Module {
+        owned = program.internal or package_owned(file_path, program, options);
         if self.in_kernel() {
             served = self.python_module(program, file_path);
+            if served is None and (owned or not file_path.endswith(".jac")) {
+                if self.ask("compile_module", file_path) {
+                    served = self.python_module(program, file_path);
+                }
+            }
             if served is not None {
                 self.census.count("compile_module");
                 return served;
             }
         }
-        if program.internal or package_owned(file_path, program, options) {
+        if owned {
             if self.in_kernel() {
                 self.census.miss("compile_module", file_path);
             }

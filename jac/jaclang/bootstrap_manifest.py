@@ -190,6 +190,7 @@ SEED_PATHS: tuple[str, ...] = (
 NATIVE_ONLY_REL: tuple[str, ...] = (
     "compiler/jc_unit.jac",
     "compiler/jc_materialize.jac",
+    "compiler/jc_ask.jac",
     "dist/fused/embed.jac",
     "dist/fused/_libc.jac",
 )

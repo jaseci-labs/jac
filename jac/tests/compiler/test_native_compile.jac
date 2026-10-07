@@ -23,8 +23,8 @@ import from jaclang.compiler.frontend.kernel_analyze {
 }
 import from jaclang.project.kernel_snapshot {
     COMPILE_ENTRY,
-    call_kernel,
-    kernel_inputs_json
+    call_with_asker,
+    kernel_snapshot
 }
 
 glob CONFIG: str = '[project]\nname="kernel-compile"\n';
@@ -69,9 +69,21 @@ def host_products(entry_file: str) -> UnitProducts {
     return unit_products(module, program);
 }
 
-def kernel_json(entry_file: str) -> str {
-    return kernel_inputs_json(
+"""Run the kernel's compile code under Python, the host answering what it asks."""
+def compile_in_process(entry_file: str) -> CompileReport {
+    session = kernel_snapshot(
         active_host(), JacProgram(), entry_file, compile_options()
+    );
+    return run_kernel_compile(session.text(), entry_file, None, session);
+}
+
+"""Run the native kernel's compile, the host answering what it asks."""
+def compile_natively(kernel: any, entry_file: str) -> CompileReport {
+    session = kernel_snapshot(
+        active_host(), JacProgram(), entry_file, compile_options()
+    );
+    return CompileReport.from_json(
+        call_with_asker(kernel, COMPILE_ENTRY, session, entry_file, None, False)
     );
 }
 
@@ -90,7 +102,7 @@ test "the kernel's compile code run in process emits the host's products" {
         write_project(base);
         entry_file = str(base / 'main.jac');
         expected = host_products(entry_file);
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
@@ -105,7 +117,7 @@ test "a compile report survives its JSON crossing" {
         base = Path(os.path.realpath(td));
         write_project(base);
         entry_file = str(base / 'main.jac');
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         crossed = CompileReport.from_json(outcome.to_json());
         emitted = outcome.unit(entry_file);
         restored = crossed.unit(entry_file);
@@ -120,7 +132,7 @@ test "an entry with type errors reports them and emits no unit" {
         base = Path(os.path.realpath(td));
         write_project(base);
         entry_file = str(base / 'broken.jac');
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_BLOCKED;
         assert outcome.analysis.errors;
         assert outcome.unit(entry_file) is None;
@@ -146,11 +158,7 @@ test "the native jc_compile emits the host's products" {
         write_project(base);
         entry_file = str(base / 'main.jac');
         expected = host_products(entry_file);
-        outcome = CompileReport.from_json(
-            call_kernel(
-                kernel, COMPILE_ENTRY, kernel_json(entry_file), entry_file, None
-            )
-        );
+        outcome = compile_natively(kernel, entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
@@ -196,7 +204,7 @@ test "a client module compiles in the kernel with the host's products" {
         entry_file = str(base / 'app.jac');
         expected = host_products(entry_file);
         assert expected.client is not None , "the fixture compiled no client code";
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
@@ -218,7 +226,7 @@ test "a client module importing a virtual Jac module compiles in the kernel" {
         );
         entry_file = str(base / 'app.jac');
         expected = host_products(entry_file);
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
@@ -247,14 +255,14 @@ test "a module wired by the arch file compiles in the kernel" {
         );
         entry_file = str(base / 'core' / 'svc.jac');
         expected = host_products(entry_file);
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
         assert_same_products(emitted, expected);
         arch_file = str(base / 'arch.jac');
-        checked = run_kernel_compile(kernel_json(arch_file), arch_file, None);
+        checked = compile_in_process(arch_file);
         assert checked.analysis.status == ANALYSIS_OK , checked.analysis.message;
         assert not checked.analysis.misses , checked.analysis.misses;
     }
@@ -287,11 +295,7 @@ test "a server-side comptime import beside client code stays on the server" {
         );
         entry_file = str(base / 'app.jac');
         expected = host_products(entry_file);
-        outcome = CompileReport.from_json(
-            call_kernel(
-                kernel, COMPILE_ENTRY, kernel_json(entry_file), entry_file, None
-            )
-        );
+        outcome = compile_natively(kernel, entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
         emitted = outcome.unit(entry_file);
@@ -314,7 +318,7 @@ test "an import of a stdlib package with an empty stub compiles in the kernel" {
         );
         entry_file = str(base / 'main.jac');
         expected = host_products(entry_file);
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
@@ -438,11 +442,7 @@ test "a module using Jac builtins compiles in the kernel with their import" {
         );
         entry_file = str(base / 'main.jac');
         expected = host_products(entry_file);
-        outcome = CompileReport.from_json(
-            call_kernel(
-                kernel, COMPILE_ENTRY, kernel_json(entry_file), entry_file, None
-            )
-        );
+        outcome = compile_natively(kernel, entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
@@ -466,7 +466,7 @@ test "a jaclang import in an impl folder annex compiles in the kernel" {
         );
         entry_file = str(base / 'ver.jac');
         expected = host_products(entry_file);
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
@@ -646,11 +646,10 @@ test "an interface rebuilt from a decoded interface keeps field defaults" {
         entry_file = str(base / 'main.jac');
         with patch.object(snapshot_mod, "python_interface", through_decoded) {
             with patch.object(snapshot_mod, "cached_interface", uncached) {
-                inputs = kernel_json(entry_file);
+                outcome = compile_in_process(entry_file);
             }
         }
         assert rebuilt == ["CatModule"] , rebuilt;
-        outcome = run_kernel_compile(inputs, entry_file, None);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.errors , [
             e.message for e in outcome.analysis.errors
@@ -676,7 +675,7 @@ test "a module with a graph expression compiles in the kernel" {
         (base / 'jac.toml').write_text(CONFIG);
         entry_file = str(base / 'osp_graph_fragment.jac');
         shutil.copyfile(fixture, entry_file);
-        outcome = run_kernel_compile(kernel_json(entry_file), entry_file, None);
+        outcome = compile_in_process(entry_file);
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
     }
@@ -707,35 +706,27 @@ test "an application being prepared on the host keeps its module compiles there"
     }
 }
 
-"""The host's snapshot is a guess at what the kernel will ask. When the kernel
-reports an answer it lacked, the host answers that question and the kernel
-runs again, so a gap in the guess costs a second run instead of the compile."""
-test "a kernel compile that lacked an answer asks the host and runs again" {
+"""The kernel starts from the facts every session needs and asks the host for
+the rest while it runs: an import's resolution, a path's project, a module's
+interface. The answers arrive inside the one run, so nothing is compiled
+twice and no question is guessed at up front."""
+test "a kernel compile asks the host for what it lacks and runs once" {
     import jaclang.project.kernel_compile as kernel_compile_mod;
+    import jaclang.project.kernel_snapshot as snapshot_mod;
     import from unittest.mock { patch }
-    import from jaclang.compiler.frontend.kernel_inputs { resolution_key }
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         write_project(base);
         entry_file = str(base / 'main.jac');
-        take_snapshot = kernel_compile_mod.kernel_snapshot;
-        def forgetful(*args: any, **kwargs: any) -> any {
-            snapshot = take_snapshot(*args, **kwargs);
-            learner = snapshot.scan.learner;
-            inputs = snapshot.inputs();
-            dropped = [
-                row
-                for row in inputs.imports
-                if row.target == "util"
-            ];
-            assert dropped , "the snapshot never resolved util";
-            for row in dropped {
-                inputs.imports.remove(row);
-                learner._imports.pop(
-                    resolution_key(row.target, row.base_path, row.string_spec), None
-                );
-            }
-            return snapshot;
+        seed = kernel_snapshot(
+            active_host(), JacProgram(), entry_file, compile_options()
+        ).inputs();
+        assert not seed.imports , "the session's starting inputs resolved an import";
+        asked: list[str] = [];
+        ask = snapshot_mod.KernelSnapshot.ask;
+        def recorded(session: any, method: str, key: str) -> str {
+            asked.append(method);
+            return ask(session, method, key);
         }
         runs: list[str] = [];
         run_compile = kernel_compile_mod.run_kernel_compile;
@@ -743,7 +734,7 @@ test "a kernel compile that lacked an answer asks the host and runs again" {
             runs.append(str(args[1]));
             return run_compile(*args, **kwargs);
         }
-        with patch.object(kernel_compile_mod, "kernel_snapshot", forgetful) {
+        with patch.object(snapshot_mod.KernelSnapshot, "ask", recorded) {
             with patch.object(kernel_compile_mod, "run_kernel_compile", counted) {
                 outcome = kernel_compile_mod.kernel_compile(
                     active_host(),
@@ -754,7 +745,9 @@ test "a kernel compile that lacked an answer asks the host and runs again" {
                 );
             }
         }
-        assert len(runs) == 2 , runs;
+        assert len(runs) == 1 , runs;
+        assert "resolve_module" in asked , asked;
+        assert "compile_module" in asked , asked;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         emitted = outcome.unit(entry_file);
@@ -774,7 +767,7 @@ test "the services of a client application prepare on the host with it" {
     def in_process(program: JacProgram, path: str) -> tuple[bool, bool] {
         return (not program.internal, True);
     }
-    def sessions_for(base: Path, client: bool) -> int {
+    def sessions_for(base: Path, client: bool) -> list[str] {
         (base / 'jac.toml').write_text(CONFIG);
         (base / 'main.jac').write_text('def:pub home -> int { return 1; }\n');
         (base / 'svc.jac').write_text('def:pub ping -> int { return 2; }\n');
@@ -802,20 +795,21 @@ test "the services of a client application prepare on the host with it" {
             }
         }
         assert len(prepared.applications) == 1 , prepared.applications;
-        return len(sessions);
+        return [os.path.basename(opened) for opened in sessions];
     }
     with TemporaryDirectory() as server_dir {
         with TemporaryDirectory() as client_dir {
-            assert sessions_for(Path(os.path.realpath(server_dir)), False) == 2;
-            assert sessions_for(Path(os.path.realpath(client_dir)), True) == 0;
+            served = sessions_for(Path(os.path.realpath(server_dir)), False);
+            assert sorted(served) == ["main.jac", "svc.jac"] , served;
+            hosted = sessions_for(Path(os.path.realpath(client_dir)), True);
+            assert not hosted , hosted;
         }
     }
 }
 
-"""A module outside the entry's project is not scanned up front, so the first
-kernel run misses its imports. Each miss names the module asking; the answer
-scans that module's own tree, and the compile finishes without the host."""
-test "a dependency outside the project is scanned when the kernel asks about it" {
+"""A module outside the entry's project compiles in the same run: the kernel
+asks about its imports as it reaches them, whichever project they sit in."""
+test "a dependency outside the project compiles in the same kernel run" {
     import jaclang.project.kernel_compile as kernel_compile_mod;
     import from unittest.mock { patch }
     with TemporaryDirectory() as td {
@@ -859,7 +853,7 @@ test "a dependency outside the project is scanned when the kernel asks about it"
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
         assert_same_products(emitted, expected);
-        assert 1 <= len(runs) <= 3 , runs;
+        assert len(runs) == 1 , runs;
     }
 }
 
@@ -908,5 +902,83 @@ test "a module importing another copy of the compiler is handed to the host" {
         assert not outcome.units;
         placed = outcome.analysis.module(entry_file);
         assert placed is not None and placed.native , outcome.analysis.modules;
+    }
+}
+
+"""One session compiles every module the entry reaches, and each unit goes to
+its own module's cache. A unit therefore carries the MTIR its own module
+produced and nothing else: a unit that also carried a sibling's entries put
+them back under the sibling's file-stem key after the importer had re-keyed
+them by import name, so one function was listed twice."""
+test "each unit of a kernel session carries only its own module's MTIR" {
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        pkg = base / 'scope_dir';
+        pkg.mkdir();
+        for name in ('Alpha', 'Beta') {
+            (pkg / f'module_{name.lower()}.jac').write_text(
+                'import from jaclang.byllm.lib { MockLLM }\n'
+                    + f'obj {name}Result {{ has value: str; }}\n'
+                    + 'glob llm = MockLLM(model_name="mockllm", '
+                    + 'config={"outputs": [], "verbose": False});\n'
+                    + f'def process_data -> {name}Result by llm();\n'
+            );
+        }
+        (base / 'main.jac').write_text(
+            'import from scope_dir.module_alpha { process_data as alpha_process }\n'
+                + 'import from scope_dir.module_beta { process_data as beta_process }\n'
+        );
+        entry_file = str(base / 'main.jac');
+        outcome = kernel_compile_mod.kernel_compile(
+            active_host(),
+            JacProgram(),
+            entry_file,
+            compile_options(),
+            in_process=True,
+            emit_closure=True
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        alpha = outcome.unit(str(pkg / 'module_alpha.jac'));
+        beta = outcome.unit(str(pkg / 'module_beta.jac'));
+        assert alpha is not None and beta is not None , [u.path for u in outcome.units];
+        assert "module_alpha.process_data" in alpha.mtir , alpha.mtir;
+        assert "module_beta" not in alpha.mtir , alpha.mtir;
+        assert "module_beta.process_data" in beta.mtir , beta.mtir;
+        assert "module_alpha" not in beta.mtir , beta.mtir;
+    }
+}
+
+"""A package's `__init__.jac` is usually empty, and an empty module has no
+source location to name it by. Its unit is named by the path the session
+compiled, so the host files it under that module and does not compile the
+package again when the import reaches it."""
+test "an empty package init compiles in the session that reaches it" {
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        pkg = base / 'pkg';
+        pkg.mkdir();
+        (pkg / '__init__.jac').write_text('');
+        (pkg / 'util.jac').write_text('def twice(x: int) -> int { return x * 2; }\n');
+        (base / 'main.jac').write_text(
+            'import from pkg.util { twice }\nwith entry { print(twice(2)); }\n'
+        );
+        entry_file = str(base / 'main.jac');
+        outcome = kernel_compile_mod.kernel_compile(
+            active_host(),
+            JacProgram(),
+            entry_file,
+            compile_options(),
+            in_process=True,
+            emit_closure=True
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        named = sorted(os.path.relpath(u.path, str(base)) for u in outcome.units);
+        assert named == ["main.jac", "pkg/__init__.jac", "pkg/util.jac"] , named;
+        init_unit = outcome.unit(str(pkg / '__init__.jac'));
+        assert init_unit is not None and init_unit.jcir;
     }
 }

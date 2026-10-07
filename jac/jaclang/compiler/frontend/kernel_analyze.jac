@@ -8,7 +8,7 @@ import from jaclang.compiler.frontend.host {
     install_host,
     set_package_root
 }
-import from jaclang.compiler.frontend.kernel_host { KernelHost }
+import from jaclang.compiler.frontend.kernel_host { HostAsker, KernelHost }
 import from jaclang.compiler.frontend.kernel_inputs {
     KernelInputs,
     json_int,
@@ -319,12 +319,17 @@ obj KernelRun {
 }
 
 def run_kernel_session(
-    inputs: KernelInputs, path: str, source: (str | None), with_codegen: bool
+    inputs: KernelInputs,
+    path: str,
+    source: (str | None),
+    with_codegen: bool,
+    asker: (HostAsker | None) = None,
+    kernel_asker: bool = False
 ) -> KernelRun {
     if inputs.package_root {
         set_package_root(inputs.package_root);
     }
-    host = KernelHost(inputs=inputs);
+    host = KernelHost(inputs=inputs, asker=asker, kernel_asker=kernel_asker);
     host.census.trace = bool(os.environ.get("JAC_KERNEL_TRACE"));
     run = KernelRun(host=host, program=JacProgram());
     previous = active_host();
@@ -338,19 +343,28 @@ def run_kernel_session(
         }
         host.compile_module(run.program, path, source, options);
         if with_codegen {
+            listed: set[str] = set();
+            for emit_path in inputs.emit_paths {
+                listed.add(os.path.realpath(emit_path));
+            }
             tried: set[str] = set();
+            tried.add(os.path.realpath(path));
             emitted = True;
             while emitted {
                 emitted = False;
-                for emit_path in inputs.emit_paths {
-                    real = os.path.realpath(emit_path);
-                    if real in tried
-                        or real in host.units
-                        or real not in host.analyses {
+                reached: list[str] = [];
+                for analysed in host.analyses {
+                    reached.append(analysed);
+                }
+                for real in reached {
+                    if real in tried or real in host.units {
                         continue;
                     }
                     tried.add(real);
-                    host.compile_module(run.program, emit_path, None, options);
+                    if real not in listed and not host.wants_unit(real) {
+                        continue;
+                    }
+                    host.compile_module(run.program, real, None, options);
                     emitted = True;
                 }
             }
@@ -385,13 +399,19 @@ def decode_inputs(inputs_json: str) -> (KernelInputs | str) {
 }
 
 def run_kernel_analysis(
-    inputs_json: str, path: str, source: (str | None)
+    inputs_json: str,
+    path: str,
+    source: (str | None),
+    asker: (HostAsker | None) = None,
+    kernel_asker: bool = False
 ) -> AnalysisReport {
     inputs = decode_inputs(inputs_json);
     if isinstance(inputs, str) {
         return AnalysisReport(status=ANALYSIS_CRASHED, message=inputs, entry_path=path);
     }
-    return run_kernel_session(inputs, path, source, False).outcome(path);
+    return run_kernel_session(inputs, path, source, False, asker, kernel_asker).outcome(
+        path
+    );
 }
 
 obj CompileReport {
@@ -428,7 +448,11 @@ obj CompileReport {
 }
 
 def run_kernel_compile(
-    inputs_json: str, path: str, source: (str | None)
+    inputs_json: str,
+    path: str,
+    source: (str | None),
+    asker: (HostAsker | None) = None,
+    kernel_asker: bool = False
 ) -> CompileReport {
     inputs = decode_inputs(inputs_json);
     if isinstance(inputs, str) {
@@ -438,7 +462,7 @@ def run_kernel_compile(
             )
         );
     }
-    run = run_kernel_session(inputs, path, source, True);
+    run = run_kernel_session(inputs, path, source, True, asker, kernel_asker);
     return CompileReport(
         analysis=run.outcome(path), units=list(run.host.units.values())
     );

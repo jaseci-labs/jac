@@ -10,7 +10,7 @@ import from jaclang.compiler.frontend.codeinfo {
     InteropManifest
 }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.runtime.semantic { info_graph_to_json }
+import from jaclang.runtime.semantic { Info, info_graph_to_json }
 import from jaclang.runtime.surface { SurfaceEntry }
 
 glob CLIENT_RECORD_VERSION: int = 4,
@@ -389,8 +389,15 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
             path + DEF_DEP_SEP + qualname for (path, qualname) in module.ct_def_deps
         ]
     );
-    if program.mtir_map {
-        products.mtir = info_graph_to_json(program.mtir_map);
+    owned: dict[(str, Info)] = {};
+    for scope in program.analysis.mtir_owned.get(module.loc.mod_path, []) {
+        info = program.mtir_map.get(scope);
+        if info is not None {
+            owned[scope] = info;
+        }
+    }
+    if owned {
+        products.mtir = info_graph_to_json(owned);
     }
     record = interop_record(module);
     if record {

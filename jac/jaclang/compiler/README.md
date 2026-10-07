@@ -40,23 +40,30 @@ points. The kernel answers two requests, each a call and a take:
   manifest, the client artifact, the placement summary and the comptime
   dependencies.
 
-Nothing tree-shaped crosses. The host sends a `KernelInputs` snapshot of the
-closure the request needs (`project/kernel_snapshot.jac`: sources, interfaces,
-settings and the answers to the host questions the pipeline will ask), and the
-kernel's `KernelHost` answers `HostServices` from it. A question the snapshot
-cannot answer raises `HostOnlyError`, the request reports a miss, and the
-compile fails: with a kernel present the host never compiles a program module
-in its place. Results come back as JSON records; the host assembles JCIR into
-bytecode, restores the other products through the same path a JIR cache hit
-takes, and writes the module JIR. An application prepares from one kernel
-session that emits a unit per project module (`kernel_compile_application`).
+Nothing tree-shaped crosses. A session starts from a `KernelInputs` record
+holding the facts every compile needs (the request, project defaults, layout
+tables, the stub catalog's location) and the kernel's `KernelHost` answers
+`HostServices` from it. When the pipeline asks something the record does not
+hold yet (an import's resolution, a path's project, the interface of a Python
+or `jaclang` module), the kernel calls the host through the session's asker
+(`project/kernel_snapshot.jac`), merges the answer into its inputs and carries
+on. A compile is one kernel run: the host does not parse the program to guess
+at questions, and nothing is run again. A question the host cannot answer
+raises `HostOnlyError`, the request reports a miss, and the compile fails:
+with a kernel present the host never compiles a program module in its place.
+Results come back as JSON records; the host assembles JCIR into bytecode,
+restores the other products through the same path a JIR cache hit takes, and
+writes the module JIR. A session emits a unit for every module it analysed
+that has no cached products, so importing a program compiles its closure once
+(`kernel_compile_application` does the same for an application).
 `JAC_KERNEL_COMPILE=inprocess` runs the kernel's code under Python for tests.
 
 Keep pass and generator algorithms in `passes/` and `backends/`. To move a
 module into the kernel, add it to `native_scope.jac` and make it lower: a walker
 ability that fails to lower fails its unit and every importer, while a function
 that fails demotes to an abort stub the kernel must never reach. A new host
-question belongs on `HostServices` with a snapshot field that answers it.
+question belongs on `HostServices`, with a `KernelInputs` field that holds
+its answer and a branch in the session's asker that produces it.
 
 ## Native hash containers
 

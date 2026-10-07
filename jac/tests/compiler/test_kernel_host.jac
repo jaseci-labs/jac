@@ -1,11 +1,14 @@
-"""The kernel host answers ModuleAnalysis from a typed host snapshot.
+"""The kernel host answers ModuleAnalysis from typed host answers.
 
 `KernelInputs` is everything the host tells the analysis (config answers,
-workspace specs, platform facts, a pre-resolved import table); the
-`KernelHost` serves those answers, does its own file I/O, buffers events for
-replay, and hands the few host-only services (compiler objects, Python
-parsing, interface caches) back to the host. `JAC_KERNEL_HOST=1` routes every
-user-module analysis through it, which must change nothing a user can see."""
+workspace specs, platform facts, import resolutions). A session starts with
+the facts every compile needs and the host adds an answer each time the
+kernel asks; the `KernelHost` serves those answers, does its own file I/O,
+buffers events for replay, and hands the few host-only services (compiler
+objects, Python parsing, interface caches) back to the host.
+`JAC_KERNEL_HOST=1` routes every user-module analysis through it, which must
+change nothing a user can see."""
+import json;
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -13,8 +16,18 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.host { KERNEL_HOST_ENV, active_host }
 import from jaclang.compiler.frontend.kernel_host { KernelHost }
-import from jaclang.project.kernel_snapshot { kernel_census, reset_kernel_census }
-import from jaclang.compiler.frontend.kernel_inputs { ImportResolution, KernelInputs }
+import from jaclang.project.kernel_snapshot {
+    kernel_census,
+    kernel_snapshot,
+    reset_kernel_census
+}
+import from jaclang.compiler.frontend.kernel_inputs {
+    ImportResolution,
+    KernelInputs,
+    json_map,
+    merge_answers,
+    resolution_key
+}
 import from jaclang.project.compiler_host { ProjectHost }
 import from jaclang.project.workspace_model { WorkspaceSpec }
 
@@ -101,9 +114,24 @@ test "kernel inputs round-trip through JSON with their types intact" {
         entry_file = str(base / 'main.jac');
         host = active_host();
         assert isinstance(host, ProjectHost);
-        inputs = host.kernel_inputs(
-            JacProgram(), entry_file, CompileOptions(no_cgen=True)
+        session = kernel_snapshot(
+            host, JacProgram(), entry_file, CompileOptions(no_cgen=True)
         );
+        inputs = session.inputs();
+        assert not inputs.imports , "a session starts without import resolutions";
+        for (method, key) in [
+            ("workspace", entry_file),
+            ("project_facts", entry_file),
+            ("project_root", entry_file),
+            ("project_root", td),
+            ("project_root", ""),
+            ("resolve_module", resolution_key("util", entry_file, False)),
+            ("resolve_module", resolution_key("pyhelp", entry_file, False))
+        ] {
+            answered = session.ask(method, key);
+            assert answered , f"the host had no answer for {method} {key}";
+            merge_answers(inputs, json_map(json.loads(answered)));
+        }
         text = inputs.to_json();
         restored = KernelInputs.from_json(text);
         assert restored.to_json() == text;
@@ -139,7 +167,7 @@ test "kernel inputs round-trip through JSON with their types intact" {
     }
 }
 
-test "analysis under the kernel host matches the host path and misses nothing" {
+test "analysis under the kernel host matches the host path" {
     with TemporaryDirectory() as host_dir {
         with TemporaryDirectory() as kernel_dir {
             write_project(Path(host_dir));
@@ -151,7 +179,6 @@ test "analysis under the kernel host matches the host path and misses nothing" {
             assert census.sessions >= 1 , "the kernel host never ran";
             assert census.calls.get("resolve_module", 0) > 0;
             assert census.calls.get("compile_module", 0) > 0;
-            assert census.total_misses() == 0 , census.summary();
             assert expected["errors"]
                 and any("Cannot assign int to str" in e for e in expected["errors"]);
             assert observed["errors"] == expected["errors"];

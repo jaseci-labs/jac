@@ -33,6 +33,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
     run_kernel_analysis,
     run_kernel_compile
 }
+import from jaclang.compiler.jc_ask { set_host_callback, take_host_answer }
 
 obj JcState {
     has p_errs: int = 0,
@@ -55,6 +56,16 @@ glob _JC: JcState = JcState(),
 
 def:pub jc_probe -> int {
     return 44061;
+}
+
+def:pub jc_set_asker(callback: int) -> int {
+    set_host_callback(callback);
+    return 0;
+}
+
+def:pub jc_answer(text: str) -> int {
+    take_host_answer(text);
+    return 0;
 }
 
 def _drop_h(h: int) {
@@ -307,7 +318,7 @@ def:pub jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int 
     status = ANALYSIS_CRASHED;
     try {
         outcome = run_kernel_analysis(
-            inputs, path, source if has_source != 0 else None
+            inputs, path, source if has_source != 0 else None, None, True
         );
         status = outcome.status;
         text = outcome.to_json();
@@ -326,7 +337,9 @@ def:pub jc_compile(inputs: str, path: str, source: str, has_source: int) -> int 
     _JC.compile_h = 0;
     status = ANALYSIS_CRASHED;
     try {
-        outcome = run_kernel_compile(inputs, path, source if has_source != 0 else None);
+        outcome = run_kernel_compile(
+            inputs, path, source if has_source != 0 else None, None, True
+        );
         status = outcome.analysis.status;
         text = outcome.to_json();
     } except Exception as err {

@@ -14,8 +14,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
 import from jaclang.project.kernel_snapshot {
     COMPILE_ENTRY,
     KernelAnalysisError,
-    call_kernel,
-    call_kernel_isolated,
+    call_with_asker,
     host_deferred,
     _IFACE_BUILT,
     other_compiler_report,
@@ -36,29 +35,6 @@ def kernel_compile_in_process -> bool {
     return raw in ("inprocess", "in-process");
 }
 
-def miss_context(misses: list[str], inputs_json: str) -> str {
-    import json;
-    miss = misses[0];
-    asked = miss.partition(": ")[2].replace("\\", "/");
-    if "/vendor/typeshed/" not in asked {
-        return "";
-    }
-    import from jaclang.compiler.frontend.host { package_root }
-    import from jaclang.project.modresolver { get_typeshed_paths }
-    stub_dir = asked.rpartition("/")[0];
-    reached: list[str] = [];
-    try {
-        for row in json.loads(inputs_json).get("imports", []) {
-            found = str(row.get("path", "")).replace("\\", "/");
-            if found.startswith(stub_dir) and len(reached) < 3 {
-                reached.append(f"{row.get('target')} from {row.get('base_path')}");
-            }
-        }
-    } except (ValueError, AttributeError) {}
-    return f"; compiler package at {package_root()}, stubs at {get_typeshed_paths()}, "
-    f"imports resolved there: {reached}, misses: {misses[:5]}";
-}
-
 def kernel_compile(
     host: HostServices,
     program: JacProgram,
@@ -73,53 +49,29 @@ def kernel_compile(
     import time;
     started = time.monotonic();
     snapshot = kernel_snapshot(
-        host,
-        program,
-        path,
-        options,
-        source,
-        emit_closure=emit_closure,
-        emit_cached=emit_cached
+        host, program, path, options, emit_closure=emit_closure, emit_cached=emit_cached
     );
-    snapped = time.monotonic();
-    in_kernel = 0.0;
-    inputs_json = "";
-    while True {
-        reached = snapshot.scan.other_compiler;
-        if reached {
-            outcome = CompileReport(analysis=other_compiler_report(path, reached[0]));
-            analysis = outcome.analysis;
-            break;
-        }
-        inputs_json = snapshot.text();
-        called = time.monotonic();
-        if in_process {
-            outcome = run_kernel_compile(inputs_json, path, source);
-        } else {
-            kernel = loaded_kernel(COMPILE_ENTRY);
-            call = call_kernel_isolated if isolated else call_kernel;
-            outcome = CompileReport.from_json(
-                call(kernel, COMPILE_ENTRY, inputs_json, path, source)
-            );
-        }
-        in_kernel += time.monotonic() - called;
-        analysis = outcome.analysis;
-        if not analysis.misses
-            or host_deferred(analysis)
-            or not snapshot.answer(analysis.misses) {
-            break;
-        }
+    seeded = time.monotonic();
+    if snapshot.other_compiler {
+        outcome = CompileReport(
+            analysis=other_compiler_report(path, snapshot.other_compiler)
+        );
+    } elif in_process {
+        outcome = run_kernel_compile(snapshot.text(), path, source, snapshot);
+    } else {
+        kernel = loaded_kernel(COMPILE_ENTRY);
+        outcome = CompileReport.from_json(
+            call_with_asker(kernel, COMPILE_ENTRY, snapshot, path, source, isolated)
+        );
     }
+    analysis = outcome.analysis;
     sink = os.environ.get(KERNEL_TIMING_ENV, "");
     total = time.monotonic() - started;
     if sink or total > SLOW_COMPILE_SECONDS {
         import sys;
-        inputs = snapshot.inputs();
         line = f"jac: kernel compile {path}: {total:.2f}s "
-        f"(snapshot {snapped - started:.2f}s over {inputs.scanned_modules} modules "
-        f"and {len(inputs.python_ifaces)} interfaces, kernel {in_kernel:.2f}s, "
-        f"answers {total - (snapped - started) - in_kernel:.2f}s in "
-        f"{snapshot.rounds} round(s), deferred={host_deferred(analysis)}; "
+        f"(inputs {seeded - started:.2f}s, kernel {total - (seeded - started):.2f}s, "
+        f"{len(outcome.units)} unit(s), deferred={host_deferred(analysis)}; "
         f"this process has built {int(_IFACE_BUILT[0])} interfaces in "
         f"{_IFACE_BUILT[1]:.2f}s)\n";
         if os.sep in sink {
@@ -145,7 +97,6 @@ def kernel_compile(
     if analysis.misses {
         raise KernelAnalysisError(
             f"the kernel lacked host answers ({analysis.misses[0]})"
-                + miss_context(analysis.misses, inputs_json)
         );
     }
     return outcome;
