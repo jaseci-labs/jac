@@ -1,16 +1,18 @@
+import from typing { TextIO }
+
 def:pub loads(s: str) -> any {
     p: _JsonParser = _JsonParser(src=s);
     return p._parse_value();
 }
 
 
-def:pub load(fp: File) -> any {
+def:pub load(fp: TextIO) -> any {
     return loads(fp.read());
 }
 
 
 def:pub dumps(
-    value: any,
+    `obj: any,
     sort_keys: bool = False,
     separators: (tuple[str, str] | None) = None,
     ensure_ascii: bool = True
@@ -21,7 +23,7 @@ def:pub dumps(
         style.item_sep = item_sep;
         style.key_sep = key_sep;
     }
-    return _dump_value(value, style);
+    return _dump_value(`obj, style);
 }
 
 
