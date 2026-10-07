@@ -295,9 +295,18 @@ class TargetMachine(ffi.ObjectRef) {
 
     """
         Represent the module as a code object, suitable for use with
-        the platform's linker.  Returns a byte string.
+        the platform's linker.  Returns a byte string.  Private functions
+        are emitted with internal linkage, which is equivalent for code
+        generation but keeps a local symbol, so a debugger or crash handler
+        can name the function a fault is in.
         """
     def emit_object(self: TargetMachine, module: any) -> bytes {
+        import from jaclang.compiler.backends.native.llvm.binding.value { Linkage }
+        for fn in module.functions {
+            if not fn.is_declaration and fn.linkage == Linkage.private {
+                fn.linkage = Linkage.internal;
+            }
+        }
         return self._emit_to_memory(module, use_object=True);
     }
 

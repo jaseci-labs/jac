@@ -45,6 +45,7 @@ import from jaclang.compiler.driver.jir {
     DepRow,
     rebase_ct_deps_section,
     running_compiler_digest,
+    require_exact_compiler_products,
     PRECOMPILE_SENTINEL
 }
 import from jaclang.jac0core.sealed {
@@ -1334,14 +1335,17 @@ def seal_native(
         link_artifact
     }
     import from jaclang.compiler.backends.native.kernel_resolve {
+        PR_KIT_EVENT,
         SEALED_LINK_MODE,
-        kernel_lib_name
+        kernel_lib_name,
+        seal_link_mode
     }
     import from jaclang.compiler.driver.jir {
         native_section_payload,
         read_section_bytes as _rsb
     }
     import from jaclang.compiler.driver.native_iface { NativeIface }
+    import from jaclang.compiler.native_scope { in_native_scope_path }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     prog = JacProgram();
@@ -1369,7 +1373,7 @@ def seal_native(
     }
 
     plan = build_link_plan(
-        prog, roots, options, mode=SEALED_LINK_MODE, native_unit=True
+        prog, roots, options, mode=seal_link_mode(), native_unit=True
     );
     result = link_artifact(
         plan, str(artifact_path), ArtifactKind.SHARED, log=console.print
@@ -1395,6 +1399,15 @@ def seal_native(
         if mod_entry is None {
             raise RuntimeError(f"native unit {rel} has no sealed JIR");
         }
+        if pkg_name == "jaclang" {
+            if in_native_scope_path(u.path)
+                and _drop_native_twin(out_dir / mod_entry["jir"]) {
+                mod_entry["sha256"] = hashlib.sha256(
+                    (out_dir / mod_entry["jir"]).read_bytes()
+                ).hexdigest();
+            }
+            continue;
+        }
         _refresh_native_twin(out_dir / mod_entry["jir"], u.path, str(pkg_path));
         jir_bytes = (out_dir / mod_entry["jir"]).read_bytes();
         mod_entry["sha256"] = hashlib.sha256(jir_bytes).hexdigest();
@@ -1414,17 +1427,18 @@ def seal_native(
         f"  Native artifact: {artifact_rel} (plan {result.plan_digest[:12]}, "
         f"layout {result.layout_digest[:12]})"
     );
-    return {
-        "units": unit_records,
-        "artifact": {
-            "path": Path(artifact_rel).as_posix(),
-            "sha256": result.sha256,
-            "layout_digest": result.layout_digest,
-            "plan_digest": result.plan_digest,
-            "triple": plan.triple,
-            "mode": plan.mode
-        }
+    artifact: dict[str, any] = {
+        "path": Path(artifact_rel).as_posix(),
+        "sha256": result.sha256,
+        "layout_digest": result.layout_digest,
+        "plan_digest": result.plan_digest,
+        "triple": plan.triple,
+        "mode": plan.mode
     };
+    if plan.mode != SEALED_LINK_MODE {
+        artifact["kit"] = PR_KIT_EVENT;
+    }
+    return {"units": unit_records, "artifact": artifact};
 }
 
 def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Path] {
@@ -1585,6 +1599,32 @@ the artifact linked, so the twin takes them now.""";
     twin.write_bytes(
         write_precompiled_jir(bytecode, module_key, header.flags, sections)
     );
+}
+
+def _drop_native_twin(twin: Path) -> bool {
+    data = twin.read_bytes();
+    header = parse_header(data[:HEADER_SIZE]);
+    if header is None {
+        return False;
+    }
+    magic: any = SECTIONS_MAGIC;
+    pos = data.find(magic, HEADER_SIZE);
+    if pos < 0 {
+        return False;
+    }
+    sections = read_sections(data, pos + len(magic));
+    kept: dict[int, bytes] = {
+        sec: raw
+        for (sec, raw) in sections.items()
+        if sec not in NATIVE_SECTIONS
+    };
+    if len(kept) == len(sections) {
+        return False;
+    }
+    bytecode = kept.pop(SEC_BYTECODE, None);
+    module_key = (kept.pop(SEC_MODKEY, b"") or b"").decode("utf-8");
+    twin.write_bytes(write_precompiled_jir(bytecode, module_key, header.flags, kept));
+    return True;
 }
 
 def _shared_suffix -> str {
@@ -1756,6 +1796,7 @@ def run_precompile(
     jobs_arg: str = "",
     app: str = ""
 ) {
+    require_exact_compiler_products();
     exclude_seed = seal or seal_compile;
     package_dir = find_package_dir(source_dir);
     if package_dir is None {

@@ -27,18 +27,30 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
         return expr.lit_value;
     }
     if isinstance(expr, uni.MultiString) {
-        parts: list[any] = [];
+        text_parts: list[str] = [];
+        byte_parts: list[bytes] = [];
         for segment in expr.strings {
-            if isinstance(segment, uni.String) {
-                parts.append(segment.lit_value);
-            } else {
+            if not isinstance(segment, uni.String) {
                 return None;
             }
+            part = segment.lit_value;
+            if isinstance(part, `bytes) {
+                byte_parts.append(part);
+            } elif isinstance(part, str) {
+                text_parts.append(part);
+            }
         }
-        if parts and isinstance(parts[0], `bytes) {
-            return b''.join(parts);
+        if byte_parts and text_parts {
+            return None;
         }
-        return ''.join(parts);
+        if byte_parts {
+            joined = b'';
+            for part in byte_parts {
+                joined = joined + part;
+            }
+            return joined;
+        }
+        return ''.join(text_parts);
     }
     if isinstance(expr, uni.ListVal) {
         values = [self._literal_value(item) for item in expr.values];
@@ -49,7 +61,7 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
     if isinstance(expr, uni.TupleVal) {
         values = [self._literal_value(item) for item in expr.values];
         if all((val is not None) for val in values) {
-            return tuple(values);
+            return values;
         }
     }
     if isinstance(expr, uni.DictVal) {
@@ -179,11 +191,11 @@ impl EsastGenPass._get_ast_or_default(
     if (
         isinstance(nd, uni.Expr)
         and (nd.gen.es_ast is None)
-        and (nd not in self._unlowered_reported)
+        and (id(nd) not in self._unlowered_reported)
         and self._is_client_destined(nd)
     ) {
         import from jaclang.compiler.frontend.diagnostics { E5097 }
-        self._unlowered_reported.add(nd);
+        self._unlowered_reported.add(id(nd));
         self.ctx.emit(E5097, node_override=nd, kind=nd.__class__.__name__);
     }
     fallback = default_factory(nd);
@@ -219,7 +231,7 @@ impl EsastGenPass._collect_stmt_body(
             generated is None
             and isinstance(stmt, uni.CodeBlockStmt)
             and not isinstance(stmt, uni.Import)
-            and not getattr(stmt, "is_comptime", False)
+            and not uni.is_comptime_stmt(stmt)
         ) {
             cls_name = stmt.__class__.__name__;
             self.ctx.emit(
@@ -518,7 +530,6 @@ impl EsastGenPass.prepare with entry {
         }
         self.module.client_viols_reported = True;
     }
-    self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
     self.component_export_names = set();
 
@@ -527,7 +538,7 @@ impl EsastGenPass.prepare with entry {
     );
 
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-    self.shared_arch_names: set[str] = {
+    self.shared_arch_names = {
         a.name.value
         for a in ModuleFacts.shared_archetypes_for_context(
             self.module, CodeContext.CLIENT

@@ -6,7 +6,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
     stubs: list[es.Statement] = [];
 
     osp_class_map: dict[str, es.ClassDeclaration] = {};
-    for item in self._merge_module_bodies(nd) {
+    for item in ModuleFacts.merged_body(nd) {
         if (
             isinstance(item, uni.Archetype)
             and (item.name is not None)

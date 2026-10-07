@@ -4,8 +4,12 @@ import uuid;
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
-    extract_data
+    extract_data,
+    fresh_totp_code,
+    wrong_totp_code
 }
+import from jaclang.server.identity.config { signing_secret }
+import from jaclang.server.serving.authcrypt { jwt_decode }
 
 glob DEFAULT_ADMIN_PASSWORD: str = "changeme";
 
@@ -39,6 +43,84 @@ test "admin login wrong password" {
         assert response.status_code == 401;
         data = extract_data(response.json());
         assert "error" in data;
+    } finally {
+        client.close();
+    }
+}
+
+test "admin login needs the code once the admin has a verified second factor" {
+    client = make_client();
+    try {
+        root_admin = {"Authorization": f"Bearer {client.admin_login()}"};
+        username = f"mfaadmin_{uuid.uuid4().hex[:8]}";
+        password = "Adm1n!Passw0rd";
+        response = client.post(
+            "/admin/users",
+            json={"username": username, "password": password, "role": "admin"},
+            headers=root_admin
+        );
+        assert response.status_code == 201 , response.text;
+
+        # Before enrolling, the password alone signs the admin in, as today.
+        response = client.post(
+            "/admin/login", json={"username": username, "password": password}
+        );
+        assert response.status_code == 200 , response.text;
+        admin_auth = {
+            "Authorization": f"Bearer {extract_data(response.json())['token']}"
+        };
+
+        response = client.post(
+            "/user/mfa/enroll", json={"password": password}, headers=admin_auth
+        );
+        assert response.status_code == 201 , response.text;
+        enrolled = extract_data(response.json());
+        used: set[int] = set();
+        response = client.post(
+            "/user/mfa/verify",
+            json={
+                "factor_id": enrolled["factor_id"],
+                "code": fresh_totp_code(enrolled["secret"], used)
+            },
+            headers=admin_auth
+        );
+        assert response.status_code == 200 , response.text;
+
+        response = client.post(
+            "/admin/login", json={"username": username, "password": password}
+        );
+        assert response.status_code == 401 , response.text;
+        assert response.json()["error"]["code"] == "MFA_REQUIRED";
+        assert not response.json().get("data");
+
+        response = client.post(
+            "/admin/login",
+            json={
+                "username": username,
+                "password": password,
+                "code": wrong_totp_code(enrolled["secret"])
+            }
+        );
+        assert response.status_code == 401 , response.text;
+        assert response.json()["error"]["code"] == "INVALID_CODE";
+
+        response = client.post(
+            "/admin/login",
+            json={
+                "username": username,
+                "password": password,
+                "code": fresh_totp_code(enrolled["secret"], used)
+            }
+        );
+        assert response.status_code == 200 , response.text;
+        token = extract_data(response.json())["token"];
+        claims = jwt_decode(token, signing_secret(), algorithms=["HS256"]);
+        assert claims["aal"] == "aal2";
+        assert claims["amr"] == ["pwd", "otp"];
+        response = client.get(
+            "/admin/users", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code == 200 , response.text;
     } finally {
         client.close();
     }

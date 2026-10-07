@@ -168,11 +168,16 @@ def coerce_value(value: any, target: any = None) -> any {
         return coerce_value(value, named);
     }
     origin = get_origin(target);
+    if origin is Union or origin is UnionType {
+        return _coerce_union(value, get_args(target));
+    }
+    if value is None {
+        raise ValueError(
+            f"null is not allowed for {getattr(target, '__name__', str(target))}"
+        );
+    }
     if origin is not None {
         args = get_args(target);
-        if origin is Union or origin is UnionType {
-            return _coerce_union(value, args);
-        }
         if origin is list {
             item_t = args[0] if args else None;
             return [coerce_value(v, item_t) for v in _as_item_list(value)];
@@ -398,6 +403,7 @@ obj CallbackSpec {
         body_candidates: list[str] = [],
         accepts_var_kw: bool = False,
         wants_request: bool = False,
+        request_positional: bool = False,
         introspectable: bool = True,
         is_async: bool = False;
 }
@@ -412,9 +418,14 @@ def build_callback_spec(callback: any) -> CallbackSpec {
     names: set[str] = set();
     body_candidates: list[str] = [];
     accepts_var_kw = False;
+    request_positional = False;
     for (pname, param) in sig.parameters.items() {
         if param.kind == inspect.Parameter.VAR_KEYWORD {
             accepts_var_kw = True;
+            continue;
+        }
+        if pname == 'request' and param.kind == inspect.Parameter.POSITIONAL_ONLY {
+            request_positional = True;
             continue;
         }
         names.add(pname);
@@ -432,6 +443,7 @@ def build_callback_spec(callback: any) -> CallbackSpec {
         body_candidates=body_candidates,
         accepts_var_kw=accepts_var_kw,
         wants_request='request' in names,
+        request_positional=request_positional,
         introspectable=True,
         is_async=is_async
     );

@@ -328,6 +328,10 @@ impl NaIRGenPass._unbox_any_container(
     b = self.builder;
     _res = b.call(_fn, [jv], name="jv.view");
     _payload = b.extract_value(jv, 1, name="jv.view.payload");
+    if self._is_owned(jv) {
+        return self._adopt_any_view(_res, _payload, target_type);
+    }
+    _res.is_owned = False;
     if not self._binding_function_active() {
         return _res;
     }
@@ -358,6 +362,32 @@ impl NaIRGenPass._unbox_any_container(
         self.builder.select(_fresh, _res, _null, name=f"{_name}.keep"), _slot
     );
     return _res;
+}
+
+impl NaIRGenPass._adopt_any_view(
+    view: ir.Value, payload: ir.Value, target_type: ir.Type
+) -> ir.Value {
+    b = self.builder;
+    _null = ir.Constant(target_type, None);
+    _failed = b.and_(
+        b.icmp_unsigned("==", view, _null, name="jv.adopt.null"),
+        b.icmp_unsigned(
+            "!=", payload, ir.Constant(ir.IntType(64), 0), name="jv.adopt.some"
+        ),
+        name="jv.adopt.failed"
+    );
+    self._emit_runtime_raise(
+        _failed,
+        "TypeError",
+        "container elements cannot be viewed as any: unsupported element or key type"
+    );
+    b = self.builder;
+    _raw = b.inttoptr(payload, target_type, name="jv.adopt.raw");
+    _fresh = b.icmp_unsigned("!=", view, _raw, name="jv.adopt.fresh");
+    self._emit_rc_release_typed(
+        b.select(_fresh, _raw, _null, name="jv.adopt.replaced"), op="any_view"
+    );
+    return self._mark_owned(view);
 }
 
 impl NaIRGenPass._binding_function_active -> bool {

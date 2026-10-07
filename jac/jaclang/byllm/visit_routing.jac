@@ -4,6 +4,7 @@ import from jaclang.runtime.object_interop { fields, is_record }
 import from types { UnionType }
 import from jaclang.byllm._optdeps.loguru { logger }
 import from jaclang.byllm.llm { BaseLLM }
+import from jaclang.byllm.systemone { ROUTE_SELECT_ATTR }
 import from jaclang.runtime.semantic { ClassInfo }
 import from jaclang.runtime.archetype { Anchor, Archetype, ObjectSpatialFunction }
 
@@ -378,6 +379,7 @@ def route_visit(candidates: list[object], model: BaseLLM) -> list[object] {
         mtir=None,
     );
 
+    setattr(mt_run, ROUTE_SELECT_ATTR, select);
     raw = Jac.call_llm(model, mt_run);
 
     selected = raw if isinstance(raw, list) else [raw];

@@ -18,7 +18,10 @@ import from jaclang.compiler.driver.jir {
     SEC_NOBJ,
     SEC_PLACEMENT,
     cache_mode,
+    carried_native_sections,
     current_native_stamp,
+    native_producer_digest,
+    write_module_cache,
     get_module_cache_path,
     is_module_cache_valid,
     module_cache_invalid_reason,
@@ -86,6 +89,23 @@ obj NativeUnitRegistry {
         self.entries.pop(real, None);
         self.not_native.pop(real, None);
         self.failures.pop(real, None);
+    }
+
+    def adopt_dep_digests(path: str, digests: dict[str, str]) -> bool {
+        real = os.path.realpath(path);
+        session = self.session;
+        if session is None or real not in session.lowered {
+            return False;
+        }
+        ent = self.entries.get(real);
+        if ent is None {
+            return False;
+        }
+        for (dep, digest) in digests.items() {
+            ent.dep_digests[os.path.realpath(dep)] = digest;
+        }
+        self._event("native_dep_adopt");
+        return True;
     }
 
     static def _source_key(path: str) -> (str | None) {
@@ -179,16 +199,38 @@ obj NativeUnitRegistry {
     ) -> NativeStamp {
         opts = options if options is not None else self._options();
         return current_native_stamp(
-            opts.unit_codegen_identity(path), opts.effective_triple()
+            opts.unit_codegen_identity(path),
+            opts.effective_triple(),
+            native_producer_digest(opts.kernel_build)
         );
     }
 
-    def _module_jir(resolved: str) -> (tuple[bytes, str] | None) {
+    def _carry(resolved: str, stamp: NativeStamp) -> bool {
+        carried = carried_native_sections(resolved, stamp.compiler_digest);
+        if not carried {
+            return False;
+        }
+        write_module_cache(resolved, None, extra_sections=carried);
+        self._event("native_carry");
+        return True;
+    }
+
+    def _module_jir(
+        resolved: str, stamp: (NativeStamp | None) = None
+    ) -> (tuple[bytes, str] | None) {
         try {
             cache_path = get_module_cache_path(resolved);
             why = module_cache_invalid_reason(resolved, cache_path);
+            data = b"" if why else cache_path.read_bytes();
+            if stamp is not None
+                and native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
+                    is None
+                and self._carry(resolved, stamp) {
+                why = module_cache_invalid_reason(resolved, cache_path);
+                data = b"" if why else cache_path.read_bytes();
+            }
             if not why {
-                return (cache_path.read_bytes(), "", );
+                return (data, "", );
             }
             self._miss(resolved, why);
         } except Exception {}
@@ -313,7 +355,7 @@ obj NativeUnitRegistry {
         if live is not None and live.stamp.matches(stamp) {
             return sorted(live.dep_digests.items());
         }
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, stamp);
         if found is None {
             return [];
         }
@@ -351,7 +393,7 @@ obj NativeUnitRegistry {
         check_deps: bool,
         options: (CompileOptions | None) = None
     ) -> (NativeUnitEntry | None) {
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, stamp);
         if found is None {
             return None;
         }
@@ -460,7 +502,7 @@ obj NativeUnitRegistry {
         if ent is not None and ent.stamp.matches(stamp) {
             return sorted(os.path.realpath(d) for d in ent.iface.deps);
         }
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, stamp);
         if found is None {
             return [];
         }
@@ -579,7 +621,8 @@ obj NativeUnitRegistry {
         if ent is not None {
             return ent.digest;
         }
-        found = self._module_jir(resolved);
+        stamp = self.stamp_for(None, resolved);
+        found = self._module_jir(resolved, stamp);
         import from jaclang.compiler.driver.compile_options { env_na_debug }
         if found is None {
             if env_na_debug() {
@@ -591,7 +634,6 @@ obj NativeUnitRegistry {
             return "";
         }
         raw = read_section_bytes(found[0], SEC_NIFACE);
-        stamp = self.stamp_for(None, resolved);
         payload = native_section_payload(raw, stamp);
         if payload is None and env_na_debug() {
             import sys;
@@ -855,6 +897,49 @@ obj NativeBuildSession {
         }
     }
 
+    def _optimize_in_parallel(paths: list[str]) -> set[str] {
+        """Ahead-of-time units with no cached bitcode are optimized together
+        on a thread pool; each worker parses into its own LLVM context.""";
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            optimize_unit_texts,
+            require_native_ir
+        }
+        opts = self.prog.options;
+        if opts.native_debug
+            or opts.dump_ir_path
+            or not (opts.aot_mode or opts.skip_native_engine) {
+            return set();
+        }
+        todo: list[tuple[str, Module]] = [];
+        for path in paths {
+            mod = self.lowered.get(path);
+            if mod is None or mod.gen.llvm_ir is None {
+                continue;
+            }
+            cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
+            if cached is not None and cached.bitcode is not None {
+                continue;
+            }
+            if opts.native_required_for(path) {
+                require_native_ir(str(mod.gen.llvm_ir));
+            }
+            todo.append((path, mod));
+        }
+        if len(todo) < 2 {
+            return set();
+        }
+        started = time.perf_counter();
+        bitcodes = optimize_unit_texts(
+            [str(mod.gen.llvm_ir) for (_, mod) in todo], opts, int(opts.opt_level or 0)
+        );
+        self.registry._timed("NATIVE_OPTIMIZE", started);
+        for ((path, mod), bitcode) in zip(todo, bitcodes) {
+            mod.gen.native_bitcode = bitcode;
+            self.registry.note_codegen(path, False);
+        }
+        return {path for (path, _) in todo};
+    }
+
     def _finish(paths: list[str]) {
         """Optimize and persist only after every consumed interface agrees.
         Cyclic interface settlement reuses the analyzed trees and never emits
@@ -869,6 +954,7 @@ obj NativeBuildSession {
                 raise RuntimeError(f"native source changed during analysis: {path}");
             }
         }
+        optimized = self._optimize_in_parallel(paths);
         for path in paths {
             mod = self.lowered.get(path);
             if mod is None {
@@ -887,12 +973,20 @@ obj NativeBuildSession {
                 }
             }
             errors_before = len(self.prog.errors_had);
-            started = time.perf_counter();
-            self.prog.run_schedule(mod, [NativeCompilePass]);
-            self.registry._timed("NATIVE_OPTIMIZE", started);
+            if path not in optimized {
+                started = time.perf_counter();
+                self.prog.run_schedule(mod, [NativeCompilePass]);
+                self.registry._timed("NATIVE_OPTIMIZE", started);
+            }
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
-                raise RuntimeError(f"native product emission failed for {path}");
+                reasons = "\n".join(
+                    str(err) for err in self.prog.errors_had[errors_before:]
+                );
+                raise RuntimeError(
+                    f"native product emission failed for {path}"
+                        + (f":\n{reasons}" if reasons else "")
+                );
             }
             self.registry.record_module(mod, self.prog.options);
             self.registry._stash_products(path, mod.gen);

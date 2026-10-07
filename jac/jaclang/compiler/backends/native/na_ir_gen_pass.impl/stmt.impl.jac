@@ -366,7 +366,7 @@ impl NaIRGenPass._codegen_delete_list_slice(
         return;
     }
     (_start, _stop, _step, _pos) = _bounds;
-    _cursor = b.alloca(i64, name="dsl.i");
+    _cursor = self._stack_entry_alloca(i64, "dsl.i");
     b.store(_stop, _cursor);
     _func = b.basic_block.function;
     _check = _func.append_basic_block(name="dsl.check");
@@ -426,6 +426,12 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     if nd.expr is not None {
         val = self._codegen_required(nd.expr);
         if val is not None {
+            if self._str_desc_ty is not None
+                and val.type == self._str_desc_ty
+                and func_ret_type != self._str_desc_ty
+                and not self._nogc_headerless() {
+                val = self._str_materialize(val);
+            }
             val = self._coerce_type(val, func_ret_type);
             _ret_root_local = False;
             if isinstance(nd.expr, uni.AtomTrailer)
@@ -1282,6 +1288,14 @@ impl NaIRGenPass._match_map_cond(
     return self.builder.load(res, name="match.map.ok");
 }
 
+impl NaIRGenPass._match_arch_name(pat: uni.MatchArch) -> (str | None) {
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    pattern_type = pat.name.type if isinstance(pat.name, uni.Expr) else None;
+    return self._arch_ref_key(pat.name)
+        or class_type_native_name(pattern_type)
+        or self._get_name(pat.name);
+}
+
 impl NaIRGenPass._match_arch_fields(
     pat: uni.MatchArch, arch_name: str
 ) -> (list[tuple[str, uni.MatchPattern]] | None) {
@@ -1312,7 +1326,7 @@ impl NaIRGenPass._match_arch_cond(
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
-    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
+    arch_name = self._match_arch_name(pat);
     if arch_name is None or arch_name not in self.struct_types {
         self.emit(
             E5092,
@@ -1690,7 +1704,7 @@ impl NaIRGenPass._bind_match_map(
 impl NaIRGenPass._bind_match_arch(
     pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
-    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
+    arch_name = self._match_arch_name(pat);
     if arch_name is None or arch_name not in self.struct_types {
         return;
     }
@@ -1752,6 +1766,28 @@ impl NaIRGenPass._apply_scalar_aug_op(
         result = self._coerce_type(result, current.type);
     }
     return result;
+}
+
+impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
+    if not isinstance(nd.value, uni.Null) {
+        return None;
+    }
+    if len(nd.target) != 1 or not isinstance(nd.target[0], uni.Name) {
+        return None;
+    }
+    declared = nd.target[0].type;
+    if declared is None {
+        return None;
+    }
+    try {
+        lowered = self._lower_type(declared);
+    } except Exception {
+        return None;
+    }
+    if lowered is None or isinstance(lowered, ir.VoidType) {
+        return None;
+    }
+    return lowered;
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
@@ -2966,6 +3002,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         } else {
             var_type = value.type;
             _pre_box_val = value;
+            _none_decl = self._none_initialized_local_type(nd);
+            if _none_decl is not None {
+                value = self._coerce_type(value, _none_decl);
+                var_type = _none_decl;
+                _pre_box_val = value;
+            }
             if (
                 (not nd.type_tag or not nd.type_tag.tag)
                 and isinstance(value.type, ir.PointerType)
@@ -3857,7 +3899,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         + ([i64] if _chk is not None else [])
         + [v.type for v in _cap_vals];
     _ctx_ty = ir.LiteralStructType(_ctx_field_types);
-    _ctx_slot = self.builder.alloca(_ctx_ty, name="ffor.ctx");
+    _ctx_slot = self._stack_entry_alloca(_ctx_ty, "ffor.ctx");
     self.builder.store(
         coll,
         self.builder.gep(
@@ -4088,7 +4130,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     _env_null = self.builder.icmp_unsigned(
         "==", _env_val, ir.Constant(i8p, None), name="ffor.env.null"
     );
-    _nt_slot = self.builder.alloca(i32, name="ffor.nt.slot");
+    _nt_slot = self._stack_entry_alloca(i32, "ffor.nt.slot");
     _cfg_threads = int(getattr(self.prog?.options, "native_threads", 4) or 4);
     self.builder.store(ir.Constant(i32, _cfg_threads), _nt_slot);
     _envfunc = self.builder.function;
@@ -4146,7 +4188,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         _ri_cond = func.append_basic_block("ffor.red.init.cond");
         _ri_body = func.append_basic_block("ffor.red.init.body");
         _ri_done = func.append_basic_block("ffor.red.init.done");
-        _ri_slot = self.builder.alloca(i64, name="ffor.red.init.t");
+        _ri_slot = self._stack_entry_alloca(i64, "ffor.red.init.t");
         self.builder.store(ir.Constant(i64, 0), _ri_slot);
         self.builder.branch(_ri_cond);
         self.builder.position_at_end(_ri_cond);
@@ -4190,7 +4232,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     _j_next = func.append_basic_block("ffor.join.next");
     _done_bb = func.append_basic_block("ffor.done");
 
-    _t_slot = self.builder.alloca(i64, name="ffor.t");
+    _t_slot = self._stack_entry_alloca(i64, "ffor.t");
     self.builder.store(ir.Constant(i64, 0), _t_slot);
     self.builder.branch(_s_cond);
 
@@ -4247,6 +4289,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     );
     _tp = self.builder.gep(_tid_arr, [_t_cur], name="ffor.tid.p");
     self.builder.store(ir.Constant(i64, 0), _tp);
+    self._emit_rc_mark_threaded();
     _crc = self.builder.call(
         _pcreate,
         [
@@ -4309,11 +4352,11 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         if _acc_slot is None {
             _acc_slot = self.global_vars[_red[0]];
         }
-        _cur_slot = self.builder.alloca(i64, name=f"ffor.comb.{_red[0]}");
+        _cur_slot = self._stack_entry_alloca(i64, f"ffor.comb.{_red[0]}");
         self.builder.store(
             self.builder.load(_acc_slot, name=f"ffor.comb.{_red[0]}.0"), _cur_slot
         );
-        _ct_slot = self.builder.alloca(i64, name=f"ffor.comb.{_red[0]}.t");
+        _ct_slot = self._stack_entry_alloca(i64, f"ffor.comb.{_red[0]}.t");
         self.builder.store(ir.Constant(i64, 0), _ct_slot);
         _cb_cond = func.append_basic_block(f"ffor.comb.cond.{_ri}");
         _cb_body = func.append_basic_block(f"ffor.comb.body.{_ri}");

@@ -197,7 +197,7 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
     }
 
     if name == "getcwd" {
-        buf = self.builder.alloca(ir.ArrayType(ir.IntType(8), 4096), name="os.cwd.buf");
+        buf = self._stack_entry_alloca(ir.ArrayType(ir.IntType(8), 4096), "os.cwd.buf");
         bufp = self.builder.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="os.cwd.bufp"
         );
@@ -318,7 +318,7 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         copy_n = self.builder.add(plen, ir.Constant(i64, 1), name="mkdirs.copyn");
         bufp = self.builder.call(malloc_fn, [copy_n], name="mkdirs.buf");
         self.builder.call(memcpy_fn, [bufp, p, copy_n]);
-        i_ptr = self.builder.alloca(i64, name="mkdirs.i");
+        i_ptr = self._stack_entry_alloca(i64, "mkdirs.i");
 
         self.builder.store(ir.Constant(i64, 1), i_ptr);
         func = self.builder.function;
@@ -488,7 +488,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         if p is None {
             return None;
         }
-        buf = self.builder.alloca(ir.ArrayType(i8, 4096), name="rp.buf");
+        buf = self._stack_entry_alloca(ir.ArrayType(i8, 4096), "rp.buf");
         bufp = self.builder.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rp.bufp"
         );
@@ -548,7 +548,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         } elif ("aarch64" in triple) or ("arm64" in triple) {
             mode_off = 16;
         }
-        buf = self.builder.alloca(ir.ArrayType(i8, 144), name="stat.buf");
+        buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), "stat.buf");
         bufp = self.builder.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="stat.bufp"
         );
@@ -598,7 +598,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
                 stat_sym = "stat$INODE64";
             }
         }
-        buf = self.builder.alloca(ir.ArrayType(i8, 144), name="gmt.buf");
+        buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), "gmt.buf");
         bufp = self.builder.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="gmt.bufp"
         );
@@ -639,7 +639,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
                 stat_sym = "stat$INODE64";
             }
         }
-        buf = self.builder.alloca(ir.ArrayType(i8, 144), name="gsz.buf");
+        buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), "gsz.buf");
         bufp = self.builder.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="gsz.bufp"
         );

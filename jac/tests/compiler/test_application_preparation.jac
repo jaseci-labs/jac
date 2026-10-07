@@ -225,6 +225,11 @@ test "runtime logs and toolchain directories do not become application inputs" {
                 is None;
             assert containing_application(str(base / 'node_modules' / 'package.jac'))
                 is None;
+            assert containing_application(
+                str(base / 'vendor' / 'jac' / 'jaclang' / 'runtime' / 'graph_walk.jac'),
+                'jaclang.runtime.graph_walk'
+            )
+                is None , "the compiler's own modules are not application code";
         } finally {
             forget(str(path));
         }
@@ -597,7 +602,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
     with tempfile.TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';
         path.write_text('def hello -> int { return 1; }\n');
-        original = preparation._manifest;
+        original = preparation.build_manifest;
         def changing_manifest(*args: any, **kwargs: any) -> dict[str, any] {
             path.write_text('def hello -> int { return 2; }\n');
             return original(*args, **kwargs);
@@ -605,7 +610,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
         failed = False;
         try {
             with patch.object(
-                preparation, '_manifest', side_effect=changing_manifest
+                preparation, 'build_manifest', side_effect=changing_manifest
             ) {
                 prepare_application(str(path), JacProgram(), tmp);
             }
@@ -714,5 +719,47 @@ test "preparation loads native engines for executable server calls" {
         } finally {
             forget(str(path));
         }
+    }
+}
+
+"""Prepare `path` and report whether it restored the recorded application."""
+def _restored(path: Path, `root: str) -> bool {
+    import contextlib;
+    import io;
+    err = io.StringIO();
+    try {
+        with contextlib.redirect_stderr(err) {
+            prepare_application(str(path), JacProgram(), `root);
+        }
+    } finally {
+        forget(str(path));
+    }
+    return 'Restoring prepared application' in err.getvalue();
+}
+
+test "prepared applications are reused by content, not by timestamp" {
+    import time;
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        annex = base / 'main.test.jac';
+        page = base / 'pages' / 'about.txt';
+        page.parent.mkdir();
+        path.write_text("def:pub hello -> int { return 1; }\n");
+        annex.write_text('test "hello" { assert hello() == 1; }\n');
+        page.write_text('about: one');
+        assert not _restored(path, tmp);
+        moved = time.time_ns() - 3_600_000_000_000;
+        for source in (path, annex, page) {
+            os.utime(source, ns=(moved, moved));
+        }
+        assert _restored(path, tmp) , (
+            "identical bytes under new timestamps discarded the prepared application"
+        );
+        assert _restored(path, tmp);
+        page.write_text('about: two');
+        assert not _restored(path, tmp) , "a same-size content change was reused";
+        annex.unlink();
+        assert not _restored(path, tmp) , "an annex deletion was reused";
     }
 }

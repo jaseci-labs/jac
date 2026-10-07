@@ -2198,3 +2198,63 @@ test "forward headers stamp the peer when no chain is present" {
     fwd = gw.build_forward_headers(req);
     assert fwd["X-Forwarded-For"] == "10.0.0.1";
 }
+
+
+test "a session cookie crosses the gateway to the service, for safe requests only" {
+    import from jaclang.scale.tests.scale_test_client { extract_data, make_client }
+    env_name = "JAC_SERVE_AUTH_SESSION_COOKIE";
+    # The gateway is assembled first: identity settings are per process, and
+    # the service, a real served app on a real port, must be the one that
+    # reads the opt-in.
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+    prior = os.environ.get(env_name);
+    os.environ[env_name] = "1";
+    try {
+        service = make_client("restspec_fixtures.jac");
+    } finally {
+        if prior is None {
+            os.environ.pop(env_name, None);
+        } else {
+            os.environ[env_name] = prior;
+        }
+    }
+    try {
+        port = service.raw_client._ensure_live_server();
+        reg.register(_entry("svc_a", "/api/a", port));
+        import from jaclang.testing.testkit { ServingTestClient as TestClient }
+        client = TestClient(gw.app);
+        credentials = {"type": "password", "password": "Pass!99"};
+        who = {"type": "username", "value": "gw_cookie_user"};
+        registered = client.post(
+            "/api/a/user/register",
+            json={"identities": [who], "credential": credentials}
+        );
+        assert registered.status_code == 201 , registered.text;
+        user_id = extract_data(registered.json())["user_id"];
+        login = client.post(
+            "/api/a/user/login", json={"identity": who, "credential": credentials}
+        );
+        assert login.status_code == 200 , login.text;
+        token = extract_data(login.json())["token"];
+        # The service's Set-Cookie survives the hop back to the browser.
+        set_cookie = str(login.headers.get("Set-Cookie"));
+        assert set_cookie.startswith(f"jac_session={token};") , set_cookie;
+        assert "HttpOnly" in set_cookie and "SameSite=Strict" in set_cookie;
+
+        cookie = {"Cookie": f"jac_session={token}"};
+        me = client.get("/api/a/user/me", headers=cookie);
+        assert me.status_code == 200 , me.text;
+        assert extract_data(me.json())["user_id"] == user_id;
+        func = client.get("/api/a/function/get_func", headers=cookie);
+        assert func.status_code == 200 , f"{func.status_code} {func.text}";
+        assert client.get("/api/a/function/get_func").status_code == 401;
+        assert client.post(
+            "/api/a/function/post_func", json={}, headers=cookie
+        ).status_code
+            == 401;
+    } finally {
+        service.close();
+    }
+}

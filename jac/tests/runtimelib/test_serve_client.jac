@@ -3034,3 +3034,54 @@ test "sv_client: a walker spawn without a stub class is refused before the provi
         _reset_bridge_state();
     }
 }
+
+import from jaclang.client.client_bundle { ClientBundle, ClientBundleBuilder }
+
+"""A real builder whose bundler step only counts its runs."""
+obj _CountingBundleBuilder(ClientBundleBuilder) {
+    has bundles: int = 0;
+
+    def _compile_bundle(module: types.ModuleType, module_path: Path) -> ClientBundle {
+        self.bundles += 1;
+        return ClientBundle(
+            module_name=module.__name__,
+            code=f"export const build = {self.bundles};",
+            client_functions=[],
+            client_globals=[],
+            hash=f"hash-{self.bundles}"
+        );
+    }
+}
+
+test "client bundles are rebuilt by content, not by timestamp" {
+    import time;
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp).resolve();
+        (base / "jac.toml").write_text('[project]\nname = "sig"\nkind = "web-app"\n');
+        page = base / "page.jac";
+        annex = base / "page.impl.jac";
+        page.write_text(
+            'def label -> str;\n\n'
+            'def:pub App -> any {\n    return <div>{label()}</div>;\n}\n'
+        );
+        annex.write_text('impl label -> str {\n    return "one";\n}\n');
+        module = types.ModuleType("sig_page");
+        module.__file__ = str(page);
+        builder = _CountingBundleBuilder();
+        builder.build(module);
+        moved = time.time_ns() - 3_600_000_000_000;
+        for source in (page, annex) {
+            os.utime(source, ns=(moved, moved));
+        }
+        builder.build(module);
+        assert builder.bundles == 1 , "identical bytes under a new timestamp rebuilt the bundle";
+        page.write_text(
+            page.read_text().replace("<div>", "<p>").replace("</div>", "</p>")
+        );
+        builder.build(module);
+        assert builder.bundles == 2 , "a content change reused the stale bundle";
+        annex.unlink();
+        builder.build(module);
+        assert builder.bundles == 3 , "an annex deletion reused the stale bundle";
+    }
+}

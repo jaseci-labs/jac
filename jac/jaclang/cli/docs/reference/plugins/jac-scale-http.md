@@ -654,6 +654,7 @@ token_ttl_days = 7
 | `JAC_SERVE_AUTH_SECRET` | `secret` | Secret key for JWT signing | unset: a dev server mints one per project into `.jac/data/jwt_secret` |
 | `JAC_SERVE_AUTH_ALGORITHM` | `algorithm` | JWT signing algorithm | `HS256` |
 | `JAC_SERVE_AUTH_TOKEN_TTL_DAYS` | `token_ttl_days` | Token expiration in days | `7` |
+| `JAC_SERVE_AUTH_SESSION_COOKIE` | `session_cookie` | Also set an `HttpOnly` `jac_session` cookie that authorizes `GET`/`HEAD` only, so `<img>`, `<video>` and download links reach protected endpoints | `false` |
 
 !!! warning "Production: set the JWT secret"
     Left unset, the secret is minted per project into `.jac/data/jwt_secret` -- fine for a dev server, wrong for a cluster, where it would be per-replica. A cluster with none configured refuses to start rather than signing with a placeholder; `jac scale deploy` mints a random secret into the app Secret as `JAC_SERVE_AUTH_SECRET` when neither `[serve.auth] secret` nor `[scale.secrets]` provides one.

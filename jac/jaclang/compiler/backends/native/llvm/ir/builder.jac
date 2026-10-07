@@ -628,7 +628,9 @@ class IRBuilder(object) {
     """
         Conditional branch to *truebr* if *cond* is true, else to *falsebr*.
         """
-    def cbranch(self: IRBuilder, cond: any, truebr: any, falsebr: any) -> Value {
+    def cbranch(
+        self: IRBuilder, cond: any, truebr: any, falsebr: any
+    ) -> instructions.ConditionalBranch {
         br = instructions.ConditionalBranch(self.block, "br", [cond, truebr, falsebr]);
         self._set_terminator(br);
         return br;
