@@ -1756,10 +1756,6 @@ impl ModulePath.base_module_name.getter -> str {
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     import from jaclang.compiler.frontend.host { active_host }
-    bundled = self.native_bundled_path();
-    if bundled is not None {
-        return bundled;
-    }
     spv = self.string_path_value;
     if spv is not None {
         return active_host().resolve_module(spv, self.loc.mod_path, string_spec=True)[
@@ -1778,9 +1774,6 @@ impl ModulePath.native_bundled_path -> (str | None) {
         resolve_native_module
     }
     mod_path = self.loc.mod_path if self.loc else None;
-    if not self.in_native_context() {
-        return None;
-    }
     if mod_path and mod_path.endswith(".pyi") {
         return None;
     }

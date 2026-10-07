@@ -61,6 +61,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.frontend.unparse"),
          NativeScopeEntry(module="jaclang.compiler.intrinsic_registry"),
          NativeScopeEntry(module="jaclang.compiler.kernel_target"),
+         NativeScopeEntry(module="jaclang.compiler.native_bindings"),
          NativeScopeEntry(module="jaclang.compiler.native_notes"),
          NativeScopeEntry(module="jaclang.compiler.native_scope"),
          NativeScopeEntry(module="jaclang.compiler.passes.access_check_pass"),
