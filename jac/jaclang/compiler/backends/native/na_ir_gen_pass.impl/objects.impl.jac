@@ -1,5 +1,14 @@
 import from jaclang.compiler.c_interop { foreign_read_copies, is_pinned_type }
 import from jaclang.compiler.expr_keys { type_tag_borrows }
+
+def _is_bar_expr(nd: uni.UniNode) -> bool {
+    if not isinstance(nd, uni.BinaryExpr) {
+        return False;
+    }
+    _op = nd.op;
+    return isinstance(_op, uni.Token) and _op.value == "|";
+}
+
 impl NaIRGenPass._devirt_closed_world(arch_name: str) -> bool {
     arch = self.arch_ast_map.get(arch_name);
     if arch is None {
@@ -565,7 +574,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
                     and self._hasvar_is_own(var)
                     and isinstance(ftype, ir.PointerType)
                     and not is_pinned_type(var?.type) {
-                    _fpn = getattr(ftype.pointee, "name", "") or "";
+                    _fpn = _ir_struct_name(ftype.pointee);
                     _fstruct = self.struct_types.get(_fpn);
 
                     if _fstruct is not None
@@ -1478,17 +1487,13 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
     parts: list[uni.UniNode] = [];
     if isinstance(tag, uni.TupleVal) {
         parts = list(tag.values or []);
-    } elif isinstance(tag, uni.BinaryExpr) and getattr(tag.op, "value", "") == "|" {
+    } elif isinstance(tag, uni.BinaryExpr) and _is_bar_expr(tag) {
         parts = [tag.left, tag.right];
     } else {
         parts = [tag];
     }
     for part in parts {
-        if isinstance(part, uni.TupleVal)
-            or (
-                isinstance(part, uni.BinaryExpr)
-                and getattr(part.op, "value", "") == "|"
-            ) {
+        if isinstance(part, uni.TupleVal) or _is_bar_expr(part) {
             for nm in self._trigger_member_structs(part) {
                 if nm not in out {
                     out.append(nm);
@@ -4121,8 +4126,8 @@ impl NaIRGenPass._codegen_field_access(
     field_ptr = self._field_slot_ptr(obj_val, field_name, type_name);
     if field_name in self.struct_field_inline.get(type_name, set()) {
         if type_name in self.clib_struct_names and foreign_read_copies(nd) {
-            _nested = getattr(
-                self.struct_field_types.get(type_name, {}).get(field_name), "name", ""
+            _nested = _ir_struct_name(
+                self.struct_field_types.get(type_name, {}).get(field_name)
             );
             if _nested in self.struct_types {
                 return self._foreign_copy_box(field_ptr, _nested);
@@ -4235,7 +4240,7 @@ impl NaIRGenPass._store_inline_field(
 ) -> None {
     i8p = ir.IntType(8).as_pointer();
     _ftype = self.struct_field_types.get(type_name, {}).get(fname);
-    _pname = getattr(_ftype, "name", "") or "";
+    _pname = _ir_struct_name(_ftype);
     if type_name in self.clib_struct_names and _pname in self.clib_struct_names {
         if value is not None {
             self._foreign_store_bytes(field_ptr, value, _pname);
@@ -4832,7 +4837,7 @@ impl NaIRGenPass._jc_reference_schema(
         }
         return {"code": "str"} if semantic_name == "str" else None;
     }
-    name = getattr(ft.pointee, "name", "") or "";
+    name = _ir_struct_name(ft.pointee);
     if name in self.struct_field_indices {
         return {"code": "obj", "class": name};
     }
@@ -4940,7 +4945,7 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
                     code = reference["code"];
                     aux = reference.get("class", "");
                 }
-            } elif getattr(ft, "name", "") == "JacVal" {
+            } elif _ir_struct_name(ft) == "JacVal" {
                 code = "union";
             } elif (
                 isinstance(ft, ir.BaseStructType)
@@ -4950,7 +4955,7 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
                 and isinstance(ft.elements[1], ir.PointerType)
             ) {
                 code = "optref";
-                _opn = getattr(ft.elements[1].pointee, "name", "") or "";
+                _opn = _ir_struct_name(ft.elements[1].pointee);
                 aux = _opn;
                 schema = self._jc_reference_schema(
                     ft.elements[1],
@@ -4962,7 +4967,7 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
             } elif isinstance(ft, ir.DoubleType) {
                 code = "float";
             } elif isinstance(ft, ir.PointerType) {
-                _pn = getattr(ft.pointee, "name", "") or "";
+                _pn = _ir_struct_name(ft.pointee);
                 _is_list = False;
                 for (_, _lt) in self.list_types.items() {
                     if ft == _lt.as_pointer() {

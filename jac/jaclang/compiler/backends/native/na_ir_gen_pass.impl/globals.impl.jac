@@ -5,7 +5,7 @@ impl NaIRGenPass._quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type |
     if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
         return self._quiet_glob_type(type_expr.tag);
     }
-    _ptb = type_expr?.type;
+    _ptb = _node_sem_type(type_expr);
     if _ptb is None {
         return None;
     }

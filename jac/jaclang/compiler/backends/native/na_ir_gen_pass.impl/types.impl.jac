@@ -1,4 +1,19 @@
 import from jaclang.compiler.expr_keys { type_tag_borrows }
+
+def _ir_struct_name(t: (ir.Type | None)) -> str {
+    return t.name if isinstance(t, ir.IdentifiedStructType) else "";
+}
+
+def _node_sem_type(nd: (uni.UniNode | None)) -> (TypeBase | None) {
+    if isinstance(nd, uni.Expr) {
+        return nd.type;
+    }
+    if isinstance(nd, uni.AstTypedVarNode) {
+        return nd.type;
+    }
+    return None;
+}
+
 impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
         return None;
@@ -1159,7 +1174,7 @@ impl NaIRGenPass._decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] |
     try {
         for _f in _lay.fields {
             _var = _f.decl_node;
-            if _var is None or _var?.type is None {
+            if _var is None or _node_sem_type(_var) is None {
                 return None;
             }
             out[_f.name] = self._resolve_field_type(_var);
@@ -1193,7 +1208,7 @@ impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
 }
 
 impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
-    _ptb = type_expr?.type;
+    _ptb = _node_sem_type(type_expr);
     if _ptb is not None {
         lowered = self._lower_type(_ptb);
         if lowered is not None {
@@ -1242,7 +1257,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         return self._resolve_jac_type(type_expr.tag);
     }
 
-    _ptb = type_expr?.type;
+    _ptb = _node_sem_type(type_expr);
     if _ptb is not None and not isinstance(type_expr, uni.Expr) {
         lowered = self._lower_type(_ptb);
         if lowered is not None {
@@ -1300,7 +1315,7 @@ impl NaIRGenPass._widened_tuple_decl_type(
     if isinstance(nd, uni.SubTag) {
         nd = nd.tag;
     }
-    _tb = nd?.type;
+    _tb = _node_sem_type(nd);
     if _tb is None {
         if not (isinstance(nd, uni.Name) and nd.value == "tuple") {
             return None;
@@ -1336,7 +1351,7 @@ impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStruct
 }
 
 impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
-    _ptb = var?.type;
+    _ptb = _node_sem_type(var);
     if _ptb is not None {
         lowered = self._lower_type(_ptb);
         if lowered is not None {
@@ -1866,8 +1881,10 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
         import from jaclang.compiler.frontend.unparse { unparse_node }
         _label = unparse_node(type_expr);
     } else {
-        _tag = type_expr?.type_tag;
-        _label = self._get_name(_tag?.tag) or str(tb);
+        _tag = type_expr.type_tag
+            if isinstance(type_expr, uni.AstTypedVarNode)
+            else None;
+        _label = self._get_name(_tag.tag if _tag is not None else None) or str(tb);
     }
     self.emit(
         E5092, node_override=type_expr, kind=self._sig_decl_kind or "type", name=_label
@@ -2610,8 +2627,8 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     if isinstance(val.type, ir.PointerType)
         and isinstance(target_type, ir.PointerType) {
-        _src_nm = getattr(val.type.pointee, "name", "") or "";
-        _tgt_nm = getattr(target_type.pointee, "name", "") or "";
+        _src_nm = _ir_struct_name(val.type.pointee);
+        _tgt_nm = _ir_struct_name(target_type.pointee);
         if _src_nm in self.struct_types and _tgt_nm in self.struct_types {
             if _tgt_nm in self._mro_of(_src_nm) or _src_nm in self._mro_of(_tgt_nm) {
                 return self.builder.bitcast(val, target_type, name="hier.cast");
@@ -2994,7 +3011,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             );
             size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="clib.sizeof");
 
-            _clib_loc = getattr(val, 'jac_loc', '');
+            _clib_loc = val.jac_loc;
             allocator = self.rc_alloc_fn;
             assert allocator is not None;
             raw_ptr = self._rc_call_with_ctx(
@@ -3226,7 +3243,7 @@ impl NaIRGenPass._emit_binary_op(
         buf_size = self.builder.add(
             total, ir.Constant(ir.IntType(64), 1), name="buf_size"
         );
-        _concat_loc = getattr(left, 'jac_loc', getattr(right, 'jac_loc', ''));
+        _concat_loc = left.jac_loc;
         self._set_rc_ctx("str_concat", _concat_loc);
         buf = self._str_alloc(self.builder, buf_size, name="concat.buf");
         self._clear_rc_ctx();

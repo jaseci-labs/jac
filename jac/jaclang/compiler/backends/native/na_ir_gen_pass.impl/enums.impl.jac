@@ -55,8 +55,7 @@ impl NaIRGenPass._ensure_enum_lowered(t: any) -> (ir.Type | None) {
     if _decl is not None {
         self._codegen_enum(_decl);
     } else {
-        _shared = t?.shared;
-        _enm = _shared.class_name if _shared is not None else None;
+        _enm = t.shared.class_name if isinstance(t, ClassType) else None;
         if _enm is not None {
             self._codegen_enum_layout(_enm, None);
         }

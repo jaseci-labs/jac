@@ -884,7 +884,7 @@ impl NaIRGenPass._codegen_class_ref(
         return None;
     }
 
-    if _np?.collection is nd {
+    if isinstance(_np, (uni.InForStmt, uni.InnerCompr)) and _np.collection is nd {
         return None;
     }
     _arch = self._module_class_name(nd)
