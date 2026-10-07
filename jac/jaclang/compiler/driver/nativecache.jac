@@ -840,7 +840,7 @@ obj NativeBuildSession {
             if tasks is not None {
                 tasks.pop(CompilationProduct.NATIVE_IR, None);
             }
-            mod.gen.llvm_ir = None;
+            mod.gen.drop_native_ir();
             mod.gen.native_iface = None;
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;

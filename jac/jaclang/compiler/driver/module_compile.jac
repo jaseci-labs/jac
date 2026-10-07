@@ -210,7 +210,7 @@ obj ModuleCompilation {
             ),
             cancel_token=options.cancel_token
         );
-        if module.gen.llvm_ir is not None {
+        if module.gen.has_native_ir() {
             self.session.assemble_native(program, module, False);
         }
         self.session.assemble_python(program, module);
@@ -250,7 +250,7 @@ def scrub_native_artifacts_on_error(program: JacProgram, mod: uni.Module) -> boo
     }
     gen = mod.gen;
     gen.py_bytecode = None;
-    gen.llvm_ir = None;
+    gen.drop_native_ir();
     gen.native_engine = None;
     gen.native_bitcode = None;
     gen.native_object = None;
@@ -263,7 +263,7 @@ def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
     import from jaclang.compiler.driver.pass_driver { deliver_alerts }
     import from jaclang.compiler.frontend.diagnostics { E5092 }
     import from jaclang.compiler.passes.context { Alert }
-    if mod?.gen is None or mod.gen.llvm_ir is not None {
+    if mod?.gen is None or mod.gen.has_native_ir() {
         return;
     }
     mod_path = mod.loc.mod_path if mod?.loc else '';

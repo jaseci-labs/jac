@@ -191,6 +191,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
+        self.module.gen.ir_module = self.llvm_module;
         self.module.gen.llvm_ir = self.llvm_module;
         self.module.gen.native_deps = list(self._native_dep_paths);
 
@@ -2088,7 +2089,6 @@ impl NaIRGenPass.run_walk with uni.Module entry {
     }
 }
 
-"""Record this module's lowering errors with the host's native unit registry."""
 impl NaIRGenPass._publish_lowering_failure(here: uni.Module) -> None {
     self.prog.native_units().failures[os.path.realpath(here.loc.mod_path)] = "Native module lowering failed:\n"
         + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had);

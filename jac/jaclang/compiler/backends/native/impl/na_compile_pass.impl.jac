@@ -299,6 +299,7 @@ impl settle_unit_ir(module: uni.Module) -> None {
     } except RuntimeError {
         return;
     }
+    module.gen.ir_module = None;
 }
 
 impl native_linked_ir_text(module: uni.Module) -> str {
