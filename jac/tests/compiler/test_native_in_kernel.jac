@@ -202,3 +202,41 @@ test "a module that cannot be lowered is demoted inside the session" {
         assert any("did not lower" in note for note in notes) , outcome.analysis.events;
     }
 }
+
+"""`jac run` of a native program asks the kernel first: the program is compiled
+by one kernel session, the host adopts the record and runs the entry natively,
+and a second run starts from the cache with no compile at all."""
+test "jac run executes a native program from a kernel session, then from the cache" {
+    import subprocess;
+    import from tests.support { jac_command }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'fib.jac').write_text(FIB);
+        env: dict[str, str] = dict(os.environ);
+        env.update(SWITCHES);
+        env["JAC_KERNEL_TIMING"] = "1";
+        first = subprocess.run(
+            jac_command("run", "fib.jac"),
+            cwd=str(base),
+            capture_output=True,
+            text=True,
+            env=env
+        );
+        assert first.returncode == 0 , first.stderr[-2000:];
+        assert "fib 6765" in first.stdout , first.stdout + first.stderr[-1500:];
+        assert "kernel compile" in first.stderr , first.stderr[-1500:];
+        assert "Preparing application" not in first.stderr , (
+            "a native entry fell back to the Python lane:\n" + first.stderr[-1500:]
+        );
+        again = subprocess.run(
+            jac_command("run", "fib.jac"),
+            cwd=str(base),
+            capture_output=True,
+            text=True,
+            env=env
+        );
+        assert again.returncode == 0 , again.stderr[-2000:];
+        assert "fib 6765" in again.stdout;
+        assert "kernel compile" not in again.stderr , again.stderr[-1500:];
+    }
+}
