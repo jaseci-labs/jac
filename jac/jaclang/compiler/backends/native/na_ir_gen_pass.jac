@@ -1122,7 +1122,7 @@ walker NaIRGenPass(CompilerPass) {
         cont: ir.Value,
         layout: dict[str, any],
         tag: str,
-        body_cb: Callable[..., ir.IRBuilder],
+        body_cb: Callable[[ir.IRBuilder, ir.Value, list[ir.Value]], ir.IRBuilder],
         fields: (list[tuple[int, ir.Type]] | None) = None,
         reverse: bool = False
     ) -> ir.IRBuilder;

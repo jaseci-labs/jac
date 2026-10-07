@@ -437,7 +437,7 @@ impl NaIRGenPass._emit_live_slot_loop(
     cont: ir.Value,
     layout: dict[str, any],
     tag: str,
-    body_cb: Callable[..., ir.IRBuilder],
+    body_cb: Callable[[ir.IRBuilder, ir.Value, list[ir.Value]], ir.IRBuilder],
     fields: (list[tuple[int, ir.Type]] | None) = None,
     reverse: bool = False
 ) -> ir.IRBuilder {
@@ -446,8 +446,10 @@ impl NaIRGenPass._emit_live_slot_loop(
     i64 = ir.IntType(64);
     _is_hash = layout["kind"] == "hash";
     _reverse = reverse and not _is_hash;
-    _fields = fields if fields is not None else layout["data_fields"];
-    _arrs = [];
+    _fields: list[tuple[int, ir.Type]] = fields
+        if fields is not None
+        else layout["data_fields"];
+    _arrs: list[ir.Value] = [];
     for (_fi, _) in _fields {
         _arrs.append(
             b.load(
@@ -469,7 +471,7 @@ impl NaIRGenPass._emit_live_slot_loop(
         ),
         name=f"{tag}.bound"
     );
-    _ctrl = None;
+    _ctrl: (ir.Value | None) = None;
     if _is_hash {
         _ctrl = b.load(
             b.gep(
@@ -489,7 +491,7 @@ impl NaIRGenPass._emit_live_slot_loop(
     b.branch(_cond_bb);
     bc = ir.IRBuilder(_cond_bb);
     _i = bc.load(_iv, name=f"{tag}.iv");
-    if _is_hash {
+    if _is_hash and _ctrl is not None {
         _chk_bb = fn.append_basic_block(f"{tag}.chk");
         bc.cbranch(
             bc.icmp_unsigned(">=", _i, _bound, name=f"{tag}.done"), _end_bb, _chk_bb
