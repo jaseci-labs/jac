@@ -551,7 +551,7 @@ impl NaIRGenPass._codegen_clib_args(
         return None;
     }
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    param_plans = plan["params"];
+    param_plans: list[dict[str, any]] = plan["params"];
     if len(params) != len(param_plans) {
         return None;
     }
@@ -567,9 +567,10 @@ impl NaIRGenPass._codegen_clib_args(
     }
     i8p = ir.IntType(8).as_pointer();
     out: list[ir.Value] = [];
-    for (i, pp) in enumerate(param_plans) {
+    for i in range(len(param_plans)) {
+        pp = param_plans[i];
         arg = params[i];
-        info = pp.get("c_arg") or {};
+        info: dict[str, any] = pp.get("c_arg") or {};
         if isinstance(arg, uni.Null) and (info.get("optional") or info.get("cptr")) {
             out.append(ir.Constant(i8p, None));
             continue;

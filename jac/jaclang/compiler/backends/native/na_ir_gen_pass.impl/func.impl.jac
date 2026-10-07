@@ -389,39 +389,50 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     }
     if plan is not None {
         sysv_param_types: list[ir.Type] = [];
-        for slot in plan["sig"] {
-            if slot[0] == "structptr" or slot[0] == "sretptr" {
-                sysv_param_types.append(self._clib_c_type(slot[1]).as_pointer());
-            } elif slot[0] == "coerce" {
-                sysv_param_types.append(slot[1]);
-            } elif slot[1] < len(_c_args) and _c_args[slot[1]] {
-                sysv_param_types.append(ir.IntType(8).as_pointer());
-            } else {
-                _sp = _decl_params[slot[1]];
-                sysv_param_types.append(
-                    self._resolve_clib_type(_sp.type_tag.tag)
-                        if (_sp.type_tag and _sp.type_tag.tag)
-                        else ir.IntType(64)
-                );
+        _sig_slots: list[tuple[str, str | int | ir.Type]] = plan["sig"];
+        for slot in _sig_slots {
+            _slot_kind = slot[0];
+            _slot_val = slot[1];
+            if _slot_kind == "structptr" or _slot_kind == "sretptr" {
+                if isinstance(_slot_val, str) {
+                    sysv_param_types.append(self._clib_c_type(_slot_val).as_pointer());
+                }
+            } elif _slot_kind == "coerce" {
+                if isinstance(_slot_val, ir.Type) {
+                    sysv_param_types.append(_slot_val);
+                }
+            } elif isinstance(_slot_val, int) {
+                if _slot_val < len(_c_args) and _c_args[_slot_val] {
+                    sysv_param_types.append(ir.IntType(8).as_pointer());
+                } else {
+                    _sp = _decl_params[_slot_val];
+                    sysv_param_types.append(
+                        self._resolve_clib_type(_sp.type_tag.tag)
+                            if (_sp.type_tag and _sp.type_tag.tag)
+                            else ir.IntType(64)
+                    );
+                }
             }
         }
 
-        param_plan = plan["params"];
-        for (_pi, pp) in enumerate(param_plan) {
+        param_plan: list[dict[str, any]] = plan["params"];
+        for _pi in range(len(param_plan)) {
+            pp = param_plan[_pi];
             if pp["kind"] == "scalar" {
-                pp["type"] = sysv_param_types[pp["argpos"]];
+                _scalar_pos: int = pp["argpos"];
+                pp["type"] = sysv_param_types[_scalar_pos];
                 pp["is_str"] = pp.get("tname") == "str";
                 pp["c_arg"] = _c_args[_pi] if _pi < len(_c_args) else {};
             }
         }
-        sysv_sret = plan["sret"];
-        sysv_ret_plan = plan["ret"];
-        _sig_ret = plan["sig_ret"];
+        sysv_sret: bool = plan["sret"];
+        sysv_ret_plan: dict[str, any] = plan["ret"];
+        _ret_kind: str = sysv_ret_plan["kind"];
         sysv_ret_type: ir.Type;
-        if _sig_ret[0] == "void" {
+        if _ret_kind == "sret" {
             sysv_ret_type = ir.VoidType();
-        } elif _sig_ret[0] == "coerce" {
-            _rco = _sig_ret[1];
+        } elif _ret_kind == "struct_reg" {
+            _rco: list[ir.Type] = sysv_ret_plan["coerce"];
             if len(_rco) == 1 {
                 sysv_ret_type = _rco[0];
             } else {
@@ -447,31 +458,32 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         }
         if sysv_sret and len(sysv_func.args) > 0 {
             sysv_func.args[0].add_attribute("sret");
-            _sal = sysv_ret_plan["align"];
+            _sal: int = sysv_ret_plan["align"];
             sysv_func.args[0].attributes.align = _sal if _sal > 8 else 8;
             sysv_func.args[0].name = "agg.result";
         }
         for pp in param_plan {
-            _pos = pp["argpos"];
+            _pos: int = pp["argpos"];
+            _pname: str = pp["pname"];
             if pp["kind"] == "struct_mem" and _pos < len(sysv_func.args) {
                 _ba = sysv_func.args[_pos];
 
                 if pp["byval"] {
                     _ba.add_attribute("byval");
-                    _bal = pp["align"];
+                    _bal: int = pp["align"];
                     _ba.attributes.align = _bal if _bal > 8 else 8;
                 }
-                _ba.name = pp["pname"];
+                _ba.name = _pname;
             } elif pp["kind"] == "scalar" and _pos < len(sysv_func.args) {
-                sysv_func.args[_pos].name = pp["pname"];
+                sysv_func.args[_pos].name = _pname;
             } elif pp["kind"] == "struct_reg" {
-                _co = pp["coerce"];
+                _co: list[ir.Type] = pp["coerce"];
                 if len(_co) == 1 and _pos < len(sysv_func.args) {
-                    sysv_func.args[_pos].name = pp["pname"];
+                    sysv_func.args[_pos].name = _pname;
                 } else {
                     for _j in range(len(_co)) {
                         if (_pos + _j) < len(sysv_func.args) {
-                            sysv_func.args[_pos + _j].name = f"{pp['pname']}.{_j}";
+                            sysv_func.args[_pos + _j].name = f"{_pname}.{_j}";
                         }
                     }
                 }
