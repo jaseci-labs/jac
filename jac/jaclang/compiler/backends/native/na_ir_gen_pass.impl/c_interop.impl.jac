@@ -113,7 +113,8 @@ impl NaIRGenPass._pinned_scalar_box(elem: any) -> (str | None) {
         self.struct_field_order[name] = ["value"];
         self.struct_field_types[name] = {"value": llt};
         self.struct_field_defaults[name] = {};
-        self.struct_field_foreign[name] = set();
+        _no_foreign: set[str] = set();
+        self.struct_field_foreign[name] = _no_foreign;
         self.clib_struct_names.add(name);
     }
     return name;
