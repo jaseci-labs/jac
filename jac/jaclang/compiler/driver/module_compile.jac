@@ -356,7 +356,7 @@ def run_codegen_phases(
 
 def native_refusal(
     program: JacProgram, analysis: ModuleAnalysis, errors_mark: int, analyzed: bool
-) -> (tuple[str, str] | None) {
+) -> (tuple[str, str, str] | None) {
     import from jaclang.compiler.placement.placement_facts { native_placement_soft }
     module = analysis.module;
     if analysis.parse_failed
@@ -368,12 +368,17 @@ def native_refusal(
         first = program.errors_had[errors_mark];
         return (
             first.code.code if first.code is not None else "",
-            first.pretty_print().split('\n')[0]
+            first.pretty_print().split('\n')[0],
+            "analysis"
         );
     }
     gen = module.gen;
     if gen is not None and gen.native_refusal {
-        return (gen.native_refusal_code, gen.native_refusal);
+        return (
+            gen.native_refusal_code,
+            gen.native_refusal,
+            "static" if analyzed else "late"
+        );
     }
     return None;
 }
@@ -381,16 +386,16 @@ def native_refusal(
 def place_on_server(
     program: JacProgram,
     path: str,
-    refusal: tuple[str, str],
+    refusal: tuple[str, str, str],
     errors_mark: int,
     warnings_mark: int
 ) {
     import from jaclang.compiler.driver.session_compile { drop_native_bindings }
     import from jaclang.compiler.placement.placement_solver { invalidate_importers_es }
-    (code, detail) = refusal;
+    (code, detail, stage) = refusal;
     resolved = os.path.realpath(path);
     host = active_host();
-    host.record_native_coverage(resolved, 'demoted', code, detail);
+    host.record_native_coverage(resolved, 'demoted', code, f"[{stage}] {detail}");
     host.record_native_verdict(program, resolved, code, detail);
     del program.errors_had[errors_mark:];
     del program.warnings_had[warnings_mark:];

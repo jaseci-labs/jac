@@ -1250,13 +1250,6 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     }
     import from jaclang.compiler.passes.native_legality { refusal_from_alert }
     _own = list(self.ctx.errors_had[local_mark:]);
-    if self._na_debug_on() {
-        import sys;
-        sys.stderr.write(f"NA_DEBUG demote {full_name}\n");
-        for _diag in _own {
-            sys.stderr.write(f"NA_DEBUG   {_diag.pretty_print()}\n");
-        }
-    }
     _refusals = [refusal_from_alert(_diag) for _diag in _own];
     if self._legality is not None {
         self._legality.late[full_name] = _refusals;
@@ -1278,6 +1271,13 @@ impl NaIRGenPass._place_unit_python(
     stub_body: bool = True
 ) -> None {
     _first = refusals[0];
+    if self._na_debug_on() {
+        import sys;
+        sys.stderr.write(f"NA_DEBUG demote {full_name}\n");
+        for _refusal in refusals {
+            sys.stderr.write(f"NA_DEBUG   {_refusal.full()}\n");
+        }
+    }
     if self._seam_warnings_on()
         and not self.prog.options.native_required_for(self.module.loc.mod_path) {
         import from jaclang.compiler.frontend.host { active_host }
@@ -1296,7 +1296,9 @@ impl NaIRGenPass._place_unit_python(
             import from jaclang.compiler.driver.na_coverage { na_coverage_seam }
             _code_tag = f"[{_first.code}] " if _first.code else "";
             na_coverage_seam(
-                self.module.loc.mod_path, f"{full_name}: {_code_tag}" + _first.located()
+                self.module.loc.mod_path,
+                f"{full_name}: {_code_tag}" + _first.located(),
+                late=_first.late
             );
         } except Exception {}
         self._record_lowering_issue(

@@ -153,7 +153,7 @@ impl NaIRGenPass._internal_error(
     exception that is not a defect is `NativeRefused`, which a deep helper
     raises to refuse: it joins the pending refusals like any diagnostic.""";
     if isinstance(exc, NativeRefused) {
-        self.emit(E5092, node_override=nd, kind=kind, name=name, help_text=str(exc));
+        self.emit(E5092, node_override=nd, kind=kind, name=f"{name} ({exc})");
         return;
     }
     if self._na_debug_on() {

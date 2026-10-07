@@ -24,11 +24,12 @@ def na_coverage_record(path: str, outcome: str, code: str = '', detail: str = ''
         'outcome': outcome,
         'code': code,
         'detail': detail,
-        'seams': (prev['seams'] if prev is not None else [])
+        'seams': (prev['seams'] if prev is not None else []),
+        'late': (int(prev.get('late') or 0) if prev is not None else 0)
     };
 }
 
-def na_coverage_seam(path: str, reason: str) {
+def na_coverage_seam(path: str, reason: str, late: bool = False) {
     if not _na_coverage_state["enabled"] or not path {
         return;
     }
@@ -40,6 +41,9 @@ def na_coverage_seam(path: str, reason: str) {
     }
     if reason not in rec['seams'] {
         rec['seams'].append(reason);
+        if late {
+            rec['late'] = int(rec.get('late') or 0) + 1;
+        }
     }
 }
 
@@ -55,7 +59,8 @@ def na_coverage_capture(path: str) -> dict[str, any] {
         'outcome': rec['outcome'],
         'code': rec['code'],
         'detail': rec['detail'],
-        'seams': list(rec['seams'] or [])
+        'seams': list(rec['seams'] or []),
+        'late': int(rec.get('late') or 0)
     };
 }
 
@@ -71,7 +76,8 @@ def na_coverage_replay(path: str, rec: dict[str, any]) {
         'outcome': rec.get('outcome') or 'native',
         'code': rec.get('code') or '',
         'detail': rec.get('detail') or '',
-        'seams': list(rec.get('seams') or [])
+        'seams': list(rec.get('seams') or []),
+        'late': int(rec.get('late') or 0)
     };
 }
 
