@@ -58,8 +58,7 @@ def _target_module_source -> str {
             dst_fh.write(source);
         }
         mod = prog.compile(
-            file_path=target_path,
-            options=CompileOptions(no_ir_cache=True)
+            file_path=target_path, options=CompileOptions(no_ir_cache=True)
         );
         errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not prog.errors_had , f"target compilation errors: {errors}";
@@ -67,7 +66,7 @@ def _target_module_source -> str {
     }
 }
 
-def _install_target_module -> None {
+def _install_target_module {
     target_globals: dict[any, any] = {};
     exec(_target_module_source(), target_globals);
     target_mod = types.ModuleType("na_mirror_target");
@@ -94,9 +93,9 @@ test "pinned-native import stays bound in the server image" {
     assert "MirrorPoint" in py_src;
     assert "mirror_double" in py_src;
     target_imports = [
-        imp for imp in mod.get_all_sub_nodes(uni.Import)
-        if imp.from_loc is not None
-        and imp.from_loc.dot_path_str == "na_mirror_target"
+        imp
+        for imp in mod.get_all_sub_nodes(uni.Import)
+        if imp.from_loc is not None and imp.from_loc.dot_path_str == "na_mirror_target"
     ];
     assert len(target_imports) == 1 , "client imports na_mirror_target once";
     assert not target_imports[0].native_only_drop , (
