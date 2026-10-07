@@ -522,7 +522,8 @@ impl NaIRGenPass._codegen_bound_args(
             }
         }
     } else {
-        _fixed = list(callee_sig.posonly_params or []) + list(callee_sig.params or []);
+        _fixed: list[uni.ParamVar] = list(callee_sig.posonly_params or [])
+            + list(callee_sig.params or []);
         _n_posonly = len(callee_sig.posonly_params or []);
         if _self_skip and _fixed {
             _fixed = _fixed[1:];
