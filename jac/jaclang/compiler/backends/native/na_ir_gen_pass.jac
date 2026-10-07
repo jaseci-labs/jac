@@ -2804,6 +2804,7 @@ walker NaIRGenPass(CompilerPass) {
         tuple_node: (uni.UniNode | None)
     ) -> bool;
 
+    def _unpack_target_ok(target: uni.UniNode) -> bool;
     def _codegen_tuple_index(
         tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
     ) -> (ir.Value | None);

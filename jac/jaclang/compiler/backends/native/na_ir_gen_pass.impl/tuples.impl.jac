@@ -110,7 +110,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
     }
 
     for target in targets {
-        if self._get_name(target) is None {
+        if not self._unpack_target_ok(target) {
             return False;
         }
     }
@@ -122,7 +122,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
             break;
         }
         var_name = self._get_name(target);
-        if var_name is None {
+        if var_name is None and not isinstance(target, uni.TupleVal) {
             return False;
         }
         elem_val: ir.Value;
@@ -147,6 +147,19 @@ impl NaIRGenPass._codegen_tuple_unpack(
             and _elem_owned is not None
             and i < len(_elem_owned)
             and _elem_owned[i];
+        if isinstance(target, uni.TupleVal) or var_name is None {
+            if not isinstance(target, uni.TupleVal) {
+                return False;
+            }
+            inner = target.values or [];
+            if moved and isinstance(elem_val.type, ir.LiteralStructType) {
+                elem_val.na_tuple_owned = [True] * len(inner);
+            }
+            if not self._codegen_tuple_unpack(inner, elem_val, None) {
+                return False;
+            }
+            continue;
+        }
         if var_name in self.local_vars {
             alloca = self.local_vars[var_name];
             if not isinstance(alloca.type, ir.PointerType) {
@@ -181,6 +194,18 @@ impl NaIRGenPass._codegen_tuple_unpack(
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
     return True;
+}
+
+impl NaIRGenPass._unpack_target_ok(target: uni.UniNode) -> bool {
+    if isinstance(target, uni.TupleVal) {
+        for inner in (target.values or []) {
+            if not self._unpack_target_ok(inner) {
+                return False;
+            }
+        }
+        return True;
+    }
+    return self._get_name(target) is not None;
 }
 
 impl NaIRGenPass._list_get_of_value(value: ir.Value) -> (ir.Function | None) {

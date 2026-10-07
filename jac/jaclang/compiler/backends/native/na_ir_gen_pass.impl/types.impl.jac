@@ -1940,7 +1940,7 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
 }
 
 impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
-    if nd is None {
+    if nd is None or isinstance(nd, uni.TupleVal) {
         return None;
     }
     if isinstance(nd, uni.Name) {

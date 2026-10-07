@@ -1463,7 +1463,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         targets = tuple_target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
             or len(targets) != len(elem_type.members())
-            or any(self._get_name(target) is None for target in targets) {
+            or any(not self._unpack_target_ok(target) for target in targets) {
             return False;
         }
     } elif self._get_name(nd.target) is None {
