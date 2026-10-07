@@ -2840,7 +2840,7 @@ impl NativeListEmitter.emit_append(
         helpers["append"],
         [target, p._coerce_type(val, helpers["elem_type"])],
         op="append",
-        loc=getattr(args[0], 'jac_loc', "")
+        loc=args[0].jac_loc
     );
     p._release_after_store(val, op="append");
     return ir.Constant(ir.IntType(64), 0);
@@ -3469,7 +3469,7 @@ impl NativeListEmitter.emit_sort(
     cj1 = p._cast_to_list_elem(b, cj1, cmp_type, "sort.cj1");
     _key_ret = p._sort_key_return_type(_key_node) if key_fn is not None else None;
     _key_orderable = p._sort_key_orderable(_key_ret);
-    if _key_orderable is False
+    if (_key_orderable is not None and not _key_orderable)
         or (_key_orderable is None and not p._sort_key_supported(cmp_type)) {
         p.ctx.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
         return None;
@@ -3560,7 +3560,8 @@ impl NativeListEmitter._emit_value_sort(
     elem_type = data.type.pointee_type;
     itemsize = p._abi_sizeof(elem_type);
     checked_elem: (TypeBase | None) = None;
-    for source_node in (ctx.receiver_node, ctx.call_node) {
+    _sort_sources: list[UniNode | None] = [ctx.receiver_node, ctx.call_node];
+    for source_node in _sort_sources {
         elem_args = (
             p._agg_key_args(p._flow_narrowed_type_of(source_node), "list")
                 if source_node is not None
@@ -3574,7 +3575,9 @@ impl NativeListEmitter._emit_value_sort(
     orderable = p._sort_key_orderable(checked_elem);
     compare_as_str = isinstance(elem_type, ir.PointerType)
         and (orderable is None or p._container_class_name(checked_elem) == "str");
-    if isinstance(elem_type, ir.PointerType) and orderable is False {
+    if isinstance(elem_type, ir.PointerType)
+        and orderable is not None
+        and not orderable {
         p.ctx.emit(
             E5092,
             node_override=ctx.call_node or ctx.receiver_node,
@@ -4377,7 +4380,7 @@ impl NativeSetEmitter._emit_set_elem_loop(
     ctx: NativeEmitCtx,
     src_set: ir.Value,
     prefix: str,
-    body_cb: object
+    body_cb: Callable[[ir.IRBuilder, ir.Value], None]
 ) -> None {
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
@@ -4611,23 +4614,35 @@ impl NativeSetEmitter.emit_symmetric_difference(
     new_set = b.call(helpers["new"], [], name="ssymd.new");
     other = args[0];
 
-    def _only_in(probe: ir.Value, prefix: str) -> object {
-        def _cb(b2: ir.IRBuilder, ev: ir.Value) {
-            func = b2.basic_block.function;
-            hit = b2.call(helpers["contains"], [probe, ev], name=f"{prefix}.in");
-            add_bb = func.append_basic_block(name=f"{prefix}.add");
-            skip_bb = func.append_basic_block(name=f"{prefix}.skip");
-            b2.cbranch(hit, skip_bb, add_bb);
-            b2.position_at_start(add_bb);
-            b2.call(helpers["add"], [new_set, ev]);
-            b2.branch(skip_bb);
-            b2.position_at_start(skip_bb);
-        }
-        return _cb;
+    def _only_in_target(b2: ir.IRBuilder, ev: ir.Value) {
+        _emit_set_add_missing(b2, ev, helpers, other, new_set, "ssymd.a");
     }
-    self._emit_set_elem_loop(ctx, target, "ssymd.a", _only_in(other, "ssymd.a"));
-    self._emit_set_elem_loop(ctx, other, "ssymd.b", _only_in(target, "ssymd.b"));
+
+    def _only_in_other(b2: ir.IRBuilder, ev: ir.Value) {
+        _emit_set_add_missing(b2, ev, helpers, target, new_set, "ssymd.b");
+    }
+    self._emit_set_elem_loop(ctx, target, "ssymd.a", _only_in_target);
+    self._emit_set_elem_loop(ctx, other, "ssymd.b", _only_in_other);
     return new_set;
+}
+
+def _emit_set_add_missing(
+    b2: ir.IRBuilder,
+    ev: ir.Value,
+    helpers: dict[str, any],
+    probe: ir.Value,
+    new_set: ir.Value,
+    prefix: str
+) {
+    func = b2.basic_block.function;
+    hit = b2.call(helpers["contains"], [probe, ev], name=f"{prefix}.in");
+    add_bb = func.append_basic_block(name=f"{prefix}.add");
+    skip_bb = func.append_basic_block(name=f"{prefix}.skip");
+    b2.cbranch(hit, skip_bb, add_bb);
+    b2.position_at_start(add_bb);
+    b2.call(helpers["add"], [new_set, ev]);
+    b2.branch(skip_bb);
+    b2.position_at_start(skip_bb);
 }
 
 impl NativeSetEmitter.emit_update(
@@ -6376,12 +6391,12 @@ impl NativeBuiltinEmitter.emit_set(
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
-            elem_type = p._list_elem_llvm_of(ctx.arg_nodes[0])
+            _elem_hint = p._list_elem_llvm_of(ctx.arg_nodes[0])
                 if ctx.arg_nodes
                 else None;
-            if elem_type is None {
-                elem_type = lhelpers["elem_type"];
-            }
+            elem_type: ir.Type = _elem_hint
+                if _elem_hint is not None
+                else lhelpers["elem_type"];
             if p._str_desc_ty is not None and elem_type == p._str_desc_ty {
                 elem_type = ir.IntType(8).as_pointer();
             }
