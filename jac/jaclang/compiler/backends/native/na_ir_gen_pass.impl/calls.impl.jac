@@ -4127,8 +4127,16 @@ impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
-    params_l = list(nd.params or []);
-    if len(params_l) != 2 or any([isinstance(_p, uni.KWPair) for _p in params_l]) {
+    params_l: list[uni.Expr] = [];
+    _kw_seen = False;
+    for _q in (nd.params or []) {
+        if isinstance(_q, uni.KWPair) {
+            _kw_seen = True;
+        } else {
+            params_l.append(_q);
+        }
+    }
+    if len(params_l) != 2 or _kw_seen {
         self.emit(E5092, node_override=nd, kind="swap() call", name="swap");
         return None;
     }

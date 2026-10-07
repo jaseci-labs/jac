@@ -101,8 +101,8 @@ impl NaIRGenPass._get_printf -> ir.Function {
 
 impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     printf = self._get_printf();
-    raw: Sequence[any] = nd.params or [];
-    params: list[any] = [];
+    raw: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
+    params: list[uni.Expr] = [];
     stream = "stdout";
     for param in raw {
         if not isinstance(param, uni.KWPair) {
