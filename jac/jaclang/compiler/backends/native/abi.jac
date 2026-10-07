@@ -1,4 +1,4 @@
-import from jaclang.compiler.backends.native.llvm { ir }
+import jaclang.compiler.backends.native.llvm.ir as ir;
 
 def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
     """Read identified struct offsets and sizes from LLVM's target ABI.""";
@@ -223,8 +223,14 @@ def classify_foreign_fn(
     }
     sig: list[tuple[str, str | int | ir.Type]] = [];
     param_plan: list[dict[str, any]] = [];
-    for (i, (pname, tname)) in enumerate(params) {
-        pn = pname or f"arg{i}";
+    for i in range(len(params)) {
+        (pname, tname) = params[i];
+        pn = f"arg{i}";
+        if pname is not None {
+            if pname != "" {
+                pn = pname;
+            }
+        }
         if tname is not None and tname in structs {
             (sz, al, leaves) = foreign_struct_layout(structs, tname);
             cls = classify_struct(sz, al, leaves, triple);
@@ -274,7 +280,10 @@ def classify_foreign_fn(
             sig_ret = ("void", );
             sig = [("sretptr", ret_tname)] + sig;
             for pp in param_plan {
-                pp["argpos"] += 1;
+                shifted = pp["argpos"];
+                if isinstance(shifted, int) {
+                    pp["argpos"] = shifted + 1;
+                }
             }
             ret_plan = {"kind": "sret", "sname": ret_tname, "align": rcls["align"]};
         } else {
