@@ -613,14 +613,17 @@ obj OspGraph {
     def _collect(
         origin: int, dir: int, edge_tag: int, edges_only: bool, out: list[int]
     ) {
-        if origin not in self.adj or origin in self.dead {
+        if origin not in self.adj {
+            return;
+        }
+        if self.dead and origin in self.dead {
             return;
         }
         a: OspAdj = self.adj[origin];
         out_ok = dir == 2 or dir == 3;
         in_ok = dir == 1 or dir == 3;
         mixed = self.any_undirected;
-        if out_ok or mixed {
+        if (out_ok or mixed) and a.rows_out {
             nar = self._narrowed(origin, True, edge_tag);
             for rid in self._rows_for(origin, a, True, edge_tag) {
                 if rid < 0 {
@@ -637,7 +640,7 @@ obj OspGraph {
                 }
             }
         }
-        if in_ok or mixed {
+        if (in_ok or mixed) and a.rows_in {
             nar = self._narrowed(origin, False, edge_tag);
             for rid in self._rows_for(origin, a, False, edge_tag) {
                 if rid < 0 {
@@ -657,24 +660,43 @@ obj OspGraph {
         if edges_only {
             return;
         }
+        exact = edge_tag != -1 and edge_tag not in _has_subs;
         ad = a.out;
         if out_ok and ad is not None {
-            for k in ad {
-                if self._tag_matches(k, edge_tag) {
-                    peers: list[int] = ad[k];
-                    for p in peers {
+            if exact {
+                if edge_tag in ad {
+                    only_out: list[int] = ad[edge_tag];
+                    for p in only_out {
                         out.append(p);
+                    }
+                }
+            } else {
+                for k in ad {
+                    if self._tag_matches(k, edge_tag) {
+                        peers: list[int] = ad[k];
+                        for p in peers {
+                            out.append(p);
+                        }
                     }
                 }
             }
         }
         ai = a.inn;
         if in_ok and ai is not None {
-            for k in ai {
-                if self._tag_matches(k, edge_tag) {
-                    srcs: list[int] = ai[k];
-                    for s in srcs {
+            if exact {
+                if edge_tag in ai {
+                    only_in: list[int] = ai[edge_tag];
+                    for s in only_in {
                         out.append(s);
+                    }
+                }
+            } else {
+                for k in ai {
+                    if self._tag_matches(k, edge_tag) {
+                        srcs: list[int] = ai[k];
+                        for s in srcs {
+                            out.append(s);
+                        }
                     }
                 }
             }
