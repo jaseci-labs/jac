@@ -29,15 +29,21 @@ Known limits: helpers on less common paths (C-library bindings, sv-to-sv
 stubs, some React/Solid entry scripts) still demote, and a call to a
 method a subclass inherits from a generic base does not lower natively
 yet. Kernel compiles are not optional: when a kernel is present, a module
-compile, `jac check` and the preparation of an application without client
-code go through it, and a compile the kernel cannot finish is an error.
-Applications with client code or pages still prepare on the host, and so do
-two kinds of module the kernel hands back rather than failing on: one placed
-in the native codespace (native code generation for a program, and the
-native stdlib modules it imports, are the host's), and one whose analysis
-needs an integer past 64 bits (a `u64` literal above `2**63 - 1`, or
-interval arithmetic over two 64-bit ranges), because the kernel's `int` is a
-native 64-bit integer that traps on overflow.
+compile, `jac check` and the preparation of an application, with or without
+client code, go through it, and a compile the kernel cannot finish is an
+error. A compile is one kernel run: the kernel asks the host for what it
+lacks (an import's resolution, a path's project, the interface of a Python or
+`jaclang` module) while it runs, and the host neither parses the program
+first nor runs the kernel again. The kernel hands a module back, rather than
+failing on it, in these cases: the module is placed in the native codespace
+(native code generation for a program, and the native stdlib modules it
+imports, are the host's until the native generator joins the kernel); it
+imports another copy of the compiler package; it reaches a third-party Python
+module the host cannot describe as an interface; or its analysis overflows a
+64-bit integer (interval arithmetic over two 64-bit ranges), because the
+kernel's `int` is a native 64-bit integer that traps on overflow. An integer
+literal past 64 bits is not such a case: it is carried to the compiled
+constant as sign and magnitude bytes.
 
 ## Implemented foundations
 
