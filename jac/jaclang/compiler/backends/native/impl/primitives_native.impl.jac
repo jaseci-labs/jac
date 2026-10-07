@@ -2571,7 +2571,128 @@ impl NativeBytesEmitter.emit_splitlines(
 impl NativeBytesEmitter.emit_join(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 1 or (ctx?.call_kwargs or {}) {
+        return None;
+    }
+    p = ctx.pass_ref;
+    if len(ctx.arg_nodes) != 1 {
+        return None;
+    }
+    elem_args = p._agg_key_args(p._flow_narrowed_type_of(ctx.arg_nodes[0]), "list");
+    if not elem_args or p._container_class_name(elem_args[0]) != "bytes" {
+        return None;
+    }
+    parts = args[0];
+    lhelpers = None;
+    for (lk, helpers) in p.list_helpers.items() {
+        ltype = p.list_types.get(lk);
+        if ltype is not None and parts.type == ltype.as_pointer() {
+            lhelpers = helpers;
+        }
+    }
+    bytes_ptr = p._get_bytes_struct_type().as_pointer();
+    if lhelpers is None
+        or not isinstance(lhelpers["get"].function_type.return_type, ir.PointerType) {
+        return None;
+    }
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    func = b.basic_block.function;
+    count = b.call(lhelpers["len"], [parts], name="bjn.count");
+    sep = b.bitcast(target, bytes_ptr, name="bjn.sep");
+    sep_len = p._bytes_len_val(sep);
+    sep_data = p._bytes_data_ptr(sep);
+
+    entry_bb = b.basic_block;
+    size_loop = func.append_basic_block(name="bjn.size.loop");
+    size_body = func.append_basic_block(name="bjn.size.body");
+    size_done = func.append_basic_block(name="bjn.size.done");
+    b.branch(size_loop);
+    b.position_at_start(size_loop);
+    size_idx = b.phi(i64, name="bjn.size.idx");
+    size_sum = b.phi(i64, name="bjn.size.sum");
+    size_idx.add_incoming(zero, entry_bb);
+    size_sum.add_incoming(zero, entry_bb);
+    b.cbranch(
+        b.icmp_signed(">=", size_idx, count, name="bjn.size.end"), size_done, size_body
+    );
+    b.position_at_start(size_body);
+    part = b.bitcast(
+        b.call(lhelpers["get"], [parts, size_idx], name="bjn.size.item"),
+        bytes_ptr,
+        name="bjn.size.part"
+    );
+    grown = b.add(size_sum, p._bytes_len_val(part), name="bjn.size.grown");
+    size_idx.add_incoming(b.add(size_idx, one, name="bjn.size.next"), b.basic_block);
+    size_sum.add_incoming(grown, b.basic_block);
+    b.branch(size_loop);
+
+    b.position_at_start(size_done);
+    gaps = b.select(
+        b.icmp_signed(">", count, zero, name="bjn.any"),
+        b.sub(count, one, name="bjn.gaps.n"),
+        zero,
+        name="bjn.gaps"
+    );
+    total = b.add(size_sum, b.mul(gaps, sep_len, name="bjn.seps"), name="bjn.total");
+    joined = p._bytes_alloc(total);
+    out = p._bytes_data_ptr(joined);
+
+    copy_entry = b.basic_block;
+    copy_loop = func.append_basic_block(name="bjn.copy.loop");
+    copy_body = func.append_basic_block(name="bjn.copy.body");
+    copy_sep = func.append_basic_block(name="bjn.copy.sep");
+    copy_next = func.append_basic_block(name="bjn.copy.next");
+    copy_done = func.append_basic_block(name="bjn.copy.done");
+    b.branch(copy_loop);
+    b.position_at_start(copy_loop);
+    copy_idx = b.phi(i64, name="bjn.copy.idx");
+    copy_off = b.phi(i64, name="bjn.copy.off");
+    copy_idx.add_incoming(zero, copy_entry);
+    copy_off.add_incoming(zero, copy_entry);
+    b.cbranch(
+        b.icmp_signed(">=", copy_idx, count, name="bjn.copy.end"), copy_done, copy_body
+    );
+    b.position_at_start(copy_body);
+    piece = b.bitcast(
+        b.call(lhelpers["get"], [parts, copy_idx], name="bjn.copy.item"),
+        bytes_ptr,
+        name="bjn.copy.part"
+    );
+    piece_len = p._bytes_len_val(piece);
+    b.call(
+        memcpy_fn,
+        [
+            b.gep(out, [copy_off], name="bjn.copy.dst"),
+            p._bytes_data_ptr(piece),
+            piece_len
+        ]
+    );
+    after_piece = b.add(copy_off, piece_len, name="bjn.copy.after");
+    following = b.add(copy_idx, one, name="bjn.copy.following");
+    body_end = b.basic_block;
+    b.cbranch(
+        b.icmp_signed("<", following, count, name="bjn.copy.more"), copy_sep, copy_next
+    );
+    b.position_at_start(copy_sep);
+    b.call(
+        memcpy_fn, [b.gep(out, [after_piece], name="bjn.sep.dst"), sep_data, sep_len]
+    );
+    after_sep = b.add(after_piece, sep_len, name="bjn.sep.after");
+    b.branch(copy_next);
+    b.position_at_start(copy_next);
+    next_off = b.phi(i64, name="bjn.copy.nextoff");
+    next_off.add_incoming(after_piece, body_end);
+    next_off.add_incoming(after_sep, copy_sep);
+    copy_idx.add_incoming(following, copy_next);
+    copy_off.add_incoming(next_off, copy_next);
+    b.branch(copy_loop);
+    b.position_at_start(copy_done);
+    return joined;
 }
 
 impl NativeBytesEmitter.emit_partition(
