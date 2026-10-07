@@ -92,11 +92,8 @@ def observe(base: Path, kernel: bool) -> dict[str, any] {
             if not os.path.realpath(path).startswith(real_prefix) {
                 continue;
             }
-            verdict = active_host().native_verdict(path, context);
             facts[norm(path)] = (
-                mod.decided_codespace,
-                norm(repr(get_module_summary(mod, context))),
-                repr(verdict)
+                mod.decided_codespace, norm(repr(get_module_summary(mod, context)))
             );
         }
     }

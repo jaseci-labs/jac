@@ -603,7 +603,6 @@ test "audit_optional_pep604" {
 }
 
 test "typing_import_flips_native_placement" {
-    import from jaclang.compiler.placement.placement_solver { native_default_verdict }
     import from jaclang.compiler.driver.toolchain { native_pipeline_available }
     (env_ok, env_reason) = native_pipeline_available();
     if not env_ok {
@@ -628,8 +627,9 @@ test "typing_import_flips_native_placement" {
             f.write(header + "\n" + body);
         }
         program = JacProgram();
-        mod = program.compile(path, options=NO_TC);
-        (na_ok, na_why) = native_default_verdict(mod);
+        mod = program.compile(path);
+        na_ok = mod.decided_codespace == 'native';
+        na_why = "" if na_ok else "refused by the legality pass";
         REPORT.append(
             "placement: " + header + " -> ok=" + str(na_ok) + " why=" + na_why
         );

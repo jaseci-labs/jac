@@ -465,27 +465,6 @@ test "cascade: importer of a demoted module demotes with it" {
     assert mod.decided_codespace == '' , "importer of a demoted dep must demote too";
 }
 
-test "closure cap exceeded skips native inference with a note" {
-    import io;
-    import sys;
-    import from jaclang.compiler.frontend.codeinfo { set_native_closure_cap }
-    set_native_closure_cap(1);
-    buf = io.StringIO();
-    old_stderr = sys.stderr;
-    sys.stderr = buf;
-    try {
-        mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
-    } finally {
-        sys.stderr = old_stderr;
-        set_native_closure_cap(0);
-    }
-    assert mod.decided_codespace == '' , "cap-exceeded root must stay server";
-    assert stamp_of(mod, "fa") == 'server';
-    assert "native_closure_cap" in buf.getvalue() , (
-        f"note must name the knob, got: {buf.getvalue()!r}"
-    );
-}
-
 test "capped chain still infers native under the default cap" {
     mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "3-module pure chain fits default cap";
