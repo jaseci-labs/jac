@@ -1309,9 +1309,11 @@ impl NaIRGenPass._emit_bytes_decode(
         ];
     }
     specs: list[tuple[(str | None), (ir.Value | None)]] = [];
-    for (idx, (key, fallback)) in enumerate(
-        [("encoding", "utf-8"), ("errors", "strict")]
-    ) {
+    spec_keys: list[str] = ["encoding", "errors"];
+    spec_fallbacks: list[str] = ["utf-8", "strict"];
+    for idx in range(2) {
+        key = spec_keys[idx];
+        fallback = spec_fallbacks[idx];
         if idx < len(args) {
             arg_node = positional[idx] if len(positional) == len(args) else None;
             specs.append((self._decode_literal(arg_node), args[idx]));
@@ -1330,7 +1332,8 @@ impl NaIRGenPass._emit_bytes_decode(
             specs.append((fallback, None));
         }
     }
-    ((enc_literal, enc_value), (err_literal, err_value)) = (specs[0], specs[1]);
+    (enc_literal, enc_value) = specs[0];
+    (err_literal, err_value) = specs[1];
     for (literal, value) in specs {
         if literal is None and (value is None or value.type != i8p) {
             return None;
