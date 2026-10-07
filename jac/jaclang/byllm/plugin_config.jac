@@ -154,7 +154,7 @@ class JacByllmPluginConfig {
                         "keep_recent_iterations": {
                             "type": "int",
                             "default": 3,
-                            "description": "Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised"
+                            "description": "Most tool-call rounds to preserve verbatim (fewer if they exceed a quarter of the context window); older rounds are summarised"
                         },
                         "ctx_window": {
                             "type": "int",

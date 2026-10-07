@@ -573,6 +573,7 @@ verbose = false                   # Log LLM calls to stderr
 temperature = 0.7                 # Optional; omit to use the provider default (0.0-2.0)
 max_tokens = 0                    # Max response tokens (0 = no limit)
 max_output_retries = 3            # Retries for structured output (0 = disabled)
+timeout = 600.0                   # Non-streaming request timeout, seconds (0 = no limit)
 
 [byllm.litellm]
 local_cost_map = true             # Use local cost map
@@ -616,6 +617,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 | `temperature` | float | *unset* | Creativity/randomness (0.0-2.0, lower is more deterministic). Omitted from the request when unset, so the provider applies its own default |
 | `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
 | `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
+| `timeout` | float | `600.0` | Seconds one non-streaming request may take before raising `LLMTimeout` (`0` = no limit). See [Request Timeout](#request-timeout) |
 
 **`[byllm.litellm]` options:**
 
@@ -893,6 +895,18 @@ The original rejected text remains available on `raw_output` (see [`OutputConver
 
 ---
 
+## Request Timeout
+
+`[byllm.call_params] timeout` limits one non-streaming request, in seconds. Override it with `Model(timeout=...)` or `by llm(timeout=...)`; `0` removes the limit. When it expires the call raises `LLMTimeout`, which byLLM retries like other transient errors (`[byllm.streaming] num_retries`).
+
+| Path | Setting | Default |
+|------|---------|---------|
+| non-streaming | `[byllm.call_params] timeout` | `600.0` |
+| streaming | `[byllm.streaming] read_timeout` | `90.0` between chunks |
+| `ModelPool` | `[byllm.fallback] timeout` | `60.0` |
+
+---
+
 ## Invocation Parameters
 
 Parameters passed to `by llm()` at call time:
@@ -902,6 +916,7 @@ Parameters passed to `by llm()` at call time:
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Omitted when unset, so the provider default applies |
 | `max_tokens` | int | Maximum tokens in response |
 | `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
+| `timeout` | float | Seconds one non-streaming request may take before raising `LLMTimeout` (`0` = no limit). Default: `600.0` |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
@@ -1351,11 +1366,13 @@ After every LLM response byLLM compares `prompt_tokens / ctx_window` against a t
 1. The oldest tool-call rounds are serialised and sent to a summarisation LLM call.
 2. The summary replaces those rounds with a single user message tagged `[Compacted context summary]`.
 3. The system message and original user task (`messages[0]` and `messages[1]`) are always preserved verbatim.
-4. The most-recent `keep_recent_iterations` tool-call rounds are also kept verbatim for immediate context.
+4. The most-recent tool-call rounds are also kept verbatim for immediate context: at most `keep_recent_iterations` of them, and fewer when they would take more than a quarter of the context window. The newest round is always kept, and its tool results are truncated (with a marker) if it alone is over that quarter.
+
+A compaction whose summarised part would be no more than 5 % of the context window is skipped, since an extra model call would save almost nothing. If compaction cannot bring the history down, byLLM logs a warning and carries on; the provider's own limit decides.
 
 The summarisation call goes through the full byLLM stack - it inherits telemetry, prompt caching, and proxy configuration from the active model.
 
-A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up.
+A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up. If that compaction cannot reduce the history, byLLM raises `CompactionNotEffectiveError`.
 
 ### Context window resolution
 
@@ -1426,7 +1443,7 @@ def my_agent(query: str) -> str by llm(
 
 ### `CompactionNotEffectiveError`
 
-If the threshold fires on two consecutive iterations with a compaction between them - meaning the summarisation produced no meaningful reduction - byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
+If the provider rejects a request as too long and compaction cannot reduce the history, or the request is rejected again after a compaction, byLLM raises `CompactionNotEffectiveError` rather than retrying forever. Crossing the threshold without being able to compact only logs a warning. See [Error Handling](#error-handling) for how to catch it.
 
 ---
 
@@ -2066,7 +2083,8 @@ ByLLMError (base)
 ├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
-└── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
+├── LLMTimeout                   - A non-streaming request outlived its timeout
+└── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
 ```
 
 All exceptions are importable from `byllm.lib`.
@@ -2081,7 +2099,8 @@ All exceptions are importable from `byllm.lib`.
 | `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
-| `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
+| `LLMTimeout` | A non-streaming request outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
+| `CompactionNotEffectiveError` | The provider rejected a request as too long and auto-compaction could not reduce the context, or the request was rejected again after a compaction. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
 
@@ -2094,6 +2113,7 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         ConfigurationError,
+        LLMTimeout,
         CompactionNotEffectiveError
     }
     ```
@@ -2107,6 +2127,7 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         ConfigurationError,
+        LLMTimeout,
         CompactionNotEffectiveError,
     )
     ```
@@ -2178,7 +2199,7 @@ with entry {
 
 ### `CompactionNotEffectiveError`
 
-Raised when auto-compaction fires on two consecutive iterations without reducing the context size. This prevents an infinite compaction loop:
+Raised when the provider rejects a request as too long and auto-compaction cannot reduce the context, or rejects it again after a compaction. This prevents an infinite compaction loop:
 
 ```jac
 import from jaclang.byllm.lib { CompactionNotEffectiveError }

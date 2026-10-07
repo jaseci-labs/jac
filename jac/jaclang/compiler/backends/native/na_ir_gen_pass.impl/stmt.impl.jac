@@ -4253,6 +4253,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     );
     _tp = self.builder.gep(_tid_arr, [_t_cur], name="ffor.tid.p");
     self.builder.store(ir.Constant(i64, 0), _tp);
+    self._emit_rc_mark_threaded();
     _crc = self.builder.call(
         _pcreate,
         [

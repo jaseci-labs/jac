@@ -1,5 +1,6 @@
 import ssl;
 import from pathlib { Path }
+import from urllib.parse { urlsplit }
 
 
 impl TlsSettings.build_context -> any {
@@ -168,6 +169,7 @@ impl ServeSettings.load(
         docs_enabled=env_bool('DOCS', cfg.docs_enabled),
         graph_enabled=env_bool('GRAPH', cfg.graph_enabled),
         cors_origins=env_list('CORS_ORIGINS', list(cfg.cors_origins)),
+        public_origin=(env_value('PUBLIC_ORIGIN') or '').rstrip('/'),
         workers=WorkerSettings(
             count=worker_count,
             threads=threads,
@@ -257,6 +259,7 @@ impl ServeSettings.load(
                     auth_defaults.second_factor_challenge_ttl_seconds
                 )
             ),
+            session_cookie=env_bool('AUTH_SESSION_COOKIE', cfg.auth.session_cookie),
             password_hash_cost=max(
                 10,
                 min(17, env_int('AUTH_PASSWORD_HASH_COST', cfg.auth.password_hash_cost))
@@ -279,6 +282,20 @@ impl ServeSettings.validate -> list[str] {
         problems.append(
             f"[serve.compression] level must be 1..9, got {self.compression.level}"
         );
+    }
+    if self.public_origin {
+        origin = urlsplit(self.public_origin);
+        if origin.scheme not in ('http', 'https')
+            or not origin.netloc
+            or '@' in origin.netloc
+            or origin.path
+            or origin.query
+            or origin.fragment {
+            problems.append(
+                f"{ENV_PREFIX}PUBLIC_ORIGIN must be a scheme and host such as "
+                f"https://app.example.com, got {self.public_origin!r}"
+            );
+        }
     }
     if self.timeouts.drain < 0 or self.timeouts.close < 0 {
         problems.append("[serve.timeouts] drain and close must not be negative");

@@ -30,6 +30,7 @@ import from jaclang.byllm.systemone {
 import from jaclang.byllm.exceptions {
     ByLLMError,
     AuthenticationError,
+    LLMTimeout,
     FinishToolError,
     OutputConversionError,
     RateLimitError,
@@ -120,13 +121,15 @@ obj BaseLLM {
         api_base: str = "",
         call_params: dict[(str, object)] = {},
         ctx_window: int = 0,
-        supports_native_tools: bool = True;
+        supports_native_tools: bool = True,
+        timeout: float | None = None;
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> any;
     async def ainvoke(mt_run: MTRuntime) -> any;
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _resolve_stream_retries(mt_run: MTRuntime) -> int;
+    def _resolve_timeout(mt_run: MTRuntime) -> float | None;
     def _should_retry_stream(
         mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
     ) -> bool;
@@ -206,9 +209,7 @@ obj BaseLLM {
         mt_run: MTRuntime, just_compacted: bool, cp: dict[str, any]
     ) -> CompletionResult;
 
-    def _compact_messages(
-        mt_run: MTRuntime, keep_recent: int, comp_model: str | None
-    ) -> None;
+    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool;
 }
 
 obj MockLLM(BaseLLM) {
@@ -256,6 +257,7 @@ obj ModelPool(BaseLLM) {
     override def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     override def model_call_with_stream(params: dict[str, any]) -> Iterable[object];
     override def _get_ctx_window(call_params: dict[str, any]) -> int;
+    override def _resolve_timeout(mt_run: MTRuntime) -> float | None;
 }
 
 obj Model(BaseLLM) {

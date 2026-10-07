@@ -2,8 +2,10 @@ import asyncio;
 import contextlib;
 import glob;
 import json;
+import os;
 import socket;
 import subprocess;
+import tempfile;
 import from jaclang.scale.runtime.context.util { jac_executable }
 import time;
 import uuid;
@@ -14,6 +16,8 @@ import from jaclang.server.serving.authcrypt {
     jwt_encode as _jwt_encode
 }
 import from jaclang.server.identity.config { signing_secret as jwt_secret }
+import from jaclang.server.serving.client { run_blocking }
+import from jaclang.server.serving.datatypes { Headers, Request, URL }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
@@ -2118,6 +2122,243 @@ test "jwt middleware: per-user isolation and token rejection" {
     }
 }
 
+
+glob SESSION_COOKIE_ENV: str = "JAC_SERVE_AUTH_SESSION_COOKIE";
+
+# The setting is read once, when the server is assembled, so the variable is
+# restored as soon as the client exists and no later test inherits it.
+# `in_toml` adds `[serve.auth] session_cookie` to the project's own jac.toml.
+def session_cookie_client(
+    setting: str | None, in_toml: bool | None = None
+) -> ScaleTestClient {
+    prior = os.environ.get(SESSION_COOKIE_ENV);
+    if setting is None {
+        os.environ.pop(SESSION_COOKIE_ENV, None);
+    } else {
+        os.environ[SESSION_COOKIE_ENV] = setting;
+    }
+    try {
+        if in_toml is None {
+            return make_client("restspec_fixtures.jac");
+        }
+        tmp = Path(tempfile.mkdtemp());
+        for f in sv_fixtures_dir.iterdir() {
+            if f.is_file() {
+                shutil.copy2(f, tmp / f.name);
+            }
+        }
+        toml = tmp / "jac.toml";
+        toml.write_text(
+            toml.read_text()
+                + "\n[serve.auth]\nsession_cookie = "
+                + ("true" if in_toml else "false")
+                + "\n"
+        );
+        client = ScaleTestClient.from_file(
+            str(sv_fixtures_dir / "restspec_fixtures.jac"), base_path=str(tmp)
+        );
+        client._tmp_dir = str(tmp);
+        return client;
+    } finally {
+        if prior is None {
+            os.environ.pop(SESSION_COOKIE_ENV, None);
+        } else {
+            os.environ[SESSION_COOKIE_ENV] = prior;
+        }
+    }
+}
+
+# Splits one Set-Cookie value into its cookie value and its attributes, lowercased.
+def cookie_parts(set_cookie: str) -> tuple[str, dict[str, str]] {
+    pieces = [piece.strip() for piece in set_cookie.split(";")];
+    assert pieces[0].startswith("jac_session=") , set_cookie;
+    attrs: dict[str, str] = {};
+    for piece in pieces[1:] {
+        (name, _, value) = piece.partition("=");
+        attrs[name.lower()] = value;
+    }
+    return (pieces[0][len("jac_session="):], attrs);
+}
+
+def me_user_id(response: any) -> str {
+    assert response.status_code == 200 , response.text;
+    return str(extract_data(response.json())["user_id"]);
+}
+
+test "session cookie: login sets it and it authorizes safe requests only" {
+    client = session_cookie_client(None, in_toml=True);
+    try {
+        name_a = f"cookie_a_{uuid.uuid4().hex[:8]}";
+        name_b = f"cookie_b_{uuid.uuid4().hex[:8]}";
+        registered = client.post(
+            "/user/register", json=register_payload(name_a, "Pass!99")
+        );
+        assert registered.status_code == 201;
+        id_a = str(extract_data(registered.json())["user_id"]);
+        token_b = register_and_get_token(client, name_b, "Pass!99");
+        bearer_b = {"Authorization": f"Bearer {token_b}"};
+        id_b = me_user_id(client.get("/user/me", headers=bearer_b));
+        assert id_a != id_b;
+
+        login = client.post("/user/login", json=login_payload(name_a, "Pass!99"));
+        assert login.status_code == 200;
+        token_a = extract_data(login.json())["token"];
+        set_cookie = login.headers.get("Set-Cookie");
+        assert set_cookie is not None , "login set no session cookie";
+        (value, attrs) = cookie_parts(str(set_cookie));
+        assert value == token_a;
+        assert "httponly" in attrs;
+        assert attrs["samesite"] == "Strict";
+        assert attrs["path"] == "/";
+        assert attrs["max-age"] == str(7 * 86400);
+        assert "domain" not in attrs;
+        # Plain HTTP: a Secure cookie would never come back to a dev server.
+        assert "secure" not in attrs;
+        assert login.headers.get("Cache-Control") == "no-store";
+
+        # Over HTTPS (the scheme the trusted-proxy rule resolved) it is Secure.
+        over_tls = Headers();
+        over_tls.append("Content-Type", "application/json");
+        tls_login = run_blocking(
+            client.raw_client.app.dispatch(
+                Request(
+                    method="POST",
+                    url=URL(path="/user/login", scheme="https"),
+                    headers=over_tls,
+                    body=json.dumps(login_payload(name_a, "Pass!99")).encode("utf-8"),
+                    client_host="testclient"
+                )
+            )
+        );
+        assert tls_login.status_code == 200;
+        assert "secure" in cookie_parts(str(tls_login.headers.get("Set-Cookie")))[1];
+
+        cookie_a = {"Cookie": f"theme=dark; jac_session={token_a}"};
+
+        # The request a media element makes: no header, the cookie only.
+        assert client.get("/custom/func").status_code == 401;
+        via_cookie = client.get("/custom/func", headers=cookie_a);
+        assert via_cookie.status_code == 200 , via_cookie.text;
+        assert _as_any(client.raw_client).head(
+            "/custom/func", headers=cookie_a
+        ).status_code
+            == 200;
+        me = client.get("/user/me", headers=cookie_a);
+        assert me_user_id(me) == id_a;
+        # A shared cache must not hand one user's response to another.
+        assert "cookie" in str(me.headers.get("Vary")).lower();
+        assert me.headers.get("Cache-Control") == "private";
+        # HttpOnly would be pointless if a cookie-only GET echoed the token.
+        info = client.get("/user/info", headers=cookie_a);
+        assert info.status_code == 200;
+        assert extract_data(info.json())["token"] == "";
+
+        # On the wire the transport's own Vary is merged, not replaced.
+        port = _as_any(client.raw_client)._ensure_live_server();
+        wire = requests.get(
+            f"http://127.0.0.1:{port}/openapi.json",
+            headers={"Cookie": f"jac_session={token_a}", "Accept-Encoding": "gzip"},
+            timeout=10
+        );
+        assert wire.status_code == 200;
+        assert wire.headers.get("Content-Encoding") == "gzip";
+        varies = {v.strip().lower() for v in wire.headers.get("Vary", "").split(",")};
+        assert varies == {"cookie", "accept-encoding"} , wire.headers.get("Vary");
+
+        # A header-authenticated response is untouched.
+        by_header = client.get("/user/me", headers=bearer_b);
+        assert by_header.headers.get("Cache-Control") is None;
+        assert by_header.headers.get("Set-Cookie") is None;
+
+        # State-changing methods never authenticate by cookie (no CSRF surface).
+        assert client.post("/function/post_func", json={}, headers=cookie_a).status_code
+            == 401;
+        assert client.put(
+            "/user/password",
+            json={"current_password": "Pass!99", "new_password": "Other!99"},
+            headers=cookie_a
+        ).status_code
+            == 401;
+        assert client.post(
+            "/function/post_func",
+            json={},
+            headers={"Authorization": f"Bearer {token_a}"}
+        ).status_code
+            == 200;
+
+        # Whatever the header path rejects, the cookie path rejects.
+        claims = _jwt_decode(token_a, jwt_secret(), algorithms=["HS256"]);
+        claims["exp"] = datetime.now(UTC) - timedelta(minutes=5);
+        expired = _jwt_encode(claims, jwt_secret(), algorithm="HS256");
+        claims["exp"] = datetime.now(UTC) + timedelta(hours=1);
+        forged = _jwt_encode(claims, "wrong_key", algorithm="HS256");
+        tampered = token_a[:-2] + ("AA" if not token_a.endswith("AA") else "BB");
+        bad_cookies = [
+            (f"jac_session={expired}", "expired"),
+            (f"jac_session={forged}", "forged secret"),
+            (f"jac_session={tampered}", "tampered signature"),
+            ("jac_session=not.a.jwt", "malformed"),
+            ("jac_session=", "empty"),
+            (f"jac_session={token_a}; jac_session={token_b}", "two session cookies"),
+            (f"session={token_a}; token={token_a}", "other cookie names")
+        ];
+        for (cookie, label) in bad_cookies {
+            r = client.get("/custom/func", headers={"Cookie": cookie});
+            assert r.status_code == 401 , f"{label}: expected 401, got {r.status_code}";
+        }
+        for (cookie, label) in bad_cookies[:3] {
+            r = client.get(
+                "/custom/func", headers={"Authorization": f"Bearer {cookie[12:]}"}
+            );
+            assert r.status_code == 401 , f"{label} as a header: {r.status_code}";
+        }
+
+        # The header wins, and a rejected header is never rescued by the cookie.
+        both = dict(cookie_a);
+        both["Authorization"] = f"Bearer {token_b}";
+        assert me_user_id(client.get("/user/me", headers=both)) == id_b;
+        for bad_header in ["Bearer not.a.jwt", f"Bearer {expired}", "Basic abc", ""] {
+            rejected = dict(cookie_a);
+            rejected["Authorization"] = bad_header;
+            r = client.get("/custom/func", headers=rejected);
+            assert r.status_code == 401 , f"header {bad_header[:12]!r} fell back to the cookie";
+        }
+
+        # The token is never read from the query string.
+        r = client.get(
+            "/custom/func",
+            params={"token": token_a, "access_token": token_a, "jac_session": token_a}
+        );
+        assert r.status_code == 401;
+
+        # One request's session change never reaches another request.
+        assert client.get("/custom/walker").headers.get("Set-Cookie") is None;
+
+        # Refresh re-issues the cookie with the new token.
+        refreshed = client.post("/user/refresh-token", json={"token": token_a});
+        assert refreshed.status_code == 200;
+        (value, attrs) = cookie_parts(str(refreshed.headers.get("Set-Cookie")));
+        assert value == extract_data(refreshed.json())["token"];
+
+        # Logout and a password change both drop it.
+        logout = client.post("/user/logout", json={});
+        assert logout.status_code == 200;
+        (value, attrs) = cookie_parts(str(logout.headers.get("Set-Cookie")));
+        assert value == "" and attrs["max-age"] == "0";
+        assert "httponly" in attrs and attrs["path"] == "/";
+        changed = client.put(
+            "/user/password",
+            json={"current_password": "Pass!99", "new_password": "Other!99"},
+            headers={"Authorization": f"Bearer {token_a}"}
+        );
+        assert changed.status_code == 200 , changed.text;
+        (value, attrs) = cookie_parts(str(changed.headers.get("Set-Cookie")));
+        assert value == "" and attrs["max-age"] == "0";
+    } finally {
+        client.close();
+    }
+}
+
 # =============================================================================
 # Second factor (TOTP): enroll, verify, sign-in challenge, assurance, recovery
 # =============================================================================
@@ -2385,6 +2626,84 @@ test "second factor: enroll, verify, and sign-in then needs the code" {
         );
         assert r.status_code == 200 , r.text;
         assert _claims(extract_data(r.json())["token"])["aal"] == "aal2";
+    } finally {
+        client.close();
+    }
+}
+
+test "session cookie: off unless the deployment opts in" {
+    client = session_cookie_client(None);
+    try {
+        name = f"cookie_off_{uuid.uuid4().hex[:8]}";
+        registered = client.post(
+            "/user/register", json=register_payload(name, "Pass!99")
+        );
+        assert registered.status_code == 201;
+        assert registered.headers.get("Set-Cookie") is None;
+        login = client.post("/user/login", json=login_payload(name, "Pass!99"));
+        assert login.status_code == 200;
+        assert login.headers.get("Set-Cookie") is None;
+        token = extract_data(login.json())["token"];
+
+        r = client.get("/custom/func", headers={"Cookie": f"jac_session={token}"});
+        assert r.status_code == 401;
+        by_header = client.get(
+            "/custom/func", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert by_header.status_code == 200;
+        assert by_header.headers.get("Vary") is None
+            or "cookie" not in str(by_header.headers.get("Vary")).lower();
+
+        logout = client.post("/user/logout", json={});
+        assert logout.status_code == 200;
+        assert logout.headers.get("Set-Cookie") is None;
+    } finally {
+        client.close();
+    }
+}
+
+test "session cookie: the env variable overrides [serve.auth] either way" {
+    for (env_setting, in_toml, expect_cookie) in [
+        ("0", True, False),
+        ("1", False, True)
+    ] {
+        client = session_cookie_client(env_setting, in_toml=in_toml);
+        try {
+            name = f"cookie_env_{uuid.uuid4().hex[:8]}";
+            registered = client.post(
+                "/user/register", json=register_payload(name, "Pass!99")
+            );
+            assert registered.status_code == 201 , registered.text;
+            set_cookie = registered.headers.get("Set-Cookie");
+            assert (set_cookie is not None) == expect_cookie , f"env {env_setting} over toml {in_toml}: {set_cookie}";
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "session cookie: a second-factor sign-in sets it, the password step does not" {
+    client = session_cookie_client("true");
+    try {
+        user = _enrolled_user(client, "mfa_cookie");
+        r = client.post(
+            "/user/login", json=login_payload(user["username"], user["password"])
+        );
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["mfa_required"] is True;
+        assert r.headers.get("Set-Cookie") is None;
+
+        r = client.post(
+            "/user/mfa/login",
+            json={
+                "challenge_token": extract_data(r.json())["challenge_token"],
+                "code": fresh_totp_code(user["secret"], user["used"])
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        (value, attrs) = cookie_parts(str(r.headers.get("Set-Cookie")));
+        assert value == extract_data(r.json())["token"];
+        assert _claims(value)["aal"] == "aal2";
     } finally {
         client.close();
     }

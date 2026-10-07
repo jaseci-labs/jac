@@ -1,4 +1,4 @@
-impl Message.from_dict(d: dict[str, any]) -> Message | LiteLLMMessage | dict[str, any] {
+impl Message.from_dict(d: dict[str, any]) -> Message | dict[str, any] {
     if "tool_call_id" in d {
         return ToolCallResultMsg(
             content=d.get("content", ""),
@@ -7,11 +7,7 @@ impl Message.from_dict(d: dict[str, any]) -> Message | LiteLLMMessage | dict[str
         );
     }
     if d.get("tool_calls") {
-        try {
-            return LiteLLMMessage(**d);
-        } except Exception {
-            return d;
-        }
+        return dict(d);
     }
     role_str = d.get("role", "user");
     try {

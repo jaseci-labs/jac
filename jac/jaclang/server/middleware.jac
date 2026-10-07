@@ -2,10 +2,16 @@ import logging;
 import time;
 import from jaclang.runtime.exceptions { MissingAnchorError }
 import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.server.exchange { close_exchange, open_exchange }
 import from jaclang.server.identity.assurance {
     bind_caller_assurance,
     release_caller_assurance,
     token_assurance
+}
+import from jaclang.server.identity.session_cookie {
+    apply_session_change,
+    cookie_session_token,
+    keep_out_of_shared_caches
 }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
@@ -24,12 +30,21 @@ def bearer_token(request: Request) -> (str | None) {
 }
 
 
+def presented_token(request: Request) -> tuple[(str | None), bool] {
+    if request.headers.get('Authorization') is not None {
+        return (bearer_token(request), False);
+    }
+    token = cookie_session_token(request);
+    return (token, token is not None);
+}
+
+
 def jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
     async def _middleware(request: Request, call_next: any) -> Response {
         username: (str | None) = None;
         user_root_id: (str | None) = None;
         assurance: (dict[str, any] | None) = None;
-        token = bearer_token(request);
+        (token, from_cookie) = presented_token(request);
         if token {
             username = user_manager.validate_jwt_token(token);
             if username {
@@ -42,7 +57,12 @@ def jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
         next_fn: any = call_next;
         binding = bind_caller_assurance(assurance);
         try {
-            return await next_fn(request);
+            response: Response = await next_fn(request);
+            if from_cookie and username {
+                keep_out_of_shared_caches(response);
+            }
+            apply_session_change(request, response);
+            return response;
         } finally {
             release_caller_assurance(binding);
         }
@@ -65,7 +85,9 @@ def _service_unavailable(detail: str) -> JSONResponse {
 
 
 def request_context_middleware(
-    base_path_dir: (str | None) = None, full_target_path: (str | None) = None
+    base_path_dir: (str | None) = None,
+    full_target_path: (str | None) = None,
+    public_origin: str = ''
 ) -> Callable[..., any] {
     async def _middleware(request: Request, call_next: any) -> Response {
         next_fn: any = call_next;
@@ -87,6 +109,7 @@ def request_context_middleware(
             return _service_unavailable('unable to reach the database');
         }
         req_token = JacRuntime.push_request_context(ctx);
+        exchange_token = open_exchange(request, public_origin);
         user_id = request.state?.user_root_id;
         bind_error: any = None;
         if user_id {
@@ -131,6 +154,7 @@ def request_context_middleware(
             } except Exception as e {
                 logger.warning(f"Failed to close request context: {e}", exc_info=True);
             } finally {
+                close_exchange(exchange_token);
                 JacRuntime.reset_request_context(req_token);
             }
         }

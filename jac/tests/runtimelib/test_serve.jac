@@ -365,6 +365,66 @@ test "repeated walker lookups do not re-resolve an unchanged module" {
     }
 }
 
+"""Registering routes used to re-sort a method's whole route list on every add and
+to look each walker up again through the full walker table, so startup grew with
+the square of the route count. Counted on a real build, not timed."""
+test "route registration grows with the route count, not its square" {
+    import math;
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application, forget }
+    walkers = 60;
+    with TemporaryDirectory() as tmpdir {
+        main_file = Path(tmpdir) / 'main.jac';
+        main_file.write_text(
+            ''.join(
+                'walker:pub w_'
+                    + str(i)
+                    + ' {\n    can go with Root entry {\n'
+                    + '        report 1;\n    }\n}\n\n' for i in range(walkers)
+            )
+        );
+        prepared = prepare_application(str(main_file), Jac.get_program(), tmpdir);
+        try {
+            module = initialize_application(prepared);
+            Jac.set_base_path(tmpdir);
+            srv = JacAPIServer(
+                module_name=module.__name__, port=get_free_port(), base_path=tmpdir
+            );
+            calls = {'sort_keys': 0, 'walker_tables': 0};
+            def tally(frame: any, event: str, arg: any) {
+                if event != 'call' {
+                    return;
+                }
+                name = frame.f_code.co_name;
+                if name == 'route_sort_key' {
+                    calls['sort_keys'] += 1;
+                } elif name == 'get_walkers'
+                    and isinstance(frame.f_locals.get('self'), ModuleIntrospector) {
+                    calls['walker_tables'] += 1;
+                }
+            }
+            sys.setprofile(tally);
+            try {
+                app = srv.build_app();
+            } finally {
+                sys.setprofile(None);
+            }
+            routes = sum(len(bucket) for bucket in app.router.routes.values())
+                + len(app.router.ws_routes);
+            assert routes > 2 * walkers , f"expected every walker routed, got {routes}";
+            bound = routes * (math.ceil(math.log2(routes)) + 2);
+            assert calls['sort_keys'] <= bound , (
+                f"{calls['sort_keys']} sort-key calls for {routes} routes"
+            );
+            assert calls['walker_tables'] < walkers // 4 , (
+                f"{calls['walker_tables']} walker-table lookups for {walkers} walkers"
+            );
+        } finally {
+            forget(str(main_file));
+        }
+    }
+}
+
 # --- Worker exit hooks ---
 obj _ExitHookFails(ServerExtension) {
     def register(server: JacAPIServer) {}

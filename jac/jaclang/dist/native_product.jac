@@ -25,7 +25,7 @@ def write_native_product(
     }
     plan = build_link_plan(program, [module.loc.mod_path], program.options);
     manifest = module.gen.interop_manifest;
-    bindings = manifest.native_imports if shared else [];
+    bindings = manifest.callable_native_imports if shared else [];
     plan.callback_bindings = list(bindings);
     kind = ArtifactKind.SHARED if shared else ArtifactKind.EXECUTABLE;
     if not shared and any(unit.iface.python_imports for unit in plan.units) {
