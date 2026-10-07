@@ -1265,7 +1265,7 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
         if imp.items {
             for it in imp.items {
                 if isinstance(it, uni.ModulePath) and it.path {
-                    return '.'.join(getattr(p, 'value', str(p)) for p in it.path);
+                    return '.'.join([p.value for p in it.path]);
                 }
             }
         }
@@ -1280,7 +1280,7 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     }
     mod_name = imp.from_loc?.dot_path_str;
     if not mod_name and imp.from_loc?.path and imp.from_loc.path {
-        mod_name = '.'.join(getattr(p, 'value', str(p)) for p in imp.from_loc.path);
+        mod_name = '.'.join([p.value for p in imp.from_loc.path]);
     }
     return mod_name;
 }
