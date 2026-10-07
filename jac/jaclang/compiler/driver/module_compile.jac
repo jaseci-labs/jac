@@ -355,7 +355,11 @@ def run_codegen_phases(
 }
 
 def native_refusal(
-    program: JacProgram, analysis: ModuleAnalysis, errors_mark: int, analyzed: bool
+    program: JacProgram,
+    analysis: ModuleAnalysis,
+    errors_mark: int,
+    analyzed: bool,
+    late: bool = False
 ) -> (tuple[str, str, str] | None) {
     import from jaclang.compiler.placement.placement_facts { native_placement_soft }
     module = analysis.module;
@@ -377,7 +381,7 @@ def native_refusal(
         return (
             gen.native_refusal_code,
             gen.native_refusal,
-            "static" if analyzed else "late"
+            "late" if late else "static"
         );
     }
     return None;
@@ -423,7 +427,9 @@ def compile_task(
     refusal = native_refusal(program, analysis, errors_mark, True);
     if refusal is None {
         run_codegen_phases(session, program, analysis, options);
-        refusal = native_refusal(program, analysis, errors_mark, False);
+        refusal = native_refusal(
+            program, analysis, errors_mark, analysis.blocked, late=True
+        );
     }
     if refusal is not None {
         place_on_server(program, path, refusal, errors_mark, warnings_mark);

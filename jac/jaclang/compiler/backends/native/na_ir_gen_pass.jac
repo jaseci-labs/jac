@@ -1260,6 +1260,7 @@ walker NaIRGenPass(CompilerPass) {
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
     def _lower_module -> None;
+    def _refuse_split_bodies(mod: uni.Module) -> None;
     def _settle_module -> None;
     def _static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | None);
     def _stub_refused_unit(

@@ -98,7 +98,7 @@ test "a refused unit and every unit that reaches it are placed in Python statica
 test "module-level code reaching a refused unit refuses the module before the backend runs" {
     import from unittest.mock { patch }
     import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    real_lower = NaIRGenPass._lower_module;
+    real_lower: any = NaIRGenPass._lower_module;
     lowered: list[str] = [];
     def record_lower(this: NaIRGenPass) {
         lowered.append(os.path.realpath(this.module.loc.mod_path));
@@ -126,7 +126,7 @@ test "a refusal only the backend can see re-places the module once, with no erro
 test "a backend crash is a compiler error, never a placement decision" {
     import from unittest.mock { patch }
     import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    real_body = NaIRGenPass._codegen_body;
+    real_body: any = NaIRGenPass._codegen_body;
     calls: list[int] = [];
     def crash_once(this: NaIRGenPass, *args: any) {
         calls.append(1);

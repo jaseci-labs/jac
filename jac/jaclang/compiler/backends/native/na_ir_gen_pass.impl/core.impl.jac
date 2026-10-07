@@ -183,6 +183,26 @@ impl NaIRGenPass._internal_error(
     del self.ctx.errors_had[mark:];
 }
 
+impl NaIRGenPass._refuse_split_bodies(mod: uni.Module) -> None {
+    """Refuse a module that declares, or imports a module that declares, an
+    archetype or enum whose members come from a separate `impl` block. The
+    layout pass and this backend read members off the declaration's own body,
+    so such a declaration has no native layout yet.""";
+    _split: list[uni.UniNode] = [];
+    _split.extend(mod.get_all_sub_nodes(uni.Archetype));
+    _split.extend(mod.get_all_sub_nodes(uni.Enum));
+    for _decl in _split {
+        if isinstance(_decl.body, uni.ImplDef) {
+            _dname = _decl.name.value if _decl.name else "?";
+            raise NativeRefused(
+                f"'{_dname}' in {os.path.basename(mod.loc.mod_path)} takes its "
+                f"members from a separate impl block, which the native backend "
+                f"does not read yet"
+            );
+        }
+    }
+}
+
 impl NaIRGenPass._lower_module -> None {
     import from jaclang.compiler.passes.native_legality { build_native_legality }
     self._legality = build_native_legality(self.module);
@@ -205,6 +225,7 @@ impl NaIRGenPass._lower_module -> None {
         return;
     }
 
+    self._refuse_split_bodies(self.module);
     self._emit_rc_helpers();
 
     self._process_clib_imports(self.module);
@@ -1235,6 +1256,10 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     imported_mods = self._permuted_walk_order(imported_mods);
+
+    for (_, imported_mod) in imported_mods {
+        self._refuse_split_bodies(imported_mod);
+    }
 
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
