@@ -61,7 +61,9 @@ glob _CATALOGS: dict[str, StubCatalog] = {};
 
 glob HOST_ONLY_ANSWER: str = "host_only",
      EMIT_QUESTION: str = "emit_unit",
-     NATIVE_GENERATOR_MODULE: str = "jaclang.compiler.backends.native.na_ir_gen_pass";
+     NATIVE_GENERATOR_MODULE: str = "jaclang.compiler.backends.native.na_ir_gen_pass",
+     EVENT_NOTE: str = "note",
+     EVENT_COVERAGE: str = "coverage";
 
 class HostOnlyError(RuntimeError) {}
 
@@ -515,6 +517,22 @@ obj KernelHost(HostServices) {
         self.census.count(method);
         self.census.buffer(method);
         self.events.append(event);
+    }
+
+    def event_rows -> list[list[str]] {
+        rows: list[list[str]] = [];
+        for event in self.events {
+            if event.kind == HostEventKind.NOTE {
+                rows.append(
+                    [EVENT_NOTE, event.path, event.text, event.code, event.detail]
+                );
+            } elif event.kind == HostEventKind.COVERAGE {
+                rows.append(
+                    [EVENT_COVERAGE, event.path, event.text, event.code, event.detail]
+                );
+            }
+        }
+        return rows;
     }
 
     def replay(target: HostServices) {
@@ -1216,6 +1234,8 @@ obj KernelHost(HostServices) {
             demoted=True, code=code, detail=detail
         );
         if self.kernel_only("record_native_verdict") {
+            import from jaclang.compiler.placement.placement { note_native_verdict }
+            note_native_verdict(program, os.path.realpath(path), code, detail);
             return;
         }
         with self.delegating("record_native_verdict") as host {
@@ -1441,6 +1461,19 @@ def read_utf8_source(path: str) -> (str | None) {
         text = text.replace("\r\n", "\n").replace("\r", "\n");
     }
     return text;
+}
+
+def replay_event_rows(target: HostServices, rows: list[list[str]]) {
+    for row in rows {
+        if len(row) != 5 {
+            continue;
+        }
+        if row[0] == EVENT_NOTE {
+            target.note(row[2], row[3]);
+        } elif row[0] == EVENT_COVERAGE {
+            target.record_native_coverage(row[1], row[2], row[3], row[4]);
+        }
+    }
 }
 
 def replay_event(target: HostServices, event: HostEvent) {

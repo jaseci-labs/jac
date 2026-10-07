@@ -348,9 +348,12 @@ impl JacCompiler._adopt_kernel_compile(
     }
     target = compiled.unit(full_target);
     if target is None {
+        import from jaclang.project.kernel_compile { kernel_generates_native }
         entry_report = compiled.analysis.module(full_target);
-        placed_native = entry_report is not None and entry_report.native;
-        return (bool(compiled.analysis.errors) and not placed_native, None);
+        deferred = entry_report is not None
+            and entry_report.native
+            and not kernel_generates_native(program, full_target);
+        return (bool(compiled.analysis.errors) and not deferred, None);
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     adopted: (bytes | None) = None;
@@ -367,6 +370,7 @@ impl JacCompiler._adopt_kernel_compile(
                 );
             }
             sections = unit_sections(unit, bytecode);
+            self._adopt_native_verdict(unit, program, sections);
             if unit.native_ir {
                 sections.update(
                     self._adopt_native_unit(
@@ -417,6 +421,27 @@ impl JacCompiler.kernel_native_entry(
     }
     carrier = actual.hub.artifacts.get(path);
     return (True, carrier.native_engine if carrier is not None else None);
+}
+
+impl JacCompiler._adopt_native_verdict(
+    unit: UnitProducts, program: JacProgram, sections: dict[int, bytes]
+) {
+    if not unit.placement {
+        return;
+    }
+    import json;
+    import from jaclang.compiler.driver.nativecache { native_verdict_dep_rows }
+    summary = json.loads(unit.placement);
+    code = str(summary.get("native_verdict_code", ""));
+    if not code {
+        return;
+    }
+    resolved = os.path.realpath(unit.path);
+    program.native_units().record_verdict(
+        resolved, code, str(summary.get("native_verdict", ""))
+    );
+    summary["native_verdict_deps"] = native_verdict_dep_rows(resolved);
+    sections[SEC_PLACEMENT] = json.dumps(summary).encode("utf-8");
 }
 
 impl JacCompiler._adopt_native_unit(

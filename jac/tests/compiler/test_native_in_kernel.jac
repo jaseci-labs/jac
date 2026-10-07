@@ -159,3 +159,46 @@ test "the host runs a native module from its kernel record without analysing it"
         }
     }
 }
+
+"""Placement is optimistic: a module pinned or inferred native that cannot be
+lowered is demoted and compiled again on the server. In a kernel session that
+retry happens inside the session, and the host learns of it from the unit's
+placement record and the session's notes, not by compiling the module."""
+test "a module that cannot be lowered is demoted inside the session" {
+    import json;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(
+            CONFIG + '\n[placement.pins]\nmodels = "native"\n'
+        );
+        (base / 'models.jac').write_text(
+            'def double(x: int) -> int {\n    return x * 2;\n}\n\n'
+                + 'with entry {\n    print(len([root-->]));\n}\n'
+        );
+        entry_file = str(base / 'models.jac');
+        with patch.dict(os.environ, SWITCHES) {
+            session = kernel_snapshot(
+                active_host(),
+                JacProgram(),
+                entry_file,
+                CompileOptions(skip_native_engine=True, no_ir_cache=True),
+                emit_closure=True
+            );
+            outcome = run_kernel_compile(session.text(), entry_file, None, session);
+        }
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None , [u.path for u in outcome.units];
+        assert emitted.jcir , "the demoted module has no server code";
+        assert not emitted.native_ir , "a demoted module still carries native IR";
+        summary = json.loads(emitted.placement);
+        assert summary.get("native_verdict_code") == "E5092" , summary;
+        notes = [
+            row[2]
+            for row in outcome.analysis.events
+            if row and row[0] == "note"
+        ];
+        assert any("did not lower" in note for note in notes) , outcome.analysis.events;
+    }
+}

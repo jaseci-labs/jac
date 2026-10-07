@@ -297,6 +297,10 @@ obj JacCompiler(SessionHooks) {
         full_target: str, target_program: JacProgram, options: (CompileOptions | None)
     ) -> tuple[bool, any];
 
+    def _adopt_native_verdict(
+        unit: UnitProducts, program: JacProgram, sections: dict[int, bytes]
+    );
+
     def _adopt_native_unit(
         unit: UnitProducts,
         program: JacProgram,

@@ -143,8 +143,12 @@ def kernel_compile_reported(
         f"kernel compiled {path}: {len(compiled.units)} unit(s), "
         f"{len(compiled.analysis.errors)} error(s)"
     );
+    import from jaclang.compiler.frontend.kernel_host { replay_event_rows }
+    replay_event_rows(host, compiled.analysis.events);
     entry_report = compiled.analysis.module(path);
-    if entry_report is not None and entry_report.native {
+    if entry_report is not None
+        and entry_report.native
+        and not (in_process or native_generation_enabled()) {
         return compiled;
     }
     import from jaclang.project.kernel_check { alert_of }
