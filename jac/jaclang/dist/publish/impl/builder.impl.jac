@@ -43,6 +43,7 @@ sdist using only the Python standard library (jaclang is not required).
 """
 
 import base64
+import csv
 import hashlib
 import io
 import os
@@ -57,7 +58,7 @@ def get_requires_for_build_wheel(config_settings=None):
 
 def _record(path, data):
     digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest())
-    return path + ",sha256=" + digest.rstrip(b"=").decode("ascii") + "," + str(len(data))
+    return [path, "sha256=" + digest.rstrip(b"=").decode("ascii"), str(len(data))]
 
 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
@@ -77,10 +78,12 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
         _add(_DIST_INFO + "/top_level.txt", _TOP_LEVEL)
         if _ENTRY_POINTS is not None:
             _add(_DIST_INFO + "/entry_points.txt", _ENTRY_POINTS)
-        records.append(_DIST_INFO + "/RECORD,,")
+        records.append([_DIST_INFO + "/RECORD", "", ""])
+        record_buf = io.StringIO(newline="")
+        csv.writer(record_buf).writerows(records)
         zf.writestr(
             zipfile.ZipInfo(_DIST_INFO + "/RECORD", date_time=_TIMESTAMP),
-            "\\n".join(records) + "\\n",
+            record_buf.getvalue(),
         )
     with open(os.path.join(wheel_directory, _WHEEL_NAME), "wb") as f:
         f.write(buf.getvalue())

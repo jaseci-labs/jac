@@ -790,6 +790,18 @@ test "sdist build backend rebuilds the wheel with stdlib only" {
         proj = Path(tmpdir);
         scaffold_pkg(proj);
         cfg = pkg_config_with_include(proj);
+        filenames = [
+            "plain.txt",
+            "part,one.txt",
+            'quote"name.txt',
+            "line\nfeed.txt",
+            "carriage\rreturn.txt",
+            "café data.txt"
+        ];
+        for name in filenames {
+            (proj / "mypkg" / name).write_bytes(b"package data\n");
+        }
+        cfg.project.include.data = {"mypkg": ["*.txt"]};
         builder = WheelBuilder(config=cfg, project_root=proj);
         sdist = builder.build_sdist();
         extract = proj / "extract";
@@ -819,6 +831,28 @@ test "sdist build backend rebuilds the wheel with stdlib only" {
         with zipfile.ZipFile(io.BytesIO(direct)) as zf_direct {
             with zipfile.ZipFile(str(rebuilt)) as zf_rebuilt {
                 assert sorted(zf_direct.namelist()) == sorted(zf_rebuilt.namelist());
+                for name in filenames {
+                    assert "mypkg/" + name in zf_rebuilt.namelist();
+                }
+                record_path = "mypkg-1.0.0.dist-info/RECORD";
+                rows: list[list[str]] = list(
+                    csv.reader(
+                        io.StringIO(
+                            zf_rebuilt.read(record_path).decode("utf-8"), newline=""
+                        )
+                    )
+                );
+                assert all(len(row) == 3 for row in rows);
+                assert sorted(row[0] for row in rows) == sorted(zf_rebuilt.namelist());
+                for row in rows {
+                    if row[0] == record_path {
+                        assert row[1:] == ["", ""];
+                    } else {
+                        content = zf_rebuilt.read(row[0]);
+                        assert row[1] == sha256_b64(content);
+                        assert row[2] == str(len(content));
+                    }
+                }
             }
         }
     } finally {

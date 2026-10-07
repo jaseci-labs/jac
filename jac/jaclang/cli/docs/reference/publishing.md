@@ -105,6 +105,11 @@ A wheel carries Python transpiled from your `.jac` modules, so a Python consumer
 
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 
+The generated source distribution includes a build backend that rebuilds the wheel
+using only Python's standard library. Its `RECORD` metadata uses CSV quoting to
+preserve package data filenames containing commas, quotes, or line breaks, along
+with each file's hash and size.
+
 ## 3. Test before uploading
 
 Always install the wheel into a clean environment before publishing:
