@@ -1791,6 +1791,7 @@ impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | 
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
+    import from jaclang.compiler.frontend.constant { SymbolStorage }
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;
@@ -2581,7 +2582,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self._nogc_headerless()
                         and isinstance(nd.value, uni.Name)
                         and nd.value.sym is not None
-                        and nd.value.sym.storage == uni.SymbolStorage.MODULE_GLOBAL
+                        and nd.value.sym.storage == SymbolStorage.MODULE_GLOBAL
                     )
                         or self._nogc_borrow_local_assign(nd) {
                         self.borrowed_vars.add(var_name);
@@ -2598,10 +2599,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(coerced) {
                         self.rc_ops_elided += 1;
                     }
-                    if not (
-                        self._nogc_headerless()
-                        and getattr(nd, 'na_overwrite_consumed', False)
-                    )
+                    if not (self._nogc_headerless() and nd.na_overwrite_consumed)
                         and not (
                             self._gc_mode() == "none" and var_name in self.borrowed_vars
                         ) {
@@ -2660,10 +2658,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             name="own.re.d1"
                         );
                     }
-                    if not (
-                        self._nogc_headerless()
-                        and getattr(nd, 'na_overwrite_consumed', False)
-                    )
+                    if not (self._nogc_headerless() and nd.na_overwrite_consumed)
                         and var_name not in self.borrowed_vars {
                         _osr_old = self.builder.load(alloca, name=f"{var_name}.old");
                         self._nogc_str_free_owned(_osr_old);
@@ -2737,7 +2732,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         } elif var_name in self.global_vars
             and isinstance(target_expr, uni.NameAtom)
             and target_expr.sym is not None
-            and target_expr.sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
+            and target_expr.sym.storage == SymbolStorage.MODULE_GLOBAL {
             global_var = self.global_vars[var_name];
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;
@@ -3155,7 +3150,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self._nogc_headerless()
                         and isinstance(nd.value, uni.Name)
                         and nd.value.sym is not None
-                        and nd.value.sym.storage == uni.SymbolStorage.MODULE_GLOBAL
+                        and nd.value.sym.storage == SymbolStorage.MODULE_GLOBAL
                     )
                         or self._nogc_borrow_local_assign(nd) {
                         self.borrowed_vars.add(var_name);
@@ -3205,10 +3200,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             );
                         }
                     }
-                    if not (
-                        self._nogc_headerless()
-                        and getattr(nd, 'na_overwrite_consumed', False)
-                    )
+                    if not (self._nogc_headerless() and nd.na_overwrite_consumed)
                         and not (
                             self._gc_mode() == "none" and var_name in self.borrowed_vars
                         ) {
@@ -4131,7 +4123,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         "==", _env_val, ir.Constant(i8p, None), name="ffor.env.null"
     );
     _nt_slot = self._stack_entry_alloca(i32, "ffor.nt.slot");
-    _cfg_threads = int(getattr(self.prog?.options, "native_threads", 4) or 4);
+    _cfg_threads = int(self.prog.options.native_threads or 4);
     self.builder.store(ir.Constant(i32, _cfg_threads), _nt_slot);
     _envfunc = self.builder.function;
     _env_parse = _envfunc.append_basic_block("ffor.env.parse");

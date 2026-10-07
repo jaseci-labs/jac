@@ -740,26 +740,20 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
         _r_strish = right.type == i8p or (_sdt is not None and right.type == _sdt);
         if op == Tok.PLUS and _l_strish and _r_strish {
             if self._is_owned(left) {
-                self._emit_rc_release_typed(
-                    left, op="binop_lhs", loc=getattr(left, 'jac_loc', '')
-                );
+                self._emit_rc_release_typed(left, op="binop_lhs", loc=left.jac_loc);
             }
             if self._is_owned(right) {
-                self._emit_rc_release_typed(
-                    right, op="binop_rhs", loc=getattr(right, 'jac_loc', '')
-                );
+                self._emit_rc_release_typed(right, op="binop_rhs", loc=right.jac_loc);
             }
         } elif op == Tok.STAR_MUL
             and (_l_strish or _r_strish)
             and (result.type == i8p or (_sdt is not None and result.type == _sdt)) {
             if _l_strish and self._is_owned(left) {
-                self._emit_rc_release_typed(
-                    left, op="binop_rep_lhs", loc=getattr(left, 'jac_loc', '')
-                );
+                self._emit_rc_release_typed(left, op="binop_rep_lhs", loc=left.jac_loc);
             }
             if _r_strish and self._is_owned(right) {
                 self._emit_rc_release_typed(
-                    right, op="binop_rep_rhs", loc=getattr(right, 'jac_loc', '')
+                    right, op="binop_rep_rhs", loc=right.jac_loc
                 );
             }
         } elif op in (Tok.PLUS, Tok.STAR_MUL) and self._is_owned(result) {
@@ -1700,15 +1694,15 @@ impl NaIRGenPass._identity_over_optional(
         return None;
     }
     _zero_tag = ir.Constant(ir.IntType(8), 0);
-    _l_set: any = ir.Constant(ir.IntType(1), 1);
-    _l_val: any = left;
+    _l_set: ir.Value = ir.Constant(ir.IntType(1), 1);
+    _l_val: ir.Value = left;
     if _lp is not None {
         _l_tag = self.builder.extract_value(left, 0, name="is.l.tag");
         _l_set = self.builder.icmp_signed("!=", _l_tag, _zero_tag, name="is.l.set");
         _l_val = self.builder.extract_value(left, 1, name="is.l.pv");
     }
-    _r_set: any = ir.Constant(ir.IntType(1), 1);
-    _r_val: any = right;
+    _r_set: ir.Value = ir.Constant(ir.IntType(1), 1);
+    _r_val: ir.Value = right;
     if _rp is not None {
         _r_tag = self.builder.extract_value(right, 0, name="is.r.tag");
         _r_set = self.builder.icmp_signed("!=", _r_tag, _zero_tag, name="is.r.set");
@@ -1727,7 +1721,7 @@ impl NaIRGenPass._identity_over_optional(
     _l_none = self.builder.not_(_l_set, name="is.l.none");
     _r_none = self.builder.not_(_r_set, name="is.r.none");
     _both_none = self.builder.and_(_l_none, _r_none, name="is.both.none");
-    _res: any = self.builder.or_(_hit, _both_none, name="is.opt");
+    _res = self.builder.or_(_hit, _both_none, name="is.opt");
     if negate {
         _res = self.builder.not_(_res, name="isn.opt");
     }
@@ -2025,13 +2019,12 @@ impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | Non
     if isinstance(a, ir.PointerType) and isinstance(b, ir.PointerType) {
         return a;
     }
-    if all(
-        self._is_jacval_boxable(t) or self._opt_payload_of(t) is not None
-        for t in (a, b)
-    ) {
-        return self.jacval_type;
+    for t in [a, b] {
+        if not (self._is_jacval_boxable(t) or self._opt_payload_of(t) is not None) {
+            return None;
+        }
     }
-    return None;
+    return self.jacval_type;
 }
 
 impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {

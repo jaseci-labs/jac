@@ -35,9 +35,9 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
 impl NaIRGenPass._osp_kernel_init_fns -> list[ir.Function] {
     import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
     out: list[ir.Function] = [];
-    for unit_mod in (self._osp_kernel_mod, self._osp_graph_mod) {
-        unit: any = unit_mod;
-        if unit is None or not (unit?.loc and unit.loc.mod_path) {
+    _init_units: list[uni.Module | None] = [self._osp_kernel_mod, self._osp_graph_mod];
+    for unit in _init_units {
+        if unit is None or not (unit.loc and unit.loc.mod_path) {
             continue;
         }
         name = native_glob_init_name(unit.loc.mod_path);
@@ -1890,7 +1890,7 @@ impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
     if isinstance(_release_targets.type, ir.PointerType)
         and self._is_owned(_release_targets) {
         self._emit_rc_release_simple(
-            _release_targets, op="visit_targets", loc=getattr(_targets, 'jac_loc', '')
+            _release_targets, op="visit_targets", loc=_targets.jac_loc
         );
     }
     if nd.else_body is None {

@@ -195,7 +195,8 @@ impl NaIRGenPass._copy_is_atomic(
         return True;
     }
     _args = self._container_type_args(hint);
-    for (i, elem) in enumerate(info.elements) {
+    _tuple_ty: ir.LiteralStructType = info;
+    for (i, elem) in enumerate(_tuple_ty.members()) {
         if not self._copy_is_atomic(elem, _args[i] if i < len(_args) else None, True) {
             return False;
         }

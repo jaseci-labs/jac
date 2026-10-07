@@ -428,13 +428,7 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 val = self.builder.bitcast(val, i8p, name="compr.cast");
             }
             val = self._coerce_type(val, helpers["elem_type"]);
-            _compr_loc_raw = getattr(_compr_append_orig, 'jac_loc', key_expr?.loc);
-            _compr_loc: str = "";
-            if isinstance(_compr_loc_raw, str) {
-                _compr_loc = _compr_loc_raw;
-            } elif _compr_loc_raw is not None {
-                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{_compr_loc_raw.first_line}";
-            }
+            _compr_loc: str = _compr_append_orig.jac_loc;
             if not _compr_loc {
                 _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
             }

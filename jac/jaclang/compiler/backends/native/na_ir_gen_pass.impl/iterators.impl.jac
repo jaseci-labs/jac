@@ -352,7 +352,7 @@ impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
     i1 = ir.IntType(1);
     helpers = self.dict_helpers[dict_key];
     dict_ptr_type = self.dict_types[dict_key].as_pointer();
-    key_type = helpers["key_type"];
+    key_type: ir.Type = helpers["key_type"];
     state_ptr_type = self.struct_types["DictKeyIterState"].as_pointer();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(
@@ -1372,7 +1372,10 @@ impl NaIRGenPass._iter_source(
     if is_adapter_call
         or (_ustruct is not None and self._arch_implements_iter(_ustruct)) {
         built = self._build_iter_from_expr(coll);
-        return None if built is None else (built[0], built[2], True);
+        if built is None {
+            return None;
+        }
+        return (built[0], built[2], True);
     }
     elem_t = self._iter_elem_llvm_of(coll);
     if elem_t is None {
@@ -1387,7 +1390,10 @@ impl NaIRGenPass._iter_source(
                 return None;
             }
             made = self._make_iter_from_value(rv, coll);
-            return None if made is None else (made[0], made[2], True);
+            if made is None {
+                return None;
+            }
+            return (made[0], made[2], True);
         }
         return None;
     }
