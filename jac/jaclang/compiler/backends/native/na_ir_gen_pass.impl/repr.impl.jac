@@ -67,10 +67,10 @@ impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple[str, ir.Type] |
     i8p = ir.IntType(8).as_pointer();
     _parts = self._split_type_args(elem_key, "|");
     if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if len(_parts) > 1 or elem_key in ("any", "Any") {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if elem_key in ("int", "bool") {
         return ("i64", i64);

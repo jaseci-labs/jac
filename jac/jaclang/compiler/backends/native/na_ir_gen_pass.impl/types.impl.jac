@@ -31,7 +31,10 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     }
     mangled = self._mangled_of(t);
 
-    key = (t, mangled) if isinstance(t, TypeBase) and mangled is not None else None;
+    key: (tuple[TypeBase, str] | None) = None;
+    if isinstance(t, TypeBase) and mangled is not None {
+        key = (t, mangled);
+    }
     if key is not None and key in self._lowered_type_cache {
         return self._lowered_type_cache[key];
     }

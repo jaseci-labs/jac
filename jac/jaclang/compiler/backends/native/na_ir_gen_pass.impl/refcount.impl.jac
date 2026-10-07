@@ -2157,7 +2157,7 @@ impl NaIRGenPass._drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | No
     }
 
     if mangle in ("any", "Any") {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if mangle == "float" {
         return ("f64", ir.DoubleType());

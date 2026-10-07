@@ -1499,7 +1499,7 @@ impl NaIRGenPass._runtime_class_arms(
     arity is a runtime value -- comes back whole for the loop to walk. Both are
     `None` when the argument is not a runtime class handle at all.
     """;
-    none_pair = (None, None, );
+    none_pair: tuple[list[ir.Value] | None, ir.Value | None] = (None, None, );
     one = self._runtime_class_value(expr);
     if one is not None {
         return ([one], None, );
@@ -1529,7 +1529,10 @@ impl NaIRGenPass._runtime_class_arms(
         }
         out.append(self.builder.extract_value(val, i, name="isa.tgt"));
     }
-    return (out, None, ) if out else none_pair;
+    if out {
+        return (out, None, );
+    }
+    return none_pair;
 }
 
 impl NaIRGenPass._emit_isa_seq_fn -> ir.Function {
