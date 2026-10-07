@@ -415,7 +415,7 @@ impl NaIRGenPass._emit_bound_method_value(
     declared_fnty = ir.FunctionType(fnty.return_type, list(fnty.args)[1:]);
     (sig_name, _sig_st, fnty_env) = self._closure_sig_struct(declared_fnty);
     thunk_key = f"__jac_bound.{type_name}.{method_name}";
-    thunk: any = self.closure_thunks.get(thunk_key);
+    thunk: (ir.Function | None) = self.closure_thunks.get(thunk_key);
     if thunk is None {
         thunk = ir.Function(self.llvm_module, fnty_env, name=thunk_key);
         thunk.linkage = "private";

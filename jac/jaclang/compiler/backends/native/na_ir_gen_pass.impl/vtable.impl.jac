@@ -926,7 +926,9 @@ impl NaIRGenPass._emit_isa_fn -> ir.Function {
     }
     i1 = ir.IntType(1);
     i8p = ir.IntType(8).as_pointer();
-    fn: any = self._define_function("__jac_isa", ir.FunctionType(i1, [i8p, i8p]));
+    fn: ir.Function = self._define_function(
+        "__jac_isa", ir.FunctionType(i1, [i8p, i8p])
+    );
     fn.linkage = "private";
     fn.args[0].name = "cls";
     fn.args[1].name = "tgt";
@@ -1040,7 +1042,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     idx_gv.initializer = ir.Constant(idx_arr, slots);
 
     strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
-    fn: any = self._define_function(
+    fn: ir.Function = self._define_function(
         "__jac_isa_h", ir.FunctionType(i1, [i8p, i8p, i64])
     );
     fn.linkage = "private";
@@ -1232,7 +1234,7 @@ impl NaIRGenPass._emit_isa_vtable_fn -> ir.Function {
     i8p = ir.IntType(8).as_pointer();
     rec_ty = ir.LiteralStructType([i64, i8p]);
     strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
-    fn: any = self._define_function(
+    fn: ir.Function = self._define_function(
         "__jac_isa_vt", ir.FunctionType(i1, [i8p.as_pointer(), i8p, i64])
     );
     fn.linkage = "private";
@@ -1547,7 +1549,7 @@ impl NaIRGenPass._emit_isa_seq_fn -> ir.Function {
     helpers = self.list_helpers["ptr"];
     seq_ty = self.list_types["ptr"].as_pointer();
 
-    fn: any = self._define_function(
+    fn: ir.Function = self._define_function(
         "__jac_isa_seq", ir.FunctionType(i1, [i8p, seq_ty])
     );
     fn.linkage = "private";
