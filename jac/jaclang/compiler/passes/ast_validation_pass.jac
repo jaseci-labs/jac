@@ -38,6 +38,8 @@ import from jaclang.compiler.frontend.unitree {
     Literal,
     MatchStmt,
     ModuleCode,
+    ModuleItem,
+    ModulePath,
     MultiString,
     Name,
     ParamVar,
@@ -99,6 +101,9 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 
 walker ASTValidationPass(TreePass) {
+    has overload_names: set[str] = {"overload"},
+        typing_modules: set[str] = set();
+
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;
     can enter_module with Module entry;
