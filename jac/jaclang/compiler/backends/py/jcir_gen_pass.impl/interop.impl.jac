@@ -3,7 +3,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     parts: list[str] = [];
     names: list[str] = [];
     if (manifest and manifest.bindings) {
-        import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
+        import from jaclang.runtime.constants { JAC_TO_CTYPES_STR }
         import from jaclang.compiler.frontend.codeinfo {
             native_def_symbol,
             native_symbol_name,
@@ -178,7 +178,7 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
         if not isinstance(item, ModuleItem) {
             continue;
         }
-        item_name = getattr(item.name, 'value', str(item.name));
+        item_name = item.name.value;
         local_name = item.alias.sym_name if item.alias else item_name;
         if item_name not in sv_to_sv_names {
             continue;
@@ -441,14 +441,19 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
         return ['*'];
     }
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-    (kind, name) = key.split(":", 1);
+    split_at = key.find(":");
     effect = src_mod.gen.interop_manifest.endpoint_effects.get(
-        endpoint_key(src_mod, kind, name)
+        endpoint_key(src_mod, key[:split_at], key[split_at + 1:])
     );
-    if not isinstance(effect, dict) or effect.get('unknown') {
+    if effect is None or effect.get('unknown') {
         return ['*'];
     }
-    return [str(t) for t in effect['writes']];
+    writes: list[any] = effect['writes'];
+    names: list[str] = [];
+    for target in writes {
+        names.append(str(target));
+    }
+    return names;
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
@@ -465,14 +470,17 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
         CrossAppKind,
         classify_cross_app_import
     }
-    if isinstance(expr, BinaryExpr) and expr.op?.name == Tok.KW_SPAWN {
-        for side in (expr.right, expr.left) {
-            found = self._sv_bridge_walker_call(side);
-            if found is not None {
-                return found;
+    if isinstance(expr, BinaryExpr) {
+        op = expr.op;
+        if isinstance(op, Token) and op.name == Tok.KW_SPAWN {
+            for side in (expr.right, expr.left) {
+                found = self._sv_bridge_walker_call(side);
+                if found is not None {
+                    return found;
+                }
             }
+            return None;
         }
-        return None;
     }
     if not isinstance(expr, FuncCall) or not isinstance(expr.target, Name) {
         return None;
@@ -505,7 +513,7 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
         return None;
     }
     facts = imp.boundary_facts;
-    item_name = getattr(item.name, 'value', str(item.name));
+    item_name = item.name.value;
     in_walkers = facts is not None and item_name in facts.sv_walkers;
     if not in_walkers {
         binding = self.module.gen.interop_manifest.bindings.get(target.sym_name);

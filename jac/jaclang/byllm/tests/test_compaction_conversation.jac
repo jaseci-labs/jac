@@ -17,7 +17,8 @@ glob LOOKUP_CALL: list[dict[str, any]] = [
          "role": "tool",
          "tool_call_id": "call_seed",
          "name": "lookup",
-         "content": "SEEDED_RESULT"
+         # Big enough to be worth a summariser call in a 1000-token window.
+         "content": "SEEDED_RESULT " + ("detail " * 80)
      };
 
 

@@ -1,5 +1,6 @@
 import os;
 import sys;
+import time;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.host {
     HostServices,
@@ -8,12 +9,22 @@ import from jaclang.compiler.frontend.host {
     kernel_host_mode
 }
 import from jaclang.compiler.frontend.kernel_inputs {
+    KEY_SEP,
     KernelInputs,
     ManifestSets,
+    NpmAnswer,
     PythonInterface,
+    answers_to_dict,
+    pair_key,
     request_of
 }
-import from jaclang.compiler.frontend.kernel_host { HostCensus, KernelHost }
+import from jaclang.compiler.frontend.kernel_host {
+    EMIT_QUESTION,
+    HOST_ONLY_ANSWER,
+    HostAsker,
+    HostCensus,
+    KernelHost
+}
 import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_CRASHED,
     ANALYSIS_OK,
@@ -31,231 +42,32 @@ import from jaclang.compiler.driver.session_compile {
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+import type from jaclang.compiler.native_compiler { NativeCompiler }
 
-glob SCAN_LIMIT: int = 4000,
-     PACKAGE_CHAIN_DEPTH: int = 8,
-     INTERFACE_LIMIT: int = 400,
-     _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
+glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
+     _IFACE_REFUSED: dict[str, str] = {},
+     _IFACE_BUILT: list[float] = [0.0, 0.0],
+     _OTHER_COMPILER_DIRS: dict[str, bool] = {},
+     NATIVE_INT_OVERFLOW: str = "integer overflow",
+     OTHER_COMPILER_MISS: str = "other_compiler",
+     INTERFACE_QUESTIONS: tuple[str, ...] = ("compile_module", "parse_python"),
+     NPM_QUESTIONS: tuple[str, ...] = (
+         "has_npm_package",
+         "resolve_npm_package",
+         "npm_declarations"
+     ),
+     PATH_QUESTIONS: tuple[str, ...] = (
+         "project_root",
+         "project_facts",
+         "workspace",
+         "app_for_path",
+         "lint_settings"
+     ),
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
 
 class KernelAnalysisError(RuntimeError) {}
-
-obj ClosureScan {
-    has learner: KernelHost,
-        program: JacProgram,
-        options: CompileOptions,
-        entry_path: str,
-        entry_source: (str | None) = None,
-        scratch: (JacProgram | None) = None,
-        scope: list[str] = [],
-        seen: set[str] = set(),
-        learned: set[str] = set(),
-        queue: list[str] = [];
-
-    def run {
-        owner = self.learner.project_root(self.entry_path);
-        top = owner or os.path.dirname(os.path.abspath(self.entry_path));
-        self.scope.append(os.path.join(os.path.realpath(top), ""));
-        self.queue.append(self.entry_path);
-        while self.queue and len(self.seen) < SCAN_LIMIT {
-            path = self.queue.pop();
-            if path in self.seen {
-                continue;
-            }
-            self.seen.add(path);
-            self.scan_module(path);
-        }
-    }
-
-    def scan_module(path: str) {
-        self.learn_path(path);
-        if path.endswith(".jac") {
-            self.scan_jac(path);
-        } elif path.endswith(".py") {
-            self.scan_python(path);
-        }
-    }
-
-    def scan_jac(path: str) {
-        import from jaclang.compiler.frontend.parser.frontend { parse }
-        learner = self.learner;
-        sources = [path];
-        sources.extend(learner.annex_files(path, ".impl.jac"));
-        sources.extend(learner.annex_files(path, ".test.jac"));
-        arch = learner.wiring_file(path);
-        if arch {
-            sources.append(arch);
-        }
-        for source_path in sources {
-            self.learn_path(source_path);
-            try {
-                text = self.source_of(source_path);
-                (tree, _) = parse(text, source_path);
-            } except Exception {
-                continue;
-            }
-            self.scan_imports(tree);
-        }
-        try {
-            import from jaclang.compiler.driver.wiring { wiring_for_path }
-            wiring_for_path(path);
-        } except Exception {}
-    }
-
-    def scan_python(path: str) {
-        if any(marker in path.replace("\\", "/") for marker in THIRD_PARTY_DIRS) {
-            return;
-        }
-        if self.scratch is None {
-            self.scratch = JacProgram();
-        }
-        try {
-            (tree, _) = self.learner.parse_python(
-                self.source_of(path), path, self.scratch
-            );
-        } except Exception {
-            return;
-        }
-        self.scan_imports(tree);
-    }
-
-    def source_of(path: str) -> str {
-        if path == self.entry_path and self.entry_source is not None {
-            return self.entry_source;
-        }
-        return self.learner.read_source(path);
-    }
-
-    def scan_imports(tree: uni.Module) {
-        learner = self.learner;
-        for mod_path in tree.get_all_sub_nodes(uni.ModulePath) {
-            owner = mod_path.loc.mod_path if mod_path.loc else "";
-            if not owner {
-                continue;
-            }
-            spec = mod_path.string_path_value;
-            if spec is not None {
-                learner.is_path_alias(spec, owner);
-            } else {
-                spec = mod_path.dot_path_str;
-            }
-            self.follow(self.resolved(mod_path, None));
-            self.learn_npm(spec, owner);
-            if spec.startswith("@jac/") {
-                learner.jac_virtual_module_path(spec);
-            }
-            if spec.startswith("jaclang.") {
-                learner.resolve_module(spec, os.path.join(os.path.dirname(owner), ""));
-            }
-        }
-        for item in tree.get_all_sub_nodes(uni.ModuleItem) {
-            if item.parent is None or not isinstance(item.parent, uni.Import) {
-                continue;
-            }
-            if item.from_parent.from_loc is None {
-                continue;
-            }
-            self.follow(self.resolved(None, item));
-        }
-    }
-
-    def resolved(
-        mod_path: (uni.ModulePath | None), item: (uni.ModuleItem | None)
-    ) -> str {
-        try {
-            if mod_path is not None {
-                return mod_path.resolve_relative_path();
-            }
-            if item is not None {
-                return item.resolve_relative_path();
-            }
-        } except Exception {}
-        return "";
-    }
-
-    def learn_npm(spec: str, owner: str) {
-        if not spec {
-            return;
-        }
-        learner = self.learner;
-        for base in (owner, self.entry_path) {
-            if learner.has_npm_package(spec, base) {
-                learner.resolve_npm_package(spec, base);
-                learner.npm_declarations(spec, base);
-            }
-        }
-    }
-
-    def follow(path: str) {
-        if not path or not os.path.isfile(path) {
-            return;
-        }
-        self.learn_path(path);
-        if not self.in_scope(path) {
-            return;
-        }
-        if path.endswith(".jac") or path.endswith(".py") {
-            if path not in self.seen {
-                self.queue.append(path);
-            }
-        }
-    }
-
-    def in_scope(path: str) -> bool {
-        if is_compiler_source_path(path) {
-            return False;
-        }
-        real = os.path.realpath(path);
-        return any(real.startswith(top) for top in self.scope);
-    }
-
-    def learn_path(path: str) {
-        if not path or path in self.learned {
-            return;
-        }
-        self.learned.add(path);
-        learner = self.learner;
-        owner_root = learner.project_root(path);
-        learner.project_facts(path);
-        if owner_root {
-            learner.project_facts(owner_root);
-            learner.project_root(owner_root);
-        }
-        learner.workspace(path);
-        learner.app_for_path(path);
-        learner.lint_settings(path);
-        learner.native_verdict(path, self.program);
-        learner.is_untyped_third_party(path);
-        learner.declared_dependencies(path, self.options.target_app or "");
-        if path.endswith(".js") {
-            learner.sibling_declaration(path);
-        }
-        real = os.path.realpath(path);
-        if real != path {
-            self.learn_path(real);
-        }
-        self.learn_package_chain(path);
-    }
-
-    def learn_package_chain(path: str) {
-        folder = os.path.dirname(os.path.abspath(path));
-        for _ in range(PACKAGE_CHAIN_DEPTH) {
-            for name in ("__init__.py", "__init__.jac") {
-                init = os.path.join(folder, name);
-                if init != path and os.path.isfile(init) {
-                    self.learn_path(init);
-                }
-            }
-            parent = os.path.dirname(folder);
-            if parent == folder {
-                return;
-            }
-            folder = parent;
-        }
-    }
-}
 
 def manifest_sets -> ManifestSets {
     import from jaclang.bootstrap_manifest {
@@ -313,9 +125,13 @@ def interface_dependencies(iface: PythonInterface) -> list[str] {
 }
 
 def interface_wanted(path: str) -> bool {
-    return path.endswith(".py")
-        and os.path.isfile(path)
-        and not is_compiler_source_path(path);
+    if not os.path.isfile(path) {
+        return False;
+    }
+    if is_compiler_source_path(path) {
+        return path.endswith(".py") or path.endswith(".jac");
+    }
+    return path.endswith(".py");
 }
 
 def file_stamp(path: str) -> str {
@@ -397,62 +213,41 @@ def remember_interface(iface: PythonInterface, deps: list[str]) {
     } except OSError {}
 }
 
-def python_interfaces(
-    paths: list[str], options: CompileOptions
-) -> list[PythonInterface] {
-    out: list[PythonInterface] = [];
-    queue: list[str] = sorted(os.path.realpath(p) for p in paths);
-    queue.reverse();
-    done: set[str] = set();
-    scratch: (JacProgram | None) = None;
-    while queue {
-        path = queue.pop();
-        if len(done) >= INTERFACE_LIMIT {
-            raise KernelAnalysisError(
-                f"the Python modules reached from {paths[0] if paths else path} "
-                f"need more than {INTERFACE_LIMIT} interfaces"
-            );
-        }
-        if path in done or not interface_wanted(path) {
-            continue;
-        }
-        done.add(path);
-        iface = cached_interface(path);
-        deps: list[str] = [];
-        if iface is None {
-            if scratch is None {
-                scratch = JacProgram();
-            }
-            iface = python_interface(path, options, scratch);
-            if iface is None {
-                continue;
-            }
-            deps = interface_dependencies(iface);
-            remember_interface(iface, deps);
-        } else {
-            deps = interface_dependencies(iface);
-        }
-        out.append(iface);
-        for dep in deps {
-            if dep not in done {
-                queue.append(dep);
-            }
-        }
+def served_interface(
+    path: str, options: CompileOptions, scratch: JacProgram
+) -> (PythonInterface | None) {
+    if not interface_wanted(path) {
+        return None;
     }
-    return out;
+    iface = cached_interface(path);
+    if iface is not None {
+        return iface;
+    }
+    stamp = file_stamp(path);
+    if _IFACE_REFUSED.get(path) == stamp {
+        return None;
+    }
+    began = time.monotonic();
+    iface = python_interface(path, options, scratch);
+    _IFACE_BUILT[0] += 1.0;
+    _IFACE_BUILT[1] += time.monotonic() - began;
+    if iface is None {
+        _IFACE_REFUSED[path] = stamp;
+        return None;
+    }
+    remember_interface(iface, interface_dependencies(iface));
+    return iface;
 }
 
-def snapshot_inputs(
-    host: HostServices,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: (str | None) = None
+def session_inputs(
+    host: HostServices, program: JacProgram, path: str, options: CompileOptions
 ) -> KernelInputs {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
     import from jaclang.compiler.types.stubcat.locate { catalog_origin }
+    import from jaclang.compiler.frontend.host { package_root }
     catalog_dir = "";
+    host.compiler_for(program).ensure_stub_catalog();
     catalog_active = host.has_active_stub_catalog();
     if catalog_active {
         import from jaclang.jac0core.stubcat_hook { active }
@@ -461,7 +256,6 @@ def snapshot_inputs(
     }
     origin = catalog_origin() if catalog_active else None;
     natives = program._natives;
-    import from jaclang.compiler.frontend.host { package_root }
     inputs = KernelInputs(
         entry_path=path,
         package_root=package_root(),
@@ -490,75 +284,211 @@ def snapshot_inputs(
     inputs.native_pipeline_known = True;
     inputs.target_triple = host.default_target_triple();
     inputs.target_triple_known = True;
-    learner = KernelHost(inputs=inputs, fallback=host);
-    previous = active_host();
-    install_host(learner);
-    scan = ClosureScan(
-        learner=learner,
-        program=program,
-        options=options,
-        entry_path=path,
-        entry_source=source
-    );
-    try {
-        scan.run();
-    } finally {
-        install_host(previous);
-    }
-    inputs.scanned_modules = len(scan.seen);
     return inputs;
 }
 
-def kernel_analysis_inputs(
+obj KernelSnapshot(HostAsker) {
+    has host: HostServices,
+        program: JacProgram,
+        options: CompileOptions,
+        seed: KernelInputs,
+        emit_cached: bool = True,
+        scratch: (JacProgram | None) = None,
+        shipped: set[str] = set(),
+        asked: int = 0,
+        ask_seconds: float = 0.0,
+        failures: list[str] = [],
+        other_compiler: str = "";
+
+    def inputs -> KernelInputs {
+        return self.seed;
+    }
+
+    def text -> str {
+        return self.seed.to_json();
+    }
+
+    def ask(method: str, key: str) -> str {
+        import json;
+        began = time.monotonic();
+        self.asked += 1;
+        learner = KernelHost(inputs=KernelInputs(), fallback=self.host);
+        refused = "";
+        asking = active_host();
+        install_host(self.host);
+        try {
+            refused = self.answer(learner, method, key.split(KEY_SEP));
+        } except Exception as err {
+            failed = f"no answer for {method} {key!r}: {type(err).__name__}: {err}";
+            self.failures.append(failed);
+            kernel_note(failed);
+            return "";
+        } finally {
+            install_host(asking);
+            self.ask_seconds += time.monotonic() - began;
+        }
+        record = {
+            name: value
+            for (name, value) in answers_to_dict(learner.inputs).items()
+            if value
+        };
+        if learner.inputs.osp_core_js {
+            record["osp_core_js"] = learner.inputs.osp_core_js;
+        }
+        if learner.inputs.client_stub_globals_known {
+            record["client_stub_globals"] = list(learner.inputs.client_stub_globals);
+            record["client_stub_globals_known"] = True;
+        }
+        if refused {
+            record[HOST_ONLY_ANSWER] = refused;
+        }
+        return json.dumps(record) if record else "";
+    }
+
+    def answer(learner: KernelHost, method: str, fields: list[str]) -> str {
+        key = fields[0];
+        if method == "resolve_module" and len(fields) == 3 {
+            (found, _) = learner.resolve_module(
+                fields[1], fields[2], string_spec=fields[0] == "1"
+            );
+            if found and in_other_compiler_tree(found) {
+                self.other_compiler = found;
+                return f"{OTHER_COMPILER_MISS}: {found}";
+            }
+        } elif method == "resolve_local_module" and len(fields) == 2 {
+            learner.resolve_local_module(fields[0], fields[1].split("/"));
+        } elif method in PATH_QUESTIONS {
+            self.path_answers(learner, method, key);
+        } elif method == "client_osp_core_js" {
+            learner.client_osp_core_js();
+        } elif method == "client_stub_globals" {
+            learner.client_stub_globals();
+        } elif method == "check_settings" {
+            learner.check_settings(key);
+        } elif method == "native_verdict" {
+            learner.native_verdict(key, self.program);
+        } elif method == "is_untyped_third_party" {
+            learner.is_untyped_third_party(key);
+        } elif method == "sibling_declaration" {
+            learner.sibling_declaration(key);
+        } elif method == "client_pulls" {
+            learner.client_pulls(key);
+        } elif method == "jac_virtual_module_path" {
+            learner.jac_virtual_module_path(key);
+        } elif method == "is_path_alias" and len(fields) == 2 {
+            learner.is_path_alias(fields[0], fields[1]);
+        } elif method == "declared_dependencies" and len(fields) == 2 {
+            learner.declared_dependencies(fields[0], fields[1]);
+        } elif method in NPM_QUESTIONS and len(fields) == 2 {
+            if learner.has_npm_package(fields[0], fields[1]) {
+                learner.resolve_npm_package(fields[0], fields[1]);
+                learner.npm_declarations(fields[0], fields[1]);
+            } else {
+                held = learner._npm[pair_key(fields[0], fields[1])];
+                held.entry_known = True;
+                held.declarations_known = True;
+            }
+        } elif method in INTERFACE_QUESTIONS {
+            self.serve_interface(learner, os.path.realpath(key));
+        } elif method == EMIT_QUESTION {
+            learner.inputs.emit_of[key] = self.emits(key);
+        }
+        return "";
+    }
+
+    def path_answer(learner: KernelHost, method: str, path: str) {
+        if method == "project_root" {
+            learner.project_root(path);
+        } elif method == "project_facts" {
+            learner.project_facts(path);
+        } elif method == "workspace" {
+            learner.workspace(path);
+        } elif method == "app_for_path" {
+            learner.app_for_path(path);
+        } elif method == "lint_settings" {
+            learner.lint_settings(path);
+        }
+    }
+
+    def path_answers(learner: KernelHost, method: str, path: str) {
+        self.path_answer(learner, method, path);
+        for related in PATH_QUESTIONS {
+            if related != method {
+                try {
+                    self.path_answer(learner, related, path);
+                } except Exception {}
+            }
+        }
+    }
+
+    def failure_note -> str {
+        return f"; the host said: {self.failures[-1]}" if self.failures else "";
+    }
+
+    def serve_interface(learner: KernelHost, module_file: str) {
+        if module_file in self.shipped {
+            return;
+        }
+        self.shipped.add(module_file);
+        if self.scratch is None {
+            self.scratch = JacProgram();
+        }
+        iface = served_interface(module_file, self.options, self.scratch);
+        if iface is not None {
+            learner.inputs.python_ifaces.append(iface);
+        }
+    }
+
+    def emits(path: str) -> bool {
+        import from jaclang.jac0core.ext_registry { is_annex }
+        if not path.endswith(".jac")
+            or is_annex(path)
+            or is_compiler_source_path(path) {
+            return False;
+        }
+        normalized = path.replace("\\", "/");
+        if any(marker in normalized for marker in THIRD_PARTY_DIRS) {
+            return False;
+        }
+        return self.emit_cached or not compiled_already(path);
+    }
+}
+
+def kernel_note(message: str) {
+    if os.environ.get("JAC_KERNEL_TRACE") {
+        report_stream().write(f"[kernel host] {message}\n");
+    }
+}
+
+def compiled_already(path: str) -> bool {
+    import from jaclang.compiler.driver.jir {
+        get_module_cache_path,
+        is_module_cache_valid
+    }
+    try {
+        return is_module_cache_valid(path, get_module_cache_path(path));
+    } except Exception {
+        return False;
+    }
+}
+
+def kernel_snapshot(
     host: HostServices,
     program: JacProgram,
     path: str,
     options: CompileOptions,
-    source: (str | None) = None
-) -> KernelInputs {
-    inputs = snapshot_inputs(host, program, path, options, source);
-    for ws in list(inputs.workspaces.values()) {
-        for name in ws.apps {
-            if name not in inputs.check_settings {
-                inputs.check_settings[name] = host.check_settings(name);
-            }
-        }
-    }
-    local = [
-        p
-        for (p, untyped) in inputs.untyped.items()
-        if not untyped
-    ];
-    inputs.python_ifaces = python_interfaces(local, options);
-    served = {iface.path for iface in inputs.python_ifaces};
-    learn_facts(host, inputs, program, options, path, sorted(served - set(local)));
-    return inputs;
-}
-
-def learn_facts(
-    host: HostServices,
-    inputs: KernelInputs,
-    program: JacProgram,
-    options: CompileOptions,
-    entry_path: str,
-    paths: list[str]
-) {
-    if not paths {
-        return;
-    }
-    learner = KernelHost(inputs=inputs, fallback=host);
-    scan = ClosureScan(
-        learner=learner, program=program, options=options, entry_path=entry_path
+    emit_closure: bool = False,
+    emit_cached: bool = True
+) -> KernelSnapshot {
+    seed = session_inputs(host, program, path, options);
+    seed.emit_closure = emit_closure;
+    snapshot = KernelSnapshot(
+        host=host, program=program, options=options, seed=seed, emit_cached=emit_cached
     );
-    previous = active_host();
-    install_host(learner);
-    try {
-        for dep in paths {
-            scan.learn_path(dep);
-        }
-    } finally {
-        install_host(previous);
+    if in_other_compiler_tree(path) {
+        snapshot.other_compiler = path;
     }
+    return snapshot;
 }
 
 obj HostReferenceSession(SessionHooks) {
@@ -584,6 +514,14 @@ obj HostReferenceSession(SessionHooks) {
 
     def closure_options -> (CompileOptions | None) {
         return self.compiler.closure_options();
+    }
+
+    def assemble_python(program: JacProgram, module: uni.Module) {
+        self.compiler.assemble_python(program, module);
+    }
+
+    def assemble_native(program: JacProgram, module: uni.Module, checking: bool) {
+        self.compiler.assemble_native(program, module, checking);
     }
 
     def run_module(
@@ -623,29 +561,57 @@ def host_analysis(
     return analysis_report(program, path, tasks, status, message);
 }
 
-def kernel_analysis_json(
-    host: HostServices,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: (str | None) = None
-) -> str {
-    compiler: any = host.compiler_for(program);
-    compiler.ensure_stub_catalog();
-    return kernel_analysis_inputs(host, program, path, options, source).to_json();
+obj KernelEntry {
+    has call: str,
+        take: str;
 }
 
-def call_kernel_analyze(
-    kernel: any, inputs_json: str, path: str, source: (str | None)
+glob ASK_FRAME: bytes = b"A",
+     REPORT_FRAME: bytes = b"R";
+
+glob ANALYZE_ENTRY: KernelEntry = KernelEntry(
+         call="jc_analyze", take="jc_take_analysis"
+     ),
+     COMPILE_ENTRY: KernelEntry = KernelEntry(
+         call="jc_compile", take="jc_take_compile"
+     );
+
+def call_kernel(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    inputs_json: str,
+    path: str,
+    source: (str | None),
+    ask: (Callable[[str, str], str] | None) = None
 ) -> str {
     import from ctypes { c_int64, c_void_p }
     lib = kernel.lib;
-    analyze = lib.jc_analyze;
-    analyze.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
-    analyze.restype = c_int64;
-    take = lib.jc_take_analysis;
+    run = getattr(lib, kind.call);
+    run.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
+    run.restype = c_int64;
+    take = getattr(lib, kind.take);
     take.argtypes = [];
     take.restype = c_void_p;
+
+    def deliver(method: str, key: str) -> None {
+        data = ask(method, key).encode() if ask is not None else b"";
+        if not data {
+            return;
+        }
+        held = lib.jac_str_new(data, len(data));
+        try {
+            lib.jc_answer(c_void_p(held), c_void_p(held), c_int64(len(data)));
+        } finally {
+            lib.jac_release(held);
+        }
+    }
+    if ask is not None {
+        lib.jc_set_asker.argtypes = [c_void_p];
+        lib.jc_set_asker.restype = c_int64;
+        lib.jc_answer.argtypes = [c_void_p, c_void_p, c_int64];
+        lib.jc_answer.restype = c_int64;
+        lib.jc_set_asker(c_void_p(id(deliver)));
+    }
     handles: list[int] = [];
     args: list[object] = [];
     try {
@@ -656,55 +622,223 @@ def call_kernel_analyze(
             args.extend([c_void_p(handle), c_void_p(handle), c_int64(len(data))]);
         }
         args.append(c_int64(1 if source is not None else 0));
-        analyze(*args);
+        run(*args);
     } finally {
         for handle in handles {
             lib.jac_release(handle);
+        }
+        if ask is not None {
+            lib.jc_set_asker(c_void_p(0));
         }
     }
     return kernel._take(take()) or "";
 }
 
-def call_kernel_analyze_isolated(
-    kernel: any, inputs_json: str, path: str, source: (str | None)
+def send_frame(fd: int, tag: bytes, data: bytes) {
+    packet = tag + len(data).to_bytes(8, "little") + data;
+    sent = 0;
+    while sent < len(packet) {
+        sent += os.write(fd, packet[sent:]);
+    }
+}
+
+def read_exactly(fd: int, size: int) -> (bytes | None) {
+    parts: list[bytes] = [];
+    left = size;
+    while left > 0 {
+        part = os.read(fd, min(left, 1 << 20));
+        if not part {
+            return None;
+        }
+        parts.append(part);
+        left -= len(part);
+    }
+    return b"".join(parts);
+}
+
+def read_frame(fd: int) -> (tuple[bytes, bytes] | None) {
+    head = read_exactly(fd, 9);
+    if head is None {
+        return None;
+    }
+    data = read_exactly(fd, int.from_bytes(head[1:], "little"));
+    if data is None {
+        return None;
+    }
+    return (head[:1], data);
+}
+
+def call_kernel_isolated(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    inputs_json: str,
+    path: str,
+    source: (str | None),
+    ask: (Callable[[str, str], str] | None) = None
 ) -> str {
     if not hasattr(os, "fork") {
-        return call_kernel_analyze(kernel, inputs_json, path, source);
+        return call_kernel(kernel, kind, inputs_json, path, source, ask);
     }
-    (read_fd, write_fd) = os.pipe();
+    (report_in, report_out) = os.pipe();
+    (answer_in, answer_out) = os.pipe();
     pid = os.fork();
     if pid == 0 {
         code = 0;
         try {
-            os.close(read_fd);
-            payload = call_kernel_analyze(kernel, inputs_json, path, source).encode(
+            import gc;
+            gc.disable();
+            os.close(report_in);
+            os.close(answer_out);
+
+            def relay(method: str, key: str) -> str {
+                send_frame(
+                    report_out, ASK_FRAME, (method + "\0" + key).encode("utf-8")
+                );
+                answered = read_frame(answer_in);
+                return answered[1].decode("utf-8") if answered is not None else "";
+            }
+            payload = call_kernel(
+                kernel,
+                kind,
+                inputs_json,
+                path,
+                source,
+                relay if ask is not None else None
+            ).encode(
                 "utf-8"
             );
-            sent = 0;
-            while sent < len(payload) {
-                sent += os.write(write_fd, payload[sent:]);
-            }
-            os.close(write_fd);
+            send_frame(report_out, REPORT_FRAME, payload);
+            os.close(report_out);
         } except BaseException {
             code = 1;
         } finally {
             os._exit(code);
         }
     }
-    os.close(write_fd);
-    with os.fdopen(read_fd, "rb") as reader {
-        payload = reader.read();
+    os.close(report_out);
+    os.close(answer_in);
+    payload = b"";
+    try {
+        while True {
+            frame = read_frame(report_in);
+            if frame is None {
+                break;
+            }
+            if frame[0] == REPORT_FRAME {
+                payload = frame[1];
+                break;
+            }
+            (method, _, key) = frame[1].decode("utf-8").partition("\0");
+            answer = ask(method, key) if ask is not None else "";
+            send_frame(answer_out, ASK_FRAME, answer.encode("utf-8"));
+        }
+    } except OSError {} finally {
+        os.close(report_in);
+        os.close(answer_out);
     }
     (_, status) = os.waitpid(pid, 0);
     if os.WIFSIGNALED(status) {
         raise KernelAnalysisError(
-            f"the kernel analysis died with signal {os.WTERMSIG(status)}"
+            f"the kernel {kind.call} died with signal {os.WTERMSIG(status)}"
         );
     }
     if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0 or not payload {
-        raise KernelAnalysisError("the kernel analysis exited without a report");
+        raise KernelAnalysisError(f"the kernel {kind.call} exited without a report");
     }
     return payload.decode("utf-8");
+}
+
+def in_other_compiler_tree(path: str) -> bool {
+    if not path.endswith((".jac", ".py")) {
+        return False;
+    }
+    folder = os.path.dirname(path);
+    known = _OTHER_COMPILER_DIRS.get(folder);
+    if known is None {
+        known = other_compiler_dir(folder);
+        _OTHER_COMPILER_DIRS[folder] = known;
+    }
+    return known;
+}
+
+def other_compiler_dir(folder: str) -> bool {
+    import from jaclang.project.modresolver { COMPILER_PACKAGE }
+    current = os.path.realpath(folder);
+    if is_compiler_source_path(os.path.join(current, "x.jac")) {
+        return False;
+    }
+    while True {
+        above = os.path.dirname(current);
+        if above == current {
+            return False;
+        }
+        if os.path.basename(current) == COMPILER_PACKAGE
+            and os.path.isdir(os.path.join(current, "jac0core")) {
+            return True;
+        }
+        current = above;
+    }
+}
+
+def native_stdlib_misses(misses: list[str]) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
+    stdlib_dir = native_stdlib_root();
+    if not misses or not stdlib_dir {
+        return False;
+    }
+    prefix = os.path.join(os.path.realpath(stdlib_dir), "");
+    for miss in misses {
+        asked = miss.partition(": ")[2];
+        if not os.path.realpath(asked).startswith(prefix) {
+            return False;
+        }
+    }
+    return True;
+}
+
+def host_only_miss(miss: str) -> bool {
+    (kind, _, asked) = miss.partition(": ");
+    if kind == OTHER_COMPILER_MISS {
+        return True;
+    }
+    if native_stdlib_misses([miss]) {
+        return True;
+    }
+    normalized = asked.replace("\\", "/");
+    return kind == "parse_python"
+        and any(marker in normalized for marker in THIRD_PARTY_DIRS);
+}
+
+def host_deferred(outcome: AnalysisReport) -> bool {
+    if outcome.misses and all(host_only_miss(miss) for miss in outcome.misses) {
+        return True;
+    }
+    return outcome.status == ANALYSIS_CRASHED
+        and NATIVE_INT_OVERFLOW in outcome.message;
+}
+
+def loaded_kernel(kind: KernelEntry) -> NativeCompiler {
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    kernel = ensure_loaded();
+    if kernel is None {
+        raise KernelAnalysisError("no native compiler kernel is available");
+    }
+    if not hasattr(kernel.lib, kind.call) {
+        raise KernelAnalysisError(f"the loaded kernel has no {kind.call}");
+    }
+    return kernel;
+}
+
+def call_with_asker(
+    kernel: NativeCompiler,
+    kind: KernelEntry,
+    snapshot: KernelSnapshot,
+    path: str,
+    source: (str | None),
+    isolated: bool
+) -> str {
+    call = call_kernel_isolated if isolated else call_kernel;
+    return call(kernel, kind, snapshot.text(), path, source, snapshot.ask);
 }
 
 def kernel_analysis(
@@ -716,23 +850,29 @@ def kernel_analysis(
     in_process: bool = False,
     isolated: bool = False
 ) -> AnalysisReport {
-    inputs_json = kernel_analysis_json(host, program, path, options, source);
-    if in_process {
-        outcome = run_kernel_analysis(inputs_json, path, source);
-    } else {
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        kernel = ensure_loaded();
-        if kernel is None {
-            raise KernelAnalysisError("no native compiler kernel is available");
-        }
-        call = call_kernel_analyze_isolated if isolated else call_kernel_analyze;
-        outcome = AnalysisReport.from_json(call(kernel, inputs_json, path, source));
+    snapshot = kernel_snapshot(host, program, path, options);
+    if snapshot.other_compiler {
+        return other_compiler_report(path, snapshot.other_compiler);
     }
-    if outcome.status == ANALYSIS_CRASHED {
+    if in_process {
+        outcome = run_kernel_analysis(snapshot.text(), path, source, snapshot);
+    } else {
+        kernel = loaded_kernel(ANALYZE_ENTRY);
+        outcome = AnalysisReport.from_json(
+            call_with_asker(kernel, ANALYZE_ENTRY, snapshot, path, source, isolated)
+        );
+    }
+    if outcome.status == ANALYSIS_CRASHED and not host_deferred(outcome) {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";
-        raise KernelAnalysisError(outcome.message + detail);
+        raise KernelAnalysisError(outcome.message + detail + snapshot.failure_note());
     }
     return outcome;
+}
+
+def other_compiler_report(path: str, reached: str) -> AnalysisReport {
+    return AnalysisReport(
+        entry_path=path, misses=[f"{OTHER_COMPILER_MISS}: {reached}"]
+    );
 }
 
 def kernel_census -> HostCensus {

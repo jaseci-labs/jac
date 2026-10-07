@@ -45,6 +45,46 @@ test "a cached partial helper is regenerated when a new client root pulls anothe
 }
 
 
+test "a shared helper keeps what one root pulled when another root pulls more" {
+    with tempfile.TemporaryDirectory(prefix="jac-client-placement-") as tmp {
+        files = {
+            "jac.toml": "[project]\nname = \"placement-union\"\n",
+            "identity.jac": "def:pub name_of(username: str) -> str { return \"@\" + username; }\ndef:pub avatar_of(username: str) -> str { return username; }\n",
+            "first.jac": "import from .identity { avatar_of }\ndef:pub app -> JsxElement { return <div>{avatar_of(\"a\")}</div>; }\n",
+            "second.jac": "import from .identity { name_of }\ndef:pub app -> JsxElement { return <div>{name_of(\"a\")}</div>; }\n"
+        };
+        for (name, source) in files.items() {
+            with open(os.path.join(tmp, name), "w") as f {
+                f.write(source);
+            }
+        }
+        program = JacProgram();
+        builder = program._get_compiler();
+        for root_file in ("first.jac", "second.jac") {
+            assert builder.get_client_artifact(os.path.join(tmp, root_file), program)
+                is not None;
+        }
+        helper = builder.get_client_artifact(
+            os.path.join(tmp, "identity.jac"), program
+        );
+        assert helper is not None;
+        assert "function avatar_of(" in helper.js , helper.js;
+        assert "function name_of(" in helper.js , helper.js;
+        assert not program.errors_had , [str(e) for e in program.errors_had];
+        later = JacProgram();
+        again = later._get_compiler().get_client_artifact(
+            os.path.join(tmp, "first.jac"), later
+        );
+        assert again is not None;
+        kept = later._get_compiler().get_client_artifact(
+            os.path.join(tmp, "identity.jac"), later
+        );
+        assert kept is not None;
+        assert "function name_of(" in kept.js , kept.js;
+    }
+}
+
+
 test "the final JS audit rejects an imported value whose binding was dropped" {
     import from unittest.mock { patch }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }

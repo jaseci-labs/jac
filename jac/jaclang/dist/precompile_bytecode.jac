@@ -1345,6 +1345,7 @@ def seal_native(
         read_section_bytes as _rsb
     }
     import from jaclang.compiler.driver.native_iface { NativeIface }
+    import from jaclang.compiler.native_scope { in_native_scope_path }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     prog = JacProgram();
@@ -1397,6 +1398,15 @@ def seal_native(
         mod_entry = manifest_modules.get(rel);
         if mod_entry is None {
             raise RuntimeError(f"native unit {rel} has no sealed JIR");
+        }
+        if pkg_name == "jaclang" {
+            if in_native_scope_path(u.path)
+                and _drop_native_twin(out_dir / mod_entry["jir"]) {
+                mod_entry["sha256"] = hashlib.sha256(
+                    (out_dir / mod_entry["jir"]).read_bytes()
+                ).hexdigest();
+            }
+            continue;
         }
         _refresh_native_twin(out_dir / mod_entry["jir"], u.path, str(pkg_path));
         jir_bytes = (out_dir / mod_entry["jir"]).read_bytes();
@@ -1589,6 +1599,32 @@ the artifact linked, so the twin takes them now.""";
     twin.write_bytes(
         write_precompiled_jir(bytecode, module_key, header.flags, sections)
     );
+}
+
+def _drop_native_twin(twin: Path) -> bool {
+    data = twin.read_bytes();
+    header = parse_header(data[:HEADER_SIZE]);
+    if header is None {
+        return False;
+    }
+    magic: any = SECTIONS_MAGIC;
+    pos = data.find(magic, HEADER_SIZE);
+    if pos < 0 {
+        return False;
+    }
+    sections = read_sections(data, pos + len(magic));
+    kept: dict[int, bytes] = {
+        sec: raw
+        for (sec, raw) in sections.items()
+        if sec not in NATIVE_SECTIONS
+    };
+    if len(kept) == len(sections) {
+        return False;
+    }
+    bytecode = kept.pop(SEC_BYTECODE, None);
+    module_key = (kept.pop(SEC_MODKEY, b"") or b"").decode("utf-8");
+    twin.write_bytes(write_precompiled_jir(bytecode, module_key, header.flags, kept));
+    return True;
 }
 
 def _shared_suffix -> str {

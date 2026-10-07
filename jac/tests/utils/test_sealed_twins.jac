@@ -222,3 +222,51 @@ test "verify_native passes an image with no native record" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+"""A kit whose kernel was built by the compiler itself wrote each kernel unit's
+bitcode, interface and object into the module cache. The compiler's own sealed
+twins must not carry them into the image: the kernel library is their linked
+product, and shipping both multiplied the size of the payload and of every
+first run. A kernel built by stage 0 leaves none there either."""
+test "a compiler module's sealed twin sheds its native sections and keeps the rest" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.dist.precompile_bytecode { _drop_native_twin }
+    import from jaclang.compiler.driver.jir {
+        SEC_MODKEY,
+        SEC_NBITCODE,
+        parse_header,
+        read_section_bytes
+    }
+    code = marshal.dumps(compile("X = 1", "<twin>", "exec"));
+    src = zlib.compress(b"with entry { X = 1; }");
+    with tempfile.TemporaryDirectory() as tmp {
+        twin = Path(tmp) / "unit.jir";
+        twin.write_bytes(
+            write_precompiled_jir(
+                code,
+                "unit-key",
+                FLAG_PRECOMPILED,
+                {
+                    SEC_DEBUG_SRC: src,
+                    SEC_NIFACE: b"iface",
+                    SEC_NOBJ: b"o" * 4096,
+                    SEC_NBITCODE: b"b" * 4096
+                }
+            )
+        );
+        fat = len(twin.read_bytes());
+        assert _drop_native_twin(twin);
+        lean = twin.read_bytes();
+        assert len(lean) < fat - 8000;
+        for sec in (SEC_NIFACE, SEC_NOBJ, SEC_NBITCODE) {
+            assert read_section_bytes(lean, sec) is None;
+        }
+        assert read_section_bytes(lean, SEC_BYTECODE) == code;
+        assert read_section_bytes(lean, SEC_DEBUG_SRC) == src;
+        assert read_section_bytes(lean, SEC_MODKEY) == b"unit-key";
+        header = parse_header(lean[:HEADER_SIZE]);
+        assert header is not None and header.flags == FLAG_PRECOMPILED;
+        assert not _drop_native_twin(twin) , "a lean twin is left as it is";
+    }
+}

@@ -66,6 +66,17 @@ curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile
 
 Identity types: `username`, `email` (max one of each; login works with either). Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
 
+## Media and downloads: the session cookie
+
+A browser cannot attach `Authorization` to `<img src>`, `<video src>`, `<audio src>` or an `<a href download>` navigation. Opt in with `[serve.auth] session_cookie = true` in `jac.toml` (env `JAC_SERVE_AUTH_SESSION_COOKIE` overrides it either way) and `/user/register`, `/user/login`, `/user/refresh-token`, `PUT /user/username`, and the second-factor `POST /user/mfa/verify` and `/user/mfa/login` also set `jac_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` on HTTPS), which carries the same JWT:
+
+- It is read for `GET` and `HEAD` only, and only when the request has no `Authorization` header. A write never authenticates by cookie, so keep `GET` endpoints read-only.
+- A bad, expired or duplicated cookie is anonymous (401 on a protected endpoint), exactly like a bad header. The token is never read from the query string.
+- `POST /user/logout` clears it (so do a password change and a password reset), and `jacLogout()` calls it. The cookie is invisible to script, so a hand-rolled client that only drops its stored token stays signed in for media until the token expires.
+- A session that began elsewhere (SSO, a token minted before the switch) gets its cookie from `POST /user/refresh-token`.
+- Cookie-authorized responses get `Vary: Cookie` and, unless the endpoint set its own, `Cache-Control: private`.
+- The cookie is host-only: pages and API must share an origin. `Secure` follows the request scheme, so behind a TLS-terminating proxy list it in `[serve.proxy] trusted`. In a fleet, the gateway and every service must agree, which `jac.toml` gives you for free; if you use the variable instead, set it everywhere. Admin, `/metrics`, WebSockets and service-to-service calls stay header-only.
+
 ## Roles
 
 Scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`; the bootstrap admin is created on first start. Set roles via the admin API or the admin portal at `/admin`:
@@ -114,6 +125,7 @@ With no secret configured, a dev server mints one per project into `.jac/data/jw
 ```toml
 [serve.auth]
 secret = "long-random-string"     # or env JAC_SERVE_AUTH_SECRET; algorithm HS256, token_ttl_days 7
+session_cookie = false            # true: also set the media cookie above; env JAC_SERVE_AUTH_SESSION_COOKIE
 ```
 
 No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[scale.sso.<platform>]` and send users to `/sso/<platform>/login`.

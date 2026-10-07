@@ -296,9 +296,7 @@ impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {
         if id(sym) in seen {
             continue;
         }
-        if sym.storage != SymbolStorage.LOCAL
-            or self._is_param_sym(sym)
-            or nm.sym_name == "self" {
+        if sym.storage != SymbolStorage.LOCAL or self._is_param_sym(sym) {
             continue;
         }
         seen.add(id(sym));

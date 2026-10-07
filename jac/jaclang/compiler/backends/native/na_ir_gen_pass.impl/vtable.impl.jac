@@ -25,7 +25,9 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);
         if func is not None {
-            entries.append(func.bitcast(i8_ptr));
+            entries.append(
+                self._vtable_slot_entry(arch_name, method_name, func).bitcast(i8_ptr)
+            );
         } else {
             entries.append(ir.Constant(i8_ptr, None));
         }
@@ -44,6 +46,77 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     vtable_global.linkage = "";
     vtable_global.initializer = vtable_init;
     self._record_export(f"{arch_name}.__vtable", vtable_global.name, "vtable");
+}
+
+impl NaIRGenPass._vtable_slot_type(
+    arch_name: str, method_name: str
+) -> (ir.FunctionType | None) {
+    for cls in reversed(self._mro_of(arch_name)) {
+        lay = self._arch_layout(cls);
+        if lay is None or not lay.has_vtable or method_name not in lay.method_index {
+            continue;
+        }
+        introduced = self._resolve_method(cls, method_name);
+        if introduced is not None {
+            return introduced.function_type;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._slot_abi_matches(
+    fn_type: ir.FunctionType, slot_type: ir.FunctionType
+) -> bool {
+    if len(fn_type.args) != len(slot_type.args) {
+        return False;
+    }
+    for (have, want) in [
+        (fn_type.return_type, slot_type.return_type),
+        *zip(fn_type.args, slot_type.args)
+    ] {
+        if have != want
+            and not (
+                isinstance(have, ir.PointerType) and isinstance(want, ir.PointerType)
+            ) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._vtable_slot_entry(
+    arch_name: str, method_name: str, func: ir.Function
+) -> ir.Function {
+    slot_type = self._vtable_slot_type(arch_name, method_name);
+    if slot_type is None
+        or len(slot_type.args) != len(func.function_type.args)
+        or self._slot_abi_matches(func.function_type, slot_type) {
+        return func;
+    }
+    name = f"{func.name}.__slot";
+    if name in self.llvm_module.globals {
+        existing = self.llvm_module.get_global(name);
+        assert isinstance(existing, ir.Function);
+        return existing;
+    }
+    thunk = ir.Function(self.llvm_module, slot_type, name=name);
+    thunk.linkage = "internal";
+    saved_builder = self._builder;
+    self._builder = ir.IRBuilder(thunk.append_basic_block("entry"));
+    call_args: list[ir.Value] = [];
+    for (arg, want) in zip(thunk.args, func.function_type.args) {
+        call_args.append(self._coerce_type(arg, want));
+    }
+    result = self.builder.call(func, call_args, name=f"slot.{method_name}");
+    if isinstance(slot_type.return_type, ir.VoidType) {
+        self.builder.ret_void();
+    } elif isinstance(func.function_type.return_type, ir.VoidType) {
+        self.builder.ret(ir.Constant(slot_type.return_type, None));
+    } else {
+        self.builder.ret(self._coerce_type(result, slot_type.return_type));
+    }
+    self._builder = saved_builder;
+    return thunk;
 }
 
 impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
@@ -402,10 +475,31 @@ impl NaIRGenPass._codegen_virtual_call(
     );
     method_i8 = self.builder.load(method_slot, name=f"fn.{method_name}.raw");
 
+    slot_type = self._vtable_slot_type(obj_type_name, method_name) or fn_type;
+    if len(slot_type.args) != len(fn_type.args) {
+        slot_type = fn_type;
+    }
+    slot_args: list[ir.Value] = [];
+    for (i, arg) in enumerate(coerced) {
+        slot_args.append(
+            self._coerce_type(arg, slot_type.args[i])
+                if i < len(slot_type.args)
+                else arg
+        );
+    }
     typed_fn = self.builder.bitcast(
-        method_i8, fn_type.as_pointer(), name=f"fn.{method_name}"
+        method_i8, slot_type.as_pointer(), name=f"fn.{method_name}"
     );
-    _vt_res = self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
+    _vt_res: ir.Value = self.builder.call(
+        typed_fn, slot_args, name=f"vcall.{method_name}"
+    );
+    if isinstance(slot_type.return_type, ir.VoidType)
+        and not isinstance(fn_type.return_type, ir.VoidType) {
+        _vt_res = ir.Constant(fn_type.return_type, None);
+    } elif not isinstance(fn_type.return_type, ir.VoidType)
+        and _vt_res.type != fn_type.return_type {
+        _vt_res = self._coerce_type(_vt_res, fn_type.return_type);
+    }
 
     if release_args {
         self._release_owned_args(coerced, op="vcall_arg");
@@ -734,7 +828,8 @@ impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
     if not expr.type.is_instantiable() or expr.type.is_instance() {
         return None;
     }
-    return expr.type.shared.class_name;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    return class_type_native_name(expr.type);
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {

@@ -1,28 +1,26 @@
 import type from jaclang.runtime.native_library { SharedNativeEngine }
-import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
-import ast as py_ast;
+import json;
 import marshal;
 import os;
-import from collections.abc { Callable }
 import sys;
 import types;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.driver.jir {
     SEC_BYTECODE,
     SEC_MTIR,
     SEC_INTEROP,
     SEC_NBITCODE,
-    SEC_NIFACE,
     SEC_NOBJ,
     SEC_PLACEMENT,
-    SEC_IFACE,
     SEC_CLIENT,
+    SEC_CTDEPS,
     FLAG_CARRIED,
     FLAG_PRECOMPILED,
     carried_module_bytecode,
+    ct_deps_section,
+    seed_definition_texts,
     compute_content_sha256,
     get_module_cache_path,
     is_module_cache_valid,
@@ -38,17 +36,24 @@ import from jaclang.compiler.driver.jir {
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.frontend.codeinfo {
-    ClientArtifact,
     CodeGenTarget,
     NativeModuleLayout
 }
+import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
+import from jaclang.runtime.semantic { info_graph_from_json }
+import from jaclang.compiler.driver.unit_products {
+    UnitProducts,
+    client_artifact_from_json,
+    client_artifact_json,
+    client_artifact_of,
+    definition_deps,
+    interop_manifest_of,
+    interop_record,
+    placement_record,
+    unit_products
+}
 import from jaclang.project.textio { read_file_with_encoding }
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.passes.boundary_analysis_pass { BoundaryAnalysisPass }
-import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-
+import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.compiler.frontend.host { HostServices }
@@ -57,111 +62,144 @@ import from jaclang.compiler.driver.session_compile {
     SessionContext,
     SessionHooks
 }
-import from jaclang.compiler.driver.pass_driver {
-    build_diagnostic_policy,
-    compile_progress,
-    deliver_alerts,
-    run_pass
-}
 import from jaclang.compiler.driver.setup_progress { setup_progress }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    get_symtab_ir_sched,
-    providers_of,
-    pass_provides,
-    validate_schedule
-}
+import from jaclang.compiler.driver.module_compile { compile_module }
 import from jaclang.compiler.driver.pipeline_runner {
     run_utility,
     get_format_sched,
     get_lint_sched
 }
 import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
-import from jaclang.compiler.driver.pipeline_runner {
-    get_py_code_gen,
-    native_schedule_failure
-}
-import from jaclang.compiler.driver.toolchain { native_pipeline_available }
 import from jaclang.compiler.driver.source_failures {
     CompilerSourceError,
     import_error_re_enters,
-    module_import_in_flight,
     module_scoped_failure_details,
     bootstrap_tier_failure_details,
     note_compiler_source_failure
 }
-import from jaclang.compiler.driver.boundary_classify {
-    ClientImportVerdict,
-    _coerce_client_module,
-    _coerce_native_module,
-    _default_codespace_for,
-    classify_client_import_item,
-    import_declares_native_target,
-    is_client_boundary_import,
-    is_client_native_edge_import,
-    native_only_import_target,
-    symbol_linked_source_module
-}
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
-     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10),
-     CLIENT_SECTION_VERSION: int = 3;
+     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10);
+
+def client_dep_digests(manifest: ClientManifest) -> dict[str, str] {
+    digests: dict[str, str] = {};
+    for dep_path in manifest.imports.values() {
+        dep = str(dep_path);
+        if not os.path.isfile(dep) {
+            continue;
+        }
+        try {
+            digests[dep] = compute_content_sha256(dep);
+        } except OSError {
+            continue;
+        }
+    }
+    return digests;
+}
+
+def stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact {
+    artifact.dep_digests = client_dep_digests(artifact.manifest);
+    return artifact;
+}
+
+def built_client_artifact(module: uni.Module) -> (ClientArtifact | None) {
+    artifact = client_artifact_of(module);
+    return stamp_client_artifact(artifact) if artifact is not None else None;
+}
 
 def client_artifact_bytes(artifact: ClientArtifact) -> bytes {
-    import pickle;
-    return pickle.dumps(
-        (
-            CLIENT_SECTION_VERSION,
-            artifact.js,
-            artifact.manifest,
-            list(artifact.native_import_sources),
-            list(artifact.source_map),
-            dict(artifact.dep_digests),
-            artifact.framework,
-            artifact.boundary_contracts
-        ),
-        int(pickle.HIGHEST_PROTOCOL)
-    );
+    return client_artifact_json(artifact).encode("utf-8");
 }
 
 def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
-    import pickle;
-    import from jaclang.compiler.frontend.codeinfo {
-        ClientArtifact as _ClientArtifact,
-        ClientManifest
+    try {
+        text = raw.decode("utf-8");
+    } except UnicodeDecodeError {
+        return None;
+    }
+    return client_artifact_from_json(text);
+}
+
+def cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
+    (rebuild, _no_precompile) = cache_mode();
+    if rebuild {
+        return None;
     }
     try {
-        (
-            version,
-            js,
-            manifest,
-            native_import_sources,
-            source_map,
-            dep_digests,
-            framework,
-            boundary_contracts
-        ) = pickle.loads(raw);
+        cache_path = get_module_cache_path(full_target);
+        if not is_module_cache_valid(full_target, cache_path) {
+            return None;
+        }
+        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
     } except Exception {
         return None;
     }
-    if version != CLIENT_SECTION_VERSION
-        or not isinstance(js, str)
-        or not isinstance(manifest, ClientManifest) {
+    if raw is None {
         return None;
     }
-    return _ClientArtifact(
-        js=js,
-        manifest=manifest,
-        native_import_sources=[str(s) for s in native_import_sources],
-        source_map=[tuple(seg) for seg in source_map],
-        dep_digests={
-            str(k): str(v) for (k, v) in dict[object, object](dep_digests).items()
-        },
-        framework=str(framework),
-        boundary_contracts=dict(boundary_contracts)
-    );
+    return client_artifact_from_bytes(raw);
+}
+
+def cached_client_pulls(full_target: str) -> str {
+    held = cached_client_artifact(full_target);
+    if held is None or not held.pulled {
+        return "";
+    }
+    import from jaclang.compiler.backends.es.backends.registry {
+        resolve_active_backend
+    }
+    if held.framework != resolve_active_backend().name()
+        or not JacCompiler._client_deps_fresh(held) {
+        return "";
+    }
+    return ",".join([str(index) for index in held.pulled]);
+}
+
+def assemble_jcir(jcir: bytes) -> (bytes | None) {
+    if not jcir {
+        return None;
+    }
+    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
+    result = compile_ir(jcir);
+    if result.diags or not result.modules {
+        return None;
+    }
+    return result.modules[0].bytecode;
+}
+
+def unit_sections(
+    products: UnitProducts, bytecode: (bytes | None)
+) -> dict[int, bytes] {
+    sections: dict[int, bytes] = {};
+    if bytecode is not None {
+        sections[SEC_BYTECODE] = bytecode;
+    }
+    if products.mtir {
+        sections[SEC_MTIR] = products.mtir.encode("utf-8");
+    }
+    if products.interop {
+        sections[SEC_INTEROP] = products.interop.encode("utf-8");
+    }
+    if products.client {
+        artifact = client_artifact_from_json(products.client);
+        if artifact is not None {
+            sections[SEC_CLIENT] = client_artifact_bytes(
+                stamp_client_artifact(artifact)
+            );
+        }
+    }
+    if products.placement {
+        sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
+    }
+    if products.ct_file_deps or products.ct_body_deps or products.ct_def_deps {
+        seed_definition_texts(products.def_spans);
+        sections[SEC_CTDEPS] = ct_deps_section(
+            products.ct_file_deps,
+            products.ct_body_deps,
+            definitions=definition_deps(products)
+        );
+    }
+    return sections;
 }
 
 obj HostCompileFrame(CompileFrame) {
@@ -219,10 +257,17 @@ obj JacCompiler(SessionHooks) {
     ) -> (uni.Module | None);
 
     def ensure_client_codegen(mod: uni.Module, target_program: JacProgram) -> bool;
-    def client_artifact_of(mod: uni.Module) -> (ClientArtifact | None);
     def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
+    def last_client_artifact(
+        full_target: str, target_program: JacProgram
+    ) -> (ClientArtifact | None);
+
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
+    def _adopt_kernel_compile(
+        full_target: str, program: JacProgram, options: CompileOptions
+    ) -> tuple[bool, (bytes | None)];
+
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def _load_native_from_cache(
         full_target: str,
@@ -244,12 +289,10 @@ obj JacCompiler(SessionHooks) {
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None);
-    def _build_interop_dict(result: uni.Module) -> dict[str, any];
     def _restore_native_clibs(
         gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
     ) -> None;
 
-    def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def _persist_module_cache(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
@@ -267,6 +310,8 @@ obj JacCompiler(SessionHooks) {
     ) -> uni.Module;
 
     def enter_compile(ctx: SessionContext) -> CompileFrame;
+    def assemble_python(program: JacProgram, module: uni.Module);
+    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
     def leave_compile(ctx: SessionContext, frame: CompileFrame);
     def finish_compile(frame: CompileFrame);
     def check_crash(crash: Exception, file_path: str);

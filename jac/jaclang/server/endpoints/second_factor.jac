@@ -16,6 +16,7 @@ import from jaclang.server.identity.auth_models {
     VerifyFactorRequest
 }
 import from jaclang.server.identity.identity_storage { primary_username }
+import from jaclang.server.identity.session_cookie { start_session }
 import from jaclang.server.identity.second_factor {
     FACTOR_VERIFIED,
     SecondFactorUnavailable
@@ -190,6 +191,7 @@ def register_second_factor_endpoints(server: EndpointHost) {
         if result.get('recovery_codes') {
             payload['recovery_codes'] = result['recovery_codes'];
         }
+        start_session(request, str(payload['token']));
         return ok(payload);
     }
     server.add_endpoint(
@@ -327,6 +329,7 @@ def register_second_factor_endpoints(server: EndpointHost) {
             user_id,
             assurance=second_factor_claims([METHOD_PASSWORD, str(result['method'])])
         );
+        start_session(request, str(payload['token']));
         return ok(dict[(str, JsonValue)](payload));
     }
     server.add_endpoint(

@@ -1,6 +1,6 @@
 import from jaclang.runtime.scalars { sized_scalar_names }
 
-glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
+glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
          {
              "APIProtocol",
              "AccessLevel",
@@ -59,7 +59,7 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
          }
              | set(sized_scalar_names())
      ),
-     JCIR_AMBIENT_TYPING_NAMES: frozenset = frozenset(
+     JCIR_AMBIENT_TYPING_NAMES: frozenset[str] = frozenset(
          {
              "Annotated",
              "AsyncIterable",

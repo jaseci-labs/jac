@@ -576,57 +576,70 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
     return (runs, events, wall, );
 }
 
+"""This measures the host's own precompile: its pass runs and the
+dependencies it hydrates. A module the kernel compiles costs the host none
+of that, so the measurement holds the compile on the host for its length."""
 test "the cold precompile path stays inside its work envelope" {
+    import from jaclang.project.kernel_compile { host_prepared, host_preparing }
     import from jaclang.dist.precompile_bytecode {
         precompile_unit,
         find_jac_files,
         _unit_program
     }
+    host_preparing("precompile work envelope");
     import from jaclang.compiler.frontend.codeinfo {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
-    with tempfile.TemporaryDirectory() as tmp {
-        pkg = os.path.join(tmp, "precompile_gate");
-        shutil.copytree(
-            PRECOMPILE_GATE, pkg, ignore=shutil.ignore_patterns(".jac", "_precompiled")
-        );
-        (no_cache, _, wall_none) = _precompile_units(pkg, rebuild=True);
-        (cold, events, wall_cold) = _precompile_units(pkg, rebuild=False);
-        shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
-        prior_default = get_effective_default_codespace_override();
-        set_effective_default_codespace("server");
-        started = time.perf_counter();
-        try {
-            for f in find_jac_files(pkg) {
-                assert precompile_unit(f, pkg, False, collect=False) is not None;
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            pkg = os.path.join(tmp, "precompile_gate");
+            shutil.copytree(
+                PRECOMPILE_GATE,
+                pkg,
+                ignore=shutil.ignore_patterns(".jac", "_precompiled")
+            );
+            (no_cache, _, wall_none) = _precompile_units(pkg, rebuild=True);
+            (cold, events, wall_cold) = _precompile_units(pkg, rebuild=False);
+            shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
+            prior_default = get_effective_default_codespace_override();
+            set_effective_default_codespace("server");
+            started = time.perf_counter();
+            try {
+                for f in find_jac_files(pkg) {
+                    assert precompile_unit(f, pkg, False, collect=False) is not None;
+                }
+            } finally {
+                set_effective_default_codespace(prior_default);
             }
-        } finally {
-            set_effective_default_codespace(prior_default);
+            wall_warm = time.perf_counter() - started;
+            prog: any = _unit_program[0] if _unit_program else None;
+            warm_runs = sum(prog.analysis.pass_runs.values())
+                if prog is not None
+                else 0;
+            publish(
+                "precompile-gate",
+                f"precompile gate x12 units: no-cache {no_cache} runs {wall_none:.2f}s, "
+                f"cold {cold} runs {wall_cold:.2f}s (hydrated {events.get(
+                    'dep_hydrate', 0
+                )}, boundary facts served {events.get('boundary_facts', 0)}), "
+                f"warm {warm_runs} runs {wall_warm:.2f}s"
+            );
+            assert cold <= GATE_COLD_MAX_RUNS , (
+                f"cold precompile did {cold} pass runs; the ceiling is {GATE_COLD_MAX_RUNS} "
+                "(recorded 706 against 1408 without the cache, including 140 newly explicit context/import/fact passes): closure work the cache used to take back is being redone"
+            );
+            assert cold <= GATE_COLD_MAX_RATIO * no_cache , (
+                f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "
+                f"(ratio {cold / max(no_cache, 1):.2f}, ceiling {GATE_COLD_MAX_RATIO})"
+            );
+            assert events.get("dep_hydrate", 0) >= 1 , f"the cold run hydrated nothing (events: {events})";
+            assert events.get("boundary_facts", 0) >= 1 , (
+                f"the cold run served no boundary facts from the cache (events: {events})"
+            );
+            assert warm_runs == 0 , f"the warm precompile ran {warm_runs} passes instead of re-wrapping";
         }
-        wall_warm = time.perf_counter() - started;
-        prog: any = _unit_program[0] if _unit_program else None;
-        warm_runs = sum(prog.analysis.pass_runs.values()) if prog is not None else 0;
-        publish(
-            "precompile-gate",
-            f"precompile gate x12 units: no-cache {no_cache} runs {wall_none:.2f}s, "
-            f"cold {cold} runs {wall_cold:.2f}s (hydrated {events.get(
-                'dep_hydrate', 0
-            )}, boundary facts served {events.get('boundary_facts', 0)}), "
-            f"warm {warm_runs} runs {wall_warm:.2f}s"
-        );
-        assert cold <= GATE_COLD_MAX_RUNS , (
-            f"cold precompile did {cold} pass runs; the ceiling is {GATE_COLD_MAX_RUNS} "
-            "(recorded 706 against 1408 without the cache, including 140 newly explicit context/import/fact passes): closure work the cache used to take back is being redone"
-        );
-        assert cold <= GATE_COLD_MAX_RATIO * no_cache , (
-            f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "
-            f"(ratio {cold / max(no_cache, 1):.2f}, ceiling {GATE_COLD_MAX_RATIO})"
-        );
-        assert events.get("dep_hydrate", 0) >= 1 , f"the cold run hydrated nothing (events: {events})";
-        assert events.get("boundary_facts", 0) >= 1 , (
-            f"the cold run served no boundary facts from the cache (events: {events})"
-        );
-        assert warm_runs == 0 , f"the warm precompile ran {warm_runs} passes instead of re-wrapping";
+    } finally {
+        host_prepared();
     }
 }

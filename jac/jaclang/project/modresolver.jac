@@ -202,6 +202,15 @@ def project_mounts_dir(project_root: str) -> str {
     return _mounts_entry(project_root)[0];
 }
 
+def enclosing_mounts(project_root: str) -> (str | None) {
+    mounts = os.path.dirname(os.path.dirname(os.path.normpath(project_root)));
+    if os.path.basename(mounts) == MOUNTS_DIR_NAME
+        and os.path.basename(os.path.dirname(mounts)) == '.jac' {
+        return mounts;
+    }
+    return None;
+}
+
 def project_mounts(project_root: str) -> (str | None) {
     (mounts, name) = _mounts_entry(project_root);
     if project_root not in _self_mounted {
@@ -260,7 +269,19 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
         paths.append(project_root);
     }
     for owner in (project_root, find_jac_project_root(None)) {
-        mounts = project_mounts(owner) if owner else None;
+        if not owner {
+            continue;
+        }
+        around = enclosing_mounts(owner);
+        if around {
+            paths.append(around);
+            nested = project_mounts_dir(owner);
+            if os.path.isdir(nested) {
+                paths.append(nested);
+            }
+            continue;
+        }
+        mounts = project_mounts(owner);
         if mounts {
             paths.append(mounts);
         }
@@ -286,8 +307,42 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     );
 }
 
+glob _CASE_BLIND_FS: list[bool] = [];
+
+def case_blind_filesystem -> bool {
+    if not _CASE_BLIND_FS {
+        probe = os.path.realpath(str(__file__));
+        folder = os.path.dirname(probe);
+        swapped = os.path.join(folder, os.path.basename(probe).swapcase());
+        _CASE_BLIND_FS.append(swapped != probe and os.path.exists(swapped));
+    }
+    return _CASE_BLIND_FS[0];
+}
+
+def named_exactly_any(candidate: str) -> bool {
+    if not case_blind_filesystem() {
+        return True;
+    }
+    folder = os.path.dirname(candidate) or ".";
+    wanted = os.path.basename(candidate);
+    try {
+        names = os.listdir(folder);
+    } except OSError {
+        return True;
+    }
+    for name in names {
+        if name == wanted or name.startswith(wanted + ".") {
+            return True;
+        }
+    }
+    return False;
+}
+
 def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     candidate = os.path.join(base, *parts);
+    if parts and not named_exactly_any(candidate) {
+        return None;
+    }
     if os.path.isdir(candidate) {
         if os.path.isfile(os.path.join(candidate, '__init__.jac')) {
             return (os.path.join(candidate, '__init__.jac'), 'jac');
@@ -569,7 +624,7 @@ def resolve_module(
         ) {
             origin = os.path.normpath(spec.origin);
             lang = language_of(origin);
-            if (lang != 'other') {
+            if (lang != 'other') and named_exactly_any(origin) {
                 return (origin, lang);
             }
         }

@@ -32,14 +32,14 @@ that pair genuinely has no assignment satisfying both.
 import contextlib;
 import io;
 import os;
-import subprocess;
-import tempfile;
 import from tests.support {
     TESTS_DIR,
     by_source_name,
-    jac_command,
     native_force_opts,
-    source_spelled
+    source_spelled,
+    sv_run,
+    na_run,
+    same_lines
 }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -79,59 +79,6 @@ def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict[str, any] {
     layout = by_source_name(get_layout_registry(ir, prog).layouts).get(name);
     assert layout is not None , f"no layout for {name}";
     return dict(layout.field_index);
-}
-
-def sv_run(fixture: str) -> str {
-    proc = subprocess.run(
-        jac_command("run", os.path.join(FIXTURES, fixture)),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert proc.returncode == 0 , f"sv run failed: {proc.stderr[-800:]
-        if proc.stderr
-        else '(empty)'}";
-    return proc.stdout;
-}
-
-def na_run(fixture: str) -> str {
-    out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
-    comp = subprocess.run(
-        jac_command(
-            "build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin
-        ),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-900:]
-        if comp.stderr
-        else '(empty)'}";
-    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
-    assert proc.returncode == 0 , f"binary exited {proc.returncode}: {proc.stderr[-400:]
-        if proc.stderr
-        else '(empty)'}";
-    return proc.stdout;
-}
-
-def same_lines(sv_text: str, na_text: str, what: str) {
-    sv = [
-        _l
-        for _l in sv_text.split("\n")
-        if _l.strip()
-    ];
-    na = [
-        _l
-        for _l in na_text.split("\n")
-        if _l.strip()
-    ];
-    assert sv , f"{what}: sv pathway produced no output";
-    assert len(sv) == len(na) , f"{what} line count: sv {len(sv)} vs na {len(na)}";
-    for idx in range(len(sv)) {
-        assert sv[idx] == na[idx] , f"{what} line {idx}: sv {sv[idx]!r} vs na {na[
-            idx
-        ]!r}";
-    }
 }
 
 test "a consumer subclass reads its imported base's fields with no seam" {
@@ -185,11 +132,9 @@ test "the subclass's vtable is prefix-compatible with the base's" {
 }
 
 test "inherited fields answer what the server pathway answers" {
-    same_lines(
-        sv_run("xmod_inherit_main.jac"),
-        na_run("xmod_inherit_main.jac"),
-        "inherited fields"
-    );
+    (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "xmod_inherit_main.jac"));
+    (na_out, _na_err) = na_run(os.path.join(FIXTURES, "xmod_inherit_main.jac"));
+    same_lines(sv_out, na_out, "inherited fields");
 }
 
 test "a vtable-less imported base and its subclass agree on the header" {
@@ -230,9 +175,7 @@ test "the flat pair answers what the server pathway answers" {
     # The offsets agreeing is not the same as the values being right: a
     # header fix that shifted both units consistently but wrongly would
     # still pass the layout assertions above.
-    same_lines(
-        sv_run("xmod_inherit_flat_main.jac"),
-        na_run("xmod_inherit_flat_main.jac"),
-        "vtable-less imported base"
-    );
+    (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "xmod_inherit_flat_main.jac"));
+    (na_out, _na_err) = na_run(os.path.join(FIXTURES, "xmod_inherit_flat_main.jac"));
+    same_lines(sv_out, na_out, "vtable-less imported base");
 }
