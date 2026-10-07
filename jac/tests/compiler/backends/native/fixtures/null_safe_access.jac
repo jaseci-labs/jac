@@ -123,3 +123,16 @@ with entry {
     }
     print("total", total, full.x);
 }
+
+import math;
+
+def module_probe(v: object) -> str {
+    if math?.pi and isinstance(v, A) {
+        return "a";
+    }
+    return "other";
+}
+
+with entry {
+    print("module", module_probe(A()), module_probe(3));
+}

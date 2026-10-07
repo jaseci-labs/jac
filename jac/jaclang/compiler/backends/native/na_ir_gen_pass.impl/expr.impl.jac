@@ -2325,10 +2325,34 @@ impl NaIRGenPass._recast_object(value: ir.Value, target: ir.Type) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
-    if nd.is_null_ok and not isinstance(nd.right, uni.FilterCompr) {
+    if nd.is_null_ok
+        and not isinstance(nd.right, uni.FilterCompr)
+        and self._null_safe_on_value(nd.target) {
         return self._codegen_null_safe_trailer(nd);
     }
     return self._codegen_plain_trailer(nd);
+}
+
+impl NaIRGenPass._null_safe_on_value(target: uni.Expr) -> bool {
+    import from jaclang.compiler.frontend.constant { SymbolType }
+    inner: uni.UniNode = target;
+    if isinstance(inner, uni.CfgExpr) {
+        inner = inner.expr;
+    }
+    if not isinstance(inner, uni.Name) or inner.sym is None {
+        return True;
+    }
+    kind = inner.sym.sym_type;
+    if kind == SymbolType.MODULE
+        or kind == SymbolType.OBJECT_ARCH
+        or kind == SymbolType.NODE_ARCH
+        or kind == SymbolType.EDGE_ARCH
+        or kind == SymbolType.WALKER_ARCH
+        or kind == SymbolType.ENUM_ARCH
+        or kind == SymbolType.TYPE {
+        return False;
+    }
+    return True;
 }
 
 impl NaIRGenPass._codegen_null_safe_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {

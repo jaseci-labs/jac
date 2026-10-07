@@ -1565,6 +1565,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_null_safe_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _null_safe_on_value(target: uni.Expr) -> bool;
     def _null_safe_type(found: ir.Type) -> ir.Type;
     def _null_safe_none(result_type: ir.Type) -> ir.Value;
     def _null_safe_field_load(field_ptr: ir.Value, field_name: str) -> ir.Value;

@@ -21,7 +21,8 @@ test "null-safe access answers None natively as the Python tier does" {
         "count -1 3",
         "index none 4",
         "temp True 4",
-        "total 750 5"
+        "total 750 5",
+        "module a other"
     ] {
         assert line in out , f"missing {line!r} in:\n{out}";
     }
