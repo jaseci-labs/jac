@@ -285,7 +285,11 @@ impl NaIRGenPass._elem_keys_of_annotation(
     if isinstance(ann, uni.AtomUnit) {
         return self._elem_keys_of_annotation(ann.value);
     }
-    if (isinstance(ann, uni.BinaryExpr) and getattr(ann.op, 'value', '') == "|") {
+    if (
+        isinstance(ann, uni.BinaryExpr)
+        and isinstance(ann.op, uni.Token)
+        and ann.op.value == "|"
+    ) {
         return (
             self._elem_keys_of_annotation(ann.left)
             or self._elem_keys_of_annotation(ann.right)
@@ -309,7 +313,11 @@ impl NaIRGenPass._elem_keys_of_annotation(
     }
     keys: list[str | None] = [];
     for e in elems {
-        while (isinstance(e, uni.BinaryExpr) and getattr(e.op, 'value', '') == "|") {
+        while (
+            isinstance(e, uni.BinaryExpr)
+            and isinstance(e.op, uni.Token)
+            and e.op.value == "|"
+        ) {
             e = e.left;
         }
         _ek: (str | None) = None;
@@ -334,7 +342,9 @@ impl NaIRGenPass._record_ret_facts(
     if _rt is None {
         return;
     }
-    if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+    if isinstance(_rt, uni.BinaryExpr)
+        and isinstance(_rt.op, uni.Token)
+        and _rt.op.value == "|" {
         _rt = _rt.left;
     }
     _rtb = _rt?.type;
