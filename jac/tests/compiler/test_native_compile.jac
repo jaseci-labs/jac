@@ -712,7 +712,6 @@ interface. The answers arrive inside the one run, so nothing is compiled
 twice and no question is guessed at up front."""
 test "a kernel compile asks the host for what it lacks and runs once" {
     import jaclang.project.kernel_compile as kernel_compile_mod;
-    import jaclang.project.kernel_snapshot as snapshot_mod;
     import from unittest.mock { patch }
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
@@ -723,10 +722,16 @@ test "a kernel compile asks the host for what it lacks and runs once" {
         ).inputs();
         assert not seed.imports , "the session's starting inputs resolved an import";
         asked: list[str] = [];
-        ask = snapshot_mod.KernelSnapshot.ask;
-        def recorded(session: any, method: str, key: str) -> str {
-            asked.append(method);
-            return ask(session, method, key);
+        take_session = kernel_compile_mod.kernel_snapshot;
+        def listening(*args: any, **kwargs: any) -> any {
+            session = take_session(*args, **kwargs);
+            answer = session.ask;
+            def recorded(method: str, key: str) -> str {
+                asked.append(method);
+                return answer(method, key);
+            }
+            session.ask = recorded;
+            return session;
         }
         runs: list[str] = [];
         run_compile = kernel_compile_mod.run_kernel_compile;
@@ -734,7 +739,7 @@ test "a kernel compile asks the host for what it lacks and runs once" {
             runs.append(str(args[1]));
             return run_compile(*args, **kwargs);
         }
-        with patch.object(snapshot_mod.KernelSnapshot, "ask", recorded) {
+        with patch.object(kernel_compile_mod, "kernel_snapshot", listening) {
             with patch.object(kernel_compile_mod, "run_kernel_compile", counted) {
                 outcome = kernel_compile_mod.kernel_compile(
                     active_host(),
@@ -1022,5 +1027,52 @@ test "a module that last compiled to native code skips the kernel session" {
         assert outcome is not None and not outcome.units;
         placed = outcome.analysis.module(entry_file);
         assert placed is not None and placed.native;
+    }
+}
+
+"""A typed package under site-packages is Python the checker reads. The
+kernel does not parse Python, so it asks the host for each such module's
+interface as it reaches it; the module that imports the package compiles in
+the kernel like any other instead of being handed to the host whole."""
+test "a typed third-party package reaches the kernel as interfaces" {
+    import sys;
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        project = base / 'proj';
+        site = base / 'site-packages';
+        lib = site / 'typedkit';
+        project.mkdir();
+        lib.mkdir(parents=True);
+        (project / 'jac.toml').write_text(CONFIG);
+        (lib / 'py.typed').write_text('');
+        (lib / '__init__.py').write_text('from typedkit.core import shout\n');
+        (lib / 'core.py').write_text(
+            'def shout(text: str) -> str:\n    return text.upper()\n'
+        );
+        (project / 'main.jac').write_text(
+            'import typedkit;\nnode Item { has label: str = ""; }\n'
+                + 'def loud(text: str) -> str { return typedkit.shout(text); }\n'
+                + 'with entry { root ++> Item(label="a"); print(loud("a")); }\n'
+        );
+        entry_file = str(project / 'main.jac');
+        sys.path.insert(0, str(site));
+        try {
+            expected = host_products(entry_file);
+            outcome = kernel_compile_mod.kernel_compile(
+                active_host(),
+                JacProgram(),
+                entry_file,
+                compile_options(),
+                in_process=True
+            );
+        } finally {
+            sys.path.remove(str(site));
+        }
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.misses , outcome.analysis.misses;
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None , outcome.analysis.modules;
+        assert_same_products(emitted, expected);
     }
 }

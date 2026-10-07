@@ -855,6 +855,78 @@ def _module_projection(source_path: str) -> str {
     return options.module_projection();
 }
 
+glob _WIRING_DIGESTS: dict[str, dict[str, str]] = {};
+
+def stored_wiring_digest(source_path: str) -> str {
+    import json;
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.driver.wiring {
+        arch_file_for,
+        is_arch_file,
+        wiring_digest_for
+    }
+    if is_arch_file(source_path) {
+        return "";
+    }
+    arch = arch_file_for(source_path);
+    if arch is None {
+        return wiring_digest_for(source_path);
+    }
+    root_dir = os.path.dirname(arch);
+    facts = active_host().project_facts(root_dir);
+    h = hashlib.sha256();
+    try {
+        with open(arch, "rb") as f {
+            h.update(f.read());
+        }
+    } except OSError {
+        return wiring_digest_for(source_path);
+    }
+    h.update(b"\0");
+    if facts is not None {
+        h.update((facts.package_name or "").encode());
+        for pattern in facts.arch_closed {
+            h.update(b"\0");
+            h.update(pattern.encode());
+        }
+    }
+    stamp = h.hexdigest();
+    relative = os.path.relpath(
+        os.path.realpath(source_path), os.path.realpath(root_dir)
+    );
+    table = _WIRING_DIGESTS.get(stamp);
+    store = os.path.join(
+        str(get_jir_cache_dir()), "wiring", stamp[:2], stamp + ".json"
+    );
+    if table is None {
+        table = {};
+        try {
+            with open(store, "r", encoding="utf-8") as f {
+                held = json.load(f);
+            }
+            if isinstance(held, dict) {
+                table = {str(k): str(v) for (k, v) in held.items()};
+            }
+        } except (OSError, ValueError) {}
+        _WIRING_DIGESTS[stamp] = table;
+    }
+    known = table.get(relative);
+    if known is not None {
+        return known;
+    }
+    digest = wiring_digest_for(source_path);
+    table[relative] = digest;
+    try {
+        os.makedirs(os.path.dirname(store), exist_ok=True);
+        scratch_file = store + f".{os.getpid()}.tmp";
+        with open(scratch_file, "w", encoding="utf-8") as f {
+            json.dump(table, f);
+        }
+        os.replace(scratch_file, store);
+    } except OSError {}
+    return digest;
+}
+
 def unit_source_digest(path: str) -> str {
     """What one unit contributes to a kernel's inputs: its source with its
     annexes and the wiring that shapes its imports. Unlike the module key,
@@ -910,8 +982,7 @@ def compute_module_key(source_path: str) -> str {
         h.update(rel.encode());
         h.update(digest.encode());
     }
-    import from jaclang.compiler.driver.wiring { wiring_digest_for }
-    h.update(wiring_digest_for(source_path).encode());
+    h.update(stored_wiring_digest(source_path).encode());
     return h.hexdigest();
 }
 
@@ -1070,7 +1141,7 @@ def _texts_of_spans(real: str, text: str, rows: list[str]) -> dict[str, list[str
     texts: dict[str, list[str]] = {};
     for row in rows {
         parts = row.split(DEF_DEP_SEP);
-        if len(parts) != 3 or parts[0] != real {
+        if len(parts) != 3 or parts[0] != real or not parts[1] {
             continue;
         }
         (start, _, stop) = parts[2].partition(",");

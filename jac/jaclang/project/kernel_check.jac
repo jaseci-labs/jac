@@ -13,7 +13,8 @@ import from jaclang.compiler.passes.context { Alert }
 import from jaclang.project.kernel_snapshot { host_deferred, kernel_analysis }
 
 glob KERNEL_ANALYZE_ENV: str = "JAC_KERNEL_ANALYZE",
-     _PASS_TYPES: dict[str, type] = {};
+     _PASS_TYPES: dict[str, type] = {},
+     _STAND_INS: dict[str, type] = {};
 
 obj KernelCheck {
     has outcome: (AnalysisReport | None) = None,
@@ -58,27 +59,17 @@ def pass_type_named(name: str) -> type {
         return found;
     }
     found = loaded_pass_type(name);
-    if found is None {
-        import from jaclang.compiler.driver.pipeline {
-            get_analysis_sched,
-            get_boundary_analysis_sched,
-            get_ir_gen_sched,
-            get_symtab_ir_sched
-        }
-        try {
-            get_symtab_ir_sched();
-            get_analysis_sched();
-            get_boundary_analysis_sched();
-            get_ir_gen_sched();
-        } except Exception {}
-        found = loaded_pass_type(name);
-    }
     if found is not None {
         _PASS_TYPES[name] = found;
         return found;
     }
-    import from jaclang.compiler.passes.context { CompilerPass }
-    return type(name or "KernelPass", (CompilerPass, ), {});
+    stand_in = _STAND_INS.get(name);
+    if stand_in is None {
+        import from jaclang.compiler.passes.context { CompilerPass }
+        stand_in = type(name or "KernelPass", (CompilerPass, ), {});
+        _STAND_INS[name] = stand_in;
+    }
+    return stand_in;
 }
 
 def span_of(record: DiagSpan) -> Span {

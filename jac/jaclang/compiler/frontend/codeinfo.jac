@@ -794,6 +794,16 @@ def is_shared_runtime_module(file_path: str) -> bool {
     if not file_path {
         return False;
     }
+    stem = os.path.basename(file_path);
+    named = False;
+    for module in SHARED_RUNTIME_MODULES {
+        if stem == module.rpartition('.')[2] + '.jac' {
+            named = True;
+        }
+    }
+    if not named {
+        return False;
+    }
     path = os.path.realpath(file_path);
     for pkg in bundled_pkg_roots() {
         package = os.path.realpath(pkg);

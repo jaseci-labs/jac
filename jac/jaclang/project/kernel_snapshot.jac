@@ -56,6 +56,13 @@ glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
          "resolve_npm_package",
          "npm_declarations"
      ),
+     PATH_QUESTIONS: tuple[str, ...] = (
+         "project_root",
+         "project_facts",
+         "workspace",
+         "app_for_path",
+         "lint_settings"
+     ),
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
@@ -345,16 +352,8 @@ obj KernelSnapshot(HostAsker) {
             }
         } elif method == "resolve_local_module" and len(fields) == 2 {
             learner.resolve_local_module(fields[0], fields[1].split("/"));
-        } elif method == "project_root" {
-            learner.project_root(key);
-        } elif method == "project_facts" {
-            learner.project_facts(key);
-        } elif method == "workspace" {
-            learner.workspace(key);
-        } elif method == "app_for_path" {
-            learner.app_for_path(key);
-        } elif method == "lint_settings" {
-            learner.lint_settings(key);
+        } elif method in PATH_QUESTIONS {
+            self.path_answers(learner, method, key);
         } elif method == "check_settings" {
             learner.check_settings(key);
         } elif method == "native_verdict" {
@@ -384,6 +383,31 @@ obj KernelSnapshot(HostAsker) {
             learner.inputs.emit_of[key] = self.emits(key);
         }
         return "";
+    }
+
+    def path_answer(learner: KernelHost, method: str, path: str) {
+        if method == "project_root" {
+            learner.project_root(path);
+        } elif method == "project_facts" {
+            learner.project_facts(path);
+        } elif method == "workspace" {
+            learner.workspace(path);
+        } elif method == "app_for_path" {
+            learner.app_for_path(path);
+        } elif method == "lint_settings" {
+            learner.lint_settings(path);
+        }
+    }
+
+    def path_answers(learner: KernelHost, method: str, path: str) {
+        self.path_answer(learner, method, path);
+        for related in PATH_QUESTIONS {
+            if related != method {
+                try {
+                    self.path_answer(learner, related, path);
+                } except Exception {}
+            }
+        }
     }
 
     def serve_interface(learner: KernelHost, module_file: str) {
@@ -527,6 +551,9 @@ obj KernelEntry {
         take: str;
 }
 
+glob ASK_FRAME: bytes = b"A",
+     REPORT_FRAME: bytes = b"R";
+
 glob ANALYZE_ENTRY: KernelEntry = KernelEntry(
          call="jc_analyze", take="jc_take_analysis"
      ),
@@ -539,7 +566,8 @@ def call_kernel(
     kind: KernelEntry,
     inputs_json: str,
     path: str,
-    source: (str | None)
+    source: (str | None),
+    ask: (Callable[[str, str], str] | None) = None
 ) -> str {
     import from ctypes { c_int64, c_void_p }
     lib = kernel.lib;
@@ -549,6 +577,26 @@ def call_kernel(
     take = getattr(lib, kind.take);
     take.argtypes = [];
     take.restype = c_void_p;
+
+    def deliver(method: str, key: str) -> None {
+        data = ask(method, key).encode() if ask is not None else b"";
+        if not data {
+            return;
+        }
+        held = lib.jac_str_new(data, len(data));
+        try {
+            lib.jc_answer(c_void_p(held), c_void_p(held), c_int64(len(data)));
+        } finally {
+            lib.jac_release(held);
+        }
+    }
+    if ask is not None {
+        lib.jc_set_asker.argtypes = [c_void_p];
+        lib.jc_set_asker.restype = c_int64;
+        lib.jc_answer.argtypes = [c_void_p, c_void_p, c_int64];
+        lib.jc_answer.restype = c_int64;
+        lib.jc_set_asker(c_void_p(id(deliver)));
+    }
     handles: list[int] = [];
     args: list[object] = [];
     try {
@@ -564,8 +612,45 @@ def call_kernel(
         for handle in handles {
             lib.jac_release(handle);
         }
+        if ask is not None {
+            lib.jc_set_asker(c_void_p(0));
+        }
     }
     return kernel._take(take()) or "";
+}
+
+def send_frame(fd: int, tag: bytes, data: bytes) {
+    packet = tag + len(data).to_bytes(8, "little") + data;
+    sent = 0;
+    while sent < len(packet) {
+        sent += os.write(fd, packet[sent:]);
+    }
+}
+
+def read_exactly(fd: int, size: int) -> (bytes | None) {
+    parts: list[bytes] = [];
+    left = size;
+    while left > 0 {
+        part = os.read(fd, min(left, 1 << 20));
+        if not part {
+            return None;
+        }
+        parts.append(part);
+        left -= len(part);
+    }
+    return b"".join(parts);
+}
+
+def read_frame(fd: int) -> (tuple[bytes, bytes] | None) {
+    head = read_exactly(fd, 9);
+    if head is None {
+        return None;
+    }
+    data = read_exactly(fd, int.from_bytes(head[1:], "little"));
+    if data is None {
+        return None;
+    }
+    return (head[:1], data);
 }
 
 def call_kernel_isolated(
@@ -573,34 +658,66 @@ def call_kernel_isolated(
     kind: KernelEntry,
     inputs_json: str,
     path: str,
-    source: (str | None)
+    source: (str | None),
+    ask: (Callable[[str, str], str] | None) = None
 ) -> str {
     if not hasattr(os, "fork") {
-        return call_kernel(kernel, kind, inputs_json, path, source);
+        return call_kernel(kernel, kind, inputs_json, path, source, ask);
     }
-    (read_fd, write_fd) = os.pipe();
+    (report_in, report_out) = os.pipe();
+    (answer_in, answer_out) = os.pipe();
     pid = os.fork();
     if pid == 0 {
         code = 0;
         try {
-            os.close(read_fd);
-            payload = call_kernel(kernel, kind, inputs_json, path, source).encode(
+            os.close(report_in);
+            os.close(answer_out);
+
+            def relay(method: str, key: str) -> str {
+                send_frame(
+                    report_out, ASK_FRAME, (method + "\0" + key).encode("utf-8")
+                );
+                answered = read_frame(answer_in);
+                return answered[1].decode("utf-8") if answered is not None else "";
+            }
+            payload = call_kernel(
+                kernel,
+                kind,
+                inputs_json,
+                path,
+                source,
+                relay if ask is not None else None
+            ).encode(
                 "utf-8"
             );
-            sent = 0;
-            while sent < len(payload) {
-                sent += os.write(write_fd, payload[sent:]);
-            }
-            os.close(write_fd);
+            send_frame(report_out, REPORT_FRAME, payload);
+            os.close(report_out);
         } except BaseException {
             code = 1;
         } finally {
             os._exit(code);
         }
     }
-    os.close(write_fd);
-    with os.fdopen(read_fd, "rb") as reader {
-        payload = reader.read();
+    os.close(report_out);
+    os.close(answer_in);
+    payload = b"";
+    try {
+        while True {
+            frame = read_frame(report_in);
+            if frame is None {
+                break;
+            }
+            if frame[0] == REPORT_FRAME {
+                payload = frame[1];
+                break;
+            }
+            (method, _, key) = frame[1].decode("utf-8").partition("\0");
+            answer = ask(method, key) if ask is not None else "";
+            send_frame(answer_out, ASK_FRAME, answer.encode("utf-8"));
+        }
+    } except OSError {} finally {
+        os.close(report_in);
+        os.close(answer_out);
     }
     (_, status) = os.waitpid(pid, 0);
     if os.WIFSIGNALED(status) {
@@ -703,32 +820,8 @@ def call_with_asker(
     source: (str | None),
     isolated: bool
 ) -> str {
-    import from ctypes { c_int64, c_void_p }
-    lib = kernel.lib;
-    lib.jc_set_asker.argtypes = [c_void_p];
-    lib.jc_set_asker.restype = c_int64;
-    lib.jc_answer.argtypes = [c_void_p, c_void_p, c_int64];
-    lib.jc_answer.restype = c_int64;
-
-    def deliver(method: str, key: str) -> None {
-        data = snapshot.ask(method, key).encode();
-        if not data {
-            return;
-        }
-        handle = lib.jac_str_new(data, len(data));
-        try {
-            lib.jc_answer(c_void_p(handle), c_void_p(handle), c_int64(len(data)));
-        } finally {
-            lib.jac_release(handle);
-        }
-    }
     call = call_kernel_isolated if isolated else call_kernel;
-    lib.jc_set_asker(c_void_p(id(deliver)));
-    try {
-        return call(kernel, kind, snapshot.text(), path, source);
-    } finally {
-        lib.jc_set_asker(c_void_p(0));
-    }
+    return call(kernel, kind, snapshot.text(), path, source, snapshot.ask);
 }
 
 def kernel_analysis(

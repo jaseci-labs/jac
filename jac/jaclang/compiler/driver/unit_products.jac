@@ -69,6 +69,9 @@ def note_definition_span(rows: list[str], definition: uni.UniNode, qualname: str
 }
 
 def dependency_span_rows(module: uni.Module, program: JacProgram) -> list[str] {
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.types.stubcat.reader { CatModule }
     rows: list[str] = [];
     seen: set[str] = set();
     for (path, _) in module.ct_def_deps {
@@ -77,9 +80,17 @@ def dependency_span_rows(module: uni.Module, program: JacProgram) -> list[str] {
         }
         seen.add(path);
         dep = program.mod.hub.get(path);
-        if dep is not None {
-            rows.extend(definition_span_rows(dep));
+        if dep is None {
+            dep = program_for(path, program).mod.hub.get(path);
         }
+        if dep is None or dep.stub_only or isinstance(dep, CatModule) {
+            continue;
+        }
+        rows.append(path + DEF_DEP_SEP + DEF_DEP_SEP + "0,0");
+        for annex in active_host().annex_files(path, ".impl.jac") {
+            rows.append(os.path.realpath(annex) + DEF_DEP_SEP + DEF_DEP_SEP + "0,0");
+        }
+        rows.extend(definition_span_rows(dep));
     }
     return rows;
 }
