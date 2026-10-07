@@ -595,9 +595,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             _gen_raised = True;
             if self._na_debug_on() {
                 import sys;
-                import traceback;
-                sys.stderr.write(f"NA_DEBUG raise {name}\n");
-                traceback.print_exc(file=sys.stderr);
+                sys.stderr.write(
+                    f"NA_DEBUG raise {name}: {type(_gen_exc).__name__}: {_gen_exc}\n"
+                );
             }
             self.emit(
                 E5092,
@@ -669,9 +669,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     } except Exception as _codegen_exc {
         if self._na_debug_on() {
             import sys;
-            import traceback;
-            sys.stderr.write(f"NA_DEBUG raise {name}\n");
-            traceback.print_exc(file=sys.stderr);
+            sys.stderr.write(
+                f"NA_DEBUG raise {name}: "
+                f"{type(_codegen_exc).__name__}: {_codegen_exc}\n"
+            );
         }
         self.emit(
             E5092,
@@ -1658,7 +1659,6 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
         return;
     }
     i64 = ir.IntType(64);
-    import re;
 
     import from jaclang.compiler.frontend.codeinfo {
         native_entry_name,
