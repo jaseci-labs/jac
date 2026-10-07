@@ -78,9 +78,9 @@ impl NaIRGenPass._emit_clib_c_trampoline(
         return cached;
     }
     n = len(self.clib_trampoline_funcs);
-    tramp = ir.Function(
-        self.llvm_module, c_fn_ty.pointee, name=f"{jac_fn.name}.__clibcb.{n}"
-    );
+    c_sig = c_fn_ty.pointee;
+    assert isinstance(c_sig, ir.FunctionType);
+    tramp = ir.Function(self.llvm_module, c_sig, name=f"{jac_fn.name}.__clibcb.{n}");
     tramp.linkage = "internal";
     `entry = tramp.append_basic_block("entry");
     saved_builder = self._builder;
@@ -102,7 +102,7 @@ impl NaIRGenPass._emit_clib_c_trampoline(
         }
     }
     result = self.builder.call(jac_fn, call_args, name="clibcb.call");
-    c_ret = c_fn_ty.pointee.return_type;
+    c_ret = c_sig.return_type;
     if isinstance(c_ret, ir.VoidType) {
         self.builder.ret_void();
     } elif isinstance(jac_fn.function_type.return_type, ir.VoidType) {

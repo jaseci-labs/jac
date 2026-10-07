@@ -498,7 +498,9 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         _lam_errs0 = len(self.ctx.errors_had);
         tail = body if isinstance(body, uni.Expr) else nd.tail_return_expr();
         if tail is None {
-            self._codegen_body(body);
+            if not isinstance(body, uni.Expr) {
+                self._codegen_body(body);
+            }
         } else {
             body_value = self._codegen_expr(tail);
             if isinstance(ret_type, ir.VoidType) {
@@ -1327,7 +1329,7 @@ impl NaIRGenPass._codegen_compare_link(
             tin_val = self.builder.load(right, name="tuple.in.val");
         }
         if tin_struct is not None and tin_val is not None {
-            n = len(tin_struct.elements);
+            n = len(tin_struct.members());
             if n > 0 {
                 i64 = ir.IntType(64);
                 i1_t = ir.IntType(1);

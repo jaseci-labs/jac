@@ -914,7 +914,7 @@ impl NativeStrEmitter._emit_affix(
     i8p = ir.IntType(8).as_pointer();
     candidates: list[ir.Value] = [];
     if isinstance(args[0].type, ir.LiteralStructType) {
-        for (index, typ) in enumerate(args[0].type.elements) {
+        for (index, typ) in enumerate(args[0].type.members()) {
             if typ != i8p {
                 return None;
             }
@@ -2551,7 +2551,7 @@ impl NativeBytesEmitter._emit_affix(
         if any(typ != bytes_ptr for typ in args[0].type.elements) {
             return None;
         }
-        for index in range(len(args[0].type.elements)) {
+        for index in range(len(args[0].type.members())) {
             candidates.append(b.extract_value(args[0], index, name="affix.item"));
         }
     } elif p._is_bytes_value(args[0]) {
@@ -3557,7 +3557,7 @@ impl NativeListEmitter._emit_value_sort(
     length = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
     data = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]));
     assert isinstance(data.type, ir.PointerType) and not data.type.is_opaque;
-    elem_type = data.type.pointee;
+    elem_type = data.type.pointee_type;
     itemsize = p._abi_sizeof(elem_type);
     checked_elem: (TypeBase | None) = None;
     for source_node in (ctx.receiver_node, ctx.call_node) {
@@ -4919,7 +4919,7 @@ impl NativeTupleEmitter.emit_count(
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    n = len(st.elements);
+    n = len(st.members());
     count: ir.Value = ir.Constant(i64, 0);
     val = args[0];
     for i in range(n) {
@@ -4953,7 +4953,7 @@ impl NativeTupleEmitter.emit_index(
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    n = len(st.elements);
+    n = len(st.members());
     val = args[0];
 
     result: ir.Value = ir.Constant(i64, -1);

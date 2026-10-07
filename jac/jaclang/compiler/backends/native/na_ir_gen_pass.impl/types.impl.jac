@@ -239,7 +239,7 @@ impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
         or not isinstance(lowered.pointee, ir.LiteralStructType) {
         return None;
     }
-    elems = lowered.pointee.elements;
+    elems = lowered.pointee.members();
     return f"Tuple.{len(elems)}." + ".".join([str(x) for x in elems]);
 }
 
@@ -2976,7 +2976,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             and target_type?.pointee
             and isinstance(target_type.pointee, ir.LiteralStructType)
             and val.type != target_type.pointee
-            and len(val.type.elements) == len(target_type.pointee.elements) {
+            and len(val.type.members()) == len(target_type.pointee.members()) {
             val = self._coerce_tuple_to_struct(val, target_type.pointee);
         }
         if target_type?.pointee and target_type.pointee == val.type {
@@ -4126,14 +4126,15 @@ impl NaIRGenPass._emit_comparison(
         if _lp is not None and _rp is not None {
             _sc3 = self._call_str_cmp3(self.builder, _lp[0], _lp[1], _rp[0], _rp[1]);
             _z32c = ir.Constant(ir.IntType(32), 0);
-            _cmp_op = {
+            _cmp_ops: dict[str, str] = {
                 Tok.EE: "==",
                 Tok.NE: "!=",
                 Tok.LT: "<",
                 Tok.GT: ">",
                 Tok.LTE: "<=",
                 Tok.GTE: ">="
-            }[op];
+            };
+            _cmp_op = _cmp_ops[op];
             return self.builder.icmp_signed(_cmp_op, _sc3, _z32c, name="scmp3");
         }
     }
@@ -4180,7 +4181,7 @@ impl NaIRGenPass._emit_comparison(
         if tcmp_struct is not None
             and tcmp_left_val is not None
             and tcmp_right_val is not None {
-            n = len(tcmp_struct.elements);
+            n = len(tcmp_struct.members());
             i1_t = ir.IntType(1);
             if op == Tok.EE or op == Tok.NE {
                 _tup_eq_args: list[TypeBase] = self._agg_key_args(key_ret, "tuple")
@@ -5470,7 +5471,7 @@ impl NaIRGenPass._sort_key_supported_d(ty: ir.Type, depth: int) -> bool {
     if ty.pointee == ir.IntType(8) {
         return False;
     }
-    return self._sort_key_supported_d(ty.pointee, depth + 1);
+    return self._sort_key_supported_d(ty.pointee_type, depth + 1);
 }
 
 impl NaIRGenPass._sort_key_return_type(nd: (uni.UniNode | None)) -> (TypeBase | None) {

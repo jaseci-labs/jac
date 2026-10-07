@@ -88,7 +88,7 @@ impl NaIRGenPass._c_load_scalar(slot: ir.Value, t: any, name: str) -> ir.Value {
 impl NaIRGenPass._c_store_scalar(value: ir.Value, slot: ir.Value, t: any) -> None {
     slot_type = slot.type;
     assert isinstance(slot_type, ir.PointerType);
-    want: ir.Type = slot_type.pointee;
+    want: ir.Type = slot_type.pointee_type;
     if isinstance(t, ClassType) and t.shared.class_name == "bool" {
         flag = self._to_bool(value);
         self.builder.store(self.builder.zext(flag, want, name="c.bool.byte"), slot);

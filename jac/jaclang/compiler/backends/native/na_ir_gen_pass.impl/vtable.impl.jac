@@ -1521,7 +1521,7 @@ impl NaIRGenPass._runtime_class_arms(
         val = self.builder.load(val, name="isa.tgts");
     }
     out: list[ir.Value] = [];
-    for i in range(len(st.elements)) {
+    for i in range(len(st.members())) {
         if st.elements[i] != i8p {
             return none_pair;
         }

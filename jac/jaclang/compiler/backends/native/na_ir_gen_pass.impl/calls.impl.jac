@@ -289,11 +289,15 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if (_tup_ptr or _tup_val) and _tv is not None {
                 _sp32 = ir.IntType(32);
-                _tup_elems: tuple[ir.Type, ...] = ();
+                _tup_elems: list[ir.Type] = [];
                 if _tup_ptr and isinstance(_tt, ir.PointerType) {
-                    _tup_elems = _tt.pointee.elements;
+                    _tup_struct = _tt.pointee;
+                    if not isinstance(_tup_struct, ir.Aggregate) {
+                        raise TypeError(f"spread source {_tt} is not a tuple");
+                    }
+                    _tup_elems = _tup_struct.members();
                 } elif isinstance(_tt, ir.LiteralStructType) {
-                    _tup_elems = _tt.elements;
+                    _tup_elems = _tt.members();
                 }
                 for (_ei, _et) in enumerate(_tup_elems) {
                     if _tup_ptr {

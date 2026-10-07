@@ -6,7 +6,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     declared_fields: list[ir.Type] = [];
     if isinstance(declared, ir.PointerType)
         and isinstance(declared.pointee, ir.LiteralStructType)
-        and len(declared.pointee.elements) == len(nd.values) {
+        and len(declared.pointee.members()) == len(nd.values) {
         declared_fields = list(declared.pointee.elements);
     }
 
@@ -104,7 +104,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
         if struct_type is None {
             return False;
         }
-        if len(targets) != len(struct_type.elements) {
+        if len(targets) != len(struct_type.members()) {
             return False;
         }
     }
@@ -118,7 +118,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
     rc_ok = (not is_value) or not self._nogc_headerless();
     pending_old: list[ir.Value] = [];
     for (i, target) in enumerate(targets) {
-        if struct_type is not None and i >= len(struct_type.elements) {
+        if struct_type is not None and i >= len(struct_type.members()) {
             break;
         }
         var_name = self._get_name(target);
@@ -226,7 +226,7 @@ impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
 impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list[int] {
     return [
         index
-        for (index, element) in enumerate(struct_type.elements)
+        for (index, element) in enumerate(struct_type.members())
         if self._is_reference_type(element)
     ];
 }
@@ -361,11 +361,11 @@ impl NaIRGenPass._coerce_tuple_to_struct(
         return val;
     }
     if val.type == target_struct
-        or len(val.type.elements) != len(target_struct.elements) {
+        or len(val.type.members()) != len(target_struct.members()) {
         return val;
     }
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
-    for i in range(len(target_struct.elements)) {
+    for i in range(len(target_struct.members())) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
         tgt_ty = target_struct.elements[i];
         if fld.type != tgt_ty {
@@ -390,7 +390,7 @@ impl NaIRGenPass._codegen_tuple_index(
     if idx is None {
         return None;
     }
-    if idx < 0 or idx >= len(struct_type.elements) {
+    if idx < 0 or idx >= len(struct_type.members()) {
         return None;
     }
 

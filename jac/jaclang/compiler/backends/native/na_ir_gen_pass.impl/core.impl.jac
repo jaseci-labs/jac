@@ -806,9 +806,9 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_struct: (str | None) = None;
         ret_tuple: (NativeTupleLayout | None) = None;
         if isinstance(func.function_type.return_type, ir.PointerType) {
-            ret_struct = struct_names.get(func.function_type.return_type.pointee);
+            ret_struct = struct_names.get(func.function_type.return_type.pointee_type);
 
-            tkey = tuple_keys.get(func.function_type.return_type.pointee)
+            tkey = tuple_keys.get(func.function_type.return_type.pointee_type)
                 if ret_type.startswith("Tuple")
                 else None;
             if tkey is not None {
@@ -877,7 +877,7 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_type = self._llvm_type_str(func.function_type.return_type, pointee_names);
         ret_struct: (str | None) = None;
         if isinstance(func.function_type.return_type, ir.PointerType) {
-            ret_struct = struct_names.get(func.function_type.return_type.pointee);
+            ret_struct = struct_names.get(func.function_type.return_type.pointee_type);
         }
         layout.methods[mname] = NativeFuncLayout(
             name=mname,

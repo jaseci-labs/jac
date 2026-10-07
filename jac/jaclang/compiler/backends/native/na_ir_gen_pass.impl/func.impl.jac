@@ -703,7 +703,9 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         }
         self._attach_di_subprogram(func, symbol, line);
 
-        exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
+        exc_state_type = self._exc_state_type;
+        assert exc_state_type is not None;
+        exc_state = self.builder.alloca(exc_state_type, name="exc.state");
         self.builder.call(self._exc_push_fn, [exc_state]);
         env_ptr = self.builder.gep(
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"

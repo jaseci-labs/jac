@@ -265,7 +265,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     brh.call(compact_order_fn, [d_rh]);
 
     ok_a = brh.alloca(key_type, name="ok");
-    ov_a = brh.alloca(val_type, name="ov") if has_vals else None;
+    ov_a = brh.alloca(_vt, name="ov") if has_vals else None;
     nh2_a = brh.alloca(i8, name="nh2");
     rslot_a = brh.alloca(i64, name="rsl");
     si_a = brh.alloca(i64, name="si");
@@ -710,9 +710,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         } elif isinstance(_vt, ir.PointerType) {
             bdel = self._emit_elem_slot_drop(bdel, remove_fn, d_rm, layout, 1, vv_rm);
         }
-        bdel.store(
-            ir.Constant(val_type, None), bdel.gep(va_rm, [res_rm], name="vclear")
-        );
+        bdel.store(ir.Constant(_vt, None), bdel.gep(va_rm, [res_rm], name="vclear"));
     }
     bdel.store(
         ir.Constant(i8, HASH_CTRL_TOMBSTONE), bdel.gep(ca_rm, [res_rm], name="csp")
@@ -727,7 +725,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
 
     pop_fn: any = None;
     if has_vals {
-        pop_fnty = ir.FunctionType(val_type, [cont_ptr_type, key_type, i64]);
+        pop_fnty = ir.FunctionType(_vt, [cont_ptr_type, key_type, i64]);
         pop_fn = ir.Function(self.llvm_module, pop_fnty, name=f"{_pre}_pop_ph_{_safe}");
         pop_fn.linkage = "private";
         pop_fn.args[0].name = "cont";
@@ -760,9 +758,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         );
         v_out = bdp.load(bdp.gep(va_p, [res_p], name="vsp"), name="v");
         if self._elem_kind(_vt) != "raw" {
-            bdp.store(
-                ir.Constant(val_type, None), bdp.gep(va_p, [res_p], name="vclear")
-            );
+            bdp.store(ir.Constant(_vt, None), bdp.gep(va_p, [res_p], name="vclear"));
         }
         if isinstance(key_type, ir.PointerType) {
             kv_p = bdp.load(bdp.gep(ka_p, [res_p], name="kvp"), name="kv");
@@ -790,11 +786,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
         if isinstance(val_type, ir.PointerType) {
             bmp.ret(ir.Constant(val_type, None));
         } elif _vt_dyn?.elements and _vt_dyn.elements {
-            bmp.ret(
-                ir.Constant(val_type, [self._zero_const(e) for e in _vt_dyn.elements])
-            );
+            bmp.ret(ir.Constant(_vt, [self._zero_const(e) for e in _vt_dyn.elements]));
         } else {
-            bmp.ret(ir.Constant(val_type, 0));
+            bmp.ret(ir.Constant(_vt, 0));
         }
     }
 
@@ -868,7 +862,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
             self._emit_elem_release(blv_cl, _vt, vv_cl);
         }
         blv_cl.store(
-            ir.Constant(val_type, None), blv_cl.gep(va_cl, [si_v_cl], name="vclear")
+            ir.Constant(_vt, None), blv_cl.gep(va_cl, [si_v_cl], name="vclear")
         );
     }
     blv_cl.branch(cl_zero);
@@ -988,7 +982,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         lookup_builder.ret(ir.Constant(slot_type, None));
         core["lookup_ph"] = lookup_fn;
 
-        get_fnty = ir.FunctionType(val_type, [cont_ptr_type, key_type, i64]);
+        get_fnty = ir.FunctionType(_vt, [cont_ptr_type, key_type, i64]);
         get_fn: any = ir.Function(
             self.llvm_module, get_fnty, name=f"{_pre}_get_ph_{_safe}"
         );
@@ -1010,15 +1004,13 @@ impl NaIRGenPass._emit_hash_core_helpers(
         if isinstance(val_type, ir.PointerType) {
             bmi.ret(ir.Constant(val_type, None));
         } elif _vt_dyn?.elements and _vt_dyn.elements {
-            bmi.ret(
-                ir.Constant(val_type, [self._zero_const(e) for e in _vt_dyn.elements])
-            );
+            bmi.ret(ir.Constant(_vt, [self._zero_const(e) for e in _vt_dyn.elements]));
         } else {
-            bmi.ret(ir.Constant(val_type, 0));
+            bmi.ret(ir.Constant(_vt, 0));
         }
         core["get_ph"] = get_fn;
 
-        get_val_fnty = ir.FunctionType(val_type, [cont_ptr_type, i64]);
+        get_val_fnty = ir.FunctionType(_vt, [cont_ptr_type, i64]);
         get_val_fn: any = ir.Function(
             self.llvm_module, get_val_fnty, name=f"{_pre}_get_val_{_safe}"
         );
@@ -1059,10 +1051,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
             bvoob.ret(ir.Constant(val_type, None));
         } elif _vt_dyn?.elements and _vt_dyn.elements {
             bvoob.ret(
-                ir.Constant(val_type, [self._zero_const(e) for e in _vt_dyn.elements])
+                ir.Constant(_vt, [self._zero_const(e) for e in _vt_dyn.elements])
             );
         } else {
-            bvoob.ret(ir.Constant(val_type, 0));
+            bvoob.ret(ir.Constant(_vt, 0));
         }
         core["get_val"] = get_val_fn;
     }
@@ -1249,7 +1241,7 @@ impl NaIRGenPass._tuple_key_fields(key_type: ir.Type) -> list[tuple[int, str]] |
     }
     i8p = ir.IntType(8).as_pointer();
     out: list[tuple[int, str]] = [];
-    for (i, ety) in enumerate(pointee.elements) {
+    for (i, ety) in enumerate(pointee.members()) {
         if isinstance(ety, ir.IntType) {
             out.append((i, "int"));
         } elif isinstance(ety, ir.DoubleType) {
@@ -1328,7 +1320,11 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
     sig = "";
     for (i, kind) in fields {
         if kind == "int" {
-            sig += f"i{struct_type.elements[i].width}";
+            int_field = struct_type.members()[i];
+            if not isinstance(int_field, ir.IntType) {
+                raise TypeError(f"tuple key field {i} is not an integer");
+            }
+            sig += f"i{int_field.width}";
         } elif kind == "f64" {
             sig += "f";
         } elif kind == "str" {
@@ -1336,10 +1332,13 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
         } elif kind == "jacstr" {
             sig += "j";
         } elif kind == "tuple" {
-            element = struct_type.elements[i];
+            element = struct_type.members()[i];
             nested = element.pointee
                 if isinstance(element, ir.PointerType)
                 else element;
+            if not isinstance(nested, ir.LiteralStructType) {
+                raise TypeError(f"tuple key field {i} is not a tuple");
+            }
             storage = "p" if isinstance(element, ir.PointerType) else "v";
             sig += "n" + storage + self._tuple_spec_name(nested) + "e";
         } else {

@@ -75,7 +75,7 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if not isinstance(allocation_type, ir.PointerType) {
             continue;
         }
-        slot_ty = allocation_type.pointee;
+        slot_ty = allocation_type.pointee_type;
         if slot_ty == self.jacval_type {
             if name not in self.closure_cell_handles {
                 self._emit_slot_clear(alloca, op="last_use");
@@ -505,7 +505,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                                 self._emit_take_ref(_tup_cell_val, op="return", loc="");
                             } else {
                                 self.builder.store(
-                                    ir.Constant(tup_alloca.type.pointee, None),
+                                    ir.Constant(tup_alloca.type.pointee_type, None),
                                     tup_alloca
                                 );
                             }
@@ -1552,7 +1552,7 @@ impl NaIRGenPass._bind_match_seq(
         if isinstance(subj.type, ir.PointerType)
             and isinstance(subj.type.pointee, ir.LiteralStructType)
             and star is None
-            and len(subj.type.pointee.elements) == len(heads) {
+            and len(subj.type.pointee.members()) == len(heads) {
             loaded = self.builder.load(subj, name="match.tup");
             for (i, sub_pat) in enumerate(heads) {
                 elem = self.builder.extract_value(loaded, i, name="match.tup.elem");
@@ -3976,7 +3976,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             collection_type = coll.type;
             assert isinstance(collection_type, ir.PointerType);
             _b_hdr = self._entry_alloca(
-                collection_type.pointee, f"{loop_var}.chunk.hdr"
+                collection_type.pointee_type, f"{loop_var}.chunk.hdr"
             );
             self.borrowed_vars.add(loop_var);
         } else {
@@ -4832,7 +4832,7 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     );
     collection_type = coll.type;
     assert isinstance(collection_type, ir.PointerType);
-    _hdr = self._entry_alloca(collection_type.pointee, f"{loop_var}.chunk.hdr");
+    _hdr = self._entry_alloca(collection_type.pointee_type, f"{loop_var}.chunk.hdr");
     _lv_alloca = self._entry_alloca(coll.type, loop_var);
     self.local_vars[loop_var] = _lv_alloca;
     self.borrowed_vars.add(loop_var);

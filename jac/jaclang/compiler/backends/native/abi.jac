@@ -15,7 +15,7 @@ def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
         str(module.data_layout)
     ) as target_data {
         for value in bound.global_variables {
-            count = len(module.context.identified_types[value.name].elements);
+            count = len(module.context.identified_types[value.name].members());
             layouts[value.name] = target_data.get_global_struct_layout(value, count);
         }
     }

@@ -282,8 +282,10 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
                         pointee = ftype.pointee;
                         if isinstance(pointee, ir.LiteralStructType) {
                             total = 0;
-                            for el in pointee.elements {
-                                total += el.width // 8 if el?.width else 8;
+                            for el in pointee.members() {
+                                total += el.width // 8
+                                    if isinstance(el, ir.IntType) and el.width
+                                    else 8;
                             }
                             elem_size = total;
                             elem_type_name = f"tuple{elem_size}";
