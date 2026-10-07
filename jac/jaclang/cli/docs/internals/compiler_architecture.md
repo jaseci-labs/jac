@@ -247,13 +247,17 @@ section and memoized on the program keyed by resolved path.
 
 The solver owns every placement decision, in three cooperating stages:
 
-1. **Module-granular native verdict** (parse time, from `parse_str`): when
-   the effective default codespace is `native`, the summary's blocker scan
-   plus a memoized walk of the import closure decides whether the whole
-   module lowers native (`_coerce_native_module`) or stays server, feeding
-   the same coverage and demotion memo as before. This stage runs at parse
-   time because whole-module coercion rewrites the module body and must
-   precede symbol tables.
+1. **Module-granular native placement** (after analysis, in
+   `NativeLegalityPass`): every module is parsed and type-checked by the
+   same rules, with no native guess beforehand. When the effective default
+   codespace is `native`, the pass applies the native rules to the typed
+   module (capability rules, module blockers, the checker's native notes,
+   native library gaps from the binding table, imports of modules placed
+   on the server) and stamps the whole module native only if none refuses
+   it. A refused module stays as parsed, so it is never analyzed twice and
+   nothing about the decision is stored between compiles. Only declared
+   placement (pins, a forced codespace, a module's own native anchor) is
+   stamped at parse time.
 2. **Per-module seeding and fixpoint** (`PlacementApplyPass`, scheduled in
    both `get_symtab_ir_sched` and `get_ir_gen_sched`): seeds are read off
    the summary (JSX and string-path imports stamp CLIENT, clib externs
@@ -277,8 +281,12 @@ The solver owns every placement decision, in three cooperating stages:
    when stamps change.
 
 Every stamp records an evidence note (`jac check --placements` prints the
-chains). A module that prefers native but cannot lower is placed on the
-server from a recorded refusal, never from a caught failure.
+chains). There is one type analysis for every codespace: what only matters
+natively is recorded on the typed module as a note (`compiler/native_notes.jac`),
+a requirement, or a native library gap (`compiler/native_bindings.jac`), and
+is read by placement rather than raised as a type error. A module that
+prefers native but cannot lower is placed on the server from those facts,
+never from a caught failure.
 `NativeLegalityPass` applies the static rules and propagates them over the
 module's reference graph: a unit (function, method or test) that references
 a refused unit is refused, and module-level code that reaches a refused unit
