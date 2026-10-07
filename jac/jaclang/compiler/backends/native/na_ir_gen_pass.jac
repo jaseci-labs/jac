@@ -1277,7 +1277,10 @@ walker NaIRGenPass(CompilerPass) {
         stub_body: bool = True
     ) -> None;
 
-    def _internal_error(nd: uni.UniNode, kind: str, name: str, exc: Exception) -> None;
+    def _internal_error(
+        nd: uni.UniNode, kind: str, name: str, exc: Exception, mark: int = 0
+    ) -> None;
+
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);

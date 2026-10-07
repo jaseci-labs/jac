@@ -87,7 +87,7 @@ test "a refused unit and every unit that reaches it are placed in Python statica
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert mod.decided_codespace == 'native' , "an unreached seam must not cost the module its placement";
     assert refused_units(mod) == ["helper", "mid"];
-    assert not build_native_legality(mod).module;
+    assert not build_native_legality(mod).module_refused();
     assert not module_native_demoted(path, prog);
     iface = mod.gen.native_iface;
     assert iface is not None;

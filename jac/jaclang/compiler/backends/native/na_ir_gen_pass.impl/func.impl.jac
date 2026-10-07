@@ -559,10 +559,16 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             and self._mono_solution is not None
             and self._ability_is_generator(nd)
         ) {
+        _gen_mark = len(self.ctx.errors_had);
+        _gen_raised = False;
         try {
             self._codegen_generator(nd, func);
         } except Exception as _gen_exc {
-            self._internal_error(nd, "function", name, _gen_exc);
+            _gen_raised = True;
+            self._internal_error(nd, "function", name, _gen_exc, _gen_mark);
+        }
+        if _gen_raised and self._demote_method_if_unlowerable(name, func, _gen_mark) {
+            self._rename_demoted_symbol(name, func);
         }
         return;
     }
@@ -619,7 +625,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             func, self._func_loc.get(name, nd.loc.first_line if nd.loc else 1)
         );
     } except Exception as _codegen_exc {
-        self._internal_error(nd, "function", name, _codegen_exc);
+        self._internal_error(nd, "function", name, _codegen_exc, _local_mark);
     } finally {
         self._leave_function(state);
     }
@@ -703,7 +709,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         self.builder.ret(exc_msg);
         self._finalize_di_locations(func, line);
     } except Exception as _codegen_exc {
-        self._internal_error(nd, "test", test_name, _codegen_exc);
+        self._internal_error(nd, "test", test_name, _codegen_exc, _local_mark);
     } finally {
         self._leave_function(state);
     }

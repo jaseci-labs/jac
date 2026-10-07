@@ -40,6 +40,7 @@ obj NativeLegality {
         refs: dict[int, set[int]] = {},
         anchored: set[int] = set(),
         module: list[NativeRefusal] = [],
+        reach: list[NativeRefusal] = [],
         reached: dict[int, int] = {},
         late: dict[str, list[NativeRefusal]] = {};
 
@@ -124,7 +125,7 @@ impl NativeLegality.unit_refused(owner: UniNode) -> bool {
 }
 
 impl NativeLegality.module_refused -> bool {
-    return len(self.module) > 0;
+    return len(self.module) > 0 or len(self.reach) > 0;
 }
 
 impl NativeLegality.settle -> None {
@@ -172,7 +173,7 @@ impl NativeLegality.settle -> None {
             cause = self.reached[cause];
         }
         first = self.units[cause][0];
-        self.module.append(
+        self.reach.append(
             NativeRefusal(
                 kind=first.kind,
                 name=first.name,
@@ -369,13 +370,16 @@ impl NativeLegalityPass._run_impl(ir_in: Module) -> Module {
         return ir_in;
     }
     legality = build_native_legality(ir_in);
-    if not legality.module {
+    if not legality.module_refused() {
         return ir_in;
     }
     if native_placement_soft(self.prog, ir_in) {
-        first = legality.module[0];
+        first = legality.module[0] if legality.module else legality.reach[0];
         ir_in.gen.native_refusal_code = first.code;
         ir_in.gen.native_refusal = first.headline();
+        return ir_in;
+    }
+    if not legality.module {
         return ir_in;
     }
     shown: list[NativeRefusal] = [];

@@ -146,12 +146,15 @@ impl NaIRGenPass._settle_module -> None {
 }
 
 impl NaIRGenPass._internal_error(
-    nd: uni.UniNode, kind: str, name: str, exc: Exception
+    nd: uni.UniNode, kind: str, name: str, exc: Exception, mark: int = 0
 ) -> None {
     """A backend exception is a compiler defect, reported as one. It is held
-    apart from the pending refusals so no unit or module can absorb it. The one
-    exception that is not a defect is `NativeRefused`, which a deep helper
-    raises to refuse: it joins the pending refusals like any diagnostic.""";
+    apart from the pending refusals so no unit or module can absorb it. Two
+    exceptions are not defects. `NativeRefused` is how a deep helper refuses:
+    it joins the pending refusals like any diagnostic. And an exception raised
+    after the unit already recorded a refusal since `mark` says nothing new:
+    the unit is being given up, and what its lowering does past the construct
+    it could not lower is not evidence about the backend.""";
     if isinstance(exc, NativeRefused) {
         self.emit(E5092, node_override=nd, kind=kind, name=f"{name} ({exc})");
         return;
@@ -161,6 +164,9 @@ impl NaIRGenPass._internal_error(
         import traceback;
         sys.stderr.write(f"NA_DEBUG raise {name}\n");
         traceback.print_exc(file=sys.stderr);
+    }
+    if len(self.ctx.errors_had) > mark {
+        return;
     }
     mark = len(self.ctx.errors_had);
     self.emit(

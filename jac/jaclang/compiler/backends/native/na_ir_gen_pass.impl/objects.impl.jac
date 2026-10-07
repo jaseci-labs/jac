@@ -1222,7 +1222,9 @@ impl NaIRGenPass._codegen_method(
                 func, method.loc.first_line if method.loc else 1
             );
         } except Exception as _codegen_exc {
-            self._internal_error(method, "method", full_name, _codegen_exc);
+            self._internal_error(
+                method, "method", full_name, _codegen_exc, _local_mark
+            );
         }
     } finally {
         self._leave_function(state);
