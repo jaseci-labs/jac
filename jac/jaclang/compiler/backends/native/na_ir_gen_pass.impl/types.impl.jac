@@ -1871,12 +1871,14 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
     );
 
     import logging as _logging;
-    _logging.getLogger("jaclang.native").debug(
-        "[NaIRGenPass] _resolve_jac_type: unresolved type %r (type=%s) -- "
-        "defaulting to i64; consider adding an explicit type annotation",
-        type_expr,
-        type(type_expr).__name__,
-    );
+    _unresolved_log = _logging.getLogger("jaclang.native");
+    if _unresolved_log.isEnabledFor(_logging.DEBUG) {
+        _unresolved_log.debug(
+            f"[NaIRGenPass] _resolve_jac_type: unresolved type {type_expr.__repr__()} "
+            f"(type={type(type_expr).__name__}) -- "
+            "defaulting to i64; consider adding an explicit type annotation"
+        );
+    }
     return ir.IntType(64);
 }
 

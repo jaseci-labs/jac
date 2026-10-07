@@ -1366,7 +1366,7 @@ impl NaIRGenPass._emit_bytes_decode(
             codec_name = "utf-8";
         }
         codec_ids = {"utf-8": 0, "iso8859-1": 1, "ascii": 2};
-        if codec_name not in codec_ids {
+        if codec_name is None or codec_name not in codec_ids {
             return None;
         }
         codec = ir.Constant(i64, codec_ids[codec_name]);

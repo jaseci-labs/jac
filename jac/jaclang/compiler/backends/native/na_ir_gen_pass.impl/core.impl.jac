@@ -1606,12 +1606,13 @@ impl NaIRGenPass._forward_declare_imported_ability(
         return;
     }
     if not nd.type_params {
-        _fd_demoted = (unavailable is not None and name in unavailable)
-            or (
-                imp_layout is not None
-                and not name.startswith("__")
-                and name not in imp_layout.functions
-            );
+        import from jaclang.compiler.frontend.codeinfo { NativeModuleLayout }
+        _fd_unlisted = False;
+        if isinstance(imp_layout, NativeModuleLayout) {
+            _fd_unlisted = not name.startswith("__")
+                and name not in imp_layout.functions;
+        }
+        _fd_demoted = (unavailable is not None and name in unavailable) or _fd_unlisted;
         if _fd_demoted {
             if _owner_name {
                 self._native_skipped_methods.add(f"{_owner_name}.{name}");
@@ -2083,7 +2084,12 @@ impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniN
 impl NaIRGenPass.run_walk with uni.Module entry {
     self.module = self._run_impl(here);
     if self.ctx.errors_had {
-        self.prog.native_units().failures[os.path.realpath(here.loc.mod_path)] = "Native module lowering failed:\n"
-            + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had);
+        self._publish_lowering_failure(here);
     }
+}
+
+"""Record this module's lowering errors with the host's native unit registry."""
+impl NaIRGenPass._publish_lowering_failure(here: uni.Module) -> None {
+    self.prog.native_units().failures[os.path.realpath(here.loc.mod_path)] = "Native module lowering failed:\n"
+        + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had);
 }

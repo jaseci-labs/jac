@@ -5423,7 +5423,11 @@ impl NativeBuiltinEmitter.emit_sum(
         return None;
     }
 
-    elem_ty = helpers["get"].function_type.return_type;
+    sum_get = helpers["get"];
+    if not isinstance(sum_get, ir.Function) {
+        return None;
+    }
+    elem_ty = sum_get.function_type.return_type;
     elem_float = isinstance(elem_ty, (ir.DoubleType, ir.FloatType));
     if not elem_float and not isinstance(elem_ty, ir.IntType) {
         return None;
@@ -6264,10 +6268,15 @@ impl NativeBuiltinEmitter.emit_list(
             return _le.emit_copy(_ctx2, val, []);
         }
     }
-    _vp_nm = getattr(val.type.pointee, "name", "")
-        if isinstance(val.type, ir.PointerType)
-        else "";
-    if isinstance(_vp_nm, str) and _vp_nm.startswith("List.") {
+    _vp_nm = "";
+    _vp_ty = val.type;
+    if isinstance(_vp_ty, ir.PointerType) {
+        _vp_target = _vp_ty.pointee;
+        if isinstance(_vp_target, ir.IdentifiedStructType) {
+            _vp_nm = _vp_target.name;
+        }
+    }
+    if _vp_nm.startswith("List.") {
         p._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
         _lt_ptr = p.list_types.get("ptr");
         _le3 = p?._native_emitters?.get("list");

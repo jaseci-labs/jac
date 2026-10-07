@@ -1,4 +1,4 @@
-import from jaclang.compiler.backends.native.llvm { ir }
+import jaclang.compiler.backends.native.llvm.ir as ir;
 import from jaclang.compiler.backends.common.primitives {
     IntEmitter,
     FloatEmitter,

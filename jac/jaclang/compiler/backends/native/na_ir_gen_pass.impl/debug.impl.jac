@@ -99,19 +99,22 @@ impl NaIRGenPass.finish with exit {
     ir_str = str(self.llvm_module);
 
     if self.prog.options.debug_ir {
-        import from jaclang.compiler.driver.jir { get_native_debug_dir }
-        src_path = self.module.loc.mod_path;
-        if src_path {
-            stem = os.path.splitext(os.path.basename(src_path))[0];
-            ir_dir = str(get_native_debug_dir(src_path));
-            os.makedirs(ir_dir, exist_ok=True);
-            auto_ir_path = os.path.join(ir_dir, stem + ".ll");
-            with open(auto_ir_path, "w") as f {
-                f.write(ir_str);
-            }
-            active_host().note(
-                f"[native debug] IR saved to: {auto_ir_path}", style="info"
-            );
+        self._save_debug_ir(ir_str);
+    }
+}
+
+"""Write the module's IR text to the host's native debug directory."""
+impl NaIRGenPass._save_debug_ir(ir_str: str) -> None {
+    import from jaclang.compiler.driver.jir { get_native_debug_dir }
+    src_path = self.module.loc.mod_path;
+    if src_path {
+        stem = os.path.splitext(os.path.basename(src_path))[0];
+        ir_dir = str(get_native_debug_dir(src_path));
+        os.makedirs(ir_dir, exist_ok=True);
+        auto_ir_path = os.path.join(ir_dir, stem + ".ll");
+        with open(auto_ir_path, "w") as f {
+            f.write(ir_str);
         }
+        active_host().note(f"[native debug] IR saved to: {auto_ir_path}", style="info");
     }
 }

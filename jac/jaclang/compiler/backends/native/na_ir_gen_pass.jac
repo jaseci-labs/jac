@@ -13,7 +13,8 @@ import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
-import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
+import from jaclang.compiler.backends.native.llvm { binding as llvm }
+import jaclang.compiler.backends.native.llvm.ir as ir;
 import from jaclang.compiler.backends.native.primitives_native {
     NativeEmitCtx,
     NativeSetEmitter,
@@ -1199,6 +1200,7 @@ walker NaIRGenPass(CompilerPass) {
     def postinit -> None;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
+    def _publish_lowering_failure(here: uni.Module) -> None;
     def _register_imported_struct_types -> None;
     def _permuted_walk_order(
         mods: list[tuple[str, uni.Module]]
@@ -1350,6 +1352,7 @@ walker NaIRGenPass(CompilerPass) {
     def _attach_di_subprogram(func: ir.Function, name: str, line: int) -> None;
     def _finalize_di_locations(func: ir.Function, fallback_line: int) -> None;
     can finish with exit;
+    def _save_debug_ir(ir_str: str) -> None;
     def _peer_dict_key -> (str | None);
     def _hash_key_spec(key_type: ir.Type) -> tuple[str, int];
     def _dict_val_spec(val_type: ir.Type) -> str;

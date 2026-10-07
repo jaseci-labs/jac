@@ -724,11 +724,11 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]]
 }
 
 impl NaIRGenPass._reject_scalar_type_args(nd: uni.UniNode, type_name: str) -> bool {
-    _erased: any = self.struct_field_erased_tv.get(type_name) or {};
+    _erased: dict[str, list[str]] = self.struct_field_erased_tv.get(type_name) or {};
     if not _erased {
         return False;
     }
-    _params: any = self.arch_type_params.get(type_name) or [];
+    _params: list[str] = self.arch_type_params.get(type_name) or [];
     if not _params {
         return False;
     }
