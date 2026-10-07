@@ -77,7 +77,9 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
             _mreprs: list[ir.Type | None] = [];
             for _m in _members {
                 _mr = self._lower_type(_m);
-                if self._str_desc_ty is not None and _mr == self._str_desc_ty {
+                if self._str_desc_ty is not None
+                    and _mr is not None
+                    and _mr == self._str_desc_ty {
                     _mr = ir.IntType(8).as_pointer();
                 }
                 _mreprs.append(_mr);
@@ -5551,7 +5553,7 @@ impl NaIRGenPass._sort_key_orderable(ty: (TypeBase | None)) -> (bool | None) {
     _orderable: (bool | None) = True;
     for _arg in _args {
         _sub = self._sort_key_orderable(_arg);
-        if _sub is False {
+        if _sub is not None and not _sub {
             return False;
         }
         if _sub is None {
@@ -5872,8 +5874,8 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                     } elif isinstance(_set_elem, ir.PointerType) {
                         _set_spec = "ptr";
                     }
-                    if self._str_desc_ty is not None
-                        and _set_elem == self._str_desc_ty {
+                    _set_sd = self._str_desc_ty;
+                    if _set_sd is not None and _set_sd == _set_elem {
                         _set_elem = ir.IntType(8).as_pointer();
                         _set_spec = "ptr";
                     }
