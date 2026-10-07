@@ -4895,7 +4895,7 @@ impl NaIRGenPass._jc_reference_schema(
 impl NaIRGenPass._build_jc_layout -> dict[str, any] {
     import from jaclang.compiler.backends.native.abi { struct_layouts }
     layouts = struct_layouts(self.llvm_module);
-    out: dict[str, any] = {"classes": {}};
+    classes: dict[str, any] = {};
     _model = self.module.gen.native_osp_model;
     _tags = _model.tags if _model is not None else {};
     _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
@@ -5013,7 +5013,7 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
             }
         }
         _lay_tag_idx = self.osp_type_tag_field.get(arch_name);
-        out["classes"][arch_name] = {
+        classes[arch_name] = {
             "size": total,
             "tag": _tags.get(arch_name, 0),
             "tag_offset": offsets[_lay_tag_idx]
@@ -5025,5 +5025,5 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
             "is_node": "_role_shapes" in fields
         };
     }
-    return out;
+    return {"classes": classes};
 }
