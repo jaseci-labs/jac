@@ -60,7 +60,7 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              ),
              ()
          ),
-         'NativeCapabilityCheckPass': PassContract((), (AnalysisFact.CAPABILITY, )),
+         'NativeLegalityPass': PassContract((), (AnalysisFact.CAPABILITY, )),
          'OwnershipCheckPass': PassContract(
              (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ), (AnalysisFact.OWNERSHIP, )
          ),
@@ -387,6 +387,7 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.passes.access_check_pass',
          'jaclang.compiler.passes.variant_agreement_pass',
          'jaclang.compiler.passes.capability_check_pass',
+         'jaclang.compiler.passes.native_legality',
          'jaclang.compiler.passes.ownership_check_pass',
          'jaclang.compiler.passes.region_infer_pass',
          'jaclang.compiler.tools.jac_auto_lint_pass'
@@ -545,9 +546,9 @@ def get_analysis_sched -> PassSchedule {
         }
         import from jaclang.compiler.passes.capability_check_pass {
             ClientCapabilityCheckPass,
-            NativeCapabilityCheckPass,
             PortabilityWarnPass
         }
+        import from jaclang.compiler.passes.native_legality { NativeLegalityPass }
         import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
         import from jaclang.compiler.passes.region_infer_pass { RegionInferPass }
         import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
@@ -559,7 +560,7 @@ def get_analysis_sched -> PassSchedule {
                 StaticAnalysisPass,
                 AccessCheckPass,
                 OwnershipCheckPass,
-                NativeCapabilityCheckPass,
+                NativeLegalityPass,
                 ClientCapabilityCheckPass,
                 PortabilityWarnPass,
                 JacLintCheckPass

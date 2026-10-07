@@ -18,6 +18,22 @@ glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
      );
 
 
+def native_placement_soft(prog: JacProgram, mod: uni.Module) -> bool {
+    if mod.decided_codespace != SPACE_NATIVE {
+        return False;
+    }
+    opts = prog.options;
+    if opts is None {
+        return True;
+    }
+    if opts.aot_mode or opts.force_codespace {
+        return False;
+    }
+    mod_path = mod.loc.mod_path if mod.loc is not None else "";
+    return not (mod_path and opts.native_required_for(mod_path));
+}
+
+
 def project_root_of(source_path: str) -> (str | None) {
     return active_host().project_root(source_path);
 }

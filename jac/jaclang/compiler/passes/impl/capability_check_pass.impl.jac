@@ -760,65 +760,6 @@ impl native_capability_demotion_owner(viol_node: UniNode) -> (Ability | None) {
     return None;
 }
 
-impl partition_native_capability_violations(
-    viols: list[tuple[(UniNode, str, str, (str | None))]]
-) -> tuple[
-    (
-        list[tuple[(UniNode, str, str, (str | None))]],
-        dict[int, list[tuple[(UniNode, str, str, (str | None))]]]
-    )
-] {
-    _fatal: list[tuple[(UniNode, str, str, (str | None))]] = [];
-    _demotable: dict[int, list[tuple[(UniNode, str, str, (str | None))]]] = {};
-    for _v in viols {
-        _owner = native_capability_demotion_owner(_v[0]);
-        if _owner is None {
-            (_vnode, _vkind, _vname, _vhelp) = _v;
-            _note = (
-                "No owning method or function can absorb this construct as a "
-                "native seam, so the whole module refuses to lower."
-            );
-            _fatal.append(
-                (_vnode, _vkind, _vname, f"{_vhelp} {_note}" if _vhelp else _note, )
-            );
-        } else {
-            _key = id(_owner);
-            if _key not in _demotable {
-                _demotable[_key] = [];
-            }
-            _demotable[_key].append(_v);
-        }
-    }
-    return (_fatal, _demotable, );
-}
-
-impl NativeCapabilityCheckPass._run_impl(ir_in: Module) -> Module {
-    (_fatal_viols, _demotable) = partition_native_capability_violations(
-        native_capability_violations(ir_in)
-    );
-    if _fatal_viols {
-        _report: list[tuple[(UniNode, str, str, (str | None))]] = list(_fatal_viols);
-        for _unit_viols in _demotable.values() {
-            _report.extend(_unit_viols);
-        }
-        for (_vnode, _vkind, _vname, _vhelp) in _report {
-            if _vhelp is None {
-                self.ctx.emit(E5090, node_override=_vnode, kind=_vkind, name=_vname);
-            } else {
-                self.ctx.emit(
-                    E5090,
-                    node_override=_vnode,
-                    kind=_vkind,
-                    name=_vname,
-                    help_text=_vhelp
-                );
-            }
-        }
-    }
-    ir_in.native_viols_reported = True;
-    return ir_in;
-}
-
 impl ClientCapabilityCheckPass._run_impl(ir_in: Module) -> Module {
     if not ir_in.client_viols_reported {
         for (_vnode, _vkind) in client_capability_violations(ir_in) {
@@ -981,10 +922,6 @@ impl PortabilityWarnPass._check_js_properties(mod: Module) -> None {
 }
 
 impl PortabilityWarnPass.run_walk with Module entry {
-    self.module = self._run_impl(here);
-}
-
-impl NativeCapabilityCheckPass.run_walk with Module entry {
     self.module = self._run_impl(here);
 }
 

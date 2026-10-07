@@ -850,6 +850,9 @@ obj NativeBuildSession {
             self.registry._event("native_unit_lower");
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_iface is None {
+                if mod.gen.native_refusal {
+                    self.registry.failures[resolved] = mod.gen.native_refusal;
+                }
                 return None;
             }
             import from jaclang.compiler.backends.native.na_compile_pass {

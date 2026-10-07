@@ -111,6 +111,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         return ir_in;
     }
     options = self.prog.options;
+    verifying = False;
     try {
         if options.native_required_for(module.loc.mod_path) {
             require_native_ir(str(module.gen.llvm_ir));
@@ -132,7 +133,9 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             mod = unit_ir.clone()
                 if isinstance(unit_ir, llvm.ModuleRef)
                 else llvm.parse_assembly(str(unit_ir));
+            verifying = True;
             mod.verify();
+            verifying = False;
             opt_level = 0 if native_debug else int(options.opt_level or 0);
             optimize_unit(mod, target_machine, opt_level);
             module.gen.native_bitcode = module_bitcode(mod);
@@ -203,9 +206,23 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             self.ctx.emit(
                 E5026, symbol=e.symbol, existing_module=e.first, new_module=e.second
             );
+        } elif verifying {
+            self.ctx.emit(
+                E5020,
+                error=str(e),
+                help_text="The native backend produced IR that does not verify. "
+                "This is a compiler bug -- please report it. Pin the module to "
+                "the server codespace under [placement.pins] in jac.toml to keep "
+                "working until it is fixed."
+            );
+            return ir_in;
         } else {
             self.ctx.emit(E5020, error=str(e));
         }
+        import from jaclang.compiler.passes.native_legality { settle_native_module }
+        settle_native_module(
+            module, self.prog, self.ctx.errors_had, self.ctx.warnings_had
+        );
     }
     return ir_in;
 }

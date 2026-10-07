@@ -17,8 +17,7 @@ def na_coverage_record(path: str, outcome: str, code: str = '', detail: str = ''
     }
     key = os.path.realpath(path);
     prev = _na_coverage.get(key);
-    sticky = ('demoted', 'ice');
-    if prev is not None and prev['outcome'] in sticky and outcome not in sticky {
+    if prev is not None and prev['outcome'] == 'demoted' and outcome != 'demoted' {
         return;
     }
     _na_coverage[key] = {

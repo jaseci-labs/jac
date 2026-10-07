@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.passes.context {
+    Alert,
     CompileContext,
     CompilerPass,
     PassSchedule
@@ -73,6 +74,11 @@ import from jaclang.compiler.passes.layout_pass {
 }
 import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.passes.native_legality {
+    NativeLegality,
+    NativeRefusal,
+    NativeRefused
+}
 import from jaclang.compiler.types.types {
     ClassType,
     ModuleType,
@@ -342,9 +348,9 @@ walker NaIRGenPass(CompilerPass) {
         _enum_source_name: dict[str, str] = {},
         _native_skipped_methods: set[str] = set(),
         _native_skipped_import_origin: dict[str, set[str]] = {},
-        _capability_demotions:
-            dict[int, list[tuple[uni.UniNode, str, str, str | None]]] = {},
-        _claimed_capability_demotions: set[int] = set(),
+        _legality: (NativeLegality | None) = None,
+        _claimed_units: set[int] = set(),
+        _internal_errors: list[Alert] = [],
         _sig_decl_kind: (str | None) = None,
         _class_name_consts: dict[str, ir.Constant] = {},
         _isa_fn: (ir.Function | None) = None,
@@ -1253,13 +1259,25 @@ walker NaIRGenPass(CompilerPass) {
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
-    def _predemote_capability_unit(
+    def _lower_module -> None;
+    def _settle_module -> None;
+    def _static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | None);
+    def _stub_refused_unit(
         full_name: str,
         func: ir.Function,
-        viols: list[tuple[uni.UniNode, str, str, str | None]],
+        refusals: list[NativeRefusal],
         keep_func: bool = False
     ) -> bool;
 
+    def _place_unit_python(
+        full_name: str,
+        func: ir.Function,
+        refusals: list[NativeRefusal],
+        keep_func: bool = False,
+        stub_body: bool = True
+    ) -> None;
+
+    def _internal_error(nd: uni.UniNode, kind: str, name: str, exc: Exception) -> None;
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);

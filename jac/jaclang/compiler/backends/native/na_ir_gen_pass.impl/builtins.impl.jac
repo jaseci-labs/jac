@@ -24,7 +24,7 @@ impl NaIRGenPass._get_or_declare_extern(
         return self.extern_funcs[key];
     }
     if actual.var_arg or var_arg or len(actual.args) != len(arg_types) {
-        raise ValueError(
+        raise NativeRefused(
             f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
         );
     }
@@ -48,7 +48,7 @@ impl NaIRGenPass._get_or_declare_extern(
                 and target.addrspace == 0
             );
         if not pointer_pair and not address_pair {
-            raise ValueError(
+            raise NativeRefused(
                 f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
             );
         }
