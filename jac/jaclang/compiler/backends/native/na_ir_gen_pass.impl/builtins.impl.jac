@@ -392,7 +392,7 @@ impl NaIRGenPass._static_str_struct_const(data: bytes) -> tuple[ir.Type, ir.Cons
 
 impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir.Value {
     i32 = ir.IntType(32);
-    _key = f"{name_prefix}\x00{text}";
+    _key = name_prefix + "\x00" + text;
     global_str = self._interned_strs.get(_key);
     if global_str is None {
         (struct_type, struct_val) = self._static_str_struct_const(

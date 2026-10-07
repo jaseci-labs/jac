@@ -4855,7 +4855,7 @@ impl NaIRGenPass._jc_reference_schema(
     if layout is None {
         return None;
     }
-    data_fields = layout["data_fields"];
+    data_fields = _layout_data_fields(layout);
     (offsets, _) = layouts[name];
     if layout["kind"] == "dense" and len(data_fields) == 1 {
         child = self._jc_reference_schema(

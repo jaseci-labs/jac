@@ -10,6 +10,12 @@ glob OVERFLOW_MSG: str = "integer overflow",
      SHIFT_MSG: str = "shift count out of range";
 
 def _signed_repr(width: int, value: int) -> int {
+    if width >= 64 {
+        if value > 0x7FFFFFFFFFFFFFFF {
+            return value - 0x7FFFFFFFFFFFFFFF - 0x7FFFFFFFFFFFFFFF - 2;
+        }
+        return value;
+    }
     mask = (1 << width) - 1;
     out = value & mask;
     if out >= (1 << (width - 1)) {

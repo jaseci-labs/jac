@@ -67,8 +67,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
     }
     LEN_F = 0;
     CAP_F = 1;
-    KEYS_F = layout["data_fields"][0][0];
-    VALS_F = layout["data_fields"][1][0] if has_vals else -1;
+    _hc_fields = _layout_data_fields(layout);
+    KEYS_F = _hc_fields[0][0];
+    VALS_F = _hc_fields[1][0] if has_vals else -1;
     CTRL_F = layout["ctrl_idx"];
     USED_F = layout["used_idx"];
     ORDER_F = layout["order_idx"];
@@ -1163,12 +1164,22 @@ impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
 }
 
 impl NaIRGenPass._static_str_hash(key: str) -> int {
-    mask = 0xFFFFFFFFFFFFFFFF;
-    h = HASH_FNV_BASIS & mask;
+    half = 0x100000000;
+    low = 0xFFFFFFFF;
+    hi = (HASH_FNV_BASIS >> 32) & low;
+    lo = HASH_FNV_BASIS & low;
+    prime_hi = HASH_FNV_PRIME >> 32;
+    prime_lo = HASH_FNV_PRIME & low;
     for b in key.encode("utf-8") {
-        h = ((h ^ b) * HASH_FNV_PRIME) & mask;
+        lo = lo ^ b;
+        low_product = lo * prime_lo;
+        hi = (hi * prime_lo + lo * prime_hi + (low_product >> 32)) & low;
+        lo = low_product & low;
     }
-    return h - 0x10000000000000000 if h >= 0x8000000000000000 else h;
+    if hi >= 0x80000000 {
+        hi -= half;
+    }
+    return hi * half + lo;
 }
 
 impl NaIRGenPass._static_key_hash_of(key_node: (uni.UniNode | None)) -> (int | None) {
