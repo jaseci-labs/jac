@@ -9,6 +9,7 @@ exclude: |
         ^jac/jaclang/vendor/|
         ^jac/jaclang/compiler/backends/native/llvm/|
         ^jac/jaclang/compiler/backends/native/wasm_rt/vendor/|
+        ^js_engine/|
         ^$
     )
 

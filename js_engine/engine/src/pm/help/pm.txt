@@ -1,0 +1,41 @@
+
+Usage: bun pm [flags] [<command>]
+
+  Run package manager utilities.
+
+Commands:
+
+  bun pm scan                 scan all packages in lockfile for security vulnerabilities
+  bun pm pack                 create a tarball of the current workspace
+  ├ --dry-run                 do everything except for writing the tarball to disk
+  ├ --destination             the directory the tarball will be saved in
+  ├ --filename                the name of the tarball
+  ├ --ignore-scripts          don't run pre/postpack and prepare scripts
+  ├ --gzip-level              specify a custom compression level for gzip (0-9, default is 9)
+  └ --quiet                   only output the tarball filename
+  bun pm bin                  print the path to bin folder
+  └ -g                        print the global path to bin folder
+  bun list                  list the dependency tree according to the current lockfile
+  └ --all                     list the entire dependency tree according to the current lockfile
+  bun pm why <pkg>            show dependency tree explaining why a package is installed
+  bun pm whoami               print the current npm username
+  bun pm view name[@version]  view package metadata from the registry (use `bun info` instead)
+  bun pm version [increment]  bump the version in package.json and create a git tag
+  └ increment                 patch, minor, major, prepatch, preminor, premajor, prerelease, from-git, or a specific version
+  bun pm pkg                  manage data in package.json
+  ├ get [key ...]
+  ├ set key=value ...
+  ├ delete key ...
+  └ fix                       auto-correct common package.json errors
+  bun pm hash                 generate & print the hash of the current lockfile
+  bun pm hash-string          print the string used to hash the lockfile
+  bun pm hash-print           print the hash stored in the current lockfile
+  bun pm cache                print the path to the cache folder
+  bun pm cache rm             clear the cache
+  bun pm migrate              migrate another package manager's lockfile without installing anything
+  bun pm untrusted            print current untrusted dependencies with scripts
+  bun pm trust names ...      run scripts for untrusted dependencies and add to `trustedDependencies`
+  └  --all                    trust all untrusted dependencies
+  bun pm default-trusted      print the default trusted dependencies list
+
+Learn more about these at https://bun.com/docs/cli/pm.

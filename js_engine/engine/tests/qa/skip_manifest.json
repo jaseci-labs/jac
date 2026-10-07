@@ -1,0 +1,258 @@
+{
+  "version": 1,
+  "description": "Suites skipped by default when running python3 run_reg.py under js_engine (known parity gaps + hang risks). Use --run-fail / --run-hang / --all to include them. --node runs everything (no manifest filter). Each entry's ticket links the closest qa_issues write-up or index.",
+  "tests": [
+    {
+      "path": "engine/tests/qa/03_builtins/07_symbol/test_symbol_core_and_registry.js",
+      "skip_type": "fail",
+      "reason": "Remaining Symbol constructor / registry / coercion parity gaps vs Node (Number(symbol), arithmetic).",
+      "ticket": "qa_issues/symbol/sym-hasinstance-wellknown-wrong.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/07_symbol/test_well_known_symbol_protocols.js",
+      "skip_type": "fail",
+      "reason": "Remaining well-known Symbol protocol / ToPrimitive parity gaps vs Node.",
+      "ticket": "qa_issues/symbol/sym-hasinstance-wellknown-wrong.md"
+    },
+    {
+      "path": "engine/tests/qa/01_runtime/12_node_globals/test_fetch_data_url.js",
+      "skip_type": "fail",
+      "reason": "fetch() does not handle data: URLs (NGL-F-003); attempts network connect.",
+      "ticket": "qa_issues/runtime/ngl-fetch-data-url-handled-as-network.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/01_variables/test_variables_destructuring_decl.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/variables/varp-x-007-object-literal-statement-not-syntaxerror.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/01_variables/test_variables_identifiers.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/variables/varp-i-002-digit-first-binding-not-syntax-error.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/01_variables/test_variables_let.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/variables/let-tdz-and-redeclaration.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/02_scope/test_scope_eval.js",
+      "skip_type": "fail",
+      "reason": "Direct eval deferred; see roadmap (SCP-EV-001).",
+      "ticket": "qa_issues/scope/scp-ev-001-direct-eval-var-caller-scope.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/02_scope/test_scope_syntax_errors.js",
+      "skip_type": "fail",
+      "reason": "Parse-time duplicate let/const binding checks not yet implemented (SCP-L-007..SCP-L-012).",
+      "ticket": "qa_issues/variables/let-tdz-and-redeclaration.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/03_operators/test_operators_expressions.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/operators/ope-a-bigint-number-mixed-operands-no-typeerror.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/04_expressions/test_expressions.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/06_exceptions/test_exceptions_and_errors_language_comprehensive.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/control_flow/exc-f-finally-completion-semantics-wrong.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/16_generators/test_generators_errors_abrupt.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/18_async_iteration/test_async_iteration_semantics.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/async/asy-for-await-sync-iterator-empty.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/20_strict_mode/test_strict_mode.js",
+      "skip_type": "fail",
+      "reason": "Remaining strict-mode gaps (STRICT-004 arguments.callee, STRICT-007 read-only assign).",
+      "ticket": "qa_issues/strict-mode/strict-005-dup-params-syntax-error.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/20_strict_mode/test_strict_syntax_errors.sh",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/01_number/test_number.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/number/num-001-number-from-object-valueof-null.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/03_string/test_string_constructor_coercion.js",
+      "skip_type": "fail",
+      "reason": "Remaining String coercion gaps (BigInt precision, Symbol, strict index assign).",
+      "ticket": "qa_issues/string/str-it-001-codepoint-iterator-mojibake.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/06_function/test_function_constructor.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/06_function/test_function_properties.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/06_function/test_function_tostring_hasinstance.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/07_symbol/test_symbol.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/symbol/sym-hasinstance-wellknown-wrong.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/10_date/test_date.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/date/date-005-date-call-without-new-returns-object.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/15_promise/test_promise_advanced.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/async/asy-thenable-assimilation-promise-resolve-and-await.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/03_os/test_os_nos_core.js",
+      "skip_type": "fail",
+      "reason": "os freemem/totalmem and related NOS-R gaps; tmpdir TMP/TEMP precedence fixed.",
+      "ticket": "qa_issues/os/os-network-interfaces-empty-stubs.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/03_os/test_os_nos_network.js",
+      "skip_type": "fail",
+      "reason": "Known js_engine parity gap; run with --run-fail to exercise. See qa_issues/ for topic files.",
+      "ticket": "qa_issues/os/os-network-interfaces-empty-stubs.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/15_iteration/test_iteration_language_builtin_iterables.js",
+      "skip_type": "fail",
+      "reason": "String surrogate iterator (ITR-B-003) still diverges; Map/Set iterator aliases fixed.",
+      "ticket": "qa_issues/string/str-it-001-codepoint-iterator-mojibake.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/15_iteration/test_iteration_language_iterable_protocol.js",
+      "skip_type": "fail",
+      "reason": "Custom @@iterator / for-of protocol (ITR-I-*); see qa_issues/README.md.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/15_iteration/test_iteration_language_iterator_protocol.js",
+      "skip_type": "hang",
+      "reason": "for-of / iterator protocol: missing TypeError + IteratorClose risks long run (ITR-N-*); see qa_issues/README.md.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/21_typescript/test_typescript_stripping.sh",
+      "skip_type": "fail",
+      "reason": "TS strip fixtures still fail parser (TS-STRIP-001); see ticket.",
+      "ticket": "qa_issues/typescript/ts-strip-parser-token-mismatch-on-fixtures.md"
+    },
+    {
+      "path": "engine/tests/qa/02_language/20_typed_arrays/test_typed_arrays_and_binary_data_language_comprehensive.js",
+      "skip_type": "fail",
+      "reason": "TypedArray RangeError + view/iterator API gaps (TAB-*); see ticket.",
+      "ticket": "qa_issues/typed_array/tab-rangeerror-and-view-operations.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/03_string/test_string_unicode_wellformed_iterator.js",
+      "skip_type": "fail",
+      "reason": "String @@iterator / code-unit iteration (STR-IT-*); see ticket.",
+      "ticket": "qa_issues/string/str-it-001-codepoint-iterator-mojibake.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/06_function/test_function_bind.js",
+      "skip_type": "fail",
+      "reason": "Function.prototype.bind semantics (FN-B-* / THIS-00*); see ticket.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/03_builtins/05_object/test_object_prototype.js",
+      "skip_type": "fail",
+      "reason": "Constructor property on primitives and Object.create(Foo.prototype) (PRT-C-*); see qa_issues/README.md.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/01_fs/test_fs_nfs_dirs_meta.js",
+      "skip_type": "fail",
+      "reason": "Remaining fs *Sync throw-validation gaps (NFS-D-003 EEXIST, NFS-T-004 lstat ENOENT, NFS-T-005 access ENOENT, NFS-T-006 chmod TypeError).",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/01_fs/test_fs_nfs_core.js",
+      "skip_type": "fail",
+      "reason": "Remaining fs sync gaps (NFS-S-007 invalid path TypeError); readFileSync/unlinkSync ENOENT fixed.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/01_fs/test_fs_nfs_streams_errors.js",
+      "skip_type": "fail",
+      "reason": "Stream error/flag semantics (NFS-E-003+) and stream timeouts; readFileSync ENOENT fixed.",
+      "ticket": "qa_issues/modules/nmod-fs-streams-suite-timeout.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/01_fs/test_fs_nfs_links.js",
+      "skip_type": "fail",
+      "reason": "Remaining fs link/path sync throw semantics (NFS-L-005, NFS-L-006).",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/01_fs/test_fs_sync.js",
+      "skip_type": "fail",
+      "reason": "Remaining fs sync gaps (readdirSync ENOENT, throw semantics); mkdirSync recursive and rmSync fixed.",
+      "ticket": "qa_issues/README.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/19_http/test_http_proxy_extended.js",
+      "skip_type": "fail",
+      "reason": "HTTPS CONNECT + tlsWrapClientNb still times out on js_engine after socket lifecycle fix; use --run-fail to exercise.",
+      "ticket": "qa_issues/http/http-proxy-https-connect-phase-timeout.md"
+    },
+    {
+      "path": "engine/tests/qa/05_integration/test_http_e2e_node_http.sh",
+      "skip_type": "hang",
+      "reason": "E2E test_node_http.js (58 checks) blocks js_engine event loop \u226530s; omitted from default run. Use --run-hang or --all.",
+      "ticket": "qa_issues/integration/int-e2e-node-http-event-loop-block.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/09_util/test_util_diagnostics_helpers.js",
+      "skip_type": "fail",
+      "reason": "spawnSync(process.execPath) re-executes engine binary; SIGSEGV under 20-way parallel regression. See nmod-child-process-spawnsync-parallel-sigsegv.md.",
+      "ticket": "qa_issues/modules/nmod-child-process-spawnsync-parallel-sigsegv.md"
+    },
+    {
+      "path": "engine/tests/qa/04_node_modules/26_child_process/test_child_process_spawn_sync.js",
+      "skip_type": "hang",
+      "reason": "Parent js_engine SIGSEGV (exit -11) under 20-way parallel run_reg; passes in isolation. See ticket.",
+      "ticket": "qa_issues/modules/nmod-child-process-spawnsync-parallel-sigsegv.md"
+    }
+  ]
+}

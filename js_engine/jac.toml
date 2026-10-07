@@ -1,0 +1,15 @@
+[check]
+suppress = ["E5092"]
+
+[check.lint]
+ignore = ["no-print"]
+
+[memory]
+profile = "rc"
+
+[placement.pins]
+"engine.src.*" = "native"
+"napi.src.*" = "native"
+
+[native]
+link_mode = "bitcode"

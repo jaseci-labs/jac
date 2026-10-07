@@ -82,6 +82,10 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
+    # js_engine is a separate native project with its own jac.toml; its
+    # regression suite and test262 gate it, not this check.
+    "js_engine/*",
+
     # Everything below is a module that does not currently pass `jac check`.
     # Adding to this list is a debt, not a policy: the goal is to empty it.
     # llvmlite-bound native IR generation.
