@@ -308,6 +308,7 @@ obj KernelHost(HostServices) {
         asker: (HostAsker | None) = None,
         kernel_asker: bool = False,
         _asked: set[str] = set(),
+        grown: set[str] = set(),
         _indexed: list[int] = [0, 0, 0, 0, 0],
         _session: (KernelSession | None) = None;
 
@@ -382,6 +383,9 @@ obj KernelHost(HostServices) {
     def wants_unit(path: str) -> bool {
         if not self.inputs.emit_closure {
             return False;
+        }
+        if path in self.grown {
+            return True;
         }
         if path not in self.inputs.emit_of {
             self.ask(EMIT_QUESTION, path);
@@ -735,6 +739,25 @@ obj KernelHost(HostServices) {
         }
         self.inputs.siblings[js_path] = answer or "";
         return answer;
+    }
+
+    def client_pulls(path: str) -> str {
+        self.census.count("client_pulls");
+        if self.fallback is None and not self.inputs.emit_closure {
+            return "";
+        }
+        if path in self.inputs.client_pulls {
+            return self.inputs.client_pulls[path];
+        }
+        with self.missing("client_pulls", path) as host {
+            answer = host.client_pulls(path);
+        }
+        self.inputs.client_pulls[path] = answer;
+        return answer;
+    }
+
+    def client_pull_grew(path: str) {
+        self.grown.add(path);
     }
 
     def npm_answer(spec: str, base_path: str, method: str) -> NpmAnswer {

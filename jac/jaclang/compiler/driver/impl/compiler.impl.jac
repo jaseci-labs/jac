@@ -373,6 +373,8 @@ impl JacCompiler._adopt_kernel_compile(
             if unit is target {
                 self._restore_sections(full_target, program, sections);
                 adopted = bytecode;
+            } else {
+                program.hub.client_artifacts.pop(JacProgram.hub_key(unit.path), None);
             }
         }
     }
@@ -1042,23 +1044,27 @@ impl JacCompiler.ensure_client_codegen(
 }
 
 impl JacCompiler._cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
-    (rebuild, _no_precompile) = cache_mode();
-    if rebuild {
-        return None;
+    return cached_client_artifact(full_target);
+}
+
+impl JacCompiler.last_client_artifact(
+    full_target: str, target_program: JacProgram
+) -> (ClientArtifact | None) {
+    import from jaclang.compiler.driver.compilation_context {
+        compilation_scope,
+        owner_scope_options
     }
-    try {
-        cache_path = get_module_cache_path(full_target);
-        if not is_module_cache_valid(full_target, cache_path) {
+    actual = self.product_program(full_target, target_program);
+    raw: (bytes | None) = None;
+    with compilation_scope(owner_scope_options(actual)) {
+        try {
+            held = get_module_cache_path(JacProgram.hub_key(full_target)).read_bytes();
+            raw = read_section_bytes(held, SEC_CLIENT);
+        } except Exception {
             return None;
         }
-        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
-    } except Exception {
-        return None;
     }
-    if raw is None {
-        return None;
-    }
-    return client_artifact_from_bytes(raw);
+    return client_artifact_from_bytes(raw) if raw is not None else None;
 }
 
 impl JacCompiler._client_deps_fresh(artifact: ClientArtifact) -> bool {
@@ -1146,11 +1152,15 @@ impl JacCompiler._get_client_artifact(
     }
     mark = len(actual_program.errors_had);
     if not has_live_tree and not actual_program.internal {
-        self.get_bytecode(full_target=full_target, target_program=actual_program);
+        (handled, _) = self._adopt_kernel_compile(
+            full_target, actual_program, CompileOptions(skip_native_engine=True)
+        );
         if len(actual_program.errors_had) > mark {
             return None;
         }
-        emitted = actual_program.hub.client_artifacts.get(full_target);
+        emitted = actual_program.hub.client_artifacts.get(full_target)
+            if handled
+            else None;
         if emitted is not None {
             return emitted;
         }

@@ -777,6 +777,21 @@ def _warn_state_forks(target: uni.Module, prog: JacProgram) {
     }
 }
 
+def _held_pull_ids(target: uni.Module, target_path: str) -> set[int] {
+    import from jaclang.compiler.frontend.host { active_host }
+    held: set[int] = set();
+    for part in active_host().client_pulls(target_path).split(",") {
+        if not part {
+            continue;
+        }
+        index = int(part);
+        if index < len(target.body) {
+            held.add(id(target.body[index]));
+        }
+    }
+    return held;
+}
+
 def _pull_into_target(
     imp: uni.Import, target: uni.Module, module: uni.Module, prog: JacProgram
 ) -> int {
@@ -793,11 +808,25 @@ def _pull_into_target(
     if not seed_ids {
         return 0;
     }
+    import from jaclang.compiler.frontend.host { active_host }
+    work = placement_work(prog);
+    target_path = os.path.realpath(target.loc.mod_path or '');
+    if id(target) not in work.seeded {
+        work.seeded.add(id(target));
+        held_ids = _held_pull_ids(target, target_path);
+        if held_ids
+            and solve_module_placement(
+                target, prog, seed_ref_ids=held_ids, dual=True, pull_dependents=False
+            ) {
+            work.changed(target);
+        }
+    }
     new_stamps = solve_module_placement(
         target, prog, seed_ref_ids=seed_ids, dual=True, pull_dependents=False
     );
     if new_stamps {
-        placement_work(prog).changed(target);
+        active_host().client_pull_grew(target_path);
+        work.changed(target);
         _warn_state_forks(target, prog);
         importer = os.path.basename(module.loc.mod_path or '');
         tidx_by_id: dict[int, int] = {};

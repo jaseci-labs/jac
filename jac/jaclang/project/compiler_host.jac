@@ -61,6 +61,7 @@ obj ProjectHost(HostServices) {
     def is_untyped_third_party(path: str) -> bool;
     def in_typeshed_tree(path: str) -> bool;
     def sibling_declaration(js_path: str) -> (str | None);
+    def client_pulls(path: str) -> str;
     def has_npm_package(spec: str, base_path: str) -> bool;
     def resolve_npm_package(spec: str, base_path: str) -> (str | None);
     def npm_declarations(spec: str, base_path: str) -> (str | None);

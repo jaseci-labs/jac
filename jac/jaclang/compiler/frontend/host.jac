@@ -141,6 +141,11 @@ obj HostServices {
         return None;
     }
 
+    def client_pulls(path: str) -> str {
+        return "";
+    }
+
+    def client_pull_grew(path: str) {}
     def has_npm_package(spec: str, base_path: str) -> bool {
         return False;
     }

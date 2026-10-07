@@ -284,11 +284,6 @@ def session_inputs(
     inputs.native_pipeline_known = True;
     inputs.target_triple = host.default_target_triple();
     inputs.target_triple_known = True;
-    if not options.no_cgen {
-        inputs.osp_core_js = host.client_osp_core_js();
-        inputs.client_stub_globals = host.client_stub_globals();
-        inputs.client_stub_globals_known = True;
-    }
     return inputs;
 }
 
@@ -337,6 +332,13 @@ obj KernelSnapshot(HostAsker) {
             for (name, value) in answers_to_dict(learner.inputs).items()
             if value
         };
+        if learner.inputs.osp_core_js {
+            record["osp_core_js"] = learner.inputs.osp_core_js;
+        }
+        if learner.inputs.client_stub_globals_known {
+            record["client_stub_globals"] = list(learner.inputs.client_stub_globals);
+            record["client_stub_globals_known"] = True;
+        }
         if refused {
             record[HOST_ONLY_ANSWER] = refused;
         }
@@ -357,6 +359,10 @@ obj KernelSnapshot(HostAsker) {
             learner.resolve_local_module(fields[0], fields[1].split("/"));
         } elif method in PATH_QUESTIONS {
             self.path_answers(learner, method, key);
+        } elif method == "client_osp_core_js" {
+            learner.client_osp_core_js();
+        } elif method == "client_stub_globals" {
+            learner.client_stub_globals();
         } elif method == "check_settings" {
             learner.check_settings(key);
         } elif method == "native_verdict" {
@@ -365,6 +371,8 @@ obj KernelSnapshot(HostAsker) {
             learner.is_untyped_third_party(key);
         } elif method == "sibling_declaration" {
             learner.sibling_declaration(key);
+        } elif method == "client_pulls" {
+            learner.client_pulls(key);
         } elif method == "jac_virtual_module_path" {
             learner.jac_virtual_module_path(key);
         } elif method == "is_path_alias" and len(fields) == 2 {
@@ -677,6 +685,8 @@ def call_kernel_isolated(
     if pid == 0 {
         code = 0;
         try {
+            import gc;
+            gc.disable();
             os.close(report_in);
             os.close(answer_out);
 

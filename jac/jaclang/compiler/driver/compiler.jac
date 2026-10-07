@@ -120,6 +120,41 @@ def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
     return client_artifact_from_json(text);
 }
 
+def cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
+    (rebuild, _no_precompile) = cache_mode();
+    if rebuild {
+        return None;
+    }
+    try {
+        cache_path = get_module_cache_path(full_target);
+        if not is_module_cache_valid(full_target, cache_path) {
+            return None;
+        }
+        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
+    } except Exception {
+        return None;
+    }
+    if raw is None {
+        return None;
+    }
+    return client_artifact_from_bytes(raw);
+}
+
+def cached_client_pulls(full_target: str) -> str {
+    held = cached_client_artifact(full_target);
+    if held is None or not held.pulled {
+        return "";
+    }
+    import from jaclang.compiler.backends.es.backends.registry {
+        resolve_active_backend
+    }
+    if held.framework != resolve_active_backend().name()
+        or not JacCompiler._client_deps_fresh(held) {
+        return "";
+    }
+    return ",".join([str(index) for index in held.pulled]);
+}
+
 def assemble_jcir(jcir: bytes) -> (bytes | None) {
     if not jcir {
         return None;
@@ -223,6 +258,10 @@ obj JacCompiler(SessionHooks) {
 
     def ensure_client_codegen(mod: uni.Module, target_program: JacProgram) -> bool;
     def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
+    def last_client_artifact(
+        full_target: str, target_program: JacProgram
+    ) -> (ClientArtifact | None);
+
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
     def _adopt_kernel_compile(

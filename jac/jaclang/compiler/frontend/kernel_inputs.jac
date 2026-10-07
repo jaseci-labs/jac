@@ -216,6 +216,7 @@ obj KernelInputs {
         verdicts: dict[str, (NativeVerdict | None)] = {},
         untyped: dict[str, bool] = {},
         siblings: dict[str, str] = {},
+        client_pulls: dict[str, str] = {},
         path_aliases: dict[str, bool] = {},
         virtual_modules: dict[str, str] = {},
         imports: list[ImportResolution] = [],
@@ -742,6 +743,7 @@ def answers_to_dict(inputs: KernelInputs) -> dict[str, any] {
         },
         "untyped": dict(inputs.untyped),
         "siblings": dict(inputs.siblings),
+        "client_pulls": dict(inputs.client_pulls),
         "path_aliases": dict(inputs.path_aliases),
         "virtual_modules": dict(inputs.virtual_modules),
         "imports": [
@@ -816,9 +818,18 @@ def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
     merge_str_map(inputs.project_root_of, raw.get("project_root_of"));
     merge_bool_map(inputs.untyped, raw.get("untyped"));
     merge_str_map(inputs.siblings, raw.get("siblings"));
+    merge_str_map(inputs.client_pulls, raw.get("client_pulls"));
     merge_bool_map(inputs.path_aliases, raw.get("path_aliases"));
     merge_str_map(inputs.virtual_modules, raw.get("virtual_modules"));
     merge_bool_map(inputs.emit_of, raw.get("emit_of"));
+    core_js = str(raw.get("osp_core_js", ""));
+    if core_js {
+        inputs.osp_core_js = core_js;
+    }
+    if bool(raw.get("client_stub_globals_known", False)) {
+        inputs.client_stub_globals = json_str_list(raw.get("client_stub_globals"));
+        inputs.client_stub_globals_known = True;
+    }
     for (app, check) in json_map(raw.get("check_settings")).items() {
         inputs.check_settings[app] = check_from_dict(json_map(check));
     }

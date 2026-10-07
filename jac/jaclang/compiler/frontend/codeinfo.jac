@@ -53,7 +53,8 @@ obj ClientArtifact {
         source_map: list[tuple[int, int, int, int, str]] = [],
         dep_digests: dict[str, str] = {},
         boundary_contracts: dict[str, any] = {},
-        framework: str = "";
+        framework: str = "",
+        pulled: list[int] = [];
 }
 
 enum InteropContext { SERVER = 'server', NATIVE = 'native', CLIENT = 'client' }

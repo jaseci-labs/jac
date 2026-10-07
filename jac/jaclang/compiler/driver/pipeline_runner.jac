@@ -123,9 +123,12 @@ def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
 }
 
 def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {
-    artifact = program._get_compiler().get_client_artifact(
-        os.path.realpath(path), program
-    );
+    real = os.path.realpath(path);
+    builder = program._get_compiler();
+    artifact = builder.get_client_artifact(real, program);
+    if artifact is None {
+        artifact = builder.last_client_artifact(real, program);
+    }
     if artifact is None {
         return (None, None);
     }

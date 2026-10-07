@@ -8,6 +8,13 @@ once, the unit collector fires on its budget rather than on every module, no
 interface is encoded inside a codegen-driven closure, and the peak memory of
 the process stays under a ceiling with room to spare.
 
+The program itself is compiled by the native compiler kernel, which the
+rebuilt process runs in a forked copy of itself. That copy shares the
+process's pages, and on Linux its resident size counts them again, so its
+figure is the process's own plus what the kernel's run added. The process is
+held to the ceiling; a child is held to a bound on how far it may rise above
+the process that started it.
+
 The program the rebuild runs is a two-line entry that imports only `gc`, which
 keeps it on the Python lane (a module with nothing but a print is placed
 native, and a cold native build is a different measurement). The counters
@@ -32,6 +39,7 @@ glob SYMTAB_PER_MODULE: float = 1.75,
      COLLECT_EVERY: int = 16,
      COLLECT_SLACK: int = 8,
      PEAK_RSS_CEILING_MB: int = 4096,
+     CHILD_RISE_CEILING_MB: int = 768,
      PROBE_SRC: str = (
          "import gc;\n\n"
          "with entry {\n"
@@ -43,9 +51,10 @@ glob SYMTAB_PER_MODULE: float = 1.75,
          "from unittest.mock import patch\n"
          "collect = patch('gc.collect', wraps=gc.collect).start()\n"
          "def report():\n"
-         "    usage = [resource.getrusage(w).ru_maxrss\n"
-         "             for w in (resource.RUSAGE_SELF, resource.RUSAGE_CHILDREN)]\n"
-         "    print('PEAK_RSS=' + str(max(usage)), flush=True)\n"
+         "    print('PEAK_SELF=' + str(\n"
+         "        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss), flush=True)\n"
+         "    print('PEAK_CHILDREN=' + str(\n"
+         "        resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss), flush=True)\n"
          "    from jaclang.runtime.runtime import JacRuntime\n"
          "    a = JacRuntime.get_selfhost().program.analysis\n"
          "    print('SELFHOST=' + json.dumps({\n"
@@ -59,26 +68,26 @@ glob SYMTAB_PER_MODULE: float = 1.75,
          "start_cli()"
      );
 
-"""Convert a `PEAK_RSS=` report from the driver to MB.
+"""Convert a peak report from the driver (`PEAK_SELF=` or `PEAK_CHILDREN=`) to MB.
 
-The driver reports its own peak and its children's, so the figure covers the
+The driver reports its own peak and its children's, so the figures cover the
 rebuild alone. `RUSAGE_CHILDREN` read here would also count every earlier
 child of a pooled test worker."""
-def _peak_mb(stdout: str) -> int {
-    peak = 0;
+def _peak_mb(stdout: str, label: str) -> int {
+    peak = -1;
     for line in stdout.splitlines() {
-        if line.startswith("PEAK_RSS=") {
-            peak = int(line[len("PEAK_RSS="):]);
+        if line.startswith(label) {
+            peak = int(line[len(label):]);
         }
     }
-    assert peak > 0 , f"no PEAK_RSS= line in stdout:\n{stdout[-1500:]}";
+    assert peak >= 0 , f"no {label} line in stdout:\n{stdout[-1500:]}";
     if sys.platform == "darwin" {
         return int(peak // (1024 * 1024));
     }
     return int(peak // 1024);
 }
 
-def _cold_rebuild -> tuple[int, dict[str, any], int] {
+def _cold_rebuild -> tuple[int, dict[str, any], int, int] {
     work = tempfile.mkdtemp();
     probe = os.path.join(work, "probe.jac");
     with open(probe, "w") as fh {
@@ -126,11 +135,16 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
         }
     }
     assert payload is not None , f"no SELFHOST= line in stdout:\n{proc.stdout[-1500:]}";
-    return (compiled, payload, _peak_mb(proc.stdout), );
+    return (
+        compiled,
+        payload,
+        _peak_mb(proc.stdout, "PEAK_SELF="),
+        _peak_mb(proc.stdout, "PEAK_CHILDREN=")
+    );
 }
 
 test "a cold compiler rebuild ingests each dependency about once and collects on its budget" {
-    (compiled, payload, peak_mb) = _cold_rebuild();
+    (compiled, payload, peak_mb, child_mb) = _cold_rebuild();
     runs = payload["runs"];
     events = payload["events"];
     # The compiled count names Jac bytecode modules. Stub trees belong to
@@ -150,6 +164,11 @@ test "a cold compiler rebuild ingests each dependency about once and collects on
         f"a codegen-driven rebuild encoded interfaces (events: {events})"
     );
     assert peak_mb <= PEAK_RSS_CEILING_MB , (
-        f"the rebuild peaked at {peak_mb} MB of RSS, above the {PEAK_RSS_CEILING_MB} MB ceiling"
+        f"the rebuild peaked at {peak_mb} MB of RSS, above the {PEAK_RSS_CEILING_MB} MB "
+        f"ceiling (its children peaked at {child_mb} MB)"
+    );
+    assert child_mb <= peak_mb + CHILD_RISE_CEILING_MB , (
+        f"a child of the rebuild peaked at {child_mb} MB of RSS, more than "
+        f"{CHILD_RISE_CEILING_MB} MB above the {peak_mb} MB of the process that started it"
     );
 }

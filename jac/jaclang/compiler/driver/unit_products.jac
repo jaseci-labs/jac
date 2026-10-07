@@ -333,7 +333,8 @@ def client_artifact_json(artifact: ClientArtifact) -> str {
             "source_map": source_map_record(artifact.source_map),
             "dep_digests": dict(artifact.dep_digests),
             "framework": artifact.framework,
-            "boundary_contracts": dict(artifact.boundary_contracts)
+            "boundary_contracts": dict(artifact.boundary_contracts),
+            "pulled": list(artifact.pulled)
         },
         sort_keys=True
     );
@@ -383,6 +384,13 @@ def client_artifact_from_json(text: str) -> (ClientArtifact | None) {
             }
         }
     }
+    pulled: list[int] = [];
+    raw_pulled = raw.get("pulled");
+    if isinstance(raw_pulled, list) {
+        for index in raw_pulled {
+            pulled.append(int(index));
+        }
+    }
     return ClientArtifact(
         js=js,
         manifest=manifest_from_record(json_map(manifest)),
@@ -390,8 +398,19 @@ def client_artifact_from_json(text: str) -> (ClientArtifact | None) {
         source_map=segments,
         dep_digests=json_str_map(raw.get("dep_digests")),
         framework=str(raw.get("framework", "")),
-        boundary_contracts=json_map(raw.get("boundary_contracts"))
+        boundary_contracts=json_map(raw.get("boundary_contracts")),
+        pulled=pulled
     );
+}
+
+def client_pulled_indexes(module: uni.Module) -> list[int] {
+    pulled: list[int] = [];
+    for (index, stmt) in enumerate(module.body) {
+        if isinstance(stmt, uni.ContextAwareNode) and stmt.codespace_dual {
+            pulled.append(index);
+        }
+    }
+    return pulled;
 }
 
 def client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
@@ -428,7 +447,8 @@ def client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
         native_import_sources=native_sources,
         source_map=segments,
         boundary_contracts=interop_record(module),
-        framework=resolve_active_backend().name()
+        framework=resolve_active_backend().name(),
+        pulled=client_pulled_indexes(module)
     );
 }
 

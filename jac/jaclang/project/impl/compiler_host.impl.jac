@@ -291,6 +291,11 @@ impl ProjectHost.client_osp_core_js -> str {
     return osp_core_js();
 }
 
+impl ProjectHost.client_pulls(path: str) -> str {
+    import from jaclang.compiler.driver.compiler { cached_client_pulls }
+    return cached_client_pulls(path);
+}
+
 impl ProjectHost.client_stub_globals -> list[str] {
     if not self._stub_globals {
         import os;
