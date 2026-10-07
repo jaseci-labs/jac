@@ -1065,7 +1065,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     );
 
     _canon_src: dict[str, any] = {};
-    dep_edges: dict[str | None, list[str]] = {};
+    dep_edges: dict[str, list[str]] = {};
     typed_only: dict[str, bool] = {};
     qi = 0;
     while qi < len(wq) {
@@ -1080,10 +1080,11 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
         abs_key = os.path.abspath(full_path);
-        if parent_key in dep_edges {
-            dep_edges[parent_key].append(abs_key);
+        _edge_from = parent_key or "";
+        if _edge_from in dep_edges {
+            dep_edges[_edge_from].append(abs_key);
         } else {
-            dep_edges[parent_key] = [abs_key];
+            dep_edges[_edge_from] = [abs_key];
         }
         typed_only[abs_key] = typed and typed_only.get(abs_key, True);
         if abs_key in processed_modules {
@@ -1160,7 +1161,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     };
 
     _dep_seen: set[str] = set();
-    _dep_todo: list[str] = list(dep_edges.get(None, []));
+    _dep_todo: list[str] = list(dep_edges.get("", []));
     while _dep_todo {
         _direct = _dep_todo.pop(0);
         if _direct in _dep_seen {
