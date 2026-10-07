@@ -7,7 +7,7 @@ import from jaclang.compiler.frontend.constant {
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 
-glob PLACEMENT_SCHEMA: int = 2,
+glob PLACEMENT_SCHEMA: int = 3,
      PLACEMENT_SV_SIGNAL_NODES: list[tuple[str, type[uni.UniNode]]] = [
          ("TypedCtxBlock", uni.TypedCtxBlock),
          ("PyInlineCode", uni.PyInlineCode),
@@ -56,6 +56,7 @@ obj PlacementSummary {
         native_verdict: str = '',
         native_verdict_code: str = '',
         native_verdict_deps: list[list[str]] = [],
+        native_anchor: bool = False,
         jac_deps: list[str] = [],
         has_refs: bool = False,
         elements: list[ElementSummary] = [];
@@ -679,6 +680,9 @@ def summarize_module(
     ps.schema = PLACEMENT_SCHEMA;
     ps.mod_path = module.loc.mod_path or '';
     ps.decided = module.decided_codespace or '';
+    import from jaclang.compiler.driver.boundary_classify { module_own_native_anchor }
+    ps.native_anchor = module.declares_codespace(CodeContext.NATIVE)
+        or module_own_native_anchor(module);
     ps.anchors = module_anchor_reasons(module);
     base_dir = os.path.dirname(os.path.abspath(ps.mod_path)) if ps.mod_path else '';
     (blocker, deps) = scan_native_blockers(module, base_dir);

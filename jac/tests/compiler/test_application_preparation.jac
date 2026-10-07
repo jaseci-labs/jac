@@ -763,3 +763,81 @@ test "prepared applications are reused by content, not by timestamp" {
         assert not _restored(path, tmp) , "an annex deletion was reused";
     }
 }
+
+def _compiled(path: Path, `root: str) -> tuple[set[str], any] {
+    import sys;
+    base = os.path.realpath(`root);
+    compiled: set[str] = set();
+    def tally(frame: any, event: str, arg: any) {
+        if event == 'call' and frame.f_code.co_name == '_compile_pipeline' {
+            target = os.path.realpath(str(frame.f_locals.get('file_path', '')));
+            if target.startswith(base + os.sep) {
+                compiled.add(os.path.relpath(target, base).removesuffix('.jac'));
+            }
+        }
+    }
+    sys.setprofile(tally);
+    try {
+        prepared = prepare_application(str(path), JacProgram(), `root);
+    } finally {
+        sys.setprofile(None);
+    }
+    return (compiled, prepared);
+}
+
+"""A content change used to discard the whole prepared application and analyse
+every module again. Once a revision exists, only the changed module and the
+modules that import it, directly or not, are compiled; the rest are restored
+from their records. The first rebuild after a cold prepare also writes the
+module interfaces that later rebuilds restore from."""
+test "a source change recompiles only the changed module and its importers" {
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        (base / 'base.jac').write_text('def:pub base_value -> int { return 1; }\n');
+        (base / 'mid.jac').write_text(
+            'import from base { base_value }\n'
+                + 'def:pub mid_value -> int { return base_value() + 1; }\n'
+        );
+        (base / 'leaf.jac').write_text(
+            'walker:pub Leaf {\n    can go with Root entry {\n        report 1;\n    }\n}\n'
+        );
+        (base / 'leaf.test.jac').write_text('test "leaf" { assert True; }\n');
+        path.write_text(
+            'import from mid { mid_value }\nimport from leaf { Leaf }\n'
+                + 'def:pub top -> int { return mid_value(); }\n'
+        );
+        try {
+            (compiled, _) = _compiled(path, tmp);
+            assert {'main', 'mid', 'base', 'leaf'} <= compiled , f"cold compiled {compiled}";
+            forget(str(path));
+            (compiled, _) = _compiled(path, tmp);
+            assert not compiled , f"an unchanged boot compiled {compiled}";
+            forget(str(path));
+            for value in (2, 3) {
+                (base / 'leaf.jac').write_text(
+                    'walker:pub Leaf {\n    can go with Root entry {\n        report '
+                        + str(value)
+                        + ';\n    }\n}\n'
+                );
+                (compiled, _) = _compiled(path, tmp);
+                assert {'leaf', 'main'} <= compiled , f"a leaf edit compiled {compiled}";
+                forget(str(path));
+            }
+            assert compiled == {'leaf', 'main'} , f"a leaf edit compiled {compiled}";
+            (base / 'base.jac').write_text('def:pub base_value -> int { return 5; }\n');
+            (compiled, prepared) = _compiled(path, tmp);
+            assert compiled == {'base', 'mid', 'main'} , f"a base edit compiled {compiled}";
+            surface = prepared.manifests[str(path.resolve())]['surface'];
+            assert {'Leaf', 'top', 'mid_value'} <= set(surface) , f"surface {sorted(surface)}";
+            module: any = initialize_application(prepared);
+            assert module.top() == 6;
+            forget(str(path));
+            (base / 'leaf.test.jac').unlink();
+            (compiled, _) = _compiled(path, tmp);
+            assert compiled == {'leaf', 'main'} , f"an annex deletion compiled {compiled}";
+        } finally {
+            forget(str(path));
+        }
+    }
+}

@@ -7,7 +7,7 @@ import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 9,
+glob _FORMAT: int = 10,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _stamp(path: str, previous: any = None) -> tuple[int, int, str] {
@@ -142,13 +142,124 @@ def _semantic_metadata(revision: PreparedApplication, program: any) {
     }
 }
 
-def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str, any] {
+obj ModuleRecord {
+    has path: str,
+        digest: str = '',
+        app: str = '',
+        persistence: list[str] = [],
+        surface: dict[str, dict[str, any]] = {},
+        effects: dict[str, dict[str, any]] = {},
+        edges: list[str] = [],
+        absorbs: list[str] = [];
+
+    def entries -> dict[str, any] {
+        import from jaclang.runtime.surface { SurfaceEntry }
+        return {
+            name: SurfaceEntry.from_dict(name, rec)
+            for (name, rec) in self.surface.items()
+        };
+    }
+
+    def to_record -> dict[str, any] {
+        return {
+            'digest': self.digest,
+            'app': self.app,
+            'persistence': list(self.persistence),
+            'surface': self.surface,
+            'effects': self.effects,
+            'edges': list(self.edges),
+            'absorbs': list(self.absorbs)
+        };
+    }
+
+    static def from_record(path: str, rec: dict[str, any]) -> ModuleRecord {
+        return ModuleRecord(
+            path=path,
+            digest=rec['digest'],
+            app=rec['app'],
+            persistence=list(rec['persistence']),
+            surface=rec['surface'],
+            effects=rec['effects'],
+            edges=list(rec['edges']),
+            absorbs=list(rec['absorbs'])
+        );
+    }
+}
+
+def _absorbed(mod: uni.Module) -> list[str] {
     import from jaclang.compiler.frontend { unitree as uni }
+    found: list[str] = [];
+    for item in mod.body {
+        if isinstance(item, uni.Import)
+            and item.is_jac
+            and item.is_absorb
+            and item.items
+            and isinstance(item.items[0], uni.ModulePath) {
+            source = item.items[0].resolve_relative_path();
+            if source {
+                found.append(os.path.realpath(source));
+            }
+        }
+    }
+    return found;
+}
+
+def _module_record(
+    program: any, path: str, mod: uni.Module, digest: str, edges: list[str]
+) -> ModuleRecord {
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    manifest = mod.gen.interop_manifest;
+    if not (manifest and manifest.surface) {
+        require_product(program, mod, CompilationProduct.BOUNDARIES);
+        manifest = mod.gen.interop_manifest;
+    }
+    return ModuleRecord(
+        path=path,
+        digest=digest,
+        app=mod.app or '',
+        persistence=list(mod.persistence or []),
+        surface={
+            name: rec.to_dict()
+            for (name, rec) in (manifest.surface if manifest else {}).items()
+        },
+        effects=dict(manifest.endpoint_effects) if manifest else {},
+        edges=edges,
+        absorbs=_absorbed(mod)
+    );
+}
+
+def _contribution(
+    source: any
+) -> (tuple[str, str, dict[str, any], dict[str, any]] | None) {
+    if isinstance(source, ModuleRecord) {
+        return (source.path, source.app, source.entries(), source.effects);
+    }
+    manifest = source.gen.interop_manifest;
+    if not manifest {
+        return None;
+    }
+    return (
+        source.loc.mod_path if source.loc else '',
+        source.app or '',
+        manifest.surface,
+        manifest.endpoint_effects
+    );
+}
+
+def _manifest(
+    program: any,
+    path: any,
+    `root: any,
+    mod: any = None,
+    restored: (dict[str, ModuleRecord] | None) = None
+) -> dict[str, any] {
+    import from jaclang.compiler.frontend { unitree as uni }
+    restored = restored or {};
     mod = mod if (mod is not None) else program.find_module(path);
     if (mod is None) {
         raise RuntimeError(f'Preparation did not produce metadata for {path}');
     }
-    sources = [mod];
+    sources: list[any] = [mod];
     namespace_sources = [mod];
     imported_functions: set[tuple[str, str]] = set();
 
@@ -168,10 +279,13 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
             }
             source = module_path.resolve_relative_path();
             selfhost = program._get_compiler().selfhost;
-            imported = program.find_module(source)
+            imported: any = program.find_module(source)
                 if source
                     and not selfhost.is_selfhost(selfhost.resolve(source, program))
                 else None;
+            if imported is None and source {
+                imported = restored.get(os.path.realpath(source));
+            }
             if imported is None {
                 continue;
             }
@@ -183,11 +297,12 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
                     namespace_sources.append(imported);
                 }
             } else {
+                imported_path = imported.path
+                    if isinstance(imported, ModuleRecord)
+                    else imported.loc.mod_path;
                 for name in item.items {
                     if isinstance(name, uni.ModuleItem) {
-                        imported_functions.add(
-                            (imported.loc.mod_path, name.name.value)
-                        );
+                        imported_functions.add((imported_path, name.name.value));
                     }
                 }
             }
@@ -195,6 +310,9 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
     }
     import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     for source in sources {
+        if isinstance(source, ModuleRecord) {
+            continue;
+        }
         manifest = source.gen.interop_manifest;
         if not (manifest and manifest.surface) {
             require_product(program, source, CompilationProduct.BOUNDARIES);
@@ -209,22 +327,23 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
             m
             for m in _project_modules(program, `root).values()
             if m not in sources
-        ];
+        ]
+        + [r for r in restored.values() if r not in sources];
     for source in ordered {
-        manifest = source.gen.interop_manifest;
-        if not manifest {
+        contribution = _contribution(source);
+        if contribution is None {
             continue;
         }
-        effects.update(manifest.endpoint_effects);
-        if not manifest.surface or (source.app or '') != own_app {
+        (src_path, source_app, declared, source_effects) = contribution;
+        effects.update(source_effects);
+        if not declared or source_app != own_app {
             continue;
         }
-        src_path = source.loc.mod_path if source.loc else '';
         if not src_path {
             continue;
         }
         rel = os.path.relpath(os.path.realpath(src_path), `root).replace(os.sep, '/');
-        for (name, rec) in manifest.surface.items() {
+        for (name, rec) in declared.items() {
             if (
                 not rec.explicit_access
                 and rec.exposure == 'private'
@@ -432,6 +551,83 @@ def _prepare_sealed(
     }
     publish(revision);
     return revision;
+}
+
+def _source_listing(`root: str) -> list[str] {
+    import from jaclang.jac0core.ext_registry { is_annex }
+    found: list[str] = [];
+    for (directory, dirs, files) in os.walk(`root) {
+        dirs[:] = sorted(
+            d
+            for d in dirs
+            if ((d not in _SKIP) and not d.startswith('.'))
+        );
+        for name in sorted(files) {
+            path = os.path.join(directory, name);
+            if name.endswith(('.jac', '.py', '.pyi')) and not is_annex(path) {
+                found.append(path);
+            }
+        }
+    }
+    return found;
+}
+
+def _reusable(
+    candidate: any, key: tuple[any, ...], sources: list[str]
+) -> dict[str, list[str]] {
+    import from jaclang.compiler.driver.jir { ct_dep_digest }
+    if not isinstance(candidate, dict) or candidate.get('sources') != sources {
+        return {};
+    }
+    previous = candidate.get('key');
+    if not isinstance(previous, tuple)
+        or previous[:2] != key[:2]
+        or previous[4:] != key[4:] {
+        return {};
+    }
+    modules: dict[str, any] = candidate.get('modules') or {};
+    for (path, digest) in (candidate.get('dependencies') or {}).items() {
+        if path in modules {
+            continue;
+        }
+        try {
+            if ct_dep_digest(path, with_annexes=True) != digest {
+                return {};
+            }
+        } except OSError {
+            return {};
+        }
+    }
+    dirty: set[str] = set();
+    absorbed: set[str] = set();
+    importers: dict[str, set[str]] = {};
+    for (path, rec) in modules.items() {
+        absorbed.update(rec['absorbs']);
+        for dependency in rec['edges'] {
+            importers.setdefault(dependency, set()).add(path);
+        }
+        try {
+            if ct_dep_digest(path, with_annexes=True) != rec['digest'] {
+                dirty.add(path);
+            }
+        } except OSError {
+            dirty.add(path);
+        }
+    }
+    frontier = list(dirty);
+    while frontier {
+        for importer in importers.get(frontier.pop(), ()) {
+            if importer not in dirty {
+                dirty.add(importer);
+                frontier.append(importer);
+            }
+        }
+    }
+    return {
+        path: list(rec['edges'])
+        for (path, rec) in modules.items()
+        if path not in dirty and path not in absorbed
+    };
 }
 
 def prepare_application(
@@ -696,13 +892,36 @@ def _prepare_revision(
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
-    import from jaclang.compiler.driver.pipeline_runner { compile_application }
+    import from jaclang.compiler.driver.pipeline_runner {
+        compile_application,
+        ApplicationPlan
+    }
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    listing = _source_listing(`root);
+    plan = ApplicationPlan(
+        emit=isinstance(candidate, dict),
+        reuse={
+            path: edges
+            for (path, edges) in _reusable(candidate, key, listing).items()
+            if path not in entries
+        }
+    );
     for path in entries {
         options = copy.copy(program.options);
         options.project_root = `root;
         options.no_cgen = False;
-        modules[path] = compile_application(program, path, options);
+        modules[path] = compile_application(program, path, options, plan);
         _check(program, before);
+    }
+    restored = {
+        path: ModuleRecord.from_record(path, candidate['modules'][path])
+        for path in plan.restored
+    };
+    for path in restored {
+        _capture_input(path, inputs);
+        compiler._restore_sections(
+            path, program_for(path, program), _sections(path, program)
+        );
     }
     entry_client = modules[`entry].gen.client_manifest;
     has_client = client
@@ -729,7 +948,7 @@ def _prepare_revision(
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
         mod = modules[path];
-        revision.manifests[path] = _manifest(program, path, `root, mod);
+        revision.manifests[path] = _manifest(program, path, `root, mod, restored);
         _check(program, before);
     }
     revision.manifests[`entry]['spa_routes'] = routes;
@@ -790,6 +1009,13 @@ def _prepare_revision(
             );
         }
     }
+    for (path, rec) in restored.items() {
+        if path in revision.code {
+            revision.manifests.setdefault(
+                path, {'root': `root, 'app': rec.app, 'persistence': rec.persistence}
+            );
+        }
+    }
     outputs = {};
     if has_client {
         assert revision.client_compiler is not None;
@@ -815,6 +1041,20 @@ def _prepare_revision(
         raise RuntimeError(
             'Sources changed during preparation; retry with the new revision.'
         );
+    }
+    records: dict[str, dict[str, any]] = {};
+    for (path, edges) in plan.edges.items() {
+        if path in restored {
+            records[path] = restored[path].to_record();
+            continue;
+        }
+        live: (uni.Module | None) = modules.get(path)
+            or program_for(path, program).find_module(path);
+        if live is not None and path in inputs {
+            records[path] = _module_record(
+                program, path, live, inputs[path], edges
+            ).to_record();
+        }
     }
     current = _digests(_inventory(inventory_root, inputs=True, previous=inventory));
     if (not client and current != _digests(inventory))
@@ -844,7 +1084,9 @@ def _prepare_revision(
             sections=sections,
             outputs=outputs,
             inventory=inventory,
-            dependencies=inputs
+            dependencies=inputs,
+            modules=records,
+            sources=listing
         )
     );
     _semantic_metadata(revision, program);

@@ -61,6 +61,7 @@ def summary_to_dict(ps: PlacementSummary) -> dict[str, any] {
         'native_verdict': ps.native_verdict,
         'native_verdict_code': ps.native_verdict_code,
         'native_verdict_deps': [list(row) for row in ps.native_verdict_deps],
+        'native_anchor': ps.native_anchor,
         'jac_deps': list(ps.jac_deps),
         'has_refs': ps.has_refs,
         'elements': [element_to_dict(e) for e in ps.elements]
@@ -83,6 +84,7 @@ def summary_from_dict(d: dict[str, any]) -> (PlacementSummary | None) {
         for row in d.get('native_verdict_deps', [])
         if isinstance(row, list) and len(row) == 2
     ];
+    ps.native_anchor = bool(d.get('native_anchor', False));
     ps.jac_deps = [str(x) for x in d.get('jac_deps', [])];
     ps.has_refs = bool(d.get('has_refs', False));
     ps.elements = [

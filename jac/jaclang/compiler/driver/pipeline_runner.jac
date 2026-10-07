@@ -188,11 +188,14 @@ obj ModuleCompilation {
             and self.analysis.source is None
             and (
                 (
-                    self.analysis.options.no_cgen
+                    (
+                        self.analysis.options.no_cgen
+                        or self.analysis.options.emit_interfaces
+                    )
                     and not self.analysis.options.symtab_ir_only
                 )
                 or (
-                    closure.no_cgen
+                    (closure.no_cgen or closure.emit_interfaces)
                     and not closure.symtab_ir_only
                     and not (
                         self.analysis.program.internal
@@ -607,8 +610,18 @@ def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | Non
     return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }
 
+obj ApplicationPlan {
+    has emit: bool = False,
+        reuse: dict[str, list[str]] = {},
+        edges: dict[str, list[str]] = {},
+        restored: set[str] = set();
+}
+
 def compile_application(
-    program: JacProgram, entry_path: str, options: CompileOptions
+    program: JacProgram,
+    entry_path: str,
+    options: CompileOptions,
+    plan: (ApplicationPlan | None) = None
 ) -> uni.Module {
     import copy;
     import from pathlib { Path }
@@ -638,6 +651,21 @@ def compile_application(
     }
     seen: set[tuple[str, str]] = set();
     entry_module: uni.Module | None = None;
+    def follow(dependencies: any, owner: JacProgram) -> list[str] {
+        return [
+            dependency
+            for dependency in sorted(dependencies)
+            if dependency.startswith(project_root + os.sep)
+                and not program._get_compiler().selfhost.is_selfhost(
+                    program._get_compiler().selfhost.resolve(dependency, owner)
+                )
+                and os.path.isfile(dependency)
+                and not any(
+                    part in ('.jac', 'node_modules', 'venv')
+                    for part in os.path.relpath(dependency, project_root).split(os.sep)
+                )
+        ];
+    }
     while pending {
         (context, path) = pending.pop(0);
         if options.cancel_token is not None and options.cancel_token.is_set() {
@@ -653,9 +681,16 @@ def compile_application(
             continue;
         }
         seen.add(identity);
+        if plan is not None and path != entry_path and path in plan.reuse {
+            plan.restored.add(path);
+            plan.edges[path] = follow(plan.reuse[path], context);
+            pending.extend((context, dependency) for dependency in plan.edges[path]);
+            continue;
+        }
         previous = context.options;
         codegen_options = copy.copy(bound);
         codegen_options.skip_native_engine = True;
+        codegen_options.emit_interfaces = plan is not None and plan.emit;
         try {
             module = program.compile(path, options=codegen_options);
         } finally {
@@ -689,19 +724,11 @@ def compile_application(
                 }
             }
         }
-        pending.extend(
-            (context, dependency)
-            for dependency in sorted(dependencies)
-            if dependency.startswith(project_root + os.sep)
-                and not program._get_compiler().selfhost.is_selfhost(
-                    program._get_compiler().selfhost.resolve(dependency, context)
-                )
-                and os.path.isfile(dependency)
-                and not any(
-                    part in ('.jac', 'node_modules', 'venv')
-                    for part in os.path.relpath(dependency, project_root).split(os.sep)
-                )
-        );
+        followed = follow(dependencies, context);
+        if plan is not None {
+            plan.edges[path] = followed;
+        }
+        pending.extend((context, dependency) for dependency in followed);
     }
     if entry_module is None {
         raise RuntimeError(

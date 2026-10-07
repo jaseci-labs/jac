@@ -200,7 +200,23 @@ def plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None)
     if effective_module_pin(resolved, prog) == 'native' {
         return resolved;
     }
-    target = hub_module_for_path(resolved, prog);
+    hub = prog.mod.hub;
+    target: (uni.Module | None) = None;
+    if resolved in hub {
+        target = hub[resolved];
+    } elif real_resolved in hub {
+        target = hub[real_resolved];
+    }
+    if target is None {
+        summary = prog.analysis.placement_summaries.get(os.path.abspath(real_resolved));
+        if summary is not None and not summary.native_verdict_code {
+            if summary.decided == 'native' or summary.native_anchor {
+                return resolved;
+            }
+            return None;
+        }
+        target = hub_module_for_path(resolved, prog);
+    }
     if target is None {
         import from jaclang.compiler.placement.placement_solver { _materialize_module }
         target = _materialize_module(resolved, prog);

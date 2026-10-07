@@ -704,10 +704,14 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def eligible(compiler: any, resolved: str, options: any) -> bool {
-        if options.aot_mode
-            or bool(options.force_codespace)
-            or bool(options.default_codespace) {
+        if options.aot_mode or bool(options.force_codespace) {
             return False;
+        }
+        if options.default_codespace and not options.emit_interfaces {
+            closure = compiler.closure_options();
+            if closure is None or not closure.emit_interfaces {
+                return False;
+            }
         }
         if not _interface_source_path(resolved) {
             return False;
