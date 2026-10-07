@@ -84,9 +84,15 @@ impl NaIRGenPass._maybe_declare_ability(
     self._sig_decl_kind = _saved_sig_kind;
 
     local_type = ir.FunctionType(ret_type, param_types);
-    imported = imp_layout.functions.get(name) if imp_layout is not None else None;
-    if imported is not None and imp_layout.str_headerless != self._nogc_headerless() {
-        kind = "jacstr2" if imp_layout.str_headerless else "jacstr3";
+    import from jaclang.compiler.frontend.codeinfo { NativeModuleLayout }
+    _layout: (NativeModuleLayout | None) = imp_layout
+        if isinstance(imp_layout, NativeModuleLayout)
+        else None;
+    imported = _layout.functions.get(name) if _layout is not None else None;
+    if imported is not None
+        and _layout is not None
+        and _layout.str_headerless != self._nogc_headerless() {
+        kind = "jacstr2" if _layout.str_headerless else "jacstr3";
         carrier = self.llvm_module.context.get_identified_type(f"JacStr.{kind}");
         if carrier.is_opaque {
             carrier.set_body(
